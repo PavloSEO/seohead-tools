@@ -1251,6 +1251,37 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_gsc_archive(
+        database: str,
+        action: Literal["status", "prepare", "run", "backup"] = "status",
+        site_url: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        max_requests: int = 1,
+        pause: float = 1.0,
+        backup_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Manage an explicit local GSC SQLite archive. Status is offline and never creates
+        an absent archive. Prepare creates/extends the queue for a verified property and
+        inclusive YYYY-MM-DD dates without calling Google. Run performs at most max_requests
+        API calls (1..1000, default 1), writes checkpoints and obeys quota/retry waits. Backup
+        makes a verified snapshot at a new backup_path. Only prepare creates a database.
+        Search Analytics can omit anonymized/top-limited rows; never sum different datasets.
+        """
+        return _checked(
+            handlers.gsc_archive(
+                database=database,
+                action=action,
+                site_url=site_url,
+                start_date=start_date,
+                end_date=end_date,
+                max_requests=max_requests,
+                pause=pause,
+                backup_path=backup_path,
+            )
+        )
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_crux_report(
         url: str | None = None,
         origin: str | None = None,

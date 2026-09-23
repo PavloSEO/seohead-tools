@@ -4,8 +4,9 @@ from seohead.data_sources import credentials, ga4, gsc
 
 
 def test_empty_report_is_zero_rows():
-    r = ga4.landing_pages("1", "2026-08-01", "2026-08-31", token="t",
-                          transport=lambda url, payload, token: "{}")
+    r = ga4.landing_pages(
+        "1", "2026-08-01", "2026-08-31", token="t", transport=lambda url, payload, token: "{}"
+    )
     assert r["ok"] is True
 
 
@@ -16,7 +17,9 @@ def test_falls_back_to_service_account(monkeypatch):
     seen = {}
     monkeypatch.setattr(credentials, "ga4_access_token", no_bearer)
     monkeypatch.setattr(credentials, "gsc_service_account_available", lambda: True)
-    monkeypatch.setattr(gsc, "service_account_access_token", lambda scope: seen.setdefault("scope", scope) and "sa")
+    monkeypatch.setattr(
+        gsc, "service_account_access_token", lambda scope: seen.setdefault("scope", scope) and "sa"
+    )
 
     def transport(url, payload, token):
         seen["token"] = token

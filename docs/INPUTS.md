@@ -90,6 +90,7 @@ and this decision makes no backend migration.
 | `wayback-history` | Live URL (`url`) | — |
 | `crtsh-subdomains` | Domain (`domain`) | — |
 | `gsc-query` | Provider query (`site_url`) | — |
+| `gsc-archive` | Local file (`database`)<br>Inline JSON (`database, action, site_url, start_date, end_date, max_requests, pause, backup_path`) | Explicit SQLite archive. Only prepare creates a missing file; status and backup are offline.; prepare queues inclusive dates; run makes bounded Google API calls; backup requires a new destination. |
 | `crux-report` | Provider query (`url`)<br>Provider query (`origin`) | — |
 | `indexnow-submit` | URL list (`urls`) | — |
 | `scan-list` | Local directory (`directory`)<br>Project directory (`project`) | — |

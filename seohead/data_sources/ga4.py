@@ -154,7 +154,12 @@ def landing_pages(
         try:
             bearer = service_account_access_token(READONLY_SCOPE)
         except MissingCredential as sa_error:
-            return {"ok": False, "state": "not_configured", "verified": False, "error": str(sa_error)}
+            return {
+                "ok": False,
+                "state": "not_configured",
+                "verified": False,
+                "error": str(sa_error),
+            }
     metrics = ["sessions", "engagedSessions"]
     if include_conversions:
         metrics.append("keyEvents")

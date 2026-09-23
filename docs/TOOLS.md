@@ -446,15 +446,29 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
 | `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
+| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
+
+`gsc-archive --database ./analytics/search-console.sqlite --action prepare --site-url sc-domain:example.test --start-date 2025-06-01 --end-date 2026-09-01`
+creates the archive and queues availability checks without network calls. Dates are inclusive in
+Pacific Time; select a range inside Google's available history (up to approximately 16 months).
+Then run `gsc-archive --database ./analytics/search-console.sqlite --action run --max-requests 10 --pause 1`.
+`--action status` reads the existing archive without credential access or creating an absent file.
+`--action backup --backup-path ./backups/search-console-snapshot.sqlite` creates a verified snapshot
+and refuses an existing destination. JSON-only input and `seo_gsc_archive` use the same arguments.
+
+Archive datasets preserve provider, engine, request provenance and nullable metrics. Availability
+expands into separate daily totals, pages, queries, detail and appearance datasets where supported.
+Google may omit anonymized queries or cap returned rows: a `capped` job is not exhaustive evidence.
+Quota waits cover all GSC properties in that archive (15 minutes; daily quota: 24 hours); transient
+transport/5xx failures get at most three attempts per page. Across multiple archives, the caller must
+coordinate provider backoff. Neither prepare nor status launches collection implicitly.
 
 Provider history uses one `sources.sqlite` per project (`--project`) or an explicit `--db`.
-`sources-sync` is an explicit provider request. It fetches missing days, records every requested
-day, and replaces each successfully fetched day in one SQLite transaction. Complete zero-row
-days differ from sampled, thresholded, truncated or capped partial results, failures and days
-held back by provider lag. A failed or partial
-forced retry never erases a previously complete day. GSC history here is the bounded web
-date/query/page grain; the separate #718 archive's additional datasets and resumable quota
-checkpoints are not part of this command. No independent GSC archive is created by these tools.
+`sources-sync` fetches missing days, records every requested day, and replaces each successfully
+fetched day in one SQLite transaction. Complete zero-row days differ from sampled, thresholded,
+truncated or capped partial results, failures and days held back by provider lag. A failed or
+partial forced retry never erases a previously complete day. GSC history is the bounded web
+date/query/page grain; the separate archive adds independent datasets and resumable checkpoints.
 
 `sources-status` reads the local file without provider calls or schema writes. `sources-export`
 orders by resource, date and dimensions and limits both JSON and CSV to at most 100,000 rows.
@@ -613,7 +627,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(115 + 5):
+(116 + 5):
 
 ```bash
 seohead mcp        # stdio

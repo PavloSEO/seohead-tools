@@ -28,6 +28,7 @@ anything else must already be a valid ISO date.
 from __future__ import annotations
 
 import json
+import math
 import re
 import urllib.error
 import urllib.parse
@@ -54,6 +55,9 @@ Fetcher = Callable[[dict[str, Any], str], str]
 RequestTransport = Callable[[str, str, dict[str, Any] | None, str], str]
 MAX_INSPECTION_URLS = 50
 MAX_ANALYTICS_ROWS = 25_000
+_ARCHIVE_DIMENSIONS = ("date", "query", "page", "country", "device", "searchAppearance")
+_SEARCH_TYPES = ("web", "image", "video", "news", "discover", "googleNews")
+_AGGREGATION_TYPES = ("auto", "byPage", "byProperty")
 
 
 def default_date_range() -> tuple[str, str]:
@@ -324,9 +328,7 @@ def service_account_access_token(scope: str = READONLY_SCOPE) -> str:
     if info is None:
         raise MissingCredential(_SERVICE_ACCOUNT_ERRORS[status])
     try:
-        credentials = service_account.Credentials.from_service_account_info(
-            info, scopes=[scope]
-        )
+        credentials = service_account.Credentials.from_service_account_info(info, scopes=[scope])
         session = requests.Session()
         session.max_redirects = 0
         credentials.refresh(Request(session=session))
@@ -443,6 +445,215 @@ def search_analytics_pages(
         "returned": len(rows),
         "truncated": len(rows) == max_rows,
         "quota_mode": "provider row limit; bounded locally",
+    }
+
+
+def search_analytics_page(
+    site_url: str,
+    *,
+    start_date: str,
+    end_date: str,
+    dimensions: list[str] | None = None,
+    search_type: str = "web",
+    aggregation_type: str = "auto",
+    data_state: str = "final",
+    row_limit: int = 25_000,
+    start_row: int = 0,
+    dimension_filter_groups: list[dict[str, Any]] | None = None,
+    token: str | None = None,
+    transport: RequestTransport | None = None,
+) -> dict[str, Any]:
+    """Fetch one archive page without implicit pagination, retries, or dimension defaults.
+
+    Empty dimensions request property totals. Missing CTR/position stay null, including for
+    Discover and Google News. Failures never echo provider messages or exception text because
+    either may include authentication material. ``status`` is an HTTP code, or None when no
+    HTTP response exists; ``reason`` is a stable local code or an allowlisted Google reason.
+    """
+
+    def failure(reason: str, error: str, status: int | None = None) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "rows": [],
+            "response_aggregation_type": None,
+            "metadata": {},
+            "error": error,
+            "status": status,
+            "reason": reason,
+        }
+
+    invalid = "Invalid Search Console page request"
+    if not isinstance(site_url, str) or not site_url.strip():
+        return failure("invalid_argument", invalid + ": site_url is required")
+    if _validate_date_range(start_date, end_date):
+        return failure("invalid_argument", invalid + ": use an ordered YYYY-MM-DD date range")
+    if (
+        type(row_limit) is not int
+        or not 1 <= row_limit <= MAX_ANALYTICS_ROWS
+        or type(start_row) is not int
+        or not 0 <= start_row <= 50_000
+    ):
+        return failure(
+            "invalid_argument", invalid + ": row_limit is 1..25000; start_row is 0..50000"
+        )
+    if (
+        search_type not in _SEARCH_TYPES
+        or aggregation_type not in _AGGREGATION_TYPES
+        or data_state not in ("final", "all")
+        or (search_type in ("discover", "googleNews") and aggregation_type == "byProperty")
+    ):
+        return failure(
+            "invalid_argument", invalid + ": unsupported type, aggregation, or data state"
+        )
+    dimensions = [] if dimensions is None else dimensions
+    if (
+        not isinstance(dimensions, list)
+        or not all(isinstance(d, str) and d in _ARCHIVE_DIMENSIONS for d in dimensions)
+        or len(set(dimensions)) != len(dimensions)
+    ):
+        return failure("invalid_argument", invalid + ": invalid or repeated dimensions")
+    if dimension_filter_groups is not None:
+        if not isinstance(dimension_filter_groups, list):
+            return failure("invalid_argument", invalid + ": filter groups must be a JSON list")
+        for group in dimension_filter_groups:
+            if (
+                not isinstance(group, dict)
+                or set(group) - {"groupType", "filters"}
+                or group.get("groupType", "and") != "and"
+                or not isinstance(group.get("filters"), list)
+                or not group["filters"]
+            ):
+                return failure("invalid_argument", invalid + ": malformed filter group")
+            for item in group["filters"]:
+                if (
+                    not isinstance(item, dict)
+                    or set(item) != {"dimension", "operator", "expression"}
+                    or item["dimension"] not in _ARCHIVE_DIMENSIONS
+                    or item["operator"]
+                    not in (
+                        "contains",
+                        "equals",
+                        "notContains",
+                        "notEquals",
+                        "includingRegex",
+                        "excludingRegex",
+                    )
+                    or not isinstance(item["expression"], str)
+                ):
+                    return failure("invalid_argument", invalid + ": malformed dimension filter")
+    if token is not None and not isinstance(token, str):
+        return failure("invalid_argument", invalid + ": token must be a string")
+
+    def api_failure(body: dict[str, Any] | None, status: int | None) -> dict[str, Any]:
+        error = body.get("error") if body else None
+        reason = "api_error"
+        known_reasons = {
+            "quotaExceeded",
+            "rateLimitExceeded",
+            "userRateLimitExceeded",
+            "dailyLimitExceeded",
+            "servingLimitExceeded",
+            "forbidden",
+            "insufficientPermissions",
+            "authError",
+            "keyInvalid",
+            "accessNotConfigured",
+            "notFound",
+            "invalid",
+            "badRequest",
+        }
+        if isinstance(error, dict):
+            if status is None and type(error.get("code")) is int:
+                status = error["code"]
+            details = error.get("errors", [])
+            if isinstance(details, list):
+                for detail in details:
+                    candidate = detail.get("reason") if isinstance(detail, dict) else None
+                    if isinstance(candidate, str) and candidate in known_reasons:
+                        reason = candidate
+                        break
+        return failure(reason, "Search Console API request failed", status)
+
+    try:
+        bearer, _ = _acquire_token(token)
+    except Exception:
+        return failure("not_configured", "Search Console authentication is unavailable")
+    if not isinstance(bearer, str) or not bearer:
+        return failure("not_configured", "Search Console authentication is unavailable")
+    endpoint = f"{SEARCH_ANALYTICS_HOST}/sites/{urllib.parse.quote(site_url, safe='')}/searchAnalytics/query"
+    payload: dict[str, Any] = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": dimensions,
+        "type": search_type,
+        "aggregationType": aggregation_type,
+        "dataState": data_state,
+        "rowLimit": row_limit,
+        "startRow": start_row,
+    }
+    if dimension_filter_groups is not None:
+        payload["dimensionFilterGroups"] = dimension_filter_groups
+    try:
+        raw = (transport or _request)("POST", endpoint, payload, bearer)
+    except urllib.error.HTTPError as exc:
+        try:
+            error_body = _response_object(exc.read().decode("utf-8", "replace"))
+        except (OSError, TypeError, ValueError):
+            error_body = None
+        return api_failure(error_body, exc.code)
+    except (OSError, ValueError, TypeError):
+        return failure("transport_error", "Search Console request failed before a valid response")
+    try:
+        body = _response_object(raw)
+    except TypeError:
+        body = None
+    malformed = failure("malformed_response", "Search Console malformed analytics response", 200)
+    if body is None:
+        return malformed
+    if "error" in body or "errors" in body:
+        return api_failure(body, None)
+    batch = body.get("rows", [])
+    metadata = body.get("metadata", {})
+    aggregation = body.get("responseAggregationType")
+    if (
+        not isinstance(batch, list)
+        or len(batch) > row_limit
+        or not isinstance(metadata, dict)
+        or (aggregation is not None and aggregation not in _AGGREGATION_TYPES)
+    ):
+        return malformed
+    rows = []
+    for row in batch:
+        if not isinstance(row, dict):
+            return malformed
+        keys = row.get("keys", [])
+        if (
+            not isinstance(keys, list)
+            or len(keys) != len(dimensions)
+            or not all(isinstance(key, str) for key in keys)
+        ):
+            return malformed
+        for metric in ("clicks", "impressions", "ctr", "position"):
+            value = row.get(metric)
+            if value is None and metric in ("ctr", "position"):
+                continue
+            if (
+                type(value) not in (int, float)
+                or value < 0
+                or (isinstance(value, float) and not math.isfinite(value))
+            ):
+                return malformed
+        rows.append(
+            {"keys": keys, **{k: row.get(k) for k in ("clicks", "impressions", "ctr", "position")}}
+        )
+    return {
+        "ok": True,
+        "rows": rows,
+        "response_aggregation_type": aggregation,
+        "metadata": metadata,
+        "error": None,
+        "status": 200,
+        "reason": None,
     }
 
 

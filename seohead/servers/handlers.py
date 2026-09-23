@@ -3403,6 +3403,96 @@ def gsc_query(
     )
 
 
+def gsc_archive(
+    database: str | None = None,
+    action: str = "status",
+    site_url: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_requests: int = 1,
+    pause: float = 1.0,
+    backup_path: str | None = None,
+) -> dict[str, Any]:
+    """Manage an explicitly selected local GSC SQLite archive.
+
+    Status is offline and does not create an absent archive. Prepare is the only action
+    that creates a database; run performs bounded API work and resumes saved checkpoints.
+    Backup snapshots an existing archive into a new local file. No credentials are inputs.
+    """
+    import math
+    import sqlite3
+
+    from seohead.data_sources.gsc import _validate_date_range
+    from seohead.data_sources.gsc_archive import Archive
+
+    if action not in ("status", "prepare", "run", "backup"):
+        raise ValueError("action must be status, prepare, run, or backup")
+    if type(max_requests) is not int or not 1 <= max_requests <= 1000:
+        raise ValueError("max_requests must be an integer in 1..1000")
+    if type(pause) not in (int, float) or not math.isfinite(pause) or not 0 <= pause <= 60:
+        raise ValueError("pause must be a finite number in 0..60 seconds")
+
+    def local_path(value: str | None, name: str) -> Path:
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or "\x00" in value
+            or "://" in value
+            or value.startswith(("file:", ":memory:"))
+        ):
+            raise ValueError(f"{name} must be an explicit local file path")
+        path = Path(value).expanduser().resolve()
+        if path.exists() and not path.is_file():
+            raise ValueError(f"{name} must point to a file")
+        return path
+
+    path = local_path(database, "database")
+    if action == "prepare":
+        if not isinstance(site_url, str) or not site_url.strip():
+            raise ValueError("site_url is required for prepare")
+        if _validate_date_range(start_date, end_date):
+            raise ValueError("prepare requires an ordered YYYY-MM-DD start_date and end_date")
+    elif any(v is not None for v in (site_url, start_date, end_date)):
+        raise ValueError("site_url, start_date, and end_date apply only to prepare")
+    destination = None
+    if action == "backup":
+        destination = local_path(backup_path, "backup_path")
+        if destination == path or destination.exists():
+            raise ValueError("backup_path must be a new file different from database")
+    elif backup_path is not None:
+        raise ValueError("backup_path applies only to backup")
+    if action != "prepare" and not path.is_file():
+        return {
+            "ok": False,
+            "state": "not_found",
+            "database": str(path),
+            "error": "Archive does not exist; prepare it first",
+        }
+
+    archive = None
+    try:
+        archive = Archive(
+            path, create=action == "prepare", read_only=action in ("status", "backup")
+        )
+        if action == "prepare":
+            return archive.prepare(site_url, start_date, end_date)
+        if action == "run":
+            return archive.run_batch(max_requests=max_requests, pause=pause)
+        if action == "backup":
+            return {"ok": True, "database": str(path), "backup": archive.backup(destination)}
+        return archive.status()
+    except (OSError, sqlite3.Error, RuntimeError):
+        return {
+            "ok": False,
+            "state": "failed",
+            "database": str(path),
+            "error": "Archive operation failed; check file access, writer lock, schema, and GSC credentials",
+        }
+    finally:
+        if archive is not None:
+            archive.close()
+
+
 def crux_report(
     url: str | None = None,
     origin: str | None = None,
@@ -4492,6 +4582,7 @@ _RAW_HANDLERS = {
     "wayback_history": wayback_history,
     "crtsh_subdomains": crtsh_subdomains,
     "gsc_query": gsc_query,
+    "gsc_archive": gsc_archive,
     "crux_report": crux_report,
     "indexnow_submit": indexnow_submit,
     "scan_reanalyze": scan_reanalyze,
