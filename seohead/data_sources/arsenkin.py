@@ -23,6 +23,7 @@ Two safeguards keep paid results recoverable:
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -259,6 +260,66 @@ def _sanitize_for_journal(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     return repr(value)[:200]
+
+
+# The provider tool that returns exact `!W`. There is no `keywords_frequency` tool: asking for
+# one answers `404 WRONG_TOOL` and bills nothing, which is how this call used to fail silently.
+WORDSTAT_TOOL = "wordstat"
+WORDSTAT_TYPE_FREQUENCY = 1  # `type` selector inside the wordstat tool: frequency, not dynamics.
+
+# The provider rejects a query containing punctuation with `422 JSON_VALIDATION_ERROR`; `/`
+# and quotes are confirmed. Only letters, digits, spaces, and hyphens are known to pass.
+_WORDSTAT_DISALLOWED = re.compile(r"[^0-9A-Za-zЀ-ӿ\s-]+")
+_WORDSTAT_SPACES = re.compile(r"\s+")
+
+
+def sanitize_wordstat_query(phrase: str) -> str:
+    """Strip characters the provider refuses, so one bad phrase cannot fail a whole batch."""
+    return _WORDSTAT_SPACES.sub(" ", _WORDSTAT_DISALLOWED.sub(" ", str(phrase))).strip()
+
+
+def wordstat_payload(queries: list[str], region: int) -> dict:
+    """Build the `/set` payload for exact `!W` frequency in a single region.
+
+    The phrase array is named ``queries``; ``keywords`` is silently ignored and the provider
+    then answers `422` complaining that no queries were supplied. Regions are a list even for
+    one region, and a multi-region request SUMS frequency, so callers pass one region at a time.
+    """
+    cleaned = [sanitize_wordstat_query(q) for q in queries]
+    kept = [q for q in cleaned if q]
+    if not kept:
+        raise ValueError("no usable queries after sanitizing")
+    return {
+        "type": WORDSTAT_TYPE_FREQUENCY,
+        "regions": [int(region)],
+        "ws": ["base", "quoted"],
+        "queries": kept,
+    }
+
+
+def parse_wordstat(result: Any, region: int) -> dict[str, dict[str, int | None]]:
+    """Flatten a wordstat task result into ``{phrase: {"base": N, "quoted": N}}``.
+
+    The provider nests frequencies as ``data.result[phrase][region]``; ``quoted`` is the exact
+    `!W` figure the caller asked for. An unexpected shape yields an empty mapping rather than a
+    crash, because the task is already paid for and its raw payload is still returned upstream.
+    """
+    node = result
+    if isinstance(node, dict) and "result" in node and "data" not in node:
+        node = node["result"]  # `/get` envelope: {"code": ..., "result": {...}}
+    data = node.get("data") if isinstance(node, dict) else None
+    rows = data.get("result") if isinstance(data, dict) else None
+    if not isinstance(rows, dict):
+        return {}
+    out: dict[str, dict[str, int | None]] = {}
+    for phrase, by_region in rows.items():
+        if not isinstance(by_region, dict):
+            continue
+        values = by_region.get(str(region)) or next(
+            (v for v in by_region.values() if isinstance(v, dict)), {}
+        )
+        out[str(phrase)] = {"base": values.get("base"), "quoted": values.get("quoted")}
+    return out
 
 
 def _count_items(data: dict) -> int:

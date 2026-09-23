@@ -2254,30 +2254,55 @@ def keywords_exact(
     This operation is paid and consumes account limits. The charge and ``task_id`` are journaled as
     soon as the task is created, allowing a result whose polling or parsing failed to be retrieved
     later without paying for a duplicate task.
+
+    The provider tool is ``wordstat`` with ``type=1``; there is no ``keywords_frequency`` tool, and
+    asking for one answers ``404 WRONG_TOOL`` without billing. ``frequencies`` holds the flattened
+    ``{phrase: {"base": N, "quoted": N}}`` mapping, where ``quoted`` is the exact ``!W`` figure;
+    ``result`` keeps the raw provider payload. ``cleaned`` lists phrases whose punctuation had to
+    be stripped before sending, because the provider rejects the whole batch otherwise.
     """
     if not keywords:
         raise ValueError("keywords required")
-    from seohead.data_sources.arsenkin import ArsenkinClient, ArsenkinError
+    from seohead.data_sources.arsenkin import (
+        WORDSTAT_TOOL,
+        ArsenkinClient,
+        ArsenkinError,
+        parse_wordstat,
+        sanitize_wordstat_query,
+        wordstat_payload,
+    )
     from seohead.data_sources.credentials import MissingCredential
 
     try:
         client = ArsenkinClient()
-        task = client.set_task(
-            "keywords_frequency", {"keywords": list(keywords), "region": int(region)}
-        )
+        payload = wordstat_payload(list(keywords), region)
+        # Report every phrase the provider would have rejected, so a caller comparing
+        # frequencies against its own list can see which ones were measured differently.
+        cleaned = {
+            original: sanitize_wordstat_query(original)
+            for original in keywords
+            if sanitize_wordstat_query(original) != str(original)
+        }
+        task = client.set_task(WORDSTAT_TOOL, payload)
         if not wait:
             return {
                 "ok": True,
                 "task_id": task["task_id"],
                 "cost": task["cost"],
+                "region": int(region),
+                "cleaned": cleaned,
                 "note": "task created and billed; retrieve the result later by task_id",
             }
         result = client.wait(task["task_id"])
+        payload_result = result.get("result", result)
         return {
             "ok": True,
             "task_id": task["task_id"],
             "cost": task["cost"],
-            "result": result.get("result", result),
+            "region": int(region),
+            "cleaned": cleaned,
+            "frequencies": parse_wordstat(payload_result, region),
+            "result": payload_result,
         }
     except MissingCredential as exc:
         return {"ok": False, "error": str(exc)}
