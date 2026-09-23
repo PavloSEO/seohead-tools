@@ -205,6 +205,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("sources-doctor", "sources_doctor", _form("local_config")),
     _command("regions-tree", "regions_tree", _form("local_config")),
+    _command(
+        "topvisor-read",
+        "topvisor_read",
+        _form(
+            "inline_json",
+            "operation",
+            "params",
+            note="One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. No paid checks or mutations.",
+        ),
+    ),
     _command("metrika-counters", "metrika_counters", _form("local_config")),
     _command("metrika-setup", "metrika_setup", _form("provider_query", "counter_id")),
     _command("metrika-report", "metrika_report", _form("provider_query", "counter_id")),
