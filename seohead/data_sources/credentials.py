@@ -24,6 +24,19 @@ class MissingCredential(RuntimeError):
     """A credential is missing; the message names sources but never exposes a value."""
 
 
+def is_private_mode(mode: int) -> bool:
+    """True when a secret file is not readable by group or others.
+
+    POSIX permission bits carry this. Windows has no such bits: ``os.stat`` always reports
+    ``0o666``/``0o444`` and ``os.chmod`` only toggles read-only, so the check could never pass
+    there. On Windows privacy comes from the ACL of the user profile (``~/.config`` lives in it),
+    and the mode check is skipped.
+    """
+    if os.name == "nt":
+        return True
+    return not mode & 0o077
+
+
 def read(path: str, env_var: str, *, hint: str = "") -> str:
     """Read a secret from ``$env_var`` or ``~/.config/<path>``.
 
@@ -135,7 +148,7 @@ def gsc_service_account_path() -> Path:
         raise MissingCredential(
             "GSC service-account JSON file is not configured or readable"
         ) from exc
-    if path.is_symlink() or not path.is_file() or info.st_mode & 0o077:
+    if path.is_symlink() or not path.is_file() or not is_private_mode(info.st_mode):
         raise MissingCredential(
             "GSC service-account JSON must be a private regular file (mode 0600)"
         )
