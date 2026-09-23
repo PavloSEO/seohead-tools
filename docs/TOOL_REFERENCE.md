@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**93 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 98 in total.
+**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -756,6 +756,19 @@ Google organic results for a query — who actually ranks. Same geo rules as seo
 | `country` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota
+
+### `topvisor-read`
+
+MCP name: `seo_topvisor_read`
+
+Read existing Topvisor projects, competitors, groups, keywords, history or summary. Uses topvisor/access_token and topvisor/user_id under the central credential root (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100, maximum 1000; increment offset explicitly. Non-project operations require project_id. History regions_indexes are project region indexes, not geographic region IDs. Does not launch checks, add/edit/delete records, or authorize paid operations. Transport redirects are refused and provider errors are redacted.
+
+| Argument | Type | Default |
+|---|---|---|
+| `operation` | `str` | `'projects'` |
+| `params` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
 ### `metrika-counters`
 

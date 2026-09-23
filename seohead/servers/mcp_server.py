@@ -809,6 +809,19 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_topvisor_read(
+        operation: str = "projects", params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Read existing Topvisor projects, competitors, groups, keywords, history or summary.
+        Uses topvisor/access_token and topvisor/user_id under the central credential root
+        (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100,
+        maximum 1000; increment offset explicitly. Non-project operations require project_id.
+        History regions_indexes are project region indexes, not geographic region IDs.
+        Does not launch checks, add/edit/delete records, or authorize paid operations.
+        Transport redirects are refused and provider errors are redacted."""
+        return _checked(handlers.topvisor_read(operation=operation, params=params))
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_metrika_counters() -> dict[str, Any]:
         """List the Yandex Metrika counters this token can see (id, name, site). Start here to
         get the counter_id the report tools need. Requires a Metrika OAuth token."""

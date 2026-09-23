@@ -98,7 +98,7 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-64 of the 93 commands are not named in any skill's own body (a mention inside
+65 of the 94 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing
 inside a workflow's write-up, or not yet needed by one at all — and have no
 skill of their own, deliberately: a skill per single command is noise.
@@ -127,6 +127,8 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and
 `redirects-generate` (site migrations).
+
+`topvisor-read` reads existing Topvisor data using central credential files.
 
 ## Skill rules
 

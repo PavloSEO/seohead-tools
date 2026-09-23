@@ -16,6 +16,16 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+## Topvisor
+
+`topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
+competitors, keyword groups, keywords, position history or summaries. Pass an
+`operation` and a `params` object through the ordinary JSON input. Credentials are
+`~/.config/topvisor/access_token` and `~/.config/topvisor/user_id`, with environment
+overrides `TOPVISOR_TOKEN` and `TOPVISOR_USER_ID`. No project-local credential copies
+are needed. This tool never launches checks or modifies provider records. Paginate
+explicitly using `limit` and `offset`; a single page is not a complete inventory.
+
 ## Project workspace
 
 | Command | What it does | Network |
@@ -415,7 +425,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(93 + 5):
+(94 + 5):
 
 ```bash
 seohead mcp        # stdio
