@@ -305,8 +305,8 @@ def _acquire_token(value: str | None) -> tuple[str | None, str | None]:
             return None, f"OAuth bearer unavailable; service account unavailable: {service_error}"
 
 
-def service_account_access_token() -> str:
-    """Refresh one scoped GSC token through google-auth; this module never handles JWT keys."""
+def service_account_access_token(scope: str = READONLY_SCOPE) -> str:
+    """Refresh one read-only Google token; the caller supplies a product scope."""
     from seohead.data_sources.credentials import (
         MissingCredential,
         gsc_service_account_document,
@@ -325,7 +325,7 @@ def service_account_access_token() -> str:
         raise MissingCredential(_SERVICE_ACCOUNT_ERRORS[status])
     try:
         credentials = service_account.Credentials.from_service_account_info(
-            info, scopes=[READONLY_SCOPE]
+            info, scopes=[scope]
         )
         session = requests.Session()
         session.max_redirects = 0
