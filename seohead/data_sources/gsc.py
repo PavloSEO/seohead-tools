@@ -370,7 +370,9 @@ def discover_properties(
             result["status"] = exc.code
             result["error"] = _api_error(exc, bearer)
         return result
-    entries = body.get("siteEntry") if body else None
+    # Google omits siteEntry entirely when the principal has no properties: that is an empty
+    # list, not a malformed response (a fresh service account before it is added anywhere).
+    entries = body.get("siteEntry", []) if isinstance(body, dict) else None
     if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
         return {
             "ok": False,
