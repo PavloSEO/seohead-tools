@@ -74,8 +74,16 @@ def fetch(operation: str = "projects", params: dict[str, Any] | None = None) -> 
     if not isinstance(data, dict):
         raise TopvisorError("Topvisor returned an unexpected envelope")
     if data.get("errors"):
-        # Provider messages can echo input; never expose them or authentication data.
-        raise TopvisorError("Topvisor API reported errors; check permissions and parameters")
+        # Keep diagnostics useful without exposing echoed credentials.
+        errors = data["errors"]
+        details = []
+        for error in errors if isinstance(errors, list) else [errors]:
+            if isinstance(error, dict):
+                detail = ": ".join(
+                    str(error[k]) for k in ("code", "message", "string") if k in error
+                )
+                details.append(detail.replace(token, "[redacted]").replace(user_id, "[redacted]"))
+        raise TopvisorError("Topvisor API errors: " + ("; ".join(details)[:1000] or "unspecified"))
     if "result" not in data:
         raise TopvisorError("Topvisor response has no result")
     return {
