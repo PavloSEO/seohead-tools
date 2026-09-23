@@ -601,7 +601,7 @@ def provider_replay(
     if (
         source.is_symlink()
         or not source.is_file()
-        or source.stat().st_mode & 0o077
+        or not credentials.is_private_mode(source.stat().st_mode)
         or source.stat().st_size > 16 * 1024 * 1024
     ):
         raise ValueError("evidence_file must be a private bounded regular JSON file")
