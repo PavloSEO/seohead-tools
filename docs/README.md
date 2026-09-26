@@ -47,7 +47,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
   retained scan artifacts, audit documents, inline corpora, provider queries,
   and the distinct operational stores. Generated from
   `seohead/input_contracts.py` (`scripts/generate_input_reference.py`).
-- **[CHECKS.md](CHECKS.md)** — the 161 checks the SF crawl audit runs: what each fires
+- **[CHECKS.md](CHECKS.md)** — the 162 checks the SF crawl audit runs: what each fires
   on, what evidence it needs, and the fix that ships with the finding. Generated
   from `seohead/sf/core/registry.py` (`scripts/generate_checks_reference.py`);
   `tests/test_docs_drift.py` fails the build if it drifts from the registry.

@@ -397,11 +397,11 @@ def check_heading_outline(ctx: AuditContext) -> None:
     from seohead.tools.link_position import CHROME_POSITIONS
 
     if not _has_column(ctx, "heading_outline"):
-        for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME"):
+        for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME", "HEADING_SKIP"):
             ctx.skip(check_id, "no heading outline evidence (native crawl only)")
         return
     pages = ctx.indexable_html_pages()
-    for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME"):
+    for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME", "HEADING_SKIP"):
         _skip_for_body_unavailable(ctx, check_id, pages)
     unplaced = 0
     for page in pages:
@@ -436,6 +436,34 @@ def check_heading_outline(ctx: AuditContext) -> None:
                     "first_headings": [
                         {"region": h["region"], "level": h["level"], "text": h["text"]}
                         for h in chrome[:_HEADING_EVIDENCE_TEXTS]
+                    ],
+                },
+            )
+        # A jump is meaningful only in the page's named content region. Header,
+        # navigation, sidebar and footer headings are template furniture, and an
+        # unplaced heading has no evidence that it belongs to the document body.
+        # Keeping both out prevents a modal or masthead widget from producing a
+        # false H2 -> H4 report about the page itself.
+        content_outline = [h for h in outline if h.get("region") == "content"]
+        jumps = [
+            (previous, current)
+            for previous, current in itertools.pairwise(content_outline)
+            if current["level"] > previous["level"] + 1
+        ]
+        if jumps:
+            ctx.add(
+                "HEADING_SKIP",
+                target_url=page.url,
+                details={
+                    "count": len(jumps),
+                    "first_jumps": [
+                        {
+                            "from_level": previous["level"],
+                            "from_text": previous["text"],
+                            "to_level": current["level"],
+                            "to_text": current["text"],
+                        }
+                        for previous, current in jumps[:_HEADING_EVIDENCE_TEXTS]
                     ],
                 },
             )

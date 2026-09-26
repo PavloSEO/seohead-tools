@@ -568,6 +568,40 @@ _NAMED_CONTENT_STRATEGIES = frozenset(
 
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 
+# A document-order outline is only useful when it represents headings a visitor
+# can reach in the current document. A closed dialog is not rendered, and the
+# HTML ``hidden``/``inert`` and ARIA hidden states explicitly remove a subtree
+# from that experience. External CSS cannot be known from a static response,
+# so this deliberately recognises only states stated in the document itself.
+_HIDDEN_HEADING_STYLE = re.compile(
+    r"(?:^|;)\s*(?:display|visibility)\s*:\s*(?:none|hidden)\b", re.IGNORECASE
+)
+
+
+def _is_hidden_heading_content(tag: Tag) -> bool:
+    """Whether ``tag`` belongs to a subtree hidden by document semantics.
+
+    This keeps closed modal headings out of the page outline: otherwise a
+    form dialog commonly contributes an H2 or H3 after the page content and
+    can manufacture a false hierarchy jump. Do not guess from class names or
+    stylesheets; only explicit DOM states are evidence in a raw crawl.
+    """
+    for candidate in (tag, *tag.parents):
+        if not isinstance(candidate, Tag):
+            continue
+        if candidate.has_attr("hidden") or candidate.has_attr("inert"):
+            return True
+        if str(candidate.get("aria-hidden", "")).strip().lower() == "true":
+            return True
+        if candidate.name == "dialog" and not candidate.has_attr("open"):
+            return True
+        style = candidate.get("style")
+        if isinstance(style, list):
+            style = " ".join(str(item) for item in style)
+        if isinstance(style, str) and _HIDDEN_HEADING_STYLE.search(style):
+            return True
+    return False
+
 
 def heading_outline(
     soup: BeautifulSoup,
@@ -600,6 +634,8 @@ def heading_outline(
     for tag in soup.find_all(_HEADING_TAGS):
         if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
             continue  # a <template>'s heading is never in the rendered document
+        if _is_hidden_heading_content(tag):
+            continue  # closed dialogs and explicitly hidden UI are not page structure
         text = collapse_whitespace(tag.get_text(" "))
         if not text:
             continue  # matches _extract_headings: a heading with no text is not one

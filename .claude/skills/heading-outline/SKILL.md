@@ -15,8 +15,10 @@ description: >-
 
 Screaming Frog exports only H1/H2 and flags only "missing H1" / "multiple H1"
 (see `../sf-analyzer/reference/checks.md`: `H1_MISSING`, `H1_MULTIPLE`,
-`H2_MISSING`). It does not provide a complete H1–H6 outline **in document order**
-or check level jumps; the agent does this itself by parsing live HTML.
+`H2_MISSING`). It does not provide a complete H1–H6 outline **in document order**.
+A native `crawl-site` run retains that outline and automatically emits `HEADING_SKIP` for a
+level jump in a named content region. This skill remains the readable per-template inspection:
+it prints the whole outline and applies the additional editorial heuristics below.
 
 ## Trigger
 - "Check the headings / heading structure on the page";
