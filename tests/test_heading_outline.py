@@ -104,6 +104,19 @@ def test_inert_and_textless_headings_are_left_out_exactly_as_the_grouping_leaves
     assert "h2" not in parsed["headings"]
 
 
+def test_hidden_and_closed_dialog_headings_are_left_out_of_the_outline():
+    html = """<html><body><main>
+    <h1>Visible page</h1><h2>Visible section</h2>
+    <dialog><h2>Call us</h2><h4>Phone form</h4></dialog>
+    <section hidden><h2>Hidden promotion</h2><h4>Hidden detail</h4></section>
+    <aside aria-hidden="true"><h2>Invisible helper</h2></aside>
+    </main></body></html>"""
+    assert _levels_texts(parse_html(html, "https://example.com/x")["heading_outline"]) == [
+        (1, "Visible page"),
+        (2, "Visible section"),
+    ]
+
+
 def test_outline_extraction_can_be_switched_off_with_the_headings_option():
     parsed = parse_html(CHROME_HEAVY, "https://example.com/x", {"headings": False})
     assert parsed["heading_outline"] == []
@@ -208,6 +221,43 @@ def test_heading_in_page_chrome_fires_on_the_masthead_page_and_not_on_the_clean_
     }
 
 
+def test_heading_skip_fires_only_for_a_content_level_jump():
+    skipped = _CLEAN_PAGE.replace(
+        "<h2>A real section</h2>", "<h2>A real section</h2><h4>A skipped subsection</h4>"
+    )
+    chrome_only = _CLEAN_PAGE.replace(
+        "<main>", "<header><h2>Menu</h2><h4>Menu group</h4></header><main>"
+    )
+    ctx = _run_crawl(
+        {
+            "https://example.com/skipped": _FakeResponse(skipped),
+            "https://example.com/chrome-only": _FakeResponse(chrome_only),
+        }
+    )
+    fired = _fired(ctx)
+    assert "https://example.com/skipped" in fired.get("HEADING_SKIP", set())
+    assert "https://example.com/chrome-only" not in fired.get("HEADING_SKIP", set())
+    assert _details(ctx, "HEADING_SKIP", "https://example.com/skipped") == {
+        "count": 1,
+        "first_jumps": [
+            {
+                "from_level": 2,
+                "from_text": "A real section",
+                "to_level": 4,
+                "to_text": "A skipped subsection",
+            }
+        ],
+    }
+
+
+def test_heading_skip_does_not_flag_a_legitimate_level_drop():
+    html = _CLEAN_PAGE.replace(
+        "<h2>A real section</h2>", "<h2>A real section</h2><h3>A detail</h3><h2>Next section</h2>"
+    )
+    ctx = _run_crawl({"https://example.com/clean": _FakeResponse(html)})
+    assert "HEADING_SKIP" not in _fired(ctx)
+
+
 def test_one_finding_per_page_rather_than_one_per_chrome_heading():
     ctx = _run_crawl({"https://example.com/bad": _FakeResponse(_BAD_PAGE)})
     assert len([i for i in ctx.issues if i.check == "HEADING_IN_PAGE_CHROME"]) == 1
@@ -232,7 +282,7 @@ def test_heading_outline_checks_skip_honestly_on_a_plain_sf_export(result):
     outline column at all -- neither check may read that as a clean page."""
     skipped = {s.id: s.reason for s in result.skipped}
     fired = {i.check for i in result.issues}
-    for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME"):
+    for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME", "HEADING_SKIP"):
         assert check_id in skipped
         assert "native crawl only" in skipped[check_id]
         assert check_id not in fired
