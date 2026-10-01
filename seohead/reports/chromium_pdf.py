@@ -7,7 +7,9 @@ browser is a ``skipped`` result with the reason, never an exception and never a 
 The browser runs with its sandbox enabled (no ``--no-sandbox``), a throwaway profile directory,
 extensions and first-run UI disabled, and a timeout. Some Chromium builds, notably Edge on
 Windows, return from the command before the PDF is completely written, so the result is accepted
-only after the file exists, starts with ``%PDF`` and its size has stopped changing.
+only after the file exists, starts with ``%PDF`` and its size has stopped changing. Others, notably
+Chrome on macOS, write the PDF and then never exit; the browser is therefore started without
+waiting for it, and stopped once the PDF is verified or the timeout runs out.
 """
 
 from __future__ import annotations
@@ -117,7 +119,9 @@ def browser_command(browser: str, html_path: Path, pdf_path: Path, profile_dir: 
     ]
 
 
-def _wait_for_pdf(path: Path, deadline: float, sleep: Callable[[float], None]) -> str | None:
+def _wait_for_pdf(
+    path: Path, deadline: float, sleep: Callable[[float], None], process: Any
+) -> str | None:
     """Wait until the PDF exists, has a PDF header, and its size is stable; return an error."""
     last_size = -1
     stable = 0
@@ -134,8 +138,20 @@ def _wait_for_pdf(path: Path, deadline: float, sleep: Callable[[float], None]) -
             else:
                 stable = 0
             last_size = size
+        elif process.poll() not in (None, 0):
+            return "the browser exited without writing a PDF"
         sleep(POLL_SECONDS)
     return "the browser did not finish writing the PDF before the timeout"
+
+
+def _stop(process: Any) -> None:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 def print_to_pdf(
@@ -144,7 +160,7 @@ def print_to_pdf(
     *,
     browser: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
-    runner: Callable[..., Any] = subprocess.run,
+    launcher: Callable[..., Any] = subprocess.Popen,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """Render ``html_path`` to ``pdf_path``; returns ``status`` ok, skipped or failed."""
@@ -163,22 +179,15 @@ def print_to_pdf(
     with tempfile.TemporaryDirectory(prefix="seohead-chromium-") as profile:
         command = browser_command(browser, html_path, partial, Path(profile))
         try:
-            completed = runner(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            partial.unlink(missing_ok=True)
-            return {"status": "failed", "reason": f"the browser timed out after {timeout:.0f} s"}
+            process = launcher(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as exc:
             return {"status": "failed", "reason": f"the browser could not start: {exc}"}
-        error = _wait_for_pdf(partial, deadline, sleep)
+        try:
+            error = _wait_for_pdf(partial, deadline, sleep, process)
+        finally:
+            _stop(process)
         if error:
-            code = getattr(completed, "returncode", None)
             partial.unlink(missing_ok=True)
-            return {"status": "failed", "reason": f"{error} (exit code {code})"}
+            return {"status": "failed", "reason": f"{error} (exit code {process.returncode})"}
     os.replace(partial, pdf_path)
     return {"status": "ok", "path": str(pdf_path), "browser": browser}

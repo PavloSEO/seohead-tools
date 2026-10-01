@@ -679,15 +679,31 @@ def test_browser_command_keeps_the_sandbox(tmp_path):
     assert command[-1].startswith("file:")
 
 
+class _Browser:
+    """A launched browser: ``poll`` answers ``code`` until it is stopped."""
+
+    def __init__(self, code=None):
+        self.code, self.returncode, self.stopped = code, code, False
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.stopped, self.returncode = True, -15
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
 def test_print_waits_for_a_pdf_written_after_the_command_returns(tmp_path):
     html = tmp_path / "report.html"
     html.write_text("<html></html>", encoding="utf-8")
     target = tmp_path / "report.pdf"
     state = {"command": None, "sleeps": 0}
 
-    def runner(command, **kwargs):
+    def launcher(command, **kwargs):
         state["command"] = command
-        return type("Done", (), {"returncode": 0})()
+        return _Browser(0)
 
     def sleep(_seconds):
         # The browser "finishes" writing only after the command has already returned.
@@ -696,7 +712,9 @@ def test_print_waits_for_a_pdf_written_after_the_command_returns(tmp_path):
         if state["sleeps"] == 2:
             partial.write_bytes(b"%PDF-1.7\n" + b"x" * 2048)
 
-    result = chromium_pdf.print_to_pdf(html, target, browser="chrome", runner=runner, sleep=sleep)
+    result = chromium_pdf.print_to_pdf(
+        html, target, browser="chrome", launcher=launcher, sleep=sleep
+    )
     assert result["status"] == "ok"
     assert target.read_bytes().startswith(b"%PDF-")
     assert not list(tmp_path.glob(".*partial*"))
@@ -706,12 +724,12 @@ def test_print_reports_failure_when_no_pdf_appears(tmp_path):
     html = tmp_path / "report.html"
     html.write_text("<html></html>", encoding="utf-8")
 
-    def runner(command, **kwargs):
+    def launcher(command, **kwargs):
         Path(command[-2].split("=", 1)[1]).write_bytes(b"<html>not a pdf</html>")
-        return type("Done", (), {"returncode": 0})()
+        return _Browser(0)
 
     result = chromium_pdf.print_to_pdf(
-        html, tmp_path / "r.pdf", browser="chrome", runner=runner, sleep=lambda s: None
+        html, tmp_path / "r.pdf", browser="chrome", launcher=launcher, sleep=lambda s: None
     )
     assert result["status"] == "failed" and "not a PDF" in result["reason"]
     assert not (tmp_path / "r.pdf").exists()
@@ -721,10 +739,36 @@ def test_print_reports_failure_when_no_pdf_appears(tmp_path):
         tmp_path / "t.pdf",
         browser="chrome",
         timeout=0.01,
-        runner=lambda command, **kw: type("Done", (), {"returncode": 1})(),
+        launcher=lambda command, **kw: _Browser(None),
         sleep=lambda s: None,
     )
     assert timed["status"] == "failed" and "timeout" in timed["reason"]
+
+    crashed = chromium_pdf.print_to_pdf(
+        html,
+        tmp_path / "c.pdf",
+        browser="chrome",
+        launcher=lambda command, **kw: _Browser(1),
+        sleep=lambda s: None,
+    )
+    assert crashed["status"] == "failed" and "exited without" in crashed["reason"]
+
+
+def test_print_stops_a_browser_that_keeps_running_after_the_pdf(tmp_path):
+    """Chrome on macOS writes the PDF and does not exit; the browser is stopped, not awaited."""
+    html = tmp_path / "report.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    browsers = []
+
+    def launcher(command, **kwargs):
+        Path(command[-2].split("=", 1)[1]).write_bytes(b"%PDF-1.7\n" + b"x" * 64)
+        browsers.append(_Browser(None))
+        return browsers[-1]
+
+    result = chromium_pdf.print_to_pdf(
+        html, tmp_path / "k.pdf", browser="chrome", launcher=launcher, sleep=lambda s: None
+    )
+    assert result["status"] == "ok" and browsers[0].stopped
 
 
 # --- handler and CLI ---------------------------------------------------------
