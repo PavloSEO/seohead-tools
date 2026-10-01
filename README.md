@@ -131,6 +131,7 @@ Choose the input that matches the question; a single-page check, an access log a
 | What is the site's delivery environment? | `domain-profile`, `tech-detect`, `cdn-check` | A domain or URL; DNS/hosting/TLS, stack and cache observations, with unavailable sources named |
 | What did clients and bots request? | `log-analyze` | An access log; request/status distributions and optional bot verification |
 | What changed, and what can I hand over? | `compare-crawls`, `report-build` | Compatible audit documents or scans; comparisons and reviewable report files |
+| How did search traffic move, in a form a client can read? | `metrika-traffic-pdf` | A Yandex Metrika counter and period, or a saved traffic document; a static dashboard-style HTML/PDF with changes against the previous period, a year earlier and 3/6/12-month windows |
 
 ```bash
 # Compare the raw response with the mobile browser representation.

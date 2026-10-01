@@ -878,7 +878,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         overwrite: bool = False,
         timeout: float = 120.0,
     ) -> dict[str, Any]:
-        """Static A4-landscape traffic report (HTML + PDF) in the style of a Looker Studio
+        """Static A4-landscape traffic report (HTML + PDF) in the style of an analytics
         dashboard, built from Yandex Metrika: KPI cards with % change, daily dynamics against the
         previous period and a year earlier, 3/6/12-month windows, search engines, cities,
         countries, devices, age, gender, top landing pages and search phrases, and all traffic

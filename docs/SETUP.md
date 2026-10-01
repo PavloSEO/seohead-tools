@@ -337,6 +337,7 @@ Tool behaviour:
 | `SEOHEAD_RUN_LOG` | where the run journal is written (default `~/.config/seohead/runs.jsonl`); `off` disables it |
 | `SEOHEAD_SPEND_LOG` | override for the paid-call journal (default `~/.config/seohead/spend.jsonl`) |
 | `DATAFORSEO_ENV` | `sandbox` (default) or `prod` for the DataForSEO tools |
+| `SEOHEAD_CHROME` | explicit Chrome, Edge or Chromium executable that `metrika-traffic-pdf` uses to print its PDF; otherwise standard install locations and `PATH` are searched |
 | `GSC_SERVICE_ACCOUNT_FILE` | private service-account JSON path for the optional GSC service-account path |
 
 Credentials (each wins over its file under `~/.config/`; see
