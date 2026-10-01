@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from seohead.data_sources import credentials
+from seohead.data_sources.yandex_webmaster import OPERATIONS as _WEBMASTER_OPERATIONS
 from seohead.tools.external_join import join_external_data, orphan_urls
 
 EVIDENCE_FORMAT = "seohead.provider-evidence.v1"
@@ -74,7 +75,7 @@ _REGISTRY: dict[str, dict[str, Any]] = {
     "yandex_webmaster": {
         "credential_components": ["oauth_bearer"],
         "access": "read_only",
-        "operations": ["hosts", "indexing", "crawl", "sitemaps", "search_performance"],
+        "operations": list(_WEBMASTER_OPERATIONS),
         "quota_mode": "Yandex Webmaster application quota",
         "privacy_class": "restricted",
     },
@@ -292,18 +293,9 @@ def provider_verify(
 
         result = discover_properties(transport=transport)
     elif provider == "yandex_webmaster":
-        if not request.get("user_id"):
-            return {
-                "ok": False,
-                "provider": provider,
-                "state": "credential_present",
-                "verified": False,
-                "credential_components": components,
-                "note": "user_id is required for the bounded verified-host discovery read",
-            }
         from seohead.data_sources.yandex_webmaster import collect
 
-        result = collect("hosts", user_id=request.get("user_id", ""), transport=transport)
+        result = collect("hosts", user_id=request.get("user_id"), transport=transport)
     elif provider == "bing_webmaster":
         from seohead.data_sources.bing_webmaster import collect
 

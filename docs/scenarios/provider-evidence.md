@@ -132,3 +132,16 @@ coverage. Its response gives matched and unmatched population counts, never a
 new crawl or an automatic priority change. `--review-external-only` writes
 separate candidate URLs in the private join; admitting them requires a later
 explicit list crawl.
+
+## Yandex Webmaster operations
+
+`provider-collect --provider yandex_webmaster` reads API v4 only. `user_id` is resolved from the
+token when the request omits it; `host_id` has the form `https:example.com:443`. Operations:
+`hosts`, `summary` (SQI, pages in search, problems), `diagnostics`, `sqi_history`,
+`search_history` (shows and clicks by day), `search_performance` (popular queries),
+`in_search_history`, `events_history`, `indexing_history`, `important_urls`, `sitemaps`,
+`crawl` (appeared/removed samples), `indexing`, `broken_links_history`, `external_links_history`.
+`params` becomes the query string — a list repeats the key, e.g.
+`{"query_indicator": ["TOTAL_SHOWS", "TOTAL_CLICKS"], "date_from": "2025-10-01"}`; with
+`"paginate": true` the query and crawl-sample lists are read page by page (500 per page, up to
+`max_rows`, 50 000 by default) and `truncated` says whether the ceiling cut the list.
