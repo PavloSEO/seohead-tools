@@ -139,6 +139,7 @@ explicit list crawl.
 token when the request omits it; `host_id` has the form `https:example.com:443`. Operations:
 `hosts`, `summary` (SQI, pages in search, problems), `diagnostics`, `sqi_history`,
 `search_history` (shows and clicks by day), `search_performance` (popular queries),
+`query_history` (one query by day; `query_id` from `search_performance`),
 `in_search_history`, `events_history`, `indexing_history`, `important_urls`, `sitemaps`,
 `crawl` (appeared/removed samples), `indexing`, `broken_links_history`, `external_links_history`.
 `params` becomes the query string — a list repeats the key, e.g.

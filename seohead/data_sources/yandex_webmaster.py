@@ -38,6 +38,7 @@ OPERATIONS: dict[str, str] = {
     "diagnostics": "/hosts/{host}/diagnostics",
     "sqi_history": "/hosts/{host}/sqi-history",
     "search_history": "/hosts/{host}/search-queries/all/history",
+    "query_history": "/hosts/{host}/search-queries/{query}/history",
     "in_search_history": "/hosts/{host}/search-urls/in-search/history",
     "events_history": "/hosts/{host}/search-urls/events/history",
     "indexing_history": "/hosts/{host}/indexing/history",
@@ -63,6 +64,7 @@ def collect(
     *,
     user_id: str | None = None,
     host_id: str | None = None,
+    query_id: str | None = None,
     params: dict[str, Any] | None = None,
     paginate: bool = False,
     max_rows: int = MAX_ROWS,
@@ -82,6 +84,8 @@ def collect(
         raise ValueError(f"unsupported operation; supported: {', '.join(OPERATIONS)}")
     if "{host}" in OPERATIONS[operation] and not host_id:
         raise ValueError("host_id is required for this Yandex Webmaster operation")
+    if "{query}" in OPERATIONS[operation] and not query_id:
+        raise ValueError("query_id (from search_performance) is required for query_history")
     try:
         bearer = token or yandex_webmaster_token()
     except MissingCredential as exc:
@@ -91,7 +95,15 @@ def collect(
     list_key = PAGED.get(operation) if paginate else None
     try:
         user = user_id or resolve_user_id(bearer, send)
-        path = HOST + f"/user/{user}" + OPERATIONS[operation].replace("{host}", host_id or "")
+        path = (
+            HOST
+            + f"/user/{user}"
+            + (
+                OPERATIONS[operation]
+                .replace("{host}", host_id or "")
+                .replace("{query}", urllib.parse.quote(query_id or "", safe=""))
+            )
+        )
 
         def get(extra: dict[str, Any]) -> Any:
             encoded = urllib.parse.urlencode(dict(query, **extra), doseq=True)

@@ -66,3 +66,9 @@ def test_host_operation_without_host_is_refused():
         assert "host_id" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_query_history_puts_the_query_id_in_the_path():
+    send, calls = _transport(lambda url: {"indicators": {}})
+    wm.collect("query_history", user_id="1", host_id="h", query_id="a/b", token="t", transport=send)
+    assert calls[0].endswith("/user/1/hosts/h/search-queries/a%2Fb/history")
