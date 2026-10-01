@@ -350,6 +350,37 @@ def test_metrika_url_drops_empty_params_but_keeps_zero():
     assert "filters" not in url and "preset" not in url
 
 
+def test_metrika_reports_start_at_offset_one(monkeypatch):
+    """The Reporting API is 1-based: ``offset=0`` is answered with 400 (#707)."""
+    from seohead.data_sources.metrika import MetrikaClient
+
+    urls: list[str] = []
+    client = MetrikaClient.__new__(MetrikaClient)
+    monkeypatch.setattr(client, "_request", lambda url, *a, **k: urls.append(url) or {"data": []})
+    client.report({"ids": 1})
+    client.by_time({"ids": 1})
+    client.report({"ids": 1}, paginate=True)
+    assert urls and all("offset=1" in url for url in urls)
+
+
+def test_metrika_pagination_advances_one_based_cursor(monkeypatch):
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    offsets: list[int] = []
+
+    def fake(url, *a, **k):
+        offset = int(url.split("offset=")[1].split("&")[0])
+        offsets.append(offset)
+        rows = [{"dimensions": [], "metrics": [1]}] * (100 if offset == 1 else 5)
+        return {"data": rows, "total_rows": 105}
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True)
+    assert offsets == [1, 101] and len(result["data"]) == 105
+
+
 def test_metrika_rows_to_records_pairs_dimensions_with_metrics():
     """Pair Metrica's parallel dimension and metric arrays without shifting columns."""
     from seohead.data_sources.metrika import rows_to_records
