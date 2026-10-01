@@ -302,6 +302,7 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `metrika-counters` | Metrika counters visible to the token — this is where `counter_id` comes from | free |
 | `metrika-setup` | How a counter is configured: goals, filters, data operations | free |
 | `metrika-report` | What visitors actually did: any metrics and dimensions, auto-pagination | free |
+| `metrika-traffic-pdf` | Static A4 traffic report (HTML + PDF) in a dashboard layout: KPI cards with % change, daily dynamics, 3/6/12-month windows, engines, cities, countries, devices, age, gender, landing pages, phrases, channels, optional Search Console queries. Collection and rendering run separately | free; about 40 read-only Metrika requests; writes only `out_dir`; PDF needs a local Chrome/Edge/Chromium |
 | `google-keywords` | Google: search volume for a keyword list, semantic expansion from a seed phrase, keyword difficulty | DataForSEO price list; RUB 0 in the sandbox |
 | `google-serp` | Google organic results for a query | same |
 | `wayback-history` | Every Internet Archive snapshot of a URL: when it changed, what status it returned, what MIME type it was | free, no key |
@@ -357,6 +358,47 @@ visits. Order of work: `metrika-setup` **before** any traffic conclusions —
 with no goals configured, "zero conversions" in a report is a consequence
 of setup, not a fact about the site; data operations can silently reshape
 reports.
+
+**Traffic report as a PDF.** `metrika-traffic-pdf` turns one period into a client-ready,
+static report shaped like an analytics traffic dashboard, in two separable stages:
+
+1. **Collect** (`--counter`, `--date1`, `--date2`, `--out-dir`) reads the Reporting API and writes
+   `metrika-traffic.json` (schema `seohead.metrika-traffic/1`). Every request passes `offset=1`;
+   the API counts rows from 1. Attribution defaults to the **last significant source**
+   (`ym:s:lastSignTrafficSource`, `ym:s:lastSignSearchEngineRoot`, `ym:s:lastSignSearchPhrase`),
+   which is what Metrika's own interface shows; `--attribution last_click` uses the last-click
+   dimensions instead, and its search totals usually differ by a few percent. `--traffic organic`
+   (the default) keeps search-engine visits; the channels block always covers all traffic. Robot
+   visits stay excluded, as the API does by default, and a high robot share becomes a warning.
+2. **Render** formats a document — just collected or passed with `--document` — into
+   `metrika-traffic.html` and `metrika-traffic.pdf`. Rendering computes nothing and makes no
+   network request: the page is static, self-contained HTML with inline SVG charts and a system
+   font stack.
+
+Every block carries `status` (`ok`, `unavailable`, `skipped`) and a reason; a comparison with no
+baseline is `null` with a status such as `new` or `no_baseline`, never a zero or an infinite
+change, and the report draws such a block as an explicit "data unavailable" panel. Comparisons:
+the previous period of equal length, the same dates a year earlier, and 3/6/12-month windows
+against the windows before them. Existing report files are refused unless `--overwrite`.
+
+The PDF is printed by a locally installed Chrome, Edge or Chromium in headless mode with its
+sandbox on and a throwaway profile; `SEOHEAD_CHROME` overrides discovery. Without a browser the
+HTML is still written and the result reports `pdf: skipped` with the reason.
+
+Branding is a small JSON object or file (`--brand`), for example:
+
+```json
+{"name": "Example Co", "accent": "#B71C1C", "ink": "#0E2247", "logo_text": "EXAMPLE CO"}
+```
+
+Other keys: `card`, `table_header`, `positive`, `negative` (`#RRGGBB`) and `font_stack`. Labels
+are English or Russian (`--lang en|ru`). Search Console queries are optional: pass rows as
+`gsc_rows` in JSON input, or `--gsc-site-url` to read them from a property you own.
+
+```bash
+seohead metrika-traffic-pdf --counter 12345678 --date1 2026-09-01 --date2 2026-09-30 --out-dir ./traffic
+seohead metrika-traffic-pdf --document ./traffic/metrika-traffic.json --out-dir ./traffic-ru --lang ru --brand ./brand.json
+```
 
 Warning: **Logs API exports contain raw `ClientID`** — visitors' personal
 data. Never commit them, never show them to a client. The loader returns
@@ -415,7 +457,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(93 + 5):
+(94 + 5):
 
 ```bash
 seohead mcp        # stdio

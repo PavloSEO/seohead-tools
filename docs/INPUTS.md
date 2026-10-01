@@ -75,6 +75,7 @@ and this decision makes no backend migration.
 | `metrika-counters` | Local configuration | — |
 | `metrika-setup` | Provider query (`counter_id`) | — |
 | `metrika-report` | Provider query (`counter_id`) | — |
+| `metrika-traffic-pdf` | Provider query (`counter_id`); requires `date1, date2, out_dir`<br>Local file (`document`); requires `out_dir`<br>Local configuration (`brand`)<br>Inline JSON (`gsc_rows`) | Renders an existing traffic document offline; no Metrika request.; Optional brand JSON file or inline object.; Optional Search Console query rows. |
 | `google-keywords` | Provider query (`keywords`)<br>Provider query (`seed`) | — |
 | `google-serp` | Provider query (`query`) | — |
 | `wayback-history` | Live URL (`url`) | — |
