@@ -74,6 +74,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     rewrite_files = ToolAnnotations(
         readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False
     )
+    rewrite_files_from_web = ToolAnnotations(
+        readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
+    )
     paid = ToolAnnotations(
         readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True
     )
@@ -851,6 +854,68 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 sort=sort,
                 limit=limit,
                 paginate=paginate,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files_from_web, structured_output=True)
+    def seo_metrika_traffic_pdf(
+        out_dir: str,
+        counter_id: str | None = None,
+        date1: str | None = None,
+        date2: str | None = None,
+        document: dict[str, Any] | str | None = None,
+        attribution: Literal["last_significant", "last_click"] = "last_significant",
+        traffic: Literal["organic", "all"] = "organic",
+        filters: str | None = None,
+        lang: Literal["en", "ru"] | None = None,
+        top: int = 15,
+        site_label: str | None = None,
+        brand: dict[str, Any] | str | None = None,
+        gsc_rows: list[dict[str, Any]] | None = None,
+        gsc_site_url: str | None = None,
+        render: bool = True,
+        pdf: bool = True,
+        overwrite: bool = False,
+        timeout: float = 120.0,
+    ) -> dict[str, Any]:
+        """Static A4-landscape traffic report (HTML + PDF) in the style of a Looker Studio
+        dashboard, built from Yandex Metrika: KPI cards with % change, daily dynamics against the
+        previous period and a year earlier, 3/6/12-month windows, search engines, cities,
+        countries, devices, age, gender, top landing pages and search phrases, and all traffic
+        channels.
+
+        Collection (counter_id, date1, date2 as YYYY-MM-DD) makes read-only Reporting API calls
+        (about 40 requests, free, Metrika quota) and writes metrika-traffic.json; pass an existing
+        document instead to render offline. Attribution defaults to the last significant source
+        (the figures Metrika's own interface shows); last_click is explicit. traffic=organic keeps
+        search-engine visits; the channels block always covers all traffic. Every block carries
+        status ok/unavailable/skipped with a reason; missing comparisons are null, never zero.
+        Optional Search Console queries come from gsc_rows or gsc_site_url (a Search Console
+        request). Writes only into out_dir; existing report files are refused unless
+        overwrite=true replaces them. The PDF needs an installed Chrome, Edge or Chromium
+        (SEOHEAD_CHROME overrides discovery); without one the HTML is still written and pdf is
+        reported as skipped. brand is a JSON object or file: name, accent, ink, card,
+        table_header, positive, negative, font_stack, logo_text."""
+        return _checked(
+            handlers.metrika_traffic_pdf(
+                counter_id=counter_id,
+                date1=date1,
+                date2=date2,
+                out_dir=out_dir,
+                document=document,
+                attribution=attribution,
+                traffic=traffic,
+                filters=filters,
+                lang=lang,
+                top=top,
+                site_label=site_label,
+                brand=brand,
+                gsc_rows=gsc_rows,
+                gsc_site_url=gsc_site_url,
+                render=render,
+                pdf=pdf,
+                overwrite=overwrite,
+                timeout=timeout,
             )
         )
 

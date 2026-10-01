@@ -209,6 +209,19 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("metrika-setup", "metrika_setup", _form("provider_query", "counter_id")),
     _command("metrika-report", "metrika_report", _form("provider_query", "counter_id")),
     _command(
+        "metrika-traffic-pdf",
+        "metrika_traffic_pdf",
+        _form("provider_query", "counter_id", required_with=("date1", "date2", "out_dir")),
+        _form(
+            "local_file",
+            "document",
+            required_with=("out_dir",),
+            note="Renders an existing traffic document offline; no Metrika request.",
+        ),
+        _form("local_config", "brand", note="Optional brand JSON file or inline object."),
+        _form("inline_json", "gsc_rows", note="Optional Search Console query rows."),
+    ),
+    _command(
         "google-keywords",
         "google_keywords",
         _form("provider_query", "keywords"),
