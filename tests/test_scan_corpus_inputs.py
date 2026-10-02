@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 
 from seohead import cli
 from seohead.servers import handlers
+from seohead.storage import corpus_inputs
 from seohead.storage.corpus_inputs import _indexable
 from seohead.storage.native_scan import NativeScan
 from seohead.tools.markdown_extract import extract_markdown
@@ -29,11 +31,13 @@ def _scan(tmp_path, pages, *, retain_bodies=True, finish=True):
             record["content_type"] = "text/html"
             if "noindex" in html:
                 record["meta_robots"] = "noindex"
+            runtime = _runtime()
+            runtime["max_depth_reached"] = max(lease.depth, 1)
             scan.commit_page(
                 lease,
                 record,
                 captures=[_event(url, html.encode(), "text/html; charset=utf-8")],
-                runtime=_runtime(),
+                runtime=runtime,
             )
         if finish:
             assert scan.finish_capture("fixture complete")
@@ -177,6 +181,99 @@ def test_scan_coverage_names_a_running_capture_even_when_its_retained_body_is_co
     assert result["coverage"]["state"] == "partial"
     assert "scan lifecycle is running" in result["coverage"]["reason"]
     assert result["source"]["lifecycle"] == "running"
+
+
+def test_scan_corpus_document_limit_streams_partial_coverage(tmp_path, monkeypatch):
+    html = "<html><body><nav>menu</nav><main>content words</main><footer>x</footer></body></html>"
+    scan = _scan(tmp_path, [(f"https://example.test/{i}", html) for i in range(3)])
+    monkeypatch.setattr(corpus_inputs, "MAX_CORPUS_DOCUMENTS", 2)
+
+    result = handlers.boilerplate_report(scan=str(scan))
+
+    coverage = result["coverage"]
+    assert coverage["state"] == "partial"
+    assert coverage["prepared_documents"] == 2
+    assert coverage["eligible_documents"] == 3
+    assert coverage["omission_reasons"] == {"scan corpus document limit exceeded": 1}
+    assert "scan corpus document limit exceeded" in coverage["reason"]
+    assert result["count"] == 2
+
+
+def test_scan_corpus_byte_budget_reports_partial_coverage(tmp_path, monkeypatch):
+    html = "<html><body><main>body text {} enough words here</main></body></html>"
+    pages = [(f"https://example.test/{i}", html.format(i)) for i in range(4)]
+    scan = _scan(tmp_path, pages)
+    # The retained input is the extracted Markdown; admit roughly half the corpus.
+    retained = len(extract_markdown(pages[0][1])["content_markdown"].encode("utf-8"))
+    monkeypatch.setattr(corpus_inputs, "MAX_CORPUS_INPUT_BYTES", retained * 2 + retained // 2)
+
+    result = handlers.duplicate_check(scan=str(scan))
+
+    coverage = result["coverage"]
+    assert result["ok"] is True
+    assert coverage["state"] == "partial"
+    assert coverage["prepared_documents"] == 2
+    assert coverage["eligible_documents"] == 4
+    assert coverage["omission_reasons"] == {"scan corpus input-byte budget exceeded": 2}
+    assert coverage["analyzed_documents"] == 2
+
+
+def test_scan_boilerplate_meters_retained_digests_not_html_bytes(tmp_path, monkeypatch):
+    html = (
+        "<html><body><nav>menu</nav><main>"
+        + "padding " * 400
+        + "</main><footer>x</footer></body></html>"
+    )
+    scan = _scan(tmp_path, [(f"https://example.test/{i}", html) for i in range(5)])
+    # Kilobytes of HTML per page, but only url + digest are retained input.
+    monkeypatch.setattr(corpus_inputs, "MAX_CORPUS_INPUT_BYTES", 512)
+
+    result = handlers.boilerplate_report(scan=str(scan))
+
+    assert result["coverage"]["state"] == "complete"
+    assert result["count"] == 5
+
+
+def test_scan_corpus_read_interrupt_reports_partial_coverage(tmp_path, monkeypatch):
+    html = "<html><body><nav>menu</nav><main>content words</main><footer>x</footer></body></html>"
+    scan = _scan(tmp_path, [(f"https://example.test/{i}", html) for i in range(3)])
+    real = corpus_inputs.read_document
+    calls = []
+
+    def interrupted_read(con, document_id, **kwargs):
+        calls.append(document_id)
+        if len(calls) > 1:
+            raise sqlite3.OperationalError("interrupted")
+        return real(con, document_id, **kwargs)
+
+    monkeypatch.setattr(corpus_inputs, "read_document", interrupted_read)
+
+    result = handlers.boilerplate_report(scan=str(scan))
+
+    coverage = result["coverage"]
+    assert coverage["state"] == "partial"
+    assert coverage["prepared_documents"] == 1
+    assert coverage["eligible_documents"] == 3
+    assert coverage["omission_reasons"] == {
+        "scan corpus read exceeded the per-document read budget": 2
+    }
+    assert result["count"] == 1
+
+
+def test_scan_read_deadline_scales_with_artifact_size(tmp_path):
+    from seohead.storage import (
+        READ_TIMEOUT_BYTES_PER_SECOND,
+        READ_TIMEOUT_SECONDS,
+        _read_deadline_seconds,
+    )
+
+    small = tmp_path / "small.sqlite"
+    small.write_bytes(b"x")
+    assert _read_deadline_seconds(small) == READ_TIMEOUT_SECONDS
+    large = tmp_path / "large.sqlite"
+    with large.open("wb") as stream:
+        stream.truncate(200 * 1024 * 1024)
+    assert _read_deadline_seconds(large) == 200 * 1024 * 1024 / READ_TIMEOUT_BYTES_PER_SECOND
 
 
 def test_inline_duplicate_positional_arguments_keep_the_existing_contract():
