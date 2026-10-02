@@ -13,6 +13,17 @@ SEOHEAD crawls websites with its own native engine, retains scan evidence for of
 
 It does not replace specialist judgement. It records what was measured, what failed, and what could not be measured so a specialist can assess scope, business context, and implementation risk.
 
+## Capabilities at a glance
+
+- **Website crawling:** native HTTP crawling and configurable JavaScript rendering, sitemap/list inputs, scope and rate controls, checkpoints, and retained scan evidence.
+- **Technical SEO analysis:** indexing directives, metadata, headings, links, redirects, structured data, hreflang, duplicates, infrastructure and server logs; offline reanalysis and before/after comparisons.
+- **Connected data:** Google Search Console, Google Analytics 4, Bing Webmaster Tools, Yandex Webmaster and Yandex Metrika through explicit provider operations. Additional providers cover demand, SERPs and performance evidence.
+- **External evidence:** join supplied URL-keyed tables and provider rows to crawl data, retaining unmatched rows and source provenance. This is data import and enrichment, not an automatic connector for every service.
+- **Deliverables:** prioritized findings and task backlogs; Excel, Word, CSV, Markdown and JSON reports, plus a dedicated static HTML/PDF traffic-report workflow for Yandex Metrika.
+- **Operation:** Python CLI and local stdio MCP for specialists and tool-calling agents. Credentials, provider quotas, browser dependencies and supported operations are documented explicitly.
+
+See the [tool catalogue](docs/TOOLS.md), [provider workflow](docs/scenarios/provider-evidence.md), [input contracts](docs/INPUTS.md) and [generated reference](docs/TOOL_REFERENCE.md) for exact capabilities and limits. Declared integrations are not a claim that credentials or live access have been verified for every account.
+
 ## Start with a project
 
 A project is the control point: a local directory that holds a site's scans over time, its
