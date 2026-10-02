@@ -130,6 +130,71 @@ def test_sources_doctor_uses_shared_dataforseo_readiness(monkeypatch, tmp_path, 
     assert dataforseo["components"] == components
 
 
+# --- GSC readiness (bearer OR durable grant OR service account, issue #717) --
+
+
+def _clear_gsc_env(monkeypatch):
+    monkeypatch.delenv("GSC_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
+
+
+@pytest.mark.parametrize("component", ["oauth_bearer", "durable_oauth", "service_account"])
+def test_sources_doctor_gsc_ready_with_any_working_credential(monkeypatch, tmp_path, component):
+    """The legacy ``sources`` block follows provider components, not the bearer file alone."""
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    gsc_dir = tmp_path / "gsc"
+    gsc_dir.mkdir()
+    if component == "oauth_bearer":
+        monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-bearer")
+    elif component == "durable_oauth":
+        grant = gsc_dir / "oauth.json"
+        grant.write_text(
+            json.dumps(
+                {
+                    "refresh_token": "synthetic-refresh-token",
+                    "client_id": "synthetic-client-id",
+                    "client_secret": "synthetic-client-secret",
+                    "scopes": ["https://www.googleapis.com/auth/webmasters.readonly"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        grant.chmod(0o600)
+    else:
+        account = gsc_dir / "service-account.json"
+        account.write_text("{}", encoding="utf-8")
+        account.chmod(0o600)
+
+    doctor = handlers.sources_doctor()
+    gsc = doctor["sources"]["gsc"]
+    assert gsc["ready"] is True
+    assert gsc["components"] == doctor["provider_status"]["gsc"]["credential_components"]
+    assert gsc["components"][component] is True
+
+
+def test_sources_doctor_gsc_not_ready_without_any_credential(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+
+    doctor = handlers.sources_doctor()
+    gsc = doctor["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"] == {
+        "oauth_bearer": False,
+        "service_account": False,
+        "durable_oauth": False,
+    }
+
+
 # --- Spend journal ---------------------------------------------------------
 
 
