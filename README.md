@@ -20,6 +20,7 @@ It does not replace specialist judgement. It records what was measured, what fai
 - **Connected data:** Google Search Console, Google Analytics 4, Bing Webmaster Tools, Yandex Webmaster and Yandex Metrika through explicit provider operations. Additional providers cover demand, SERPs and performance evidence.
 - **External evidence:** join supplied URL-keyed tables and provider rows to crawl data, retaining unmatched rows and source provenance. This is data import and enrichment, not an automatic connector for every service.
 - **Deliverables:** prioritized findings and task backlogs; Excel, Word, CSV, Markdown and JSON reports, plus a dedicated static HTML/PDF traffic-report workflow for Yandex Metrika.
+- **Agent task tracking:** a persistent project checklist records audit work, evidence, dependencies and pending reviews; `project status` tells a specialist or agent what is complete and what remains.
 - **Operation:** Python CLI and local stdio MCP for specialists and tool-calling agents. Credentials, provider quotas, browser dependencies and supported operations are documented explicitly.
 
 See the [tool catalogue](docs/TOOLS.md), [provider workflow](docs/scenarios/provider-evidence.md), [input contracts](docs/INPUTS.md) and [generated reference](docs/TOOL_REFERENCE.md) for exact capabilities and limits. Declared integrations are not a claim that credentials or live access have been verified for every account.
@@ -36,6 +37,27 @@ seohead project new --directory ./shop --target https://example.com/
 seohead project checklist-init --directory ./shop
 seohead project status --directory ./shop
 ```
+
+### A persistent task tracker for audit agents
+
+The project checklist is a local task tracker for specialists and AI agents during a website
+audit. `seohead project status --directory ./shop` (or MCP `seo_project_status`) returns
+completion counts, remaining work, running and blocked items, stale evidence, and items awaiting
+manual review. An agent can inspect the saved state when resuming an audit or taking over from
+another agent, rather than reconstructing progress from chat history.
+
+`project checklist-init` defines the work; `project checklist-update` edits scoped tasks and
+dependencies; `project checklist-record` validates and records execution evidence using the
+current revision. These operations do not execute the tasks themselves. Automatic completion
+is tied to saved check evidence; manual reviews and deliverables require explicit signoff or
+approved artifact review. Running a command or opening a playbook is not proof of completion.
+
+Own-site and competitor scans are retained as separate SQLite artifacts through Python's
+SQLite support. The task definitions and execution history live in `coverage.json` alongside
+the project. Audit completion, measured crawl coverage, and the resolution of website errors
+are different measures: a completed audit can still identify unresolved problems. The current
+tracker reports counts and states; it does not claim a universal full-audit percentage or an
+automatic per-finding repair-verification ledger.
 
 `project start` enters a policy-bounded preparation path from there. Preparation records its
 crawl scope, operator-supplied competitor candidates and each unavailable step; it does not
