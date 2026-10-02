@@ -30,7 +30,7 @@ def _default_transport(method: str, url: str, payload: dict[str, Any] | None, to
 # Operation -> API v4 path below ``/user/{user_id}``; ``{host}`` marks host-level reads.
 OPERATIONS: dict[str, str] = {
     "hosts": "/hosts",
-    "indexing": "/hosts/{host}/search-urls",
+    "indexing": "/hosts/{host}/indexing/samples",
     "crawl": "/hosts/{host}/search-urls/events/samples",
     "sitemaps": "/hosts/{host}/sitemaps",
     "search_performance": "/hosts/{host}/search-queries/popular",
@@ -43,12 +43,18 @@ OPERATIONS: dict[str, str] = {
     "events_history": "/hosts/{host}/search-urls/events/history",
     "indexing_history": "/hosts/{host}/indexing/history",
     "important_urls": "/hosts/{host}/important-urls",
+    "broken_links_samples": "/hosts/{host}/links/internal/broken/samples",
     "broken_links_history": "/hosts/{host}/links/internal/broken/history",
     "external_links_history": "/hosts/{host}/links/external/history",
 }
-# Paged sample lists: operation -> key of the list in the answer. The API caps a page at 500.
-PAGED = {"search_performance": "queries", "crawl": "samples"}
-PAGE_SIZE = 500
+# Paged sample lists: operation -> (key of the list in the answer, documented page-size cap).
+# Popular queries allow up to 500 per page; the sample lists cap at 100.
+PAGED: dict[str, tuple[str, int]] = {
+    "search_performance": ("queries", 500),
+    "crawl": ("samples", 100),
+    "indexing": ("samples", 100),
+    "broken_links_samples": ("links", 100),
+}
 MAX_ROWS = 50_000
 DEFAULT_PARAMS = {"search_performance": {"order_by": "TOTAL_SHOWS"}}
 
@@ -75,8 +81,9 @@ def collect(
 
     ``user_id`` is resolved from the token when omitted. ``params`` become the query string;
     a list value repeats the key (``query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS``).
-    With ``paginate`` the paged sample lists (search queries, crawl events) are read page by page
-    up to ``max_rows``; the answer says when that ceiling truncated the list.
+    With ``paginate`` the paged sample lists (search queries, crawl events, indexing and broken
+    links samples) are read page by page up to ``max_rows``; the answer says when that ceiling
+    truncated the list.
     """
     from seohead.data_sources.credentials import MissingCredential, yandex_webmaster_token
 
@@ -92,7 +99,7 @@ def collect(
         return {"ok": False, "state": "not_configured", "verified": False, "error": str(exc)}
     send = transport or _default_transport
     query = dict(DEFAULT_PARAMS.get(operation, {}), **(params or {}))
-    list_key = PAGED.get(operation) if paginate else None
+    paged = PAGED.get(operation) if paginate else None
     try:
         user = user_id or resolve_user_id(bearer, send)
         path = (
@@ -109,13 +116,14 @@ def collect(
             encoded = urllib.parse.urlencode(dict(query, **extra), doseq=True)
             return json.loads(send("GET", path + (f"?{encoded}" if encoded else ""), None, bearer))
 
-        if not list_key:
+        if not paged:
             body = get({})
             truncated = False
         else:
+            list_key, page_size = paged
             body, rows, offset, truncated = None, [], int(query.get("offset", 0)), False
             while True:
-                page = get({"offset": offset, "limit": PAGE_SIZE})
+                page = get({"offset": offset, "limit": page_size})
                 body = body if body is not None else page
                 chunk = page.get(list_key) or [] if isinstance(page, dict) else []
                 rows.extend(chunk)
@@ -123,7 +131,7 @@ def collect(
                 if len(rows) >= max_rows:
                     rows, truncated = rows[:max_rows], True
                     break
-                if len(chunk) < PAGE_SIZE:
+                if len(chunk) < page_size:
                     break
             body = dict(body or {}, **{list_key: rows})
     except (
@@ -143,6 +151,6 @@ def collect(
         "data": body,
         "read_only": True,
     }
-    if list_key:
-        result.update(returned=len(body[list_key]), truncated=truncated)
+    if paged:
+        result.update(returned=len(body[paged[0]]), truncated=truncated)
     return result

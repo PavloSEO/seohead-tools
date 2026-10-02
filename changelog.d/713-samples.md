@@ -1,0 +1,1 @@
+- Yandex Webmaster: the `indexing` operation now reads the real v4 endpoint `/indexing/samples` instead of the nonexistent `/search-urls`, new `broken_links_samples` reads `/links/internal/broken/samples`, and paging honors each endpoint's documented page-size cap (500 for queries, 100 for the sample lists) instead of sending `limit=500` everywhere (#713).
