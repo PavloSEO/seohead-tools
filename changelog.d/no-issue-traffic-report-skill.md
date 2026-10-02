@@ -1,0 +1,1 @@
+- New technical skill `traffic-report`: a client-facing monthly or annual report from Metrika, Webmaster and Search Console (conversions counted as visits, goal sanity checks, products, buyer portrait, slide rules).
