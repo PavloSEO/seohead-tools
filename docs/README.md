@@ -20,7 +20,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — all 149, generated from the registry |
 | Wondering how this compares to a licensed crawler | [COVERAGE_SF_ISSUES.md](COVERAGE_SF_ISSUES.md) — all 320 published issues, each with a status |
-| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 23 skills |
+| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 24 skills |
 | Looking for a no-key workflow | [RECIPES.md](RECIPES.md) — exports, traffic decline, bounded live audit |
 | About to change code | [ARCHITECTURE.md](ARCHITECTURE.md) — layers and invariants |
 | Naming a new module or test file | [NAMING.md](NAMING.md) — what a name must say, and what is deliberately left alone |
