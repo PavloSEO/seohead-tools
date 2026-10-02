@@ -471,6 +471,11 @@ def provider_collect(
                     "rows": rows_to_records(body),
                     "returned": len(body.get("data") or []),
                     "truncated": bool(body.get("capped")),
+                    "sampled": bool(body.get("sampled"))
+                    or body.get("accuracy_used") not in (None, "full"),
+                    "accuracy": body.get("accuracy_used")
+                    or (body.get("query") or {}).get("accuracy"),
+                    "split": body.get("split"),
                 }
         except MissingCredential as exc:
             result = {"ok": False, "state": "not_configured", "error": str(exc)}

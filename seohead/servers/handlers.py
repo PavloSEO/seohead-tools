@@ -2442,7 +2442,9 @@ def metrika_report(
     ``metrics`` and ``dimensions`` are comma-separated API identifiers such as ``ym:s:visits`` and
     ``ym:s:startURL``. Dates also accept relative forms such as ``30daysAgo``. With
     ``paginate=true`` the client collects successive pages but stops at 100,000 rows and marks the
-    result as capped rather than implying that the dataset is complete.
+    result as capped rather than implying that the dataset is complete. A ``Query is too
+    complicated`` refusal is retried month by month and, if needed, at a sampled accuracy; the
+    answer then carries ``split`` and ``accuracy`` saying what was actually used.
     """
     if not counter_id or not metrics:
         raise ValueError("counter_id and metrics required")
@@ -2469,6 +2471,9 @@ def metrika_report(
         "total_rows": body.get("total_rows"),
         "returned": len(body.get("data") or []),
         "capped": body.get("capped", False),
+        "sampled": bool(body.get("sampled")) or body.get("accuracy_used") not in (None, "full"),
+        "accuracy": body.get("accuracy_used") or (body.get("query") or {}).get("accuracy"),
+        "split": body.get("split"),
         "totals": body.get("totals"),
         "rows": rows_to_records(body),
     }

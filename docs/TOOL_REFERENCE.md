@@ -783,7 +783,7 @@ How a counter is configured: goals, filters, data operations. Check this BEFORE 
 
 MCP name: `seo_metrika_report`
 
-What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped".
+What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped". A "Query is too complicated" refusal is retried month by month and, when a month still refuses, at a sampled accuracy; "split", "accuracy" and "sampled" in the answer say what was actually used.
 
 | Argument | Type | Default |
 |---|---|---|
