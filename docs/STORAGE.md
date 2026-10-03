@@ -353,7 +353,8 @@ decoded-body budget (hard cap 8 MiB), and a 500-row/1 MiB serialized-item
 page default (hard item-byte cap 8 MiB). Byte-limited pages stop before a whole occurrence and
 return the next offset. Omitted
 anchors make document coverage `partial`; a single-link result also carries that
-coverage. Shared CLI/MCP inspection is tracked by #807.
+coverage. `seohead scan-link-inspect --view context` and the matching
+`seo_scan_link_inspect` MCP tool expose this result by `link_id` or `document_id`.
 
 `body_unavailable` records why collection could not parse a page
 body (for example, an oversized response); it does **not** describe whether this
@@ -652,8 +653,9 @@ fragment links to the selected target, in stable link-ID pages. Its opaque
 using it with another query is refused. Defaults are 100 rows, 1 MiB serialized
 item bytes, and 15 seconds. Rows preserve raw/rendered identity. A blank
 position is unmeasured. Each result includes the scan UUID and evidence revision
-so clients can avoid combining pages from different scan snapshots. These are
-Python core functions; shared CLI/MCP registration belongs to issue #807.
+so clients can avoid combining pages from different scan snapshots. The shared
+`scan-link-inspect` CLI and `seo_scan_link_inspect` MCP entry points expose the
+same core with `--view path` or `--view inlinks` and bounded output.
 
 A found path proves only that these retained edges connect the two URLs.
 `unreachable_in_observed_graph` does not prove a site-wide orphan. The result
