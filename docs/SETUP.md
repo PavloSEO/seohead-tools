@@ -216,6 +216,10 @@ when the page was not fetched, the check was skipped, the source/configuration
 changed, or the finding needs a whole-site population. A partial targeted run
 may still verify a page it did measure, while every unvisited page stays
 `not_verifiable`.
+With offline `--after`, both audits must record a scan UUID and a timezone-aware
+`run.generated_at`. The after scan must have a different UUID and a later time;
+otherwise the verification artifact explicitly says `not_verifiable`. This
+prevents a replayed scan or an older saved audit from appearing to prove a fix.
 
 ## Comparing two crawls
 

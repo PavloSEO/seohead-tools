@@ -644,7 +644,8 @@ Recheck selected baseline findings in an explicit, bounded URL subset.
 **Behavior and failure modes**
 
 Select baseline finding IDs, a saved verification_view.v1 JSON view, or
-affected URLs. With ``after`` the comparison is offline. Otherwise the
+affected URLs. With ``after`` the comparison is offline and requires a
+distinct scan UUID plus a later observation time. Otherwise the
 recorded HTTP/robots/render policy is verified before the existing crawler
 fetches selected pages; JS baselines use one URL per rendered crawl. A new
 directory receives the recrawl evidence and immutable verification JSON

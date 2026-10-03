@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -51,6 +52,44 @@ def digest(value: Any) -> str:
     """Stable hash of a JSON-ready observation, independent of file layout."""
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def scan_identity(document: Mapping[str, Any]) -> str | None:
+    """The retained scan identity, when an audit actually records one."""
+    summary = document.get("summary")
+    contract = summary.get("evidence_contract") if isinstance(summary, Mapping) else None
+    run = document.get("run")
+    value = (contract.get("scan_uuid") if isinstance(contract, Mapping) else None) or (
+        run.get("scan_uuid") if isinstance(run, Mapping) else None
+    )
+    return value if isinstance(value, str) and value else None
+
+
+def _generated_at(document: Mapping[str, Any]) -> datetime | None:
+    run = document.get("run")
+    value = run.get("generated_at") if isinstance(run, Mapping) else None
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def offline_observation_gap(before: Mapping[str, Any], after: Mapping[str, Any]) -> str | None:
+    """Refuse an offline 'fix' without a distinct, later observation identity."""
+    first, second = scan_identity(before), scan_identity(after)
+    if first is None or second is None:
+        return "baseline or after audit lacks a recorded scan UUID; a fresh observation is unproven"
+    if first == second:
+        return "after audit has the same scan UUID as baseline; no new observation is proven"
+    before_time, after_time = _generated_at(before), _generated_at(after)
+    if before_time is None or after_time is None:
+        return "baseline or after audit lacks a timezone-aware generated_at timestamp"
+    if after_time <= before_time:
+        return "after audit generated_at is not later than the baseline observation"
+    return None
 
 
 def _strings(value: Any, label: str) -> list[str]:

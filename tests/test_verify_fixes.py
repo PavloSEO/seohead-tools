@@ -19,11 +19,19 @@ B = "https://example.test/b"
 C = "https://example.test/c"
 
 
-def _audit(urls=(A, B, C), issues=(), *, representation="static", **run):
+def _audit(
+    urls=(A, B, C),
+    issues=(),
+    *,
+    representation="static",
+    scan_uuid=None,
+    generated_at="2026-10-01T00:00:00Z",
+    **run,
+):
     return {
         "schema_version": "2.0",
         "run": {
-            "generated_at": "2026-10-01T00:00:00Z",
+            "generated_at": generated_at,
             "source": "https://example.test/",
             "crawl_config": settings.manifest(settings.load()),
             "checks_skipped": [],
@@ -34,7 +42,8 @@ def _audit(urls=(A, B, C), issues=(), *, representation="static", **run):
         "summary": {
             "check_coverage": {
                 "checks_silent_ids": ["TITLE_MISSING", "DESC_MISSING", "CANONICAL_MISSING"]
-            }
+            },
+            **({"evidence_contract": {"scan_uuid": scan_uuid}} if scan_uuid else {}),
         },
         "pages": [
             {
@@ -169,8 +178,10 @@ def test_status_check_needs_a_clean_measured_response():
 
 
 def test_offline_handler_writes_immutable_linked_json_and_focused_report(tmp_path):
-    baseline = _audit(urls=(A,), issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)])
-    after = _audit(urls=(A,))
+    baseline = _audit(
+        urls=(A,), issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)], scan_uuid="before-scan"
+    )
+    after = _audit(urls=(A,), scan_uuid="after-scan", generated_at="2026-10-02T00:00:00Z")
     out = tmp_path / "verification"
     result = handlers.verify_fixes(
         baseline=baseline, after=after, finding_ids=["ISSUE-000001"], out_dir=str(out)
@@ -193,13 +204,96 @@ def test_offline_handler_writes_immutable_linked_json_and_focused_report(tmp_pat
     assert from_view["selection"]["finding_ids"] == ["ISSUE-000001"]
 
 
+@pytest.mark.parametrize(
+    "before_id,after_id,before_time,after_time,reason",
+    [
+        (
+            "same-scan",
+            "same-scan",
+            "2026-10-01T00:00:00Z",
+            "2026-10-02T00:00:00Z",
+            "same scan UUID",
+        ),
+        (
+            "before-scan",
+            "after-scan",
+            "2026-10-02T00:00:00Z",
+            "2026-10-01T00:00:00Z",
+            "not later",
+        ),
+        (
+            "before-scan",
+            "after-scan",
+            "2026-10-01T00:00:00Z",
+            "2026-10-01T00:00:00Z",
+            "not later",
+        ),
+        (
+            None,
+            "after-scan",
+            "2026-10-01T00:00:00Z",
+            "2026-10-02T00:00:00Z",
+            "lacks a recorded scan UUID",
+        ),
+        (
+            "before-scan",
+            None,
+            "2026-10-01T00:00:00Z",
+            "2026-10-02T00:00:00Z",
+            "lacks a recorded scan UUID",
+        ),
+        ("before-scan", "after-scan", None, "2026-10-02T00:00:00Z", "lacks a timezone-aware"),
+        ("before-scan", "after-scan", "2026-10-01T00:00:00Z", None, "lacks a timezone-aware"),
+        (
+            "before-scan",
+            "after-scan",
+            "2026-10-01T00:00:00",
+            "2026-10-02T00:00:00Z",
+            "lacks a timezone-aware",
+        ),
+    ],
+)
+def test_offline_after_requires_distinct_later_observation(
+    tmp_path, before_id, after_id, before_time, after_time, reason
+):
+    baseline = _audit(
+        urls=(A,),
+        issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)],
+        scan_uuid=before_id,
+        generated_at=before_time,
+    )
+    after = _audit(urls=(A,), scan_uuid=after_id, generated_at=after_time)
+    out = tmp_path / "verification"
+    result = handlers.verify_fixes(
+        baseline=baseline, after=after, finding_ids=["ISSUE-000001"], out_dir=str(out)
+    )
+    assert result["summary"] == {
+        "resolved": 0,
+        "persisting": 0,
+        "changed": 0,
+        "not_verifiable": 1,
+    }
+    assert result["collection"]["state"] == "not_verifiable"
+    assert reason in result["collection"]["reason"]
+    assert reason in result["findings"][0]["reason"]
+    assert (
+        json.loads((out / "verification.json").read_text(encoding="utf-8"))["summary"]["resolved"]
+        == 0
+    )
+
+
 def test_cli_offline_path_uses_the_shared_handler(tmp_path, capsys):
     from seohead.cli import main
 
-    baseline = _audit(urls=(A,), issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)])
+    baseline = _audit(
+        urls=(A,), issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)], scan_uuid="before-scan"
+    )
     before_file, after_file = tmp_path / "before.json", tmp_path / "after.json"
     before_file.write_text(json.dumps(baseline), encoding="utf-8")
-    after_file.write_text(json.dumps(_audit(urls=(A,))), encoding="utf-8")
+    after_file.write_text(
+        json.dumps(_audit(urls=(A,), scan_uuid="after-scan", generated_at="2026-10-02T00:00:00Z")),
+        encoding="utf-8",
+    )
     out = tmp_path / "verification"
     status = main(
         [

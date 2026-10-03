@@ -1726,7 +1726,14 @@ def verify_fixes(
 
     from seohead.crawl import settings as crawl_settings
     from seohead.crawl.list_input import read_url_list
-    from seohead.verification import classify, digest, markdown, select
+    from seohead.verification import (
+        classify,
+        digest,
+        markdown,
+        offline_observation_gap,
+        scan_identity,
+        select,
+    )
 
     if not out_dir:
         raise ValueError("out_dir required: a new directory for immutable verification evidence")
@@ -1753,8 +1760,18 @@ def verify_fixes(
 
     if after is not None:
         after_doc = _load_audit(after, "after")
-        observations = dict.fromkeys(targets, after_doc)
-        collection.update(audit_sha256=digest(after_doc))
+        gap = offline_observation_gap(baseline_doc, after_doc)
+        if gap is None:
+            observations = dict.fromkeys(targets, after_doc)
+        after_run = after_doc.get("run")
+        collection.update(
+            state="offline" if gap is None else "not_verifiable",
+            audit_sha256=digest(after_doc),
+            scan_uuid=scan_identity(after_doc),
+            generated_at=after_run.get("generated_at") if isinstance(after_run, dict) else None,
+        )
+        if gap is not None:
+            collection["reason"] = gap
     elif targets:
         recorded = (baseline_doc.get("run") or {}).get("crawl_config")
         if not isinstance(recorded, dict):
@@ -1834,10 +1851,12 @@ def verify_fixes(
         "observed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "baseline": {
             "audit_sha256": digest(baseline_doc),
-            "scan_uuid": ((baseline_doc.get("summary") or {}).get("evidence_contract") or {}).get(
-                "scan_uuid"
+            "scan_uuid": scan_identity(baseline_doc),
+            "generated_at": (
+                baseline_doc["run"].get("generated_at")
+                if isinstance(baseline_doc.get("run"), dict)
+                else None
             ),
-            "generated_at": (baseline_doc.get("run") or {}).get("generated_at"),
         },
         "selection": {"finding_ids": [item.get("id") for item in selected], "urls": targets},
         "collection": collection,
