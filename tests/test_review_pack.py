@@ -44,6 +44,14 @@ dependencies = [
 extras-demo = ["google-auth[requests]>=2", "not-installed-pkg-xyz"]
 """
 
+DIST_METADATA = (
+    b"Metadata-Version: 2.1\n"
+    b"Name: synthetic-tools\n"
+    b"Version: 9.9.9\n"
+    b"\n"
+    b"Synthetic distribution for review-pack tests.\n"
+)
+
 
 def _checkout(tmp_path: Path) -> Path:
     root = tmp_path / "checkout"
@@ -115,6 +123,7 @@ def _dist_dir(tmp_path: Path) -> Path:
         {
             **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
             f"seohead/{build_provenance.MANIFEST_FILENAME}": wheel_manifest,
+            "synthetic_tools-9.9.9.dist-info/METADATA": DIST_METADATA,
         },
     )
 
@@ -123,7 +132,8 @@ def _dist_dir(tmp_path: Path) -> Path:
         dist / "synthetic_tools-9.9.9.tar.gz",
         "synthetic_tools-9.9.9",
         {f"synthetic_tools-9.9.9/seohead/{name}": body for name, body in PKG_FILES.items()}
-        | {f"synthetic_tools-9.9.9/seohead/{build_provenance.MANIFEST_FILENAME}": sdist_manifest},
+        | {f"synthetic_tools-9.9.9/seohead/{build_provenance.MANIFEST_FILENAME}": sdist_manifest}
+        | {"synthetic_tools-9.9.9/PKG-INFO": DIST_METADATA},
     )
     return dist
 
@@ -166,6 +176,7 @@ def test_generate_writes_the_three_pack_files_and_copies_dists(tmp_path, monkeyp
     for artifact in provenance["artifacts"]:
         assert artifact["embedded_manifest"]["valid"] is True
         assert artifact["embedded_manifest"]["files"] == len(PKG_FILES)
+        assert artifact["distribution_metadata"]["matches_package"] is True
 
 
 def test_generate_is_deterministic_for_the_same_inputs(tmp_path, monkeypatch):
@@ -205,7 +216,10 @@ def test_generate_records_an_artifact_without_a_manifest_honestly(tmp_path, monk
     dist.mkdir()
     _write_wheel(
         dist / "synthetic_tools-9.9.9-py3-none-any.whl",
-        {"seohead/__init__.py": b"x = 1\n"},
+        {
+            "seohead/__init__.py": b"x = 1\n",
+            "synthetic_tools-9.9.9.dist-info/METADATA": DIST_METADATA,
+        },
     )
     _stub_environment(monkeypatch, {})
     pack = tmp_path / "pack"
@@ -396,6 +410,7 @@ def test_verify_detects_an_invalid_embedded_manifest(tmp_path, monkeypatch):
         {
             "seohead/__init__.py": b"x = 1\n",
             f"seohead/{build_provenance.MANIFEST_FILENAME}": b"{}",
+            "synthetic_tools-9.9.9.dist-info/METADATA": DIST_METADATA,
         },
     )
     _stub_environment(monkeypatch, {})
@@ -448,6 +463,7 @@ def test_verify_detects_a_distribution_built_for_another_version(tmp_path, monke
         {
             **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
             f"seohead/{build_provenance.MANIFEST_FILENAME}": stale_manifest,
+            "synthetic_tools-9.9.9.dist-info/METADATA": DIST_METADATA,
         },
     )
     _stub_environment(monkeypatch, {})
@@ -480,6 +496,9 @@ def test_verify_detects_an_artifact_named_for_another_version(tmp_path, monkeypa
         {
             **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
             f"seohead/{build_provenance.MANIFEST_FILENAME}": manifest,
+            "synthetic_tools-9.9.8.dist-info/METADATA": (
+                b"Metadata-Version: 2.1\nName: synthetic-tools\nVersion: 9.9.8\n"
+            ),
         },
     )
     _stub_environment(monkeypatch, {})
@@ -497,6 +516,152 @@ def test_verify_detects_an_artifact_named_for_another_version(tmp_path, monkeypa
 
     problems = gp.verify_pack(pack, root)
     assert any("filename declares" in problem for problem in problems)
+
+
+def test_verify_detects_metadata_that_disagrees_with_filename_and_manifest(tmp_path, monkeypatch):
+    """Filename and embedded manifest both say 9.9.9, but the dist-info
+    METADATA an installer would read says 9.9.8: measured honestly at
+    generation, refused at verification."""
+    root = _checkout(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    manifest = _manifest_tree(tmp_path / "stage")
+    _write_wheel(
+        dist / "synthetic_tools-9.9.9-py3-none-any.whl",
+        {
+            **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
+            f"seohead/{build_provenance.MANIFEST_FILENAME}": manifest,
+            "synthetic_tools-9.9.9.dist-info/METADATA": (
+                b"Metadata-Version: 2.1\nName: synthetic-tools\nVersion: 9.9.8\n"
+            ),
+        },
+    )
+    _stub_environment(monkeypatch, {})
+    pack = tmp_path / "pack"
+    assert (
+        gp.main(
+            ["generate", "--root", str(root), "--dist", str(dist), "--tag", TAG, "--out", str(pack)]
+        )
+        == 0
+    )
+    provenance = json.loads((pack / gp.PROVENANCE_FILENAME).read_text())
+    metadata = provenance["artifacts"][0]["distribution_metadata"]
+    assert metadata["present"] is True
+    assert metadata["metadata_version"] == "9.9.8"
+    assert metadata["matches_package"] is False
+
+    problems = gp.verify_pack(pack, root)
+    assert any("distribution metadata" in problem for problem in problems)
+
+
+def test_verify_rechecks_metadata_instead_of_trusting_the_record(tmp_path, monkeypatch):
+    """A wheel re-sealed after generation -- provenance digests and SHA256SUMS
+    updated to match the tampered bytes -- must still fail on the METADATA
+    version, because verification re-reads the file an installer would read."""
+    root, pack = _generate(tmp_path, monkeypatch)
+    wheel = pack / "synthetic_tools-9.9.9-py3-none-any.whl"
+    with zipfile.ZipFile(wheel) as archive:
+        members = {info.filename: archive.read(info) for info in archive.infolist()}
+    members["synthetic_tools-9.9.9.dist-info/METADATA"] = (
+        b"Metadata-Version: 2.1\nName: synthetic-tools\nVersion: 9.9.8\n"
+    )
+    _write_wheel(wheel, members)
+
+    provenance_path = pack / gp.PROVENANCE_FILENAME
+    provenance = json.loads(provenance_path.read_text())
+    for artifact in provenance["artifacts"]:
+        if artifact["file"] == wheel.name:
+            artifact["sha256"] = gp._sha256_file(wheel)
+    provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+
+    rewritten = {wheel.name, provenance_path.name}
+    lines = []
+    for line in (pack / gp.SUMS_FILENAME).read_text().splitlines():
+        _, _, name = line.partition("  ")
+        name = name.strip()
+        lines.append(f"{gp._sha256_file(pack / name)}  {name}" if name in rewritten else line)
+    (pack / gp.SUMS_FILENAME).write_text("\n".join(lines) + "\n")
+
+    problems = gp.verify_pack(pack, root)
+    assert any("distribution metadata" in problem for problem in problems)
+
+
+@pytest.mark.parametrize(
+    "metadata_members",
+    [
+        {},
+        {
+            "synthetic_tools-9.9.9.dist-info/METADATA": DIST_METADATA,
+            "other_tools-1.0.dist-info/METADATA": DIST_METADATA,
+        },
+        {
+            "synthetic_tools-9.9.9.dist-info/METADATA": (
+                b"Metadata-Version: 2.1\nName: synthetic-tools\n"
+                b"Name: synthetic-tools\nVersion: 9.9.9\n"
+            )
+        },
+    ],
+    ids=["absent", "two-dist-info-dirs", "duplicate-name-header"],
+)
+def test_verify_detects_absent_or_ambiguous_wheel_metadata(tmp_path, monkeypatch, metadata_members):
+    """A wheel without exactly one unambiguous METADATA file must not verify:
+    none at all, two dist-info directories, or duplicated header fields."""
+    root = _checkout(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    manifest = _manifest_tree(tmp_path / "stage")
+    _write_wheel(
+        dist / "synthetic_tools-9.9.9-py3-none-any.whl",
+        {
+            **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
+            f"seohead/{build_provenance.MANIFEST_FILENAME}": manifest,
+            **metadata_members,
+        },
+    )
+    _stub_environment(monkeypatch, {})
+    pack = tmp_path / "pack"
+    assert (
+        gp.main(
+            ["generate", "--root", str(root), "--dist", str(dist), "--tag", TAG, "--out", str(pack)]
+        )
+        == 0
+    )
+    assert any("distribution metadata" in problem for problem in gp.verify_pack(pack, root))
+
+
+def test_verify_detects_sdist_pkg_info_that_disagrees(tmp_path, monkeypatch):
+    """PKG-INFO is the sdist's Name/Version declaration; a disagreement is
+    refused even when the filename and embedded manifest match."""
+    root = _checkout(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    manifest = _manifest_tree(tmp_path / "stage" / "synthetic_tools-9.9.9")
+    _write_sdist(
+        dist / "synthetic_tools-9.9.9.tar.gz",
+        "synthetic_tools-9.9.9",
+        {f"synthetic_tools-9.9.9/seohead/{name}": body for name, body in PKG_FILES.items()}
+        | {f"synthetic_tools-9.9.9/seohead/{build_provenance.MANIFEST_FILENAME}": manifest}
+        | {
+            "synthetic_tools-9.9.9/PKG-INFO": (
+                b"Metadata-Version: 2.1\nName: other-tools\nVersion: 9.9.9\n"
+            )
+        },
+    )
+    _stub_environment(monkeypatch, {})
+    pack = tmp_path / "pack"
+    assert (
+        gp.main(
+            ["generate", "--root", str(root), "--dist", str(dist), "--tag", TAG, "--out", str(pack)]
+        )
+        == 0
+    )
+    provenance = json.loads((pack / gp.PROVENANCE_FILENAME).read_text())
+    metadata = provenance["artifacts"][0]["distribution_metadata"]
+    assert metadata["metadata_name"] == "other-tools"
+    assert metadata["matches_package"] is False
+
+    problems = gp.verify_pack(pack, root)
+    assert any("distribution metadata" in problem for problem in problems)
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import email
 import hashlib
 import json
 import os
@@ -354,16 +355,11 @@ def _extract_archive(artifact: Path, destination: Path) -> Path:
     raise ReviewPackError(f"{artifact.name} does not carry a single packaged seohead source tree")
 
 
-def _embedded_manifest_record(artifact: Path, workdir: Path) -> dict[str, Any]:
-    """Validate the packaged build manifest extracted from one release artifact."""
+def _manifest_record(source_root: Path) -> dict[str, Any]:
+    """Validate the packaged build manifest inside an extracted artifact."""
     from seohead.build_provenance import MANIFEST_FILENAME, BuildProvenanceError, validate_manifest
 
     record: dict[str, Any] = {"present": False, "valid": False}
-    try:
-        source_root = _extract_archive(artifact, workdir)
-    except (ReviewPackError, OSError, tarfile.TarError, zipfile.BadZipFile) as exc:
-        record["error"] = f"archive could not be inspected: {exc}"
-        return record
     manifest_path = source_root / "seohead" / MANIFEST_FILENAME
     if not manifest_path.is_file():
         record["error"] = f"no embedded {MANIFEST_FILENAME}"
@@ -382,6 +378,83 @@ def _embedded_manifest_record(artifact: Path, workdir: Path) -> dict[str, Any]:
         files=len(files),
     )
     return record
+
+
+def _metadata_record(destination: Path, kind: str, project: dict[str, Any]) -> dict[str, Any]:
+    """Measured Name/Version from the artifact's own distribution metadata.
+
+    A wheel carries exactly one ``<name>-<version>.dist-info/METADATA`` at the
+    archive root; an sdist carries exactly one ``PKG-INFO`` in its top-level
+    directory (or at the archive root in a flat layout). These are the fields
+    an installer actually reads, so an artifact whose filename and embedded
+    manifest both agree still fails when its ``METADATA`` says otherwise.
+    ``matches_package`` is true only for one unambiguous file whose ``Name``
+    and ``Version`` equal ``pyproject.toml`` after normalization.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    label = "*.dist-info/METADATA" if kind == "wheel" else "PKG-INFO"
+    record: dict[str, Any] = {"present": False, "matches_package": False}
+    if kind == "wheel":
+        candidates = sorted(
+            path for path in destination.glob("*.dist-info/METADATA") if path.is_file()
+        )
+    else:
+        candidates = sorted(path for path in destination.glob("*/PKG-INFO") if path.is_file())
+        flat = destination / "PKG-INFO"
+        if flat.is_file():
+            candidates.append(flat)
+    if len(candidates) != 1:
+        record["error"] = (
+            f"archive carries {len(candidates)} {label} file(s); exactly one is expected"
+        )
+        return record
+    metadata_file = candidates[0]
+    try:
+        message = email.message_from_bytes(metadata_file.read_bytes())
+    except (OSError, ValueError) as exc:
+        record["error"] = f"{metadata_file.name} is unreadable: {exc}"
+        return record
+    names = [value.strip() for value in message.get_all("Name") or ()]
+    versions = [value.strip() for value in message.get_all("Version") or ()]
+    if len(names) != 1 or len(versions) != 1:
+        record["error"] = f"{metadata_file.name} must declare exactly one Name and one Version"
+        return record
+    record.update(
+        present=True,
+        file=str(metadata_file.relative_to(destination)),
+        metadata_name=names[0],
+        metadata_version=versions[0],
+    )
+    try:
+        record["matches_package"] = _canonical(names[0]) == _canonical(project["name"]) and Version(
+            versions[0]
+        ) == Version(project["version"])
+    except InvalidVersion:
+        record["error"] = f"unparseable metadata version {versions[0]!r}"
+    return record
+
+
+def _inspect_artifact(
+    artifact: Path, workdir: Path, kind: str, project: dict[str, Any]
+) -> dict[str, Any]:
+    """Extract one artifact once and measure both in-archive records."""
+    try:
+        source_root = _extract_archive(artifact, workdir)
+    except (ReviewPackError, OSError, tarfile.TarError, zipfile.BadZipFile) as exc:
+        error = f"archive could not be inspected: {exc}"
+        return {
+            "embedded_manifest": {"present": False, "valid": False, "error": error},
+            "distribution_metadata": {
+                "present": False,
+                "matches_package": False,
+                "error": error,
+            },
+        }
+    return {
+        "embedded_manifest": _manifest_record(source_root),
+        "distribution_metadata": _metadata_record(workdir, kind, project),
+    }
 
 
 def build_provenance_document(root: Path, dist_dir: Path, tag: str) -> dict[str, Any]:
@@ -412,10 +485,12 @@ def build_provenance_document(root: Path, dist_dir: Path, tag: str) -> dict[str,
         if entry["kind"] in {"wheel", "sdist"}:
             entry["artifact_identity"] = _artifact_identity(artifact.name, project)
             with tempfile.TemporaryDirectory() as work:
-                record = _embedded_manifest_record(artifact, Path(work))
+                inspection = _inspect_artifact(artifact, Path(work), entry["kind"], project)
+            record = inspection["embedded_manifest"]
             if record.get("valid"):
                 record["version_matches_package"] = record["package_version"] == version
             entry["embedded_manifest"] = record
+            entry["distribution_metadata"] = inspection["distribution_metadata"]
             if record.get("valid") and isinstance(record.get("revision"), str):
                 revisions.add(record["revision"])
         artifacts.append(entry)
@@ -526,47 +601,74 @@ def verify_pack(pack_dir: Path, root: Path) -> list[str]:
         if package.get("name") != project["name"] or package.get("version") != project["version"]:
             problems.append("provenance package identity disagrees with pyproject.toml")
         for artifact in provenance.get("artifacts") or []:
-            if artifact.get("kind") in {"wheel", "sdist"}:
-                name = artifact.get("file")
-                if isinstance(name, str):
-                    # Re-derived from the filename under review, not the
-                    # recorded artifact_identity, so a pack cannot bless a
-                    # stale or foreign distribution by editing the document.
-                    identity = _artifact_identity(name, project)
-                    if not identity.get("matches_package"):
-                        detail = identity.get("error") or (
-                            f"filename declares {identity['filename_name']} "
-                            f"{identity['filename_version']}"
-                        )
-                        problems.append(
-                            f"{name}: {detail}; expected {project['name']} {project['version']}"
-                        )
-                manifest = artifact.get("embedded_manifest") or {}
-                if not manifest.get("present") or not manifest.get("valid"):
-                    problems.append(f"{name}: embedded build manifest absent or invalid")
-                elif manifest.get("package_version") != project["version"]:
-                    problems.append(
-                        f"{name}: embedded build manifest records version "
-                        f"{manifest.get('package_version')!r}, not {project['version']!r}"
+            kind = artifact.get("kind")
+            if kind not in {"wheel", "sdist"}:
+                continue
+            name = artifact.get("file")
+            if isinstance(name, str):
+                # Re-derived from the filename under review, not the
+                # recorded artifact_identity, so a pack cannot bless a
+                # stale or foreign distribution by editing the document.
+                identity = _artifact_identity(name, project)
+                if not identity.get("matches_package"):
+                    detail = identity.get("error") or (
+                        f"filename declares {identity['filename_name']} "
+                        f"{identity['filename_version']}"
                     )
-                elif isinstance(name, str) and (pack_dir / name).is_file():
-                    # The recorded flag came from generation; verification
-                    # re-extracts the artifact and re-validates the manifest
-                    # rather than trusting the document under review.
-                    with tempfile.TemporaryDirectory() as work:
-                        record = _embedded_manifest_record(pack_dir / name, Path(work))
-                    if not record.get("valid"):
-                        problems.append(
-                            f"{name}: embedded build manifest does not re-validate "
-                            f"({record.get('error', 'invalid')})"
-                        )
-                    elif record.get("package_version") != project["version"]:
-                        problems.append(
-                            f"{name}: embedded build manifest in the artifact reports "
-                            f"version {record['package_version']!r}, "
-                            f"not {project['version']!r}"
-                        )
-                # A missing artifact file is already named by the sums check below.
+                    problems.append(
+                        f"{name}: {detail}; expected {project['name']} {project['version']}"
+                    )
+            manifest = artifact.get("embedded_manifest") or {}
+            if not manifest.get("present") or not manifest.get("valid"):
+                problems.append(f"{name}: embedded build manifest absent or invalid")
+            elif manifest.get("package_version") != project["version"]:
+                problems.append(
+                    f"{name}: embedded build manifest records version "
+                    f"{manifest.get('package_version')!r}, not {project['version']!r}"
+                )
+            metadata = artifact.get("distribution_metadata") or {}
+            if not metadata.get("present"):
+                problems.append(f"{name}: distribution metadata absent, unreadable, or ambiguous")
+            elif not metadata.get("matches_package"):
+                problems.append(
+                    f"{name}: distribution metadata declares "
+                    f"{metadata.get('metadata_name')} {metadata.get('metadata_version')}, "
+                    f"not {project['name']} {project['version']}"
+                )
+            recorded_clean = (
+                manifest.get("valid")
+                and manifest.get("package_version") == project["version"]
+                and metadata.get("matches_package")
+            )
+            if recorded_clean and isinstance(name, str) and (pack_dir / name).is_file():
+                # The recorded flags came from generation; verification
+                # re-extracts the artifact and re-derives both records rather
+                # than trusting the document under review.
+                with tempfile.TemporaryDirectory() as work:
+                    actual = _inspect_artifact(pack_dir / name, Path(work), kind, project)
+                actual_manifest = actual["embedded_manifest"]
+                if not actual_manifest.get("valid"):
+                    problems.append(
+                        f"{name}: embedded build manifest does not re-validate "
+                        f"({actual_manifest.get('error', 'invalid')})"
+                    )
+                elif actual_manifest.get("package_version") != project["version"]:
+                    problems.append(
+                        f"{name}: embedded build manifest in the artifact reports "
+                        f"version {actual_manifest['package_version']!r}, "
+                        f"not {project['version']!r}"
+                    )
+                actual_metadata = actual["distribution_metadata"]
+                if not actual_metadata.get("matches_package"):
+                    detail = actual_metadata.get("error") or (
+                        f"declares {actual_metadata.get('metadata_name')} "
+                        f"{actual_metadata.get('metadata_version')}"
+                    )
+                    problems.append(
+                        f"{name}: distribution metadata in the artifact does not "
+                        f"match {project['name']} {project['version']} ({detail})"
+                    )
+            # A missing artifact file is already named by the sums check below.
 
     if not isinstance(inventory, dict) or inventory.get("format") != INVENTORY_FORMAT:
         problems.append(f"{INVENTORY_FILENAME} does not carry format {INVENTORY_FORMAT}")
@@ -678,6 +780,13 @@ def main(argv: list[str] | None = None) -> int:
                     state = f"revision {manifest['revision']}"
                     if manifest.get("version_matches_package") is False:
                         state += " (embedded version differs from package version)"
+                metadata = artifact.get("distribution_metadata") or {}
+                if "distribution_metadata" in artifact and not metadata.get("matches_package"):
+                    detail = metadata.get("error") or (
+                        f"declares {metadata.get('metadata_name')} "
+                        f"{metadata.get('metadata_version')}"
+                    )
+                    state += f"; distribution metadata: {detail}"
                 lines.append(f"{artifact['file']}: {artifact['kind']}, {state}")
             return _emit(lines)
         problems = verify_pack(args.pack, args.root)
