@@ -53,6 +53,7 @@ def _scan(
     content_type="text/html",
     parse_cap=20_000,
     stored_destination_override=None,
+    stored_attributes_override=None,
 ):
     settings = load(overrides={"speed.min_delay_seconds": 0, **(overrides or {})})
     metadata = _metadata()
@@ -64,6 +65,8 @@ def _scan(
     batch = _batch(html, settings, parse_cap=parse_cap)
     if stored_destination_override is not None:
         batch.links[0]["destination"] = stored_destination_override
+    if stored_attributes_override is not None:
+        batch.links[0].update(stored_attributes_override)
     with NativeScan.create(path, **metadata) as scan:
         scan.enqueue([(ROOT, 0)])
         record = _record(ROOT)
@@ -198,6 +201,28 @@ def test_missing_body_and_byte_budget_are_explicit(tmp_path):
     assert item["reason"] == "body_omitted:not_enabled"
 
 
+def test_zero_link_document_keeps_representation_and_source_identity(tmp_path):
+    html = "<body><main><h2>No links</h2></main></body>"
+    path = _scan(tmp_path, html)
+    with open_scan(path, require_audit=False) as con:
+        document_id = con.execute("SELECT document_id FROM documents").fetchone()[0]
+    result = contexts_for_document(path, document_id)
+    assert result["total"] == 0 and result["items"] == []
+    assert result["representation"] == "static"
+    assert result["source_url"] == ROOT
+    assert result["source_url_id"] > 0
+    assert result["source_document_id"] == document_id
+    assert result["coverage"]["state"] == "complete"
+
+    unavailable = _scan(tmp_path / "off", html, overrides={"storage.body_mode": "off"})
+    with open_scan(unavailable, require_audit=False) as con:
+        document_id = con.execute("SELECT document_id FROM documents").fetchone()[0]
+    result = contexts_for_document(unavailable, document_id)
+    assert result["representation"] == "static"
+    assert result["source_document_id"] == document_id
+    assert result["coverage"]["state"] == "unavailable"
+
+
 def test_base_href_replays_the_exact_stored_occurrence(tmp_path):
     html = (
         "<html><head><base href='https://example.test/sub/'></head>"
@@ -229,6 +254,20 @@ def test_truncated_and_non_html_bodies_are_unavailable(tmp_path):
     item = context_for_link(non_html, _link_rows(non_html)[0]["link_id"])
     assert item["state"] == "unavailable"
     assert item["reason"] == "body_omitted:unsupported_media"
+
+
+@pytest.mark.parametrize("media_type", ("text/nothtml", "application/xhtml+xml"))
+def test_complete_non_html_mime_is_not_parsed_as_html(tmp_path, media_type):
+    html = "<body><a href='/target'>Target</a></body>"
+    path = _scan(
+        tmp_path,
+        html,
+        content_type=media_type,
+        capture_changes={"content_type": media_type},
+    )
+    item = context_for_link(path, _link_rows(path)[0]["link_id"])
+    assert item["state"] == "unavailable"
+    assert item["reason"] == f"unsupported_source_mime:{media_type}"
 
 
 def test_parser_omission_remains_partial_after_context_replay(tmp_path, monkeypatch):
@@ -308,6 +347,38 @@ def test_repeated_read_does_not_change_scan_and_invalid_id_is_named(tmp_path):
 def test_replay_mismatch_refuses_to_guess_an_occurrence(tmp_path):
     html = "<body><a href='/target'>Target</a></body>"
     path = _scan(tmp_path, html, stored_destination_override=ROOT + "other")
+    item = context_for_link(path, _link_rows(path)[0]["link_id"])
+    assert item["state"] == "unavailable"
+    assert item["reason"] == "stored_links_do_not_replay_from_retained_document"
+
+
+def test_captured_target_and_rel_must_replay_exactly(tmp_path):
+    html = "<body><a href='/target' target='_blank' rel='noopener'>Target</a></body>"
+    correct = _scan(
+        tmp_path,
+        html,
+        overrides={"link_attributes.capture": True},
+    )
+    assert context_for_link(correct, _link_rows(correct)[0]["link_id"])["state"] == "measured"
+    changed = _scan(
+        tmp_path / "changed",
+        html,
+        overrides={"link_attributes.capture": True},
+        stored_attributes_override={"target": "_self", "rel": ("ugc",)},
+    )
+    item = context_for_link(changed, _link_rows(changed)[0]["link_id"])
+    assert item["state"] == "unavailable"
+    assert item["reason"] == "stored_links_do_not_replay_from_retained_document"
+
+
+def test_captured_position_must_replay_even_when_stored_value_is_blank(tmp_path):
+    html = "<body><nav><a href='/target'>Target</a></nav></body>"
+    path = _scan(
+        tmp_path,
+        html,
+        overrides={"link_position.classify": True},
+        stored_attributes_override={"position": ""},
+    )
     item = context_for_link(path, _link_rows(path)[0]["link_id"])
     assert item["state"] == "unavailable"
     assert item["reason"] == "stored_links_do_not_replay_from_retained_document"
