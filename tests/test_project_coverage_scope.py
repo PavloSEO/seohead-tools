@@ -53,10 +53,10 @@ def init_scoped(project, tasks=None, **population):
     return initialize_coverage(project, plan=plan(tasks, **population))
 
 
-def scoped_check(project, urls=None, template=None):
+def scoped_check(project, urls=None, template=None, item_id="custom:scoped-check"):
     edit(
         project,
-        id="custom:scoped-check",
+        id=item_id,
         execution_kind="automatic",
         operation="check:BROKEN_PAGE_4XX",
         scope={
@@ -510,6 +510,151 @@ def test_second_plan_replaces_the_agreement_with_a_new_revision(project):
     history = second["plan_history"]
     assert len(history) == 1 and history[0]["revision"] == first["plan"]["revision"]
     assert history[0]["population"]["kind"] == "unknown"
+
+
+def _product_population(urls, **fields):
+    return {
+        "kind": "complete_set",
+        "size": None,
+        "urls": urls,
+        "name": None,
+        "source": "Agreed template export 2026-10-01",
+        "reason": None,
+        **fields,
+    }
+
+
+def test_template_population_outside_the_enumerated_site_set_is_refused(project):
+    initialize_coverage(project)
+    before = (project / "coverage.json").read_bytes()
+    with pytest.raises(ValueError, match="outside the enumerated site population"):
+        init_scoped(
+            project,
+            kind="complete_set",
+            urls=["https://example.test/a"],
+            templates={
+                "product": _product_population(["https://example.test/b", "https://example.test/c"])
+            },
+        )
+    assert (project / "coverage.json").read_bytes() == before
+    status = coverage_status(project)
+    assert status["plan"] is None
+    axis = status["coverage"]["url_population"]
+    assert axis["numerator"] is None and axis["state"] == "unknown"
+
+
+def test_declared_template_membership_cannot_exceed_the_site_population(project):
+    initialize_coverage(project)
+    with pytest.raises(ValueError, match="larger than the agreed site population"):
+        init_scoped(
+            project,
+            kind="complete_set",
+            size=1,
+            templates={
+                "product": _product_population(["https://example.test/b", "https://example.test/c"])
+            },
+        )
+    with pytest.raises(ValueError, match="larger than the agreed site population"):
+        init_scoped(
+            project,
+            kind="complete_set",
+            size=1,
+            templates={"product": _product_population([], size=2)},
+        )
+    with pytest.raises(ValueError, match="more URLs than the agreed site population"):
+        init_scoped(
+            project,
+            kind="complete_set",
+            size=2,
+            templates={
+                "product": _product_population(
+                    ["https://example.test/b", "https://example.test/c"]
+                ),
+                "category": _product_population(["https://example.test/d"]),
+            },
+        )
+
+
+def test_stored_plan_with_an_incoherent_template_population_is_refused_on_read(project):
+    init_scoped(
+        project,
+        kind="complete_set",
+        urls=["https://example.test/a", "https://example.test/b"],
+        templates={"product": _product_population(["https://example.test/b"])},
+    )
+    path = project / "coverage.json"
+    document = json.loads(path.read_text())
+    document["plans"][-1]["population"]["templates"]["product"] = _product_population(
+        ["https://example.test/c"]
+    )
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="outside the enumerated site population"):
+        coverage_status(project)
+
+
+def test_size_only_template_population_cannot_verify_membership(project):
+    init_scoped(
+        project,
+        kind="complete_set",
+        urls=["https://example.test/a", "https://example.test/b"],
+        templates={"product": _product_population([], size=1)},
+    )
+    _source(project / "scans/b.sqlite", start_url="https://example.test/b")
+    scoped_check(project, urls=["https://example.test/b"], template="product")
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan covers one declared-scope URL",
+        artifact="scans/b.sqlite",
+    )
+    axis = status["coverage"]["url_population"]
+    assert axis["denominator"] == 2 and axis["numerator"] == 0
+    assert axis["measured_urls"] == 1
+    assert axis["state"] == "partial" and axis["unverified_measurements"] == 1
+
+
+def test_template_measurements_count_inside_the_site_denominator(project):
+    initialize_coverage(project)
+    items = (
+        ("custom:home-check", "https://example.test/a", None),
+        ("custom:product-b-check", "https://example.test/b", "product"),
+        ("custom:product-c-check", "https://example.test/c", "product"),
+    )
+    for item_id, url, template in items:
+        scoped_check(project, urls=[url], template=template, item_id=item_id)
+    status = init_scoped(
+        project,
+        kind="complete_set",
+        urls=[
+            "https://example.test/a",
+            "https://example.test/b",
+            "https://example.test/c",
+        ],
+        templates={
+            "product": _product_population(["https://example.test/b", "https://example.test/c"])
+        },
+        tasks={
+            "kind": "selection",
+            "ids": [item_id for item_id, _url, _template in items],
+            "source": "Agreed audit scope memo 2026-10-01",
+        },
+    )
+    assert status["coverage"]["url_population"]["denominator"] == 3
+    for item_id, url, _template in items:
+        artifact = f"scans/{url.rsplit('/', 1)[-1]}.sqlite"
+        _source(project / artifact, start_url=url)
+        status = record(
+            project,
+            item_id,
+            status="succeeded",
+            reason="Saved fixture scan covers the agreed URL",
+            artifact=artifact,
+        )
+    axis = status["coverage"]["url_population"]
+    assert axis["numerator"] == 3 and axis["denominator"] == 3
+    assert axis["state"] == "measured" and axis["unverified_measurements"] == 0
+    assert status["complete"] is True
 
 
 def test_identical_plan_is_an_idempotent_reconcile_not_a_new_agreement(project):

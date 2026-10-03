@@ -100,7 +100,12 @@ known full population, `sample` for a named agreed sample, or `unknown` when
 no population was agreed — plus a `source` saying where it came from, and
 either a `size` or an enumerated `urls` list it derives its size from
 (per-template populations sit under `templates`). `unknown` carries no size
-or URLs, only a reason. `tasks` is `{kind: all_agreed}` — the default, every
+or URLs, only a reason. Template populations are agreed sub-populations of
+the site population: when the site set is enumerated every template URL must
+belong to it, and declared template membership — one template's `size` or the
+union of all enumerated template URLs — can never exceed the agreed site
+`size`, so an incoherent plan is refused rather than trimmed or
+double-counted. `tasks` is `{kind: all_agreed}` — the default, every
 checklist item is agreed — or `{kind: selection, ids, source}` naming the
 agreed item IDs, which must already exist in the reconciled checklist. Items
 outside a selection stay visible as `not_agreed` and sit outside every
@@ -238,11 +243,14 @@ measurements that cannot be verified against the agreed population keep the
 axis `partial` and count only verified URLs. The URL axis is a single
 site-level ratio: a template-scoped measurement verifies membership against
 its template's declared population when one is recorded, otherwise against
-the site population. Membership is verified against the agreed enumeration:
-a population declared only by `size` cannot prove
-which measured URLs belong to it, so its numerator stays at the verified
-count and the axis reports the unverifiable measurements instead of letting
-the numerator pass its denominator. A measurement that covers its explicit sample
+the site population. Because template populations are validated as
+sub-populations when the plan is recorded — enumerated URLs must belong to
+the enumerated site set and declared membership cannot exceed the agreed
+size — the numerator can never pass its denominator. Membership is verified
+against the agreed enumeration: a population declared only by `size` cannot
+prove which measured URLs belong to it, so its numerator stays at the
+verified count and the axis reports the unverifiable measurements. A
+measurement that covers its explicit sample
 completes that task's scope but cannot establish full-site coverage; a
 site-scoped check backed by a partial scan stays unfinished. Missing
 inputs, unavailable checks, partial scans and stale evidence all remain

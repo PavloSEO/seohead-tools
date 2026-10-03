@@ -140,6 +140,24 @@ def _population(value: Any, site: str, *, nested: bool = False) -> dict[str, Any
             _text(key, "template population name", 128): _population(entry, site, nested=True)
             for key, entry in templates.items()
         }
+        if size is not None:
+            members = set(urls)
+            for template_name, entry in result["templates"].items():
+                if urls and not set(entry["urls"]) <= members:
+                    raise ValueError(
+                        f"template population {template_name!r} declares URLs outside "
+                        "the enumerated site population"
+                    )
+                if entry["size"] > size:
+                    raise ValueError(
+                        f"template population {template_name!r} is larger than the "
+                        "agreed site population"
+                    )
+                members |= set(entry["urls"])
+            if len(members) > size:
+                raise ValueError(
+                    "template populations declare more URLs than the agreed site population"
+                )
     return result
 
 

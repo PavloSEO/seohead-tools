@@ -1101,7 +1101,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         optional agreed audit scope {reviewer, population, tasks}: population declares kind
         (``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
         ``source``, an optional ``name`` and ``reason``, and optional per-``templates``
-        populations; ``unknown`` keeps the URL denominator null with a reason. tasks is
+        populations; ``unknown`` keeps the URL denominator null with a reason. Template
+        populations are agreed sub-populations of the site population: enumerated
+        template URLs must belong to an enumerated site set, and declared template
+        membership can never exceed the agreed site size; incoherent plans are refused
+        rather than trimmed. tasks is
         ``{kind: all_agreed}`` or a sourced ``{kind: selection, ids, source}`` naming the agreed
         checklist items; items outside a selection stay visible as ``not_agreed`` outside every
         denominator. A size-only population cannot verify measured-URL membership, so its
