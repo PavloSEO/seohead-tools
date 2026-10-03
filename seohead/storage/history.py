@@ -7,8 +7,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import stat
+import tempfile
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -223,13 +225,24 @@ def _metadata(path: Path) -> dict:
         companion = path.with_name(path.name + suffix)
         if os.path.lexists(companion):
             companions += _regular(companion).st_size
+    from .audit_v2 import audit_v2_path
+
+    audit_companion = audit_v2_path(path)
+    audit_state = _regular(audit_companion) if os.path.lexists(audit_companion) else None
+    audit_bytes = audit_state.st_size if audit_state is not None else 0
     return {
         "uuid": row["scan_uuid"],
         "path": str(path.absolute()),
         "inode": {"device": state.st_dev, "inode": state.st_ino},
         "mtime_ns": state.st_mtime_ns,
         "bytes": state.st_size,
-        "disk_bytes": state.st_size + companions,
+        "disk_bytes": state.st_size + companions + audit_bytes,
+        "audit_bytes": audit_bytes,
+        "audit_inode": (
+            {"device": audit_state.st_dev, "inode": audit_state.st_ino}
+            if audit_state is not None
+            else None
+        ),
         "lifecycle": row["lifecycle"],
         "finish_reason": row["finish_reason"],
         "pinned": bool(row["pinned"]),
@@ -262,6 +275,8 @@ def _catalog(directory: str | Path) -> tuple[list[dict], list[dict]]:
     items, errors = [], []
     used = 0
     for index, path in enumerate(root.glob("*.sqlite")):
+        if path.name.endswith(".audit-v2.sqlite"):
+            continue
         if index >= 10_000:
             raise ScanError("scan directory exceeds the 10,000-file history limit")
         try:
@@ -381,7 +396,8 @@ def inspect_scan(
 
 
 def snapshot_scan(path: str | Path, destination: str | Path) -> str:
-    """Reuse the bounded Backup API publication path, including live WAL support."""
+    """Snapshot the scan and any audit.v2 companion as a validated pair."""
+    from .audit_v2 import AuditV2Reader, audit_v2_path
     from .native_scan import NativeScan
 
     source = Path(path).absolute()
@@ -389,6 +405,23 @@ def snapshot_scan(path: str | Path, destination: str | Path) -> str:
     if Path(destination).is_dir():
         header = _read_scan(source)
         destination = new_scan_path(destination, header["start_url"] or "", header["scan_uuid"])
+    destination = Path(destination).absolute()
+    audit_source = audit_v2_path(source)
+    audit_target = audit_v2_path(destination)
+    if os.path.lexists(audit_target):
+        raise ScanError(f"snapshot audit companion already exists: {audit_target}")
+    has_audit_v2 = os.path.lexists(audit_source)
+    audit_reader = AuditV2Reader(source) if has_audit_v2 else None
+    with contextlib.closing(open_scan(source, require_audit=False)):
+        pass
+    fd, stage_name = tempfile.mkstemp(
+        prefix=".audit-pair-snapshot-", suffix=".sqlite", dir=destination.parent
+    )
+    os.close(fd)
+    os.unlink(stage_name)
+    staged_scan = Path(stage_name)
+    staged_audit = audit_v2_path(staged_scan)
+    published_audit = False
     with contextlib.closing(open_scan(source, require_audit=False)) as con:
 
         def validate_copy(copy):
@@ -396,7 +429,39 @@ def snapshot_scan(path: str | Path, destination: str | Path) -> str:
                 pass
 
         reader = SimpleNamespace(path=source, con=con, inspect=validate_copy)
-        return str(NativeScan.snapshot(reader, destination))
+        try:
+            NativeScan.snapshot(
+                reader,
+                staged_scan,
+                temp_margin_bytes=audit_source.stat().st_size if has_audit_v2 else 0,
+            )
+            if has_audit_v2:
+                with audit_source.open("rb") as src, staged_audit.open("xb") as dest:
+                    shutil.copyfileobj(src, dest, length=1024 * 1024)
+                    dest.flush()
+                    os.fsync(dest.fileno())
+                with AuditV2Reader(staged_scan):
+                    pass
+                os.link(staged_audit, audit_target, follow_symlinks=False)
+                published_audit = True
+                filesystem.fsync_directory(destination.parent)
+            os.link(staged_scan, destination, follow_symlinks=False)
+            filesystem.fsync_directory(destination.parent)
+            return str(destination)
+        except FileExistsError as exc:
+            raise ScanError(f"snapshot target already exists: {destination}") from exc
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            raise ScanError(f"cannot snapshot scan and audit companion: {exc}") from exc
+        finally:
+            if audit_reader is not None:
+                audit_reader.close()
+            with contextlib.suppress(FileNotFoundError):
+                staged_scan.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                staged_audit.unlink()
+            if published_audit and not destination.exists():
+                with contextlib.suppress(FileNotFoundError):
+                    audit_target.unlink()
 
 
 def pin_scan(path: str | Path, pinned: bool) -> None:
@@ -467,7 +532,7 @@ def _eligible(items: list[dict], older_than_days: int, keep_newest: int) -> list
                 and not item["pinned"]
                 and not item["crawl_partial"]
                 and not item["corpus_partial"]
-                and item["disk_bytes"] == item["bytes"]
+                and item["disk_bytes"] == item["bytes"] + item["audit_bytes"]
                 and now - _finished_at(item["finished_at"]) >= timedelta(days=older_than_days)
             ):
                 candidates.append(item)
@@ -510,6 +575,8 @@ def prune_preview(
 
 
 def prune_apply(directory: str | Path, plan: dict) -> list[str]:
+    from .audit_v2 import audit_v2_path
+
     root = _directory(directory)
     if (
         not isinstance(plan, dict)
@@ -545,6 +612,16 @@ def prune_apply(directory: str | Path, plan: dict) -> list[str]:
             seen.add(path)
             info = _regular(path)
             held.append(_hold_writer_lock(path))
+            audit_path = audit_v2_path(path)
+            if expected["audit_inode"] is not None:
+                held.append(_hold_writer_lock(audit_path))
+                audit_info = _regular(audit_path)
+                if {"device": audit_info.st_dev, "inode": audit_info.st_ino} != expected[
+                    "audit_inode"
+                ]:
+                    raise ScanError("prune audit companion identity changed")
+            elif os.path.lexists(audit_path):
+                raise ScanError("prune candidate gained an audit companion")
             if {"device": info.st_dev, "inode": info.st_ino} != expected["inode"]:
                 raise ScanError("prune candidate identity changed")
             current = _metadata(path)
@@ -561,8 +638,21 @@ def prune_apply(directory: str | Path, plan: dict) -> list[str]:
             if _metadata(path) != expected:
                 raise ScanError("prune candidate changed before deletion")
         removed = []
-        for path, _ in validated:
-            path.unlink()
+        for path, expected in validated:
+            audit_path = audit_v2_path(path)
+            hold_path = None
+            if expected["audit_inode"] is not None:
+                hold_path = root / f".{audit_path.name}.prune-hold-{uuid.uuid4().hex}"
+                os.link(audit_path, hold_path, follow_symlinks=False)
+                audit_path.unlink()
+            try:
+                path.unlink()
+            except OSError:
+                if hold_path is not None:
+                    os.link(hold_path, audit_path, follow_symlinks=False)
+                raise
+            if hold_path is not None:
+                hold_path.unlink()
             removed.append(str(path))
         if removed:
             from .native_scan import _fsync_directory

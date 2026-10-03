@@ -185,6 +185,51 @@ def test_pin_refuses_active_writer_and_snapshot_is_wal_independent(tmp_path):
     assert not target.with_name(target.name + "-shm").exists()
 
 
+def test_snapshot_and_prune_keep_audit_v2_companions_paired(tmp_path):
+    from contextlib import closing
+
+    from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path, write_audit_v2
+
+    def attach_sidecar(path):
+        with closing(open_scan(path, require_audit=False)) as con:
+            row = con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
+        binding = {
+            "scan_uuid": row["scan_uuid"],
+            "evidence_revision": row["evidence_revision"],
+            "analyzer_version": row["writer_version"],
+            "analyzer_revision": row["writer_revision"],
+        }
+        write_audit_v2(path, {"issues": []}, {"/issues": []}, binding)
+
+    source = tmp_path / "source.sqlite"
+    _finished(source, captured=False)
+    attach_sidecar(source)
+    target = tmp_path / "snapshot.sqlite"
+    snapshot_scan(source, target)
+    assert target.exists() and audit_v2_path(target).exists()
+    with AuditV2Reader(target) as audit:
+        assert audit.count("/issues") == 0
+    listing = list_scans(tmp_path)
+    assert listing["total"] == 2
+    snap_metadata = next(item for item in listing["items"] if item["path"] == str(target))
+    assert snap_metadata["disk_bytes"] == snap_metadata["bytes"] + snap_metadata["audit_bytes"]
+
+    prune_dir = tmp_path / "prune-candidates"
+    prune_dir.mkdir()
+    for index in range(6):
+        path = prune_dir / f"old-{index}.sqlite"
+        _finished(path, age_days=40 - index, captured=True)
+        attach_sidecar(path)
+    plan = prune_preview(prune_dir, keep_newest=5)
+    assert len(plan["candidates"]) == 1
+    victim = Path(plan["candidates"][0]["path"])
+    victim_audit = audit_v2_path(victim)
+    assert victim_audit.exists()
+    assert str(victim) in prune_apply(prune_dir, plan)
+    assert not victim.exists()
+    assert not victim_audit.exists()
+
+
 @pytest.mark.parametrize("kind", ("application", "version", "schema"))
 def test_snapshot_refuses_foreign_input_without_creating_output(tmp_path, kind):
     source, target = tmp_path / f"{kind}.sqlite", tmp_path / "copy.sqlite"
