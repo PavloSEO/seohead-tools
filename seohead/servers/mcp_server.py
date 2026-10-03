@@ -410,9 +410,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         items whose indexable flag is true or absent, since a page canonicalised to
         another is an intended twin, not a defect; set it to false to audit the
         canonical tags themselves. Pass scan for a validated read-only scan.v1
-        corpus; it reads retained page bodies only and returns coverage. Scan input is
-        capped at 10,000 documents, 16 MiB of extracted input, one million shingles,
-        and 250,000 candidate comparisons; an exhausted bound is unavailable, never clean."""
+        corpus; it streams retained page bodies and returns coverage. The corpus
+        is capped at 10,000 analyzed documents and 16 MiB of retained input
+        (extracted Markdown, not raw HTML); reaching a corpus bound reports the
+        exact partial coverage. The analysis itself stays capped at one million
+        shingles and 250,000 candidate comparisons; an exhausted analysis budget
+        is unavailable, never clean."""
         return _checked(
             handlers.duplicate_check(
                 items=items,
@@ -500,8 +503,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         one template, a footer never migrated on old pages, or a menu that renders
         differently under one language branch. Each page is {"url", "html"}, or
         {"url", "hash"} when the hash was already computed upstream. Pass scan
-        for a validated read-only scan.v1 corpus with retained page HTML. Scan input is
-        capped at 10,000 documents and 16 MiB; an exhausted bound is unavailable."""
+        for a validated read-only scan.v1 corpus with retained page HTML. The
+        corpus is streamed and only each page's digest is retained, so coverage
+        does not depend on total HTML size; reaching the 10,000-document or
+        16 MiB retained-input bound reports the exact partial coverage."""
         return _checked(handlers.boilerplate_report(pages=pages, scan=scan))
 
     @mcp.tool(annotations=fetch, structured_output=True)

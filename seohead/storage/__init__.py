@@ -28,6 +28,12 @@ FORMAT_VERSION = "scan.v1"
 MAX_JSON_BYTES = 64 * 1024 * 1024
 MAX_RECORD_BYTES = 8 * 1024 * 1024
 READ_TIMEOUT_SECONDS = 30
+# Opening a validated scan runs integrity queries whose cost is O(artifact
+# size) — the native lane's PRAGMA quick_check and foreign_key_check — so a
+# fixed deadline rejects a large-but-healthy artifact before its corpus can be
+# read at all (issue #710). The rate shares NativeScan.inspect's measurement
+# (issue #631): ~22 MB/s observed, budgeted at 4 MiB/s for headroom.
+READ_TIMEOUT_BYTES_PER_SECOND = 4 * 1024 * 1024
 _FUTURE_TABLES = (
     "bodies",
     "responses",
@@ -767,6 +773,20 @@ def _validate(con, *, require_audit: bool = True) -> None:
     _validate_import_metadata(con, scan, audit)
 
 
+def _read_deadline_seconds(path: Path) -> float:
+    """Bound a scan's open-and-validate pass by artifact size, not a flat 30 s.
+
+    See READ_TIMEOUT_BYTES_PER_SECOND for the measured rate this derives from.
+    Callers that keep the connection for further reads re-budget per statement
+    (``scan_corpus``) rather than letting this one deadline span them.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
+    return max(READ_TIMEOUT_SECONDS, size / READ_TIMEOUT_BYTES_PER_SECOND)
+
+
 def open_scan(path: str | Path, *, require_audit: bool = True):
     """Return a validated read-only connection; the caller must close it."""
     _runtime()
@@ -779,7 +799,7 @@ def open_scan(path: str | Path, *, require_audit: bool = True):
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA cache_size=-8192")
         con.execute("PRAGMA temp_store=FILE")
-        deadline = time.monotonic() + READ_TIMEOUT_SECONDS
+        deadline = time.monotonic() + _read_deadline_seconds(Path(path))
         con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
         con.execute("BEGIN")
         version = con.execute("PRAGMA user_version").fetchone()[0]
