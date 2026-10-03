@@ -661,6 +661,14 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    # Check selectors refer to the SF finding registry. Validate them at this
+    # shared CLI/MCP boundary before the crawl can issue its first request.
+    from seohead.sf.config import load_config as load_audit_config
+    from seohead.sf.config import validate_config as validate_audit_config
+
+    audit_config = load_audit_config(None)
+    audit_config["finding_exclusions"] = settings["analysis"]["finding_exclusions"]
+    validate_audit_config(audit_config)
     if project_root is not None:
         gate = admission(str(project_root), settings, approved=approve_large_crawl)
         if not gate["ok"]:
@@ -940,7 +948,13 @@ def _audit_crawl_result(
     from seohead.crawl import settings as crawl_config
     from seohead.crawl.evidence import build_evidence
     from seohead.crawl.reconcile import reconcile_sitemap
-    from seohead.sf.config import load_config
+    from seohead.sf.config import load_config, validate_config
+
+    audit_config = load_config(None)
+    audit_config["finding_exclusions"] = settings.get("analysis", {}).get(
+        "finding_exclusions", []
+    )
+    validate_config(audit_config)
     from seohead.sf.core.aggregate import aggregate
     from seohead.sf.core.context import AuditContext
     from seohead.sf.core.heuristics import run_heuristics
@@ -1090,7 +1104,7 @@ def _audit_crawl_result(
     exports.found = list(evidence["found"])
     exports.missing = list(evidence["missing"])
 
-    ctx = AuditContext(exports, load_config(None))
+    ctx = AuditContext(exports, audit_config)
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
     # 0 for every seeded URL, so the click-depth walk would start from an

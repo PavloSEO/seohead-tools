@@ -149,6 +149,11 @@ current analyzer build. It preserves the capture configuration; there is no
 configuration override because mixing parser results from a different capture
 scope would make the derived audit incomparable.
 
+The saved `analysis.finding_exclusions` policy is part of that configuration and
+audit provenance. It changes the active findings, score, and tasks while keeping
+full suppressed records with their rules and reasons in the audit. Reanalysis
+reuses the saved policy against retained evidence; it makes no site request.
+
 Reanalysis uses only retained static HTML and rendered DOM with the existing
 parser and check registry. It makes no HTTP, DNS, browser, provider, or resource
 fetch request. Missing required retained bodies fail clearly before publishing an

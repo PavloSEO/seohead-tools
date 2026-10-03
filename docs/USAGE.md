@@ -181,6 +181,35 @@ Useful `sf run` flags: `--profile lite|full|custom`, `--config config.json`,
 staging, `--sf-cli <path>`, `--max-urls-per-second N` (polite crawling),
 `--live-recheck` (network re-check of sitemap URLs — off by default).
 
+Add ordered URL-pattern rules to `finding_exclusions` in the SF config file
+(the key is shown in `config.example.json`). Native crawls use the same rule
+shape under `analysis.finding_exclusions` in the crawl config. Rules use Python
+regex search against a finding's target URL; `checks` optionally limits a rule
+to exact check IDs, and an empty or omitted `checks` list applies to every
+check. The first matching rule wins. Every rule needs an `id` and a
+human-readable `reason`.
+
+```json
+{
+  "finding_exclusions": [
+    {
+      "id": "retired-help-pages",
+      "pattern": "/help/legacy(?:/|$)",
+      "checks": ["TITLE_MISSING"],
+      "reason": "These legacy help pages are scheduled for removal."
+    }
+  ]
+}
+```
+
+Rules run after collection and analysis; they never narrow the crawl or change
+check coverage. Audit JSON keeps full suppressed records under
+`suppressed_issues`, including each matching rule and reason, and reports
+counts under `summary.finding_exclusions`. Native scan artifacts save the
+effective policy so offline `scan reanalyze` replays it without fetching the
+site again. Review the suppression summary before interpreting the active score
+or task list.
+
 Prefer an SF-owned `--auth-config` profile where possible. A literal `--auth USER:PASS` value can
 be exposed by shell history or process inspection, so use it only in an isolated transient
 session and never paste it into logs or issue reports.
