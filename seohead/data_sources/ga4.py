@@ -27,6 +27,103 @@ def _default_transport(url: str, payload: dict[str, Any], token: str) -> str:
         return response.read().decode("utf-8")
 
 
+def run_report(
+    property_id: str,
+    start_date: str,
+    end_date: str,
+    dimensions: list[str],
+    metrics: list[str],
+    *,
+    max_rows: int = MAX_ROWS * 4,
+    token: str | None = None,
+    transport: Transport | None = None,
+) -> dict[str, Any]:
+    """Page through one ``runReport`` query and return flat ``{name: value}`` records."""
+    from seohead.data_sources.credentials import MissingCredential, ga4_access_token
+
+    if not property_id or not start_date or not end_date or start_date > end_date:
+        raise ValueError("property_id and an ordered date range are required")
+    if not 1 <= max_rows <= 100_000:
+        raise ValueError("max_rows must be between 1 and 100000")
+    try:
+        bearer = token or ga4_access_token()
+    except MissingCredential as exc:
+        return {"ok": False, "state": "not_configured", "error": str(exc)}
+    records: list[dict[str, Any]] = []
+    offset = 0
+    declared_total: int | None = None
+    data_loss = sampled = thresholded = False
+    while True:
+        payload = {
+            "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+            "dimensions": [{"name": name} for name in dimensions],
+            "metrics": [{"name": name} for name in metrics],
+            "limit": str(min(MAX_ROWS, max_rows - offset)),
+            "offset": str(offset),
+        }
+        try:
+            body = json.loads(
+                (transport or _default_transport)(
+                    f"{HOST}/properties/{property_id}:runReport", payload, bearer
+                )
+            )
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+            return {"ok": False, "state": "failed", "error": str(exc)}
+        rows = body.get("rows", []) if isinstance(body, dict) else None
+        total = body.get("rowCount") if isinstance(body, dict) else None
+        if (
+            not isinstance(rows, list)
+            or not isinstance(total, int)
+            or isinstance(total, bool)
+            or total < offset + len(rows)
+            or len(rows) > int(payload["limit"])
+            or not all(isinstance(row, dict) for row in rows)
+        ):
+            return {"ok": False, "state": "failed", "error": "malformed GA4 Data API response"}
+        if declared_total is None:
+            declared_total = total
+        elif total != declared_total:
+            return {"ok": False, "state": "failed", "error": "GA4 rowCount changed during paging"}
+        metadata = body.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            return {"ok": False, "state": "failed", "error": "malformed GA4 metadata"}
+        data_loss = data_loss or bool(metadata.get("dataLossFromOtherRow"))
+        sampled = sampled or bool(metadata.get("samplingMetadatas"))
+        thresholded = thresholded or bool(metadata.get("subjectToThresholding"))
+        for row in rows:
+            dimension_values = row.get("dimensionValues")
+            metric_values = row.get("metricValues")
+            if (
+                not isinstance(dimension_values, list)
+                or not isinstance(metric_values, list)
+                or len(dimension_values) != len(dimensions)
+                or len(metric_values) != len(metrics)
+                or not all(
+                    isinstance(item, dict) and "value" in item
+                    for item in [*dimension_values, *metric_values]
+                )
+            ):
+                return {"ok": False, "state": "failed", "error": "malformed GA4 row values"}
+            values = [item["value"] for item in [*dimension_values, *metric_values]]
+            records.append(dict(zip(dimensions + metrics, values, strict=True)))
+        offset += len(rows)
+        if offset >= total or offset >= max_rows:
+            break
+        if not rows:
+            return {"ok": False, "state": "failed", "error": "GA4 ended before declared rowCount"}
+    truncated = offset < total
+    return {
+        "ok": True,
+        "state": "partial" if truncated or data_loss or sampled or thresholded else "complete",
+        "rows": records,
+        "returned": len(records),
+        "truncated": truncated,
+        "data_loss": data_loss,
+        "sampled": sampled,
+        "thresholded": thresholded,
+    }
+
+
 def landing_pages(
     property_id: str,
     start_date: str,

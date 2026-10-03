@@ -72,6 +72,9 @@ and this decision makes no backend migration.
 | `serp-fetch` | Provider query (`query`)<br>Provider query (`queries`) | — |
 | `spend-report` | Local log | Configured local spend log. |
 | `sources-doctor` | Local configuration | — |
+| `sources-sync` | Provider query (`source, resource`)<br>Local file (`db`)<br>Project directory (`project`) | Explicit provider read and local SQLite write; records requested coverage and replaces eligible days atomically. |
+| `sources-status` | Local file (`db`)<br>Project directory (`project`) | — |
+| `sources-export` | Local file (`db`)<br>Project directory (`project`) | — |
 | `regions-tree` | Local configuration | — |
 | `metrika-counters` | Local configuration | — |
 | `metrika-setup` | Provider query (`counter_id`) | — |

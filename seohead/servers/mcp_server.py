@@ -946,6 +946,72 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_sources_sync(
+        source: str,
+        resource: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        db: str | None = None,
+        project: str | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Accumulate provider data in one local SQLite database: fetch missing or explicitly
+        forced days. source is gsc, ga4, metrika, webmaster (queries per day) or
+        webmaster_history (daily shows/clicks, pages in search, crawl by HTTP class); resource
+        is the property (sc-domain:example.com), GA4 property ID, Metrika counter ID or
+        Webmaster host ID (https:example.com:443). Pass db (a file path) or project (its
+        sources.sqlite is used). Default period is the last 28 eligible days. Requested
+        lagged days remain visible without being fetched. force=true re-fetches stored days;
+        a partial or failed retry cannot erase a complete day. Tokens are never stored."""
+        return _checked(
+            handlers.sources_sync(
+                source=source,
+                resource=resource,
+                start_date=start_date,
+                end_date=end_date,
+                db=db,
+                project=project,
+                force=force,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_sources_status(db: str | None = None, project: str | None = None) -> dict[str, Any]:
+        """Offline local history: requested, complete, empty, partial, failed, pending and
+        lagged dates, gaps, rows, metric additivity and reporting-timezone policy."""
+        return _checked(handlers.sources_status(db=db, project=project))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_sources_export(
+        source: str,
+        resource: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        match: str | None = None,
+        limit: int = 1000,
+        out: str | None = None,
+        db: str | None = None,
+        project: str | None = None,
+    ) -> dict[str, Any]:
+        """Read stored rows of one source filtered by resource, date range and a substring
+        of any dimension (match). Returns at most limit ordered rows with their daily
+        coverage state; out writes the same bounded result to a new private CSV. The
+        response names non-additive metrics and has_more when additional rows exist."""
+        return _checked(
+            handlers.sources_export(
+                source=source,
+                resource=resource,
+                start_date=start_date,
+                end_date=end_date,
+                match=match,
+                limit=limit,
+                out=out,
+                db=db,
+                project=project,
+            )
+        )
+
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_regions_tree(save_to: str | None = None) -> dict[str, Any]:
         """Authoritative tree of Yandex region IDs for the regions[] parameter. This is the
         only FREE Wordstat method, so it is not journaled. Note that a multi-region request

@@ -303,6 +303,9 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `serp-fetch` | Yandex SERP for a query or a batch. Async only | metered; synchronous search is intentionally absent; verify current tariff |
 | `spend-report` | What was actually charged: by source, operation and day, from the local journal | free |
 | `sources-doctor` | Which sources have their secret and where it lives | free |
+| `sources-sync` | Fetch bounded missing or explicitly forced provider days into a local versioned SQLite history. Records complete, empty, partial, failed, and lagged days without storing tokens | Provider read subject to GSC, GA4, Metrika, or Webmaster quotas; writes local SQLite |
+| `sources-status` | Read requested-day coverage, resource identity, lag policy, and non-additive metric metadata from local history | Offline read only |
+| `sources-export` | Read ordered provider rows as bounded JSON or a new private CSV; does not recompute totals across grains | Offline; optional local CSV write |
 | `regions-tree` | The authoritative Yandex region tree via `getRegionsTree` | **free** — the only free Wordstat method |
 | `metrika-counters` | Metrika counters visible to the token — this is where `counter_id` comes from | free |
 | `metrika-setup` | How a counter is configured: goals, filters, data operations | free |
@@ -316,8 +319,27 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `crux-report` | Core Web Vitals as real Chrome users measured them, at origin or URL level | free; needs a Google Cloud API key |
 | `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
 
+Provider history uses one `sources.sqlite` per project (`--project`) or an explicit `--db`.
+`sources-sync` is an explicit provider request. It fetches missing days, records every requested
+day, and replaces each successfully fetched day in one SQLite transaction. Complete zero-row
+days differ from sampled, thresholded, truncated or capped partial results, failures and days
+held back by provider lag. A failed or partial
+forced retry never erases a previously complete day. GSC history here is the bounded web
+date/query/page grain; the separate #718 archive's additional datasets and resumable quota
+checkpoints are not part of this command. No independent GSC archive is created by these tools.
+
+`sources-status` reads the local file without provider calls or schema writes. `sources-export`
+orders by resource, date and dimensions and limits both JSON and CSV to at most 100,000 rows.
+Exports retain nulls for absent metrics and identify non-additive measures such as users, rates,
+CTR and average position. They do not calculate totals or blend incompatible grains. GSC dates
+use Pacific time; other property/counter timezones are not known locally, so their lag cutoff
+conservatively holds back an extra UTC day. SQLite files and CSV exports are created with private
+owner-only permissions. These rows can contain search queries and URLs; keep them out of public
+reports and Git.
+
 ```bash
 seohead sources-doctor                                     # what is ready to run
+seohead sources-status --db ./sources.sqlite                 # offline coverage after an explicit sync
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -462,7 +484,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(95 + 5):
+(98 + 5):
 
 ```bash
 seohead mcp        # stdio
