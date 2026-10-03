@@ -235,6 +235,7 @@ def scan_once(
     url: str,
     expected_revision: str,
     label: str,
+    expect_rendered: bool,
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env.update(
@@ -276,7 +277,7 @@ def scan_once(
     if result.get("finish_reason") != "finished" or result.get("urls_collected") != 1:
         raise AssertionError(f"synthetic crawl did not finish cleanly: {result!r}")
     rendered = result.get("render_escalation") or {}
-    if rendered.get("render_requests") != 1:
+    if expect_rendered and rendered.get("render_requests") != 1:
         raise AssertionError(f"JavaScript rendering did not run: {rendered!r}")
     if not scan.is_file() or scan.stat().st_size == 0:
         raise AssertionError("crawl did not create the requested scan artifact")
@@ -290,7 +291,12 @@ def scan_once(
         capture_rows = connection.execute(
             "SELECT payload_json FROM context_items WHERE kind='content_evidence' ORDER BY item_key"
         ).fetchall()
-    if row != ("Rendered lifecycle title", "rendered"):
+    expected_page = (
+        ("Rendered lifecycle title", "rendered")
+        if expect_rendered
+        else ("Static lifecycle fixture", "static")
+    )
+    if row != expected_page:
         raise AssertionError(
             "saved scan is missing rendered page evidence: "
             + json.dumps(
@@ -307,6 +313,7 @@ def scan_once(
                         for item in document_rows
                     ],
                     "capture_reasons": [json.loads(item[0]).get("reason") for item in capture_rows],
+                    "expected_rendered": expect_rendered,
                 },
                 ensure_ascii=False,
             )
@@ -333,6 +340,7 @@ def scan_once(
     measurements["artifact_bytes"] = scan.stat().st_size
     measurements["producer_version"] = before["version"]
     measurements["producer_revision"] = before["revision"]
+    measurements["rendered_smoke"] = expect_rendered
     measurements["scan_path"] = scan.relative_to(project.parent).as_posix()
     return measurements
 
@@ -369,7 +377,8 @@ def main() -> int:
     releases = temp_root / "releases"
     install_root = temp_root / "install"
     project = temp_root / "workspace" / "synthetic-project"
-    config = temp_root / "workspace" / "crawl.json"
+    base_config = temp_root / "workspace" / "crawl-base.json"
+    candidate_config = temp_root / "workspace" / "crawl-candidate.json"
     uv_cache = temp_root / "uv-cache"
     worktree_added = False
     failed = False
@@ -383,13 +392,32 @@ def main() -> int:
         "synthetic_fixture": {"page_count": 1, "html_bytes": len(FIXTURE_HTML)},
         "network_scope": "localhost fixture only; no paid/provider/customer calls",
     }
+    chrome_override = os.environ.get("SEOHEAD_CHROME")
 
     try:
+        if chrome_override:
+            metrics["local_chrome_override"] = {
+                "path": str(Path(chrome_override).resolve()),
+                "version": run([chrome_override, "--version"], timeout=15),
+                "sandbox": "enabled by render_document; no --no-sandbox flag",
+            }
         install_root.mkdir()
         releases.mkdir()
         project.mkdir(parents=True)
         uv_cache.mkdir()
-        config.write_text(
+        base_config.write_text(
+            json.dumps(
+                {
+                    "limits": {"max_urls": 1, "max_depth": 0},
+                    "speed": {"min_delay_seconds": 0.05},
+                    "robots": {"policy": "ignore"},
+                    "rendering": {"mode": "raw"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        candidate_config.write_text(
             json.dumps(
                 {
                     "limits": {"max_urls": 1, "max_depth": 0},
@@ -509,10 +537,11 @@ def main() -> int:
                 python=environments[base_revision] / "bin/python",
                 release=releases / base_revision,
                 project=project,
-                config=config,
+                config=base_config,
                 url=url,
                 expected_revision=base_revision,
                 label="base",
+                expect_rendered=False,
             )
 
             switch_current(
@@ -527,10 +556,11 @@ def main() -> int:
                 python=environments[candidate_revision] / "bin/python",
                 release=releases / candidate_revision,
                 project=project,
-                config=config,
+                config=candidate_config,
                 url=url,
                 expected_revision=candidate_revision,
                 label="candidate",
+                expect_rendered=True,
             )
 
             switch_current(

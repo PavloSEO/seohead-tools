@@ -31,6 +31,7 @@ import os
 import re
 import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 
@@ -806,7 +807,7 @@ def render_check(
             timeout, follow_redirects=False, headers={"User-Agent": selected_user_agent}
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = pw.chromium.launch(**_local_chromium_launch_options())
             try:
                 # service_workers="block": a default-configuration service
                 # worker can serve requests the page.route() guard below never
@@ -994,7 +995,7 @@ def rendered_html(
             timeout, follow_redirects=False, headers={"User-Agent": UA}
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = pw.chromium.launch(**_local_chromium_launch_options())
             try:
                 context = browser.new_context(service_workers="block", user_agent=UA)
                 try:
@@ -1084,6 +1085,24 @@ def _safe_policy_facts(policy_facts: dict[str, Any] | None) -> dict[str, bool]:
         "credentials_used": bool(facts.get("credentials_used")),
         "cache_control_no_store": bool(facts.get("cache_control_no_store")),
     }
+
+
+def _local_chromium_launch_options() -> dict[str, Any]:
+    """Keep Chromium sandboxed and optionally select an installed local browser.
+
+    ``SEOHEAD_CHROME`` is an operator-controlled executable override. It applies
+    only to local Chromium launches; remote transport and other browser engines
+    do not consume it. An explicit but invalid path is an error rather than a
+    silent fallback to a different browser binary.
+    """
+    options: dict[str, Any] = {"chromium_sandbox": True}
+    executable = os.environ.get("SEOHEAD_CHROME")
+    if executable:
+        path = Path(executable).expanduser()
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise RuntimeError("SEOHEAD_CHROME must point to an executable local Chrome binary")
+        options["executable_path"] = str(path.resolve())
+    return options
 
 
 def render_document(
@@ -1221,7 +1240,7 @@ def render_document(
                 # requests page.route() never sees.
                 "service_workers": "block",
             }
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = pw.chromium.launch(**_local_chromium_launch_options())
             context = browser.new_context(**context_options)
             actual_browser = browser if browser is not None else getattr(context, "browser", None)
             engine_version = str(getattr(actual_browser, "version", "unknown"))

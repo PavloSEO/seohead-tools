@@ -155,6 +155,15 @@ jobs:
           fi
       - name: Install locked revisions, render localhost fixture, upgrade, and roll back
         run: |
+          chrome_path="$(command -v google-chrome || true)"
+          if [ -z "$chrome_path" ]; then
+            echo "Google Chrome is required for the Ubuntu AppArmor-safe render smoke" >&2
+            exit 1
+          fi
+          chrome_path="$(readlink -f "$chrome_path")"
+          test -x "$chrome_path"
+          echo "Using sandboxed local Chrome at $chrome_path"
+          export SEOHEAD_CHROME="$chrome_path"
           python scripts/linux_lifecycle_smoke.py \
             --base-ref "${{ steps.base.outputs.sha }}" \
             --metrics-out "$RUNNER_TEMP/linux-lifecycle-metrics.json"

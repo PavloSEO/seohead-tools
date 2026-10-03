@@ -7,8 +7,10 @@ HTTP API is a separate optional package and contract; see issue #784 when that A
 
 The target covered here is **Ubuntu Server 24.04 LTS with Python 3.12**. The lifecycle smoke in
 `.github/workflows/ci.yml` uses a fresh `ubuntu-24.04` runner, a localhost-only synthetic HTTP/JS
-site, and two source revisions. This is evidence for that disposable runner environment; it is not
-a claim that a particular VPS provider or every Linux distribution has been tested.
+site, and two source revisions: the previous build gets a static artifact, while the candidate
+build must capture the JavaScript-rendered page through the runner's preinstalled sandboxed Chrome.
+This is evidence for that disposable runner environment; it is not a claim that a particular VPS
+provider or every Linux distribution has been tested.
 
 ## Host and operator layout
 
@@ -94,6 +96,19 @@ sudo "$RELEASE/venv/bin/python" -m playwright install-deps chromium
 PLAYWRIGHT_BROWSERS_PATH="$RELEASE/browsers" \
   "$RELEASE/venv/bin/python" -m playwright install chromium
 ```
+
+The renderer uses that release-local browser by default. On Ubuntu 24.04, AppArmor may block
+unprivileged user namespaces for Playwright's downloaded headless shell. If that prevents a
+sandboxed launch, an operator may select an installed Google Chrome executable for local Chromium
+runs by setting `SEOHEAD_CHROME` (for example, `/opt/google/chrome/chrome`). The executable must
+exist and be executable; an invalid explicit path fails without falling back. The renderer keeps
+Playwright's Chromium sandbox enabled. This override is local-only; it does not configure a remote
+browser transport or non-Chromium engines. Keep the release-local Playwright browser installed for
+the default path and verify compatibility when using a system Chrome version.
+
+The Ubuntu lifecycle CI uses the runner's preinstalled Google Chrome executable for the candidate
+render smoke. Its metrics artifact records the executable path and browser version. The job does
+not change host security settings or launch Chromium with `--no-sandbox`.
 
 Create or switch the active pointer atomically. Keep the previous release directory until the new
 revision passes its smoke run. Create the stable command symlink once; it follows `current` after
