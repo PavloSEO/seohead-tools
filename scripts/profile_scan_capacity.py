@@ -13,7 +13,6 @@ import hashlib
 import json
 import os
 import platform
-import resource
 import shutil
 import sqlite3
 import subprocess
@@ -30,6 +29,55 @@ from seohead.storage.native_scan import NativeScan
 
 HOST = "example.test"
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _windows_memory_counters() -> tuple[int, int]:
+    """Return total physical bytes and process peak working-set bytes on Windows."""
+    import ctypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", ctypes.c_ulong),
+            ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("PageFaultCount", ctypes.c_ulong),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    memory = MemoryStatus()
+    memory.dwLength = ctypes.sizeof(memory)
+    if not ctypes.WinDLL("kernel32", use_last_error=True).GlobalMemoryStatusEx(
+        ctypes.byref(memory)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+    process = kernel32.GetCurrentProcess()
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    if not psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), ctypes.sizeof(counters)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(memory.ullTotalPhys), int(counters.PeakWorkingSetSize)
 
 
 def _environment() -> dict[str, object]:
@@ -49,6 +97,8 @@ def _environment() -> dict[str, object]:
                 ["sysctl", "-n", "hw.memsize"], text=True, capture_output=True, check=True
             ).stdout
         )
+    elif os.name == "nt":
+        memory_bytes, _peak_rss_bytes = _windows_memory_counters()
     else:
         memory_bytes = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
     return {
@@ -60,13 +110,21 @@ def _environment() -> dict[str, object]:
         "python": platform.python_version(),
         "sqlite": sqlite3.sqlite_version,
         "physical_memory_bytes": memory_bytes,
-        "rss_source_unit": "bytes" if sys.platform == "darwin" else "KiB",
+        "rss_source_unit": "bytes" if sys.platform == "darwin" or os.name == "nt" else "KiB",
     }
 
 
 def _rss_mib() -> float:
-    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return round(raw / (1024 * 1024) if sys.platform == "darwin" else raw / 1024, 2)
+    if sys.platform == "darwin":
+        from resource import RUSAGE_SELF, getrusage
+
+        return round(getrusage(RUSAGE_SELF).ru_maxrss / (1024 * 1024), 2)
+    if os.name == "nt":
+        _memory_bytes, peak_rss_bytes = _windows_memory_counters()
+        return round(peak_rss_bytes / (1024 * 1024), 2)
+    from resource import RUSAGE_SELF, getrusage
+
+    return round(getrusage(RUSAGE_SELF).ru_maxrss / 1024, 2)
 
 
 def _sizes(path: Path) -> dict[str, int]:
