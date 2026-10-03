@@ -212,7 +212,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "inline_json",
             "operation",
             "params",
-            note="One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. No paid checks or mutations.",
+            note="One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations.",
         ),
     ),
     _command("metrika-counters", "metrika_counters", _form("local_config")),

@@ -64,7 +64,7 @@ def test_dedicated_refs_resolve_to_real_integrations():
     import importlib
 
     dedicated = {ref.name for row in WORKFLOWS for ref in row.providers if ref.kind == "dedicated"}
-    assert dedicated == {"dataforseo", "yandex_cloud", "arsenkin", "indexnow"}
+    assert dedicated == {"dataforseo", "yandex_cloud", "arsenkin", "indexnow", "topvisor"}
     for name in dedicated:
         module = importlib.import_module(f"seohead.data_sources.{name}")
         assert getattr(module, "SOURCE", name) == name
@@ -320,7 +320,17 @@ def test_keywords_exact_uses_the_dedicated_arsenkin_client(monkeypatch):
 
     result = handlers.keywords_exact(keywords=["synthetic kw"], wait=False)
     assert result["ok"] is True and result["task_id"] == 1
-    assert calls == [("keywords_frequency", {"keywords": ["synthetic kw"], "region": 225})]
+    assert calls == [
+        (
+            "wordstat",
+            {
+                "type": 1,
+                "regions": [225],
+                "ws": ["base", "overal"],
+                "queries": ["synthetic kw"],
+            },
+        )
+    ]
 
     assert [(ref.kind, ref.name) for ref in _row("yandex-exact-frequency").providers] == [
         ("dedicated", "arsenkin")

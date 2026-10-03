@@ -9,6 +9,8 @@ from typing import Any
 
 from seohead.data_sources.credentials import read
 
+SOURCE = "topvisor"
+
 ENDPOINTS = {
     "projects": "projects_2/projects",
     "competitors": "projects_2/competitors",
@@ -17,6 +19,14 @@ ENDPOINTS = {
     "history": "positions_2/history",
     "summary": "positions_2/summary",
 }
+
+# Documented result shapes: projects/competitors/groups/keywords return arrays;
+# history and summary return objects (history rows live at result.keywords).
+_LIST_OPERATIONS = frozenset({"projects", "competitors", "groups", "keywords"})
+
+# Provider envelope keys preserved verbatim when present. The continuation
+# signal is the presence of nextOffset, never len(result) == limit.
+_PAGE_META = ("nextOffset", "total", "limitedBy")
 
 
 class TopvisorError(RuntimeError):
@@ -29,7 +39,19 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def fetch(operation: str = "projects", params: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Fetch exactly one page from an allowlisted get endpoint; never launch checks."""
+    """Fetch exactly one page from an allowlisted get endpoint; never launch checks.
+
+    The returned page echoes the requested ``limit``/``offset`` separately from
+    provider metadata: ``nextOffset`` (its presence, not ``len(result)``, is the
+    continuation signal), ``total`` and ``limitedBy`` pass through when Topvisor
+    sends them. ``result`` keeps the provider shape — a list for
+    projects/competitors/groups/keywords, an object for history (rows at
+    ``result.keywords``) and summary. Inside history ``positionsData`` a
+    ``position`` is an integer ordinal rank; the provider's ``"--"`` marker
+    means the query had no position inside the checked depth — an unavailable
+    value, not rank 0 or 100 — and a requested date without an entry is a
+    missing observation, not zero movement.
+    """
     if operation not in ENDPOINTS:
         raise ValueError("Unsupported read operation")
     if params is not None and not isinstance(params, dict):
@@ -86,11 +108,20 @@ def fetch(operation: str = "projects", params: dict[str, Any] | None = None) -> 
         raise TopvisorError("Topvisor API errors: " + ("; ".join(details)[:1000] or "unspecified"))
     if "result" not in data:
         raise TopvisorError("Topvisor response has no result")
-    return {
+    result = data["result"]
+    if result is None:
+        raise TopvisorError("Topvisor returned a null result")
+    if not isinstance(result, list if operation in _LIST_OPERATIONS else dict):
+        raise TopvisorError(f"Topvisor {operation} returned an unexpected result type")
+    page = {
         "ok": True,
         "operation": operation,
         "limit": body["limit"],
         "offset": body["offset"],
         "page_only": True,
-        "result": data["result"],
+        "result": result,
     }
+    for key in _PAGE_META:
+        if key in data:
+            page[key] = data[key]
+    return page

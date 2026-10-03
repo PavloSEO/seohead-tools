@@ -834,10 +834,20 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Read existing Topvisor projects, competitors, groups, keywords, history or summary.
         Uses topvisor/access_token and topvisor/user_id under the central credential root
         (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100,
-        maximum 1000; increment offset explicitly. Non-project operations require project_id.
-        History regions_indexes are project region indexes, not geographic region IDs.
-        Does not launch checks, add/edit/delete records, or authorize paid operations.
-        Transport redirects are refused and provider errors are redacted."""
+        maximum 1000; the continuation signal is the provider's nextOffset — present on
+        non-final pages, absent on the last — not len(result) == limit. Provider total
+        and limitedBy pass through when sent, separate from the echoed request limit/offset.
+        projects/competitors/groups/keywords return arrays; history and summary return
+        objects (history rows at result.keywords; summary covers the two requested dates).
+        Non-project operations require project_id. History regions_indexes are project
+        region indexes (projects with show_searchers_and_regions:2), not geographic region
+        keys; summary takes the singular region_index. In positionsData, position is an
+        integer ordinal rank; "--" means the query had no position inside the checked
+        depth — unavailable, not rank 0 or 100 — and a requested date without an entry is
+        a missing observation. headers.dates lists dates actually returned; topsByDepth is
+        percent of queries in Top N; visitors, dynamics and tops are counts; avgs is an
+        average rank. Does not launch checks, add/edit/delete records, or authorize paid
+        operations. Transport redirects are refused and provider errors are redacted."""
         return _checked(handlers.topvisor_read(operation=operation, params=params))
 
     @mcp.tool(annotations=fetch, structured_output=True)
