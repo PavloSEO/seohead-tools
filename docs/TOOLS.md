@@ -339,7 +339,6 @@ reports and Git.
 
 ```bash
 seohead sources-doctor                                     # what is ready to run
-seohead sources-status --db ./sources.sqlite                 # offline coverage after an explicit sync
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10

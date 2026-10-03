@@ -155,6 +155,25 @@ def test_failed_fetch_stops_without_marking_the_period(tmp_path, monkeypatch):
     assert entry["rows"] == 0
 
 
+def test_adapter_exception_marks_failed_without_leaking_exception_text(tmp_path):
+    db = tmp_path / "sources.sqlite"
+
+    def raised(*_):
+        raise RuntimeError("synthetic credential text")
+
+    result = sources_db.sync(
+        db,
+        "gsc",
+        "p",
+        start_date="2026-01-01",
+        end_date="2026-01-01",
+        fetchers={"gsc": raised},
+    )
+    assert result["ok"] is False and result["attempted_days"] == 1
+    assert "synthetic credential text" not in str(result)
+    assert sources_db.status(db)["sources"][0]["coverage"]["failed"] == ["2026-01-01"]
+
+
 def test_incomplete_days_are_reported_and_refetched(tmp_path):
     db = tmp_path / "s.sqlite"
 

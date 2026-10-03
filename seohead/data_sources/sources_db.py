@@ -633,8 +633,22 @@ def sync(
         synced = attempted = rows_stored = 0
         incomplete: list[str] = []
         for chunk in _chunks(missing, spec.chunk_days):
+            attempted += len(chunk)
             for attempt in range(RETRIES + 1):
-                result = fetch(resource, chunk[0], chunk[-1])
+                try:
+                    result = fetch(resource, chunk[0], chunk[-1])
+                except Exception as exc:
+                    result = {
+                        "ok": False,
+                        "retry": False,
+                        "error": f"provider adapter raised {type(exc).__name__}",
+                    }
+                if not isinstance(result, dict):
+                    result = {
+                        "ok": False,
+                        "retry": False,
+                        "error": "provider adapter returned an invalid result",
+                    }
                 if result.get("ok") or result.get("retry") is False:
                     break
                 if attempt < RETRIES:
@@ -659,7 +673,17 @@ def sync(
                 result.get("complete"), bool
             ):
                 _mark_failed(connection, source, resource, chunk)
-                raise ValueError("provider fetcher must return rows list and complete boolean")
+                return {
+                    "ok": False,
+                    "source": source,
+                    "resource": resource,
+                    "error": "provider fetcher must return rows list and complete boolean",
+                    "failed_period": [chunk[0], chunk[-1]],
+                    "synced_days": synced,
+                    "attempted_days": attempted,
+                    "rows_stored": rows_stored,
+                    "db": str(path),
+                }
             try:
                 rows_stored += _store(
                     connection, source, resource, chunk, result["rows"], result["complete"]
@@ -677,7 +701,6 @@ def sync(
                     "rows_stored": rows_stored,
                     "db": str(path),
                 }
-            attempted += len(chunk)
             if result["complete"]:
                 synced += len(chunk)
             if not result["complete"]:
