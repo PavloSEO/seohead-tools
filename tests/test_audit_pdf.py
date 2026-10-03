@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from seohead.reports.audit_pdf import render_audit_pdf_html
@@ -467,6 +469,50 @@ def test_render_escapes_source_text_and_preserves_raw_evidence_fields():
     assert "Occurrences count" in html
     assert "https://example.invalid/каталог/" in html
     assert "https://example.invalid/last/" in html
+
+
+@pytest.mark.parametrize(
+    ("lang", "state", "expected_status"),
+    [
+        ("en", "unavailable", "Status: Unavailable"),
+        ("ru", "partial", "Статус: Частичный"),
+        ("en", "future_state", "Status: future_state"),
+    ],
+)
+def test_evidence_reference_is_human_readable_and_preserves_state(lang, state, expected_status):
+    model = _model()
+    model["findings"][0]["display"]["evidence_reference"] = {
+        "state": state,
+        "reason": "no stable saved-evidence reference is present",
+        "id": "evidence-1",
+        "source_table": "page_observations",
+        "observation_id": "observation-1",
+        "role": "finding",
+    }
+    original = deepcopy(model)
+
+    html = render_audit_pdf_html(model, lang=lang)
+
+    assert expected_status in html
+    assert "no stable saved-evidence reference is present" in html
+    assert (
+        "Evidence ID: evidence-1" in html
+        if lang == "en"
+        else "Идентификатор свидетельства: evidence-1" in html
+    )
+    assert (
+        "Source table: page_observations" in html
+        if lang == "en"
+        else "Таблица источника: page_observations" in html
+    )
+    assert (
+        "Observation ID: observation-1" in html
+        if lang == "en"
+        else "Идентификатор наблюдения: observation-1" in html
+    )
+    assert "Role: finding" in html if lang == "en" else "Роль: finding" in html
+    assert '{"id":"evidence-1"' not in html
+    assert model == original
 
 
 def test_large_synthetic_findings_keep_first_and_last_records_without_caps():
