@@ -2257,9 +2257,12 @@ def keywords_exact(
 
     The provider tool is ``wordstat`` with ``type=1``; there is no ``keywords_frequency`` tool, and
     asking for one answers ``404 WRONG_TOOL`` without billing. ``frequencies`` holds the flattened
-    ``{phrase: {"base": N, "quoted": N}}`` mapping, where ``quoted`` is the exact ``!W`` figure;
-    ``result`` keeps the raw provider payload. ``cleaned`` lists phrases whose punctuation had to
-    be stripped before sending, because the provider rejects the whole batch otherwise.
+    ``{phrase: {"base": N, "overal": N}}`` mapping, where ``overal`` is the provider's field for
+    the exact ``!W`` figure (``!WS``); ``quoted`` is the ``"WS"`` phrase operator and ``exact`` is
+    the ``[!WS]`` strict-order operator, so neither is reported as ``!W``. ``result`` keeps the
+    raw provider payload, ``warnings`` lists phrases with no data for the requested region or rows
+    the parser skipped, and ``cleaned`` lists phrases whose punctuation had to be stripped before
+    sending, because the provider rejects the whole batch otherwise.
     """
     if not keywords:
         raise ValueError("keywords required")
@@ -2275,7 +2278,6 @@ def keywords_exact(
 
     try:
         client = ArsenkinClient()
-        payload = wordstat_payload(list(keywords), region)
         # Report every phrase the provider would have rejected, so a caller comparing
         # frequencies against its own list can see which ones were measured differently.
         cleaned = {
@@ -2283,6 +2285,10 @@ def keywords_exact(
             for original in keywords
             if sanitize_wordstat_query(original) != str(original)
         }
+        try:
+            payload = wordstat_payload(list(keywords), region)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "code": "EMPTY_QUERIES", "cleaned": cleaned}
         task = client.set_task(WORDSTAT_TOOL, payload)
         if not wait:
             return {
@@ -2295,15 +2301,19 @@ def keywords_exact(
             }
         result = client.wait(task["task_id"])
         payload_result = result.get("result", result)
-        return {
+        parsed = parse_wordstat(payload_result, region)
+        response: dict[str, Any] = {
             "ok": True,
             "task_id": task["task_id"],
             "cost": task["cost"],
             "region": int(region),
             "cleaned": cleaned,
-            "frequencies": parse_wordstat(payload_result, region),
+            "frequencies": parsed["frequencies"],
             "result": payload_result,
         }
+        if parsed["warnings"]:
+            response["warnings"] = parsed["warnings"]
+        return response
     except MissingCredential as exc:
         return {"ok": False, "error": str(exc)}
     except ArsenkinError as exc:
