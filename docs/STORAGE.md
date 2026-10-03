@@ -180,6 +180,18 @@ direct script/stylesheet declarations and their capture state. Fetching referenc
 resource bodies is a separate explicit option. `audit.document_json` is the only authoritative stored audit
 snapshot; report formats render that document and do not compute new findings.
 
+Native audits bind hreflang relations to the selected retained document and
+its `language_evidence` context item. Their
+`summary.saved_corpus_derivations.internationalization` records raw labels and
+hrefs, normalized target identities, duplicate/conflicting label context,
+target status/indexability, each return-link verdict, and relation coverage.
+A complete target document with an empty declaration set proves a missing
+return link; an uncrawled target, unavailable body, ambiguous URL variant or
+partial population remains unmeasured. The audit emits
+`HREFLANG_MISSING_RETURN_LINK`, `HREFLANG_BROKEN_TARGET` and
+`HREFLANG_NOINDEX_TARGET` only from the corresponding measured evidence.
+Report builders read these saved results without fetching pages again.
+
 Existing report and comparison routes can take a scan path directly. The MCP
 `seo_report_build`, `seo_compare_crawls`, and SF audit summary, issues, and tasks
 tools accept the same path. If an `audit.json` next to a scan is different or

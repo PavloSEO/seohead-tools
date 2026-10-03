@@ -685,6 +685,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx)",
         "fix": "Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling.",
     },
+    "HREFLANG_NOINDEX_TARGET": {
+        "severity": "warning",
+        "source": "crawl:hreflang graph / SF:All Hreflang + Internal:All",
+        "message": "Hreflang alternate points to an observed noindex page",
+        "fix": "Use an indexable alternate URL or remove the noindex directive if that page should appear in search.",
+    },
     "HREFLANG_INVALID_CODE": {
         "severity": "warning",
         "source": "inlinks:All Hreflang",

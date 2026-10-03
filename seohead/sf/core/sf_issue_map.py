@@ -299,7 +299,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "HREFLANG_INCONSISTENT_CONFIRMATION",
         ),
         _c("Non-Canonical Return Links", "HREFLANG_NOT_CANONICAL"),
-        _g("Noindex Returns Links", "the indexability of an hreflang target is not cross-checked"),
+        _c("Noindex Returns Links", "HREFLANG_NOINDEX_TARGET"),
         _c("Incorrect Language & Region Codes", "HREFLANG_INVALID_CODE"),
         _c("Multiple Entries", "HREFLANG_MULTIPLE_ENTRIES"),
         _c("Not Using Canonical", "HREFLANG_NOT_CANONICAL"),

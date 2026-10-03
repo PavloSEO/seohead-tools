@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**162 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**163 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -199,6 +199,7 @@ python scripts/generate_checks_reference.py
 | `CANONICAL_TO_REDIRECT` | warning | SF-derived | Canonical points to a redirecting URL (3xx) | Point the canonical to the final 200-status URL; otherwise search engines must resolve conflicting canonical signals. |
 | `UNLINKED_CANONICAL` | warning | SF-derived | Canonical target has no hyperlink pointing to it anywhere in the crawl | Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional. |
 | `HREFLANG_BROKEN_TARGET` | warning | inlinks:All Hreflang | Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx) | Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling. |
+| `HREFLANG_NOINDEX_TARGET` | warning | crawl:hreflang graph / SF:All Hreflang + Internal:All | Hreflang alternate points to an observed noindex page | Use an indexable alternate URL or remove the noindex directive if that page should appear in search. |
 | `HREFLANG_INVALID_CODE` | warning | inlinks:All Hreflang | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | Use a valid language code, optionally followed by a valid region (e.g. en-GB, not en-UK). |
 | `HREFLANG_MULTIPLE_ENTRIES` | warning | inlinks:All Hreflang | The same hreflang value is declared more than once on the page | Declare each language/region combination exactly once; conflicting duplicates make the annotation ambiguous. |
 | `HREFLANG_MISSING_SELF_REFERENCE` | warning | inlinks:All Hreflang | Page declares hreflang alternates but does not reference itself | Every page in an hreflang set must include a self-referencing annotation for its own URL and language. |

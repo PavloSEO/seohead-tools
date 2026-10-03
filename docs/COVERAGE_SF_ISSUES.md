@@ -15,17 +15,17 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 125 | a registry check finds it |
+| check | 126 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
 | partial | 17 | we find part of it; the missing part is stated |
-| gap | 9 | we should find it and do not |
+| gap | 8 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **158 are found today**, 17 are
-found in part, 9 are gaps worth closing, and
+remaining 212 issues, **159 are found today**, 17 are
+found in part, 8 are gaps worth closing, and
 28 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
@@ -210,7 +210,7 @@ having, because the alternative is an absence nobody has noticed.
 | Missing Return Links | check | `HREFLANG_MISSING_RETURN_LINK` |  |
 | Inconsistent Language & Region Confirmation Links | check | `HREFLANG_INCONSISTENT_CONFIRMATION` |  |
 | Non-Canonical Return Links | check | `HREFLANG_NOT_CANONICAL` |  |
-| Noindex Returns Links | gap | — | the indexability of an hreflang target is not cross-checked |
+| Noindex Returns Links | check | `HREFLANG_NOINDEX_TARGET` |  |
 | Incorrect Language & Region Codes | check | `HREFLANG_INVALID_CODE` |  |
 | Multiple Entries | check | `HREFLANG_MULTIPLE_ENTRIES` |  |
 | Not Using Canonical | check | `HREFLANG_NOT_CANONICAL` |  |

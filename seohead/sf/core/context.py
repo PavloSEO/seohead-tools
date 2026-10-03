@@ -48,6 +48,9 @@ class AuditContext:
         # Native scan callers may provide a cursor-backed graph reader.  Export
         # callers leave this unset and retain the established DataFrame path.
         self.graph_access = graph_access
+        # Native retained scans can supply complete, document-bound hreflang
+        # relations. Export audits retain the established DataFrame path.
+        self.native_hreflang: dict[str, Any] | None = None
         # Where the crawl actually started, when the producer knows. A native crawl
         # does; a Screaming Frog export carries no such field, and the checks that
         # need one fall back to Crawl Depth 0 -- but only when exactly one page has

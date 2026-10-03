@@ -1097,12 +1097,38 @@ def _audit_crawl_result(
         evidence = build_evidence(
             result, inlink_counts=counts, stored_graph_available=stored_graph_available
         )
+        # A crawl may have parsed a response in memory while its body was too
+        # large to retain. The SF-shaped quality checks must not treat those
+        # volatile declarations as inspectable native evidence (#825).
+        if "all_hreflang" in evidence["frames"]:
+            complete_sources = {
+                row[0]
+                for row in stored_scan.con.execute(
+                    "SELECT u.url FROM pages p JOIN urls u USING(url_id) "
+                    "JOIN documents d ON d.document_id=p.document_id "
+                    "WHERE d.body_state='complete' AND d.body_sha256 IS NOT NULL"
+                )
+            }
+            frame = evidence["frames"]["all_hreflang"]
+            frame = frame[frame["Source"].isin(complete_sources)].copy()
+            if frame.empty:
+                evidence["frames"].pop("all_hreflang")
+                evidence["found"].remove("all_hreflang")
+                evidence["missing"].append("all_hreflang")
+            else:
+                evidence["frames"]["all_hreflang"] = frame
     exports = LoadedExports()
     exports.frames.update(evidence["frames"])
     exports.found = list(evidence["found"])
     exports.missing = list(evidence["missing"])
 
     ctx = AuditContext(exports, load_config(None))
+    saved_corpus = None
+    if stored_scan is not None:
+        from seohead.sf.core.corpus_derivations import derive
+
+        saved_corpus = derive(stored_scan.con)
+        ctx.native_hreflang = saved_corpus["internationalization"]
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
     # 0 for every seeded URL, so the click-depth walk would start from an
@@ -1434,7 +1460,7 @@ def _audit_crawl_result(
             "SELECT scan_uuid FROM scan WHERE singleton=1"
         ).fetchone()[0]
         audit = attach_contract(audit, scan_uuid=scan_identity, con=stored_scan.con)
-        audit = attach_saved_corpus(audit, stored_scan.con)
+        audit = attach_saved_corpus(audit, stored_scan.con, derived=saved_corpus)
 
     tasks_written: dict[str, str] = {}
     if out_dir:

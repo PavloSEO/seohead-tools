@@ -1,7 +1,7 @@
 # Audit coverage — the gap map
 
 **Purpose.** The list of SEO checks our SF audit
-(`seohead/sf/core/registry.py`, 162 checks) still **lacks**. For every gap:
+(`seohead/sf/core/registry.py`, 163 checks) still **lacks**. For every gap:
 value, implementation mode, likely home in the code. This is a filling plan,
 not a bug report. Items implemented since this map was written are marked
 **DONE**.
@@ -59,7 +59,7 @@ from different starting lists; read both before filing a new gap.
 
 **Context.** `SLOW_RESPONSE` already catches a slow server, but it is no
 substitute for real CWV — Google ranks by LCP/INP/CLS. This is the largest
-qualitative gap: none of the 162 checks measures them directly. (Lab LCP/CLS
+qualitative gap: none of the 163 checks measures them directly. (Lab LCP/CLS
 from one Chromium run exist in the live `render-check` as `metrics_lab` —
 labelled lab, not field.)
 
@@ -151,10 +151,10 @@ separate class (they need the full page set, which mode B already has).
 
 ---
 
-## 7. hreflang — detail (currently one aggregated `HREFLANG_ERROR`)
+## 7. hreflang — relation and target detail
 
-The native SF hreflang export merges everything into one filter. Splitting
-into separate ids pays off in precise fix scenarios in the report.
+The SF Issues tab groups hreflang defects. Separate registry IDs make each
+measured relation and target defect actionable in the report.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
@@ -162,9 +162,9 @@ into separate ids pays off in precise fix scenarios in the report.
 | 7.2 | No self-reference | No hreflang link to the page itself | medium | **DONE** (issue #30) — `HREFLANG_MISSING_SELF_REFERENCE` | `inlinks.py` |
 | 7.3 | lang ≠ page language | Self-reference hreflang disagrees with `<html lang>` | medium | B+ — still open; `<html lang>` is not a column `Internal:All` exports | `HREFLANG_LANG_MISMATCH` |
 | 7.4 | Relative URL in hreflang | `href` not absolute | low | B+ — still open; the bulk hreflang export resolves `href` before SF writes it, so a relative-vs-absolute check needs the raw markup | `HREFLANG_RELATIVE` |
-| 7.5 | No return link | A->B exists, B->A does not | **high** | B (graph over the hreflang export) — still open, tracked under reciprocity in #15, not duplicated here | `HREFLANG_NO_RETURN` |
+| 7.5 | No return link | A->B exists, B->A does not | **high** | **DONE** — `HREFLANG_MISSING_RETURN_LINK`; native retained declarations distinguish a measured missing return from an unmeasured target (#825) | `inlinks.py` |
 | 7.6 | hreflang -> non-canonical | The target is itself canonicalized elsewhere | medium | **DONE** (issue #30) — `HREFLANG_NOT_CANONICAL` | `inlinks.py` |
-| 7.7 | hreflang -> noindex | The target is closed from indexing | medium | B (graph) — still open | `HREFLANG_TO_NOINDEX` |
+| 7.7 | hreflang -> noindex | The target is closed from indexing | medium | **DONE** — `HREFLANG_NOINDEX_TARGET` over observed target evidence (#825) | `inlinks.py` |
 | 7.8 | hreflang -> redirect/4xx | The target is broken or redirecting | **high** | **DONE** — `HREFLANG_BROKEN_TARGET` | `inlinks.py` |
 | 7.9 | Duplicate lang per target | One URL listed with different `lang`s from different sources | medium | B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang) | `HREFLANG_MULTI_LANG` |
 | 7.10 | Duplicate lang per source | One page declares the same hreflang value more than once | medium | **DONE** (issue #30) — `HREFLANG_MULTIPLE_ENTRIES` | `inlinks.py` |
@@ -173,9 +173,9 @@ into separate ids pays off in precise fix scenarios in the report.
 
 **Context.** The live `seo_hreflang_check` (x-default, self-reference,
 duplicates, malformed codes) validates one URL's own markup by live fetch;
-7.1/7.2/7.6/7.10/7.11 above now cover the equivalent ground for a whole
+7.1/7.2/7.5/7.6/7.7/7.10/7.11 above now cover the equivalent ground for a whole
 crawl from the bulk hreflang export, reusing that tool's ISO validator
-instead of re-implementing it (issue #30). 7.3/7.4/7.5/7.7/7.9/7.12 remain
+instead of re-implementing it (issues #30 and #825). 7.3/7.4/7.9/7.12 remain
 open.
 
 ---
@@ -336,9 +336,9 @@ mode B without network ranks higher.
 1. **Canonical -> 4xx/5xx and canonical -> homepage stamp** (§6.3–6.4) —
    **high**, **mode B**, extends `check_canonical_directives`. Cheap, high
    SEO value: breaks indexing silently and at scale.
-2. **hreflang -> no return link and -> non-canonical** (§7.5–7.7) —
-   **high**, **mode B**, graph over the hreflang export. Critical for
-   international sites.
+2. **Remaining hreflang label/placement gaps** (§7.3–7.4, §7.9, §7.12) —
+   **medium**, requires raw markup or complete retained graph evidence. Return
+   links, canonical targets and observed noindex alternates are covered.
 3. **Real Core Web Vitals (LCP/INP/CLS)** (§1.1) — **high**, **A/live**
    via PSI/CrUX. The only direct ranking factor on the list; without it
    the audit is incomplete.
