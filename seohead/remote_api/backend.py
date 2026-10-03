@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from seohead.recon.remote_policy import RemoteEgressPolicy, RemoteTargetError
+from seohead.recon.remote_policy import RemoteEgressPolicy
 from seohead.remote_api.contracts import (
     ArtifactReference,
     JobConflict,
@@ -646,6 +646,8 @@ class SQLiteJobBackend:
     def _artifact_metadata(
         self, project_id: str, job_id: str, paths: Mapping[str, Path]
     ) -> list[tuple[str, str, str, str, str, str, int, str]]:
+        if not paths:
+            return []
         types = {
             "scan": "application/vnd.sqlite3",
             "audit_json": "application/json",
@@ -743,7 +745,7 @@ class SQLiteJobBackend:
         job_id = row["job_id"]
         project_id = row["project_id"]
         limits = self.projects[project_id]
-        job_dir = self._job_dir(project_id, job_id, create=True)
+        job_dir = self.root / "projects" / project_id / job_id
         scan_path = job_dir / "scan.sqlite"
         artifacts: dict[str, Path] = {}
         stop_heartbeat = threading.Event()
@@ -770,6 +772,7 @@ class SQLiteJobBackend:
         thread = threading.Thread(target=heartbeat, name="seohead-job-heartbeat", daemon=True)
         thread.start()
         try:
+            self._job_dir(project_id, job_id, create=True)
             request = ScanSubmission.model_validate_json(row["request_json"])
             config = json.loads(row["config_json"])
             if config != request.options.effective_config():
@@ -868,7 +871,19 @@ class SQLiteJobBackend:
                 audit_reason="project resource budget reached",
                 artifacts=artifacts,
             )
-        except (Exception, RemoteTargetError):
+        except OSError:
+            if scan_path.is_file() and not scan_path.is_symlink():
+                artifacts["scan"] = scan_path
+            return self._finalize(
+                row,
+                worker_id,
+                state="failed",
+                reason="storage_failure",
+                audit_available=False,
+                audit_reason="job storage failed before a complete audit",
+                artifacts=artifacts,
+            )
+        except Exception:
             if scan_path.is_file() and not scan_path.is_symlink():
                 artifacts["scan"] = scan_path
             return self._finalize(

@@ -154,7 +154,7 @@ def create_app(
     also scope its query by project. The API enforces both project grants and a
     second project-id check on returned records.
     """
-    required = ("submit", "list_jobs", "get_job", "cancel_job", "get_result")
+    required = ("submit", "list_jobs", "get_job", "cancel_job", "get_result", "artifact_path")
     if backend is None or any(not callable(getattr(backend, name, None)) for name in required):
         raise ValueError("a remote job backend with all job operations is required")
     if authenticator is None or not callable(getattr(authenticator, "authenticate", None)):
@@ -320,7 +320,8 @@ def create_app(
         actor: Principal = Depends(principal),
     ) -> FileResponse:
         access(project_id, actor, "scan:result")
-        visible(backend.get_job(project_id, checked_job_id(job_id)), project_id)
+        job_id = checked_job_id(job_id)
+        visible(backend.get_job(project_id, job_id), project_id, job_id)
         if not re.fullmatch(r"[0-9a-f]{32}", artifact_id):
             raise ApiFault(404, "not_found", "artifact was not found")
         path = backend.artifact_path(project_id, job_id, artifact_id)

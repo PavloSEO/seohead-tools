@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -116,6 +117,16 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     scan_ref = next(item for item in result["artifacts"] if item["kind"] == "scan")
     path = backend.artifact_path("alpha", job_id, scan_ref["artifact_id"])
     assert path is not None and path.name == "scan.sqlite"
+    with sqlite3.connect(path) as scan_db:
+        stored_config = scan_db.execute(
+            "SELECT config_json FROM scan WHERE singleton=1"
+        ).fetchone()[0]
+    assert (
+        json.loads(stored_config)
+        == ScanSubmission(
+            target_url=SITE, options={"max_urls": 1, "max_requests": 20}
+        ).options.effective_config()
+    )
     download = api.get(
         f"{SCANS_A}/{job_id}/artifacts/{scan_ref['artifact_id']}", headers=_headers()
     )
@@ -135,6 +146,14 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     md_path = backend.artifact_path("alpha", job_id, md_ref["artifact_id"])
     assert md_path is not None
     md_path.unlink()
+    md_path.symlink_to(path)
+    assert backend.artifact_path("alpha", job_id, md_ref["artifact_id"]) is None
+    assert (
+        api.get(
+            f"{SCANS_A}/{job_id}/artifacts/{md_ref['artifact_id']}", headers=_headers()
+        ).status_code
+        == 404
+    )
     degraded = backend.get_result("alpha", job_id)
     assert degraded is not None and degraded.coverage == "partial"
     assert degraded.audit_reason == "required report artifact unavailable"
@@ -430,6 +449,43 @@ def test_claims_enforce_global_and_project_slots(monkeypatch, tmp_path):
     assert third["job_id"] == jobs[1].job_id
 
 
+def test_heartbeat_renews_lease_and_expiry_fences_stale_worker(monkeypatch, tmp_path):
+    _network(monkeypatch)
+    clock = [1_700_000_000.0]
+    backend = _backend(tmp_path, now=lambda: clock[0], lease_seconds=3)
+    request = ScanSubmission(target_url=SITE)
+    job = backend.submit(
+        "alpha",
+        "operator",
+        "lease-key",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    claimed = backend._claim("worker-a")
+    assert claimed["job_id"] == job.job_id
+    clock[0] += 2
+    assert backend._heartbeat(job.job_id, "worker-a")
+    clock[0] += 2
+    assert backend.recover_expired() == 0
+    clock[0] += 2
+    assert backend.recover_expired() == 1
+    assert backend.get_job("alpha", job.job_id).finish_reason == "worker_lease_expired"
+    assert (
+        backend._finalize(
+            claimed,
+            "worker-a",
+            state="finished",
+            reason="finished",
+            audit_available=True,
+            audit_reason="",
+            artifacts={},
+        )
+        is None
+    )
+    assert backend.get_job("alpha", job.job_id).state == "failed"
+
+
 def test_actual_collector_honors_cancellation_before_result_publication(monkeypatch, tmp_path):
     _network(monkeypatch)
     backend = _backend(tmp_path)
@@ -490,6 +546,32 @@ def test_project_disk_limit_stops_worker_at_progress_boundary(monkeypatch, tmp_p
     backend._project_usage = original_usage
     assert ended is not None and ended.state == "failed"
     assert ended.finish_reason == "project_resource_limit"
+
+
+def test_storage_creation_failure_is_terminal_and_safe(monkeypatch, tmp_path):
+    _network(monkeypatch)
+    backend = _backend(tmp_path)
+    request = ScanSubmission(target_url=SITE)
+    job = backend.submit(
+        "alpha",
+        "operator",
+        "storage-key",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    original = backend._job_dir
+
+    def no_space(project_id, job_id, *, create=False):
+        if create:
+            raise OSError("synthetic disk full at /private/path?token=secret")
+        return original(project_id, job_id, create=create)
+
+    monkeypatch.setattr(backend, "_job_dir", no_space)
+    ended = backend.run_one("worker-a")
+    assert ended is not None and ended.state == "failed"
+    assert ended.finish_reason == "storage_failure"
+    assert "secret" not in json.dumps(backend.events("alpha", job.job_id))
 
 
 def test_retention_removes_finished_artifacts_and_tombstone_recovery(monkeypatch, tmp_path):
