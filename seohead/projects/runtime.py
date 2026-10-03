@@ -608,7 +608,7 @@ def aggregate_coverage(directory: str, primary: dict) -> dict:
                             if merged[key] is None or axis[key] is None
                             else merged[key] + axis[key]
                         )
-                for key in ("excluded", "pending_exclusion", "unfinished"):
+                for key in ("excluded", "pending_exclusion", "not_agreed", "unfinished"):
                     if key in merged:
                         merged[key] += axis[key]
                 for key in ("unverified_measurements",):

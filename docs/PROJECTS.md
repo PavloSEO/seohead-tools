@@ -94,14 +94,24 @@ seohead project checklist-init --directory ./example-project
 ```
 
 `checklist-init` also accepts an optional `plan` recording the agreed audit
-scope: who agreed it (`reviewer`) and the URL `population` it covers. A
-population declares a `kind` — `complete_set` for a known full population,
-`sample` for a named agreed sample, or `unknown` when no population was agreed
-— plus a `source` saying where it came from, and either a `size` or an
-enumerated `urls` list it derives its size from (per-template populations sit
-under `templates`). `unknown` carries no size or URLs, only a reason. Recording
-a plan upgrades the checklist to `seohead.coverage.v3`; reading or reconciling
-without a plan never upgrades or invents a population.
+scope: who agreed it (`reviewer`), the URL `population` it covers, and the
+agreed `tasks` set. A population declares a `kind` — `complete_set` for a
+known full population, `sample` for a named agreed sample, or `unknown` when
+no population was agreed — plus a `source` saying where it came from, and
+either a `size` or an enumerated `urls` list it derives its size from
+(per-template populations sit under `templates`). `unknown` carries no size
+or URLs, only a reason. `tasks` is `{kind: all_agreed}` — the default, every
+checklist item is agreed — or `{kind: selection, ids, source}` naming the
+agreed item IDs, which must already exist in the reconciled checklist. Items
+outside a selection stay visible as `not_agreed` and sit outside every
+denominator; they were never agreed, so they need no exclusion review.
+Recording a plan upgrades the checklist to `seohead.coverage.v3` and appends
+to a retained plan history; status returns the current `plan` plus earlier
+agreements under `plan_history`. Re-recording an identical agreement is an
+idempotent no-op, while a changed agreement starts a new plan revision:
+evidence recorded under an earlier plan revision is marked stale rather than
+re-evaluated against the new scope. Reading or reconciling without a plan
+never upgrades or invents a population.
 
 ```bash
 seohead project checklist-init --directory ./example-project \
@@ -195,7 +205,10 @@ Automatic completion binds a registered check to a validated SQLite artifact
 under `scans/` or `reports/`, verifies the saved check outcome and site identity,
 and records its digest, producer/configuration, time, and measured population.
 A template requires explicit sample URLs matching that artifact's population.
-Partial measurements remain limited even when the step completed. This metadata
+Partial measurements remain limited even when the step completed: an item
+whose scope is the whole site stays unfinished until a complete observation,
+while an item scoped to explicit sample URLs finishes once the artifact
+covers exactly those URLs. This metadata
 records provenance and detects changed local bytes; it is not independent
 attestation of how an artifact was produced.
 
@@ -216,16 +229,28 @@ signoffs and approved deliverables over their own applicable sets; and
 `url_population` counts distinct eligible URLs covered by fresh measurements
 over the agreed plan population — never a row or finding count. Each axis
 states its `basis`, `numerator`, `denominator` and a `state`; task axes also
-carry `excluded`, `pending_exclusion` and `unfinished` counts, and the URL
-axis carries `measured_urls`, `unverified_measurements` and the population
-kind/name. A denominator that cannot be
+carry `excluded`, `pending_exclusion`, `not_agreed` and `unfinished` counts,
+and the URL axis carries `measured_urls`, `unverified_measurements` and the
+population kind/name. A denominator that cannot be
 justified — no recorded plan or an `unknown` population — is `null` with a
 `state` of `unknown` and a reason, never coerced to 0/0 or reported as 100%;
 measurements that cannot be verified against the agreed population keep the
-axis `partial` and count only verified URLs. A measurement that covers its explicit sample
-completes that task's scope but cannot establish full-site coverage; missing
+axis `partial` and count only verified URLs. The URL axis is a single
+site-level ratio: a template-scoped measurement verifies membership against
+its template's declared population when one is recorded, otherwise against
+the site population. Membership is verified against the agreed enumeration:
+a population declared only by `size` cannot prove
+which measured URLs belong to it, so its numerator stays at the verified
+count and the axis reports the unverifiable measurements instead of letting
+the numerator pass its denominator. A measurement that covers its explicit sample
+completes that task's scope but cannot establish full-site coverage; a
+site-scoped check backed by a partial scan stays unfinished. Missing
 inputs, unavailable checks, partial scans and stale evidence all remain
-unfinished. Multi-site aggregation sums these axes per site and degrades to
+unfinished. The top-level `complete` flag requires every applicable agreed
+task finished, no pending exclusions, and the agreed URL population fully
+covered by verified measurements — a checklist with no recorded scope, an
+`unknown` population, or uncovered eligible URLs never reports a completed
+audit. Multi-site aggregation sums these axes per site and degrades to
 `unknown` whenever any site cannot justify its denominator.
 
 Writes use an exclusive `.coverage.lock`, optimistic revisions and atomic file

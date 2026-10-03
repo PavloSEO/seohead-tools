@@ -21,7 +21,7 @@ def project(tmp_path):
     return root
 
 
-def plan(**population):
+def plan(tasks=None, **population):
     return {
         "reviewer": "Lead auditor",
         "population": {
@@ -33,6 +33,7 @@ def plan(**population):
             "templates": None,
             **population,
         },
+        **({"tasks": tasks} if tasks is not None else {}),
     }
 
 
@@ -48,8 +49,8 @@ def row(status, item_id):
     return next(item for item in status["items"] if item["id"] == item_id)
 
 
-def init_scoped(project, **population):
-    return initialize_coverage(project, plan=plan(**population))
+def init_scoped(project, tasks=None, **population):
+    return initialize_coverage(project, plan=plan(tasks, **population))
 
 
 def scoped_check(project, urls=None, template=None):
@@ -131,14 +132,71 @@ def test_sized_but_unenumerated_population_stays_unverifiable(project):
         artifact="scans/source.sqlite",
     )
     axis = status["coverage"]["url_population"]
-    assert axis["denominator"] == 50 and axis["numerator"] == 1
-    assert axis["state"] == "measured"
+    assert axis["denominator"] == 50 and axis["numerator"] == 0
+    assert axis["state"] == "partial" and axis["unverified_measurements"] == 1
+    assert axis["measured_urls"] == 1
     init_scoped(project, kind="sample", name="unlisted sample", size=50)
     status = coverage_status(project)
     axis = status["coverage"]["url_population"]
     assert axis["denominator"] == 50 and axis["numerator"] == 0
-    assert axis["state"] == "partial"
-    assert axis["unverified_measurements"] == 1
+    assert axis["state"] == "measured" and axis["unverified_measurements"] == 0
+    assert row(status, "custom:scoped-check")["stale"]
+
+
+def _mark_partial(path):
+    """Flag the retained fixture scan as a partial crawl, keeping audit and header aligned."""
+    import hashlib
+    import sqlite3
+
+    con = sqlite3.connect(path)
+    con.execute("UPDATE scan SET crawl_partial=1 WHERE singleton=1")
+    audit = json.loads(
+        con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()[0]
+    )
+    audit["run"]["crawl_partial"] = True
+    raw = json.dumps(audit)
+    con.execute(
+        "UPDATE audit SET document_json=?, sha256=? WHERE singleton=1",
+        (raw, hashlib.sha256(raw.encode()).hexdigest()),
+    )
+    con.commit()
+    con.close()
+
+
+def test_limited_measurement_does_not_complete_a_site_scoped_task(project):
+    init_scoped(project, kind="complete_set", urls=["https://example.test/"])
+    _source(project / "scans/source.sqlite")
+    _mark_partial(project / "scans/source.sqlite")
+    scoped_check(project)
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan stopped before the crawl finished",
+        artifact="scans/source.sqlite",
+    )
+    measured = row(status, "custom:scoped-check")
+    assert measured["state"] == "run" and not measured["complete"]
+    assert measured["measurement"]["state"] == "limited"
+    assert "custom:scoped-check" in status["views"]["remaining"]
+    assert status["coverage"]["audit_tasks"]["unfinished"] >= 1
+    assert status["complete"] is False
+
+
+def test_bounded_scope_may_complete_even_from_a_partial_source(project):
+    init_scoped(project, kind="sample", name="one page", urls=["https://example.test/"])
+    _source(project / "scans/source.sqlite")
+    _mark_partial(project / "scans/source.sqlite")
+    scoped_check(project, urls=["https://example.test/"])
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan covered the whole declared sample scope",
+        artifact="scans/source.sqlite",
+    )
+    measured = row(status, "custom:scoped-check")
+    assert measured["complete"] and measured["measurement"]["state"] == "limited"
 
 
 def test_unknown_population_returns_no_denominator_with_a_reason(project):
@@ -339,7 +397,11 @@ def test_removed_catalogue_item_keeps_its_denominator_membership(project, monkey
         reviewer="Lead auditor",
         evidence="Retired from the packaged catalogue",
     )
-    assert row(status, item_id)["applicability"] == "pending_exclusion"
+    removed = row(status, item_id)
+    assert removed["applicability"] == "excluded"
+    assert removed["exclusion"]["basis"] == {"evidence": "Retired from the packaged catalogue"}
+    assert status["counts"]["excluded"] == 1
+    assert status["counts"]["total"] == total - 1
 
 
 def test_stale_definition_returns_an_exclusion_to_pending_review(project):
@@ -445,6 +507,178 @@ def test_second_plan_replaces_the_agreement_with_a_new_revision(project):
     second = init_scoped(project, kind="complete_set", urls=["https://example.test/"])
     assert second["plan"]["revision"] == second["revision"] > first["plan"]["revision"]
     assert second["coverage"]["url_population"]["denominator"] == 1
+    history = second["plan_history"]
+    assert len(history) == 1 and history[0]["revision"] == first["plan"]["revision"]
+    assert history[0]["population"]["kind"] == "unknown"
+
+
+def test_identical_plan_is_an_idempotent_reconcile_not_a_new_agreement(project):
+    agreed = init_scoped(project, kind="complete_set", urls=["https://example.test/"])
+    _source(project / "scans/source.sqlite")
+    scoped_check(project, urls=["https://example.test/"])
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan under the standing agreement",
+        artifact="scans/source.sqlite",
+    )
+    assert row(status, "custom:scoped-check")["complete"]
+    revision = status["revision"]
+    status = init_scoped(project, kind="complete_set", urls=["https://example.test/"])
+    assert status["revision"] == revision
+    assert status["plan_history"] == []
+    assert status["plan"]["revision"] == agreed["plan"]["revision"]
+    measured = row(status, "custom:scoped-check")
+    assert measured["complete"] and not measured["stale"]
+
+
+def test_newer_plan_invalidates_earlier_evidence_without_deleting_it(project):
+    init_scoped(project, kind="unknown", reason="Population pending agreement")
+    _source(project / "scans/source.sqlite")
+    scoped_check(project, urls=["https://example.test/"])
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan under the first agreement",
+        artifact="scans/source.sqlite",
+    )
+    assert row(status, "custom:scoped-check")["complete"]
+    status = init_scoped(project, kind="complete_set", urls=["https://example.test/"])
+    measured = row(status, "custom:scoped-check")
+    assert measured["stale"] and not measured["complete"]
+    assert "predates the current agreed audit scope" in measured["reason"]
+    assert measured["attempts"] == 1 and measured["state"] == "not_run"
+    assert status["coverage"]["url_population"]["numerator"] == 0
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan re-verified under the new agreement",
+        artifact="scans/source.sqlite",
+    )
+    measured = row(status, "custom:scoped-check")
+    assert measured["complete"] and not measured["stale"]
+    assert measured["attempts"] == 2
+
+
+def test_selection_task_agreement_scopes_the_applicable_denominator(project):
+    initialize_coverage(project)
+    scoped_check(project, urls=["https://example.test/"])
+    catalogue_rows = len(coverage_status(project)["items"])
+    status = init_scoped(
+        project,
+        kind="complete_set",
+        urls=["https://example.test/"],
+        tasks={
+            "kind": "selection",
+            "ids": ["custom:scoped-check"],
+            "source": "Agreed audit scope memo 2026-10-01",
+        },
+    )
+    assert status["plan"]["tasks"]["kind"] == "selection"
+    assert status["counts"]["total"] == 1
+    assert status["counts"]["not_agreed"] == catalogue_rows - 1
+    tasks = status["coverage"]["audit_tasks"]
+    assert tasks["denominator"] == 1 and tasks["not_agreed"] == catalogue_rows - 1
+    assert "check:BROKEN_PAGE_4XX" in status["views"]["not_agreed"]
+    _source(project / "scans/source.sqlite")
+    status = record(
+        project,
+        "custom:scoped-check",
+        status="succeeded",
+        reason="Saved fixture scan covers the agreed URL",
+        artifact="scans/source.sqlite",
+    )
+    assert status["coverage"]["audit_tasks"]["numerator"] == 1
+    assert status["coverage"]["url_population"]["numerator"] == 1
+    assert status["complete"] is True
+
+
+def test_selection_requires_existing_items_and_a_source(project):
+    initialize_coverage(project)
+    with pytest.raises(ValueError, match="must exist"):
+        init_scoped(
+            project,
+            kind="complete_set",
+            urls=["https://example.test/"],
+            tasks={
+                "kind": "selection",
+                "ids": ["custom:not-added-yet"],
+                "source": "Agreed audit scope memo 2026-10-01",
+            },
+        )
+    scoped_check(project)
+    for tasks, match in (
+        (
+            {
+                "kind": "selection",
+                "ids": [],
+                "source": "Agreed audit scope memo 2026-10-01",
+            },
+            "nonempty",
+        ),
+        ({"kind": "selection", "ids": ["custom:scoped-check"]}, "sourced selection"),
+        (
+            {
+                "kind": "selection",
+                "ids": ["custom:scoped-check", "custom:scoped-check"],
+                "source": "Agreed audit scope memo 2026-10-01",
+            },
+            "duplicate",
+        ),
+        ({"kind": "unknown"}, "task agreement"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            init_scoped(
+                project,
+                kind="complete_set",
+                urls=["https://example.test/"],
+                tasks=tasks,
+            )
+
+
+def test_all_tasks_done_with_unknown_population_is_not_a_complete_audit(project):
+    initialize_coverage(project)
+    edit(project, id="custom:review-task")
+    status = init_scoped(
+        project,
+        kind="unknown",
+        reason="Population pending agreement",
+        tasks={
+            "kind": "selection",
+            "ids": ["custom:review-task"],
+            "source": "Agreed audit scope memo 2026-10-01",
+        },
+    )
+    status = record(
+        project,
+        "custom:review-task",
+        status="succeeded",
+        reason="Reviewed by a specialist",
+        reviewer="Specialist",
+        signoff=True,
+    )
+    assert status["coverage"]["audit_tasks"]["numerator"] == 1
+    assert status["coverage"]["url_population"]["state"] == "unknown"
+    assert status["complete"] is False
+
+
+def test_legacy_single_plan_document_still_loads(project):
+    initialize_coverage(project)
+    init_scoped(project, kind="unknown", reason="Population pending agreement")
+    path = project / "coverage.json"
+    document = json.loads(path.read_text())
+    document["plan"] = document.pop("plans")[0]
+    path.write_text(json.dumps(document))
+    status = coverage_status(project)
+    assert status["plan"]["population"]["kind"] == "unknown"
+    assert status["plan"]["tasks"] == {"kind": "all_agreed"}
+    assert status["plan_history"] == []
+    status = init_scoped(project, kind="complete_set", urls=["https://example.test/"])
+    assert status["plan"]["population"]["kind"] == "complete_set"
+    assert len(status["plan_history"]) == 1
 
 
 def test_aggregate_merges_axes_without_fabricating_denominators(tmp_path):

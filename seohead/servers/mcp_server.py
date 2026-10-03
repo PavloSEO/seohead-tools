@@ -1082,13 +1082,20 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Initialize or reconcile a local checklist without executing a check, skill, or scenario.
 
         template is an optional data-only ``seohead.checklist-template.v1`` document. plan is an
-        optional agreed audit scope {reviewer, population}: population declares kind
+        optional agreed audit scope {reviewer, population, tasks}: population declares kind
         (``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
         ``source``, an optional ``name`` and ``reason``, and optional per-``templates``
-        populations; ``unknown`` keeps the URL denominator null with a reason. Recording a plan
-        upgrades the checklist to ``seohead.coverage.v3`` and never shrinks denominators. The
-        result returns the current state, revision, counts, coverage axes, views and items; use
-        that revision for a later conditional write. This never makes a network request.
+        populations; ``unknown`` keeps the URL denominator null with a reason. tasks is
+        ``{kind: all_agreed}`` or a sourced ``{kind: selection, ids, source}`` naming the agreed
+        checklist items; items outside a selection stay visible as ``not_agreed`` outside every
+        denominator. A size-only population cannot verify measured-URL membership, so its
+        numerator counts only enumerated URLs. Recording a plan upgrades the checklist to
+        ``seohead.coverage.v3`` and appends to the retained plan history; an identical
+        agreement is an idempotent no-op, while a changed agreement starts a new revision and
+        stale-marks evidence recorded under an earlier agreement instead of shrinking
+        denominators. The result
+        returns the current state, revision, counts, coverage axes, views and items; use that
+        revision for a later conditional write. This never makes a network request.
         """
         return _checked(
             handlers.project_checklist_init(

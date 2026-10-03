@@ -271,7 +271,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "inline_json",
             "plan",
-            note="Optional agreed scope plan that fixes the URL-population denominator.",
+            note="Optional agreed scope plan fixing the URL-population and task denominators.",
         ),
     ),
     _command(

@@ -143,24 +143,46 @@ def _population(value: Any, site: str, *, nested: bool = False) -> dict[str, Any
     return result
 
 
+def _tasks(value: Any) -> dict[str, Any]:
+    """Validate the agreed task set: the whole checklist or a sourced item selection."""
+    if value is None or value == {"kind": "all_agreed"}:
+        return {"kind": "all_agreed"}
+    if not isinstance(value, dict) or set(value) != {"kind", "ids", "source"}:
+        raise ValueError("task agreement is all_agreed or a sourced selection of item ids")
+    if value["kind"] != "selection":
+        raise ValueError("task agreement kind must be all_agreed or selection")
+    ids = value["ids"]
+    if not isinstance(ids, list) or not ids or len(ids) > 10000:
+        raise ValueError("task selection must be a nonempty bounded list")
+    for item_id in ids:
+        _identifier(item_id)
+    if len(set(ids)) != len(ids):
+        raise ValueError("duplicate agreed task id")
+    _text(value["source"], "task selection source", 512)
+    return {"kind": "selection", "ids": sorted(ids), "source": value["source"]}
+
+
 def _plan(value: Any, site: str) -> dict[str, Any]:
     """Validate the agreed audit scope recorded for a checklist."""
-    if not isinstance(value, dict) or set(value) != {"reviewer", "population"}:
+    if (
+        not isinstance(value, dict)
+        or not {"reviewer", "population"} <= set(value)
+        or set(value) - {"reviewer", "population", "tasks"}
+    ):
         raise ValueError("plan requires reviewer and population")
     return {
         "reviewer": _text(value["reviewer"], "plan reviewer", 128),
         "population": _population(value["population"], site),
+        "tasks": _tasks(value.get("tasks")),
     }
 
 
 def _stored_plan(value: Any, site: str) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {
-        "recorded_at",
-        "revision",
-        "reviewer",
-        "site",
-        "population",
-    }:
+    if (
+        not isinstance(value, dict)
+        or not {"recorded_at", "revision", "reviewer", "site", "population"} <= set(value)
+        or set(value) - {"recorded_at", "revision", "reviewer", "site", "population", "tasks"}
+    ):
         raise ValueError("invalid audit scope plan")
     _text(value["recorded_at"], "plan recording time", 128)
     if type(value["revision"]) is not int or value["revision"] < 1:
@@ -169,6 +191,7 @@ def _stored_plan(value: Any, site: str) -> dict[str, Any]:
     if value["site"] != site:
         raise ValueError("plan site identity does not match the project")
     _population(value["population"], site)
+    value["tasks"] = _tasks(value.get("tasks"))
     return value
 
 
@@ -429,12 +452,20 @@ def _read(root: Path, project: dict) -> dict | None:
             "revision",
             "items",
             "priority_policy",
-            "plan",
         }
         if document["format"] == FORMAT_V3
         else None
     )
-    if set(document) != expected_keys or type(document["version"]) is not int:
+    if expected_keys is None or type(document["version"]) is not int:
+        raise ValueError("unsupported coverage document shape")
+    if document["format"] == FORMAT_V3:
+        extra = set(document) - expected_keys
+        if extra not in ({"plan"}, {"plans"}):
+            raise ValueError("unsupported coverage document shape")
+        if "plan" in document:
+            # Normalize the single-plan v3 shape into the append-only history.
+            document["plans"] = [document.pop("plan")]
+    elif set(document) != expected_keys:
         raise ValueError("unsupported coverage document shape")
     if document["version"] != ({FORMAT: 1, FORMAT_V2: 2, FORMAT_V3: 3}[document["format"]]):
         raise ValueError("unsupported coverage version")
@@ -495,7 +526,15 @@ def _read(root: Path, project: dict) -> dict | None:
             _application_time(application["applied_at"])
             _priority_receipt(application["receipt"], set(document["items"]))
     if document["format"] == FORMAT_V3:
-        _stored_plan(document["plan"], project["site"]["target"])
+        plans = document["plans"]
+        if not isinstance(plans, list) or not plans or len(plans) > 10000:
+            raise ValueError("invalid audit scope plan history")
+        revision = 0
+        for entry in plans:
+            _stored_plan(entry, project["site"]["target"])
+            if entry["revision"] <= revision:
+                raise ValueError("audit scope plan revisions must increase")
+            revision = entry["revision"]
     _dependencies(document["items"])
     return document
 
@@ -717,17 +756,6 @@ def initialize_coverage(
     ):
         raise ValueError("unsupported checklist template")
     with _transaction(directory, expected_revision) as (_, project, document):
-        if plan is not None:
-            stored = _plan(plan, project["site"]["target"])
-            document["format"] = FORMAT_V3
-            document["version"] = 3
-            document.setdefault("priority_policy", {"applications": []})
-            document["plan"] = {
-                **stored,
-                "recorded_at": _now(),
-                "revision": document["revision"] + 1,
-                "site": project["site"]["target"],
-            }
         items = document["items"]
         for order, (item_id, entry) in enumerate(catalogue.items()):
             if item_id in items:
@@ -749,6 +777,28 @@ def initialize_coverage(
             seen.add(value.get("id"))
             previous = items.get(value.get("id"), {}).get("definition")
             _set(items, _custom(value, project["site"]["target"], catalogue, previous))
+        if plan is not None:
+            stored = _plan(plan, project["site"]["target"])
+            if stored["tasks"]["kind"] == "selection" and any(
+                item_id not in items for item_id in stored["tasks"]["ids"]
+            ):
+                raise ValueError("agreed task ids must exist in the reconciled checklist")
+            document["format"] = FORMAT_V3
+            document["version"] = 3
+            document.setdefault("priority_policy", {"applications": []})
+            agreement = {**stored, "site": project["site"]["target"]}
+            current = (document.get("plans") or [None])[-1]
+            if current is None or any(
+                current.get(key) != value for key, value in agreement.items()
+            ):
+                document.setdefault("plans", []).append(
+                    {
+                        **stored,
+                        "recorded_at": _now(),
+                        "revision": document["revision"] + 1,
+                        "site": project["site"]["target"],
+                    }
+                )
     return coverage_status(directory)
 
 
@@ -856,26 +906,27 @@ def _measured_urls(row: dict) -> tuple[set[str], bool]:
     return set(), not measurement.get("population")
 
 
-def _eligibility(row: dict, population: dict | None) -> set[str] | str | None:
-    """Return the agreed eligible URL set for a row: an enumeration, ``site``, or unverifiable."""
+def _eligibility(row: dict, population: dict | None) -> set[str] | None:
+    """Return the agreed eligible URL set for a row, or None when membership is unverifiable."""
     if not population or population["kind"] == "unknown":
         return None
     template = row["scope"]["template"]
-    templates = population.get("templates", {})
-    if template and template in templates:
-        entry = templates[template]
+    entry = population.get("templates", {}).get(template) if template else None
+    if entry is not None:
         return set(entry["urls"]) if entry["urls"] else None
     if population["urls"]:
         return set(population["urls"])
-    if population["kind"] == "complete_set":
-        return "site"
+    # A size-only population cannot verify that an observed URL belongs to it.
     return None
 
 
 def _task_axis(rows: list[dict], basis: str) -> dict:
     excluded = sum(row["applicability"] == "excluded" for row in rows)
     pending = sum(row["applicability"] == "pending_exclusion" for row in rows)
-    denominator_rows = [row for row in rows if row["applicability"] != "excluded"]
+    not_agreed = sum(row["applicability"] == "not_agreed" for row in rows)
+    denominator_rows = [
+        row for row in rows if row["applicability"] in {"applicable", "pending_exclusion"}
+    ]
     numerator = sum(row["complete"] for row in denominator_rows)
     denominator = len(denominator_rows)
     return {
@@ -884,6 +935,7 @@ def _task_axis(rows: list[dict], basis: str) -> dict:
         "denominator": denominator,
         "excluded": excluded,
         "pending_exclusion": pending,
+        "not_agreed": not_agreed,
         "unfinished": denominator - numerator,
         "state": "measured" if denominator else "unknown",
         "reason": "enumerated checklist task set"
@@ -893,10 +945,7 @@ def _task_axis(rows: list[dict], basis: str) -> dict:
 
 
 def _url_axis(ordered: list[dict], plan: dict | None) -> dict:
-    from urllib.parse import urlsplit
-
     population = (plan or {}).get("population")
-    site_netloc = urlsplit(plan["site"]).netloc if plan else ""
     measured_urls: set[str] = set()
     counted_urls: set[str] = set()
     unverified = 0
@@ -910,9 +959,7 @@ def _url_axis(ordered: list[dict], plan: dict | None) -> dict:
         observed, fully_enumerated = _measured_urls(row)
         measured_urls |= observed
         eligible = _eligibility(row, population)
-        if eligible == "site":
-            counted_urls |= {url for url in observed if urlsplit(url).netloc == site_netloc}
-        elif eligible is not None:
+        if eligible is not None:
             counted_urls |= observed & eligible
         if eligible is None or not fully_enumerated:
             unverified += 1
@@ -960,6 +1007,11 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
     for order, (item_id, entry) in enumerate(catalogue.items()):
         if item_id not in document["items"]:
             _set(document["items"], _builtin(item_id, entry, order, project["site"]["target"]))
+    plans = document.get("plans") or []
+    plan = plans[-1] if plans else None
+    plan_revision = plan["revision"] if plan else 0
+    agreement = (plan or {}).get("tasks") or {"kind": "all_agreed"}
+    agreed = set(agreement["ids"]) if agreement["kind"] == "selection" else None
     rows = {}
     digests = {}
     exclusions = []
@@ -970,20 +1022,40 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
             item_id not in catalogue
             or definition["source_hash"] != catalogue[item_id]["definition_hash"]
         )
-        stale_reason = "source definition changed or was removed" if source_stale else ""
+        stale_reason = ""
         if record and record["definition_hash"] != _completion_hash(definition):
             stale_reason = "item definition changed"
-        if record and not stale_reason:
+        elif record:
             stale_reason = evidence_stale(root, record, catalogue, digests)
+        if (
+            record
+            and not stale_reason
+            and plan_revision
+            and (record.get("revision") or 0) < plan_revision
+        ):
+            stale_reason = "execution predates the current agreed audit scope"
+        if source_stale and (not record or record["status"] != "not_applicable"):
+            # A success cannot outlive the source meaning it measured, but a
+            # reviewed exclusion stays resolvable across catalogue churn.
+            stale_reason = stale_reason or "source definition changed or was removed"
         state = "not_run"
         if record and not stale_reason:
             if record["status"] == "not_applicable":
                 state = "not_applicable"
             elif record["status"] == "succeeded":
                 state = "run"
-        applicability, applicability_detail = _disposition(item, record, stale_reason)
+        if agreed is not None and item_id not in agreed:
+            applicability, applicability_detail = "not_agreed", None
+        else:
+            applicability, applicability_detail = _disposition(item, record, stale_reason)
         if applicability == "excluded":
             exclusions.append({"id": item_id, **applicability_detail})
+        measurement = record.get("measurement") or {}
+        partial_measurement = (
+            definition["execution_kind"] == "automatic"
+            and not definition["scope"]["urls"]
+            and measurement.get("state") == "limited"
+        )
         rows[item_id] = {
             "id": item_id,
             "title": definition["title"],
@@ -999,14 +1071,18 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
             "applicability": applicability,
             "applicability_reason": applicability_detail["reason"]
             if applicability == "pending_exclusion"
+            else "outside the agreed task selection"
+            if applicability == "not_agreed"
             else None,
             "exclusion": applicability_detail if applicability == "excluded" else None,
-            "stale": bool(stale_reason),
+            "stale": bool(stale_reason) or source_stale,
             "reason": stale_reason or record.get("reason") or "not attempted",
             "attempt_status": record.get("status", "not_run"),
             "measurement": record.get("measurement"),
             "blocked_by": [],
-            "complete": state == "run" and applicability == "applicable",
+            "complete": state == "run"
+            and applicability == "applicable"
+            and not partial_measurement,
             "definition_versions": len(item["definitions"]),
             "attempts": len(item["records"]),
         }
@@ -1018,9 +1094,12 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         row = rows[item_id]
         for dep in document["items"][item_id]["definition"]["dependencies"]:
             resolve(dep)
-            if row["applicability"] == "excluded":
+            if row["applicability"] in {"excluded", "not_agreed"}:
                 continue
-            if rows[dep]["applicability"] != "excluded" and not rows[dep]["complete"]:
+            if (
+                rows[dep]["applicability"] in {"applicable", "pending_exclusion"}
+                and not rows[dep]["complete"]
+            ):
                 row["blocked_by"].append(dep)
         if row["blocked_by"]:
             row["complete"] = False
@@ -1029,7 +1108,9 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
     for item_id in rows:
         resolve(item_id)
     ordered = sorted(rows.values(), key=lambda row: (row["order"], row["id"]))
-    denominator_rows = [row for row in ordered if row["applicability"] != "excluded"]
+    denominator_rows = [
+        row for row in ordered if row["applicability"] in {"applicable", "pending_exclusion"}
+    ]
     counts = {
         name: sum(row["state"] == name for row in denominator_rows)
         for name in ("run", "not_applicable", "not_run")
@@ -1039,6 +1120,7 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         disabled=sum(not row["enabled"] for row in ordered),
         excluded=len(exclusions),
         pending_exclusion=sum(row["applicability"] == "pending_exclusion" for row in ordered),
+        not_agreed=sum(row["applicability"] == "not_agreed" for row in ordered),
         complete=sum(row["complete"] for row in denominator_rows),
         stale=sum(row["stale"] for row in denominator_rows),
     )
@@ -1067,6 +1149,7 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         "pending_exclusion": [
             row["id"] for row in ordered if row["applicability"] == "pending_exclusion"
         ],
+        "not_agreed": [row["id"] for row in ordered if row["applicability"] == "not_agreed"],
         "remaining": [row["id"] for row in denominator_rows if not row["complete"]],
     }
     by_kind = {
@@ -1096,7 +1179,6 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
             if current_facts == latest_policy["receipt"]["facts"]
             else "changed_since_application"
         )
-    plan = document.get("plan")
     coverage = {
         "audit_tasks": _task_axis(
             ordered, "applicable audit tasks completed over the agreed applicable task set"
@@ -1117,6 +1199,12 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
     }
     coverage["checks"]["measured_urls"] = coverage["url_population"]["measured_urls"]
     tasks = coverage["audit_tasks"]
+    url_population = coverage["url_population"]
+    population_finished = (
+        url_population["state"] == "measured"
+        and bool(url_population["denominator"])
+        and url_population["numerator"] == url_population["denominator"]
+    )
     return {
         "state": "initialized",
         "revision": document["revision"],
@@ -1127,6 +1215,7 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         "items": ordered,
         "coverage": coverage,
         "plan": plan,
+        "plan_history": plans[:-1],
         "exclusions": exclusions,
         "priority_policy": {
             "state": "applied" if latest_policy else "not_applied",
@@ -1136,7 +1225,8 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         },
         "complete": bool(tasks["denominator"])
         and tasks["unfinished"] == 0
-        and tasks["pending_exclusion"] == 0,
+        and tasks["pending_exclusion"] == 0
+        and population_finished,
     }
 
 
