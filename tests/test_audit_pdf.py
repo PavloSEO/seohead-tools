@@ -11,7 +11,7 @@ def _model(*, state: str = "partial", findings: list[dict] | None = None) -> dic
             "source_ref": {
                 "collection": "/findings",
                 "index": 0,
-                "id_if_present": "finding-example-1",
+                "id": "finding-example-1",
             },
             "record": {
                 "severity": "critical",
@@ -40,12 +40,17 @@ def _model(*, state: str = "partial", findings: list[dict] | None = None) -> dic
             "url": "https://example.invalid/",
             "generated_at": "2026-10-03T12:00:00Z",
             "run_id": "synthetic-run-1",
-            "diagnostics": [],
+            "input_diagnostics": [{"kind": "synthetic", "reason": "Fixture metadata"}],
         },
         "run": {
             "state": state,
             "scope": {"urls_crawled": 12, "scope_reason": "Synthetic sample"},
-            "reasons": ["Synthetic stop after the configured page limit."],
+            "reasons": [
+                {
+                    "source_field": "crawl_finish_reason",
+                    "value": "Synthetic stop after the configured page limit.",
+                }
+            ],
         },
         "summary": {
             "source": {
@@ -56,40 +61,155 @@ def _model(*, state: str = "partial", findings: list[dict] | None = None) -> dic
             "counts": {
                 "findings": {
                     "source_count": len(rows),
-                    "declared_count": len(rows),
+                    "declared_total": {"state": "reported", "value": len(rows)},
                     "projected_count": len(rows),
                 },
-                "pages": {"source_count": 2, "declared_count": 2, "projected_count": 2},
-                "checks": {
-                    "source_total": 4,
-                    "projected_count": 4,
-                    "ran": 2,
-                    "failed": 1,
-                    "skipped": 1,
-                    "disabled": 0,
+                "pages": {
+                    "source_count": 2,
+                    "declared_total": {"state": "reported", "value": 2},
+                    "projected_count": 2,
                 },
-                "backlog": {"source_count": 1, "declared_count": 1, "projected_count": 1},
+                "checks": {
+                    "declared_total": {"state": "reported", "value": 4},
+                    "ran": {"state": "reported", "source_count": 2, "projected_count": 2},
+                    "silent": {"state": "unavailable", "source_count": None, "projected_count": 0},
+                    "failed": {"state": "reported", "source_count": 1, "projected_count": 1},
+                    "skipped": {"state": "reported", "source_count": 1, "projected_count": 1},
+                    "disabled": {"state": "reported", "source_count": 0, "projected_count": 0},
+                    "capabilities": {"state": "reported", "source_count": 1, "projected_count": 1},
+                    "page_tools_failed": {
+                        "state": "unavailable",
+                        "source_count": None,
+                        "projected_count": 0,
+                    },
+                },
+                "backlog": {
+                    "state": "recorded",
+                    "source_count": 1,
+                    "declared_count": {"state": "reported", "value": 1},
+                    "projected_count": 1,
+                },
             },
         },
         "coverage": {
-            "state": "partial",
-            "source_evidence": [
-                {
-                    "kind": "population",
-                    "state": "partial",
-                    "record": {"reason": "Only 12 synthetic URLs."},
-                }
-            ],
-            "source_check_coverage": {"checks_available": 4, "checks_skipped": 1},
-            "groups": [
-                {"name": "Synthetic group", "state": "measured", "reason": "Synthetic evidence"}
-            ],
+            "state": "reported",
+            "source_evidence": {
+                "state": "reported",
+                "record": {"population": {"state": "partial", "reason": "Only 12 synthetic URLs."}},
+            },
+            "source_check_coverage": {
+                "state": "unavailable",
+                "record": None,
+            },
+            "groups": {
+                "ran": {
+                    "state": "reported",
+                    "source_count": 2,
+                    "projected_count": 2,
+                    "records": ["CHECK_RUN_A", "CHECK_RUN_B"],
+                },
+                "failed": {
+                    "state": "reported",
+                    "source_count": 1,
+                    "projected_count": 1,
+                    "records": [{"tool": "CHECK_A", "error": "Synthetic timeout"}],
+                },
+                "skipped": {
+                    "state": "reported",
+                    "source_count": 1,
+                    "projected_count": 1,
+                    "records": [{"id": "CHECK_B", "reason": "Synthetic input unavailable"}],
+                },
+                "disabled": {
+                    "state": "reported",
+                    "source_count": 0,
+                    "projected_count": 0,
+                    "records": [],
+                },
+                "capabilities": {
+                    "state": "reported",
+                    "source_count": 1,
+                    "projected_count": 1,
+                    "records": [
+                        {
+                            "check": "SYNTHETIC_GROUP",
+                            "state": "measured",
+                            "reason": "Synthetic evidence",
+                        }
+                    ],
+                },
+                "silent": {
+                    "state": "unavailable",
+                    "source_count": None,
+                    "projected_count": 0,
+                    "records": [],
+                },
+                "page_tools_failed": {
+                    "state": "unavailable",
+                    "source_count": None,
+                    "projected_count": 0,
+                    "records": [],
+                },
+            },
             "checks": [
-                {"state": "failed", "reason": "Synthetic timeout", "record": {"id": "CHECK_A"}},
                 {
+                    "source_ref": {
+                        "collection": "summary.tools_failed",
+                        "index": 0,
+                        "pointer": "#/summary/tools_failed/0",
+                    },
+                    "id": "CHECK_A",
+                    "state": "failed",
+                    "reason": "Synthetic timeout",
+                    "record": {"tool": "CHECK_A", "error": "Synthetic timeout"},
+                },
+                {
+                    "source_ref": {
+                        "collection": "summary.tools_run",
+                        "index": 0,
+                        "pointer": "#/summary/tools_run/0",
+                    },
+                    "id": "CHECK_RUN_A",
+                    "state": "ran",
+                    "reason": None,
+                    "record": "CHECK_RUN_A",
+                },
+                {
+                    "source_ref": {
+                        "collection": "summary.tools_run",
+                        "index": 1,
+                        "pointer": "#/summary/tools_run/1",
+                    },
+                    "id": "CHECK_RUN_B",
+                    "state": "ran",
+                    "reason": None,
+                    "record": "CHECK_RUN_B",
+                },
+                {
+                    "source_ref": {
+                        "collection": "summary.evidence_contract.capability_rows",
+                        "index": 0,
+                        "pointer": "#/summary/evidence_contract/capability_rows/0",
+                    },
+                    "id": "SYNTHETIC_GROUP",
+                    "state": "unreported",
+                    "reason": "Synthetic evidence",
+                    "record": {
+                        "id": "SYNTHETIC_GROUP",
+                        "state": "measured",
+                        "reason": "Synthetic evidence",
+                    },
+                },
+                {
+                    "source_ref": {
+                        "collection": "summary.tools_failed",
+                        "index": 1,
+                        "pointer": "#/summary/tools_failed/1",
+                    },
+                    "id": "CHECK_B",
                     "state": "skipped",
                     "reason": "Synthetic input unavailable",
-                    "record": {"id": "CHECK_B"},
+                    "record": {"id": "CHECK_B", "reason": "Synthetic input unavailable"},
                 },
             ],
         },
@@ -115,15 +235,24 @@ def _model(*, state: str = "partial", findings: list[dict] | None = None) -> dic
         "backlog": {
             "state": "recorded",
             "source_count": 1,
-            "declared_count": 1,
+            "declared_count": {"state": "reported", "value": 1},
             "projected_count": 1,
             "project": "Synthetic project",
+            "status": {"state": "recorded", "counts": {"total": 1}},
             "items": [
                 {
-                    "id": "task-1",
-                    "title": "Review the sample page",
-                    "state": "not_run",
-                    "verification_status": "not_requested",
+                    "source_ref": {
+                        "collection": "summary.project_coverage.status.items",
+                        "index": 0,
+                        "pointer": "#/summary/project_coverage/status/items/0",
+                        "id": "task-1",
+                    },
+                    "record": {
+                        "id": "task-1",
+                        "title": "Review the sample page",
+                        "state": "not_run",
+                        "verification_status": "not_requested",
+                    },
                 }
             ],
         },
@@ -168,8 +297,7 @@ def test_partial_scope_and_each_coverage_state_are_visible():
     assert "Synthetic input unavailable" in html
     assert "Only 12 synthetic URLs." in html
     assert "Source check coverage" in html
-    assert "Synthetic group" in html
-    assert "checks_available" in html and "checks_skipped" in html
+    assert "SYNTHETIC_GROUP" in html
 
 
 def test_coverage_reported_does_not_mean_every_check_passed():
@@ -180,6 +308,96 @@ def test_coverage_reported_does_not_mean_every_check_passed():
     assert "Coverage metadata recorded; individual checks may still be unavailable." in html
     assert "Synthetic timeout" in html
     assert "Synthetic input unavailable" in html
+
+
+def test_nested_count_groups_and_unavailable_coverage_remain_distinct():
+    model = _model()
+    model["summary"]["counts"]["findings"]["declared_total"]["value"] = 9
+    html = render_audit_pdf_html(model)
+
+    assert "Coverage records" in html
+    assert "Declared: 9" in html
+    assert "Source evidence" in html
+    assert ">Unavailable</td>" in html
+    assert "Source check coverage" in html
+    assert "Recorded" in html
+    assert "Page checks failed" in html
+    assert "CHECKS_A" not in html
+    assert "<td>task-1</td><td>Review the sample page</td>" in html
+
+
+def test_summary_card_separates_coverage_rows_from_declared_check_inventory():
+    html = render_audit_pdf_html(_model())
+
+    assert "Coverage records" in html
+    assert ">5</strong>" in html
+    assert "Check inventory: 4" in html
+
+
+def test_capability_state_uses_measurement_state_from_source_record():
+    model = _model()
+    model["coverage"]["checks"] = [
+        {
+            "source_ref": {
+                "collection": "summary.evidence_contract.capability_rows",
+                "index": 0,
+                "pointer": "#/summary/evidence_contract/capability_rows/0",
+            },
+            "id": "TITLE_MISSING",
+            "state": "unreported",
+            "reason": "source evidence was not available",
+            "record": {
+                "check": "TITLE_MISSING",
+                "state": "unavailable",
+                "reason": "source evidence was not available",
+            },
+        }
+    ]
+    html = render_audit_pdf_html(model)
+
+    assert "TITLE_MISSING" in html
+    assert ">Unavailable</td>" in html
+    assert "source evidence was not available" in html
+
+
+def test_backlog_wrapper_keeps_source_reference_and_record_fields():
+    html = render_audit_pdf_html(_model())
+
+    assert "<td>task-1</td><td>Review the sample page</td>" in html
+    assert "<td>Not run</td><td>Not requested</td>" in html
+
+
+def test_page_tool_failures_are_rendered_from_model_coverage_rows():
+    model = _model()
+    model["coverage"]["groups"]["page_tools_failed"] = {
+        "state": "reported",
+        "source_count": 1,
+        "projected_count": 1,
+        "records": [{"tool": "HTML_TOOL", "failed_pages": 3, "pages_checked": 3}],
+    }
+    model["summary"]["counts"]["checks"]["page_tools_failed"] = {
+        "state": "reported",
+        "source_count": 1,
+        "projected_count": 1,
+    }
+    model["coverage"]["checks"].append(
+        {
+            "source_ref": {
+                "collection": "summary.page_tools_failed",
+                "index": 0,
+                "pointer": "#/summary/page_tools_failed/0",
+            },
+            "id": "HTML_TOOL",
+            "state": "failed",
+            "reason": "All 3 synthetic pages failed",
+            "record": {"tool": "HTML_TOOL", "failed_pages": 3, "pages_checked": 3},
+        }
+    )
+    html = render_audit_pdf_html(model)
+
+    assert "Page checks failed" in html
+    assert "HTML_TOOL" in html
+    assert "All 3 synthetic pages failed" in html
 
 
 @pytest.mark.parametrize(
@@ -208,10 +426,28 @@ def test_complete_run_status_does_not_claim_full_site_coverage(lang, expected):
 def test_unknown_run_and_absent_counts_remain_unknown():
     model = _model(state="unknown")
     model["summary"]["counts"]["pages"]["projected_count"] = None
-    model["summary"]["counts"]["checks"]["ran"] = None
-    model["summary"]["counts"]["checks"]["failed"] = None
-    model["summary"]["counts"]["checks"]["skipped"] = None
-    model["summary"]["counts"]["checks"]["disabled"] = None
+    model["summary"]["counts"]["checks"]["ran"] = {
+        "state": "unavailable",
+        "source_count": None,
+        "projected_count": 0,
+    }
+    model["summary"]["counts"]["checks"]["failed"] = {
+        "state": "unavailable",
+        "source_count": None,
+        "projected_count": 0,
+    }
+    model["summary"]["counts"]["checks"]["skipped"] = {
+        "state": "unavailable",
+        "source_count": None,
+        "projected_count": 0,
+    }
+    model["summary"]["counts"]["checks"]["disabled"] = {
+        "state": "unavailable",
+        "source_count": None,
+        "projected_count": 0,
+    }
+    model["coverage"]["state"] = "unavailable"
+    model["coverage"]["checks"] = []
     html = render_audit_pdf_html(model)
 
     assert 'data-state="unknown"' in html
