@@ -22,10 +22,16 @@ Provider identity is typed, not a bare name, because the same vendor reaches
 the code through different routes. ``registry`` references are ids in
 ``provider_registry()`` reached through ``provider-verify`` /
 ``provider-collect``; ``dedicated`` references are integration modules the
-handlers call directly (``google-keywords`` and ``google-serp`` reach
-``seohead.data_sources.dataforseo`` — source ``dataforseo`` — which is not the
+handlers call directly, bypassing the registry dispatch
+(``keywords-expand``/``keywords-seasonality``/``regions-tree``/``serp-fetch``
+reach ``seohead.data_sources.yandex_cloud``, ``keywords-exact`` reaches
+``seohead.data_sources.arsenkin``, ``indexnow-submit`` reaches
+``seohead.data_sources.indexnow``, and ``google-keywords``/``google-serp``
+reach ``seohead.data_sources.dataforseo`` — none of which is the
 ``dataforseo_backlinks`` registry entry); ``local`` references are in-process
-tools with no provider transport at all.
+tools with no provider transport at all; ``declared`` references name a
+registry contract no shipped route reaches, so they mark declared — never
+shipped — surface.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ from seohead.data_sources.providers import provider_registry
 
 SUPPORT_STATES = ("supported", "partial", "unsupported", "unverified")
 
-PROVIDER_REF_KINDS = ("registry", "dedicated", "local")
+PROVIDER_REF_KINDS = ("registry", "dedicated", "local", "declared")
 
 # Providers whose credentials are optional-by-default or paid per response;
 # the registry's ``default_enabled=False`` already marks them.
@@ -61,8 +67,9 @@ class ProviderRef:
 
     ``kind`` is one of :data:`PROVIDER_REF_KINDS`: ``registry`` (an id in
     ``provider_registry()``), ``dedicated`` (a named integration the handlers
-    call directly, bypassing the registry), or ``local`` (an in-process tool
-    with no provider transport).
+    call directly, bypassing the registry), ``local`` (an in-process tool
+    with no provider transport), or ``declared`` (a registry contract with no
+    shipped route — a declaration, not a callable path).
     """
 
     kind: str
@@ -79,6 +86,10 @@ def _ded(name: str) -> ProviderRef:
 
 def _loc(name: str) -> ProviderRef:
     return ProviderRef("local", name)
+
+
+def _decl(name: str) -> ProviderRef:
+    return ProviderRef("declared", name)
 
 
 @dataclass(frozen=True)
@@ -107,7 +118,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="yandex-demand",
         use_case="Expand a seed phrase and read demand seasonality for Yandex",
-        providers=(_reg("yandex_cloud"),),
+        providers=(_ded("yandex_cloud"),),
         surface=("keywords-expand", "keywords-seasonality", "regions-tree"),
         status="supported",
         auth="API key + folder ID",
@@ -115,20 +126,26 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
         privacy="aggregate",
         limitations=(
             "Base frequency only — the API has no ! / + / [] operators and base "
-            "counts run roughly 9x exact; use Arsenkin for exact values"
+            "counts run roughly 9x exact; use Arsenkin for exact values. The "
+            "commands call the dedicated yandex_cloud module (Wordstat) "
+            "directly; provider-collect deliberately refuses this paid contract"
         ),
         csv_fallback="not applicable — demand data is not URL-keyed",
     ),
     WorkflowRow(
         workflow="yandex-exact-frequency",
         use_case="Exact !W frequency the Wordstat API does not expose",
-        providers=(_reg("arsenkin"),),
+        providers=(_ded("arsenkin"),),
         surface=("keywords-exact",),
         status="supported",
         auth="API token",
         cost_quota="Paid; consumes Arsenkin account limits; task_id journaled at billing time",
         privacy="aggregate",
-        limitations="Billed at task creation; a timed-out poll is retrievable by task_id",
+        limitations=(
+            "Billed at task creation; a timed-out poll is retrievable by "
+            "task_id. The command calls ArsenkinClient.set_task directly; "
+            "provider-collect deliberately refuses this paid contract"
+        ),
         csv_fallback="not applicable",
     ),
     WorkflowRow(
@@ -151,16 +168,18 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="serp-collection",
         use_case="Fetch ranked results for queries on Yandex or Google",
-        providers=(_reg("yandex_cloud"), _ded("dataforseo")),
+        providers=(_ded("yandex_cloud"), _ded("dataforseo")),
         surface=("serp-fetch", "google-serp"),
         status="supported",
         auth="Yandex: API key + folder ID; DataForSEO: login + password",
         cost_quota="Metered; Yandex async endpoint only — the ~16x-costlier sync endpoint is excluded",
         privacy="aggregate",
         limitations=(
-            "google-serp reaches the dedicated dataforseo integration, not the registry; "
-            "queries billed but not returned before timeout stay visible in the spend "
-            "journal as named operations"
+            "Both routes are dedicated modules the handlers call directly — "
+            "serp-fetch uses yandex_cloud.WebSearch, google-serp uses the "
+            "dataforseo integration, not the registry; queries billed but not "
+            "returned before timeout stay visible in the spend journal as "
+            "named operations"
         ),
         csv_fallback="not applicable",
     ),
@@ -183,7 +202,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="serp-clustering",
         use_case="Cluster a keyword set by overlapping search results",
-        providers=(_reg("arsenkin"),),
+        providers=(_decl("arsenkin"),),
         surface=(),
         status="unsupported",
         auth="Arsenkin API token would be required for the declared provider operation",
@@ -298,15 +317,16 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="url-submission",
         use_case="Notify Bing, Yandex, Naver, and Seznam that URLs changed",
-        providers=(_reg("indexnow"),),
+        providers=(_ded("indexnow"),),
         surface=("indexnow-submit",),
         status="supported",
         auth="Self-generated key hosted on the target site",
         cost_quota="Free; provider submission quota; off by default",
         privacy="caller-supplied URL list sent to a public endpoint",
         limitations=(
-            "Confirmed write, not a collection — provider-collect refuses it by "
-            "contract; Google has not joined IndexNow"
+            "Confirmed write, not a collection — the command calls the "
+            "dedicated indexnow.submit directly and provider-collect refuses "
+            "it by contract; Google has not joined IndexNow"
         ),
         csv_fallback="not applicable — write operation",
     ),
@@ -377,6 +397,7 @@ _PROVIDER_SUFFIX = {
     "registry": "",
     "dedicated": " (dedicated integration)",
     "local": " (in-process)",
+    "declared": " (declared registry operation — no shipped route)",
 }
 
 
@@ -421,8 +442,10 @@ def render() -> str:
         "Provider names in the workflow matrix are typed routes: a bare ``name`` is a "
         "registry id reached through `provider-verify`/`provider-collect`; "
         "``name`` *(dedicated integration)* is a module the handlers call directly "
-        "outside the registry; ``name`` *(in-process)* is a local computation with no "
-        "provider transport.",
+        "outside the registry dispatch; ``name`` *(in-process)* is a local computation "
+        "with no provider transport; ``name`` *(declared registry operation — no "
+        "shipped route)* is a contract the registry declares but no shipped surface "
+        "reaches.",
         "",
         "## Provider inventory",
         "",

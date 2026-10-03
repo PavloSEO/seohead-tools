@@ -43,12 +43,17 @@ def test_every_surface_command_is_a_real_cli_command():
 def test_every_registry_provider_ref_is_registered():
     registered = set(provider_registry()["providers"])
     for row in WORKFLOWS:
-        missing = {ref.name for ref in row.providers if ref.kind == "registry"} - registered
+        missing = {
+            ref.name for ref in row.providers if ref.kind in {"registry", "declared"}
+        } - registered
         assert not missing, f"{row.workflow} references unregistered providers: {missing}"
 
 
-def test_every_registered_provider_appears_in_some_workflow():
-    covered = {ref.name for row in WORKFLOWS for ref in row.providers if ref.kind == "registry"}
+def test_every_registered_provider_is_named_in_some_workflow():
+    # Workflow routes are typed (registry/dedicated/declared), so coverage is by
+    # name across kinds — the registry inventory table itself renders straight
+    # from provider_registry() and cannot drift ahead of it.
+    covered = {ref.name for row in WORKFLOWS for ref in row.providers}
     missing = set(provider_registry()["providers"]) - covered
     assert not missing, f"registered providers absent from the matrix: {sorted(missing)}"
 
@@ -56,11 +61,35 @@ def test_every_registered_provider_appears_in_some_workflow():
 def test_dedicated_refs_resolve_to_real_integrations():
     # A "dedicated" ref must name an integration module the handlers actually call —
     # membership in the provider registry is neither required nor sufficient.
-    from seohead.data_sources import dataforseo
+    import importlib
 
     dedicated = {ref.name for row in WORKFLOWS for ref in row.providers if ref.kind == "dedicated"}
-    assert dedicated == {"dataforseo"}
-    assert dataforseo.SOURCE == "dataforseo"
+    assert dedicated == {"dataforseo", "yandex_cloud", "arsenkin", "indexnow"}
+    for name in dedicated:
+        module = importlib.import_module(f"seohead.data_sources.{name}")
+        assert getattr(module, "SOURCE", name) == name
+
+
+def test_supported_rows_never_reference_a_route_provider_collect_refuses():
+    """A supported workflow row must not type its provider as a registry route that
+    provider-collect deliberately rejects — that would describe a callable path the
+    code refuses to ship."""
+    refused = {"arsenkin", "yandex_cloud", "indexnow"}
+    for row in WORKFLOWS:
+        if row.status in {"supported", "partial"}:
+            bad = {
+                ref.name for ref in row.providers if ref.kind == "registry" and ref.name in refused
+            }
+            assert not bad, f"{row.workflow} labels a refused dispatch as a registry route: {bad}"
+
+
+def test_only_unsupported_rows_use_declared_refs():
+    for row in WORKFLOWS:
+        for ref in row.providers:
+            if ref.kind == "declared":
+                assert row.status == "unsupported", (
+                    f"{row.workflow}: a declared-only ref cannot describe a shipped route"
+                )
 
 
 def test_local_refs_resolve_to_in_process_modules():
@@ -118,7 +147,7 @@ def test_keywords_cluster_is_local_text_clustering_not_serp(monkeypatch):
     # operation; no shipped command reaches it.
     serp_row = _row("serp-clustering")
     assert serp_row.status == "unsupported" and serp_row.surface == ()
-    assert [(ref.kind, ref.name) for ref in serp_row.providers] == [("registry", "arsenkin")]
+    assert [(ref.kind, ref.name) for ref in serp_row.providers] == [("declared", "arsenkin")]
 
 
 def test_google_keywords_and_serp_use_the_dedicated_integration(monkeypatch):
@@ -211,6 +240,138 @@ def test_crux_is_field_data_and_pagespeed_stays_lab_only():
     assert [ref.name for ref in lab_row.providers] == ["pagespeed"]
     assert "lab_only" in lab_row.limitations
     assert "real-user" in lab_row.limitations
+
+
+def test_yandex_demand_and_serp_use_the_dedicated_module(monkeypatch):
+    """keywords-expand/keywords-seasonality/serp-fetch call the dedicated
+    yandex_cloud integration directly; provider-collect refuses the contract."""
+    import pytest
+
+    from seohead.data_sources import providers, yandex_cloud
+    from seohead.servers import handlers
+
+    calls = []
+
+    class FakeWordstat:
+        def expand(self, phrase, *, limit, regions):
+            calls.append(("expand", phrase))
+            return {"synthetic seed": 42}, {
+                "totalCount": 1,
+                "results": 1,
+                "associations": 0,
+                "origin": {"synthetic seed": "refinement"},
+            }
+
+        def dynamics(self, phrase, from_date, to_date, *, period, regions):
+            calls.append(("dynamics", phrase))
+            return {"dynamics": []}
+
+    class FakeWebSearch:
+        def search_batch(self, queries, *, region, groups):
+            calls.append(("search_batch", list(queries)))
+            return {q: {"docs": [], "status": "done"} for q in queries}
+
+    monkeypatch.setattr(yandex_cloud, "Wordstat", FakeWordstat)
+    monkeypatch.setattr(yandex_cloud, "WebSearch", FakeWebSearch)
+
+    assert handlers.keywords_expand(phrase="synthetic seed")["ok"] is True
+    assert (
+        handlers.keywords_seasonality(
+            phrase="synthetic seed",
+            from_date="2026-01-01T00:00:00Z",
+            to_date="2026-02-01T00:00:00Z",
+        )["ok"]
+        is True
+    )
+    assert handlers.serp_fetch(query="synthetic query")["ok"] is True
+    assert calls == [
+        ("expand", "synthetic seed"),
+        ("dynamics", "synthetic seed"),
+        ("search_batch", ["synthetic query"]),
+    ]
+
+    # These are dedicated routes, not registry dispatch.
+    assert [(ref.kind, ref.name) for ref in _row("yandex-demand").providers] == [
+        ("dedicated", "yandex_cloud")
+    ]
+    serp_row = _row("serp-collection")
+    assert ("dedicated", "yandex_cloud") in [(ref.kind, ref.name) for ref in serp_row.providers]
+    for operation in providers.provider_registry()["providers"]["yandex_cloud"]["operations"]:
+        with pytest.raises(ValueError):
+            providers.provider_collect("yandex_cloud", operation, {})
+
+
+def test_keywords_exact_uses_the_dedicated_arsenkin_client(monkeypatch):
+    """keywords-exact bills through ArsenkinClient.set_task directly; generic
+    provider-collect refuses both declared arsenkin operations."""
+    import pytest
+
+    from seohead.data_sources import arsenkin, providers
+    from seohead.servers import handlers
+
+    calls = []
+
+    class FakeArsenkinClient:
+        def set_task(self, tools_name, data):
+            calls.append((tools_name, data))
+            return {"task_id": 1, "cost": 5, "raw": {}}
+
+    monkeypatch.setattr(arsenkin, "ArsenkinClient", FakeArsenkinClient)
+
+    result = handlers.keywords_exact(keywords=["synthetic kw"], wait=False)
+    assert result["ok"] is True and result["task_id"] == 1
+    assert calls == [("keywords_frequency", {"keywords": ["synthetic kw"], "region": 225})]
+
+    assert [(ref.kind, ref.name) for ref in _row("yandex-exact-frequency").providers] == [
+        ("dedicated", "arsenkin")
+    ]
+    # The declared serp_clustering operation stays a declaration, not a shipped
+    # route: the matrix marks it "declared" and provider-collect refuses it.
+    serp_row = _row("serp-clustering")
+    assert serp_row.status == "unsupported" and serp_row.surface == ()
+    assert [(ref.kind, ref.name) for ref in serp_row.providers] == [("declared", "arsenkin")]
+    for operation in providers.provider_registry()["providers"]["arsenkin"]["operations"]:
+        with pytest.raises(ValueError):
+            providers.provider_collect("arsenkin", operation, {})
+
+
+def test_indexnow_submit_uses_the_dedicated_write_path(monkeypatch):
+    """indexnow-submit calls seohead.data_sources.indexnow.submit directly —
+    a confirmed write that provider-collect refuses by contract."""
+    import pytest
+
+    from seohead.data_sources import indexnow, providers
+    from seohead.servers import handlers
+
+    calls = []
+
+    def fake_submit(urls, *, host, key=None, key_location=None, fetcher=None):
+        calls.append({"urls": list(urls), "host": host, "key_location": key_location})
+        return {"ok": True, "submitted": len(urls), "not_adopted_by": list(indexnow.NOT_ADOPTED_BY)}
+
+    monkeypatch.setattr(indexnow, "submit", fake_submit)
+
+    result = handlers.indexnow_submit(
+        urls=["https://example.com/a"], host="example.com", key_location="https://example.com/k.txt"
+    )
+    assert result["ok"] is True
+    assert calls == [
+        {
+            "urls": ["https://example.com/a"],
+            "host": "example.com",
+            "key_location": "https://example.com/k.txt",
+        }
+    ]
+
+    row = _row("url-submission")
+    assert row.status == "supported"
+    assert [(ref.kind, ref.name) for ref in row.providers] == [("dedicated", "indexnow")]
+    # The registry keeps the write off by default and the collect dispatch
+    # refuses it: a submission is never a collection.
+    entry = providers.provider_registry()["providers"]["indexnow"]
+    assert entry["default_enabled"] is False and entry["access"] == "confirmed_write"
+    with pytest.raises(ValueError):
+        providers.provider_collect("indexnow", "submit", {})
 
 
 def test_unsupported_work_is_named_not_silent():
