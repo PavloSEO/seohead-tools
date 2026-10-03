@@ -93,6 +93,21 @@ does not run a check, skill or scenario, and makes no network request.
 seohead project checklist-init --directory ./example-project
 ```
 
+`checklist-init` also accepts an optional `plan` recording the agreed audit
+scope: who agreed it (`reviewer`) and the URL `population` it covers. A
+population declares a `kind` — `complete_set` for a known full population,
+`sample` for a named agreed sample, or `unknown` when no population was agreed
+— plus a `source` saying where it came from, and either a `size` or an
+enumerated `urls` list it derives its size from (per-template populations sit
+under `templates`). `unknown` carries no size or URLs, only a reason. Recording
+a plan upgrades the checklist to `seohead.coverage.v3`; reading or reconciling
+without a plan never upgrades or invents a population.
+
+```bash
+seohead project checklist-init --directory ./example-project \
+  --input '{"plan":{"reviewer":"Lead auditor","population":{"kind":"complete_set","size":null,"urls":["https://example.test/"],"name":null,"source":"Agreed sitemap export","reason":null,"templates":null}}}'
+```
+
 [`examples/project-skeleton`](../examples/project-skeleton) is shipped with that
 step already applied, so its committed `coverage.json` carries one definition per
 catalogue item and its status reports counts instead of `not_initialized`:
@@ -164,8 +179,17 @@ from a reasoned `not_applicable` decision.
 Execution records use `running`, `failed`, `unavailable`, `succeeded`, or
 `not_applicable`. The checklist states remain `run`, `not_run`, and
 `not_applicable`: failed or unavailable attempts are unfinished. Every record
-requires a reason. Applicability decisions also require a reviewer; missing data
-alone is not an exclusion.
+requires a reason. An applicability decision also requires a reviewer and an
+inspectable evidence basis — a project-relative `artifact` (digested like any
+other evidence) or an explicit `evidence` reference; missing data alone is not
+an exclusion. A reviewed exclusion keeps its stable ID and history, exits the
+task and check denominators only through that recorded decision, and is listed
+separately under `exclusions` with its reason, reviewer, basis and revision. A
+disabled item or an exclusion whose
+record is stale or was written before the evidence-basis rule stays inside the
+denominator as `pending_exclusion` until a specialist reviews it again, so
+disabling, removal from the catalogue or reclassification can never silently
+shrink agreed counts.
 
 Automatic completion binds a registered check to a validated SQLite artifact
 under `scans/` or `reports/`, verifies the saved check outcome and site identity,
@@ -179,9 +203,30 @@ Manual completion requires a named reviewer and either `signoff: true` or an
 artifact with `review: "approved"`. Deliverables always require an artifact and
 approved review. A file's existence, opening a skill, or discovering a finding
 does not establish completed work or an implemented client-site fix. Current
-status lists running, blocked, waiting-for-manual-review, deliverable-ready, and
-remaining items from the same records. A previously run step can become blocked
-when its dependency becomes stale; human reports show that distinction.
+status lists running, blocked, waiting-for-manual-review, deliverable-ready,
+pending-exclusion and remaining items from the same records. A previously run
+step can become blocked when its dependency becomes stale; human reports show
+that distinction.
+
+Status also returns `coverage`, five named ratios that never share a
+denominator. `audit_tasks` counts applicable tasks completed over the agreed
+task set; `checks` the same for automatic checks only (with `measured_urls`
+reported beside it); `manual_review` and `deliverable_review` count human
+signoffs and approved deliverables over their own applicable sets; and
+`url_population` counts distinct eligible URLs covered by fresh measurements
+over the agreed plan population — never a row or finding count. Each axis
+states its `basis`, `numerator`, `denominator` and a `state`; task axes also
+carry `excluded`, `pending_exclusion` and `unfinished` counts, and the URL
+axis carries `measured_urls`, `unverified_measurements` and the population
+kind/name. A denominator that cannot be
+justified — no recorded plan or an `unknown` population — is `null` with a
+`state` of `unknown` and a reason, never coerced to 0/0 or reported as 100%;
+measurements that cannot be verified against the agreed population keep the
+axis `partial` and count only verified URLs. A measurement that covers its explicit sample
+completes that task's scope but cannot establish full-site coverage; missing
+inputs, unavailable checks, partial scans and stale evidence all remain
+unfinished. Multi-site aggregation sums these axes per site and degrades to
+`unknown` whenever any site cannot justify its denominator.
 
 Writes use an exclusive `.coverage.lock`, optimistic revisions and atomic file
 replacement. A concurrent writer refuses without discarding earlier work. After

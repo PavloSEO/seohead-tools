@@ -1074,17 +1074,28 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_init(
-        directory: str, template: dict | None = None, expected_revision: int | None = None
+        directory: str,
+        template: dict | None = None,
+        expected_revision: int | None = None,
+        plan: dict | None = None,
     ) -> dict[str, Any]:
         """Initialize or reconcile a local checklist without executing a check, skill, or scenario.
 
-        template is an optional data-only ``seohead.checklist-template.v1`` document. The result
-        returns the current state, revision, counts, views and items; use that revision for a
-        later conditional write. This never makes a network request.
+        template is an optional data-only ``seohead.checklist-template.v1`` document. plan is an
+        optional agreed audit scope {reviewer, population}: population declares kind
+        (``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
+        ``source``, an optional ``name`` and ``reason``, and optional per-``templates``
+        populations; ``unknown`` keeps the URL denominator null with a reason. Recording a plan
+        upgrades the checklist to ``seohead.coverage.v3`` and never shrinks denominators. The
+        result returns the current state, revision, counts, coverage axes, views and items; use
+        that revision for a later conditional write. This never makes a network request.
         """
         return _checked(
             handlers.project_checklist_init(
-                directory=directory, template=template, expected_revision=expected_revision
+                directory=directory,
+                template=template,
+                expected_revision=expected_revision,
+                plan=plan,
             )
         )
 
@@ -1112,7 +1123,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
         expected_revision prevents an overwrite of newer checklist history. The record is
         validated against the item's scope and evidence contract, then the returned status names
-        remaining, blocked and manual-review work. This never makes a network request.
+        remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
+        exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
+        project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
+        ``pending_exclusion`` inside the denominator. This never makes a network request.
         """
         return _checked(
             handlers.project_checklist_record(
