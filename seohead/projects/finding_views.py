@@ -35,7 +35,8 @@ _FIELDS = (
 )
 _SORT_FIELDS = {"severity", "check", "url", "occurrences_count", "status_code", "segment"}
 _DEFAULT_COLUMNS = ["severity", "check", "url", "text", "fix_hint"]
-_SEVERITY_ORDER = {"critical": 0, "warning": 1, "notice": 2}
+# Ascending is low-to-high; descending puts the highest-severity findings first.
+_SEVERITY_ORDER = {"notice": 0, "warning": 1, "critical": 2}
 
 
 def _text(value: Any, field: str, limit: int = 512) -> str:

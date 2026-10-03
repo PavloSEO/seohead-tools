@@ -208,6 +208,50 @@ def test_filter_sort_projection_and_pagination_are_repeatable(project):
     assert next_page["items"][0]["finding_id"] != first["items"][0]["finding_id"]
 
 
+def test_severity_sort_directions_follow_severity_strength(project):
+    from seohead.projects.finding_views import apply_view_to_audit
+
+    document = audit_document()
+    document["findings"].append(
+        {
+            "severity": "notice",
+            "check": "OPTIONAL_FIXTURE",
+            "url": "https://example.test/blog/notice",
+            "text": "Synthetic notice",
+        }
+    )
+    save_view(
+        project,
+        definition(columns=["severity"], page_size=10),
+        expected_revision=0,
+    )
+
+    descending = apply_view_to_audit(project, "triage", document)
+    assert [item["fields"]["severity"] for item in descending["items"]] == [
+        "critical",
+        "warning",
+        "warning",
+        "warning",
+        "notice",
+    ]
+
+    save_view(
+        project,
+        definition(
+            columns=["severity"], page_size=10, sort={"field": "severity", "direction": "asc"}
+        ),
+        expected_revision=1,
+    )
+    ascending = apply_view_to_audit(project, "triage", document)
+    assert [item["fields"]["severity"] for item in ascending["items"]] == [
+        "notice",
+        "warning",
+        "warning",
+        "warning",
+        "critical",
+    ]
+
+
 def test_missing_filter_fields_are_counted_and_never_match(project):
     save_view(
         project,
