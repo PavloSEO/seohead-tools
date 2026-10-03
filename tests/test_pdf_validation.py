@@ -181,6 +181,25 @@ def test_pdf_validation_fails_when_projected_count_disagrees_with_model_rows(tmp
     assert any("findings count mismatch" in error for error in result["errors"])
 
 
+def test_pdf_model_check_conservation_includes_page_tool_failures(tmp_path):
+    model = _model()
+    model["summary"]["counts"]["checks"]["page_tools_failed"] = {
+        "source_count": 1,
+        "projected_count": 1,
+    }
+    model["coverage"]["checks"].append(
+        {"id": "PAGE_TOOL_FAILED", "reason": "Synthetic page tool failure"}
+    )
+    path = tmp_path / "page-tool-failure.pdf"
+    text = " ".join([*_pdf_sentinels(), "PAGE_TOOL_FAILED", "Synthetic page tool failure"])
+    _write_text_pdf(path, [text])
+
+    result = validate_pdf_output(path, model)
+
+    assert result["status"] == "ok"
+    assert result["errors"] == []
+
+
 def test_pdf_validation_fails_when_a_source_row_is_unaccounted_for(tmp_path):
     model = _model()
     model["summary"]["counts"]["findings"]["source_count"] = 2

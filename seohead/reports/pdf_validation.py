@@ -62,7 +62,15 @@ def _projected_count_errors(model: Mapping[str, Any]) -> list[str]:
         errors.append("PDF model has no check coverage rows or counts")
     else:
         projected_total = 0
-        for name in ("ran", "failed", "skipped", "disabled", "capabilities", "silent"):
+        for name in (
+            "ran",
+            "failed",
+            "page_tools_failed",
+            "skipped",
+            "disabled",
+            "capabilities",
+            "silent",
+        ):
             group = check_counts.get(name)
             if group is None:
                 continue
