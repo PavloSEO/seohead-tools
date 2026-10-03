@@ -35,6 +35,7 @@ import csv
 import io
 import json
 import os
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ from seohead.storage.inputs import is_sqlite_input
 
 EXPORT_FORMAT_VERSION = "scan_export.v1"
 XML_NAMESPACE = "https://github.com/PavloSEO/seotools/schema/scan_export.v1"
+_XML_TAG = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*\Z")
 FORMATS = ("csv", "xlsx", "json", "xml")
 RECORD_TYPES = ("pages", "links", "findings")
 _RECORD_ELEMENTS = {"pages": "page", "links": "link", "findings": "finding"}
@@ -572,10 +574,20 @@ def _normalize_fields(
         catalog = source.catalogs[name]
         unknown = [item for item in names if item not in catalog]
         if unknown:
-            raise ScanError(
-                f"unknown field(s) for {name!r}: {', '.join(str(item) for item in unknown)}; "
-                f"supported: {', '.join(catalog)}"
-            )
+            other_fields = {
+                item
+                for other, values in source.catalogs.items()
+                if other != name
+                for item in values
+            }
+            misplaced = [item for item in unknown if item in other_fields]
+            unsupported = [item for item in unknown if item not in other_fields]
+            details = []
+            if misplaced:
+                details.append(f"field(s) invalid for {name!r}: {', '.join(map(str, misplaced))}")
+            if unsupported:
+                details.append(f"unknown field(s): {', '.join(map(str, unsupported))} for {name!r}")
+            raise ScanError("; ".join(details) + f"; supported: {', '.join(catalog)}")
         projection[name] = tuple(dict.fromkeys(names))
     return projection
 
@@ -632,14 +644,26 @@ def _meta_element(tag: str, value: Any) -> ET.Element:
     if value is None:
         element.set("state", "absent")
     elif isinstance(value, bool):
+        element.set("type", "boolean")
         element.text = "true" if value else "false"
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int):
+        element.set("type", "integer")
+        element.text = str(value)
+    elif isinstance(value, float):
+        element.set("type", "number")
         element.text = json.dumps(value, allow_nan=False)
     elif isinstance(value, str):
+        element.set("type", "string")
         element.text = value
     elif isinstance(value, Mapping):
         for key, item in value.items():
-            element.append(_meta_element(str(key), item))
+            label = str(key)
+            if _XML_TAG.fullmatch(label) and not label.lower().startswith("xml"):
+                element.append(_meta_element(label, item))
+            else:
+                child = _meta_element("entry", item)
+                child.set("key", label)
+                element.append(child)
     elif isinstance(value, (list, tuple)):
         for item in value:
             element.append(_meta_element("item", item))
@@ -656,15 +680,41 @@ def _record_element(tag: str, record: Mapping[str, Any]) -> ET.Element:
         if value is None:
             child.set("state", "absent")
         elif isinstance(value, bool):
+            child.set("type", "boolean")
             child.text = "true" if value else "false"
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int):
+            child.set("type", "integer")
+            child.text = str(value)
+        elif isinstance(value, float):
+            child.set("type", "number")
             child.text = json.dumps(value, allow_nan=False)
         elif isinstance(value, str):
+            child.set("type", "string")
             child.text = value
         else:
             child.set("format", "json")
             child.text = json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     return element
+
+
+def _xml_serialized(element: ET.Element, location: str) -> bytes:
+    """Reject invalid XML 1.0 text and preserve CR through XML parsing."""
+    for node in element.iter():
+        values = [(node.text or "", f"{location}.{node.tag}")]
+        values.extend((value, f"{location}.{node.tag}@{key}") for key, value in node.attrib.items())
+        for value, path in values:
+            for character in value:
+                code = ord(character)
+                if not (
+                    code in (0x9, 0xA, 0xD)
+                    or 0x20 <= code <= 0xD7FF
+                    or 0xE000 <= code <= 0xFFFD
+                    or 0x10000 <= code <= 0x10FFFF
+                ):
+                    raise ScanError(f"{path} contains invalid XML 1.0 character U+{code:04X}")
+    # Literal CR is normalized to LF by XML parsers. A character reference
+    # round-trips the retained value without changing ordinary LF or tab.
+    return ET.tostring(element, encoding="unicode").replace("\r", "&#13;").encode("utf-8")
 
 
 def _xml_chunks(
@@ -674,17 +724,13 @@ def _xml_chunks(
     yield b'<?xml version="1.0" encoding="UTF-8"?>\n'
     yield (f'<scan-export xmlns="{XML_NAMESPACE}" format="{EXPORT_FORMAT_VERSION}">\n'.encode())
     for key in ("provenance", "projection", "statistics", "coverage"):
-        yield (ET.tostring(_meta_element(key, head[key]), encoding="unicode") + "\n").encode(
-            "utf-8"
-        )
+        yield _xml_serialized(_meta_element(key, head[key]), key) + b"\n"
     yield b"<records>\n"
     for name, _fields, stream in selection:
         yield f"<{name}>\n".encode()
         singular = _RECORD_ELEMENTS[name]
-        for record in stream:
-            yield (
-                ET.tostring(_record_element(singular, record), encoding="unicode") + "\n"
-            ).encode("utf-8")
+        for ordinal, record in enumerate(stream):
+            yield _xml_serialized(_record_element(singular, record), f"{name}[{ordinal}]") + b"\n"
         yield f"</{name}>\n".encode()
     yield b"</records>\n</scan-export>\n"
 

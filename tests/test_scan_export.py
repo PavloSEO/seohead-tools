@@ -175,6 +175,17 @@ def test_unknown_field_fails_before_output(artifact, tmp_path):
     assert not out.exists()
 
 
+def test_field_known_for_another_type_is_distinguished_from_unknown(artifact, tmp_path):
+    out = tmp_path / "e.json"
+    result = export_scan_data(
+        artifact, out, fmt="json", records=["links"], fields={"links": ["title", "invented"]}
+    )
+    assert result["ok"] is False
+    assert "invalid for 'links': title" in result["error"]
+    assert "unknown field(s): invented" in result["error"]
+    assert not out.exists()
+
+
 def test_fields_for_unselected_record_type_fails(artifact, tmp_path):
     out = tmp_path / "e.json"
     result = export_scan_data(
@@ -281,12 +292,75 @@ def test_xml_versioned_shape_and_exact_text_round_trip(tmp_path):
     assert json.loads(locations.text) == [{"source_url": "https://example.com/"}]
 
 
+def test_xml_scalars_keep_explicit_types_and_zero(tmp_path):
+    out = tmp_path / "typed.xml"
+    result = export_scan_data(_document(), out, fmt="xml")
+    assert result["ok"], result
+    root = ET.parse(out).getroot()
+    ns = f"{{{XML_NAMESPACE}}}"
+    page = root.find(f".//{ns}records/{ns}pages/{ns}page")
+    assert page.find(f"{ns}url").attrib == {"type": "string"}
+    assert page.find(f"{ns}status_code").attrib == {"type": "integer"}
+    assert page.find(f"{ns}status_code").text == "200"
+    assert root.find(f".//{ns}provenance/{ns}run/{ns}crawl_partial").attrib == {"type": "boolean"}
+    assert root.find(f".//{ns}coverage/{ns}checks/{ns}coverage").attrib == {"type": "number"}
+
+
 def test_xml_escaping_does_not_mutate_values(tmp_path):
     out = tmp_path / "e.xml"
     export_scan_data(_document(), str(out), fmt="xml")
     raw = out.read_text(encoding="utf-8")
     assert "&amp;y=&lt;2&gt;" in raw
     assert "café 日本語" in raw
+
+
+def test_xml_round_trips_carriage_return_without_normalizing_to_lf(tmp_path):
+    document = _document()
+    document["issues"][0]["message"] = "before\rafter\r\nnext\tline 🙂 e\u0301"
+    out = tmp_path / "cr.xml"
+    result = export_scan_data(document, out, fmt="xml")
+    assert result["ok"], result
+    root = ET.parse(out).getroot()
+    ns = f"{{{XML_NAMESPACE}}}"
+    value = root.find(f".//{ns}records/{ns}findings/{ns}finding/{ns}message")
+    assert value is not None and value.text == document["issues"][0]["message"]
+    assert b"&#13;" in out.read_bytes()
+
+
+def test_xml_forbidden_control_refuses_before_publishing(tmp_path):
+    document = _document()
+    document["issues"][0]["message"] = "before\x01after"
+    out = tmp_path / "control.xml"
+    result = export_scan_data(document, out, fmt="xml")
+    assert result["ok"] is False
+    assert "findings[0].message" in result["error"]
+    assert "U+0001" in result["error"]
+    assert not out.exists()
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_xml_arbitrary_metadata_keys_are_well_formed_and_reversible(tmp_path):
+    document = _document()
+    document["summary"]["totals"]["bad <key>&"] = 0
+    out = tmp_path / "keys.xml"
+    result = export_scan_data(document, out, fmt="xml")
+    assert result["ok"], result
+    root = ET.parse(out).getroot()
+    ns = f"{{{XML_NAMESPACE}}}"
+    entry = root.find(f".//{ns}statistics/{ns}run/{ns}totals/{ns}entry")
+    assert entry is not None
+    assert entry.attrib == {"type": "integer", "key": "bad <key>&"}
+    assert entry.text == "0"
+
+
+def test_xml_invalid_metadata_key_refuses_without_publishing(tmp_path):
+    document = _document()
+    document["summary"]["totals"]["bad\x01key"] = 1
+    out = tmp_path / "invalid-key.xml"
+    result = export_scan_data(document, out, fmt="xml")
+    assert result["ok"] is False
+    assert "U+0001" in result["error"]
+    assert not out.exists()
 
 
 def test_csv_files_and_manifest(artifact, tmp_path):
@@ -383,6 +457,29 @@ def test_existing_destination_is_refused(artifact, tmp_path):
     assert result["ok"] is False
     assert "already exists" in result["error"]
     assert out.read_text() == "already here"
+
+
+def test_symlink_input_alias_and_csv_child_conflicts_preserve_bytes(artifact, tmp_path):
+    retained = artifact.read_bytes()
+    result = export_scan_data(artifact, artifact, fmt="json")
+    assert result["ok"] is False and artifact.read_bytes() == retained
+
+    outside = tmp_path / "untouched.txt"
+    outside.write_bytes(b"keep")
+    output_link = tmp_path / "linked.xml"
+    output_link.symlink_to(outside)
+    result = export_scan_data(_document(), output_link, fmt="xml")
+    assert result["ok"] is False and outside.read_bytes() == b"keep"
+
+    csv_child = tmp_path / "batch.pages.csv"
+    csv_child.symlink_to(outside)
+    result = export_scan_data(_document(), tmp_path / "batch.csv", fmt="csv", records=["pages"])
+    assert result["ok"] is False and outside.read_bytes() == b"keep"
+    assert not (tmp_path / "batch.manifest.csv").exists()
+
+    result = export_scan_data(_document(), tmp_path / "other.csv", fmt="csv", records=["../pages"])
+    assert result["ok"] is False
+    assert not list(tmp_path.glob("other*"))
 
 
 def test_json_chunks_consume_records_incrementally():

@@ -216,9 +216,15 @@ The root element is `scan-export` in namespace
 names verbatim: `<provenance>`, `<projection>`, `<statistics>`, `<coverage>`,
 then `<records>` containing `<pages><page>`, `<links><link>`, and
 `<findings><finding>` elements whose children are the selected field names.
-Scalar values are text; booleans are `true`/`false`; absent values carry
+Scalar values carry `type="string"`, `type="boolean"`, `type="integer"`, or
+`type="number"`; booleans are `true`/`false`; absent values carry
 `state="absent"`; nested objects and arrays serialize as JSON text with
-`format="json"`. Metadata lists use repeated `<item>` elements.
+`format="json"`. Metadata lists use repeated `<item>` elements. Literal
+carriage returns use numeric character references so parsing preserves them;
+XML 1.0 forbidden control characters fail with a record/field path before
+any final export is published. Metadata mapping keys that are not safe XML
+element names use `<entry key="original key">` so arbitrary retained JSON keys
+do not make the document malformed or lose their spelling.
 
 ### Output files and limits
 
