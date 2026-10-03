@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1018,6 +1018,27 @@ Show project scan history and named pending checklist/preparation states.
 | `directory` | `str` | `required` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-progress`
+
+MCP name: `seo_project_progress`
+
+Show a compact, paginated project checklist view and its next actions.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `limit` | `int` | `20` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The page contains at most 100 checklist items. Audit-task completion is a
+percentage only when every included site has an explicit agreed plan and
+the shared coverage axis has a measured, nonzero denominator. It is
+explicitly task completion, not a site-health or remediation percentage.
 
 ### `project-facts`
 

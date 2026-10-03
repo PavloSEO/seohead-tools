@@ -96,6 +96,7 @@ COMMANDS = (
     "project-new",
     "project-open",
     "project-status",
+    "project-progress",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -426,6 +427,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "project-new",
         "project-open",
         "project-status",
+        "project-progress",
         "project-facts",
         "project-checklist-init",
         "project-checklist-update",
@@ -439,6 +441,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
+        if cmd == "project-progress":
+            kw["limit"] = args.limit
+            kw["offset"] = args.offset
         if getattr(args, "expected_revision", None) is not None:
             kw["expected_revision"] = args.expected_revision
         if getattr(args, "item_id", None) is not None:
@@ -1368,8 +1373,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--directory", help="new project directory")
         _source_flag(sub, "--target", help="primary site URL")
         sub.add_argument("--label", help="human project label")
-    if cmd in {"project-open", "project-status"}:
+    if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd == "project-progress":
+        sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
+        sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {
@@ -1583,6 +1591,7 @@ def build_parser() -> argparse.ArgumentParser:
         "new",
         "open",
         "status",
+        "progress",
         "facts",
         "checklist-init",
         "checklist-update",
