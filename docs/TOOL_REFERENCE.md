@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -553,7 +553,7 @@ Audit a site's regional structure: subdomains (msk.site.ru), folders (site.ru/ms
 
 MCP name: `seo_render_check`
 
-Compare the raw server HTML with the DOM after JavaScript runs — the gap between them is what a non-rendering crawler loses. Reports an empty SPA shell (<div id="root"></div> means a robot gets a blank page), the share of text and internal links that appear only after JS, a title/canonical rewritten by script, and Schema.org markup injected client-side. Also returns lab timings (TTFB, FCP, LCP, CLS, load) measured in one Chromium run — these are lab numbers, not field Core Web Vitals from CrUX, and are labelled metrics_lab for that reason. Also returns dual_crawl (schema dualcrawl.v1): per-URL image/link evidence seen by only the raw pass or only the rendered pass, a separate question from the raw/rendered diff above. Requires Playwright; if it is missing the tool says so and gives the install command instead of failing. A render that did not finish — a document with no title, no h1, no canonical and no links, far smaller than the raw response — comes back as ok:false with reason "incomplete_render" and both snapshots, never as findings about the site: an unmeasured page is not a defect. A requested wait milestone that times out (networkidle on a site with long-polling scripts) falls back to reading the DOM at domcontentloaded, recorded in wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity; user_agent overrides that identity for both requests.
+Compare the raw server HTML with the DOM after JavaScript runs — the gap between them is what a non-rendering crawler loses. Reports an empty SPA shell (<div id="root"></div> means a robot gets a blank page), the share of text and internal links that appear only after JS, a title/canonical rewritten by script, and Schema.org markup injected client-side. Also returns lab timings (TTFB, FCP, LCP, CLS, load) measured in one Chromium run — these are lab numbers, not field Core Web Vitals from CrUX, and are labelled metrics_lab for that reason. Also returns dual_crawl (schema dualcrawl.v1): per-URL image/link evidence seen by only the raw pass or only the rendered pass, a separate question from the raw/rendered diff above. Requires Playwright; if it is missing the tool says so and gives the install command instead of failing. A render that did not finish — a document with no title, no h1, no canonical and no links, far smaller than the raw response — comes back as ok:false with reason "incomplete_render" and both snapshots, never as findings about the site: an unmeasured page is not a defect. A requested wait milestone that times out (networkidle on a site with long-polling scripts) falls back to reading the DOM at domcontentloaded, recorded in wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity; user_agent overrides that identity for both requests. `transport_config` opts into an operator-supplied remote Playwright connection using `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env` and `remote_playwright_version`. It never provisions a server or falls back to local launch after a remote failure.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -561,6 +561,7 @@ Compare the raw server HTML with the DOM after JavaScript runs — the gap betwe
 | `viewport` | `str` | `'desktop'` |
 | `wait` | `str` | `'load'` |
 | `user_agent` | `str | None` | `None` |
+| `transport_config` | `dict[str, str] | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
@@ -639,6 +640,24 @@ Join an existing audit or scan to an offline URL-keyed CSV without a provider ca
 | `out_urls` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `crawl-import`
+
+MCP name: `seo_crawl_import`
+
+Read a versioned third-party crawl CSV bundle from a local manifest.
+
+| Argument | Type | Default |
+|---|---|---|
+| `manifest_path` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The manifest maps source headers to page, link, status, and redirect
+fields. The result is ``third_party_crawl.v1`` with source identity and
+per-field coverage; it is not scan.v1 or SF audit evidence.
 
 ### `segment-diff`
 
