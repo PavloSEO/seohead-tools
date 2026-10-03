@@ -25,6 +25,8 @@ if TYPE_CHECKING:  # imported for the annotation only; the CLI keeps its imports
     from seohead.crawl.progress import CrawlProgress
 from seohead.servers import handlers
 
+MAX_CRUX_EVIDENCE_BYTES = 2 * 1024 * 1024
+
 # command -> handler kwarg builder. Each maps CLI namespace + --input dict -> kwargs.
 COMMANDS = (
     "parse",
@@ -495,7 +497,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "skip", None):
             kw["skip"] = _split_list(args.skip)
         if getattr(args, "crux_evidence", None):
-            kw["crux_evidence"] = json.loads(Path(args.crux_evidence).read_text(encoding="utf-8"))
+            with Path(args.crux_evidence).open("rb") as stream:
+                content = stream.read(MAX_CRUX_EVIDENCE_BYTES + 1)
+            if len(content) > MAX_CRUX_EVIDENCE_BYTES:
+                raise ValueError("CrUX evidence file exceeds the 2 MiB input limit")
+            kw["crux_evidence"] = json.loads(content.decode("utf-8"))
         if getattr(args, "report", None):
             kw["_report"] = args.report
             kw["_out"] = getattr(args, "out", None)

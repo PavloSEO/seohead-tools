@@ -23,7 +23,6 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,13 @@ HOST = "https://chromeuxreport.googleapis.com/v1/records:queryRecord"
 HISTORY_HOST = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord"
 TIMEOUT = 30
 MAX_SAMPLES = 25
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_CACHE_BYTES = 64 * 1024
+
+
+class ResponseTooLarge(ValueError):
+    """The CrUX response exceeded the bounded provider input budget."""
+
 
 # payload, api key -> response body text
 Fetcher = Callable[[dict[str, Any], str], str]
@@ -50,7 +56,10 @@ def _default_fetcher(payload: dict[str, Any], api_key: str) -> str:
         headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
     )
     with open_no_redirect(request, timeout=TIMEOUT) as response:
-        return response.read().decode("utf-8")
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ResponseTooLarge("CrUX response exceeded the 2 MiB limit")
+        return raw.decode("utf-8")
 
 
 def _history_fetcher(payload: dict[str, Any], api_key: str) -> str:
@@ -62,12 +71,18 @@ def _history_fetcher(payload: dict[str, Any], api_key: str) -> str:
         headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
     )
     with open_no_redirect(request, timeout=TIMEOUT) as response:
-        return response.read().decode("utf-8")
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ResponseTooLarge("CrUX response exceeded the 2 MiB limit")
+        return raw.decode("utf-8")
 
 
 def _api_error(exc: urllib.error.HTTPError) -> str:
     try:
-        body = json.loads(exc.read().decode("utf-8", "replace"))
+        raw = exc.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            return "CrUX error response exceeded the 2 MiB limit"
+        body = json.loads(raw.decode("utf-8", "replace"))
         return str(body.get("error", {}).get("message") or exc.reason)
     except ValueError:
         return str(exc.reason)
@@ -133,6 +148,10 @@ def query(
     fetch = fetcher or _default_fetcher
     try:
         raw = fetch(payload, api_token)
+    except ResponseTooLarge as exc:
+        return finish({"ok": False, "state": "response_too_large", "error": str(exc)})
+    except UnicodeError:
+        return finish({"ok": False, "state": "failed", "error": "CrUX malformed response"})
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return finish(
@@ -144,6 +163,14 @@ def query(
     except (urllib.error.URLError, TimeoutError) as exc:
         return finish({"ok": False, "state": "failed", "error": f"CrUX request failed: {exc}"})
 
+    if isinstance(raw, str) and len(raw.encode("utf-8")) > MAX_RESPONSE_BYTES:
+        return finish(
+            {
+                "ok": False,
+                "state": "response_too_large",
+                "error": "CrUX response exceeded the 2 MiB limit",
+            }
+        )
     body = _response_object(raw)
     if body is None:
         return finish({"ok": False, "state": "failed", "error": "CrUX malformed response"})
@@ -182,6 +209,25 @@ def query(
             },
         }
     )
+
+
+def _cache_failure(target: str, form_factor: str | None, state: str) -> dict[str, Any]:
+    from seohead.data_sources.cwv import assess
+
+    result: dict[str, Any] = {
+        "ok": False,
+        "state": state,
+        "error": state.replace("_", " "),
+        "target": target,
+        "target_kind": "url",
+        "form_factor": form_factor or "ALL_FORM_FACTORS",
+        "metric_source": "CrUX current field data",
+        "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "metrics": {},
+        "cache": "unavailable",
+    }
+    result["assessment"] = assess(result)
+    return result
 
 
 def sample_urls(
@@ -224,57 +270,79 @@ def sample_urls(
             if root
             else None
         )
-        cached = None
-        if (
-            cache
-            and cache.is_file()
-            and not cache.is_symlink()
-            and time.time() - cache.stat().st_mtime <= cache_max_age_hours * 3600
-        ):
-            with suppress(OSError, ValueError):
-                cached = json.loads(cache.read_text(encoding="utf-8"))
-        if (
-            isinstance(cached, dict)
-            and cached.get("metric_source") == "CrUX current field data"
-            and cached.get("target") == target
-            and cached.get("target_kind") == "url"
-            and cached.get("form_factor") == (form_factor or "ALL_FORM_FACTORS")
-        ):
-            from seohead.data_sources.cwv import assess
+        if cache and (cache.exists() or cache.is_symlink()):
+            try:
+                if cache.is_symlink() or not cache.is_file():
+                    raise ValueError("invalid cache path")
+                stat = cache.stat()
+                if stat.st_size > MAX_CACHE_BYTES:
+                    records.append(_cache_failure(target, form_factor, "cache_too_large"))
+                    continue
+                if time.time() - stat.st_mtime <= cache_max_age_hours * 3600:
+                    with cache.open("rb") as stream:
+                        raw_cache = stream.read(MAX_CACHE_BYTES + 1)
+                    if len(raw_cache) > MAX_CACHE_BYTES:
+                        records.append(_cache_failure(target, form_factor, "cache_too_large"))
+                        continue
+                    cached = json.loads(raw_cache.decode("utf-8"))
+                    if not (
+                        isinstance(cached, dict)
+                        and cached.get("metric_source") == "CrUX current field data"
+                        and cached.get("target") == target
+                        and cached.get("target_kind") == "url"
+                        and cached.get("form_factor") == (form_factor or "ALL_FORM_FACTORS")
+                        and isinstance(cached.get("record_target"), (str, type(None)))
+                    ):
+                        raise ValueError("cache identity mismatch")
+                    from seohead.data_sources.cwv import assess
 
-            cached["assessment"] = assess(cached)
-            cached["cache"] = "hit"
-            records.append(cached)
-            hits += 1
-            continue
+                    cached["assessment"] = assess(cached)
+                    cached["cache"] = "hit"
+                    records.append(cached)
+                    hits += 1
+                    continue
+            except (OSError, UnicodeError, ValueError):
+                records.append(_cache_failure(target, form_factor, "cache_invalid"))
+                continue
         result = query(url=target, form_factor=form_factor, api_key=api_key, fetcher=fetcher)
         result["cache"] = "miss" if cache else "disabled"
         requests += 1 if result.get("state") != "not_configured" else 0
         if cache and result.get("ok"):
-            root.mkdir(parents=True, mode=0o700, exist_ok=True)
-            descriptor, staged = tempfile.mkstemp(prefix=".crux-", dir=root)
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                    json.dump(result, stream)
-                os.chmod(staged, 0o600)
-                os.replace(staged, cache)
-            finally:
-                Path(staged).unlink(missing_ok=True)
+            encoded = json.dumps(result, sort_keys=True).encode("utf-8")
+            if len(encoded) > MAX_CACHE_BYTES:
+                result["cache"] = "not_written_too_large"
+            else:
+                root.mkdir(parents=True, mode=0o700, exist_ok=True)
+                descriptor, staged = tempfile.mkstemp(prefix=".crux-", dir=root)
+                try:
+                    with os.fdopen(descriptor, "wb") as stream:
+                        stream.write(encoded)
+                    os.chmod(staged, 0o600)
+                    os.replace(staged, cache)
+                finally:
+                    Path(staged).unlink(missing_ok=True)
         records.append(result)
     complete = sum(r["assessment"]["overall"] not in {"partial", "unavailable"} for r in records)
+    measured_targets = [
+        r.get("record_target") or r["target"]
+        for r in records
+        if r["assessment"]["overall"] not in {"partial", "unavailable"}
+    ]
+    duplicate_record_targets = len(measured_targets) - len(set(measured_targets))
     return {
         "provider": "crux",
         "metric_source": "field",
         "state": "unavailable"
         if not complete
         else "partial"
-        if complete < len(targets)
+        if complete < len(targets) or duplicate_record_targets
         else "complete",
         "requested": len(targets),
         "sampled": len(sampled),
         "omitted": len(targets) - len(sampled),
         "requests": requests,
         "cache_hits": hits,
+        "duplicate_record_targets": duplicate_record_targets,
         "cache_max_age_hours": cache_max_age_hours if root else None,
         "cost_mode": "free_within_quota",
         "quota_mode": "Google Cloud API quota",
@@ -307,6 +375,10 @@ def history(
         payload["metrics"] = metrics
     try:
         raw = (fetcher or _history_fetcher)(payload, key)
+    except ResponseTooLarge as exc:
+        return {"ok": False, "state": "response_too_large", "error": str(exc)}
+    except UnicodeError:
+        return {"ok": False, "state": "failed", "error": "CrUX History malformed response"}
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return {
@@ -318,6 +390,12 @@ def history(
         return {"ok": False, "state": "failed", "error": _api_error(exc), "status": exc.code}
     except (urllib.error.URLError, TimeoutError) as exc:
         return {"ok": False, "state": "failed", "error": f"CrUX request failed: {exc}"}
+    if isinstance(raw, str) and len(raw.encode("utf-8")) > MAX_RESPONSE_BYTES:
+        return {
+            "ok": False,
+            "state": "response_too_large",
+            "error": "CrUX response exceeded the 2 MiB limit",
+        }
     body = _response_object(raw)
     record = (body or {}).get("record")
     if not isinstance(record, dict):

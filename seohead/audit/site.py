@@ -274,7 +274,43 @@ def audit_site(
         if isinstance(envelope, dict) and envelope.get("provider") != "crux":
             return {"ok": False, "error": "provider artifact is not CrUX evidence"}
         records = supplied.get("records", [supplied])
+        if (
+            not isinstance(records, list)
+            or len(records) > 25
+            or not all(isinstance(r, dict) for r in records)
+        ):
+            return {"ok": False, "error": "CrUX evidence must contain at most 25 records"}
         if "records" in supplied:
+            if supplied.get("provider") != "crux" or supplied.get("metric_source") != "field":
+                return {"ok": False, "error": "CrUX sample has invalid provider provenance"}
+            counts = ("requested", "sampled", "omitted", "requests", "cache_hits")
+            if any(
+                isinstance(supplied.get(key), bool)
+                or not isinstance(supplied.get(key), int)
+                or supplied[key] < 0
+                for key in counts
+            ):
+                return {"ok": False, "error": "CrUX sample has invalid count metadata"}
+            if (
+                supplied["sampled"] != len(records)
+                or supplied["requested"] != supplied["sampled"] + supplied["omitted"]
+                or supplied["sampled"] > 25
+                or supplied["requests"] + supplied["cache_hits"] > supplied["sampled"]
+            ):
+                return {"ok": False, "error": "CrUX sample counts do not match retained records"}
+            targets = [record.get("target") for record in records if isinstance(record, dict)]
+            if len(targets) != len(records) or any(
+                not isinstance(target, str) for target in targets
+            ):
+                return {"ok": False, "error": "CrUX sample has invalid target records"}
+            if len(set(targets)) != len(targets):
+                return {"ok": False, "error": "CrUX sample repeats a requested URL"}
+            observed_targets = [
+                record.get("record_target") or record["target"] for record in records
+            ]
+            if any(not isinstance(target, str) for target in observed_targets):
+                return {"ok": False, "error": "CrUX sample has invalid measured targets"}
+            duplicate_record_targets = len(observed_targets) - len(set(observed_targets))
             cwv_sampling = {
                 key: supplied.get(key)
                 for key in (
@@ -283,15 +319,14 @@ def audit_site(
                     "omitted",
                     "requests",
                     "cache_hits",
+                    "duplicate_record_targets",
                     "cache_max_age_hours",
                 )
             }
-        if (
-            not isinstance(records, list)
-            or len(records) > 25
-            or not all(isinstance(r, dict) for r in records)
-        ):
-            return {"ok": False, "error": "CrUX evidence must contain at most 25 records"}
+            cwv_sampling["duplicate_record_targets"] = duplicate_record_targets
+            cwv_sampling["source_state"] = (
+                "partial" if duplicate_record_targets else supplied.get("state")
+            )
         site_origin = f"{urlparse(start).scheme}://{urlparse(start).netloc}"
         for record in records:
             target = record.get("target")
@@ -521,9 +556,10 @@ def audit_site(
         cwv_state = "not_requested"
     elif not cwv_assessments or all(a["overall"] == "unavailable" for a in cwv_assessments):
         cwv_state = "unavailable"
-    elif (cwv_sampling and cwv_sampling.get("omitted")) or any(
-        a["overall"] in {"partial", "unavailable"} for a in cwv_assessments
-    ):
+    elif (
+        cwv_sampling
+        and (cwv_sampling.get("omitted") or cwv_sampling.get("source_state") != "complete")
+    ) or any(a["overall"] in {"partial", "unavailable"} for a in cwv_assessments):
         cwv_state = "partial"
     else:
         cwv_state = "complete"

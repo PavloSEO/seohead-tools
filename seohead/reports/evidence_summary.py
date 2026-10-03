@@ -28,6 +28,7 @@ def rows(summary: dict[str, Any]) -> list[list[str]]:
                             "omitted",
                             "requests",
                             "cache_hits",
+                            "duplicate_record_targets",
                             "cache_max_age_hours",
                         )
                     ),

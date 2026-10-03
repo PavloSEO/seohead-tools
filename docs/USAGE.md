@@ -23,7 +23,12 @@ one URL; `--origin` is a separate aggregate over the origin, never a substitute
 for missing URL data. Use `--form-factor PHONE` or `DESKTOP` for a device class;
 without it CrUX aggregates all form factors. A bounded URL sample accepts
 `--urls`, `--max-samples` (1–25) and optional `--cache-dir` with
-`--cache-max-age-hours`. These are Google API reads, subject to its quota.
+`--cache-max-age-hours`. Provider responses and CLI saved-evidence inputs are
+capped at 2 MiB; private cache entries are capped at 64 KiB. An oversized or
+corrupt cache is reported unavailable without an implicit Google retry. Saved
+samples with missing or repeated URL records are rejected before audit collection.
+These are Google API reads, subject to its quota.
+
 CrUX p75 uses the [official field thresholds](https://web.dev/articles/defining-core-web-vitals-thresholds):
 LCP 2500/4000 ms, INP 200/500 ms and CLS 0.1/0.25. Missing metrics, an
 ineligible record and provider failures are unavailable, never passing.

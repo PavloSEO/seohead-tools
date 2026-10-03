@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import urllib.error
 from io import BytesIO
@@ -207,6 +208,116 @@ def test_bounded_sample_and_private_cache(tmp_path):
         crux.sample_urls(urls, max_samples=26, api_key="synthetic", fetcher=fetcher)
 
 
+def test_saved_sample_rejects_missing_or_duplicate_target_records_before_audit():
+    one = _query(_record())
+    sample = {
+        "provider": "crux",
+        "metric_source": "field",
+        "state": "complete",
+        "requested": 2,
+        "sampled": 2,
+        "omitted": 0,
+        "requests": 2,
+        "cache_hits": 0,
+        "records": [one],
+    }
+
+    def audit():
+        return audit_site(
+            ORIGIN,
+            urls=[URL],
+            skip=[*SITE_TOOLS, *PAGE_TOOLS],
+            tools={},
+            crux_evidence=sample,
+        )
+
+    missing = audit()
+    assert missing["ok"] is False and "counts" in missing["error"]
+    sample["records"] = [one, one]
+    duplicated = audit()
+    assert duplicated["ok"] is False and "repeats a requested URL" in duplicated["error"]
+
+
+def test_distinct_requests_collapsing_to_one_crux_record_are_partial():
+    urls = [URL + "?campaign=a", URL + "?campaign=b"]
+    batch = crux.sample_urls(
+        urls,
+        api_key="synthetic",
+        fetcher=lambda _payload, _key: json.dumps(_record(url=URL, form_factor=None)),
+    )
+    assert batch["requested"] == batch["sampled"] == 2
+    assert batch["duplicate_record_targets"] == 1
+    assert batch["state"] == "partial"
+    audit = audit_site(
+        ORIGIN, urls=[URL], skip=[*SITE_TOOLS, *PAGE_TOOLS], tools={}, crux_evidence=batch
+    )
+    assert audit["ok"] is True
+    assert audit["summary"]["field_cwv"]["state"] == "partial"
+    forged = dict(batch, state="complete", duplicate_record_targets=0)
+    still_partial = audit_site(
+        ORIGIN, urls=[URL], skip=[*SITE_TOOLS, *PAGE_TOOLS], tools={}, crux_evidence=forged
+    )
+    assert still_partial["summary"]["field_cwv"]["state"] == "partial"
+    assert still_partial["summary"]["field_cwv"]["sampling"]["duplicate_record_targets"] == 1
+
+
+def test_oversized_http_response_is_unavailable_without_unbounded_read(monkeypatch):
+    monkeypatch.setattr(crux, "MAX_RESPONSE_BYTES", 80)
+
+    class OversizedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, limit):
+            assert limit == 81
+            return b"x" * 81
+
+    monkeypatch.setattr(crux, "open_no_redirect", lambda *_args, **_kwargs: OversizedResponse())
+    result = crux.query(url=URL, api_key="synthetic")
+    assert result["state"] == "response_too_large"
+    assert result["assessment"]["overall"] == "unavailable"
+    assert (
+        result["assessment"]["metrics"]["largest_contentful_paint"]["reason"]
+        == "response_too_large"
+    )
+    injected = crux.query(url=URL, api_key="synthetic", fetcher=lambda *_args: "x" * 81)
+    assert injected["state"] == "response_too_large"
+    history = crux.history(url=URL, api_key="synthetic", fetcher=lambda *_args: "x" * 81)
+    assert history["state"] == "response_too_large"
+
+
+def test_oversized_or_corrupt_cache_is_unavailable_without_provider_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(crux, "MAX_CACHE_BYTES", 80)
+    digest = hashlib.sha256(f"{URL}\0{None}".encode()).hexdigest()
+    cache = tmp_path / f"crux-{digest}.json"
+    cache.write_bytes(b"x" * 81)
+
+    def forbidden_fetch(*_args):
+        pytest.fail("an invalid cache must not silently spend a provider request")
+
+    oversized = crux.sample_urls(
+        [URL], cache_dir=tmp_path, api_key="synthetic", fetcher=forbidden_fetch
+    )
+    assert oversized["state"] == "unavailable"
+    assert oversized["requests"] == 0 and oversized["cache_hits"] == 0
+    assert (
+        oversized["records"][0]["assessment"]["metrics"]["largest_contentful_paint"]["reason"]
+        == "cache_too_large"
+    )
+    cache.write_text("{broken", encoding="utf-8")
+    corrupt = crux.sample_urls(
+        [URL], cache_dir=tmp_path, api_key="synthetic", fetcher=forbidden_fetch
+    )
+    assert corrupt["state"] == "unavailable"
+    assert (
+        corrupt["records"][0]["assessment"]["metrics"]["largest_contentful_paint"]["reason"]
+        == "cache_invalid"
+    )
+
+
 def test_provider_artifact_retains_assessment_but_public_envelope_is_redacted(tmp_path):
     output = providers.provider_collect(
         "crux",
@@ -322,3 +433,11 @@ def test_cli_and_mcp_site_audit_consume_identical_local_evidence(tmp_path, capsy
     assert response.isError is False
     assert response.structuredContent["field_cwv"] == from_cli["field_cwv"]
     assert response.structuredContent["summary"]["field_cwv"] == from_cli["summary"]["field_cwv"]
+
+
+def test_cli_rejects_oversized_saved_evidence_before_audit(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "oversized-crux.json"
+    source.write_bytes(b"x" * 81)
+    monkeypatch.setattr(cli, "MAX_CRUX_EVIDENCE_BYTES", 80)
+    assert cli.main(["site-audit", "--url", ORIGIN, "--crux-evidence", str(source)]) == 1
+    assert "CrUX evidence file exceeds" in capsys.readouterr().err

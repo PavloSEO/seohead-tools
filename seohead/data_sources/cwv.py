@@ -64,6 +64,8 @@ def assess(record: dict[str, Any]) -> dict[str, Any]:
             reason = "not_configured"
         elif record.get("state") == "no_field_data":
             reason = "no_field_data"
+        elif record.get("state") in {"response_too_large", "cache_too_large", "cache_invalid"}:
+            reason = record["state"]
         elif record.get("ok") is False:
             reason = "provider_failed"
         elif value is None:
