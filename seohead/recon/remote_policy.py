@@ -12,6 +12,7 @@ import contextlib
 import contextvars
 import ipaddress
 import math
+import socket
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -79,18 +80,28 @@ class RemoteEgressPolicy:
             raise ValueError("remote delay floor must be finite and nonnegative")
         normalized: set[str] = set()
         for value in self.allowed_private_hosts:
-            host = str(value).rstrip(".").lower()
+            if not isinstance(value, str):
+                raise ValueError("private host allowlist requires DNS hostname strings")
+            host = value.rstrip(".").lower()
             try:
                 ipaddress.ip_address(host)
             except ValueError:
                 pass
             else:
                 raise ValueError("private host allowlist requires DNS hostnames, not IP literals")
+            try:
+                socket.inet_aton(host)
+            except OSError:
+                pass
+            else:
+                raise ValueError("private host allowlist requires DNS hostnames, not IP aliases")
             if (
                 not host
+                or host != host.strip()
                 or host == "localhost"
                 or host.endswith(".localhost")
                 or "://" in host
+                or ":" in host
                 or "/" in host
                 or "@" in host
                 or "*" in host
