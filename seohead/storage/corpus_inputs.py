@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from . import ScanError, open_scan
+try:
+    import sqlite3
+except ImportError:  # A Python distributor may omit this optional stdlib module.
+    sqlite3 = None  # type: ignore[assignment]
+
+from . import READ_TIMEOUT_SECONDS, ScanError, open_scan
 from .bodies import _DECODER_VERSION, read_document
 
 MAX_CORPUS_DOCUMENTS = 10_000
@@ -95,6 +101,14 @@ def _coverage(
     }
 
 
+def _read_interrupted(exc: BaseException) -> bool:
+    """Tell a progress-handler interrupt apart from other statement failures."""
+    code = getattr(exc, "sqlite_errorcode", None)  # Python >= 3.11
+    if code is not None:
+        return code == getattr(sqlite3, "SQLITE_INTERRUPT", 9)
+    return "interrupted" in str(exc).lower()
+
+
 def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
     """Return private analyzer input plus public provenance; raw bodies never leave this module."""
     if kind not in {"duplicate", "boilerplate"}:
@@ -106,6 +120,12 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
 
     con = open_scan(scan, require_audit=False)
     try:
+        # open_scan's deadline covers its validation pass; corpus reading instead
+        # re-budgets each document so total wall clock no longer scales with the
+        # corpus, while one pathological document read still gets cancelled
+        # (issue #710).
+        deadline = [time.monotonic() + READ_TIMEOUT_SECONDS]
+        con.set_progress_handler(lambda: int(time.monotonic() > deadline[0]), 10_000)
         header = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         config = json.loads(header["config_json"])
         eligible = con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
@@ -119,14 +139,6 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
         lane = json.loads(header["capabilities_json"])["html_bodies"]
         if lane["state"] != "complete":
             partial_reasons.append(f"HTML body lane is {lane['state']}: {lane['reason']}")
-        if eligible > MAX_CORPUS_DOCUMENTS:
-            return {
-                "items": [],
-                "source": _source(header, kind=kind, representations=representations),
-                "coverage": _coverage(
-                    eligible, 0, omitted, unavailable="scan corpus document limit exceeded"
-                ),
-            }
 
         from seohead.tools.boilerplate_report import boilerplate_hash
         from seohead.tools.markdown_extract import extract_markdown
@@ -134,57 +146,70 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
         items: list[dict[str, Any]] = []
         input_bytes = 0
         measured_empty = 0
+        stop_reason = ""
         cursor = con.execute(
             "SELECT p.document_id,p.representation,p.content_type,p.status_code,p.canonical,p.meta_robots,"
             "p.x_robots,p.error,u.url,EXISTS(SELECT 1 FROM context_items c WHERE "
             "c.kind='robots_blocked_url' AND c.item_key='url:'||p.url_id) AS robots_blocked "
             "FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
         )
-        for row in cursor:
-            page = dict(row)
-            representations[page["representation"]] += 1
-            if page["document_id"] is None:
-                omitted["document_not_recorded"] += 1
-                continue
-            if "html" not in page["content_type"].lower():
-                omitted["unsupported_format"] += 1
-                continue
-            try:
-                html = read_document(con, page["document_id"], max_decoded_bytes=MAX_DOCUMENT_BYTES)
-            except ScanError as exc:
-                omitted[str(exc)] += 1
-                continue
-            if kind == "duplicate":
-                value = extract_markdown(html, config.get("content_area"))["content_markdown"]
-                if not value.strip():
-                    measured_empty += 1
-                size = len(value.encode("utf-8"))
-            else:
-                size = len(html.encode("utf-8"))
-            if input_bytes + size > MAX_CORPUS_INPUT_BYTES:
-                return {
-                    "items": [],
-                    "source": _source(header, kind=kind, representations=representations),
-                    "coverage": _coverage(
-                        eligible,
-                        len(items),
-                        omitted,
-                        unavailable="scan corpus input-byte budget exceeded",
-                        partial_reasons=partial_reasons,
-                        measured_empty=measured_empty,
-                    ),
-                }
-            input_bytes += size
-            if kind == "duplicate":
-                items.append(
-                    {
-                        "id": page["url"],
-                        "text": value,
-                        "indexable": _indexable(page, bool(page["robots_blocked"])),
-                    }
-                )
-            else:
-                items.append({"url": page["url"], "hash": boilerplate_hash(html)})
+        try:
+            for row in cursor:
+                if len(items) >= MAX_CORPUS_DOCUMENTS:
+                    stop_reason = "scan corpus document limit exceeded"
+                    break
+                deadline[0] = time.monotonic() + READ_TIMEOUT_SECONDS
+                page = dict(row)
+                representations[page["representation"]] += 1
+                if page["document_id"] is None:
+                    omitted["document_not_recorded"] += 1
+                    continue
+                if "html" not in page["content_type"].lower():
+                    omitted["unsupported_format"] += 1
+                    continue
+                try:
+                    html = read_document(
+                        con, page["document_id"], max_decoded_bytes=MAX_DOCUMENT_BYTES
+                    )
+                except ScanError as exc:
+                    omitted[str(exc)] += 1
+                    continue
+                if kind == "duplicate":
+                    value = extract_markdown(html, config.get("content_area"))["content_markdown"]
+                    if not value.strip():
+                        measured_empty += 1
+                    # The retained analyzer input is the extracted Markdown.
+                    size = len(value.encode("utf-8"))
+                else:
+                    # Only the boilerplate digest is retained, so coverage must
+                    # not depend on the corpus's raw HTML size (issue #710).
+                    value = boilerplate_hash(html)
+                    size = len(page["url"].encode("utf-8")) + len(value.encode("ascii"))
+                if input_bytes + size > MAX_CORPUS_INPUT_BYTES:
+                    stop_reason = "scan corpus input-byte budget exceeded"
+                    break
+                input_bytes += size
+                if kind == "duplicate":
+                    items.append(
+                        {
+                            "id": page["url"],
+                            "text": value,
+                            "indexable": _indexable(page, bool(page["robots_blocked"])),
+                        }
+                    )
+                else:
+                    items.append({"url": page["url"], "hash": value})
+        except sqlite3.OperationalError as exc:
+            if not _read_interrupted(exc):
+                raise
+            stop_reason = "scan corpus read exceeded the per-document read budget"
+        if stop_reason:
+            # A cap that ends the read is partial coverage with exact counts —
+            # prepared items are still analyzed — not a clean or empty result.
+            remaining = eligible - len(items) - sum(omitted.values())
+            if remaining > 0:
+                omitted[stop_reason] += remaining
+            partial_reasons.append(stop_reason)
         return {
             "items": items,
             "source": _source(header, kind=kind, representations=representations),

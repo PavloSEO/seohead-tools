@@ -474,7 +474,10 @@ def provider_collect(
                     "returned": len(body.get("data") or []),
                     "truncated": bool(body.get("capped")),
                     "incomplete": bool(body.get("incomplete")),
-                    "sampled": bool(body.get("sampled")),
+                    # ``sampled`` is three-state: a body that does not report it stays
+                    # ``None`` — unknown must not read as "not sampled".
+                    "sampled": body.get("sampled"),
+                    "sample_share": body.get("sample_share"),
                     "accuracy": body.get("accuracy_used")
                     or (body.get("query") or {}).get("accuracy"),
                     "split": body.get("split"),

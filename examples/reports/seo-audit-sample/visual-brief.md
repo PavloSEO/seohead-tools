@@ -1,0 +1,9 @@
+# Visual brief for future synthetic SEO report examples
+
+Create a client-ready 16:9 SEO performance report that reads like a concise presentation, not a spreadsheet pasted onto slides. Use a calm blue technical palette, a strong cover, numbered section dividers, a clear conclusion in each page title, large readable KPI cards, restrained charts, and tables with generous row spacing. Use consistent source colors across every chart. Keep typography, margins, legends, page numbers and footnotes consistent; never crop table labels or hide incomplete coverage.
+
+Use the provided Russian and English PDFs as layout examples. Their figures and identity are fictional. Keep every future example visibly marked as synthetic. Use the existing geometric demo mark or design a new abstract symbol for a fictional label. Do not extract/reuse a client logo or reuse a client's name, domain, contact, dates, charts, metrics, query list, screenshots or analytics exports. Use the reserved `example.invalid` domain and independently generated values.
+
+**Logo prompt:** “Design a compact original geometric mark for a fictional technical company named DEMO COMPANY (Russian lockup: ТЕСТОВЫЙ ПРОЕКТ). Combine three simple rising bars into a clear abstract symbol; flat vector appearance, blue on white and white on blue, legible at 32 px, no pump, water-drop or customer-specific imagery, no reference-logo imitation. Provide a transparent SVG and monochrome variant.”
+
+**Quality prompt:** “Review the report as a busy business owner. On every page, identify the main takeaway within three seconds. Verify that labels and comparison periods are explicit, charts and tables remain readable at presentation size, all metric units and denominators are clear, and missing evidence is never drawn as zero or success. Confirm the Russian and English layouts independently.”

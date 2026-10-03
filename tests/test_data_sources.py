@@ -344,10 +344,12 @@ def test_metrika_error_carries_status():
 def test_metrika_url_drops_empty_params_but_keeps_zero():
     from seohead.data_sources.metrika import MetrikaClient
 
+    # ``attempt`` is a synthetic stand-in: report ``offset`` is 1-based and ``0`` must never
+    # reach ``stat/v1/data`` (#707), so this helper check uses a different zero-valued key.
     url = MetrikaClient._url(
-        "stat/v1/data", {"limit": 100, "offset": 0, "filters": "", "preset": None}
+        "stat/v1/data", {"limit": 100, "attempt": 0, "filters": "", "preset": None}
     )
-    assert "limit=100" in url and "offset=0" in url
+    assert "limit=100" in url and "attempt=0" in url
     assert "filters" not in url and "preset" not in url
 
 
@@ -380,6 +382,139 @@ def test_metrika_pagination_advances_one_based_cursor(monkeypatch):
     monkeypatch.setattr(client, "_request", fake)
     result = client.report({"ids": 1}, paginate=True)
     assert offsets == [1, 101] and len(result["data"]) == 105
+
+
+def test_metrika_rejects_zero_based_offset_before_any_request(monkeypatch):
+    """``offset`` below 1 fails locally instead of being forwarded to a 400 (#707)."""
+    from seohead.data_sources.metrika import MetrikaClient
+
+    client = MetrikaClient(token="synthetic")
+    calls: list[str] = []
+    monkeypatch.setattr(client, "_request", lambda url, *a, **k: calls.append(url))
+
+    for kwargs in ({"offset": 0}, {"offset": -3}):
+        with pytest.raises(ValueError, match="offset"):
+            client.report({"ids": 1}, **kwargs)
+        with pytest.raises(ValueError, match="offset"):
+            client.report({"ids": 1}, paginate=True, **kwargs)
+        with pytest.raises(ValueError, match="offset"):
+            client.by_time({"ids": 1}, **kwargs)
+    assert calls == []
+
+
+def test_metrika_public_report_paths_never_send_a_zero_based_offset(monkeypatch, journal):
+    """Every public report entry point defaults to the 1-based offset the API requires (#707).
+
+    The double mimics the live contract—``offset < 1`` earns a 400—so on the broken revision
+    each of these calls failed with ``must be greater than or equal to 1``.
+    """
+    from seohead.data_sources import metrika, providers
+    from seohead.servers import handlers
+
+    monkeypatch.setenv("YANDEX_METRIKA_TOKEN", "synthetic")
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    urls: list[str] = []
+
+    def fake_request(self, url, *a, **k):
+        urls.append(url)
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+        if int(query["offset"][0]) < 1:
+            raise metrika.MetrikaError(400, "must be greater than or equal to 1")
+        return {
+            "data": [{"dimensions": [{"name": "/"}], "metrics": [7]}],
+            "total_rows": 1,
+            "query": {"metrics": ["ym:s:visits"], "dimensions": ["ym:s:startURL"]},
+        }
+
+    monkeypatch.setattr(metrika.MetrikaClient, "_request", fake_request)
+
+    client = metrika.MetrikaClient()
+    assert client.report({"ids": 1, "metrics": "ym:s:visits"})["data"]
+    assert client.report({"ids": 1, "metrics": "ym:s:visits"}, paginate=True)["data"]
+
+    handled = handlers.metrika_report("1", "ym:s:visits", date1="2026-09-01", date2="2026-09-16")
+    assert handled["ok"] is True
+
+    collected = providers.provider_collect(
+        "metrika",
+        "aggregate_report",
+        {
+            "counter_id": "1",
+            "metrics": "ym:s:visits",
+            "date1": "2026-09-01",
+            "date2": "2026-09-16",
+        },
+    )
+    assert collected["evidence"]["status"] == "complete"
+    assert urls and all("offset=" in url for url in urls)
+
+
+def _metrika_paged_rows(url, total):
+    """Serve ``min(limit, remaining)`` numbered rows for a 1-based ``offset`` URL."""
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    offset, limit = int(query["offset"][0]), int(query["limit"][0])
+    rows = [{"metrics": [offset + i]} for i in range(min(limit, total - (offset - 1)))]
+    return {"data": rows, "total_rows": total, "query": {}}
+
+
+def test_metrika_pagination_covers_two_and_a_half_pages(monkeypatch, journal):
+    """2.5 pages request offsets ``1, 1+size, 1+2*size`` and return every row once (#707)."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 250)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100)
+    assert requests == [1, 101, 201]
+    assert [row["metrics"][0] for row in result["data"]] == list(range(1, 251))
+
+
+def test_metrika_pagination_total_rows_stop_counts_rows_before_offset(monkeypatch, journal):
+    """``total_rows`` is absolute: with ``offset=51`` a 151-row report takes two pages (#707).
+
+    Counting ``offset + len(rows)`` instead of ``offset - 1 + len(rows)`` would stop after the
+    first page and silently drop the last row.
+    """
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 151)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100, offset=51)
+    assert requests == [51, 151]
+    assert len(result["data"]) == 101
+
+
+def test_metrika_pagination_row_cap_stop_counts_rows_before_offset(monkeypatch, journal):
+    """The ``ROW_CAP`` stop also counts the rows skipped before ``offset`` (#707)."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    monkeypatch.setattr(metrika, "ROW_CAP", 151)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 10_000)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100, offset=51)
+    # 150 absolute rows sit below the cap, so page two must still be fetched.
+    assert requests == [51, 151]
+    assert len(result["data"]) == 200 and result["capped"] is True
 
 
 def test_metrika_rows_to_records_pairs_dimensions_with_metrics():
@@ -1020,12 +1155,15 @@ def test_metrika_split_paginated_window_starts_at_the_global_offset(monkeypatch,
 
 
 def test_metrika_split_enforces_one_global_row_cap(monkeypatch, journal):
-    """Two slices of two distinct keys each must not yield four rows under a cap of two."""
+    """The cap bounds rows downloaded, not rows kept: January's two rows exhaust a
+    cap of two, so February is named unfetched instead of being requested."""
     from seohead.data_sources import metrika
 
     monkeypatch.setattr(metrika, "ROW_CAP", 2)
+    urls: list[str] = []
 
     def fake(url):
+        urls.append(url)
         query = _metrika_query(url)
         if query["date1"][:7] != query["date2"][:7]:
             raise metrika.MetrikaError(400, "Query is too complicated")
@@ -1044,7 +1182,79 @@ def test_metrika_split_enforces_one_global_row_cap(monkeypatch, journal):
     assert len(result["data"]) <= 2  # never more rows than the global cap
     assert result["capped"] is True and result["incomplete"] is True
     assert result["total_rows"] is None  # the full count is not a collected fact
-    assert result["split"]["rows_dropped"] == 2
+    assert result["split"]["rows_dropped"] == 0  # February's rows were never seen
+    assert result["split"]["unfetched"] == [{"date1": "2026-02-01", "date2": "2026-02-28"}]
+    assert not any("date1=2026-02" in url for url in urls)
+
+
+def test_metrika_split_repeated_keys_still_obey_the_global_download_cap(monkeypatch, journal):
+    """Months repeating the same dimension keys cannot bypass the row budget.
+
+    Before the fix, three identical two-row months downloaded six rows, kept two,
+    and reported ``unfetched=None`` because each new row matched a stored key.
+    """
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "ROW_CAP", 2)
+    urls: list[str] = []
+    served = {"rows": 0}
+
+    def fake(url):
+        urls.append(url)
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        rows = [
+            {"dimensions": [{"name": "/a"}], "metrics": [10]},
+            {"dimensions": [{"name": "/b"}], "metrics": [20]},
+        ]
+        served["rows"] += len(rows)
+        return _slice_body(rows, totals=[30])
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-03-31"})
+
+    assert served["rows"] == 2  # January alone spent the budget — never six rows
+    stat_urls = [u for u in urls if "stat/v1" in u]
+    assert len(stat_urls) == 2  # the refused whole-range call plus January
+    assert result["split"]["unfetched"] == [
+        {"date1": "2026-02-01", "date2": "2026-02-28"},
+        {"date1": "2026-03-01", "date2": "2026-03-31"},
+    ]
+    assert result["capped"] is True and result["incomplete"] is True
+    assert result["total_rows"] is None and result["totals"] is None
+
+
+def test_metrika_split_budget_spent_mid_slice_names_the_partial_span(monkeypatch, journal):
+    """A slice truncated by the row budget leaves its own tail unread: that span is
+    named ``partial`` alongside the never-requested later months."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "ROW_CAP", 2)
+
+    def fake(url):
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        month = query["date1"][:7]
+        rows = [{"dimensions": [{"name": f"/{month}-{i}"}], "metrics": [i]} for i in range(3)]
+        offset, page = int(query.get("offset", "1")), int(query["limit"])
+        body = _slice_body(rows[offset - 1 : offset - 1 + page], totals=[6])
+        body["total_rows"] = 3  # every month holds three rows, one page at a time
+        return body
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-03-31"})
+
+    assert result["split"]["unfetched"] == [
+        {"date1": "2026-01-01", "date2": "2026-01-31", "partial": True},
+        {"date1": "2026-02-01", "date2": "2026-02-28"},
+        {"date1": "2026-03-01", "date2": "2026-03-31"},
+    ]
+    assert result["split"]["periods"][0]["capped"] is True
+    assert len(result["data"]) == 2  # only the first page of January was collected
+    assert result["capped"] is True and result["incomplete"] is True
+    assert result["total_rows"] is None and result["totals"] is None
 
 
 def test_metrika_split_failed_partition_names_what_succeeded(monkeypatch, journal):
@@ -1221,7 +1431,13 @@ def test_metrika_split_uses_the_counter_timezone_when_not_requested(monkeypatch,
     def fake(url):
         urls.append(url)
         if "management" in url:
-            return {"counter": {"time_zone": "America/Los_Angeles"}}
+            # The real counter schema (management/v1/counter/{id}).
+            return {
+                "counter": {
+                    "time_zone_name": "America/Los_Angeles",
+                    "time_zone_offset": -420,
+                }
+            }
         query = _metrika_query(url)
         if query["date1"] == "1daysAgo":
             raise metrika.MetrikaError(400, "Query is too complicated")
@@ -1329,6 +1545,267 @@ def test_metrika_normal_request_is_a_single_operation_without_split(monkeypatch,
     result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-03-31"})
     assert len(calls) == 1 and "split" not in result
     assert result["data"][0]["metrics"] == [5]
+
+
+def test_metrika_split_uses_counter_zone_offset_when_no_zone_name(monkeypatch, journal):
+    """``time_zone_offset`` (minutes) is the documented fallback to ``time_zone_name``."""
+    from datetime import datetime, timezone
+
+    from seohead.data_sources import metrika
+
+    client = metrika.MetrikaClient(token="synthetic")
+    urls: list[str] = []
+
+    def fake(url):
+        urls.append(url)
+        if "management" in url:
+            return {"counter": {"time_zone_offset": -420}}  # -07:00, no IANA name
+        query = _metrika_query(url)
+        if query["date1"] == "1daysAgo":
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        return _slice_body([{"dimensions": [{"name": "/a"}], "metrics": [1]}], totals=[1])
+
+    monkeypatch.setattr(client, "_request", fake)
+    monkeypatch.setattr(metrika.time, "sleep", lambda _seconds: None)
+    # Host-local date is already Oct 3; at -07:00 the API's "today" is still Oct 2.
+    monkeypatch.setattr(metrika, "_now", lambda: datetime(2026, 10, 2, 21, 30, tzinfo=timezone.utc))
+
+    result = client.report(
+        {"ids": "123", "metrics": "ym:s:visits", "date1": "1daysAgo", "date2": "today"}
+    )
+
+    spans = [
+        (_metrika_query(u)["date1"], _metrika_query(u)["date2"]) for u in urls if "stat/v1" in u
+    ]
+    assert ("2026-10-01", "2026-10-02") in spans
+    assert ("2026-10-02", "2026-10-03") not in spans
+    assert result["split"]["resolved"] == {"date1": "2026-10-01", "date2": "2026-10-02"}
+
+
+def test_metrika_split_without_counter_zone_leaves_relative_dates_unresolved(monkeypatch, journal):
+    """A counter that reports no timezone never falls back to the host date."""
+    from datetime import datetime, timezone
+
+    from seohead.data_sources import metrika
+
+    client = metrika.MetrikaClient(token="synthetic")
+    urls: list[str] = []
+
+    def fake(url):
+        urls.append(url)
+        if "management" in url:
+            return {"counter": {"name": "synthetic"}}
+        raise metrika.MetrikaError(400, "Query is too complicated")
+
+    monkeypatch.setattr(client, "_request", fake)
+    monkeypatch.setattr(metrika.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(metrika, "_now", lambda: datetime(2026, 10, 2, 21, 30, tzinfo=timezone.utc))
+
+    with pytest.raises(metrika.MetrikaError, match="too complicated"):
+        client.report(
+            {"ids": "123", "metrics": "ym:s:visits", "date1": "1daysAgo", "date2": "today"}
+        )
+
+    assert any("management/v1/counter/123" in url for url in urls)
+    # The zone could not be resolved, so the relative range is retried verbatim on the
+    # accuracy ladder rather than being sliced against an invented date.
+    report_urls = [u for u in urls if "stat/v1" in u]
+    assert report_urls and all("date1=1daysAgo" in url for url in report_urls)
+
+
+def test_metrika_split_cap_stops_fetching_and_names_unfetched_partitions(monkeypatch, journal):
+    """Once the global raw-row budget is gone, later partitions are never requested —
+    even when each month would return fresh dimension keys."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "ROW_CAP", 2)
+    urls: list[str] = []
+
+    def fake(url):
+        urls.append(url)
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        prefix = {"2026-01": "a", "2026-02": "c", "2026-03": "e"}[query["date1"][:7]]
+        return _slice_body(
+            [
+                {"dimensions": [{"name": f"/{prefix}1"}], "metrics": [10]},
+                {"dimensions": [{"name": f"/{prefix}2"}], "metrics": [20]},
+            ],
+            totals=[30],
+        )
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-03-31"})
+
+    assert len(result["data"]) <= 2  # never more rows than the global cap
+    assert result["capped"] is True and result["incomplete"] is True
+    assert result["total_rows"] is None
+    assert result["totals"] is None  # February and March were never asked
+    assert result["split"]["rows_dropped"] == 0  # nothing overfetched to drop
+    assert len(result["split"]["periods"]) == 1  # January spent the whole budget
+    # January's two rows exhausted the cap, so both later partitions stayed unfetched.
+    assert result["split"]["unfetched"] == [
+        {"date1": "2026-02-01", "date2": "2026-02-28"},
+        {"date1": "2026-03-01", "date2": "2026-03-31"},
+    ]
+    assert not any("date1=2026-02" in url for url in urls)  # never requested
+    assert not any("date1=2026-03" in url for url in urls)
+
+
+def test_metrika_split_budget_spent_exactly_still_keeps_summed_totals(monkeypatch, journal):
+    """All partitions fetched — even with the budget spent to the last row — means
+    the reported API totals genuinely cover the whole period."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "ROW_CAP", 4)
+
+    def fake(url):
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        prefix = "a" if query["date1"][:7] == "2026-01" else "c"
+        return _slice_body(
+            [
+                {"dimensions": [{"name": f"/{prefix}1"}], "metrics": [10]},
+                {"dimensions": [{"name": f"/{prefix}2"}], "metrics": [20]},
+            ],
+            totals=[30],
+        )
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-02-28"})
+
+    assert result["split"]["unfetched"] is None  # every partition was asked
+    assert result["totals"] == [60] and result["total_rows"] == 4
+    assert result["capped"] is False and result["incomplete"] is False
+
+
+def test_metrika_split_malformed_row_marks_incomplete_not_complete(monkeypatch, journal):
+    """A row whose metric vector is missing cells is evidence, not a clean zero."""
+    from seohead.data_sources import metrika
+
+    bodies = {
+        "2026-01": _slice_body([{"dimensions": [{"name": "/a"}], "metrics": []}], totals=[1]),
+        "2026-02": _slice_body([{"dimensions": [{"name": "/b"}], "metrics": [2]}], totals=[2]),
+    }
+
+    def fake(url):
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        return bodies[query["date1"][:7]]
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-02-28"})
+
+    by_name = {row["dimensions"][0]["name"]: row["metrics"] for row in result["data"]}
+    assert by_name == {"/a": [None], "/b": [2]}  # unavailable, not zero and not copied
+    assert result["incomplete"] is True
+    assert "min" not in result and "max" not in result
+
+
+def test_metrika_split_unknown_slice_sampling_stays_unknown(monkeypatch, journal):
+    """A slice without sampling fields leaves the whole-period state unreported."""
+    from seohead.data_sources import metrika
+    from seohead.servers import handlers
+
+    def fake(url):
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        if query["date1"][:7] == "2026-01":
+            return _slice_body(
+                [{"dimensions": [{"name": "/a"}], "metrics": [10]}],
+                totals=[10],
+                sampled=False,
+                sample_share=1.0,
+            )
+        body = _slice_body([{"dimensions": [{"name": "/b"}], "metrics": [20]}], totals=[20])
+        del body["sampled"], body["sample_share"]  # the API did not say
+        return body
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report({"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-02-28"})
+
+    assert "sampled" not in result  # unknown — neither True nor an invented False
+    assert "sample_share" not in result  # never invented from the request
+    assert result["incomplete"] is True
+    assert result["split"]["periods"][1]["sampled"] is None
+
+    monkeypatch.setattr(metrika, "MetrikaClient", lambda *a, **k: client)
+    out = handlers.metrika_report(
+        counter_id="1", metrics="ym:s:visits", date1="2026-01-01", date2="2026-02-28"
+    )
+    assert out["sampled"] is None  # the handler must not coerce unknown to False
+
+
+@pytest.mark.parametrize("accuracy", ["1", "high", "medium", 1, 0.5])
+def test_metrika_split_accuracy_forms_reach_the_sampled_fallback(monkeypatch, journal, accuracy):
+    """Every documented accuracy form above the last resort degrades to it.
+
+    ``"1"``/``1`` equals ``full`` and ``high``/``medium`` are larger samples than the
+    last-resort share, so each gets the sampled retry instead of exhausting attempts.
+    """
+    from seohead.data_sources import metrika
+
+    client = metrika.MetrikaClient(token="synthetic")
+    calls: list[str] = []
+
+    def fake(url):
+        calls.append(url)
+        if "accuracy=0.1" not in url:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        return _slice_body([{"dimensions": [{"name": "/a"}], "metrics": [7]}], totals=[7])
+
+    monkeypatch.setattr(client, "_request", fake)
+    monkeypatch.setattr(metrika.time, "sleep", lambda _seconds: None)
+
+    result = client.report(
+        {
+            "metrics": "ym:s:visits",
+            "date1": "2026-01-01",
+            "date2": "2026-02-28",
+            "accuracy": accuracy,
+        }
+    )
+
+    assert result["accuracy_used"] == 0.1
+    assert all(p["accuracy"] == 0.1 for p in result["split"]["periods"])
+    assert any("accuracy=0.1" in url for url in calls)
+
+
+@pytest.mark.parametrize("accuracy", ["low", 0.05, "0.05"])
+def test_metrika_split_preserves_a_caller_lower_sample(monkeypatch, journal, accuracy):
+    """``low`` and shares at/below the last resort are never resampled upward."""
+    from seohead.data_sources import metrika
+
+    client = metrika.MetrikaClient(token="synthetic")
+    calls: list[str] = []
+
+    def fake(url):
+        calls.append(url)
+        raise metrika.MetrikaError(400, "Query is too complicated")
+
+    monkeypatch.setattr(client, "_request", fake)
+    monkeypatch.setattr(metrika.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(metrika.MetrikaError) as exc:
+        client.report(
+            {
+                "metrics": "ym:s:visits",
+                "date1": "2026-01-01",
+                "date2": "2026-02-28",
+                "accuracy": accuracy,
+            }
+        )
+
+    assert "accuracies tried" in str(exc.value)
+    # The last-resort 0.1 share would ask for more data than the caller allowed.
+    assert not any("accuracy=0.1" in url for url in calls)
+    # The whole-range call plus January's retries at the caller's own setting; the
+    # first partition that cannot be satisfied aborts the split.
+    assert len(calls) == 1 + metrika.COMPLEXITY_ATTEMPTS
 
 
 # --- Arsenkin task batches -------------------------------------------------

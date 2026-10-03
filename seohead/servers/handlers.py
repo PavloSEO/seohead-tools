@@ -2447,7 +2447,8 @@ def metrika_report(
     answer then carries ``split`` and ``accuracy`` saying what was actually used. Only count
     metrics that are additive over disjoint periods (``ym:s:visits``, ``ym:s:pageviews``)
     merge this way — a query for unique-visitor, ratio, or average metrics fails rather
-    than return a summed value that would be wrong.
+    than return a summed value that would be wrong. ``sampled`` stays ``None`` when a
+    slice did not report its sampling state — unknown is not ``false``.
     """
     if not counter_id or not metrics:
         raise ValueError("counter_id and metrics required")
@@ -2477,8 +2478,9 @@ def metrika_report(
         "incomplete": body.get("incomplete", False),
         # ``sampled`` reports what the API did, not what was requested: a query degraded
         # to accuracy=0.1 may still come back unsampled, and ``accuracy`` says what was
-        # actually used.
-        "sampled": bool(body.get("sampled")),
+        # actually used. A body that does not say stays ``None`` — unknown is not false.
+        "sampled": body.get("sampled"),
+        "sample_share": body.get("sample_share"),
         "accuracy": body.get("accuracy_used") or (body.get("query") or {}).get("accuracy"),
         "split": body.get("split"),
         "totals": body.get("totals"),
