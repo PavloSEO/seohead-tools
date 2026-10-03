@@ -23,6 +23,7 @@ Two safeguards keep paid results recoverable:
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -259,6 +260,100 @@ def _sanitize_for_journal(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     return repr(value)[:200]
+
+
+# The provider tool that returns exact `!W`. There is no `keywords_frequency` tool: asking for
+# one answers `404 WRONG_TOOL` and bills nothing, which is how this call used to fail silently.
+WORDSTAT_TOOL = "wordstat"
+WORDSTAT_TYPE_FREQUENCY = 1  # `type` selector inside the wordstat tool: frequency, not dynamics.
+
+# The provider rejects a query containing punctuation with `422 JSON_VALIDATION_ERROR`; `/`
+# and quotes are confirmed. Only letters, digits, spaces, and hyphens are known to pass.
+_WORDSTAT_DISALLOWED = re.compile(r"[^0-9A-Za-zЀ-ӿ\s-]+")
+_WORDSTAT_SPACES = re.compile(r"\s+")
+
+
+def sanitize_wordstat_query(phrase: str) -> str:
+    """Strip characters the provider refuses, so one bad phrase cannot fail a whole batch."""
+    return _WORDSTAT_SPACES.sub(" ", _WORDSTAT_DISALLOWED.sub(" ", str(phrase))).strip()
+
+
+# `ws` frequency selectors, per the provider reference
+# (https://help.arsenkin.ru/api/api-wordstat/frequency_value). The four values are distinct
+# operators and must not be conflated:
+#   base   - broad frequency (WS)
+#   quoted - quoted phrase frequency ("WS")
+#   overal - exact wordform frequency (!WS) -- the `!W` figure `keywords_exact` promises
+#   exact  - strict-order frequency ([!WS]) -- a different operator, not `!W`
+WORDSTAT_WS_TYPES = ["base", "overal"]
+
+
+def wordstat_payload(queries: list[str], region: int) -> dict:
+    """Build the `/set` payload for exact `!W` frequency in a single region.
+
+    The phrase array is named ``queries``; ``keywords`` is silently ignored and the provider
+    then answers `422` complaining that no queries were supplied. Regions are a list even for
+    one region, and a multi-region request SUMS frequency, so callers pass one region at a time.
+    ``ws`` requests ``overal``, the provider's field for the `!WS` operator; neither ``quoted``
+    (``"WS"``) nor ``exact`` (``[!WS]``) is the `!W` measurement.
+    """
+    cleaned = [sanitize_wordstat_query(q) for q in queries]
+    kept = [q for q in cleaned if q]
+    if not kept:
+        raise ValueError("no usable queries after sanitizing")
+    return {
+        "type": WORDSTAT_TYPE_FREQUENCY,
+        "regions": [int(region)],
+        "ws": list(WORDSTAT_WS_TYPES),
+        "queries": kept,
+    }
+
+
+def parse_wordstat(result: Any, region: int) -> dict[str, Any]:
+    """Flatten a wordstat task result for one requested region.
+
+    Returns ``{"frequencies": {phrase: {"base": N|None, "overal": N|None}}, "warnings": [...]}``.
+    ``overal`` is the provider's field for exact `!W` wordform frequency (`!WS`); ``quoted``
+    (``"WS"``) and ``exact`` (``[!WS]``) are different operators and are never reported as `!W`.
+    An absent frequency field stays ``None`` rather than becoming zero.
+
+    Only rows for the requested region are reported. A phrase whose data names only other
+    regions is omitted and listed in ``warnings`` -- relabeling another region's number as the
+    requested one would silently fabricate a measurement. An unexpected shape yields empty
+    frequencies plus a warning rather than a crash, because the task is already paid for and
+    its raw payload is still returned upstream.
+    """
+    node = result
+    if isinstance(node, dict) and "result" in node and "data" not in node:
+        node = node["result"]  # `/get` envelope: {"code": ..., "result": {...}}
+    data = node.get("data") if isinstance(node, dict) else None
+    rows = data.get("result") if isinstance(data, dict) else None
+    frequencies: dict[str, dict[str, int | None]] = {}
+    warnings: list[str] = []
+    if not isinstance(rows, dict):
+        warnings.append("wordstat result has no data.result mapping to parse")
+        return {"frequencies": frequencies, "warnings": warnings}
+    wanted = str(int(region))
+    for phrase, by_region in rows.items():
+        if not isinstance(by_region, dict):
+            warnings.append(f"{phrase!r}: skipped a non-dict row")
+            continue
+        values = by_region.get(wanted)
+        if values is None:
+            available = sorted(str(key) for key in by_region)
+            warnings.append(
+                f"{phrase!r}: no data for requested region {wanted} "
+                f"(provider returned regions: {', '.join(available) or 'none'})"
+            )
+            continue
+        if not isinstance(values, dict):
+            warnings.append(f"{phrase!r}: region {wanted} data is not a mapping")
+            continue
+        frequencies[str(phrase)] = {
+            "base": values.get("base"),
+            "overal": values.get("overal"),
+        }
+    return {"frequencies": frequencies, "warnings": warnings}
 
 
 def _count_items(data: dict) -> int:

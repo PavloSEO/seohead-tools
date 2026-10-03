@@ -2254,31 +2254,70 @@ def keywords_exact(
     This operation is paid and consumes account limits. The charge and ``task_id`` are journaled as
     soon as the task is created, allowing a result whose polling or parsing failed to be retrieved
     later without paying for a duplicate task.
+
+    The provider tool is ``wordstat`` with ``type=1``; there is no ``keywords_frequency`` tool, and
+    asking for one answers ``404 WRONG_TOOL`` without billing. ``frequencies`` holds the flattened
+    ``{phrase: {"base": N, "overal": N}}`` mapping, where ``overal`` is the provider's field for
+    the exact ``!W`` figure (``!WS``); ``quoted`` is the ``"WS"`` phrase operator and ``exact`` is
+    the ``[!WS]`` strict-order operator, so neither is reported as ``!W``. ``result`` keeps the
+    raw provider payload, ``warnings`` lists phrases with no data for the requested region or rows
+    the parser skipped, and ``cleaned`` lists phrases whose punctuation had to be stripped before
+    sending, because the provider rejects the whole batch otherwise.
     """
     if not keywords:
         raise ValueError("keywords required")
-    from seohead.data_sources.arsenkin import ArsenkinClient, ArsenkinError
+    from seohead.data_sources.arsenkin import (
+        WORDSTAT_TOOL,
+        ArsenkinClient,
+        ArsenkinError,
+        parse_wordstat,
+        sanitize_wordstat_query,
+        wordstat_payload,
+    )
     from seohead.data_sources.credentials import MissingCredential
 
     try:
+        try:
+            region_id = int(region)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": f"invalid region {region!r}", "code": "INVALID_REGION"}
+        # Report every phrase the provider would have rejected, so a caller comparing
+        # frequencies against its own list can see which ones were measured differently.
+        cleaned = {
+            original: sanitize_wordstat_query(original)
+            for original in keywords
+            if sanitize_wordstat_query(original) != str(original)
+        }
+        try:
+            payload = wordstat_payload(list(keywords), region_id)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "code": "EMPTY_QUERIES", "cleaned": cleaned}
         client = ArsenkinClient()
-        task = client.set_task(
-            "keywords_frequency", {"keywords": list(keywords), "region": int(region)}
-        )
+        task = client.set_task(WORDSTAT_TOOL, payload)
         if not wait:
             return {
                 "ok": True,
                 "task_id": task["task_id"],
                 "cost": task["cost"],
+                "region": region_id,
+                "cleaned": cleaned,
                 "note": "task created and billed; retrieve the result later by task_id",
             }
         result = client.wait(task["task_id"])
-        return {
+        payload_result = result.get("result", result)
+        parsed = parse_wordstat(payload_result, region_id)
+        response: dict[str, Any] = {
             "ok": True,
             "task_id": task["task_id"],
             "cost": task["cost"],
-            "result": result.get("result", result),
+            "region": region_id,
+            "cleaned": cleaned,
+            "frequencies": parsed["frequencies"],
+            "result": payload_result,
         }
+        if parsed["warnings"]:
+            response["warnings"] = parsed["warnings"]
+        return response
     except MissingCredential as exc:
         return {"ok": False, "error": str(exc)}
     except ArsenkinError as exc:
@@ -2817,10 +2856,16 @@ def sources_doctor() -> dict[str, Any]:
     from seohead.data_sources import spend as spend_core
     from seohead.data_sources.providers import sources_doctor as provider_doctor
 
+    provider_status = provider_doctor()["providers"]
+    gsc_provider = provider_status["gsc"]
+    gsc_components = gsc_provider["credential_components"]
+    sources["gsc"]["ready"] = any(gsc_components.values())
+    sources["gsc"]["components"] = gsc_components
+    sources["gsc"]["service_account_status"] = gsc_provider["service_account_status"]
     return {
         "ok": True,
         "sources": sources,
-        "provider_status": provider_doctor()["providers"],
+        "provider_status": provider_status,
         "spend_log": str(spend_core.log_path()),
     }
 
