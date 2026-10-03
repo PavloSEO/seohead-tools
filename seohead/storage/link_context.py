@@ -60,6 +60,7 @@ def _links(con, document_id: int) -> list[dict[str, Any]]:
         for row in con.execute(
             "SELECT l.link_id,l.source_url_id,l.destination_url_id,l.source_document_id,"
             "l.evidence_representation,l.ordinal,l.anchor,l.nofollow,l.position,l.raw_href,"
+            "l.rel_json,l.target,"
             "s.url AS source_url,d.url AS destination_url "
             "FROM links l JOIN urls s ON s.url_id=l.source_url_id "
             "JOIN urls d ON d.url_id=l.destination_url_id "
@@ -131,8 +132,9 @@ def _derive(
             "SELECT content_type FROM responses WHERE response_id=?",
             (document["source_response_id"],),
         ).fetchone()
-        if response is None or "html" not in (response[0] or "").lower():
-            reason = "source_document_is_not_html"
+        media_type = (response[0] or "").split(";", 1)[0].strip().lower() if response else ""
+        if media_type != "text/html":
+            reason = f"unsupported_source_mime:{media_type or 'missing'}"
     if reason:
         return (
             [_unavailable(link, reason) for link in links],
@@ -174,12 +176,21 @@ def _derive(
             [_unavailable(link, reason) for link in links],
             {"state": "unavailable", "reason": reason},
         )
+    attributes_captured = config.get("link_attributes", {}).get("capture") is True
+    position_captured = config.get("link_position", {}).get("classify") is True
     if len(selected) != len(links) or any(
         item["href"] != link["destination_url"]
         or item["anchor"] != link["anchor"]
         or int(item["nofollow"]) != link["nofollow"]
-        or (link["position"] and item["position"] != link["position"])
-        or (link["raw_href"] and item["raw_href"] != link["raw_href"])
+        or ((position_captured or link["position"]) and item["position"] != link["position"])
+        or (
+            attributes_captured
+            and (
+                item["raw_href"] != link["raw_href"]
+                or item["target"] != link["target"]
+                or item["rel"] != json.loads(link["rel_json"])
+            )
+        )
         for item, link in zip(selected, links, strict=False)
     ):
         reason = "stored_links_do_not_replay_from_retained_document"
@@ -221,15 +232,16 @@ def _derive(
 def _document_page(
     con, document_id: int, offset: int, limit: int, max_body_bytes: int, max_result_bytes: int
 ) -> dict[str, Any]:
+    source = con.execute(
+        "SELECT d.url_id,d.representation,u.url FROM documents d "
+        "JOIN urls u ON u.url_id=d.url_id WHERE d.document_id=?",
+        (document_id,),
+    ).fetchone()
+    if source is None:
+        raise ScanError("source document is absent")
     links = _links(con, document_id)
     if len(links) > MAX_ANCHORS:
         raise ScanError("source document exceeds the supported link occurrence cap")
-    if (
-        not links
-        and con.execute("SELECT 1 FROM documents WHERE document_id=?", (document_id,)).fetchone()
-        is None
-    ):
-        raise ScanError("source document is absent")
     items, coverage = _derive(con, document_id, links, max_body_bytes)
     scan = con.execute("SELECT scan_uuid,evidence_revision FROM scan WHERE singleton=1").fetchone()
     page = []
@@ -253,7 +265,9 @@ def _document_page(
         "scan_uuid": scan["scan_uuid"],
         "evidence_revision": scan["evidence_revision"],
         "source_document_id": document_id,
-        "representation": links[0]["evidence_representation"] if links else None,
+        "source_url_id": source["url_id"],
+        "source_url": source["url"],
+        "representation": source["representation"],
         "coverage": coverage,
         "total": len(items),
         "offset": offset,

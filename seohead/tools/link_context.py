@@ -175,6 +175,8 @@ def extract_occurrences(
                 "raw_href": info["raw_href"],
                 "anchor": info["text"][:200],
                 "nofollow": info["nofollow"],
+                "rel": info["rel"].split(),
+                "target": info["target"],
                 "external": info["external"],
                 "position": placement["position"],
                 "placement_basis": placement["basis"],

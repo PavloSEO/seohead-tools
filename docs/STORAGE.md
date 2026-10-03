@@ -328,7 +328,8 @@ versioned `link_occurrence_context.v1` result **on demand** from one complete
 retained HTML body or rendered DOM. They do not change `scan.v1`/`scan.v2`,
 fetch a URL or touch the frontier. Every result cites its scan UUID, evidence
 revision, `link_id`, source document, representation and stored ordinal. Repeated
-source-target links remain separate. Raw and rendered documents are read and
+source-target links remain separate. Document-level queries preserve source URL
+and representation even when the document contains zero links. Raw and rendered documents are read and
 reported independently; a rendered position never fills an unavailable raw
 position. A missing, omitted, truncated, non-HTML or over-budget body returns
 `unavailable` with a reason rather than a fabricated placement or heading.
@@ -343,7 +344,8 @@ content heading. Heading text and selector excerpts are capped at 160
 characters, DOM paths at 12 levels/512 characters, and truncation is explicit.
 
 The reader replays the saved link-storage filter against the document and
-checks every retained occurrence in ordinal order. If old parser behavior or
+checks every retained occurrence in ordinal order, including `raw_href`, `rel`
+and `target` when attribute capture was enabled. If old parser behavior or
 missing configuration prevents an exact replay, the document context is
 `unavailable`; it never guesses which duplicate anchor was stored. It processes
 one document at a time, with at most 20,000 eligible anchors, a default 5 MiB
