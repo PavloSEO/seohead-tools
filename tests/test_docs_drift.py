@@ -9,6 +9,7 @@ import tokenize
 
 from scripts.build_changelog import fragment_paths
 from seohead.cli import COMMANDS, URL_COMMANDS
+from seohead.provider_matrix import render as render_provider_matrix
 from seohead.servers.handlers import HANDLERS
 from seohead.servers.tool_reference import load_seo_tools, load_sf_tools
 from seohead.servers.tool_reference import render as render_tool_reference
@@ -311,6 +312,16 @@ def test_tool_reference_is_generated_and_current():
     assert documented == expected, "every seo_*/sf_* tool must appear in the generated reference"
     assert len(seo_tools) == len(COMMANDS)
     assert len(sf_tools) == 5
+
+
+def test_provider_matrix_is_generated_and_current():
+    """docs/PROVIDERS.md is generated output (scripts/generate_provider_matrix.py); a hand
+    edit or a registry/workflow-catalogue change without regenerating it must fail here
+    rather than ship stale capability claims."""
+    committed = (ROOT / "docs" / "PROVIDERS.md").read_text(encoding="utf-8")
+    assert committed == render_provider_matrix(), (
+        "docs/PROVIDERS.md is stale: run scripts/generate_provider_matrix.py and commit the result"
+    )
 
 
 def test_storage_late_field_table_matches_the_importer_mapping():
