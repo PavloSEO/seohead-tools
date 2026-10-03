@@ -12,16 +12,17 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Looking for a copy-paste command | [USAGE.md](USAGE.md) — runnable examples |
 | Checking which source inputs a command accepts | [INPUTS.md](INPUTS.md) — generated command-input catalogue |
 | Managing or inspecting saved scans | [STORAGE.md](STORAGE.md) — SQLite import, provenance, retained bodies, snapshots, and reviewed retention |
+| Importing a third-party crawl export | [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md) — versioned CSV manifest, field coverage, and limits |
 | Operating a SQLite scan baseline or reviewing capacity evidence | [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md) — capture-to-prune workflow, evidence limits, and the measured release-profile record with its two named limits |
 | New to the toolkit | [GUIDELINE.md](GUIDELINE.md) — what it is, the first run, reading an audit honestly, the usual mistakes |
 | A native crawl stopped early | [RECOVERY.md](RECOVERY.md) — the two checkpoints, `--resume`, resume vs. intentional fresh start |
-| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 59 chains, each with its commands, its output, its cost and its limits |
-| Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 63 |
+| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 60 workflows, each with its commands, output, cost and limits |
+| Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 100 |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
 | Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — all 149, generated from the registry |
 | Wondering how this compares to a licensed crawler | [COVERAGE_SF_ISSUES.md](COVERAGE_SF_ISSUES.md) — all 320 published issues, each with a status |
-| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 24 skills |
+| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 25 workflow skills |
 | Looking for a no-key workflow | [RECIPES.md](RECIPES.md) — exports, traffic decline, bounded live audit |
 | About to change code | [ARCHITECTURE.md](ARCHITECTURE.md) — layers and invariants |
 | Naming a new module or test file | [NAMING.md](NAMING.md) — what a name must say, and what is deliberately left alone |
