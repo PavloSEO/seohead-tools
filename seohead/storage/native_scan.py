@@ -2872,13 +2872,21 @@ class NativeScan:
         ready = self._finalize_checkpoint(timeout_seconds)
         self.con.execute("BEGIN IMMEDIATE")
         try:
-            partial = self.con.execute(
-                "SELECT crawl_partial FROM scan WHERE singleton=1"
-            ).fetchone()[0]
+            prior = self.con.execute(
+                "SELECT lifecycle, finish_reason FROM scan WHERE singleton=1"
+            ).fetchone()
             pending = self.con.execute(
                 "SELECT 1 FROM frontier WHERE state IN ('queued','inflight') LIMIT 1"
             ).fetchone()
-            lifecycle = "finished" if ready and not partial and not pending else "interrupted"
+            # A drained queue is finished work: partial evidence is already named
+            # by crawl_partial and must not read as an interrupted capture (#712).
+            # An explicit stop -- abort before work was accepted, cancel, or an
+            # error circuit -- keeps its interrupted lifecycle even when nothing
+            # is left in the queue. Only a checkpoint that merely ran out of
+            # deadline may retry into finished.
+            stopped = prior[0] == "interrupted" and prior[1] != "finalization_blocked"
+            finished = ready and pending is None and not stopped
+            lifecycle = "finished" if finished else "interrupted"
             self.con.execute(
                 "UPDATE scan SET lifecycle=?,finish_reason=?,finished_at=? WHERE singleton=1",
                 (
@@ -2918,6 +2926,15 @@ class NativeScan:
         if self._finalize_checkpoint(timeout_seconds):
             self.con.execute("BEGIN IMMEDIATE")
             try:
+                prior = self.con.execute(
+                    "SELECT lifecycle, finish_reason FROM scan WHERE singleton=1"
+                ).fetchone()
+                if prior[0] == "interrupted" and prior[1] != "finalization_blocked":
+                    # An explicit stop is not a drained queue: the file may
+                    # finalize, but the capture keeps its interrupted lifecycle
+                    # and reason instead of stamping a false finished_at (#712).
+                    self.con.commit()
+                    return True
                 self.con.execute(
                     "UPDATE scan SET lifecycle='finished', finish_reason=?, finished_at=? WHERE singleton=1",
                     (reason, _utc()),

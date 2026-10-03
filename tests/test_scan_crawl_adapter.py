@@ -684,6 +684,42 @@ def test_exact_url_limit_with_empty_frontier_is_complete(tmp_path):
     assert run.partial is False
 
 
+def test_url_limit_with_pending_work_stays_interrupted(tmp_path):
+    """The limit boundary cuts both ways: leftover queue is a stop, not a finish."""
+    scan_path = tmp_path / "limit.sqlite"
+
+    def fetcher(url):
+        if url.endswith("/robots.txt"):
+            return _Response(200, "User-agent: SEOHEAD-Tools\nAllow: /\n")
+        return _Response(200, "<html><body>page</body></html>")
+
+    run = crawl_to_scan(
+        "https://example.test/",
+        scan_out=str(scan_path),
+        settings=load(overrides={"speed.min_delay_seconds": 0, "limits.max_urls": 1}),
+        producer_version="3.0.0",
+        producer_revision="a" * 40,
+        runtime_versions={
+            "python": "test",
+            "sqlite": "test",
+            "httpx": "test",
+            "lxml": "test",
+            "beautifulsoup4": "test",
+        },
+        seed_urls=["https://example.test/next"],
+        fetcher=fetcher,
+        sleeper=lambda _seconds: None,
+    )
+
+    assert run.pages == 1
+    assert run.finish_reason == "url_limit"
+    assert run.partial is True
+    header = NativeScan.inspect(str(scan_path))["scan"]
+    assert header["lifecycle"] == "interrupted"
+    assert "url limit" in header["finish_reason"]
+    assert header["finished_at"] is None
+
+
 def test_resume_duration_includes_already_committed_elapsed_time(tmp_path):
     scan_path = tmp_path / "duration.sqlite"
     settings = load(overrides={"speed.min_delay_seconds": 0, "limits.max_crawl_seconds": 1})
