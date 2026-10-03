@@ -91,6 +91,8 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     requests = _network(monkeypatch)
     backend = _backend(tmp_path)
     api = _api(backend)
+    schema = api.get("/api/v1/openapi.json", headers=_headers()).json()
+    assert "/api/v1/projects/{project_id}/scans/{job_id}/artifacts/{artifact_id}" in schema["paths"]
     sent = api.post(
         SCANS_A,
         headers=_headers(),
@@ -174,7 +176,7 @@ def test_idempotency_persists_across_backend_restart_and_is_project_scoped(monke
     conflict = api2.post(
         SCANS_A,
         headers=_headers(),
-        json={"target_url": SITE, "options": {"max_requests": 21}},
+        json={"target_url": SITE, "options": {"max_urls": 1, "max_requests": 21}},
     )
     assert conflict.status_code == 409
     assert (
@@ -202,6 +204,37 @@ def test_remote_api_rejects_private_target_despite_local_opt_in(monkeypatch, tmp
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "target_denied"
     assert backend.list_jobs("alpha", 0, 10) == []
+
+
+def test_api_reports_project_budget_and_queue_capacity_without_500(monkeypatch, tmp_path):
+    _network(monkeypatch)
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {"alpha": RemoteProjectLimits(max_queued_jobs=1, max_requests=20)},
+        producer_build="a" * 40,
+    )
+    api = _api(backend)
+    budget = api.post(
+        SCANS_A,
+        headers=_headers(),
+        json={"target_url": SITE, "options": {"max_requests": 21}},
+    )
+    assert budget.status_code == 422
+    assert budget.json()["error"]["code"] == "budget_exceeded"
+    first = api.post(
+        SCANS_A,
+        headers=_headers(),
+        json={"target_url": SITE, "options": {"max_urls": 1, "max_requests": 20}},
+    )
+    assert first.status_code == 202
+    full = api.post(
+        SCANS_A,
+        headers=_headers(key="another-queue-key"),
+        json={"target_url": SITE, "options": {"max_urls": 1, "max_requests": 20}},
+    )
+    assert full.status_code == 503
+    assert full.json()["error"]["code"] == "queue_full"
+    assert len(backend.list_jobs("alpha", 0, 10)) == 1
 
 
 def test_secret_bearing_target_query_stays_out_of_events_and_api_status(monkeypatch, tmp_path):

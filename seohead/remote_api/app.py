@@ -21,9 +21,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from seohead.remote_api.contracts import (
     ApiErrorResponse,
     JobBackend,
+    JobBudgetExceeded,
     JobConflict,
     JobList,
     JobNotReady,
+    JobQueueFull,
     JobResult,
     JobStatus,
     Permission,
@@ -243,6 +245,8 @@ def create_app(
         config = submission.options.effective_config()
         try:
             target_policy.authorize_submission(project_id, submission.target_url, config)
+        except JobBudgetExceeded:
+            raise ApiFault(422, "budget_exceeded", "scan settings exceed project limits") from None
         except ValueError:
             raise ApiFault(
                 403, "target_denied", "target is not authorized for this project"
@@ -260,6 +264,8 @@ def create_app(
             raise ApiFault(
                 409, "idempotency_conflict", "key was used for a different scan request"
             ) from exc
+        except JobQueueFull:
+            raise ApiFault(503, "queue_full", "project scan queue is full") from None
         job = visible(outcome.job, project_id)
         return JSONResponse(
             status_code=202 if outcome.created else 200,

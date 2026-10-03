@@ -236,6 +236,14 @@ class JobConflict(Exception):
     """The same idempotency key was submitted with a different request body."""
 
 
+class JobQueueFull(Exception):
+    """The project queue has reached its configured admission limit."""
+
+
+class JobBudgetExceeded(ValueError):
+    """Trusted project resource limits reject the requested scan settings."""
+
+
 class JobNotReady(Exception):
     """Result was requested before a terminal job outcome was recorded."""
 

@@ -27,9 +27,11 @@ from typing import Any
 from seohead.recon.remote_policy import RemoteEgressPolicy
 from seohead.remote_api.contracts import (
     ArtifactReference,
+    JobBudgetExceeded,
     JobConflict,
     JobNotReady,
     JobProgress,
+    JobQueueFull,
     JobResult,
     JobStatus,
     ScanSubmission,
@@ -258,7 +260,7 @@ class SQLiteJobBackend:
             or effective_config["limits"]["max_crawl_seconds"] > limits.max_job_seconds
             or effective_config["storage"]["max_body_store_bytes"] > limits.max_disk_bytes
         ):
-            raise ValueError("project job resource limit exceeded")
+            raise JobBudgetExceeded("project job resource limit exceeded")
         limits.policy(project_id).authorize_submission(project_id, target_url, effective_config)
 
     def _job_dir(self, project_id: str, job_id: str, *, create: bool = False) -> Path:
@@ -341,7 +343,7 @@ class SQLiteJobBackend:
                 (project_id,),
             ).fetchone()[0]
             if queued >= limits.max_queued_jobs:
-                raise ValueError("project queue limit exceeded")
+                raise JobQueueFull("project queue limit exceeded")
             job_id = uuid.uuid4().hex
             con.execute(
                 """INSERT INTO jobs(job_id,project_id,subject,idempotency_key,fingerprint,

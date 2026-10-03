@@ -53,7 +53,8 @@ The request body limit is 16 KiB, checked against the actual ASGI stream even wh
 understates it; missing or contradictory lengths are rejected. The app refuses to start without
 an operable job backend. Remote crawl options have explicit upper bounds. Anonymous
 requests return 401, missing project grants return 404, missing operation grants return 403,
-and a rejected target returns a generic 403 without echoing the URL or policy detail. Bearer
+rejected project budgets return 422, a full project queue returns 503, and a rejected target
+returns a generic 403 without echoing the URL or policy detail. Bearer
 tokens are compared with configured SHA-256 digests; neither tokens nor invalid request values
 appear in API errors. A deployment must provision high-entropy tokens and TLS, keep digests
 outside the repository, and apply body limits again at its reverse proxy.

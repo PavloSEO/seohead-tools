@@ -44,6 +44,7 @@ them. Retained scan/report content is separate, project-protected evidence.
 
 Project limits include queued/active jobs, URL count, physical request count,
 requests per origin, concurrency, crawl duration, delay floor and disk bytes.
+Over-budget submissions and a full queue return explicit bounded API errors.
 The native scan's own body and free-space limits still apply. CPU and RAM
 hard limits belong to the deployment's isolated worker process/container;
 this Python backend does not claim OS-level containment. Proxy routes and
