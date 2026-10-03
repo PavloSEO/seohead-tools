@@ -1,7 +1,8 @@
 # Setup from zero
 
-Everything below was verified on macOS (darwin, arm64) with the repo's own
-venv; the same steps work on Linux. Windows paths for the SF CLI are
+The general venv workflow below is verified on macOS (darwin, arm64). For a
+versioned headless install, upgrade, and rollback over SSH on Ubuntu Server,
+follow [Linux VPS over SSH](LINUX_VPS.md). Windows paths for the SF CLI are
 supported by `config.json` search paths.
 
 ## Requirements
