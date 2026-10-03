@@ -62,7 +62,7 @@ and this decision makes no backend migration.
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
 | `regions-check` | Live URL (`url`) | — |
-| `render-check` | Live URL (`url`) | — |
+| `render-check` | Live URL (`url`)<br>Inline JSON (`transport_config`) | Optional local/remote Playwright transport selection; endpoint is named by environment variable. |
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `report-build` | Audit document (`audit`)<br>Project directory (`project`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage in human reports; JSON audit is unchanged. |
 | `facts-export` | Inline JSON (`sites`) | — |
@@ -73,6 +73,7 @@ and this decision makes no backend migration.
 | `spend-report` | Local log | Configured local spend log. |
 | `sources-doctor` | Local configuration | — |
 | `regions-tree` | Local configuration | — |
+| `topvisor-read` | Inline JSON (`operation, params`) | One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations. |
 | `metrika-counters` | Local configuration | — |
 | `metrika-setup` | Provider query (`counter_id`) | — |
 | `metrika-report` | Provider query (`counter_id`) | — |

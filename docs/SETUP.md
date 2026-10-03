@@ -28,6 +28,11 @@ pip install -e ".[all,dev]"            # everything incl. reports, render, tests
 python -m playwright install chromium  # browser for render-check (~150 MB)
 ```
 
+The optional remote Playwright transport needs the Python `render` extra, but
+does not need a locally installed browser binary. It connects only to a browser
+server that the operator has already provisioned; see [TOOLS.md](TOOLS.md) for
+the explicit endpoint/version configuration and security boundary.
+
 Why `-e`: the `seohead` entry point must see the working tree while you edit
 it. The install is not global — everything lives inside `.venv/` (which is
 gitignored).
