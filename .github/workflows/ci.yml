@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[dev,mcp,cluster,reports]"
+      - run: python -m pip install -e ".[dev,mcp,cluster,reports,remote]"
       - run: ruff check .
       - run: ruff format --check .
       - name: Type-check the covered surface (issue #31)
