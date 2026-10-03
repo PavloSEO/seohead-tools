@@ -259,6 +259,30 @@ def test_check_coverage_failures_disabled_and_capabilities_remain_distinct():
     }
 
 
+def test_page_tool_failures_are_normalized_as_failed_coverage_rows():
+    model = build_pdf_model(
+        _site_audit(
+            summary={
+                "pages_checked": 3,
+                "findings_total": 0,
+                "page_tools_failed": [{"tool": "HTML_TOOL", "failed_pages": 3, "pages_checked": 3}],
+            }
+        )
+    )
+
+    failed = model["coverage"]["checks"]
+    assert len(failed) == 1
+    assert failed[0]["id"] == "HTML_TOOL"
+    assert failed[0]["state"] == "failed"
+    assert failed[0]["record"] == {
+        "tool": "HTML_TOOL",
+        "failed_pages": 3,
+        "pages_checked": 3,
+    }
+    assert failed[0]["source_ref"]["pointer"] == "#/summary/page_tools_failed/0"
+    assert model["summary"]["counts"]["checks"]["page_tools_failed"]["source_count"] == 1
+
+
 def test_site_audit_evidence_capabilities_preserve_unavailable_and_not_requested():
     contract = {
         "scan_identity_state": "recorded",
@@ -279,7 +303,51 @@ def test_site_audit_evidence_capabilities_preserve_unavailable_and_not_requested
     assert model["coverage"]["source_evidence"]["record"] == contract
     capabilities = model["coverage"]["groups"]["capabilities"]["records"]
     assert [item["state"] for item in capabilities] == ["measured", "not_requested", "unavailable"]
+    assert [item["state"] for item in model["coverage"]["checks"]] == [
+        "measured",
+        "not_requested",
+        "unavailable",
+    ]
     assert model["summary"]["counts"]["checks"]["capabilities"]["source_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("findings_total", -2), ("pages_checked", -1), ("findings_total", "3")],
+)
+def test_invalid_site_declared_totals_are_rejected(field, value):
+    with pytest.raises(ValueError, match="non-negative integer"):
+        build_pdf_model(_site_audit(summary={field: value}))
+
+
+@pytest.mark.parametrize("count", [0, -1, "many", True])
+def test_invalid_sf_by_check_counts_are_rejected(count):
+    document = _sf_audit(
+        summary={
+            "totals": {"urls_crawled": 1, "issues_total": 0},
+            "by_severity": {"critical": 0},
+            "by_check": {"TITLE_MISSING": count},
+            "check_coverage": {
+                "checks_total": 1,
+                "checks_silent_ids": ["TITLE_MISSING"],
+            },
+        }
+    )
+    with pytest.raises(ValueError, match="positive integer"):
+        build_pdf_model(document)
+
+
+@pytest.mark.parametrize("count", [-1, "1", True])
+def test_invalid_sf_declared_totals_are_rejected(count):
+    document = _sf_audit(
+        summary={
+            "totals": {"urls_crawled": 0, "issues_total": count},
+            "by_severity": {},
+            "by_check": {},
+        }
+    )
+    with pytest.raises(ValueError, match="non-negative integer"):
+        build_pdf_model(document)
 
 
 def test_project_checklist_and_verification_status_are_included_only_when_present(tmp_path):
@@ -395,6 +463,7 @@ def test_unsupported_or_malformed_documents_are_rejected(document, message):
             ),
             "capability_rows",
         ),
+        (_site_audit(summary={"page_tools_failed": ["wrong type"]}), "page_tools_failed"),
         (_sf_audit(run={"checks_disabled": "wrong type"}), "run.checks_disabled"),
     ],
 )
