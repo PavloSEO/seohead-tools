@@ -103,6 +103,36 @@ Responses are stored unchanged under their handler names, such as
 uses them to build the `Technologies` sheet; the remaining data stays available
 for readers who need implementation details.
 
+## Technical audit PDF semantic model
+
+`seohead.reports.pdf_model.build_pdf_model(audit, project=None)` projects either
+recognized audit contract into `seohead.technical-audit-pdf/1`. It is an offline
+semantic document for a later PDF layout/renderer; it adds no checks, network
+calls, CLI command or MCP tool.
+
+The model keeps source kind/schema, identity and run scope; the exact source
+summary beside source-array and projected-row counts; coverage groups and their
+original reasons; every finding and page in source order with a source pointer
+and full original record; and display fields for layout. A bounded display
+summary does not discard the full finding record. Missing declared totals stay
+`not_reported`, while an empty source array is a measured zero-row collection.
+Run state is `failed`, `partial`, `complete` or `unknown` only when supported by
+the source. For `site-audit`, `run.scope.operation` identifies the bounded pass;
+`complete` means the supplied operation returned, not that the whole site was
+exhaustively crawled. `coverage.state` means coverage metadata was reported, not
+that every check completed. Layouts must show individual failed, skipped,
+disabled, unavailable and unmeasured evidence rather than infer a clean result.
+
+The optional `project` argument reads the current local checklist snapshot and
+places its complete item rows, verification state and counts under `backlog`.
+Without an embedded or requested checklist, `backlog.state` is
+`not_requested` and its source count stays unavailable. `omissions` records
+intentional exclusions; the model does not silently cap findings, pages,
+coverage or backlog rows.
+
+This model defines content fields only. Localized labels, brand tokens, charts,
+page flow and HTML belong to the separate PDF layout/rendering work.
+
 ## What each format provides
 
 | Format | Intended use | Contents |
