@@ -591,6 +591,18 @@ measures collection only: the analyzer compatibility bridge, report rendering,
 sitemap expansion, large page fields and retained bodies are outside this result.
 No larger default crawl ceiling follows from these measurements.
 
+For metadata-only native scans (`storage.body_mode=off`) with no captured
+responses, documents, bodies, or resource refs, the writer now derives corpus
+capabilities once from the existing full SQL calculation and reuses that exact
+summary after checking those evidence tables remain empty. It updates the same
+scan metadata inside each page transaction. Any body, render, or resource
+evidence returns to the full calculation; reopening a writer derives the
+invariant again, and inspection still validates against all stored rows. A
+bounded 2,048-page sparse cProfile reduced `corpus_summary` and reanalysis
+queries from 2,048 calls each to one each. This is a sparse-writer improvement,
+not a dense-body or million-URL capacity result; staged #815/#818 acceptance
+still gates any crawl ceiling change.
+
 Reproduce with `python scripts/profile_scan_collector.py`.
 The profiler emits progress and JSON with platform/runtime versions and source
 file hashes. It keeps no full edge graph in Python. See
