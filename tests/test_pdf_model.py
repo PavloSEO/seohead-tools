@@ -83,7 +83,7 @@ def test_site_audit_model_preserves_identity_rows_and_declared_counts():
 
     model = build_pdf_model(document)
 
-    assert model["format"] == SCHEMA
+    assert model["schema"] == SCHEMA
     assert model["source"] == {
         "kind": "site-audit",
         "schema": SITE_AUDIT_SCHEMA,
