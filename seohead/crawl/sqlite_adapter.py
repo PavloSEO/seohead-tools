@@ -725,6 +725,7 @@ def crawl_to_scan(
                     parse_options=options,
                     cache=None,
                     wait=gate.wait_turn,
+                    response_filter=scope.response_media_rejection,
                     **capture_options,
                 )
                 return lease, result, captures
@@ -905,6 +906,19 @@ def crawl_to_scan(
                         batch.partial_reasons.extend(links_batch.partial_reasons)
                         batch.route_observations.extend(links_batch.route_observations)
                         batch.route_coverage = links_batch.route_coverage
+                    if record.body_unavailable in {
+                        "excluded_by_media_type",
+                        "not_included_by_media_type",
+                        "media_type_unavailable",
+                    }:
+                        batch.decisions.append(
+                            {
+                                "url": record.url,
+                                "reason": record.body_unavailable,
+                                "source": record.url,
+                                "depth": lease.depth,
+                            }
+                        )
                     try:
                         if (
                             record.is_html

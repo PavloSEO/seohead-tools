@@ -1243,7 +1243,14 @@ class NativeScan:
                 raise ScanError("native scan page is missing a current PageRecord evidence field")
             if page["content_frames_same_origin"] > page["content_frames"] or page[
                 "body_unavailable"
-            ] not in (None, "", "oversized"):
+            ] not in {
+                None,
+                "",
+                "oversized",
+                "excluded_by_media_type",
+                "not_included_by_media_type",
+                "media_type_unavailable",
+            }:
                 raise ScanError("native scan page scalar/body marker is invalid")
             try:
                 alternates = json.loads(page["hreflang_json"] or "[]")
@@ -1919,7 +1926,13 @@ class NativeScan:
                 raise ScanError(f"pages.{name}: expected a nonnegative integer")
         if record.get("content_frames_same_origin", 0) > record.get("content_frames", 0):
             raise ScanError("pages.content_frames_same_origin exceeds content_frames")
-        if record.get("body_unavailable") not in {"", "oversized"}:
+        if record.get("body_unavailable") not in {
+            "",
+            "oversized",
+            "excluded_by_media_type",
+            "not_included_by_media_type",
+            "media_type_unavailable",
+        }:
             raise ScanError("pages.body_unavailable has an unknown marker")
         page_ordinal = self.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
         if self.con.execute("PRAGMA user_version").fetchone()[0] == 2:

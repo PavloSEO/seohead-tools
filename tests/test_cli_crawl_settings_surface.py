@@ -65,6 +65,8 @@ def test_set_reaches_the_rendering_browser_settings():
         ("sitemaps.auto_discover=true", True),
         ("sitemaps.auto_discover=no", False),
         ("scope.include_patterns=/blog/,/docs/", ["/blog/", "/docs/"]),
+        ("scope.include_extensions=.html,.pdf", [".html", ".pdf"]),
+        ("scope.include_media_types=text/html,image/*", ["text/html", "image/*"]),
         ("http.user_agent=Example/1.0", "Example/1.0"),
     ],
 )

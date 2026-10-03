@@ -101,6 +101,16 @@ DEFAULTS: dict[str, Any] = {
         # would report an empty site rather than a configuration mistake.
         "include_patterns": [],
         "exclude_patterns": [],
+        # Filename suffixes are checked against the final component of the URL
+        # path (not its query or fragment) after the ordinary host/regex/segment
+        # scope. A nonempty include list narrows discovered routes; extensionless
+        # routes are rejected with not_included_by_extension.
+        "include_extensions": [],
+        "exclude_extensions": [],
+        # Response media types are checked only after an admitted URL is fetched.
+        # Exact types and type wildcards (for example image/*) are supported.
+        "include_media_types": [],
+        "exclude_media_types": [],
         # Never fetched regardless of what links to them.
         "exclude_hosts": [],
         # Ordered, first-match-wins named segments -- a multilingual or multi-regional
@@ -394,6 +404,10 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "scope.internal",
         "scope.include_patterns",
         "scope.exclude_patterns",
+        "scope.include_extensions",
+        "scope.exclude_extensions",
+        "scope.include_media_types",
+        "scope.exclude_media_types",
         "scope.exclude_hosts",
         # A host-matching segment widens which hosts count as internal, and
         # segments_only narrows the frontier to named segments -- both change what
@@ -553,6 +567,24 @@ DESCRIPTIONS: dict[str, str] = {
     ),
     "scope.include_patterns": "Regexes; a discovered link must match at least one to be followed.",
     "scope.exclude_patterns": "Regexes; a discovered link matching any of these is not followed.",
+    "scope.include_extensions": (
+        "Optional filename suffix allowlist for discovered routes (for example ['html', 'pdf']); "
+        "matches the final URL-path suffix, without query or fragment. If set, extensionless "
+        "routes are not included. Exclusions take precedence."
+    ),
+    "scope.exclude_extensions": (
+        "Filename suffix denylist for discovered routes; matches the final URL-path suffix, "
+        "without query or fragment. Exclusions take precedence over the extension allowlist."
+    ),
+    "scope.include_media_types": (
+        "Optional response Content-Type allowlist checked after fetch and before parsing or body "
+        "retention; supports exact types and type wildcards such as image/*. A missing or "
+        "malformed type is recorded as unavailable when this list is set."
+    ),
+    "scope.exclude_media_types": (
+        "Response Content-Type denylist checked after fetch and before parsing or body retention; "
+        "supports exact types and type wildcards such as image/*. Exclusions take precedence."
+    ),
     "scope.exclude_hosts": "Hosts never fetched regardless of what links to them.",
     "scope.segments": (
         "Ordered, first-match-wins named segments for a multilingual or multi-regional "
@@ -990,6 +1022,8 @@ def validate(config: dict[str, Any]) -> None:
             except re.error as exc:
                 raise ConfigError(f"scope.{key}: {pattern!r} is not a valid regex: {exc}") from exc
 
+    _validate_file_type_filters(config["scope"])
+
     limits = config["limits"]
     if limits["max_urls"] < 1:
         raise ConfigError("limits.max_urls must be at least 1")
@@ -1121,6 +1155,54 @@ def _validate_segments(scope: dict[str, Any]) -> None:
             f"scope.segments_only names {unknown} that scope.segments never declares "
             f"(known: {sorted(allowed)})"
         )
+
+
+def _validate_file_type_filters(scope: dict[str, Any]) -> None:
+    """Validate the URL-suffix and response-media filters as separate contracts."""
+    extension_pattern = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
+    media_token = r"[A-Za-z0-9!#$%&'+\-.^_`|~]+"
+    media_pattern = re.compile(rf"{media_token}/(?:{media_token}|\*)\Z")
+
+    for name in ("include_extensions", "exclude_extensions"):
+        setting = f"scope.{name}"
+        values = scope[name]
+        if type(values) is not list:
+            raise ConfigError(f"{setting} must be a list of filename extensions")
+        seen: set[str] = set()
+        for value in values:
+            if type(value) is not str:
+                raise ConfigError(f"{setting} entries must be strings, got {value!r}")
+            extension = value[1:] if value.startswith(".") else value
+            if not extension_pattern.fullmatch(extension):
+                raise ConfigError(
+                    f"{setting} entry {value!r} must be one filename suffix "
+                    "(letters, digits, underscore or hyphen; optional leading dot)"
+                )
+            normalized = extension.lower()
+            if normalized in seen:
+                raise ConfigError(
+                    f"{setting} contains duplicate suffix {normalized!r} after normalization"
+                )
+            seen.add(normalized)
+
+    for name in ("include_media_types", "exclude_media_types"):
+        setting = f"scope.{name}"
+        values = scope[name]
+        if type(values) is not list:
+            raise ConfigError(f"{setting} must be a list of media types")
+        seen: set[str] = set()
+        for value in values:
+            if type(value) is not str or not media_pattern.fullmatch(value):
+                raise ConfigError(
+                    f"{setting} entry {value!r} must be an exact type or type wildcard "
+                    "such as text/html or image/*"
+                )
+            normalized = value.lower()
+            if normalized in seen:
+                raise ConfigError(
+                    f"{setting} contains duplicate media type {normalized!r} after normalization"
+                )
+            seen.add(normalized)
 
 
 def _validate_rendering(rendering: dict[str, Any]) -> None:
