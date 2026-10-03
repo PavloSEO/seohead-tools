@@ -9,7 +9,12 @@ treats a file as a scan artifact.
 The legacy importer packages an existing crawl directory. A URL-mode `crawl-site`
 run writes a native SQLite artifact under `./scans/` by default; `--scan-out` chooses
 an explicit file. An explicit `--out-dir` or configured `output.dir` selects the
-legacy directory workflow. Both retain the existing audit/report contract.
+legacy directory workflow. Both retain the existing audit/report contract within
+their declared materialization limits.
+The directory collector writes page/link/form evidence incrementally. Its
+materialized audit is currently limited to 10,000 pages, 20,000 forms and
+1,500,000 links; a larger corpus retains its JSONL evidence and reports
+`audit_available: false` with exact counts and the exceeded bound.
 Use one file per imported run; do not merge runs or write an imported artifact
 concurrently.
 

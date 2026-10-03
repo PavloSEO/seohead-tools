@@ -150,6 +150,36 @@ def test_page_limit_is_guarded_before_materialization_or_audit(bridge, monkeypat
     assert bridge.saved is None and bridge.finished
 
 
+def test_page_limit_is_guarded_before_js_materialization(bridge, monkeypatch):
+    pages = scan_handlers.MAX_AUDIT_PAGES + 1
+    bridge.con.counts["pages"] = pages
+    monkeypatch.setattr(
+        "seohead.crawl.sqlite_adapter.crawl_to_scan",
+        lambda *_args, **_kwargs: _run(pages=pages),
+    )
+    monkeypatch.setattr(
+        scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
+    )
+    monkeypatch.setattr(
+        "seohead.crawl.sqlite_render.run_render_escalation",
+        lambda *_args, **_kwargs: pytest.fail("rendered an unbounded page view"),
+    )
+
+    response = scan_handlers.crawl_site_scan(
+        "https://example.test/",
+        scan_out="scan.sqlite",
+        settings={
+            "robots": {"policy": "respect"},
+            "rendering": {"mode": "render", "rendered_links": {"crawl": True}},
+        },
+        producer_build="a" * 40,
+    )
+
+    assert response["audit_available"] is False
+    assert f"pages={pages}/" in response["audit_reason"]
+    assert bridge.saved is None
+
+
 def test_resumed_scan_without_transient_html_is_named_no_audit(bridge, monkeypatch):
     monkeypatch.setattr(
         "seohead.crawl.sqlite_adapter.crawl_to_scan",

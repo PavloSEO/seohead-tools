@@ -387,7 +387,10 @@ def crawl_site_scan(
 
         initial_start_page_gate = run.start_page_gate
         render_cycles = 0
-        while True:
+        # The current render planner materializes all pages. Refuse that
+        # compatibility bridge at the same bound as the saved audit, before
+        # rebuilding the corpus; #816 supplies its iterable replacement.
+        while run.pages <= MAX_AUDIT_PAGES and run.forms <= MAX_AUDIT_FORMS:
             with NativeScan.open(run.path) as rendered_scan:
                 rendered_result = _rebuild_page_result(rendered_scan)
                 run_render_escalation(
