@@ -25,6 +25,8 @@ cards, consistent search-source colors, concise chart titles, clear tables and a
 fictional geometric demo mark. If you adapt the design with an image-generation tool,
 create a new abstract mark for a fictional brand; do not extract or reuse a customer's
 logo, names, URL, analytics values, screenshots or report-specific facts.
+The [visual brief](seo-audit-sample/visual-brief.md) provides prompts for future layout
+and fictional-logo work.
 
 ## Try it now
 
