@@ -650,8 +650,9 @@ def crawl_to_scan(
                         "used": int(elapsed_before + clock() - started),
                     },
                 )
-                partial, finish_reason = True, "duration_limit"
-                scan.interrupt("duration limit reached")
+                if counts["queued"] or counts["inflight"]:
+                    partial, finish_reason = True, "duration_limit"
+                    scan.interrupt("duration limit reached")
                 break
             remaining = limit - counts["pages"]
             scan.preflight_capture()
