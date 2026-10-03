@@ -36,7 +36,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 
 from bs4 import BeautifulSoup
 
-from seohead.recon.net import UA, http_client, normalize_url, validate_url
+from seohead.recon.net import UA, client_network_policy, http_client, normalize_url, validate_url
 from seohead.tools import dualcrawl
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
@@ -200,7 +200,11 @@ def _pinned_browser_route(
             abort(route, f"browser method {method} is unsupported by pinned rendering")
             return
         try:
-            validate_url(url)
+            policy = client_network_policy(client)
+            if policy is None:
+                validate_url(url)
+            else:
+                validate_url(url, policy=policy)
             if request_gate is not None:
                 request_gate()
             headers = {
