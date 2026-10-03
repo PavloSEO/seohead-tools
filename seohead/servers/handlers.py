@@ -239,6 +239,17 @@ def _run_render_escalation(
 
     if mode == "js":
         gate_kwargs = {"request_gate": request_gate} if request_gate is not None else {}
+        probe_transport_kwargs = {}
+        if browser_cfg.get("transport", "local") == "remote":
+            probe_transport_kwargs["transport_config"] = {
+                name: browser_cfg[name]
+                for name in (
+                    "transport",
+                    "remote_protocol",
+                    "remote_endpoint_env",
+                    "remote_playwright_version",
+                )
+            }
 
         def probe(target: str) -> dict[str, Any]:
             probed = render_tool.render_check(
@@ -247,6 +258,7 @@ def _run_render_escalation(
                 wait=browser_cfg["wait_until"],
                 viewport=browser_cfg["viewport"],
                 **gate_kwargs,
+                **probe_transport_kwargs,
             )
             verdict = probed.get("js_dependent")
             if verdict is None and probed.get("ok"):
@@ -1846,12 +1858,16 @@ def render_check(
     viewport: str = "desktop",
     wait: str = "load",
     user_agent: str | None = None,
+    transport_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not url:
         raise ValueError("url required")
     from seohead.tools import render as render_core
 
-    return render_core.render_check(url, viewport=viewport, wait=wait, user_agent=user_agent)
+    kwargs = {"transport_config": transport_config} if transport_config is not None else {}
+    return render_core.render_check(
+        url, viewport=viewport, wait=wait, user_agent=user_agent, **kwargs
+    )
 
 
 def backlinks_check(
