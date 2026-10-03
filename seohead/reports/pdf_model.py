@@ -505,7 +505,7 @@ def build_pdf_model(data: Any, *, project: str | None = None) -> dict[str, Any]:
         document.get("schema") if kind == "site-audit" else document.get("schema_version")
     )
     model = {
-        "format": SCHEMA,
+        "schema": SCHEMA,
         "source": {
             "kind": kind,
             "schema": source_schema,

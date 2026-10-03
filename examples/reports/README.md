@@ -106,7 +106,8 @@ for readers who need implementation details.
 ## Technical audit PDF semantic model
 
 `seohead.reports.pdf_model.build_pdf_model(audit, project=None)` projects either
-recognized audit contract into `seohead.technical-audit-pdf/1`. It is an offline
+recognized audit contract into a model whose `schema` is
+`seohead.technical-audit-pdf/1`. It is an offline
 semantic document for a later PDF layout/renderer; it adds no checks, network
 calls, CLI command or MCP tool.
 
