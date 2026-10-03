@@ -537,6 +537,16 @@ size or store budget keep a named omission instead. The raw start-page HTML is
 read from that retained static document for the rendering gate. A legacy three-file
 import cannot recreate discarded bodies, response provenance or native resume state.
 
+In URL mode, `scope.include_extensions` and `scope.exclude_extensions` record
+pre-request frontier decisions while keeping the referring `links` rows. The
+response media filters record a per-URL decision after headers arrive; a filtered
+response retains its status, media type, headers and redirect evidence while its
+entity is omitted. `pages.body_unavailable` carries the media filter reason so
+body-derived audit checks remain `skipped`. The saved crawl config includes all
+four filter lists, so a resume with changed rules is refused before reusing its
+frontier. The `resources.fetch` lane remains separately governed by its own MIME
+and byte budgets.
+
 The collector keeps only its bounded worker batch and page observations in
 Python; page/link/form records, seen identities, queue, query variants and
 recovery state live in SQLite. Parser caps retain at most 20,000 link observations and 2,000 form observations

@@ -243,6 +243,22 @@ def test_crawl_site_explicit_override_changes_only_that_setting(monkeypatch):
         assert forwarded[key] is None
 
 
+def test_crawl_describe_settings_exposes_file_type_filter_paths():
+    tool = build_server()._tool_manager.get_tool("seo_crawl_describe_settings")
+
+    result = asyncio.run(tool.run({}))
+
+    rows = {row["path"]: row for row in result["settings"]}
+    for path in (
+        "scope.include_extensions",
+        "scope.exclude_extensions",
+        "scope.include_media_types",
+        "scope.exclude_media_types",
+    ):
+        assert rows[path]["results_affecting"] is True
+        assert rows[path]["description"]
+
+
 def test_render_check_mcp_forwards_explicit_identity(monkeypatch):
     """#670: the local MCP surface cannot strand the mobile identity in the CLI."""
     received = []

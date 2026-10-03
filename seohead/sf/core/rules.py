@@ -57,11 +57,13 @@ def _rec(page: Page) -> dict[str, Any]:
 
 
 def _body_unavailable(rec: dict[str, Any]) -> bool:
-    """Whether this row's HTML body was too large to parse (#243).
+    """Whether this row's HTML body was not parsed or retained.
 
     A blank title/description/h1/canonical on such a row means "never measured",
     not "observed absent" -- the same distinction ``_has_column`` draws for a
-    column missing from the whole export, but here it is one row at a time.
+    column missing from the whole export, but here it is one row at a time. The
+    marker covers both the existing size limit and an explicit crawl media-type
+    filter.
     """
     return bool(rec.get("body_unavailable"))
 
@@ -76,12 +78,31 @@ def _skip_for_body_unavailable(ctx: AuditContext, check_id: str, pages: list[Pag
     did run. Only when every candidate page for this check turns out to be
     unavailable does the reason stand as the audit's account of why it is silent.
     """
-    count = sum(1 for p in pages if _body_unavailable(_rec(p)))
-    if count:
+    reasons: dict[str, int] = {}
+    for page in pages:
+        reason = str(_rec(page).get("body_unavailable") or "")
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    count = sum(reasons.values())
+    if set(reasons) == {"oversized"}:
         ctx.skip(
             check_id,
             f"{count} page(s) with an oversized, unparsed HTML body "
             "-- this metadata was never measured",
+        )
+    elif count:
+        labels = {
+            "excluded_by_media_type": "excluded by media type",
+            "not_included_by_media_type": "not included by media type",
+            "media_type_unavailable": "missing or malformed Content-Type",
+            "oversized": "oversized HTML body",
+        }
+        summary = ", ".join(
+            f"{labels.get(reason, reason)}: {amount}" for reason, amount in sorted(reasons.items())
+        )
+        ctx.skip(
+            check_id,
+            f"{count} page(s) were not parsed ({summary}); this metadata was never measured",
         )
 
 

@@ -47,6 +47,52 @@ configuration. Audit creation has an explicit compatibility guard;
 check `audit_available` before requesting a report. See [STORAGE.md](STORAGE.md)
 for limits, provenance, interrupted-file handling and missing evidence.
 
+### Crawl file types
+
+URL-mode `crawl-site` can limit discovered routes separately by filename suffix
+and response media type. Put the rules under `scope` in the JSON passed with
+`--config`, or set dotted values with `--set`:
+
+```json
+{
+  "scope": {
+    "include_extensions": ["html", "pdf"],
+    "exclude_extensions": ["xml"],
+    "include_media_types": ["text/html"],
+    "exclude_media_types": ["text/xml"]
+  }
+}
+```
+
+Suffix rules inspect only the URL path's final suffix, case-insensitively; query
+strings and fragments do not change the match. A leading dot is optional. If an
+extension allowlist is set, extensionless routes are excluded. Exclusions win
+over inclusions within each list. Existing host, URL-regex and segment scope
+checks run before extension rules, and the explicitly supplied start URL retains
+its existing seed exemption.
+
+Media rules inspect the actual response `Content-Type` after the request, strip
+parameters such as `charset=utf-8`, and compare case-insensitively. Exact values
+and type wildcards such as `image/*` are accepted. Exclusions win; with an
+allowlist, a missing or malformed response type is recorded as
+`media_type_unavailable`. The URL, status, response headers, redirect chain and
+referring link remain evidence when a media rule withholds the body. Affected
+HTML metadata checks return `skipped` rather than treating empty parser fields as
+missing metadata. Such response-body decisions appear in the discovery exclusion
+counts and decision log; they do not mean the URL itself was never requested.
+Redirect targets are checked against suffix rules before the next request; a
+terminal media decision uses that response's header, never the URL suffix.
+
+These rules control the URL crawl frontier and page-body parsing. They do not
+download image bytes or change the independent `resources.fetch` script and
+stylesheet lane, its MIME checks, or its request/body/graph budgets. The page
+parser remains HTML-only: non-HTML responses keep their status and media type but
+do not become retained page bodies. `limits.max_response_bytes` still caps page
+parsing; filtered bodies are not parsed or retained, and `storage.max_body_bytes`
+continues to bound retained bodies. All four `scope` filters apply to URL-mode
+link discovery. Explicit URL-list mode remains a list of operator-supplied
+addresses and does not apply discovery-scope filters.
+
 ## Saved scan artifact
 
 ```bash
