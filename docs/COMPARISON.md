@@ -1,29 +1,24 @@
 # How SEOHEAD fits into a technical SEO stack
 
-SEOHEAD Tools is the local evidence-processing and audit-automation layer between data collection
-and specialist judgement. It complements crawlers and commercial data providers; it does not
-pretend to replace infrastructure that requires a web-scale index, field telemetry, or a hosted
-product.
+SEOHEAD Tools is a local Python SEO crawler and scan-analysis toolkit. Its own native engine
+collects website evidence; the same toolkit retains, analyzes, reanalyzes, compares, and reports
+on scans through a CLI and local stdio MCP server.
 
 ## Canonical product description
 
-> Screaming Frog collects the crawl for web-scale sites; SEOHEAD's own bounded `crawl-site`
-> collects it when no SF licence is installed. SEOHEAD analyzes that evidence (SF exports or its
-> own crawl), adds the bounded live, infrastructure, Schema.org, log, and optional provider
-> evidence the audit needs, and gives a specialist or tool-calling agent one tested CLI/MCP
-> surface for producing traceable findings, prioritized tasks, and reports.
+> SEOHEAD crawls websites, retains scan evidence for offline reanalysis, analyzes native scans
+> and Screaming Frog exports, and combines them with explicit live and provider evidence to
+> produce traceable SEO findings, prioritized tasks, and reports for specialists and agents.
 
-This is a division of labour, not a feature-by-feature contest with Screaming Frog:
-
-| Stage | Tool or owner | Result |
-|---|---|---|
-| Collect | Screaming Frog exports, SEOHEAD's own bounded `crawl-site`, logs, supplied files, or explicit providers | Raw evidence |
-| Analyze and organize | SEOHEAD core through CLI or local MCP | Structured results, explicit gaps, audit documents, and task artifacts |
-| Interpret and approve | SEO specialist, optionally supported by an agent | Business-aware priorities and a reviewed deliverable |
+The development direction is full headless crawling and analysis, including JavaScript-heavy
+sites. Complete parity with another crawler, at equivalent speed and scale, requires feature
+acceptance tests and reproducible benchmarks. It is not a verified capability claim today.
+Resource budgets protect runs and expose incomplete coverage; they do not define the product
+as a small-site collector. The supported interfaces remain CLI and local MCP.
 
 The short workflow is: **collect -> analyze -> enrich deliberately -> review -> deliver**.
 
-The built-in 161-check importer targets Screaming Frog CSV/XLSX exports. Another crawler may still
+The built-in 162-check importer targets Screaming Frog CSV/XLSX exports. Another crawler may still
 belong in a team's stack, but its exports are not claimed to be a drop-in input for the SF analyzer.
 
 ## Where it is strong
@@ -36,7 +31,7 @@ interface.
 
 ### Deep analysis of existing crawl data
 
-Export mode evaluates Screaming Frog CSV/XLSX data against a 161-check registry without crawling
+Export mode evaluates Screaming Frog CSV/XLSX data against a 162-check registry without crawling
 again. It is useful when the crawl was taken by another specialist, came from CI, or must remain
 offline. Missing exports become explicit skipped checks rather than silent zeroes.
 
@@ -57,7 +52,7 @@ evidence as XLSX, DOCX, CSV, Markdown, or JSON without recalculating findings.
 
 | Need | Use instead or alongside SEOHEAD | Reason |
 |---|---|---|
-| Crawl a large site from scratch | Screaming Frog, Sitebulb, or another production crawler | SEOHEAD intentionally has no general-purpose crawler |
+| Crawl a large or JavaScript-heavy site | Evaluate native `crawl-site` against the required discovery, rendering and resource policy; use another collector where a verified gap remains | Full feature and scale parity requires acceptance evidence; no universal size or speed claim is made |
 | Discover a domain's full backlink profile | Ahrefs, Majestic, Semrush, GSC, or another index | `backlinks-check` verifies a donor list; it owns no web index |
 | Field Core Web Vitals | CrUX, Search Console, or PageSpeed Insights | `render-check` records one lab run and labels it as lab data |
 | Search volume, rankings, and SERP history | Wordstat, Arsenkin, DataForSEO, or another provider | These are external datasets, not facts code can derive |
@@ -69,7 +64,8 @@ evidence as XLSX, DOCX, CSV, Markdown, or JSON without recalculating findings.
 
 Export analysis works with files you already have. Live crawl mode launches a separately installed
 Screaming Frog CLI and requires an active paid SEO Spider licence. The toolkit does not bundle,
-activate, bypass, or replace Screaming Frog.
+activate, or bypass Screaming Frog. Native crawling works independently of its licence; full
+Screaming Frog feature parity is not claimed.
 
 ## Interpretation boundary
 

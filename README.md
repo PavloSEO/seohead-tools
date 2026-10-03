@@ -1,6 +1,6 @@
 # SEOHEAD Tools
 
-**Local, evidence-first SEO audit automation for specialists and tool-calling agents.**
+**A local Python SEO crawler and scan-analysis toolkit for specialists and tool-calling agents.**
 
 [Website](https://seohead.tech/seotools) · [Documentation](docs/README.md) · [Examples](examples/README.md) · [Scope and trade-offs](docs/COMPARISON.md)
 
@@ -9,9 +9,21 @@
 ![MCP](https://img.shields.io/badge/MCP-local%20stdio-151A25)
 [![MIT License](https://img.shields.io/badge/code-MIT-1565C0)](LICENSE)
 
-SEOHEAD turns crawl and live-check evidence into reviewable audit documents, task backlogs, and reports. It runs as a Python CLI or a local stdio MCP server. There is no hosted account, dashboard, or public MCP endpoint.
+SEOHEAD crawls websites with its own native engine, retains scan evidence for offline reanalysis, and turns native scans, Screaming Frog exports, and live checks into reviewable audits, task backlogs, and reports. It runs as a Python CLI or a local stdio MCP server. There is no hosted account, dashboard, or public MCP endpoint.
 
 It does not replace specialist judgement. It records what was measured, what failed, and what could not be measured so a specialist can assess scope, business context, and implementation risk.
+
+## Capabilities at a glance
+
+- **Website crawling:** native HTTP crawling and configurable JavaScript rendering, sitemap/list inputs, scope and rate controls, checkpoints, and retained scan evidence.
+- **Technical SEO analysis:** indexing directives, metadata, headings, links, redirects, structured data, hreflang, duplicates, infrastructure and server logs; offline reanalysis and before/after comparisons.
+- **Connected data:** Google Search Console, Google Analytics 4, Bing Webmaster Tools, Yandex Webmaster and Yandex Metrika through explicit provider operations. Additional providers cover demand, SERPs and performance evidence.
+- **External evidence:** join supplied URL-keyed tables and provider rows to crawl data, retaining unmatched rows and source provenance. This is data import and enrichment, not an automatic connector for every service.
+- **Deliverables:** prioritized findings and task backlogs; Excel, Word, CSV, Markdown and JSON reports, plus a dedicated static HTML/PDF traffic-report workflow for Yandex Metrika.
+- **Agent task tracking:** a persistent project checklist records audit work, evidence, dependencies and pending reviews; `project status` tells a specialist or agent what is complete and what remains.
+- **Operation:** Python CLI and local stdio MCP for specialists and tool-calling agents. Credentials, provider quotas, browser dependencies and supported operations are documented explicitly.
+
+See the [tool catalogue](docs/TOOLS.md), [provider workflow](docs/scenarios/provider-evidence.md), [input contracts](docs/INPUTS.md) and [generated reference](docs/TOOL_REFERENCE.md) for exact capabilities and limits. Declared integrations are not a claim that credentials or live access have been verified for every account.
 
 ## Start with a project
 
@@ -25,6 +37,27 @@ seohead project new --directory ./shop --target https://example.com/
 seohead project checklist-init --directory ./shop
 seohead project status --directory ./shop
 ```
+
+### A persistent task tracker for audit agents
+
+The project checklist is a local task tracker for specialists and AI agents during a website
+audit. `seohead project status --directory ./shop` (or MCP `seo_project_status`) returns
+completion counts, remaining work, running and blocked items, stale evidence, and items awaiting
+manual review. An agent can inspect the saved state when resuming an audit or taking over from
+another agent, rather than reconstructing progress from chat history.
+
+`project checklist-init` defines the work; `project checklist-update` edits scoped tasks and
+dependencies; `project checklist-record` validates and records execution evidence using the
+current revision. These operations do not execute the tasks themselves. Automatic completion
+is tied to saved check evidence; manual reviews and deliverables require explicit signoff or
+approved artifact review. Running a command or opening a playbook is not proof of completion.
+
+Own-site and competitor scans are retained as separate SQLite artifacts through Python's
+SQLite support. The task definitions and execution history live in `coverage.json` alongside
+the project. Audit completion, measured crawl coverage, and the resolution of website errors
+are different measures: a completed audit can still identify unresolved problems. The current
+tracker reports counts and states; it does not claim a universal full-audit percentage or an
+automatic per-finding repair-verification ledger.
 
 `project start` enters a policy-bounded preparation path from there. Preparation records its
 crawl scope, operator-supplied competitor candidates and each unavailable step; it does not
@@ -47,6 +80,8 @@ authorizes it, rather than spending hours unasked.
 | An agent client | `seohead mcp` | The local stdio MCP server, with the same public behavior as the CLI |
 
 `crawl-site` is SEOHEAD's primary collector and needs no Screaming Frog licence. Screaming Frog is the second pass: two engines with different parsers and different discovery reach different sets of URLs, and the disagreement is itself evidence. On one production site the SF export held 14 054 HTML pages and the native crawl 35 785 — neither engine was wrong, and the gap was the finding. Export mode reads CSV/XLSX exports you already have; live SF mode requires your separately installed, active licence. Both inputs produce related audit artifacts, but comparing them requires compatible scope, configuration and provenance.
+
+The product direction is full headless crawling and analysis, including JavaScript-heavy sites. Current capabilities and limits are documented below; complete feature and performance parity with other crawlers is a development target, not a verified release claim. Crawl budgets control resource use and record incomplete coverage; they do not define SEOHEAD as a small-site-only collector.
 
 ## What makes an audit honest
 
@@ -131,6 +166,7 @@ Choose the input that matches the question; a single-page check, an access log a
 | What is the site's delivery environment? | `domain-profile`, `tech-detect`, `cdn-check` | A domain or URL; DNS/hosting/TLS, stack and cache observations, with unavailable sources named |
 | What did clients and bots request? | `log-analyze` | An access log; request/status distributions and optional bot verification |
 | What changed, and what can I hand over? | `compare-crawls`, `report-build` | Compatible audit documents or scans; comparisons and reviewable report files |
+| How did search traffic move, in a form a client can read? | `metrika-traffic-pdf` | A Yandex Metrika counter and period, or a saved traffic document; a static dashboard-style HTML/PDF with changes against the previous period, a year earlier and 3/6/12-month windows |
 
 ```bash
 # Compare the raw response with the mobile browser representation.

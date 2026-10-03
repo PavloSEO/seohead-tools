@@ -78,6 +78,7 @@ COMMANDS = (
     "metrika-counters",
     "metrika-setup",
     "metrika-report",
+    "metrika-traffic-pdf",
     "google-keywords",
     "google-serp",
     "wayback-history",
@@ -711,6 +712,35 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["limit"] = args.limit
         if getattr(args, "paginate", False):
             kw["paginate"] = True
+    if cmd == "metrika-traffic-pdf":
+        if getattr(args, "counter", None):
+            kw["counter_id"] = args.counter
+        for name in (
+            "document",
+            "date1",
+            "date2",
+            "out_dir",
+            "attribution",
+            "traffic",
+            "filters",
+            "lang",
+            "site_label",
+            "brand",
+            "gsc_site_url",
+        ):
+            value = getattr(args, name, None)
+            if value:
+                kw[name] = value
+        for name in ("top", "timeout"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "no_render", False):
+            kw["render"] = False
+        if getattr(args, "no_pdf", False):
+            kw["pdf"] = False
+        if getattr(args, "overwrite", False):
+            kw["overwrite"] = True
     if cmd == "regions-tree" and getattr(args, "save_to", None):
         kw["save_to"] = args.save_to
     if cmd == "spend-report" and getattr(args, "since", None):
@@ -1243,6 +1273,28 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--paginate", action="store_true", help="collect all API pages, capped at 100,000 rows"
         )
+    if cmd == "metrika-traffic-pdf":
+        _source_flag(sub, "--counter", help="Yandex Metrika counter ID(s), comma-separated")
+        _source_flag(
+            sub, "--document", help="existing traffic document JSON to render without network"
+        )
+        sub.add_argument("--date1", help="period start, YYYY-MM-DD")
+        sub.add_argument("--date2", help="period end, YYYY-MM-DD")
+        sub.add_argument("--out-dir", dest="out_dir", help="directory that receives the files")
+        sub.add_argument("--attribution", choices=("last_significant", "last_click"))
+        sub.add_argument("--traffic", choices=("organic", "all"), help="default organic")
+        sub.add_argument("--filters", help="extra Metrika filter expression, ANDed")
+        sub.add_argument("--lang", choices=("en", "ru"), help="labels and API names language")
+        sub.add_argument("--top", type=int, help="rows in landing-page and phrase tables")
+        sub.add_argument("--site-label", dest="site_label", help="site name shown in the report")
+        sub.add_argument("--brand", help="brand JSON file or inline JSON object")
+        sub.add_argument(
+            "--gsc-site-url", dest="gsc_site_url", help="also add Search Console queries"
+        )
+        sub.add_argument("--no-render", action="store_true", help="collect the document only")
+        sub.add_argument("--no-pdf", action="store_true", help="write HTML without the PDF")
+        sub.add_argument("--overwrite", action="store_true", help="replace existing files")
+        sub.add_argument("--timeout", type=float, help="browser timeout in seconds")
     if cmd == "regions-tree":
         sub.add_argument("--save-to", dest="save_to", help="save a flat {name: id} mapping as JSON")
     if cmd == "spend-report":

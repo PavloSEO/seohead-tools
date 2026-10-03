@@ -258,6 +258,7 @@ seohead google-serp --query "seo tools"
 seohead metrika-counters
 seohead metrika-setup --counter 12345678                 # before any traffic conclusions
 seohead metrika-report --counter 12345678 --metrics "ym:s:visits" --date1 90daysAgo
+seohead metrika-traffic-pdf --counter 12345678 --date1 2026-09-01 --date2 2026-09-30 --out-dir ./traffic
 seohead spend-report --since 2026-08-01
 ```
 

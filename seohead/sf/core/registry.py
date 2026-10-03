@@ -245,6 +245,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "not a heading of this document, and repeating it on every page pushes the "
         "page's own headings down its outline.",
     },
+    "HEADING_SKIP": {
+        "severity": "notice",
+        "source": "crawl:heading_outline",
+        "message": "Content headings skip one or more levels in DOM order",
+        "fix": "Use the next heading level after the preceding content heading; for example, "
+        "change an H4 that follows an H2 to H3 unless it begins a new top-level section.",
+    },
     # 7.E — canonical & directives
     "CANONICAL_MISSING": {
         "severity": "warning",

@@ -6,17 +6,19 @@ MCP server. Do not add a GUI, desktop shell, hosted API, or remote MCP endpoint 
 
 ## Product model
 
-Do not present SEOHEAD as a replacement for Screaming Frog or as a collection of unrelated
-scripts. The crawler and this toolkit have different jobs:
+Present SEOHEAD as a native Python SEO crawler and scan-analysis toolkit, with a complete
+headless crawl -> retain -> analyze -> reanalyze -> compare -> report workflow. The native
+crawler is a first-class collector, not merely a fallback when Screaming Frog is unavailable.
 
-- Screaming Frog produces the CSV/XLSX exports consumed by SEOHEAD's 161-check analyzer. Do not
-  imply that another crawler's exports are drop-in compatible.
-- SEOHEAD analyzes those SF exports, adds bounded live and infrastructure evidence, preserves
-  skipped/failed measurements, and produces structured audit, task, and report artifacts.
-- The CLI and MCP expose the same tested core so either a specialist or an AI agent can run the
-  workflow without improvising its own crawler.
-- Skills guide orchestration and interpretation; they are not evidence sources, and final
-  judgement remains with the specialist.
+- The product direction is full crawling and analysis capability, including JavaScript-heavy
+  sites, through the CLI and local MCP. Full feature or performance parity with other crawlers
+  must be demonstrated before being described as shipped.
+- Screaming Frog export analysis remains a supported input. Do not imply that another crawler's
+  exports are drop-in compatible with the SF analyzer.
+- Resource budgets, safe network behavior, provenance, and skipped/failed measurements remain
+  required. Bounded execution is resource control, not a permanent restriction to small sites.
+- The CLI and MCP expose the same tested core. Skills guide orchestration and interpretation;
+  they are not evidence sources, and final judgement remains with the specialist.
 
 Live SF mode launches a separately installed, actively licensed Screaming Frog CLI. Export mode
 works from existing CSV/XLSX files. The `site-audit` command is a bounded sitemap-based pass, not
@@ -40,7 +42,7 @@ seohead/
   tools/          live page, content, image, log, and structured-data tools
   recon/          domain and infrastructure reconnaissance
   crawl/          native site collector (crawl-site) — no Screaming Frog required
-  sf/             Screaming Frog export runner and 161-check analyzer, shared with crawl/'s output
+  sf/             Screaming Frog export runner and 162-check analyzer, shared with crawl/'s output
   audit/          bounded sitemap-based evidence orchestration
   reports/        XLSX, DOCX, CSV, Markdown, and JSON formatting
   data_sources/   optional demand, SERP, and traffic providers

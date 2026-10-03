@@ -1,0 +1,1 @@
+- `metrika-traffic-pdf` on macOS: Chrome writes the PDF and keeps running; the browser is now started without waiting and stopped once the PDF is verified.

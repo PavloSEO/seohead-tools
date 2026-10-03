@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -343,11 +344,177 @@ def test_metrika_error_carries_status():
 def test_metrika_url_drops_empty_params_but_keeps_zero():
     from seohead.data_sources.metrika import MetrikaClient
 
+    # ``attempt`` is a synthetic stand-in: report ``offset`` is 1-based and ``0`` must never
+    # reach ``stat/v1/data`` (#707), so this helper check uses a different zero-valued key.
     url = MetrikaClient._url(
-        "stat/v1/data", {"limit": 100, "offset": 0, "filters": "", "preset": None}
+        "stat/v1/data", {"limit": 100, "attempt": 0, "filters": "", "preset": None}
     )
-    assert "limit=100" in url and "offset=0" in url
+    assert "limit=100" in url and "attempt=0" in url
     assert "filters" not in url and "preset" not in url
+
+
+def test_metrika_reports_start_at_offset_one(monkeypatch):
+    """The Reporting API is 1-based: ``offset=0`` is answered with 400 (#707)."""
+    from seohead.data_sources.metrika import MetrikaClient
+
+    urls: list[str] = []
+    client = MetrikaClient.__new__(MetrikaClient)
+    monkeypatch.setattr(client, "_request", lambda url, *a, **k: urls.append(url) or {"data": []})
+    client.report({"ids": 1})
+    client.by_time({"ids": 1})
+    client.report({"ids": 1}, paginate=True)
+    assert urls and all("offset=1" in url for url in urls)
+
+
+def test_metrika_pagination_advances_one_based_cursor(monkeypatch):
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    offsets: list[int] = []
+
+    def fake(url, *a, **k):
+        offset = int(url.split("offset=")[1].split("&")[0])
+        offsets.append(offset)
+        rows = [{"dimensions": [], "metrics": [1]}] * (100 if offset == 1 else 5)
+        return {"data": rows, "total_rows": 105}
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True)
+    assert offsets == [1, 101] and len(result["data"]) == 105
+
+
+def test_metrika_rejects_zero_based_offset_before_any_request(monkeypatch):
+    """``offset`` below 1 fails locally instead of being forwarded to a 400 (#707)."""
+    from seohead.data_sources.metrika import MetrikaClient
+
+    client = MetrikaClient(token="synthetic")
+    calls: list[str] = []
+    monkeypatch.setattr(client, "_request", lambda url, *a, **k: calls.append(url))
+
+    for kwargs in ({"offset": 0}, {"offset": -3}):
+        with pytest.raises(ValueError, match="offset"):
+            client.report({"ids": 1}, **kwargs)
+        with pytest.raises(ValueError, match="offset"):
+            client.report({"ids": 1}, paginate=True, **kwargs)
+        with pytest.raises(ValueError, match="offset"):
+            client.by_time({"ids": 1}, **kwargs)
+    assert calls == []
+
+
+def test_metrika_public_report_paths_never_send_a_zero_based_offset(monkeypatch, journal):
+    """Every public report entry point defaults to the 1-based offset the API requires (#707).
+
+    The double mimics the live contract—``offset < 1`` earns a 400—so on the broken revision
+    each of these calls failed with ``must be greater than or equal to 1``.
+    """
+    from seohead.data_sources import metrika, providers
+    from seohead.servers import handlers
+
+    monkeypatch.setenv("YANDEX_METRIKA_TOKEN", "synthetic")
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    urls: list[str] = []
+
+    def fake_request(self, url, *a, **k):
+        urls.append(url)
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+        if int(query["offset"][0]) < 1:
+            raise metrika.MetrikaError(400, "must be greater than or equal to 1")
+        return {
+            "data": [{"dimensions": [{"name": "/"}], "metrics": [7]}],
+            "total_rows": 1,
+            "query": {"metrics": ["ym:s:visits"], "dimensions": ["ym:s:startURL"]},
+        }
+
+    monkeypatch.setattr(metrika.MetrikaClient, "_request", fake_request)
+
+    client = metrika.MetrikaClient()
+    assert client.report({"ids": 1, "metrics": "ym:s:visits"})["data"]
+    assert client.report({"ids": 1, "metrics": "ym:s:visits"}, paginate=True)["data"]
+
+    handled = handlers.metrika_report("1", "ym:s:visits", date1="2026-09-01", date2="2026-09-16")
+    assert handled["ok"] is True
+
+    collected = providers.provider_collect(
+        "metrika",
+        "aggregate_report",
+        {
+            "counter_id": "1",
+            "metrics": "ym:s:visits",
+            "date1": "2026-09-01",
+            "date2": "2026-09-16",
+        },
+    )
+    assert collected["evidence"]["status"] == "complete"
+    assert urls and all("offset=" in url for url in urls)
+
+
+def _metrika_paged_rows(url, total):
+    """Serve ``min(limit, remaining)`` numbered rows for a 1-based ``offset`` URL."""
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    offset, limit = int(query["offset"][0]), int(query["limit"][0])
+    rows = [{"metrics": [offset + i]} for i in range(min(limit, total - (offset - 1)))]
+    return {"data": rows, "total_rows": total, "query": {}}
+
+
+def test_metrika_pagination_covers_two_and_a_half_pages(monkeypatch, journal):
+    """2.5 pages request offsets ``1, 1+size, 1+2*size`` and return every row once (#707)."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 250)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100)
+    assert requests == [1, 101, 201]
+    assert [row["metrics"][0] for row in result["data"]] == list(range(1, 251))
+
+
+def test_metrika_pagination_total_rows_stop_counts_rows_before_offset(monkeypatch, journal):
+    """``total_rows`` is absolute: with ``offset=51`` a 151-row report takes two pages (#707).
+
+    Counting ``offset + len(rows)`` instead of ``offset - 1 + len(rows)`` would stop after the
+    first page and silently drop the last row.
+    """
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 151)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100, offset=51)
+    assert requests == [51, 151]
+    assert len(result["data"]) == 101
+
+
+def test_metrika_pagination_row_cap_stop_counts_rows_before_offset(monkeypatch, journal):
+    """The ``ROW_CAP`` stop also counts the rows skipped before ``offset`` (#707)."""
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
+    monkeypatch.setattr(metrika, "ROW_CAP", 151)
+    requests: list[int] = []
+
+    def fake(url, *a, **k):
+        requests.append(int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["offset"][0]))
+        return _metrika_paged_rows(url, 10_000)
+
+    client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
+    monkeypatch.setattr(client, "_request", fake)
+    result = client.report({"ids": 1}, paginate=True, limit=100, offset=51)
+    # 150 absolute rows sit below the cap, so page two must still be fetched.
+    assert requests == [51, 151]
+    assert len(result["data"]) == 200 and result["capped"] is True
 
 
 def test_metrika_rows_to_records_pairs_dimensions_with_metrics():

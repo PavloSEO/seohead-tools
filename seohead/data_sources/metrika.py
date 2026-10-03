@@ -146,13 +146,17 @@ class MetrikaClient:
     # --- reports (Reporting API) -------------------------------------------
 
     def report(
-        self, params: dict[str, Any], *, paginate: bool = False, limit: int = 100, offset: int = 0
+        self, params: dict[str, Any], *, paginate: bool = False, limit: int = 100, offset: int = 1
     ) -> dict:
         """Request ``stat/v1/data``.
+
+        ``offset`` is 1-based, as the Reporting API requires: ``offset=0`` is answered with 400.
 
         With ``paginate=True``, fetch all pages and combine rows up to :data:`ROW_CAP`. Without
         this ceiling, one grouping typo can accidentally request a million rows.
         """
+        if offset < 1:
+            raise ValueError("offset must be >= 1: the Reporting API numbers report rows from 1")
         base = dict(params, accuracy="full")
         if not paginate:
             body = self._request(self._url(API_REPORTS, dict(base, limit=limit, offset=offset)))
@@ -181,7 +185,7 @@ class MetrikaClient:
                     first = page
                 chunk = page.get("data") or []
                 rows.extend(chunk)
-                collected = offset + len(rows)
+                collected = offset - 1 + len(rows)
                 # A response without ``data`` has nothing else to aggregate; stop cleanly.
                 if len(chunk) < page_size:
                     break
@@ -221,8 +225,10 @@ class MetrikaClient:
         result["capped"] = len(rows) >= ROW_CAP
         return result
 
-    def by_time(self, params: dict[str, Any], *, limit: int = 100, offset: int = 0) -> dict:
+    def by_time(self, params: dict[str, Any], *, limit: int = 100, offset: int = 1) -> dict:
         """Return a time trend from ``stat/v1/data/bytime`` rather than a point-in-time slice."""
+        if offset < 1:
+            raise ValueError("offset must be >= 1: the Reporting API numbers report rows from 1")
         body = self._request(
             self._url(
                 f"{API_REPORTS}/bytime", dict(params, accuracy="full", limit=limit, offset=offset)

@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-09-09T16:31:47Z
+- **Generated:** 2026-09-26T20:19:36Z
 
 ## Health summary
 
-> **No health score.** only 70 of 161 checks could run (44% coverage); too little evidence to score.
+> **No health score.** only 70 of 162 checks could run (43% coverage); too little evidence to score.
 
-_70 of 161 checks could run; the score is not comparable to a run with full evidence_
+_70 of 162 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **16 fired**, 91 skipped, 54 silent, 0 disabled (of 161 total)
+- Checks: **16 fired**, 92 skipped, 54 silent, 0 disabled (of 162 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **21**
@@ -209,6 +209,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | The H1 has no text of its own; its only content is an image's alt attribute | no H1 alt-text evidence (native crawl only) |
 | One or more headings appear before the page's first H1 in DOM order | no heading outline evidence (native crawl only) |
 | A heading sits in the page chrome (header, nav, sidebar or footer) rather than in the content | no heading outline evidence (native crawl only) |
+| Content headings skip one or more levels in DOM order | no heading outline evidence (native crawl only) |
 | A heading on the page is, or contains, a link to somewhere else | no link-placement evidence (native crawl only) |
 | An image link carries no anchor text and no alt text, so nothing says where it goes | no link-placement evidence (native crawl only) |
 | Obsolete meta keywords element is present | no Meta Keywords 1 column in Internal:All |

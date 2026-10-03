@@ -2487,6 +2487,186 @@ def metrika_report(
     }
 
 
+TRAFFIC_REPORT_BASENAME = "metrika-traffic"
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    import os
+
+    partial = path.with_name(f".{path.name}.partial")
+    partial.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(partial, path)
+
+
+def metrika_traffic_pdf(
+    counter_id: Any = None,
+    date1: str | None = None,
+    date2: str | None = None,
+    out_dir: str | None = None,
+    document: dict[str, Any] | str | None = None,
+    attribution: str = "last_significant",
+    traffic: str = "organic",
+    filters: str | None = None,
+    lang: str | None = None,
+    top: int = 15,
+    site_label: str | None = None,
+    brand: dict[str, Any] | str | None = None,
+    gsc_rows: list[dict[str, Any]] | None = None,
+    gsc_site_url: str | None = None,
+    render: bool = True,
+    pdf: bool = True,
+    overwrite: bool = False,
+    timeout: float = 120.0,
+) -> dict[str, Any]:
+    """Collect a Metrika traffic document and render it as a dashboard-style HTML/PDF report.
+
+    Two stages that can run separately. Collection (``counter_id``, ``date1``, ``date2``) reads
+    the Reporting API and writes ``metrika-traffic.json``; rendering formats a document (just
+    collected, or an existing one passed as ``document``) into ``metrika-traffic.html`` and, when
+    a Chrome/Edge/Chromium executable is found, ``metrika-traffic.pdf``. Rendering alone makes no
+    network request. ``out_dir`` is required and is the only place written; existing files are
+    refused unless ``overwrite`` is true. A missing browser leaves the HTML and reports the PDF as
+    ``skipped`` with the reason.
+    """
+    import json
+
+    from seohead.data_sources import metrika_traffic as core
+    from seohead.reports import traffic_dashboard
+
+    if not out_dir:
+        raise ValueError("out_dir required: the directory that receives the report files")
+    if document is not None and counter_id is not None:
+        raise ValueError("pass either document (render only) or counter_id (collect), not both")
+    if gsc_rows is not None and gsc_site_url:
+        raise ValueError("pass either gsc_rows or gsc_site_url, not both")
+    if lang is not None and lang not in core.LANGUAGES:
+        raise ValueError(f"lang must be one of {list(core.LANGUAGES)}")
+    if not isinstance(timeout, int | float) or isinstance(timeout, bool) or timeout <= 0:
+        raise ValueError("timeout must be a positive number of seconds")
+    brand_obj = traffic_dashboard.load_brand(brand)
+
+    if document is not None:
+        if isinstance(document, str):
+            source = Path(document)
+            if not source.is_file():
+                raise ValueError(f"document file not found: {document}")
+            try:
+                document = json.loads(source.read_text(encoding="utf-8"))
+            except ValueError as exc:
+                raise ValueError(f"document is not valid JSON: {exc}") from None
+        traffic_dashboard.validate_document(document)
+    else:
+        core.validate_request(
+            counter_id,
+            date1,
+            date2,
+            attribution=attribution,
+            traffic=traffic,
+            lang=lang or "en",
+            top=top,
+            filters=filters,
+        )
+        if gsc_rows is not None:
+            gsc_rows = core.normalize_gsc_rows(gsc_rows)
+
+    directory = Path(out_dir)
+    targets = {
+        "document": directory / f"{TRAFFIC_REPORT_BASENAME}.json" if document is None else None,
+        "html": directory / f"{TRAFFIC_REPORT_BASENAME}.html" if render else None,
+        "pdf": directory / f"{TRAFFIC_REPORT_BASENAME}.pdf" if render and pdf else None,
+    }
+    existing = sorted(str(p) for p in targets.values() if p is not None and p.exists())
+    if existing and not overwrite:
+        return {
+            "ok": False,
+            "error": "report files already exist; pass overwrite=true to replace them",
+            "existing": existing,
+        }
+
+    collected = document is None
+    if collected:
+        from seohead.data_sources.credentials import MissingCredential
+        from seohead.data_sources.metrika import MetrikaClient
+
+        try:
+            client = MetrikaClient()
+        except MissingCredential as exc:
+            return {"ok": False, "error": str(exc)}
+        gsc_fetch = None
+        if gsc_site_url:
+            from seohead.data_sources import gsc
+
+            def gsc_fetch(start: str, end: str) -> dict[str, Any]:
+                return gsc.search_analytics_pages(
+                    gsc_site_url, start_date=start, end_date=end, dimensions=["query"]
+                )
+
+        document = core.build_traffic_document(
+            counter_id,
+            date1,
+            date2,
+            client=client,
+            attribution=attribution,
+            traffic=traffic,
+            filters=filters,
+            lang=lang or "en",
+            top=top,
+            site_label=site_label,
+            gsc_rows=gsc_rows,
+            gsc_fetch=gsc_fetch,
+        )
+        if not document.get("ok"):
+            return {
+                "ok": False,
+                "error": document.get("error") or "traffic summary unavailable",
+                "requests": document.get("requests")
+                or (document.get("methodology") or {}).get("requests"),
+            }
+    elif site_label:
+        document = dict(document, site_label=site_label)
+
+    directory.mkdir(parents=True, exist_ok=True)
+    files: dict[str, str | None] = {"document": None, "html": None, "pdf": None}
+    if targets["document"] is not None:
+        _write_text_atomic(
+            targets["document"], json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+        )
+        files["document"] = str(targets["document"])
+    pdf_result: dict[str, Any] = {"status": "skipped", "reason": "rendering was not requested"}
+    if targets["html"] is not None:
+        html = traffic_dashboard.render_html(document, brand=brand_obj, lang=lang)
+        _write_text_atomic(targets["html"], html)
+        files["html"] = str(targets["html"])
+        if targets["pdf"] is None:
+            pdf_result = {"status": "skipped", "reason": "pdf=false was requested"}
+        else:
+            from seohead.reports.chromium_pdf import print_to_pdf
+
+            pdf_result = print_to_pdf(targets["html"], targets["pdf"], timeout=timeout)
+            if pdf_result.get("status") == "ok":
+                files["pdf"] = str(targets["pdf"])
+    blocks = document.get("blocks") or {}
+    return {
+        "ok": True,
+        "schema": document.get("schema"),
+        "mode": "collect_and_render"
+        if collected and render
+        else ("collect" if collected else "render"),
+        "period": document.get("period"),
+        "attribution": document.get("attribution"),
+        "traffic": document.get("traffic"),
+        "files": files,
+        "pdf": pdf_result,
+        "blocks": {
+            name: {"status": block.get("status"), "reason": block.get("reason")}
+            for name, block in blocks.items()
+            if isinstance(block, dict)
+        },
+        "warnings": document.get("warnings") or [],
+        "requests": (document.get("methodology") or {}).get("requests") if collected else 0,
+    }
+
+
 def wayback_history(
     url: str | None = None,
     limit: int | None = None,
@@ -3161,6 +3341,7 @@ _RAW_HANDLERS = {
     "metrika_counters": metrika_counters,
     "metrika_setup": metrika_setup,
     "metrika_report": metrika_report,
+    "metrika_traffic_pdf": metrika_traffic_pdf,
     "google_keywords": google_keywords,
     "google_serp": google_serp,
     "wayback_history": wayback_history,

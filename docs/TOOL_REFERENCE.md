@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -811,6 +811,50 @@ What visitors actually did, as flat records. metrics and dimensions are comma-se
 | `paginate` | `bool` | `False` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
+### `metrika-traffic-pdf`
+
+MCP name: `seo_metrika_traffic_pdf`
+
+Static A4-landscape traffic report (HTML + PDF) in the style of an analytics dashboard, built from Yandex Metrika: KPI cards with % change, daily dynamics against the previous period and a year earlier, 3/6/12-month windows, search engines, cities, countries, devices, age, gender, top landing pages and search phrases, and all traffic channels.
+
+| Argument | Type | Default |
+|---|---|---|
+| `out_dir` | `str` | `required` |
+| `counter_id` | `str | None` | `None` |
+| `date1` | `str | None` | `None` |
+| `date2` | `str | None` | `None` |
+| `document` | `dict[str, Any] | str | None` | `None` |
+| `attribution` | `Literal['last_significant', 'last_click']` | `'last_significant'` |
+| `traffic` | `Literal['organic', 'all']` | `'organic'` |
+| `filters` | `str | None` | `None` |
+| `lang` | `Literal['en', 'ru'] | None` | `None` |
+| `top` | `int` | `15` |
+| `site_label` | `str | None` | `None` |
+| `brand` | `dict[str, Any] | str | None` | `None` |
+| `gsc_rows` | `list[dict[str, Any]] | None` | `None` |
+| `gsc_site_url` | `str | None` | `None` |
+| `render` | `bool` | `True` |
+| `pdf` | `bool` | `True` |
+| `overwrite` | `bool` | `False` |
+| `timeout` | `float` | `120.0` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+Collection (counter_id, date1, date2 as YYYY-MM-DD) makes read-only Reporting API calls
+(about 40 requests, free, Metrika quota) and writes metrika-traffic.json; pass an existing
+document instead to render offline. Attribution defaults to the last significant source
+(the figures Metrika's own interface shows); last_click is explicit. traffic=organic keeps
+search-engine visits; the channels block always covers all traffic. Every block carries
+status ok/unavailable/skipped with a reason; missing comparisons are null, never zero.
+Optional Search Console queries come from gsc_rows or gsc_site_url (a Search Console
+request). Writes only into out_dir; existing report files are refused unless
+overwrite=true replaces them. The PDF needs an installed Chrome, Edge or Chromium
+(SEOHEAD_CHROME overrides discovery); without one the HTML is still written and pdf is
+reported as skipped. brand is a JSON object or file: name, accent, ink, card,
+table_header, positive, negative, font_stack, logo_text.
 
 ### `regions-tree`
 

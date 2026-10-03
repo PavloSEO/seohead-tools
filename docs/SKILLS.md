@@ -1,8 +1,8 @@
 # Skill map
 
-23 skills in `.claude/skills/`, in two tiers.
+24 skills in `.claude/skills/`, in two tiers.
 
-**Method skills** — 22 of them. Each covers one thing well: when to apply it, in what
+**Method skills** — 23 of them. Each covers one thing well: when to apply it, in what
 order, how to read the result, and where the boundary is beyond which the tool starts to lie.
 
 **The controller** — `control/`, which decides *which* method skill to run on a site nobody has
@@ -57,7 +57,7 @@ Then by the layer of the task.
 | Skill | When | Tool |
 |---|---|---|
 | **sf-analyzer** | There is a crawl or exports — produce a machine-readable audit | `sf run` |
-| **sf-config** | Configure SF once to maximize applicable coverage from the 161-check registry | — |
+| **sf-config** | Configure SF once to maximize applicable coverage from the 162-check registry | — |
 | **sf-report** | Turn the export into a human-readable report | `sf run --out` |
 | **sf-tasks** | Build a prioritized backlog from `audit.json` | `sf tasks` |
 
@@ -89,6 +89,7 @@ Then by the layer of the task.
 | Skill | When | Tools |
 |---|---|---|
 | **site-report** | The whole site dissected and a ready file — Excel, Word, CSV | `site-audit`, `report-build` |
+| **traffic-report** | Monthly or annual client report from Metrika, Webmaster and GSC instead of Looker: search, sections, products, conversions as visits, buyer portrait | `metrika-traffic-pdf`, `crawl-site`, `provider-collect` |
 
 ## Analytics consoles and exports
 
@@ -98,7 +99,7 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-65 of the 94 commands are not named in any skill's own body (a mention inside
+65 of the 95 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing
 inside a workflow's write-up, or not yet needed by one at all — and have no
 skill of their own, deliberately: a skill per single command is noise.
@@ -122,7 +123,7 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
 `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` ·
 `scan-status` · `scenario-show` · `segment-diff` · `serp-fetch` · `skill-list` ·
 `skill-show` · `soft404-check` · `spend-report` · `tool-catalog` ·
-`wayback-history`
+`topvisor-read` · `wayback-history`
 
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and

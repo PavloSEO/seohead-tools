@@ -62,6 +62,9 @@ NEEDS_LIVE_INFRASTRUCTURE = {
     "metrika-counters",
     "metrika-setup",
     "metrika-report",
+    # Collection needs a Metrika token; the render-only form launches a local browser for the
+    # PDF. Both are environment, not command, so the documented flags are parsed instead.
+    "metrika-traffic-pdf",
     "regions-tree",
     "mcp",
 }

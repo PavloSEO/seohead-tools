@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from seohead.data_sources.credentials import CONFIG_ROOT, MissingCredential
+from seohead.data_sources.credentials import CONFIG_ROOT, MissingCredential, is_private_mode
 from seohead.data_sources.http import open_no_redirect
 
 TOKEN_HOST = "https://oauth2.googleapis.com/token"
@@ -61,7 +61,7 @@ def _grant(provider: str) -> dict[str, Any]:
     if (
         not path.is_file()
         or path.is_symlink()
-        or path.stat().st_mode & 0o077
+        or not is_private_mode(path.stat().st_mode)
         or path.stat().st_size > 65536
     ):
         raise MissingCredential("durable OAuth grant is not configured")
@@ -138,7 +138,7 @@ def manage_grant(
         if (
             source.is_symlink()
             or not source.is_file()
-            or source.stat().st_mode & 0o077
+            or not is_private_mode(source.stat().st_mode)
             or source.stat().st_size > 65536
         ):
             raise ValueError("grant_file must be a private bounded regular JSON file")
