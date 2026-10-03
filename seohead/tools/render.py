@@ -37,6 +37,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 from bs4 import BeautifulSoup
 
 from seohead.recon.net import UA, client_network_policy, http_client, normalize_url, validate_url
+from seohead.recon.remote_policy import RemoteTargetError, current_remote_policy
 from seohead.tools import dualcrawl
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
@@ -186,6 +187,7 @@ def _pinned_browser_route(
     if type(max_response_bytes) is not int or max_response_bytes < 1:
         raise ValueError("browser response limit must be a positive integer")
     limitations: list[str] = []
+    policy = client_network_policy(client)
 
     def abort(route: Any, reason: str) -> None:
         if reason not in limitations:
@@ -197,10 +199,14 @@ def _pinned_browser_route(
         url = str(request.url)
         method = str(request.method).upper()
         if method not in _BROWSER_METHODS:
-            abort(route, f"browser method {method} is unsupported by pinned rendering")
+            reason = (
+                "browser method is unsupported by pinned rendering"
+                if policy is not None
+                else f"browser method {method} is unsupported by pinned rendering"
+            )
+            abort(route, reason)
             return
         try:
-            policy = client_network_policy(client)
             if policy is None:
                 validate_url(url)
             else:
@@ -256,8 +262,12 @@ def _pinned_browser_route(
                 if undecoded:
                     abort(
                         route,
-                        f"browser response content coding {undecoded} is undecodable "
-                        "by pinned rendering",
+                        (
+                            "browser response content coding is undecodable by pinned rendering"
+                            if policy is not None
+                            else f"browser response content coding {undecoded} is undecodable "
+                            "by pinned rendering"
+                        ),
                     )
                     return
                 # Decoded bytes, not transferred ones: this is the body Chromium
@@ -273,7 +283,7 @@ def _pinned_browser_route(
                     status=response.status_code, headers=response_headers, body=bytes(body)
                 )
         except Exception as exc:
-            abort(route, f"pinned browser request failed: {type(exc).__name__}: {exc}")
+            abort(route, f"pinned browser request failed: {_error_summary(exc, policy)}")
 
     return handler, limitations
 
@@ -314,6 +324,15 @@ def _redact_console(value: Any) -> str:
         r"(?i)(?:authorization|token|secret|password|cookie)\s*[:=]\s*[^\s,;]+", "[redacted]", text
     )
     return re.sub(r"https?://[^\s'\"]+", "[url]", text)
+
+
+def _error_summary(exc: Exception, policy: Any = None) -> str:
+    """Keep remote operational failures free of URLs, headers and browser data."""
+    if policy is not None or current_remote_policy() is not None:
+        if isinstance(exc, RemoteTargetError):
+            return exc.code
+        return "remote browser request failed"
+    return f"{type(exc).__name__}: {exc}"
 
 
 def _staged_screenshot_path(artifacts_dir: str, url: str) -> str:
@@ -795,7 +814,7 @@ def render_check(
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Raw HTML fetch failed: {type(exc).__name__}: {exc}",
+            "error": f"Raw HTML fetch failed: {_error_summary(exc)}",
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
@@ -854,7 +873,7 @@ def render_check(
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Browser rendering failed: {type(exc).__name__}: {exc}",
+            "error": f"Browser rendering failed: {_error_summary(exc)}",
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
@@ -1019,7 +1038,7 @@ def rendered_html(
             finally:
                 browser.close()
     except Exception as exc:
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "url": target}
+        return {"ok": False, "error": _error_summary(exc), "url": target}
     finally:
         if browser_client is not None:
             browser_client.close()
@@ -1274,7 +1293,11 @@ def render_document(
                         screenshot_state = "staged"
                     except Exception as exc:
                         screenshot_state = "unavailable"
-                        screenshot_error = _redact_console(f"{type(exc).__name__}: {exc}")
+                        screenshot_error = (
+                            "browser screenshot failed"
+                            if current_remote_policy() is not None
+                            else _redact_console(f"{type(exc).__name__}: {exc}")
+                        )
                         with contextlib.suppress(OSError):
                             os.unlink(staged)
                 elif artifacts_cfg.get("screenshots"):
@@ -1287,7 +1310,7 @@ def render_document(
                 if browser is not None:
                     browser.close()
     except Exception as exc:
-        return {"ok": False, "url": target, "error": f"{type(exc).__name__}: {exc}"}
+        return {"ok": False, "url": target, "error": _error_summary(exc)}
     finally:
         if network_client is not None:
             network_client.close()

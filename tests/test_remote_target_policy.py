@@ -95,6 +95,21 @@ def test_submission_requires_project_safe_target_and_finite_budgets(monkeypatch)
     assert backend.value.code in {"invalid_config", "unsupported_browser"}
 
 
+@pytest.mark.parametrize(
+    "name", ["max_requests_per_origin", "max_total_requests", "max_concurrency"]
+)
+@pytest.mark.parametrize("value", [True, 1.5, float("nan"), float("inf")])
+def test_remote_numeric_caps_require_exact_positive_integers(name, value):
+    with pytest.raises(ValueError, match="positive integers"):
+        RemoteEgressPolicy("project-a", **{name: value})
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), "0.5"])
+def test_remote_delay_floor_rejects_nonfinite_or_nonnumeric_values(value):
+    with pytest.raises(ValueError, match="delay floor"):
+        RemoteEgressPolicy("project-a", min_delay_seconds=value)
+
+
 def test_staging_allowlist_is_exact_and_never_authorizes_metadata(monkeypatch):
     answers = {"stage.example.test": "10.1.2.3", "other.example.test": "10.1.2.3"}
     _dns(monkeypatch, answers)
@@ -266,6 +281,36 @@ def test_browser_subresource_uses_same_guarded_remote_client(monkeypatch):
     assert refused.aborted == ["blockedbyclient"]
     assert len(dispatched) == 1
     assert "secret" not in str(limitations)
+
+
+def test_browser_header_exception_is_redacted_under_remote_policy(monkeypatch):
+    _dns(monkeypatch, {"public.example.test": "93.184.216.34"})
+    dispatched = _transport(monkeypatch)
+    policy = RemoteEgressPolicy("project-a")
+    with policy.active():
+        client, _ = net.http_client(5)
+        handler, limitations = render._pinned_browser_route(client)
+    route = _BrowserRoute("https://public.example.test/script.js")
+
+    def secret_headers():
+        raise RuntimeError("https://user:secret@public.example.test/?token=secret")
+
+    route.request.all_headers = secret_headers
+    handler(route)
+    client.close()
+    assert route.aborted == ["blockedbyclient"]
+    assert len(dispatched) == 0
+    assert limitations == ["pinned browser request failed: remote browser request failed"]
+    assert "secret" not in str(limitations)
+
+
+def test_remote_render_error_summary_discards_playwright_exception_text():
+    policy = RemoteEgressPolicy("project-a")
+    with policy.active():
+        reason = render._error_summary(
+            RuntimeError("https://user:secret@public.example.test/?token=secret")
+        )
+    assert reason == "remote browser request failed"
 
 
 def test_approved_staging_fetch_and_browser_route_survive_thread_context_loss(monkeypatch):
