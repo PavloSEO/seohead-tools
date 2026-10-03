@@ -650,7 +650,16 @@ def prune_apply(directory: str | Path, plan: dict) -> list[str]:
             if expected["audit_inode"] is not None:
                 hold_path = root / f".{audit_path.name}.prune-hold-{uuid.uuid4().hex}"
                 os.link(audit_path, hold_path, follow_symlinks=False)
-                audit_path.unlink()
+                try:
+                    audit_path.unlink()
+                except OSError as exc:
+                    try:
+                        hold_path.unlink()
+                    except OSError as cleanup_exc:
+                        raise ScanError(
+                            f"scan and audit remain intact, but a duplicate recovery link remains at {hold_path}: {cleanup_exc}"
+                        ) from cleanup_exc
+                    raise exc
             try:
                 path.unlink()
             except OSError:
@@ -668,13 +677,18 @@ def prune_apply(directory: str | Path, plan: dict) -> list[str]:
                         ) from exc
                     try:
                         hold_path.unlink()
-                    except OSError as exc:
+                    except OSError as cleanup_exc:
                         raise ScanError(
-                            f"scan was preserved but audit companion has a duplicate recovery link at {hold_path}: {exc}"
-                        ) from exc
+                            f"scan was preserved but audit companion has a duplicate recovery link at {hold_path}: {cleanup_exc}"
+                        ) from cleanup_exc
                 raise
             if hold_path is not None:
-                hold_path.unlink()
+                try:
+                    hold_path.unlink()
+                except OSError as exc:
+                    raise ScanError(
+                        f"scan was pruned but its audit companion recovery copy remains at {hold_path}: {exc}"
+                    ) from exc
             removed.append(str(path))
         if removed:
             from .native_scan import _fsync_directory

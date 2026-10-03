@@ -234,6 +234,24 @@ def test_snapshot_and_prune_keep_audit_v2_companions_paired(tmp_path):
     assert victim_audit.exists()
     original_unlink = Path.unlink
 
+    def fail_audit_unlink(path, *args, **kwargs):
+        if path == victim_audit:
+            raise PermissionError("injected audit unlink failure")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(Path, "unlink", fail_audit_unlink)
+    try:
+        with pytest.raises(PermissionError, match="injected audit unlink failure"):
+            prune_apply(prune_dir, plan)
+    finally:
+        monkeypatch.undo()
+    assert victim.exists() and victim_audit.exists()
+    assert victim_audit.stat().st_nlink == 1
+    assert not list(prune_dir.glob(".*.prune-hold-*"))
+    with AuditV2Reader(victim) as audit:
+        assert audit.count("/issues") == 0
+
     def fail_scan_unlink(path, *args, **kwargs):
         if path == victim:
             raise PermissionError("injected scan unlink failure")
