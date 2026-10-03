@@ -15,6 +15,11 @@ input. Sources are the current code contracts, provider documentation, and
   operators; the base is ~9x inflated. Exact numbers come from
   `keywords-exact` (Arsenkin). A multi-region request **sums** frequency —
   query regions one at a time.
+- **Arsenkin `!W` is the `overal` selector, not `quoted` or `exact`.** In the
+  wordstat `ws` parameter the four values are different operators: `base` (WS),
+  `quoted` ("WS"), `overal` (!WS — the `!W` `keywords-exact` reports), and
+  `exact` ([!WS], strict word order). Reading `quoted` or `exact` as `!W`
+  inflates or redefines the number.
 - **Every paid call journals before parsing.** `spend.record()` fires the
   moment a task is created, with its `task_id` — a crashed parser must not
   turn money into nothing, and a paid result can be re-fetched for free.
