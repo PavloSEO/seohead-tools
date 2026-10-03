@@ -47,6 +47,7 @@ _REGISTRY: dict[str, dict[str, Any]] = {
         "credential_components": ["api_key"],
         "access": "read_only",
         "operations": ["current", "history"],
+        "cost_mode": "free_within_quota",
         "quota_mode": "Google Cloud API quota",
         "privacy_class": "aggregate",
     },

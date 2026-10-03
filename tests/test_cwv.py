@@ -86,6 +86,9 @@ def test_scope_form_factor_period_and_partial_metrics():
         "first_date": "2026-08-01",
         "last_date": "2026-08-28",
     }
+    assert origin["assessment"]["provider_access"] == "read_only"
+    assert origin["assessment"]["cost_mode"] == "free_within_quota"
+    assert providers.provider_registry()["providers"]["crux"]["cost_mode"] == "free_within_quota"
     desktop = _query(_record(form_factor="DESKTOP"), form_factor="DESKTOP")
     assert desktop["assessment"]["form_factor"] == "DESKTOP"
     partial_body = _record()
@@ -237,6 +240,7 @@ def test_audit_and_md_report_use_supplied_field_evidence_without_network(tmp_pat
     assert report["ok"] is True
     text = (tmp_path / "audit.md").read_text()
     assert "CrUX field CWV" in text and "4100.0 ms" in text and "2026-08-28" in text
+    assert "free_within_quota" in text
 
     none = audit_site(ORIGIN, urls=[URL], skip=[*SITE_TOOLS, *PAGE_TOOLS], tools={})
     assert none["summary"]["field_cwv"]["state"] == "not_requested"

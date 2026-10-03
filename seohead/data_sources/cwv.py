@@ -112,6 +112,7 @@ def assess(record: dict[str, Any]) -> dict[str, Any]:
         "collection_period": {"first_date": first, "last_date": last},
         "retrieved_at": record.get("retrieved_at"),
         "provider_access": "read_only",
+        "cost_mode": "free_within_quota",
         "quota_mode": "Google Cloud API quota",
         "overall": overall,
         "metrics": results,

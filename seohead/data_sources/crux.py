@@ -276,6 +276,7 @@ def sample_urls(
         "requests": requests,
         "cache_hits": hits,
         "cache_max_age_hours": cache_max_age_hours if root else None,
+        "cost_mode": "free_within_quota",
         "quota_mode": "Google Cloud API quota",
         "records": records,
     }

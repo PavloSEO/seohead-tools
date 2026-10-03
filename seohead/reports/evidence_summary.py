@@ -50,7 +50,8 @@ def rows(summary: dict[str, Any]) -> list[list[str]]:
                 f"{period.get('first_date')}..{period.get('last_date')}; "
                 f"retrieved {assessment.get('retrieved_at')}; "
                 f"{assessment.get('policy')}; "
-                f"{assessment.get('provider_access')}, {assessment.get('quota_mode')}"
+                f"{assessment.get('provider_access')}, {assessment.get('cost_mode')}, "
+                f"{assessment.get('quota_mode')}"
             )
             for name, metric in (assessment.get("metrics") or {}).items():
                 measurement = str(metric.get("label") or name) + (
