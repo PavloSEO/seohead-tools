@@ -155,6 +155,8 @@ class MetrikaClient:
         With ``paginate=True``, fetch all pages and combine rows up to :data:`ROW_CAP`. Without
         this ceiling, one grouping typo can accidentally request a million rows.
         """
+        if offset < 1:
+            raise ValueError("offset must be >= 1: the Reporting API numbers report rows from 1")
         base = dict(params, accuracy="full")
         if not paginate:
             body = self._request(self._url(API_REPORTS, dict(base, limit=limit, offset=offset)))
@@ -225,6 +227,8 @@ class MetrikaClient:
 
     def by_time(self, params: dict[str, Any], *, limit: int = 100, offset: int = 1) -> dict:
         """Return a time trend from ``stat/v1/data/bytime`` rather than a point-in-time slice."""
+        if offset < 1:
+            raise ValueError("offset must be >= 1: the Reporting API numbers report rows from 1")
         body = self._request(
             self._url(
                 f"{API_REPORTS}/bytime", dict(params, accuracy="full", limit=limit, offset=offset)
