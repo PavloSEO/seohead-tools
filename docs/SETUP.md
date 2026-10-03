@@ -9,8 +9,9 @@ supported by `config.json` search paths.
 - **Python 3.10+** (`requires-python` in `pyproject.toml`).
 - pip, git. That is all — every other dependency is a Python package.
 - Optional, improves results if present on the system:
-  - **Screaming Frog SEO Spider CLI** — for audit mode A (the toolkit
-    drives the crawler itself). Without it, mode B works from ready exports.
+  - **Screaming Frog SEO Spider CLI** — required only for live audit mode A
+    and requires a separately installed, active licence. Mode B analyzes
+    supplied CSV/XLSX exports offline without an SF installation or licence.
   - **system `whois`** — fallback for ccTLDs without RDAP. Without RDAP and
     without `whois`, domain registration data is honestly reported as
     `source: none`.
@@ -18,8 +19,8 @@ supported by `config.json` search paths.
 ## Install
 
 ```bash
-git clone https://github.com/PavloSEO/seotools.git
-cd seotools
+git clone https://github.com/PavloSEO/seohead-tools.git
+cd seohead-tools
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -27,6 +28,9 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"            # everything incl. reports, render, tests
 python -m playwright install chromium  # browser for render-check (~150 MB)
 ```
+
+The repository is named `seohead-tools`; the Python distribution remains
+`seohead-seotools` and the installed command remains `seohead` for compatibility.
 
 The optional remote Playwright transport needs the Python `render` extra, but
 does not need a locally installed browser binary. It connects only to a browser

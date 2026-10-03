@@ -57,9 +57,9 @@ rows, 168 were `no_change` and 7 carried a repair, resolving to three issues:
 
 | Issue | Merged in | Repair |
 |---|---|---|
-| [#670](https://github.com/PavloSEO/seotools/issues/670) | [#680](https://github.com/PavloSEO/seotools/pull/680) | Mobile render identity: the mobile representation now carries the mobile user agent and viewport |
-| [#671](https://github.com/PavloSEO/seotools/issues/671) | [#673](https://github.com/PavloSEO/seotools/pull/673) | Redirect guidance: a 302 alone is not a defect, and a status code alone does not measure ranking-signal loss |
-| [#692](https://github.com/PavloSEO/seotools/issues/692) | [#695](https://github.com/PavloSEO/seotools/pull/695) | JavaScript rendering, canonical, `notranslate` and encoded-URL-space guidance qualified, without changing runtime severities |
+| [#670](https://github.com/PavloSEO/seohead-tools/issues/670) | [#680](https://github.com/PavloSEO/seohead-tools/pull/680) | Mobile render identity: the mobile representation now carries the mobile user agent and viewport |
+| [#671](https://github.com/PavloSEO/seohead-tools/issues/671) | [#673](https://github.com/PavloSEO/seohead-tools/pull/673) | Redirect guidance: a 302 alone is not a defect, and a status code alone does not measure ranking-signal loss |
+| [#692](https://github.com/PavloSEO/seohead-tools/issues/692) | [#695](https://github.com/PavloSEO/seohead-tools/pull/695) | JavaScript rendering, canonical, `notranslate` and encoded-URL-space guidance qualified, without changing runtime severities |
 
 A correction to prose alone does not repair a wrong executable verdict, and a code fix alone does
 not repair a misleading skill: each repair above carries offline regression evidence in
