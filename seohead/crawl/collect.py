@@ -1047,6 +1047,7 @@ def collect_urls(
     robots_token: str = "*",
     resolve_redirect_destination: bool = False,
     resolve_canonical_destination: bool = False,
+    proxy_route: Any = None,
 ) -> CrawlResult:
     """Fetch an explicit list of URLs in the order given.
 
@@ -1107,8 +1108,13 @@ def collect_urls(
             # follow_redirects on, a 301 is recorded as a 200 carrying the
             # target's title and body, the Location is never seen, and redirect
             # auditing is impossible — the old and new URL become duplicates.
+            from seohead.recon.net import crawl_transport_options
+
             client, _ = http_client(
-                timeout, follow_redirects=False, headers={"User-Agent": user_agent or UA}
+                timeout,
+                follow_redirects=False,
+                headers={"User-Agent": user_agent or UA},
+                **crawl_transport_options(proxy_route),
             )
             stack.callback(client.close)
 

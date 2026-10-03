@@ -256,6 +256,7 @@ def _legacy_fetch(
     scan: Any,
     max_parse_bytes: int,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Fetch an opted-in escaped fragment and retain its actual response."""
     from seohead.crawl.capture import now_utc
@@ -273,10 +274,13 @@ def _legacy_fetch(
     extra_headers.update(
         resolve_credential_headers(settings["http"]["credential_headers"], host) or {}
     )
+    from seohead.recon.net import crawl_transport_options
+
     client, _http2 = http_client(
         settings["http"]["timeout_seconds"],
         follow_redirects=False,
         headers={"User-Agent": settings["http"]["user_agent"]},
+        **crawl_transport_options(proxy_route),
     )
     try:
         record, parsed = fetch_one(
@@ -323,6 +327,7 @@ def run_render_escalation(
     settings: dict[str, Any],
     *,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> Any:
     """Run selective rendering and store each attempted representation promptly.
 
@@ -468,6 +473,7 @@ def run_render_escalation(
             user_agent=settings["http"]["user_agent"],
             max_html_bytes=max_parse_bytes,
             policy_facts=_policy_facts(settings, target),
+            proxy_route=proxy_route,
             **gate_kwargs,
             **artifact_kwargs,
         )
@@ -615,6 +621,8 @@ def run_render_escalation(
             if not html:
                 return {"ok": False, "url": target, "error": "raw document unavailable"}
             legacy_kwargs = {"request_gate": request_gate} if request_gate is not None else {}
+            if proxy_route is not None:
+                legacy_kwargs["proxy_route"] = proxy_route
             return _legacy_fetch(target, html, settings, scan, max_parse_bytes, **legacy_kwargs)
 
         representation = "legacy_fragment"
