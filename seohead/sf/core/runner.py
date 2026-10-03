@@ -185,12 +185,11 @@ SF_HELP_TIMEOUT_SECONDS = 30.0
 def _query_export_help(cli_path: str, group: str) -> str:
     """Return SF's per-export help without starting a crawl or contacting a target."""
     try:
-        process = subprocess.run(
+        process = _run_watched(
             [cli_path, "--help", CLI_HELP_FLAGS[group]],
-            capture_output=True,
-            text=True,
-            timeout=SF_HELP_TIMEOUT_SECONDS,
-            check=False,
+            SF_HELP_TIMEOUT_SECONDS,
+            os.getcwd(),
+            lambda _message: None,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(
