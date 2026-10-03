@@ -247,10 +247,17 @@ class MetrikaClient:
         rows: list = []
         cursor = offset
         pages = 0
+        collected = offset - 1
         try:
             while True:
+                # The budget counts downloaded rows, so each page may ask only for
+                # the share still left — a full-size request past the remainder
+                # would pull rows the cap can no longer hold.
+                page_limit = min(page_size, budget - collected)
+                if page_limit <= 0:
+                    break
                 page = self._request(
-                    self._url(API_REPORTS, dict(base, limit=page_size, offset=cursor))
+                    self._url(API_REPORTS, dict(base, limit=page_limit, offset=cursor))
                 )
                 pages += 1
                 if first is None:
@@ -259,14 +266,14 @@ class MetrikaClient:
                 rows.extend(chunk)
                 collected = offset - 1 + len(rows)
                 # A response without ``data`` has nothing else to aggregate; stop cleanly.
-                if len(chunk) < page_size:
+                if len(chunk) < page_limit:
                     break
                 if collected >= budget:
                     break
                 total = (first or {}).get("total_rows")
                 if total and collected >= total:
                     break
-                cursor += page_size
+                cursor += page_limit
                 time.sleep(PAGE_PAUSE)
         except MetrikaError:
             # The page that raised still consumed a request against quota, even though it

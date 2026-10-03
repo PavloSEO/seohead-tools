@@ -512,9 +512,10 @@ def test_metrika_pagination_row_cap_stop_counts_rows_before_offset(monkeypatch, 
     client = metrika.MetrikaClient.__new__(metrika.MetrikaClient)
     monkeypatch.setattr(client, "_request", fake)
     result = client.report({"ids": 1}, paginate=True, limit=100, offset=51)
-    # 150 absolute rows sit below the cap, so page two must still be fetched.
+    # 150 absolute rows sit below the cap, so page two must still be fetched — but
+    # it may ask only for the single row the budget still allows, not a full page.
     assert requests == [51, 151]
-    assert len(result["data"]) == 200 and result["capped"] is True
+    assert len(result["data"]) == 101 and result["capped"] is True
 
 
 def test_metrika_rows_to_records_pairs_dimensions_with_metrics():
@@ -1253,6 +1254,54 @@ def test_metrika_split_budget_spent_mid_slice_names_the_partial_span(monkeypatch
     ]
     assert result["split"]["periods"][0]["capped"] is True
     assert len(result["data"]) == 2  # only the first page of January was collected
+    assert result["capped"] is True and result["incomplete"] is True
+    assert result["total_rows"] is None and result["totals"] is None
+
+
+def test_metrika_split_recomputes_page_limit_from_the_remaining_budget(monkeypatch, journal):
+    """A mid-slice budget remainder is requested, never a full extra page.
+
+    With a cap of 150, January's 20 rows leave 130 for February: the second page
+    may ask for only the 30 rows still allowed — asking for a whole page would
+    pull 70 rows nobody can keep (#714).
+    """
+    from seohead.data_sources import metrika
+
+    monkeypatch.setattr(metrika, "ROW_CAP", 150)
+    month_totals = {"2026-01": 20, "2026-02": 300, "2026-03": 300}
+    requests: list[tuple[str, int, int]] = []
+    served = {"rows": 0}
+
+    def fake(url):
+        query = _metrika_query(url)
+        if query["date1"][:7] != query["date2"][:7]:
+            raise metrika.MetrikaError(400, "Query is too complicated")
+        month = query["date1"][:7]
+        total = month_totals[month]
+        offset, limit = int(query.get("offset", "1")), int(query["limit"])
+        requests.append((month, offset, limit))
+        rows = [
+            {"dimensions": [{"name": f"/{month}-{i}"}], "metrics": [i]}
+            for i in range(offset - 1, min(offset - 1 + limit, total))
+        ]
+        served["rows"] += len(rows)
+        return _slice_body(rows, totals=[total], total_rows=total)
+
+    client = _metrika_split_client(monkeypatch, fake)
+    result = client.report(
+        {"metrics": "ym:s:visits", "date1": "2026-01-01", "date2": "2026-03-31"},
+        paginate=True,
+    )
+
+    # February's second page asks for the 30-row remainder, not another 100.
+    assert requests == [("2026-01", 1, 100), ("2026-02", 1, 100), ("2026-02", 101, 30)]
+    assert served["rows"] == 150  # one global budget, never a row more
+    assert result["split"]["unfetched"] == [
+        {"date1": "2026-02-01", "date2": "2026-02-28", "partial": True},
+        {"date1": "2026-03-01", "date2": "2026-03-31"},
+    ]
+    assert result["split"]["periods"][1]["capped"] is True
+    assert len(result["data"]) == 150
     assert result["capped"] is True and result["incomplete"] is True
     assert result["total_rows"] is None and result["totals"] is None
 
