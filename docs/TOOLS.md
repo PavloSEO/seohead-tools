@@ -56,8 +56,8 @@ selected columns and a bounded page size. The same read-only view is available t
 Results expose source identity, view/config revisions, source/matched/returned counts,
 missing-field counts, and `has_more`/`next_offset`. Missing filter fields stay unmatched and are
 counted; missing projected values remain `null`. These views do not suppress findings, modify
-evidence, or alter scoring, tasks or coverage. Segment selections need supported declarations in
-the audit; missing or regex-based definitions are explicitly unavailable.
+evidence, or alter scoring, tasks or coverage. Segment selections reuse declarations in the audit;
+missing definitions are explicitly unavailable. The view schema itself does not accept regexes.
 
 ## Guided workflow and catalogue tools
 

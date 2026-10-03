@@ -164,8 +164,9 @@ The first save uses config revision `0`; each following save requires the most r
 includes source scan identity, schema and config revisions, total/matched/returned counts,
 missing-field counts and stable pagination metadata. Missing values in a filter do not match and
 are counted. Missing projected values are `null` and named on the row. Sort ties keep source order;
-missing sort values are last. Segment filters require supported segment definitions in the audit;
-missing or regex-based definitions return an explicit unavailable error instead of an empty result.
+missing sort values are last. Segment filters reuse the segment definitions and existing evaluator
+stored with the audit; absent definitions return an explicit unavailable error instead of an empty
+result. View definitions themselves accept no regex expressions.
 
 Views only affect displayed finding rows and fields. Reports label the view and returned page;
 audit totals, evidence coverage and scores still describe the source audit. The saved scan and its

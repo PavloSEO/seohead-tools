@@ -287,41 +287,9 @@ def _segment_definitions(document: dict[str, Any]) -> list[dict[str, Any]] | Non
     if not isinstance(analysis, list):
         return None
     if analysis:
-        if len(analysis) > 100:
-            return None
-        for segment in analysis:
-            if (
-                not isinstance(segment, dict)
-                or set(segment) - {"name", "rules"}
-                or type(segment.get("name")) is not str
-                or not segment["name"]
-                or len(segment["name"]) > 128
-                or not isinstance(segment.get("rules"), list)
-                or not segment["rules"]
-                or len(segment["rules"]) > 100
-            ):
-                return None
-            for rule in segment["rules"]:
-                if (
-                    not isinstance(rule, dict)
-                    or set(rule) - {"op", "field", "value"}
-                    or rule.get("op") not in {"prefix", "contains", "eq", "in", "segment"}
-                    or type(rule.get("field", "url")) is not str
-                    or not rule.get("field", "url")
-                    or len(rule.get("field", "url")) > 128
-                    or type(rule.get("value")) not in {str, int, float, bool, list}
-                ):
-                    return None
-                if type(rule["value"]) is str and len(rule["value"]) > 2048:
-                    return None
-                if type(rule["value"]) is list and (
-                    len(rule["value"]) > 100
-                    or any(type(item) not in {str, int, float, bool} for item in rule["value"])
-                ):
-                    return None
         return analysis
     scope = config.get("scope.segments") or []
-    if not isinstance(scope, list):
+    if not isinstance(scope, list) or len(scope) > MAX_FILTER_VALUES:
         return None
     definitions = []
     for item in scope:
@@ -333,7 +301,7 @@ def _segment_definitions(document: dict[str, Any]) -> list[dict[str, Any]] | Non
         if item.get("host"):
             rules.append({"op": "eq", "field": "host", "value": item["host"]})
         if item.get("pattern"):
-            return None
+            rules.append({"op": "regex", "field": "url", "value": item["pattern"]})
         definitions.append({"name": item["name"], "rules": rules})
     return definitions or None
 

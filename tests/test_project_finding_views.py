@@ -245,7 +245,7 @@ def test_segment_filter_requires_and_uses_source_segment_definitions(project):
         apply_view_to_audit(project, "triage", no_segments)
 
 
-def test_segment_view_does_not_execute_regexes_from_an_untrusted_audit(project):
+def test_segment_view_uses_the_audits_declared_segment_rules(project):
     from seohead.projects.finding_views import apply_view_to_audit
 
     save_view(
@@ -253,10 +253,13 @@ def test_segment_view_does_not_execute_regexes_from_an_untrusted_audit(project):
         definition(filters={"segment": ["blog"]}, columns=["url", "segment"]),
         expected_revision=0,
     )
-    untrusted = audit_document()
-    untrusted["run"]["crawl_config"]["scope.segments"] = [{"name": "blog", "pattern": "(a+)+$"}]
-    with pytest.raises(ValueError, match="segment filtering is unavailable"):
-        apply_view_to_audit(project, "triage", untrusted)
+    document = audit_document()
+    document["run"]["crawl_config"]["scope.segments"] = [
+        {"name": "blog", "pattern": r"https://example\.test/blog/"}
+    ]
+    result = apply_view_to_audit(project, "triage", document)
+    assert result["counts"]["matched"] == 3
+    assert all(item["fields"]["segment"] == "blog" for item in result["items"])
 
 
 def test_json_and_markdown_reports_apply_the_same_projection_without_mutating_audit(
