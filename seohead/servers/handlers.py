@@ -2063,9 +2063,22 @@ def crawl_diagnose(
     scan: str | None = None,
     run: str | None = None,
     max_decisions: int = 20,
-    export: str | None = None,
 ) -> dict[str, Any]:
     """Explain a native crawl from retained evidence without fetching the site."""
+    from seohead.crawl.diagnostics import diagnose
+
+    return diagnose(scan=scan, run=run, max_decisions=max_decisions)
+
+
+def crawl_diagnose_export(
+    scan: str | None = None,
+    run: str | None = None,
+    export: str | None = None,
+    max_decisions: int = 20,
+) -> dict[str, Any]:
+    """Write a new redacted diagnostic file only when its path was explicit."""
+    if not export:
+        raise ValueError("export path is required")
     from seohead.crawl.diagnostics import diagnose
 
     return diagnose(scan=scan, run=run, max_decisions=max_decisions, export=export)
@@ -3364,6 +3377,7 @@ _RAW_HANDLERS = {
     "boilerplate_report": boilerplate_report,
     "log_scan": log_scan,
     "crawl_diagnose": crawl_diagnose,
+    "crawl_diagnose_export": crawl_diagnose_export,
     "social_meta_check": social_meta_check,
     "soft404_check": soft404_check,
     "log_analyze": log_analyze,

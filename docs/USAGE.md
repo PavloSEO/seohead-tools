@@ -37,13 +37,14 @@ seohead crawl-diagnose --scan native.sqlite
 seohead crawl-diagnose --run ./run --max-decisions 10
 
 # Optional redacted copy for sharing: creates a new file, never overwrites.
-seohead crawl-diagnose --scan native.sqlite --export diagnostic-redacted.json
+seohead crawl-diagnose-export --scan native.sqlite --export diagnostic-redacted.json
 ```
 
 The readable diagnosis goes to stderr and bounded JSON to stdout. Its decision
 samples name the recorded URL, reason, source and depth; the optional CLI export
 removes URLs, local paths, scan identity and unknown freeform labels. The MCP
-diagnostic remains read-only; file export requires the explicit CLI option. A saved scan cannot prove whether
+diagnosis is read-only; file export uses its separately annotated write tool
+(`seo_crawl_diagnose_export`) or the explicit CLI command. A saved scan cannot prove whether
 a worker process is still alive, and a one-page crawl does not establish the
 site-wide URL total. The command recommends a focused check or an explicit
 configuration change; it never changes robots policy or crawl settings.
@@ -282,7 +283,7 @@ Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 95 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 96 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

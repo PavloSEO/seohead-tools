@@ -262,14 +262,14 @@ def test_redacted_export_is_opt_in_bounded_and_never_overwrites(tmp_path):
         ],
     )
     output = tmp_path / "diagnostic.json"
-    result = handlers.crawl_diagnose(run=str(run), max_decisions=1, export=str(output))
+    result = handlers.crawl_diagnose_export(run=str(run), max_decisions=1, export=str(output))
     assert result["redacted_export"] == str(output)
     redacted = output.read_text()
     assert "example.test" not in redacted and "synthetic" not in redacted
     assert output.stat().st_mode & 0o777 == 0o600
     assert json.loads(redacted)["decisions"]["sample"][0]["reason"] == "outside_host"
     with pytest.raises(FileExistsError):
-        handlers.crawl_diagnose(run=str(run), export=str(output))
+        handlers.crawl_diagnose_export(run=str(run), export=str(output))
     assert len(result["decisions"]["sample"]) == 1
 
 
@@ -282,7 +282,7 @@ def test_export_redacts_freeform_labels_and_scan_identity(tmp_path):
         run_fields={"crawl_finish_reason": secret},
     )
     output = tmp_path / "freeform-redacted.json"
-    handlers.crawl_diagnose(run=str(run), export=str(output))
+    handlers.crawl_diagnose_export(run=str(run), export=str(output))
     redacted = json.loads(output.read_text())
     assert secret not in output.read_text()
     assert redacted["source"]["finish_reason"] == "[redacted]"
@@ -294,7 +294,7 @@ def test_export_redacts_freeform_labels_and_scan_identity(tmp_path):
     scan_dir.mkdir()
     scan, _ = saved_scan(scan_dir)
     output = tmp_path / "native-redacted.json"
-    raw = handlers.crawl_diagnose(scan=str(scan), export=str(output))
+    raw = handlers.crawl_diagnose_export(scan=str(scan), export=str(output))
     assert raw["source"]["scan_uuid"] not in output.read_text()
     assert json.loads(output.read_text())["source"]["scan_uuid"] == "[redacted]"
 
@@ -328,3 +328,18 @@ def test_mcp_diagnosis_has_no_file_write_permission_or_export_argument():
     tool = next(spec for spec in load_seo_tools() if spec.name == "seo_crawl_diagnose")
     assert tool.writes is False
     assert "export" not in {argument.name for argument in tool.arguments}
+    export = next(spec for spec in load_seo_tools() if spec.name == "seo_crawl_diagnose_export")
+    assert export.writes is True
+    assert "export" in {argument.name for argument in export.arguments}
+
+
+def test_cli_export_command_requires_explicit_path(tmp_path, capsys):
+    from seohead.cli import main
+
+    run = legacy_run(tmp_path, html_page={})
+    output = tmp_path / "cli-redacted.json"
+    assert main(["crawl-diagnose-export", "--run", str(run), "--export", str(output)]) == 0
+    assert json.loads(output.read_text())["source"]["start_url"] == "[redacted]"
+    capsys.readouterr()
+    assert main(["crawl-diagnose-export", "--run", str(run)]) == 1
+    assert "export path is required" in capsys.readouterr().err
