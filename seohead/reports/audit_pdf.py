@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import html
-import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -29,6 +29,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "failed": "Failed",
         "unknown": "Unknown",
         "summary": "Audit summary",
+        "summary_field": "Summary field",
         "findings": "Findings",
         "pages": "Affected pages",
         "checks": "Coverage records",
@@ -117,6 +118,27 @@ _LABELS: dict[str, dict[str, str]] = {
         "scope_reason_label": "Scope reason",
         "operation_label": "Operation",
         "operation_bounded_site_audit": "Bounded site audit",
+        "tools_run": "Tools run",
+        "tools_failed": "Tools failed",
+        "page_tools_failed": "Page tools failed",
+        "evidence_contract": "Evidence contract",
+        "capability_rows": "Capability rows",
+        "scan_identity_state": "Scan identity status",
+        "scan_uuid": "Scan ID",
+        "checks_total": "Checks total",
+        "failed_pages": "Failed pages",
+        "pages_checked": "Pages checked",
+        "tool": "Tool",
+        "error": "Error",
+        "population": "Population",
+        "by_severity": "By severity",
+        "health_score": "Health score",
+        "health_score_scope": "Health score scope",
+        "severity_note": "Severity note",
+        "title_element_is_missing": "Title element is missing",
+        "audit_finding": "Audit finding",
+        "capability_records_below": "Capability records listed below",
+        "index_label": "Index",
     },
     "ru": {
         "report": "Технический SEO-аудит",
@@ -132,6 +154,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "failed": "Ошибка",
         "unknown": "Неизвестен",
         "summary": "Итоги аудита",
+        "summary_field": "Поле сводки",
         "findings": "Проблемы",
         "pages": "Затронутые страницы",
         "checks": "Записей о покрытии",
@@ -220,6 +243,30 @@ _LABELS: dict[str, dict[str, str]] = {
         "scope_reason_label": "Причина ограничения",
         "operation_label": "Операция",
         "operation_bounded_site_audit": "Ограниченный аудит сайта",
+        "tools_run": "Запущенные инструменты",
+        "tools_failed": "Инструменты с ошибкой",
+        "page_tools_failed": "Ошибки инструментов на страницах",
+        "evidence_contract": "Контракт свидетельств",
+        "capability_rows": "Статусы возможностей",
+        "scan_identity_state": "Статус идентификатора обхода",
+        "scan_uuid": "Идентификатор обхода",
+        "checks_total": "Всего проверок",
+        "failed_pages": "Страниц с ошибками",
+        "pages_checked": "Проверено страниц",
+        "tool": "Инструмент",
+        "error": "Ошибка",
+        "population": "Охват",
+        "by_severity": "По важности",
+        "health_score": "Оценка здоровья",
+        "health_score_scope": "Охват оценки здоровья",
+        "severity_note": "Примечание о важности",
+        "title_element_is_missing": "Отсутствует заголовок страницы",
+        "audit_finding": "Проблема аудита",
+        "evidence_reason_no_stable": "В этом аудите нет стабильной ссылки на сохранённое свидетельство",
+        "evidence_reason_unavailable": "Сохранённое свидетельство недоступно",
+        "evidence_reason_incomplete": "Ссылка на сохранённое свидетельство неполна",
+        "capability_records_below": "Записи о возможностях приведены ниже",
+        "index_label": "Индекс",
     },
 }
 
@@ -242,23 +289,78 @@ def _count(value: Any, lang: str) -> str:
 def _field_rows(value: Any, lang: str) -> list[tuple[str, Any]]:
     if not isinstance(value, Mapping):
         return []
-    rows = []
-    for key, item in value.items():
+    rows: list[tuple[str, Any]] = []
+
+    def flatten(key: str, item: Any) -> None:
         if item is None or item == "":
-            continue
-        if isinstance(item, (Mapping, list)):
-            text = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            return
+        if isinstance(item, Mapping):
+            for child_key, child in item.items():
+                flatten(f"{key}.{child_key}" if key else str(child_key), child)
+        elif isinstance(item, list):
+            if not item:
+                return
+            for index, child in enumerate(item, start=1):
+                flatten(f"{key} {index}", child)
         elif isinstance(item, (str, int, float, bool)):
-            text = str(item)
-        else:
-            continue
-        rows.append((_key_title(key, lang), text))
+            title_parts = []
+            for part in key.split("."):
+                indexed = re.fullmatch(r"(.+?) (\d+)", part)
+                if indexed:
+                    suffix = f" #{indexed.group(2)}" if lang == "en" else f" №{indexed.group(2)}"
+                    title_parts.append(_key_title(indexed.group(1), lang) + suffix)
+                else:
+                    title_parts.append(_key_title(part, lang))
+            title = " · ".join(title_parts)
+            rows.append((title, str(item)))
+
+    for key, item in value.items():
+        flatten(str(key), item)
     return rows
+
+
+def _readable_record(value: Any, lang: str) -> str:
+    """Flatten structured source evidence into labeled text, never JSON blobs."""
+    if isinstance(value, Mapping):
+        rows = _field_rows(value, lang)
+        return "; ".join(f"{key}: {item}" for key, item in rows)
+    if isinstance(value, list):
+        return "; ".join(_readable_record(item, lang) for item in value if item is not None)
+    return str(value) if value is not None else ""
+
+
+def _reference_text(value: Any, lang: str) -> str:
+    source_ref = _mapping(value)
+    if source_ref.get("pointer"):
+        return str(source_ref["pointer"])
+    bits = [source_ref.get("collection")] if source_ref.get("collection") else []
+    if source_ref.get("index") is not None:
+        bits.append(f"{_LABELS[lang]['index_label']}: {source_ref['index']}")
+    return "; ".join(str(bit) for bit in bits)
+
+
+def _localize_generated_text(value: Any, *, lang: str, check: Any = None) -> Any:
+    if not isinstance(value, str) or lang != "ru":
+        return value
+    labels = _LABELS[lang]
+    if value == "Audit finding":
+        return labels["audit_finding"]
+    if value == "Title element is missing" or check == "TITLE_MISSING":
+        return labels["title_element_is_missing"]
+    evidence_reasons = {
+        "no stable saved-evidence reference is present in this audit": "evidence_reason_no_stable",
+        "saved evidence is unavailable": "evidence_reason_unavailable",
+        "saved evidence reference is incomplete": "evidence_reason_incomplete",
+    }
+    key = evidence_reasons.get(value)
+    return labels[key] if key else value
 
 
 def _key_title(value: Any, lang: str | None = None) -> str:
     text = str(value or "").replace("_", " ").strip()
-    localized = _LABELS.get(lang or "", {}).get(f"{str(value or '').lower()}_label")
+    localized = _LABELS.get(lang or "", {}).get(str(value or "").lower()) or _LABELS.get(
+        lang or "", {}
+    ).get(f"{str(value or '').lower()}_label")
     if localized:
         return localized
     return text[:1].upper() + text[1:] if text else ""
@@ -282,6 +384,7 @@ def _state_label(value: Any, lang: str) -> str:
         "disabled": labels["disabled"],
         "not_run": "Not run" if lang == "en" else "Не запускалось",
         "run": "Run" if lang == "en" else "Запуск",
+        "ran": "Ran" if lang == "en" else "Выполнена",
         "stale": "Stale" if lang == "en" else "Устарело",
         "not_applicable": "Not applicable" if lang == "en" else "Не применимо",
         "open": "Open" if lang == "en" else "Открыто",
@@ -316,13 +419,19 @@ def _evidence_reference_rows(value: Mapping[str, Any], lang: str) -> list[tuple[
     for key, title in fields:
         if key not in value or value[key] is None:
             continue
-        content = _state_label(value[key], lang) if key == "state" else value[key]
+        content = (
+            _state_label(value[key], lang)
+            if key == "state"
+            else _localize_generated_text(value[key], lang=lang)
+            if key == "reason"
+            else value[key]
+        )
         rows.append((title, content))
     for key, content in sorted(value.items()):
         if key in {name for name, _title in fields} or content is None:
             continue
         if isinstance(content, (Mapping, list)):
-            content = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            content = _readable_record(content, lang)
         rows.append((_key_title(key, lang), content))
     return rows
 
@@ -642,8 +751,12 @@ def _finding_cards(findings: Sequence[Any], *, lang: str) -> str:
         severity_label = _severity_label(severity, lang)
         check = display.get("check_key") or record.get("check") or record.get("source") or ""
         title = display.get("title") or record.get("title") or labels["finding"]
+        if title == "Audit finding" or check == "TITLE_MISSING":
+            title = _localize_generated_text(title, lang=lang, check=check)
         observation = display.get("observation")
         reproduction = display.get("reproduction")
+        if isinstance(reproduction, str) and lang == "ru" and reproduction.startswith("At "):
+            reproduction = "На " + reproduction[3:]
         url = record.get("url")
         source_ref = _mapping(finding.get("source_ref"))
         source_id = source_ref.get("id") or source_ref.get("id_if_present")
@@ -675,9 +788,7 @@ def _finding_cards(findings: Sequence[Any], *, lang: str) -> str:
         ):
             if record.get(key) not in (None, "", [], {}):
                 rendered = (
-                    json.dumps(
-                        record[key], ensure_ascii=False, sort_keys=True, separators=(",", ":")
-                    )
+                    _readable_record(record[key], lang)
                     if isinstance(record[key], (Mapping, list))
                     else str(record[key])
                 )
@@ -699,7 +810,7 @@ def _finding_cards(findings: Sequence[Any], *, lang: str) -> str:
             raw_value = record.get(key)
             if raw_value not in (None, "", [], {}):
                 rendered = (
-                    json.dumps(raw_value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    _readable_record(raw_value, lang)
                     if isinstance(raw_value, (Mapping, list))
                     else str(raw_value)
                 )
@@ -735,6 +846,56 @@ def _page_rows(pages: Sequence[Any]) -> list[list[Any]]:
     return rows
 
 
+def _coverage_source_details(
+    section: str, record: Any, coverage: Mapping[str, Any], lang: str
+) -> str:
+    if section != "source_evidence" or not isinstance(record, Mapping):
+        return _readable_record(record, lang)
+
+    capability_checks = [
+        check
+        for check in coverage.get("checks", [])
+        if _mapping(_mapping(check).get("source_ref")).get("collection")
+        == "summary.evidence_contract.capability_rows"
+    ]
+    projected_capability_records = [_mapping(check).get("record") for check in capability_checks]
+
+    def remove_projected_capabilities(value: Any) -> tuple[Any, int]:
+        if isinstance(value, Mapping):
+            result = {}
+            removed = 0
+            for key, item in value.items():
+                if (
+                    key == "capability_rows"
+                    and isinstance(item, list)
+                    and projected_capability_records == item
+                ):
+                    removed += len(item)
+                    continue
+                clean, child_removed = remove_projected_capabilities(item)
+                result[key] = clean
+                removed += child_removed
+            return result, removed
+        if isinstance(value, list):
+            result = []
+            removed = 0
+            for item in value:
+                clean, child_removed = remove_projected_capabilities(item)
+                result.append(clean)
+                removed += child_removed
+            return result, removed
+        return value, 0
+
+    clean_record, removed_count = remove_projected_capabilities(record)
+    parts = []
+    readable = _readable_record(clean_record, lang)
+    if readable:
+        parts.append(readable)
+    if removed_count:
+        parts.append(f"{removed_count} {_LABELS[lang]['capability_records_below']}")
+    return "; ".join(parts)
+
+
 def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
     labels = _LABELS[lang]
     rows = []
@@ -750,9 +911,15 @@ def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
         if record is None:
             details = labels["unavailable"] if state == "unavailable" else labels["not_reported"]
         elif isinstance(record, (Mapping, list)):
-            details = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            details = _coverage_source_details(section, record, coverage, lang)
         else:
             details = str(record)
+        reference = _reference_text(evidence.get("source_ref"), lang)
+        if reference:
+            ref_label = "Source reference" if lang == "en" else "Ссылка на источник"
+            details = (
+                f"{details}; {ref_label}: {reference}" if details else f"{ref_label}: {reference}"
+            )
         rows.append(
             [
                 labels[label_key],
@@ -799,18 +966,31 @@ def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
             raw_state = record_state
         state = _state_label(raw_state, lang) if raw_state else labels["not_reported"]
         reason = check.get("reason") or record.get("reason") or record.get("error")
-        if not reason:
-            details = {
-                field: item
-                for field, item in record.items()
-                if field not in {"id", "name", "check", "tool", "state", "reason", "error"}
-            }
-            if details:
-                reason = json.dumps(
-                    details, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        reason = _localize_generated_text(reason, lang=lang)
+        detail_fields = {
+            field: item
+            for field, item in record.items()
+            if field not in {"id", "name", "check", "tool", "state", "reason", "error"}
+        }
+        if detail_fields:
+            detail_text = _readable_record(detail_fields, lang)
+            if record.get("failed_pages") is not None and record.get("pages_checked") is not None:
+                failed = _count(record["failed_pages"], lang)
+                checked = _count(record["pages_checked"], lang)
+                detail_text = (
+                    f"Errors on {failed} of {checked} pages"
+                    if lang == "en"
+                    else f"Ошибки на {failed} из {checked} страниц"
                 )
-            elif isinstance(record_value, str):
-                reason = record_value
+            reason = f"{reason}; {detail_text}" if reason else detail_text
+        elif isinstance(record_value, str) and not reason:
+            reason = record_value
+        reference = _reference_text(source_ref, lang)
+        if reference:
+            ref_label = "Source reference" if lang == "en" else "Ссылка на источник"
+            reason = (
+                f"{reason}; {ref_label}: {reference}" if reason else f"{ref_label}: {reference}"
+            )
         rows.append([key, state, reason])
     return rows
 
@@ -943,17 +1123,35 @@ def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: 
         + f'</div><div class="header-site">{_escape(domain)}</div></header>'
     )
 
-    summary_rows = _field_rows(summary.get("source"), lang)
+    summary_source = _mapping(summary.get("source"))
+    structured_summary_keys = {
+        "findings_by_severity",
+        "tools_run",
+        "tools_failed",
+        "page_tools_failed",
+        "checks_disabled",
+        "evidence_contract",
+        "check_coverage",
+        "project_coverage",
+        "pages_checked",
+        "urls_crawled",
+        "findings_total",
+        "issues_total",
+    }
+    summary_rows = _field_rows(
+        {key: value for key, value in summary_source.items() if key not in structured_summary_keys},
+        lang,
+    )
     diagnostics = source.get("input_diagnostics")
     if diagnostics:
         summary_rows.append(
             (
                 labels["input_diagnostics"],
-                json.dumps(diagnostics, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                _readable_record(diagnostics, lang),
             )
         )
     summary_table = (
-        f'<section class="section">{_table([labels["item"], labels["state_col"]], summary_rows, lang=lang)}</section>'
+        f'<section class="section">{_table([labels["summary_field"], labels["state_col"]], summary_rows, lang=lang)}</section>'
         if summary_rows
         else ""
     )
