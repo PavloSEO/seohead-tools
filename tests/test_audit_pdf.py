@@ -291,6 +291,29 @@ def test_renders_localized_audit_report_with_neutral_branding(lang, expected):
         assert "not_run" not in html
 
 
+@pytest.mark.parametrize(
+    ("lang", "label", "status"),
+    [
+        ("en", "Project checklist items", "Not requested"),
+        ("ru", "Задачи проекта", "Не запрашивалось"),
+    ],
+)
+def test_unrequested_backlog_kpi_is_not_presented_as_zero(lang, label, status):
+    model = _model()
+    model["backlog"]["state"] = "not_requested"
+    model["summary"]["counts"]["backlog"] = {
+        "state": "not_requested",
+        "source_count": None,
+        "declared_count": {"state": "not_requested", "value": None},
+        "projected_count": 0,
+    }
+
+    html = render_audit_pdf_html(model, lang=lang)
+
+    assert f"<span>{label}</span><strong>{status}</strong>" in html
+    assert f"<span>{label}</span><strong>0</strong>" not in html
+
+
 def test_partial_scope_and_each_coverage_state_are_visible():
     html = render_audit_pdf_html(_model())
 

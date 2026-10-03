@@ -538,6 +538,9 @@ def _summary_cards(summary: Mapping[str, Any], coverage: Mapping[str, Any], lang
             )
         source_count = record.get("source_count", record.get("source_total"))
         declared = _declared_value(record.get("declared_count", record.get("declared_total")))
+        display_value = _count(value, lang)
+        if key == "backlog" and record.get("state") in {"not_requested", "unavailable"}:
+            display_value = labels[record["state"]]
         details = []
         if source_count is not None:
             details.append(f"{_escape(labels['source'])}: {_escape(_count(source_count, lang))}")
@@ -547,7 +550,7 @@ def _summary_cards(summary: Mapping[str, Any], coverage: Mapping[str, Any], lang
         cards.append(
             '<div class="metric-card">'
             f"<span>{_escape(label)}</span>"
-            f"<strong>{_escape(_count(value, lang))}</strong>"
+            f"<strong>{_escape(display_value)}</strong>"
             f"<small>{' · '.join(details)}</small>"
             "</div>"
         )
