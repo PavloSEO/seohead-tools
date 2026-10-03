@@ -126,6 +126,12 @@ def test_staging_allowlist_is_exact_and_never_authorizes_metadata(monkeypatch):
         RemoteEgressPolicy("project-a", frozenset({"10.1.2.3"}))
 
 
+@pytest.mark.parametrize("alias", [3232235777, "3232235777", "0xc0a80101", "0300.0250.1.1"])
+def test_private_host_allowlist_rejects_numeric_aliases(alias):
+    with pytest.raises(ValueError, match="DNS hostname"):
+        RemoteEgressPolicy("project-a", frozenset({alias}))
+
+
 def test_mixed_dns_answers_are_rejected_for_remote_jobs(monkeypatch):
     _dns(monkeypatch, {"public.example.test": ["93.184.216.34", "10.1.2.3"]})
     policy = RemoteEgressPolicy("project-a")
