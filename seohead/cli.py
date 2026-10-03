@@ -34,6 +34,7 @@ COMMANDS = (
     "compare-crawls",
     "verify-fixes",
     "crawl-enrich",
+    "crawl-import",
     "segment-diff",
     "redirects-generate",
     "redirects-check",
@@ -535,6 +536,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
+    elif cmd == "crawl-import":
+        if getattr(args, "manifest", None):
+            kw["manifest_path"] = args.manifest
     elif cmd == "segment-diff":
         if getattr(args, "audit", None):
             kw["audit"] = args.audit
@@ -1156,6 +1160,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--out-urls",
             help="write reliable external-only URLs as a list-mode input file",
+        )
+    if cmd == "crawl-import":
+        _source_flag(
+            sub,
+            "--manifest",
+            help="versioned third-party crawl manifest JSON (CSV files stay beside it)",
         )
     if cmd == "site-audit":
         _source_flag(sub, "--url", help="site home page")

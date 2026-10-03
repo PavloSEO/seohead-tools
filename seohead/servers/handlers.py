@@ -1895,6 +1895,25 @@ def _verification_values(value: Any) -> list[Any]:
     return [value]
 
 
+def crawl_import(manifest_path: str | None = None) -> dict[str, Any]:
+    """Read an explicitly mapped third-party CSV crawl bundle offline.
+
+    The result keeps source identity and field coverage under
+    ``third_party_crawl.v1``. It is not a native scan or an SF Analyzer audit.
+    """
+    if not isinstance(manifest_path, str) or not manifest_path.strip():
+        return {"ok": False, "error": "manifest_path must be a non-empty local path"}
+    from seohead.crawl.external_import import (
+        ExternalCrawlImportError,
+        import_third_party_crawl,
+    )
+
+    try:
+        return {"ok": True, **import_third_party_crawl(manifest_path)}
+    except ExternalCrawlImportError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def crawl_enrich(
     audit: Any = None,
     external_csv: str | None = None,
@@ -3557,6 +3576,7 @@ _RAW_HANDLERS = {
     "facts_export": facts_export,
     "compare_crawls": compare_crawls,
     "crawl_enrich": crawl_enrich,
+    "crawl_import": crawl_import,
     "segment_diff": segment_diff,
     "keywords_expand": keywords_expand,
     "keywords_seasonality": keywords_seasonality,
