@@ -2142,6 +2142,31 @@ def log_scan(
     return logscan.scan(artifacts, max_per_rule=max_per_rule)
 
 
+def crawl_diagnose(
+    scan: str | None = None,
+    run: str | None = None,
+    max_decisions: int = 20,
+) -> dict[str, Any]:
+    """Explain a native crawl from retained evidence without fetching the site."""
+    from seohead.crawl.diagnostics import diagnose
+
+    return diagnose(scan=scan, run=run, max_decisions=max_decisions)
+
+
+def crawl_diagnose_export(
+    scan: str | None = None,
+    run: str | None = None,
+    export: str | None = None,
+    max_decisions: int = 20,
+) -> dict[str, Any]:
+    """Write a new redacted diagnostic file only when its path was explicit."""
+    if not export:
+        raise ValueError("export path is required")
+    from seohead.crawl.diagnostics import diagnose
+
+    return diagnose(scan=scan, run=run, max_decisions=max_decisions, export=export)
+
+
 def boilerplate_report(pages: list[dict] | None = None, scan: str | None = None) -> dict[str, Any]:
     """Group a crawled corpus by header/nav/footer hash and report minority template groups.
 
@@ -3434,6 +3459,8 @@ _RAW_HANDLERS = {
     "markdown_extract": markdown_extract,
     "boilerplate_report": boilerplate_report,
     "log_scan": log_scan,
+    "crawl_diagnose": crawl_diagnose,
+    "crawl_diagnose_export": crawl_diagnose_export,
     "social_meta_check": social_meta_check,
     "soft404_check": soft404_check,
     "log_analyze": log_analyze,
