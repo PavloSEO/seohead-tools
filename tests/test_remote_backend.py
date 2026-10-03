@@ -6,7 +6,7 @@ import json
 import socket
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -87,6 +87,18 @@ def _headers(token=TOKEN_A, key="synthetic-remote-key-123"):
     return {"Authorization": f"Bearer {token}", "Idempotency-Key": key}
 
 
+@pytest.mark.parametrize("value", [True, 1.5, float("nan"), float("inf"), 0])
+def test_backend_requires_exact_positive_global_worker_cap(tmp_path, value):
+    with pytest.raises(ValueError, match="positive integer"):
+        _backend(tmp_path, max_active_jobs=value)
+
+
+@pytest.mark.parametrize("value", [True, "3", float("nan"), float("inf"), 2.9])
+def test_backend_requires_finite_lease(tmp_path, value):
+    with pytest.raises(ValueError, match="worker lease"):
+        _backend(tmp_path, lease_seconds=value)
+
+
 def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tmp_path):
     requests = _network(monkeypatch)
     backend = _backend(tmp_path)
@@ -159,6 +171,68 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     degraded = backend.get_result("alpha", job_id)
     assert degraded is not None and degraded.coverage == "partial"
     assert degraded.audit_reason == "required report artifact unavailable"
+
+
+@pytest.mark.parametrize("kind", ["scan", "audit_json", "audit_md"])
+def test_same_size_artifact_tampering_denies_download_and_complete_coverage(
+    monkeypatch, tmp_path, kind
+):
+    _network(monkeypatch)
+    backend = _backend(tmp_path)
+    api = _api(backend)
+    sent = api.post(
+        SCANS_A,
+        headers=_headers(),
+        json={"target_url": SITE, "options": {"max_urls": 1, "max_requests": 20}},
+    )
+    assert sent.status_code == 202
+    job_id = sent.json()["job_id"]
+    assert backend.run_one("worker-a").state == "finished"
+    result = backend.get_result("alpha", job_id)
+    ref = next(item for item in result.artifacts if item.kind == kind)
+    path = backend.artifact_path("alpha", job_id, ref.artifact_id)
+    assert path is not None
+    original = path.read_bytes()
+    path.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+    assert path.stat().st_size == len(original)
+    assert backend.artifact_path("alpha", job_id, ref.artifact_id) is None
+    assert (
+        api.get(f"{SCANS_A}/{job_id}/artifacts/{ref.artifact_id}", headers=_headers()).status_code
+        == 404
+    )
+    assert backend.get_result("alpha", job_id).coverage != "complete"
+
+
+def test_open_artifact_stream_survives_concurrent_retention_unlink(monkeypatch, tmp_path):
+    _network(monkeypatch)
+    backend = _backend(tmp_path)
+    api = _api(backend)
+    sent = api.post(
+        SCANS_A,
+        headers=_headers(),
+        json={"target_url": SITE, "options": {"max_urls": 1, "max_requests": 20}},
+    )
+    job_id = sent.json()["job_id"]
+    assert backend.run_one("worker-a").state == "finished"
+    scan_ref = next(
+        item for item in backend.get_result("alpha", job_id).artifacts if item.kind == "scan"
+    )
+    original_open = backend.open_artifact
+
+    def open_then_prune(project_id, requested_job_id, artifact_id):
+        opened = original_open(project_id, requested_job_id, artifact_id)
+        backend.prune_terminal(
+            project_id,
+            before=datetime.now(timezone.utc) + timedelta(days=1),
+            confirm=True,
+        )
+        return opened
+
+    monkeypatch.setattr(backend, "open_artifact", open_then_prune)
+    delivered = api.get(f"{SCANS_A}/{job_id}/artifacts/{scan_ref.artifact_id}", headers=_headers())
+    assert delivered.status_code == 200
+    assert delivered.content.startswith(b"SQLite format 3")
+    assert backend.get_job("alpha", job_id) is None
 
 
 def test_idempotency_persists_across_backend_restart_and_is_project_scoped(monkeypatch, tmp_path):

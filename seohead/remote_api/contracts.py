@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, BinaryIO, Literal, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -189,6 +189,16 @@ class ArtifactReference(BaseModel):
     size_bytes: int = Field(ge=0)
 
 
+@dataclass
+class OpenedArtifact:
+    """An already-authorized open file; the response owns closing its handle."""
+
+    handle: BinaryIO
+    size_bytes: int
+    filename: str
+    media_type: str
+
+
 class JobResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -270,6 +280,10 @@ class JobBackend(Protocol):
     def get_result(self, project_id: str, job_id: str) -> JobResult | None: ...
 
     def artifact_path(self, project_id: str, job_id: str, artifact_id: str) -> Path | None: ...
+
+    def open_artifact(
+        self, project_id: str, job_id: str, artifact_id: str
+    ) -> OpenedArtifact | None: ...
 
 
 class RemoteTargetPolicy(Protocol):

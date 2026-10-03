@@ -15,8 +15,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.background import BackgroundTask
 
 from seohead.remote_api.contracts import (
     ApiErrorResponse,
@@ -156,7 +157,15 @@ def create_app(
     also scope its query by project. The API enforces both project grants and a
     second project-id check on returned records.
     """
-    required = ("submit", "list_jobs", "get_job", "cancel_job", "get_result", "artifact_path")
+    required = (
+        "submit",
+        "list_jobs",
+        "get_job",
+        "cancel_job",
+        "get_result",
+        "artifact_path",
+        "open_artifact",
+    )
     if backend is None or any(not callable(getattr(backend, name, None)) for name in required):
         raise ValueError("a remote job backend with all job operations is required")
     if authenticator is None or not callable(getattr(authenticator, "authenticate", None)):
@@ -324,16 +333,35 @@ def create_app(
         job_id: str,
         artifact_id: str,
         actor: Principal = Depends(principal),
-    ) -> FileResponse:
+    ) -> StreamingResponse:
         access(project_id, actor, "scan:result")
         job_id = checked_job_id(job_id)
         visible(backend.get_job(project_id, job_id), project_id, job_id)
         if not re.fullmatch(r"[0-9a-f]{32}", artifact_id):
             raise ApiFault(404, "not_found", "artifact was not found")
-        path = backend.artifact_path(project_id, job_id, artifact_id)
-        if path is None:
+        opened = backend.open_artifact(project_id, job_id, artifact_id)
+        if opened is None:
             raise ApiFault(404, "not_found", "artifact was not found")
-        return FileResponse(path, media_type="application/octet-stream", filename=path.name)
+
+        def chunks():
+            remaining = opened.size_bytes
+            with opened.handle:
+                while remaining:
+                    chunk = opened.handle.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        return StreamingResponse(
+            chunks(),
+            media_type=opened.media_type,
+            headers={
+                "Content-Length": str(opened.size_bytes),
+                "Content-Disposition": f'attachment; filename="{opened.filename}"',
+            },
+            background=BackgroundTask(opened.handle.close),
+        )
 
     app.include_router(router)
     return app

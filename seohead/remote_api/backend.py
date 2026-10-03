@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -34,6 +35,7 @@ from seohead.remote_api.contracts import (
     JobQueueFull,
     JobResult,
     JobStatus,
+    OpenedArtifact,
     ScanSubmission,
     SubmitOutcome,
     evidence_from_scan,
@@ -152,8 +154,14 @@ class SQLiteJobBackend:
     ) -> None:
         if not projects or any(not _PROJECT.fullmatch(key) for key in projects):
             raise ValueError("trusted project IDs are required")
-        if max_active_jobs < 1 or lease_seconds < 3:
-            raise ValueError("worker concurrency and lease must be positive")
+        if type(max_active_jobs) is not int or max_active_jobs < 1:
+            raise ValueError("worker concurrency must be a positive integer")
+        if (
+            type(lease_seconds) not in (int, float)
+            or not math.isfinite(lease_seconds)
+            or lease_seconds < 3
+        ):
+            raise ValueError("worker lease must be finite and at least three seconds")
         self.projects = dict(projects)
         self.max_active_jobs = max_active_jobs
         self.lease_seconds = lease_seconds
@@ -472,8 +480,9 @@ class SQLiteJobBackend:
             ),
         )
 
-    def artifact_path(self, project_id: str, job_id: str, artifact_id: str) -> Path | None:
-        """Resolve an opaque reference only within its authenticated project."""
+    def _artifact_entry(
+        self, project_id: str, job_id: str, artifact_id: str
+    ) -> tuple[Path, sqlite3.Row] | None:
         self._project(project_id)
         with self._db() as con:
             row = con.execute(
@@ -487,16 +496,64 @@ class SQLiteJobBackend:
         relpath = Path(row["relpath"])
         if len(relpath.parts) != 1 or relpath.name != row["relpath"]:
             return None
-        job_dir = self._job_dir(project_id, job_id)
-        path = job_dir / relpath
-        if (
-            path.is_symlink()
-            or not path.is_file()
-            or path.resolve().parent != job_dir.resolve()
-            or path.stat().st_size != row["size_bytes"]
-        ):
+        try:
+            job_dir = self._job_dir(project_id, job_id)
+            path = job_dir / relpath
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or path.resolve().parent != job_dir.resolve()
+                or path.stat().st_size != row["size_bytes"]
+            ):
+                return None
+        except (OSError, ValueError):
             return None
-        return path
+        return path, row
+
+    def artifact_path(self, project_id: str, job_id: str, artifact_id: str) -> Path | None:
+        """Resolve only a registered, digest-verified project artifact."""
+        entry = self._artifact_entry(project_id, job_id, artifact_id)
+        if entry is None:
+            return None
+        path, row = entry
+        try:
+            return path if _file_sha256(path) == row["sha256"] else None
+        except OSError:
+            return None
+
+    def open_artifact(
+        self, project_id: str, job_id: str, artifact_id: str
+    ) -> OpenedArtifact | None:
+        """Open before retention can unlink a file; stream only registered bytes."""
+        entry = self._artifact_entry(project_id, job_id, artifact_id)
+        if entry is None:
+            return None
+        path, row = entry
+        try:
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError:
+            return None
+        handle = os.fdopen(descriptor, "rb")
+        try:
+            if os.fstat(descriptor).st_size != row["size_bytes"]:
+                handle.close()
+                return None
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+            if digest.hexdigest() != row["sha256"]:
+                handle.close()
+                return None
+            handle.seek(0)
+        except OSError:
+            handle.close()
+            return None
+        return OpenedArtifact(
+            handle=handle,
+            size_bytes=row["size_bytes"],
+            filename=path.name,
+            media_type=row["media_type"],
+        )
 
     def events(self, project_id: str, job_id: str, limit: int = 100) -> list[dict[str, Any]]:
         """Read bounded URL-free operational events for one authorized project."""

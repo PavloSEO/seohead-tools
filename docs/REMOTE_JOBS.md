@@ -34,10 +34,12 @@ missing audit or report artifacts cannot be presented as complete.
 
 Artifacts live under private, service-owned project and job directories.
 The scan SQLite file and, when the audit is available, JSON and Markdown
-reports are registered with opaque IDs and verified sizes. The authenticated
+reports are registered with opaque IDs, sizes and SHA-256 digests. The authenticated
 `GET /api/v1/projects/{project_id}/scans/{job_id}/artifacts/{artifact_id}` route
 streams a registered file only after `scan:result` authorization and a
-project/job-scoped lookup. The request never supplies a filesystem path.
+project/job-scoped lookup. It hashes the opened file descriptor before sending
+bytes; a same-size replacement or symlink is unavailable and reduces complete
+coverage to partial. The request never supplies a filesystem path.
 Operational events contain job IDs, fixed state/reason codes and numeric
 progress; target URLs, tokens, request headers and exception text stay out of
 them. Retained scan/report content is separate, project-protected evidence.

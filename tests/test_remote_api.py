@@ -87,6 +87,9 @@ class FakeBackend:
     def artifact_path(self, project_id, job_id, artifact_id):
         return None
 
+    def open_artifact(self, project_id, job_id, artifact_id):
+        return None
+
 
 class FakePolicy:
     def __init__(self):
