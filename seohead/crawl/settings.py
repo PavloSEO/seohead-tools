@@ -314,6 +314,10 @@ DEFAULTS: dict[str, Any] = {
             # launcher -- an unknown name fails validation and no engine is
             # ever silently substituted.
             "engine": "chromium",  # chromium | firefox | webkit
+            "transport": "local",  # local | remote; remote never launches a browser
+            "remote_protocol": "playwright",
+            "remote_endpoint_env": "",  # env variable name, not a stored endpoint/token
+            "remote_playwright_version": "",  # operator-declared server version
             # How long JavaScript may keep running after the page and its
             # subresources have loaded. Too short loses content on a slow
             # application; too long multiplies crawl duration -- there is no
@@ -488,6 +492,10 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         # More parallel pages change wall-clock only, not the DOM -- but the
         # bound is recorded so a run's render budget spend stays attributable.
         "rendering.browser.page_concurrency",
+        "rendering.browser.transport",
+        "rendering.browser.remote_protocol",
+        "rendering.browser.remote_endpoint_env",
+        "rendering.browser.remote_playwright_version",
         # A different profile crawls as a different, possibly logged-in,
         # visitor; the directory itself is not included here (nor in the
         # manifest below) for the same reason a credential's value is not:
@@ -684,6 +692,10 @@ DESCRIPTIONS: dict[str, str] = {
         "Custom viewport height in CSS pixels (0 = unset). Must be set together with "
         "viewport_width; the pair overrides the named preset's dimensions."
     ),
+    "rendering.browser.transport": "Launch a local browser (default) or connect to an explicitly supplied remote Playwright server.",
+    "rendering.browser.remote_protocol": "Remote browser protocol; only Playwright is supported, not CDP.",
+    "rendering.browser.remote_endpoint_env": "Name of an environment variable containing the remote ws/wss endpoint; never store the endpoint in a scan.",
+    "rendering.browser.remote_playwright_version": "Operator-declared remote Playwright version; its major/minor must match the installed client.",
     "rendering.browser.resize_to_content": (
         "Grow the viewport to the rendered page's own height before capture, capped by "
         "resize_to_content_max_height_px."
@@ -1079,6 +1091,12 @@ def _validate_rendering(rendering: dict[str, Any]) -> None:
         raise ConfigError("rendering.escalation.max_render_seconds cannot be negative")
 
     browser = rendering["browser"]
+    from seohead.tools.browser_transport import validate_config as validate_browser_transport
+
+    try:
+        validate_browser_transport(browser, embedded=True)
+    except ValueError as exc:
+        raise ConfigError(f"rendering.browser: {exc}") from exc
     if browser["viewport"] not in RENDER_VIEWPORTS:
         raise ConfigError(
             f"rendering.browser.viewport must be one of {RENDER_VIEWPORTS}, "

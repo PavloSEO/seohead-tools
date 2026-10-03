@@ -243,6 +243,17 @@ def _run_render_escalation(
             effective_viewport = render_tool.resolve_viewport(browser_cfg)
         except ValueError:
             effective_viewport = None
+        probe_transport_kwargs = {}
+        if browser_cfg.get("transport", "local") == "remote":
+            probe_transport_kwargs["transport_config"] = {
+                name: browser_cfg[name]
+                for name in (
+                    "transport",
+                    "remote_protocol",
+                    "remote_endpoint_env",
+                    "remote_playwright_version",
+                )
+            }
 
         def probe(target: str) -> dict[str, Any]:
             # The probe launches the same engine, size and emulation the full
@@ -258,6 +269,7 @@ def _run_render_escalation(
                 mobile_emulation=bool(browser_cfg.get("mobile_emulation")),
                 touch_emulation=bool(browser_cfg.get("touch_emulation")),
                 **gate_kwargs,
+                **probe_transport_kwargs,
             )
             verdict = probed.get("js_dependent")
             if verdict is None and probed.get("ok"):
@@ -1717,6 +1729,25 @@ def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -
     return result
 
 
+def crawl_import(manifest_path: str | None = None) -> dict[str, Any]:
+    """Read an explicitly mapped third-party CSV crawl bundle offline.
+
+    The result keeps source identity and field coverage under
+    ``third_party_crawl.v1``. It is not a native scan or an SF Analyzer audit.
+    """
+    if not isinstance(manifest_path, str) or not manifest_path.strip():
+        return {"ok": False, "error": "manifest_path must be a non-empty local path"}
+    from seohead.crawl.external_import import (
+        ExternalCrawlImportError,
+        import_third_party_crawl,
+    )
+
+    try:
+        return {"ok": True, **import_third_party_crawl(manifest_path)}
+    except ExternalCrawlImportError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def crawl_enrich(
     audit: Any = None,
     external_csv: str | None = None,
@@ -1844,12 +1875,16 @@ def render_check(
     viewport: str = "desktop",
     wait: str = "load",
     user_agent: str | None = None,
+    transport_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not url:
         raise ValueError("url required")
     from seohead.tools import render as render_core
 
-    return render_core.render_check(url, viewport=viewport, wait=wait, user_agent=user_agent)
+    kwargs = {"transport_config": transport_config} if transport_config is not None else {}
+    return render_core.render_check(
+        url, viewport=viewport, wait=wait, user_agent=user_agent, **kwargs
+    )
 
 
 def backlinks_check(
@@ -3378,6 +3413,7 @@ _RAW_HANDLERS = {
     "facts_export": facts_export,
     "compare_crawls": compare_crawls,
     "crawl_enrich": crawl_enrich,
+    "crawl_import": crawl_import,
     "segment_diff": segment_diff,
     "keywords_expand": keywords_expand,
     "keywords_seasonality": keywords_seasonality,

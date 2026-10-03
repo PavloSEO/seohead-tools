@@ -61,6 +61,16 @@ from seohead.storage.credential_context import (
 from seohead.storage.retention import policy_for_config, validate_policy
 
 _RUNTIME_KEYS = ("python", "sqlite", "httpx", "lxml", "beautifulsoup4")
+_OPTIONAL_BROWSER_SETTINGS = (
+    "transport",
+    "remote_protocol",
+    "remote_endpoint_env",
+    "remote_playwright_version",
+    "engine",
+    "viewport_width",
+    "viewport_height",
+    "page_concurrency",
+)
 _BODY_TABLES = ("bodies", "responses", "documents", "resource_refs")
 _NATIVE_CONTEXT = {"native_commit", "robots_blocked_url"}
 _LINK_KEYS = {
@@ -151,6 +161,10 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             expected["rendering"].pop("rendered_links")
         elif "rendering" in config and "crawl" not in config["rendering"]["rendered_links"]:
             expected["rendering"]["rendered_links"].pop("crawl")
+        if "rendering" in config and "browser" in config["rendering"]:
+            for name in _OPTIONAL_BROWSER_SETTINGS:
+                if name not in config["rendering"]["browser"]:
+                    expected["rendering"]["browser"].pop(name)
         if "limits" in config and "max_requests" not in config["limits"]:
             expected["limits"].pop("max_requests")
         if "evidence" in config and "retain_no_store_acknowledged" not in config["evidence"]:
@@ -169,6 +183,10 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             "rendered_links", copy.deepcopy(DEFAULTS["rendering"]["rendered_links"])
         )
         validation_config["rendering"]["rendered_links"].setdefault("crawl", False)
+        for name in _OPTIONAL_BROWSER_SETTINGS:
+            validation_config["rendering"]["browser"].setdefault(
+                name, DEFAULTS["rendering"]["browser"][name]
+            )
         validation_config.setdefault("limits", {})
         validation_config["limits"].setdefault("max_requests", 0)
         validation_config.setdefault("evidence", {})
@@ -213,6 +231,14 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
         and expected["rendering"]["rendered_links"].get("crawl") is False
     ):
         expected["rendering"]["rendered_links"].pop("crawl")
+    if "rendering" in recorded and "browser" in recorded["rendering"]:
+        for name in _OPTIONAL_BROWSER_SETTINGS:
+            if (
+                name not in recorded["rendering"]["browser"]
+                and expected["rendering"]["browser"].get(name)
+                == DEFAULTS["rendering"]["browser"][name]
+            ):
+                expected["rendering"]["browser"].pop(name)
     if (
         "limits" in recorded
         and "max_requests" not in recorded["limits"]
