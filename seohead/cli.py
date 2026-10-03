@@ -16,6 +16,7 @@ import argparse
 import contextlib
 import json
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from seohead import __version__, runlog
@@ -493,6 +494,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["render"] = True
         if getattr(args, "skip", None):
             kw["skip"] = _split_list(args.skip)
+        if getattr(args, "crux_evidence", None):
+            kw["crux_evidence"] = json.loads(Path(args.crux_evidence).read_text(encoding="utf-8"))
         if getattr(args, "report", None):
             kw["_report"] = args.report
             kw["_out"] = getattr(args, "out", None)
@@ -633,10 +636,16 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["url"] = args.url
         if getattr(args, "origin", None):
             kw["origin"] = args.origin
+        if getattr(args, "urls", None):
+            kw["urls"] = _split_list(args.urls)
         if getattr(args, "form_factor", None):
             kw["form_factor"] = args.form_factor
         if getattr(args, "metrics", None):
             kw["metrics"] = _split_list(args.metrics)
+        for name in ("max_samples", "cache_dir", "cache_max_age_hours"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     if cmd == "indexnow-submit":
         if getattr(args, "urls", None):
             kw["urls"] = _split_list(args.urls)
@@ -1163,6 +1172,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--skip", help="comma-separated tools to skip")
         sub.add_argument(
+            "--crux-evidence",
+            help="local JSON output from crux-report or restricted provider artifact; no Google call",
+        )
+        sub.add_argument(
             "--report",
             choices=("xlsx", "docx", "csv", "md", "json"),
             help="build a report in this format after the audit",
@@ -1248,10 +1261,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "crux-report":
         _source_flag(sub, "--url", help="page URL to report on")
         _source_flag(sub, "--origin", help="origin to report on, instead of a single URL")
+        _source_flag(sub, "--urls", help="explicit comma-separated URLs for bounded field samples")
         sub.add_argument(
             "--form-factor", dest="form_factor", choices=("PHONE", "DESKTOP", "TABLET")
         )
         sub.add_argument("--metrics", help="comma-separated CrUX metric names")
+        sub.add_argument("--max-samples", type=int, help="maximum sampled URLs, 1..25 (default 25)")
+        sub.add_argument("--cache-dir", help="explicit private local CrUX cache directory")
+        sub.add_argument(
+            "--cache-max-age-hours", type=float, help="cache freshness limit (default 24 hours)"
+        )
     if cmd == "indexnow-submit":
         _source_flag(sub, "--urls", help="comma-separated URLs to submit")
         sub.add_argument("--host", help="host the submitted URLs and key belong to")

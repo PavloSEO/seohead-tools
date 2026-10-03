@@ -239,6 +239,7 @@ def audit_site(
     render: bool = False,
     skip: list[str] | None = None,
     tools: Mapping[str, Any] | None = None,
+    crux_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a complete site audit into one contract-stable document.
 
@@ -259,6 +260,57 @@ def audit_site(
     # malformed input before any network work begins.
     if not domain or " " in domain or "." not in domain.strip("."):
         return {"ok": False, "error": f"Value does not look like a domain: {url!r}"}
+    from seohead.data_sources.cwv import assess as assess_cwv
+
+    cwv_assessments: list[dict[str, Any]] = []
+    cwv_sampling: dict[str, Any] | None = None
+    if crux_evidence is not None:
+        if not isinstance(crux_evidence, dict):
+            return {"ok": False, "error": "CrUX evidence must be an object"}
+        supplied = crux_evidence.get("result", crux_evidence)
+        if not isinstance(supplied, dict):
+            return {"ok": False, "error": "CrUX evidence result must be an object"}
+        envelope = crux_evidence.get("evidence")
+        if isinstance(envelope, dict) and envelope.get("provider") != "crux":
+            return {"ok": False, "error": "provider artifact is not CrUX evidence"}
+        records = supplied.get("records", [supplied])
+        if "records" in supplied:
+            cwv_sampling = {
+                key: supplied.get(key)
+                for key in (
+                    "requested",
+                    "sampled",
+                    "omitted",
+                    "requests",
+                    "cache_hits",
+                    "cache_max_age_hours",
+                )
+            }
+        if (
+            not isinstance(records, list)
+            or len(records) > 25
+            or not all(isinstance(r, dict) for r in records)
+        ):
+            return {"ok": False, "error": "CrUX evidence must contain at most 25 records"}
+        site_origin = f"{urlparse(start).scheme}://{urlparse(start).netloc}"
+        for record in records:
+            target = record.get("target")
+            kind = record.get("target_kind")
+            if kind not in {"url", "origin"} or not isinstance(target, str):
+                return {"ok": False, "error": "CrUX evidence needs target and target_kind"}
+            parsed = urlparse(target)
+            if f"{parsed.scheme}://{parsed.netloc}" != site_origin or (
+                kind == "origin" and target.rstrip("/") != site_origin
+            ):
+                return {"ok": False, "error": "CrUX evidence target is outside audit origin"}
+            try:
+                assessment = assess_cwv(record)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            observed = urlparse(str(assessment["target"]))
+            if f"{observed.scheme}://{observed.netloc}" != site_origin:
+                return {"ok": False, "error": "CrUX record target is outside audit origin"}
+            cwv_assessments.append(assessment)
     try:
         limit = max(1, int(limit))
         concurrency = max(1, min(int(concurrency), 10))
@@ -439,12 +491,42 @@ def audit_site(
                 }
             )
 
+    for assessment in cwv_assessments:
+        for metric in assessment["metrics"].values():
+            if metric["state"] not in {"poor", "needs_improvement"}:
+                continue
+            period = assessment["collection_period"]
+            findings.append(
+                {
+                    "source": "crux_field",
+                    "severity": "warning" if metric["state"] == "poor" else "notice",
+                    "url": assessment["target"] if assessment["target_kind"] == "url" else None,
+                    "text": (
+                        f"CrUX field {metric['label']} p75 {metric['p75']} {metric['unit']} is "
+                        f"{metric['state']} for {assessment['target_kind']} {assessment['target']} "
+                        f"({assessment['form_factor']}, {period['first_date']}..{period['last_date']}; "
+                        f"policy {assessment['policy']})."
+                    ),
+                    "evidence": assessment,
+                }
+            )
+
     order = {"critical": 0, "warning": 1, "notice": 2}
     findings.sort(key=lambda f: order.get(f["severity"], 3))
     by_severity = {
         level: sum(1 for f in findings if f["severity"] == level)
         for level in ("critical", "warning", "notice")
     }
+    if crux_evidence is None:
+        cwv_state = "not_requested"
+    elif not cwv_assessments or all(a["overall"] == "unavailable" for a in cwv_assessments):
+        cwv_state = "unavailable"
+    elif (cwv_sampling and cwv_sampling.get("omitted")) or any(
+        a["overall"] in {"partial", "unavailable"} for a in cwv_assessments
+    ):
+        cwv_state = "partial"
+    else:
+        cwv_state = "complete"
 
     return {
         "ok": True,
@@ -455,6 +537,7 @@ def audit_site(
         "site": site,
         "pages": pages,
         "findings": findings,
+        "field_cwv": cwv_assessments,
         "summary": {
             "pages_checked": len(pages),
             "findings_total": len(findings),
@@ -466,6 +549,11 @@ def audit_site(
             ),
             "tools_failed": failed,
             "page_tools_failed": page_tools_failed,
+            "field_cwv": {
+                "state": cwv_state,
+                "assessments": cwv_assessments,
+                "sampling": cwv_sampling,
+            },
             "severity_note": "Severity is assigned by the aggregation policy "
             "(SEVERITY_RULES); it is not measured by the source tool.",
         },

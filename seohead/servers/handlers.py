@@ -1631,6 +1631,7 @@ def site_audit(
     concurrency: int = 5,
     render: bool = False,
     skip: list[str] | None = None,
+    crux_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not url:
         raise ValueError("url required (site home page)")
@@ -1644,6 +1645,7 @@ def site_audit(
         render=bool(render),
         skip=skip,
         tools=HANDLERS,
+        crux_evidence=crux_evidence,
     )
 
 
@@ -2764,8 +2766,12 @@ def gsc_query(
 def crux_report(
     url: str | None = None,
     origin: str | None = None,
+    urls: list[str] | None = None,
     form_factor: str | None = None,
     metrics: list[str] | None = None,
+    max_samples: int = 25,
+    cache_dir: str | None = None,
+    cache_max_age_hours: float = 24,
 ) -> dict[str, Any]:
     """Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th
     percentile — the honest counterpart to a synthesized lab score (see `render-check` and
@@ -2773,6 +2779,18 @@ def crux_report(
     """
     from seohead.data_sources import crux as core
 
+    if urls is not None:
+        if url or origin or metrics:
+            raise ValueError("urls cannot be combined with url, origin, or metrics")
+        return core.sample_urls(
+            urls,
+            form_factor=form_factor,
+            max_samples=max_samples,
+            cache_dir=cache_dir,
+            cache_max_age_hours=cache_max_age_hours,
+        )
+    if cache_dir or max_samples != 25 or cache_max_age_hours != 24:
+        raise ValueError("sample budget and cache options require urls")
     return core.query(url=url, origin=origin, form_factor=form_factor, metrics=metrics)
 
 
