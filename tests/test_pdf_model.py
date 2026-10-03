@@ -350,6 +350,75 @@ def test_invalid_sf_declared_totals_are_rejected(count):
         build_pdf_model(document)
 
 
+def test_check_cannot_be_both_fired_and_silent():
+    document = _sf_audit(
+        summary={
+            "totals": {"urls_crawled": 1, "issues_total": 3},
+            "by_severity": {"critical": 3},
+            "by_check": {"H2_DUPLICATE": 3},
+            "check_coverage": {
+                "checks_total": 1,
+                "checks_fired": 1,
+                "checks_skipped": 0,
+                "checks_disabled": 0,
+                "checks_silent": 1,
+                "checks_silent_ids": ["H2_DUPLICATE"],
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="by_check and checks_silent_ids"):
+        build_pdf_model(document)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("checks_total", "many", "non-negative integer"),
+        ("checks_fired", -1, "non-negative integer"),
+        ("checks_silent", True, "non-negative integer"),
+    ],
+)
+def test_check_coverage_counts_are_typed_and_non_negative(field, value, message):
+    document = _sf_audit(
+        summary={
+            "totals": {"urls_crawled": 0, "issues_total": 0},
+            "by_severity": {"critical": 0},
+            "by_check": {},
+            "check_coverage": {field: value},
+        }
+    )
+
+    with pytest.raises(ValueError, match=message):
+        build_pdf_model(document)
+
+
+def test_sf_severity_and_nested_total_counts_are_typed_and_non_negative():
+    bad_severity = _sf_audit(
+        summary={
+            "totals": {"urls_crawled": 0, "issues_total": 0},
+            "by_severity": {"critical": -3},
+            "by_check": {},
+        }
+    )
+    with pytest.raises(ValueError, match=r"summary\.by_severity\.critical"):
+        build_pdf_model(bad_severity)
+
+    bad_representation = _sf_audit(
+        summary={
+            "totals": {
+                "urls_crawled": 0,
+                "issues_total": 0,
+                "pages_by_representation": {"static": "many"},
+            },
+            "by_severity": {},
+            "by_check": {},
+        }
+    )
+    with pytest.raises(ValueError, match=r"pages_by_representation\['static'\]"):
+        build_pdf_model(bad_representation)
+
+
 def test_project_checklist_and_verification_status_are_included_only_when_present(tmp_path):
     plain = build_pdf_model(_site_audit())
     assert plain["backlog"]["state"] == "not_requested"
