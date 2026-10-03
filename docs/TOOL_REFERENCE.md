@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1385,6 +1385,29 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 | `limit` | `int` | `100` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-fragment-links`
+
+MCP name: `seo_scan_fragment_links`
+
+Evaluate every retained fragment anchor offline and page the results.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `state` | `Literal['resolved', 'missing', 'skipped'] | None` | `None` |
+| `representation` | `Literal['static', 'rendered', 'legacy_fragment'] | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Only complete retained HTML/DOM is measured: a missing, truncated,
+unsupported, failed or budget-exhausted body is a named skipped
+occurrence or unavailable source, never a broken fragment. Nothing is
+fetched and the artifact is not modified.
 
 ### `scan-requeue`
 

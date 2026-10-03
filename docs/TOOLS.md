@@ -218,6 +218,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
 | `scan-evidence` | Reads one bounded saved-evidence section: capabilities, corpus, structured data, rendered routes, resources, or timeline. It never fetches or replays a scan. | — |
 | `scan-extract` | Applies closed declarative extraction rules to retained complete bodies only. It is offline, body-retention limited, and does not persist the ad-hoc result. | — |
+| `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
 | `scan-requeue` | Requeues a restricted saved URL/page selection only after creating a mandatory verified backup. | writes artifact and backup |
 | `scan-import-urls` | Imports an explicit local URL list into a saved scan only after creating a mandatory verified backup. | writes artifact and backup |
 
@@ -423,7 +424,7 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
-**164 checks**: 12 critical, 77 warnings, 75 notices. Sources: SF exports,
+**165 checks**: 12 critical, 78 warnings, 75 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -457,7 +458,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(94 + 5):
+(95 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -465,7 +466,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 164 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 165 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another

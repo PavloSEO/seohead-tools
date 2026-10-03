@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-03T19:24:22Z",
+    "generated_at": "2026-10-03T20:53:40Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -97,6 +97,10 @@
       {
         "id": "SITEMAP_URL_NON_INDEXABLE",
         "reason": "missing export: sitemap_non_indexable"
+      },
+      {
+        "id": "BROKEN_BOOKMARK",
+        "reason": "export input retains no HTML/DOM bodies; fragment targets are measured only from a native retained scan"
       },
       {
         "id": "DESC_MULTIPLE",
@@ -476,9 +480,9 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 164,
+      "checks_total": 165,
       "checks_fired": 16,
-      "checks_skipped": 94,
+      "checks_skipped": 95,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
       "checks_silent": 54,
@@ -538,10 +542,10 @@
         "URL_UNDERSCORES",
         "URL_UPPERCASE"
       ],
-      "coverage": 0.427
+      "coverage": 0.424
     },
-    "health_score_reason": "only 70 of 164 checks could run (43% coverage); too little evidence to score",
-    "health_score_basis": "70 of 164 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 70 of 165 checks could run (42% coverage); too little evidence to score",
+    "health_score_basis": "70 of 165 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

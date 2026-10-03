@@ -1375,6 +1375,61 @@ def _audit_crawl_result(
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
 
+    # A broken bookmark is not a link-status problem: the fragment resolves
+    # inside the retained destination document, which only a native scan keeps
+    # (issue #827). The evaluation is read-only and offline -- nothing is
+    # fetched to answer it, and missing or incomplete bodies stay skipped
+    # rather than becoming findings.
+    from seohead.storage import fragment_links
+
+    fragment_evaluation: dict[str, Any] | None = None
+    if stored_scan is not None:
+        storage = settings.get("storage")
+        body_limit = storage.get("max_body_bytes") if isinstance(storage, dict) else None
+        if type(body_limit) is not int or body_limit <= 0:
+            body_limit = fragment_links.DEFAULT_MAX_DECODED_BYTES
+        fragment_evaluation = fragment_links.evaluate(stored_scan.con, max_decoded_bytes=body_limit)
+        fragment_states = fragment_evaluation["states"]
+        if fragment_evaluation["coverage"]["source_documents_evaluated"]:
+            bookmark_findings = fragment_links.findings(fragment_evaluation)
+            for item in bookmark_findings:
+                ctx.add(
+                    "BROKEN_BOOKMARK",
+                    target_url=item["target_url"],
+                    occurrences_count=item["occurrences_count"],
+                    locations=item["locations"],
+                    details={
+                        "fragment": item["fragment"],
+                        "decoded_fragment": item["decoded_fragment"],
+                        "destination_representation": item["destination_representation"],
+                        "locations_omitted": item["locations_omitted"],
+                        "occurrences_skipped": fragment_states["skipped"],
+                        "coverage": fragment_evaluation["coverage"]["state"],
+                    },
+                )
+            if not bookmark_findings and fragment_evaluation["coverage"]["state"] != "complete":
+                # Evaluated sources but no finding to fire, while part of the
+                # anchors went unanswered (skipped destinations, unavailable
+                # lanes, unresolvable hrefs, capped or truncated inventories):
+                # silent here would read as a clean pass the partial evidence
+                # cannot support.
+                ctx.skip(
+                    "BROKEN_BOOKMARK",
+                    "fragment evidence is partial; summary.fragment_links names "
+                    "each skipped occurrence and unavailable source",
+                )
+        else:
+            ctx.skip(
+                "BROKEN_BOOKMARK",
+                "scan retains no complete HTML document for fragment resolution",
+            )
+    else:
+        ctx.skip(
+            "BROKEN_BOOKMARK",
+            "input retains no HTML/DOM bodies; fragment targets are measured "
+            "only from a native retained scan",
+        )
+
     audit = aggregate(
         ctx,
         {
@@ -1418,6 +1473,12 @@ def _audit_crawl_result(
         if settings["scope"]["segments"] or analysis_segments
         else {}
     )
+    if fragment_evaluation is not None:
+        audit["summary"]["fragment_links"] = {
+            "analysis": fragment_evaluation["analysis"],
+            "states": fragment_evaluation["states"],
+            "coverage": fragment_evaluation["coverage"],
+        }
 
     if stored_scan is not None:
         from seohead.sf.core.evidence_contract import attach_contract, attach_saved_corpus
@@ -3329,6 +3390,18 @@ def scan_extract(
     return core(input_path, rules, url=url, representation=representation, limit=limit)
 
 
+def scan_fragment_links(
+    input_path: str,
+    offset: int = 0,
+    limit: int = 100,
+    state: str | None = None,
+    representation: str | None = None,
+) -> dict[str, Any]:
+    from seohead.servers.evidence_handlers import scan_fragment_links as core
+
+    return core(input_path, offset=offset, limit=limit, state=state, representation=representation)
+
+
 def scan_requeue(
     input_path: str, where: str, backup_path: str, from_scan: str | None = None
 ) -> dict[str, Any]:
@@ -3409,6 +3482,7 @@ _RAW_HANDLERS = {
     "scan_rendered_routes": scan_rendered_routes,
     "scan_evidence": scan_evidence,
     "scan_extract": scan_extract,
+    "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,
     "scan_import_urls": scan_import_urls,
     "scan_snapshot": scan_snapshot,
