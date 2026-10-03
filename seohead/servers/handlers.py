@@ -673,6 +673,14 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    # A storage-only synthetic capacity marker never enters a live crawl route.
+    from seohead.crawl.settings import checked_url_budget
+
+    if settings.get("storage", {}).get("capacity_profile", "stable") != "stable":
+        raise ValueError(
+            "experimental_synthetic capacity profile is storage-only, not a live crawl"
+        )
+    checked_url_budget(settings["limits"]["max_urls"])
     if project_root is not None:
         gate = admission(str(project_root), settings, approved=approve_large_crawl)
         if not gate["ok"]:

@@ -64,6 +64,33 @@ The native default is `storage.body_mode=captured_entity_bytes`; the only other
 supported value is `off`. The recorded retention policy, body state, and
 capability state determine what a particular scan actually retained.
 
+## Experimental synthetic capacity admission
+
+The stable live crawler ceiling remains **50,000 URLs**. The optional
+`storage.capacity_profile="experimental_synthetic"` marker admits a declared
+`limits.max_urls` up to 1,000,000 for direct `NativeScan` synthetic storage
+profiles. It is persisted in `scan.config_json` and the configuration
+fingerprint, and is validated on create, inspect, reopen, snapshot, and resume.
+Older scans with no marker retain their original fingerprint and read as stable.
+The marker is rejected by live CLI/MCP crawl handlers and the SQLite collector,
+even below 50,000 URLs. It does not change `checked_url_budget`, actual crawl
+admission, audit/report limits, or release support.
+
+Use this mode only for predeclared offline profile cases with explicit page,
+link-density, body/DOM, time, memory, disk and interruption budgets. A profile
+that writes 100,000 or 1,000,000 synthetic rows establishes only the stages it
+actually completed. The #818 end-to-end gate remains **unmet** until #815 has
+recorded the required 10k/50k/100k/1M matrix, #816 has a measured large-audit
+representation, and #817 has measured bounded collection, resume, JS and
+audit-bridge behavior at multiple link densities. Each stage must pass its
+frozen budget with complete URL/link evidence, honest finish and partialness
+states, restart recovery, and working downstream compare/report consumers
+before proposing any live cap change. The published 50,000-page attempt below
+remains blocked by its 900-second stage ceiling. No benchmark result promotes
+the ceiling automatically: a specialist must review the frozen manifests,
+failed/skipped stages and retained artifacts, then explicitly approve a
+separate cap/configuration change.
+
 ## Explicit local history operations
 
 The `scan` CLI group and matching `seo_scan_*` MCP tools operate on individual,

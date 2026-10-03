@@ -147,6 +147,8 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             expected["resources"].pop("graph")
         if "storage" in config and "format_version" not in config["storage"]:
             expected["storage"].pop("format_version")
+        if "storage" in config and "capacity_profile" not in config["storage"]:
+            expected["storage"].pop("capacity_profile")
         if "rendering" in config and "rendered_links" not in config["rendering"]:
             expected["rendering"].pop("rendered_links")
         elif "rendering" in config and "crawl" not in config["rendering"]["rendered_links"]:
@@ -173,6 +175,7 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             "graph", copy.deepcopy(DEFAULTS["resources"]["graph"])
         )
         validation_config["storage"].setdefault("format_version", "scan.v1")
+        validation_config["storage"].setdefault("capacity_profile", "stable")
         validation_config.setdefault("rendering", {})
         validation_config["rendering"].setdefault(
             "rendered_links", copy.deepcopy(DEFAULTS["rendering"]["rendered_links"])
@@ -219,6 +222,12 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
         and expected["storage"].get("format_version") == "scan.v1"
     ):
         expected["storage"].pop("format_version")
+    if (
+        "storage" in recorded
+        and "capacity_profile" not in recorded["storage"]
+        and expected["storage"].get("capacity_profile") == "stable"
+    ):
+        expected["storage"].pop("capacity_profile")
     if (
         "rendering" in recorded
         and "rendered_links" not in recorded["rendering"]
