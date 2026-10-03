@@ -31,6 +31,7 @@ and this decision makes no backend migration.
 | `log-scan` | Local directory (`run`) | — |
 | `compare-crawls` | Audit document (`before, after`) | Each path may be audit JSON or scan.v1. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
+| `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |
 | `segment-diff` | Audit document (`audit`) | — |
 | `redirects-generate` | Inline JSON (`redirects`) | — |
 | `redirects-check` | Live URL (`url`) | — |
