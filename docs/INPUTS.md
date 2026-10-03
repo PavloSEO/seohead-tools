@@ -73,6 +73,7 @@ and this decision makes no backend migration.
 | `spend-report` | Local log | Configured local spend log. |
 | `sources-doctor` | Local configuration | — |
 | `regions-tree` | Local configuration | — |
+| `topvisor-read` | Inline JSON (`operation, params`) | One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations. |
 | `metrika-counters` | Local configuration | — |
 | `metrika-setup` | Provider query (`counter_id`) | — |
 | `metrika-report` | Provider query (`counter_id`) | — |
