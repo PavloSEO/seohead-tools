@@ -220,6 +220,29 @@ def test_pdf_text_must_retain_each_expected_model_sentinel(tmp_path):
     assert any("Backlog sentinel 0001" in error for error in result["errors"])
 
 
+def test_pdf_text_accepts_localized_generated_finding_title_and_reproduction(tmp_path):
+    model = _model()
+    finding = model["findings"][0]
+    finding["display"]["title"] = "Title element is missing"
+    finding["display"]["reproduction"] = (
+        "At https://example.invalid/finding-0001/: Synthetic observation sentinel 0001"
+    )
+    finding["record"]["check"] = "TITLE_MISSING"
+    source_sentinels = [
+        value
+        for value in _pdf_sentinels()
+        if value not in {"Finding sentinel 0001", "Synthetic reproduction sentinel 0001"}
+    ]
+    source_sentinels.append("TITLE_MISSING")
+    path = tmp_path / "localized.pdf"
+    _write_text_pdf(path, [" ".join(source_sentinels)])
+
+    result = validate_pdf_output(path, model)
+
+    assert result["status"] == "ok"
+    assert result["errors"] == []
+
+
 def test_pdf_model_omissions_must_be_recorded_for_source_count_shortfalls(tmp_path):
     model = _model()
     model["summary"]["counts"]["findings"]["source_count"] = 2

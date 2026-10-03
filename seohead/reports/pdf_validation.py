@@ -100,9 +100,13 @@ def _expected_text(model: Mapping[str, Any]) -> Counter[str]:
             continue
         display = finding.get("display")
         record = finding.get("record")
-        for field in ("title", "observation", "reproduction"):
-            add(display.get(field) if isinstance(display, Mapping) else None)
-        add(record.get("url") if isinstance(record, Mapping) else None)
+        # Titles and reproduction labels are presentation strings and may be
+        # localized. The saved observation, URL and check identifier remain
+        # invariant evidence and are checked individually below.
+        add(display.get("observation") if isinstance(display, Mapping) else None)
+        if isinstance(record, Mapping):
+            add(record.get("url"))
+            add(record.get("check"))
 
     for page in model.get("pages", []):
         record = page.get("record") if isinstance(page, Mapping) else None
