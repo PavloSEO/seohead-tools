@@ -2887,11 +2887,15 @@ class NativeScan:
             stopped = prior[0] == "interrupted" and prior[1] != "finalization_blocked"
             finished = ready and pending is None and not stopped
             lifecycle = "finished" if finished else "interrupted"
+            # A blocked checkpoint records why finalization could not run, but
+            # must not erase an explicit stop: keeping its reason prevents a
+            # later retry from stamping a false finished_at (#712).
+            blocked_reason = reason if stopped else "finalization_blocked"
             self.con.execute(
                 "UPDATE scan SET lifecycle=?,finish_reason=?,finished_at=? WHERE singleton=1",
                 (
                     lifecycle,
-                    reason if ready else "finalization_blocked",
+                    reason if ready else blocked_reason,
                     _utc() if lifecycle == "finished" else None,
                 ),
             )
@@ -2945,12 +2949,18 @@ class NativeScan:
                 self._rollback()
                 raise
         # A reader blocked finalization. Retain the recoverable artifact but do
-        # not advertise it as a finished one-file scan.
+        # not advertise it as a finished one-file scan. An explicit prior stop
+        # keeps its own reason so a later retry cannot read it as a merely
+        # blocked finalization and stamp a false finished_at (#712).
         try:
             self.con.execute("BEGIN IMMEDIATE")
-            self.con.execute(
-                "UPDATE scan SET lifecycle='interrupted', finish_reason='finalization_blocked' WHERE singleton=1"
-            )
+            prior = self.con.execute(
+                "SELECT lifecycle, finish_reason FROM scan WHERE singleton=1"
+            ).fetchone()
+            if not (prior[0] == "interrupted" and prior[1] != "finalization_blocked"):
+                self.con.execute(
+                    "UPDATE scan SET lifecycle='interrupted', finish_reason='finalization_blocked' WHERE singleton=1"
+                )
             self.con.commit()
         except BaseException:
             self._rollback()

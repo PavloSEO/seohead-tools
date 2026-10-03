@@ -720,6 +720,69 @@ def test_url_limit_with_pending_work_stays_interrupted(tmp_path):
     assert header["finished_at"] is None
 
 
+def _duration_limit_run(scan_path, **kwargs):
+    """Crawl whose clock jumps past max_crawl_seconds after the first fetch."""
+    now = [0.0]
+
+    def fetcher(url):
+        if url.endswith("/robots.txt"):
+            return _Response(200, "User-agent: SEOHEAD-Tools\nAllow: /\n")
+        now[0] = 999.0  # The next loop pass sees the duration budget exhausted.
+        return _Response(200, "<html><body>page</body></html>")
+
+    return crawl_to_scan(
+        "https://example.test/",
+        scan_out=str(scan_path),
+        settings=load(
+            overrides={
+                "speed.min_delay_seconds": 0,
+                "speed.concurrency": 1,
+                "limits.max_crawl_seconds": 60,
+            }
+        ),
+        producer_version="3.0.0",
+        producer_revision="a" * 40,
+        runtime_versions={
+            "python": "test",
+            "sqlite": "test",
+            "httpx": "test",
+            "lxml": "test",
+            "beautifulsoup4": "test",
+        },
+        fetcher=fetcher,
+        sleeper=lambda _seconds: None,
+        clock=lambda: now[0],
+        **kwargs,
+    )
+
+
+def test_duration_limit_with_pending_work_stays_interrupted(tmp_path):
+    scan_path = tmp_path / "duration.sqlite"
+    run = _duration_limit_run(scan_path, seed_urls=["https://example.test/next"])
+
+    assert run.finish_reason == "duration_limit"
+    assert run.partial is True
+    with NativeScan.open(scan_path) as scan:
+        assert scan.finish_capture(reason=run.finish_reason) is True
+    header = NativeScan.inspect(str(scan_path))["scan"]
+    assert header["lifecycle"] == "interrupted"
+    assert header["finish_reason"] == "duration_limit"
+    assert header["finished_at"] is None
+
+
+def test_duration_limit_with_a_drained_frontier_still_finishes(tmp_path):
+    """Hitting the time budget exactly as the queue drains is a finish."""
+    scan_path = tmp_path / "duration.sqlite"
+    run = _duration_limit_run(scan_path)
+
+    assert run.finish_reason == "finished"
+    with NativeScan.open(scan_path) as scan:
+        assert scan.finish_capture(reason=run.finish_reason) is True
+    header = NativeScan.inspect(str(scan_path))["scan"]
+    assert header["lifecycle"] == "finished"
+    assert header["finished_at"] is not None
+
+
 def test_resume_duration_includes_already_committed_elapsed_time(tmp_path):
     scan_path = tmp_path / "duration.sqlite"
     settings = load(overrides={"speed.min_delay_seconds": 0, "limits.max_crawl_seconds": 1})

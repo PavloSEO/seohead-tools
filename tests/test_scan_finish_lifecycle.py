@@ -199,3 +199,53 @@ def test_blocked_finalization_still_never_stamps_finished(tmp_path):
     header = _header(path)
     assert header["lifecycle"] == "finished"
     assert header["finished_at"] is not None
+
+
+def test_blocked_finalization_preserves_an_explicit_error_stop(tmp_path):
+    """A reader-blocked checkpoint must not rewrite 'errors' into a retryable
+    'finalization_blocked' that a later retry reads as a drained queue."""
+    import sqlite3
+
+    path = tmp_path / "scan.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        scan.commit_page(scan.claim(1)[0], _record(), runtime=_runtime())
+        scan.interrupt("origin stopped responding")
+        reader = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+        reader.execute("BEGIN")
+        reader.execute("SELECT COUNT(*) FROM pages").fetchone()
+        try:
+            assert scan.finish_capture(reason="errors", timeout_seconds=0.1) is False
+        finally:
+            reader.close()
+        header = _header(path)
+        assert header["lifecycle"] == "interrupted"
+        assert header["finish_reason"] == "errors"
+        assert header["finished_at"] is None
+        assert scan.resume_or_finalize() is True
+    header = _header(path)
+    assert header["lifecycle"] == "interrupted"
+    assert header["finish_reason"] == "errors"
+    assert header["finished_at"] is None
+    assert header["crawl_partial"] == 1
+
+
+def test_blocked_finish_without_audit_preserves_an_explicit_stop(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "scan.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        scan.commit_page(scan.claim(1)[0], _record(), runtime=_runtime())
+        scan.interrupt("origin stopped responding")
+        reader = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+        reader.execute("BEGIN")
+        reader.execute("SELECT COUNT(*) FROM pages").fetchone()
+        try:
+            assert scan.finish_without_audit(timeout_seconds=0.1) is False
+        finally:
+            reader.close()
+    header = _header(path)
+    assert header["lifecycle"] == "interrupted"
+    assert header["finish_reason"] == "origin stopped responding"
+    assert header["finished_at"] is None
