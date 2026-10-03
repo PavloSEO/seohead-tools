@@ -309,6 +309,11 @@ DEFAULTS: dict[str, Any] = {
             "crawl": False,
         },
         "browser": {
+            # Which headless engine Playwright launches. "chromium" keeps the
+            # historical behaviour; each supported name reaches its matching
+            # launcher -- an unknown name fails validation and no engine is
+            # ever silently substituted.
+            "engine": "chromium",  # chromium | firefox | webkit
             # How long JavaScript may keep running after the page and its
             # subresources have loaded. Too short loses content on a slow
             # application; too long multiplies crawl duration -- there is no
@@ -320,6 +325,14 @@ DEFAULTS: dict[str, Any] = {
             # seohead.tools.render.VIEWPORT_PRESETS) so two runs are only
             # ever comparable by name, never by an arbitrary pixel value.
             "viewport": "desktop",  # desktop | mobile
+            # Optional exact viewport size in CSS pixels. Both must be set
+            # together (>0) to take effect; the pair overrides the named
+            # preset's dimensions while the preset still carries the profile
+            # (e.g. which user-agent shape the mobile profile implies). The
+            # effective dimensions are recorded in renderer provenance, so
+            # custom sizes stay comparable across runs too.
+            "viewport_width": 0,
+            "viewport_height": 0,
             # Grow the viewport to the rendered page's own height so lazily
             # loaded listings are captured, capped by
             # resize_to_content_max_height_px so a page that grows without
@@ -341,6 +354,12 @@ DEFAULTS: dict[str, Any] = {
             # site (analytics, chat, ads keep connections open), turning a
             # useful render into a timeout -- see render.render_check.
             "wait_until": "load",  # load | domcontentloaded | networkidle
+            # Maximum browser pages/contexts rendered at once during JS
+            # escalation. 1 keeps the historical sequential behaviour. This is
+            # a rendering bound only -- each slot holds a live browser context
+            # plus its pinned network client -- and is unrelated to the HTTP
+            # crawl's own fetch concurrency.
+            "page_concurrency": 1,
             # Off by default, and refused without an explicit directory
             # (see validate() below): attaching a real browser profile
             # crawls the site as whoever's cookies that profile carries.
@@ -463,6 +482,12 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "rendering.browser.mobile_emulation",
         "rendering.browser.touch_emulation",
         "rendering.browser.wait_until",
+        "rendering.browser.engine",
+        "rendering.browser.viewport_width",
+        "rendering.browser.viewport_height",
+        # More parallel pages change wall-clock only, not the DOM -- but the
+        # bound is recorded so a run's render budget spend stays attributable.
+        "rendering.browser.page_concurrency",
         # A different profile crawls as a different, possibly logged-in,
         # visitor; the directory itself is not included here (nor in the
         # manifest below) for the same reason a credential's value is not:
@@ -645,7 +670,20 @@ DESCRIPTIONS: dict[str, str] = {
         "How long JavaScript may keep running after the page and its subresources have "
         "loaded, before the DOM is captured."
     ),
+    "rendering.browser.engine": (
+        "Headless engine Playwright launches: 'chromium', 'firefox' or 'webkit'. An "
+        "unsupported name fails validation; an uninstalled browser binary reports a "
+        "distinct install hint. Firefox cannot emulate a mobile viewport (is_mobile)."
+    ),
     "rendering.browser.viewport": "Viewport preset used for rendering: 'desktop' or 'mobile'.",
+    "rendering.browser.viewport_width": (
+        "Custom viewport width in CSS pixels (0 = unset). Must be set together with "
+        "viewport_height; the pair overrides the named preset's dimensions."
+    ),
+    "rendering.browser.viewport_height": (
+        "Custom viewport height in CSS pixels (0 = unset). Must be set together with "
+        "viewport_width; the pair overrides the named preset's dimensions."
+    ),
     "rendering.browser.resize_to_content": (
         "Grow the viewport to the rendered page's own height before capture, capped by "
         "resize_to_content_max_height_px."
@@ -666,6 +704,10 @@ DESCRIPTIONS: dict[str, str] = {
     "rendering.browser.wait_until": (
         "Page-load strategy before script_timeout_seconds starts counting down: 'load', "
         "'domcontentloaded', or 'networkidle'."
+    ),
+    "rendering.browser.page_concurrency": (
+        "Maximum browser pages/contexts rendered at once during JS escalation; 1 keeps "
+        "sequential behaviour. A rendering bound, not HTTP crawl concurrency."
     ),
     "rendering.browser.persistent_profile": (
         "Unavailable with the pinned renderer: requested persistent profiles return an "
@@ -699,6 +741,20 @@ CACHE_MODES = ("live", "off", "replay")
 RENDER_MODES = ("raw", "legacy_fragment", "js")
 RENDER_VIEWPORTS = ("desktop", "mobile")
 RENDER_WAIT_UNTIL = ("load", "domcontentloaded", "networkidle")
+# Headless engines Playwright can launch through the pinned renderer in
+# seohead/tools/render.py; keep in step with that module's BROWSER_ENGINES.
+RENDER_ENGINES = ("chromium", "firefox", "webkit")
+# Engines Playwright can emulate a mobile viewport (is_mobile) on -- it
+# documents the option as unsupported on Firefox. Touch input (has_touch) is
+# a general context option every engine accepts, so touch_emulation alone is
+# not gated by this set.
+RENDER_MOBILE_EMULATION_ENGINES = frozenset({"chromium", "webkit"})
+# Upper bound for a custom viewport dimension; matches the largest canvas
+# real devices report and keeps absurd values from reaching the browser.
+MAX_VIEWPORT_DIMENSION_PX = 16384
+# Upper bound for simultaneous render pages/contexts; each holds a live
+# browser context plus its network client, so this stays deliberately low.
+MAX_RENDER_PAGE_CONCURRENCY = 16
 
 # A reference to an environment variable, never an inline secret. This is the
 # only value shape a credential header may carry in a config file.
@@ -1027,6 +1083,39 @@ def _validate_rendering(rendering: dict[str, Any]) -> None:
         raise ConfigError(
             f"rendering.browser.viewport must be one of {RENDER_VIEWPORTS}, "
             f"got {browser['viewport']!r}"
+        )
+    if browser["engine"] not in RENDER_ENGINES:
+        raise ConfigError(
+            f"rendering.browser.engine must be one of {RENDER_ENGINES}, got {browser['engine']!r}"
+        )
+    # Only mobile viewport emulation is gated: Playwright documents is_mobile
+    # as unsupported on Firefox, while has_touch is a general context option
+    # every engine accepts.
+    if browser["engine"] not in RENDER_MOBILE_EMULATION_ENGINES and browser["mobile_emulation"]:
+        raise ConfigError(
+            f"rendering.browser.engine={browser['engine']!r} cannot emulate a "
+            "mobile viewport (Playwright does not implement is_mobile for it); "
+            "unset mobile_emulation or pick another engine"
+        )
+    for name in ("viewport_width", "viewport_height"):
+        value = browser[name]
+        if type(value) is not int or value < 0 or value > MAX_VIEWPORT_DIMENSION_PX:
+            raise ConfigError(
+                f"rendering.browser.{name} must be an integer between 0 and "
+                f"{MAX_VIEWPORT_DIMENSION_PX}, got {value!r}"
+            )
+    if (browser["viewport_width"] > 0) != (browser["viewport_height"] > 0):
+        raise ConfigError(
+            "rendering.browser.viewport_width and "
+            "rendering.browser.viewport_height must be set together "
+            "(both >0 or both 0)"
+        )
+    if type(browser["page_concurrency"]) is not int or not (
+        1 <= browser["page_concurrency"] <= MAX_RENDER_PAGE_CONCURRENCY
+    ):
+        raise ConfigError(
+            f"rendering.browser.page_concurrency must be an integer between 1 "
+            f"and {MAX_RENDER_PAGE_CONCURRENCY}, got {browser['page_concurrency']!r}"
         )
     if browser["wait_until"] not in RENDER_WAIT_UNTIL:
         raise ConfigError(

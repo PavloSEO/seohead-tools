@@ -230,7 +230,11 @@ reuse a persistent browser profile, never because the browser carried back a coo
 the site itself set to a same-origin subresource. A crawl reports how many rendered
 DOMs it retained and the reasons it dropped the rest in `rendered_bodies`, for the
 same reason `html_bodies` exists -- both counts are derived from the artifact, so a
-finished scan still answers the question afterwards. Native SQLite mode requires
+finished scan still answers the question afterwards. Every rendered document's
+`renderer` provenance records the requested and effective engine, its reported
+version, the effective viewport and the configured page concurrency -- a failed
+attempt records what was requested with `engine: "unknown"` rather than inventing a
+successful render. Native SQLite mode requires
 `cache.mode=off` before collection; it never changes or deletes the old directory
 cache, which remains part of the directory workflow.
 

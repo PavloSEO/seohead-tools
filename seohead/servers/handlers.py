@@ -239,13 +239,24 @@ def _run_render_escalation(
 
     if mode == "js":
         gate_kwargs = {"request_gate": request_gate} if request_gate is not None else {}
+        try:
+            effective_viewport = render_tool.resolve_viewport(browser_cfg)
+        except ValueError:
+            effective_viewport = None
 
         def probe(target: str) -> dict[str, Any]:
+            # The probe launches the same engine, size and emulation the full
+            # render will use, so a pattern is not escalated by a browser that
+            # differs from the one producing its evidence.
             probed = render_tool.render_check(
                 target,
                 timeout=timeout,
                 wait=browser_cfg["wait_until"],
                 viewport=browser_cfg["viewport"],
+                engine=browser_cfg.get("engine", "chromium"),
+                viewport_size=effective_viewport,
+                mobile_emulation=bool(browser_cfg.get("mobile_emulation")),
+                touch_emulation=bool(browser_cfg.get("touch_emulation")),
                 **gate_kwargs,
             )
             verdict = probed.get("js_dependent")
@@ -1036,6 +1047,12 @@ def _audit_crawl_result(
                 "patterns_partially_rendered": escalation.patterns_partially_rendered,
                 "patterns_unprobed": escalation.patterns_unprobed,
                 "patterns_unprobed_reasons": escalation.patterns_unprobed_reasons,
+                # The resolved browser-page bound the escalation ran under --
+                # read from settings rather than the aggregated result so a
+                # resumed scan's merged summary still reports it correctly.
+                "render_page_concurrency": int(
+                    settings["rendering"]["browser"].get("page_concurrency") or 1
+                ),
             }
 
         # Re-evaluated after escalation so a run that actually renders its
