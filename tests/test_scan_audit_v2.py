@@ -40,6 +40,7 @@ def test_audit_v2_reopens_ordered_collections_and_complete_document(tmp_path):
         "run": {"source": "https://example.test/", "crawl_partial": False},
         "issues": [],
         "pages": [],
+        "groups": [],
         "summary": {"sitemap": {"linked_not_in_sitemap": []}},
     }
     issues = (
@@ -47,11 +48,17 @@ def test_audit_v2_reopens_ordered_collections_and_complete_document(tmp_path):
     )
     pages = [{"url": f"https://example.test/{i}"} for i in range(3)]
     sitemap = ({"url": "https://example.test/orphan"},)
+    groups = [{"check": "TEST", "count": 1}]
 
     written = write_audit_v2(
         scan,
         header,
-        {"/issues": issues, "/pages": pages, "/summary/sitemap/linked_not_in_sitemap": sitemap},
+        {
+            "/issues": issues,
+            "/pages": pages,
+            "/summary/sitemap/linked_not_in_sitemap": sitemap,
+            "/groups": groups,
+        },
         binding,
     )
     assert written == audit_v2_path(scan)
@@ -59,12 +66,14 @@ def test_audit_v2_reopens_ordered_collections_and_complete_document(tmp_path):
     with AuditV2Reader(scan) as reader:
         assert reader.count("/issues") == 10000
         assert reader.count("/pages") == 3
+        assert reader.count("/groups") == 1
         assert list(reader.iter_collection("/pages")) == list(pages)
         document = reader.materialize_legacy()
         assert len(document["issues"]) == 10000
         assert document["issues"][0]["target_url"].endswith("/0")
         assert document["issues"][-1]["n"] == 9999
         assert document["summary"]["sitemap"]["linked_not_in_sitemap"] == list(sitemap)
+        assert document["groups"] == groups
         encoded = "".join(reader.document_chunks())
         assert json.loads(encoded) == document
 
@@ -140,7 +149,12 @@ def test_report_build_streams_all_large_audit_rows(tmp_path):
         "pages": [],
         "groups": [],
     }
-    write_audit_v2(scan, header, {"/issues": issues, "/pages": pages, "/groups": []}, binding)
+    write_audit_v2(
+        scan,
+        header,
+        {"/issues": issues, "/pages": pages, "/groups": [{"check": "TITLE_MISSING"}]},
+        binding,
+    )
 
     from seohead.reports import build_report
 
@@ -151,6 +165,7 @@ def test_report_build_streams_all_large_audit_rows(tmp_path):
     with json_path.open(encoding="utf-8") as stream:
         exported = json.load(stream)
     assert len(exported["issues"]) == len(exported["pages"]) == 10000
+    assert exported["groups"] == [{"check": "TITLE_MISSING"}]
     assert exported["issues"][-1]["target_url"].endswith("/9999")
 
     csv_path = tmp_path / "large.csv"
@@ -219,7 +234,7 @@ def test_json_report_streams_document_larger_than_legacy_ceiling(tmp_path):
                 for i in range(10000)
             ),
             "/pages": [],
-            "/groups": [],
+            "/groups": [{"check": "HIGH_VOLUME", "count": 10000}],
         },
         binding,
     )

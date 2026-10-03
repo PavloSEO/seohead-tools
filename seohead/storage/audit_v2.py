@@ -256,7 +256,7 @@ def write_audit_v2(
             if len(header_json.encode("utf-8")) > MAX_HEADER_BYTES:
                 raise AuditV2Error("audit.v2 header exceeds its explicit 64 MiB limit")
             digest = _digest_start(binding_json, header_json)
-            for pointer in normalized:
+            for pointer in sorted(normalized):
                 for ordinal, raw in con.execute(
                     "SELECT ordinal,value_json FROM items WHERE pointer=? ORDER BY ordinal",
                     (pointer,),
