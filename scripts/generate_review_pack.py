@@ -29,6 +29,7 @@ Three boundaries the reader should not blur:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -266,6 +267,35 @@ def _artifact_kind(name: str) -> str:
     return "other"
 
 
+def _artifact_identity(filename: str, project: dict[str, Any]) -> dict[str, Any]:
+    """The package name/version a wheel or sdist filename declares.
+
+    A stale or mixed distribution directory can carry an artifact built for a
+    different package or version. The filename's declared identity is measured
+    and compared with ``pyproject.toml`` so verification judges recorded facts
+    rather than trusting that every file in ``dist`` belongs to this release.
+    """
+    from packaging.utils import parse_sdist_filename, parse_wheel_filename
+    from packaging.version import Version
+
+    record: dict[str, Any] = {"matches_package": False}
+    try:
+        if filename.endswith(".whl"):
+            name, version, *_ = parse_wheel_filename(filename)
+        else:
+            name, version = parse_sdist_filename(filename)
+    except ValueError:
+        record["error"] = "filename does not declare a parseable package name/version"
+        return record
+    record["filename_name"] = str(name)
+    record["filename_version"] = str(version)
+    with contextlib.suppress(ValueError):
+        record["matches_package"] = str(name) == _canonical(project["name"]) and version == Version(
+            project["version"]
+        )
+    return record
+
+
 def _safe_member(relative: str) -> bool:
     """Whether an archive member path stays inside its extraction root.
 
@@ -380,8 +410,11 @@ def build_provenance_document(root: Path, dist_dir: Path, tag: str) -> dict[str,
             "sha256": _sha256_file(artifact),
         }
         if entry["kind"] in {"wheel", "sdist"}:
+            entry["artifact_identity"] = _artifact_identity(artifact.name, project)
             with tempfile.TemporaryDirectory() as work:
                 record = _embedded_manifest_record(artifact, Path(work))
+            if record.get("valid"):
+                record["version_matches_package"] = record["package_version"] == version
             entry["embedded_manifest"] = record
             if record.get("valid") and isinstance(record.get("revision"), str):
                 revisions.add(record["revision"])
@@ -495,9 +528,27 @@ def verify_pack(pack_dir: Path, root: Path) -> list[str]:
         for artifact in provenance.get("artifacts") or []:
             if artifact.get("kind") in {"wheel", "sdist"}:
                 name = artifact.get("file")
+                if isinstance(name, str):
+                    # Re-derived from the filename under review, not the
+                    # recorded artifact_identity, so a pack cannot bless a
+                    # stale or foreign distribution by editing the document.
+                    identity = _artifact_identity(name, project)
+                    if not identity.get("matches_package"):
+                        detail = identity.get("error") or (
+                            f"filename declares {identity['filename_name']} "
+                            f"{identity['filename_version']}"
+                        )
+                        problems.append(
+                            f"{name}: {detail}; expected {project['name']} {project['version']}"
+                        )
                 manifest = artifact.get("embedded_manifest") or {}
                 if not manifest.get("present") or not manifest.get("valid"):
                     problems.append(f"{name}: embedded build manifest absent or invalid")
+                elif manifest.get("package_version") != project["version"]:
+                    problems.append(
+                        f"{name}: embedded build manifest records version "
+                        f"{manifest.get('package_version')!r}, not {project['version']!r}"
+                    )
                 elif isinstance(name, str) and (pack_dir / name).is_file():
                     # The recorded flag came from generation; verification
                     # re-extracts the artifact and re-validates the manifest
@@ -508,6 +559,12 @@ def verify_pack(pack_dir: Path, root: Path) -> list[str]:
                         problems.append(
                             f"{name}: embedded build manifest does not re-validate "
                             f"({record.get('error', 'invalid')})"
+                        )
+                    elif record.get("package_version") != project["version"]:
+                        problems.append(
+                            f"{name}: embedded build manifest in the artifact reports "
+                            f"version {record['package_version']!r}, "
+                            f"not {project['version']!r}"
                         )
                 # A missing artifact file is already named by the sums check below.
 
@@ -616,11 +673,11 @@ def main(argv: list[str] | None = None) -> int:
             ]
             for artifact in provenance["artifacts"]:
                 manifest = artifact.get("embedded_manifest") or {}
-                state = (
-                    f"revision {manifest['revision']}"
-                    if manifest.get("valid")
-                    else "unverified embedded manifest"
-                )
+                state = "unverified embedded manifest"
+                if manifest.get("valid"):
+                    state = f"revision {manifest['revision']}"
+                    if manifest.get("version_matches_package") is False:
+                        state += " (embedded version differs from package version)"
                 lines.append(f"{artifact['file']}: {artifact['kind']}, {state}")
             return _emit(lines)
         problems = verify_pack(args.pack, args.root)

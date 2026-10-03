@@ -11,7 +11,7 @@ regulatory compliance.
 | File | Contents |
 |---|---|
 | `dependency-inventory.json` | One profile per install group (`core` plus every optional-dependency group in `pyproject.toml`). Each profile records the declared requirements verbatim, the packages resolved and installed in the generating environment (name, version, license, and which metadata field the license came from), declared requirements excluded by environment markers, and declared requirements not installed in that environment. Resolved versions are measured, never guessed. |
-| `release-provenance.json` | The release-level record: tag, package identity, each artifact's SHA-256 and size, and what the embedded build manifest inside each wheel and sdist proved — the producing Git revision and the per-file source hashes it validated. |
+| `release-provenance.json` | The release-level record: tag, package identity, each artifact's SHA-256 and size, the package name/version its filename declares, and what the embedded build manifest inside each wheel and sdist proved — the producing Git revision, the per-file source hashes it validated, and whether the version it records matches this release. |
 | `SHA256SUMS.txt` | SHA-256 over the two files above and every built distribution, in the standard `sha256sum -c` format. The layout is flat so a downloaded set verifies without recreating a directory tree. |
 
 Two provenance layers exist and should not be blurred. The embedded manifest
@@ -34,8 +34,11 @@ sha256sum -c review-pack/SHA256SUMS.txt   # inside the pack directory
   the same consistency `.github/workflows/release.yml` enforces before a real
   release.
 - `verify` re-checks document formats, tag/version/package consistency, every
-  recorded hash, and the embedded manifest inside each distribution, and fails
-  on disagreement rather than reporting a clean result.
+  recorded hash, and the embedded manifest inside each distribution —
+  re-extracting each wheel and sdist to confirm the manifest still validates
+  and that the package version it records, like the name/version each artifact
+  filename declares, matches `pyproject.toml`. A stale or foreign distribution
+  in the set fails verification rather than reporting a clean result.
 - CI regenerates and verifies the pack on every run (`.github/workflows/ci.yml`,
   the `review-pack` job) using a disposable tag value derived from
   `pyproject.toml`. It never pushes a tag or creates a release. On a real tag

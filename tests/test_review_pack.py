@@ -436,6 +436,69 @@ def test_verify_revalidates_the_manifest_instead_of_trusting_the_record(tmp_path
     assert any("embedded build manifest" in problem for problem in problems)
 
 
+def test_verify_detects_a_distribution_built_for_another_version(tmp_path, monkeypatch):
+    """A stale wheel -- a valid manifest recording a different package_version
+    -- is measured honestly at generation and refused at verification."""
+    root = _checkout(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    stale_manifest = _manifest_tree(tmp_path / "stale-stage", version="9.9.8")
+    _write_wheel(
+        dist / "synthetic_tools-9.9.9-py3-none-any.whl",
+        {
+            **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
+            f"seohead/{build_provenance.MANIFEST_FILENAME}": stale_manifest,
+        },
+    )
+    _stub_environment(monkeypatch, {})
+    pack = tmp_path / "pack"
+    assert (
+        gp.main(
+            ["generate", "--root", str(root), "--dist", str(dist), "--tag", TAG, "--out", str(pack)]
+        )
+        == 0
+    )
+    provenance = json.loads((pack / gp.PROVENANCE_FILENAME).read_text())
+    manifest = provenance["artifacts"][0]["embedded_manifest"]
+    assert manifest["valid"] is True
+    assert manifest["package_version"] == "9.9.8"
+    assert manifest["version_matches_package"] is False
+
+    problems = gp.verify_pack(pack, root)
+    assert any("'9.9.8'" in problem for problem in problems)
+
+
+def test_verify_detects_an_artifact_named_for_another_version(tmp_path, monkeypatch):
+    """A wheel whose filename declares a different version must not verify
+    even when its embedded manifest matches the project."""
+    root = _checkout(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    manifest = _manifest_tree(tmp_path / "stage")
+    _write_wheel(
+        dist / "synthetic_tools-9.9.8-py3-none-any.whl",
+        {
+            **{f"seohead/{name}": body for name, body in PKG_FILES.items()},
+            f"seohead/{build_provenance.MANIFEST_FILENAME}": manifest,
+        },
+    )
+    _stub_environment(monkeypatch, {})
+    pack = tmp_path / "pack"
+    assert (
+        gp.main(
+            ["generate", "--root", str(root), "--dist", str(dist), "--tag", TAG, "--out", str(pack)]
+        )
+        == 0
+    )
+    provenance = json.loads((pack / gp.PROVENANCE_FILENAME).read_text())
+    identity = provenance["artifacts"][0]["artifact_identity"]
+    assert identity["filename_version"] == "9.9.8"
+    assert identity["matches_package"] is False
+
+    problems = gp.verify_pack(pack, root)
+    assert any("filename declares" in problem for problem in problems)
+
+
 @pytest.mark.parametrize(
     "member",
     [
