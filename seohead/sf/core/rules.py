@@ -86,6 +86,45 @@ def _skip_for_body_unavailable(ctx: AuditContext, check_id: str, pages: list[Pag
         )
 
 
+def _canonical_policy_target_is_fetched(ctx: AuditContext, url: str) -> bool:
+    """Whether this exact policy URL has a response row in Internal:All.
+
+    The general URL index folds trailing slashes for link matching. A declared
+    policy target is stricter: a slashless redirect does not prove that its
+    distinct slash target was fetched. Rows without a status are placeholders,
+    not target-access evidence.
+    """
+    try:
+        target = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    target_path = target.path or "/"
+    target_identity = (
+        target.scheme.lower(),
+        target.netloc.lower(),
+        target_path,
+        target.query,
+        target.fragment,
+    )
+    for page in ctx.pages_by_norm.get(norm_url(url), []):
+        if page.status_code is None:
+            continue
+        try:
+            candidate = urllib.parse.urlsplit(page.url)
+        except ValueError:
+            continue
+        candidate_identity = (
+            candidate.scheme.lower(),
+            candidate.netloc.lower(),
+            candidate.path or "/",
+            candidate.query,
+            candidate.fragment,
+        )
+        if candidate_identity == target_identity:
+            return True
+    return False
+
+
 def _has_column(ctx: AuditContext, field: str) -> bool:
     """Whether ``Internal:All`` carries the source column for ``field`` at all.
 
@@ -655,13 +694,20 @@ def check_canonical_policy(ctx: AuditContext) -> None:
             rule = matching_canonical_rule(policy, category, page.url)
             if rule is None:
                 continue
+            if _body_unavailable(_rec(page)):
+                unavailable.append((page.url, "source HTML body unavailable"))
+                continue
             expected = page.url if rule["policy"] == "self" else rule["target"]
             canonical = _rec(page).get("canonical") or None
-            if ctx.page_by_norm.get(norm_url(expected)) is None:
-                unavailable.append((page.url, expected))
+            if not _canonical_policy_target_is_fetched(ctx, expected):
+                unavailable.append(
+                    (page.url, f"expected target absent from crawl evidence: {expected}")
+                )
                 continue
-            if canonical and ctx.page_by_norm.get(norm_url(canonical)) is None:
-                unavailable.append((page.url, canonical))
+            if canonical and not _canonical_policy_target_is_fetched(ctx, canonical):
+                unavailable.append(
+                    (page.url, f"declared canonical absent from crawl evidence: {canonical}")
+                )
                 continue
             candidates.append((page, rule, expected, canonical))
 
@@ -669,11 +715,11 @@ def check_canonical_policy(ctx: AuditContext) -> None:
             ctx.skip(check_id, f"no crawled URLs matched the configured {category} patterns")
             continue
         if unavailable:
-            examples = "; ".join(f"{source} -> {target}" for source, target in unavailable[:3])
+            examples = "; ".join(f"{source}: {reason}" for source, reason in unavailable[:3])
             ctx.skip(
                 check_id,
-                f"canonical policy targets are absent from crawl evidence for "
-                f"{len(unavailable)} matched URL(s); examples: {examples}",
+                f"canonical policy evidence unavailable for {len(unavailable)} "
+                f"matched URL(s); examples: {examples}",
             )
             continue
 

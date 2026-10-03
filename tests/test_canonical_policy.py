@@ -22,7 +22,13 @@ FILTERED = f"{BASE}?color=blue"
 def _audit(tmp_path, rows, policy=None, include_canonical=True):
     exports = tmp_path / "exports"
     exports.mkdir(parents=True)
-    columns = ["Address", "Content Type", "Status Code", "Indexability"]
+    columns = [
+        "Address",
+        "Content Type",
+        "Status Code",
+        "Indexability",
+        "Body Unavailable",
+    ]
     if include_canonical:
         columns.append("Canonical Link Element 1")
     with (exports / "internal_all.csv").open("w", encoding="utf-8-sig", newline="") as stream:
@@ -31,7 +37,9 @@ def _audit(tmp_path, rows, policy=None, include_canonical=True):
         for page_row in rows:
             url, canonical, *status_values = page_row
             status = status_values[0] if status_values else "200"
-            row = [url, "text/html", status, "Indexable"]
+            content_type = status_values[1] if len(status_values) > 1 else "text/html"
+            body_unavailable = status_values[2] if len(status_values) > 2 else ""
+            row = [url, content_type, status, "Indexable", body_unavailable]
             if include_canonical:
                 row.append(canonical)
             writer.writerow(row)
@@ -225,6 +233,53 @@ def test_canonical_policy_requires_targets_to_exist_in_crawl_evidence(tmp_path):
     assert "absent from crawl evidence" in skipped["FILTER_CANONICAL_POLICY"]
     assert FILTERED in skipped["FILTER_CANONICAL_POLICY"]
     assert landing in skipped["FILTER_CANONICAL_POLICY"]
+
+
+def test_placeholder_target_with_no_response_is_unavailable(tmp_path):
+    landing = "https://shop.example.test/category/"
+    result = _audit(
+        tmp_path,
+        [
+            (FILTERED, FILTERED),
+            (landing, landing, "", ""),
+        ],
+        _policy(filters=[{"pattern": r"[?&]color=", "policy": "landing", "target": landing}]),
+    )
+    assert not [issue for issue in result.issues if issue.check == "FILTER_CANONICAL_POLICY"]
+    skipped = {item.id: item.reason for item in result.skipped}
+    assert "FILTER_CANONICAL_POLICY" in skipped
+    assert "absent from crawl evidence" in skipped["FILTER_CANONICAL_POLICY"]
+
+
+def test_slash_alias_redirect_does_not_prove_expected_target_was_fetched(tmp_path):
+    landing = "https://shop.example.test/category/"
+    result = _audit(
+        tmp_path,
+        [
+            (FILTERED, FILTERED),
+            (landing.rstrip("/"), "", "301"),
+        ],
+        _policy(filters=[{"pattern": r"[?&]color=", "policy": "landing", "target": landing}]),
+    )
+    assert not [issue for issue in result.issues if issue.check == "FILTER_CANONICAL_POLICY"]
+    skipped = {item.id: item.reason for item in result.skipped}
+    assert "FILTER_CANONICAL_POLICY" in skipped
+    assert "absent from crawl evidence" in skipped["FILTER_CANONICAL_POLICY"]
+
+
+def test_oversized_source_body_makes_blank_canonical_unavailable(tmp_path):
+    result = _audit(
+        tmp_path,
+        [
+            (FILTERED, "", "200", "text/html", "oversized"),
+            (BASE, BASE),
+        ],
+        _policy(filters=[{"pattern": r"[?&]color=", "policy": "landing", "target": BASE}]),
+    )
+    assert not [issue for issue in result.issues if issue.check == "FILTER_CANONICAL_POLICY"]
+    skipped = {item.id: item.reason for item in result.skipped}
+    assert "FILTER_CANONICAL_POLICY" in skipped
+    assert "source HTML body unavailable" in skipped["FILTER_CANONICAL_POLICY"]
 
 
 def test_target_status_remains_outside_policy_check_for_issue_824(tmp_path):
