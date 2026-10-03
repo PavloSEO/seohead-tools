@@ -1,0 +1,752 @@
+# ruff: noqa: RUF001 -- Intentional Russian labels in the localized report dictionary.
+"""Render a retained technical-audit PDF model as self-contained localized HTML."""
+
+from __future__ import annotations
+
+import html
+import json
+import math
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from seohead.reports.svg_charts import Series, bar_chart
+from seohead.reports.traffic_dashboard import Brand, load_brand
+
+_MODEL_SCHEMA = "seohead.technical-audit-pdf/1"
+
+_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "report": "Technical SEO audit",
+        "source_site_audit": "Site audit",
+        "source_sf_audit": "Screaming Frog audit",
+        "audit_for": "Audit for",
+        "prepared": "Generated",
+        "scope": "Run scope",
+        "state": "Run status",
+        "complete": "Complete",
+        "complete_note": "Completed within the recorded scope; this does not establish exhaustive site coverage.",
+        "partial": "Partial",
+        "failed": "Failed",
+        "unknown": "Unknown",
+        "summary": "Audit summary",
+        "findings": "Findings",
+        "pages": "Affected pages",
+        "checks": "Checks with recorded status",
+        "backlog": "Project checklist items",
+        "coverage": "Evidence and check coverage",
+        "coverage_reported": "Coverage metadata recorded; individual checks may still be unavailable.",
+        "findings_by_severity": "Findings by severity",
+        "checks_by_state": "Checks by state",
+        "critical": "Critical",
+        "warning": "Warning",
+        "notice": "Notice",
+        "ran": "Ran",
+        "failed_checks": "Failed",
+        "skipped": "Skipped",
+        "disabled": "Disabled",
+        "finding": "Finding",
+        "severity": "Severity",
+        "page_url": "Affected URL",
+        "status_code": "Status",
+        "title": "Page title",
+        "observation": "Observation",
+        "reproduction": "Recorded evidence",
+        "reason": "Reason",
+        "check": "Check",
+        "state_col": "State",
+        "item": "Checklist item",
+        "count": "Count",
+        "verification": "Verification",
+        "omissions": "Projection notes",
+        "none": "No items were recorded.",
+        "not_reported": "Not reported",
+        "not_requested": "Not requested",
+        "recorded": "Recorded",
+        "unavailable": "Unavailable",
+        "declared": "Declared",
+        "no_severity_data": "Severity counts were not supplied by the source audit.",
+        "no_check_counts": "Check-state counts were not supplied by the source audit.",
+        "partial_warning": "This audit is partial. Its counts describe only the recorded scope.",
+        "failed_warning": "This audit failed. Findings and coverage may be incomplete.",
+        "unknown_warning": "The source does not establish whether this audit completed.",
+        "no_reported_scope": "The source did not record a crawl scope.",
+        "source": "Source evidence",
+        "report_footer": "Technical audit report",
+        "domain": "Site",
+        "status_code_label": "HTTP status",
+        "occurrences_count_label": "Occurrences count",
+        "occurrence_count_label": "Occurrence count",
+        "fix_hint_label": "Suggested action",
+        "remediation_status_label": "Remediation status",
+        "verification_status_label": "Verification status",
+        "details_label": "Evidence details",
+        "locations_label": "Affected locations",
+        "pages_checked_label": "Pages checked",
+        "findings_total_label": "Total findings",
+        "findings_by_severity_label": "Findings by severity",
+        "urls_crawled_label": "URLs crawled",
+        "scope_reason_label": "Scope reason",
+        "operation_label": "Operation",
+        "operation_bounded_site_audit": "Bounded site audit",
+    },
+    "ru": {
+        "report": "Технический SEO-аудит",
+        "source_site_audit": "Аудит сайта",
+        "source_sf_audit": "Аудит Screaming Frog",
+        "audit_for": "Аудит сайта",
+        "prepared": "Сформирован",
+        "scope": "Объём проверки",
+        "state": "Статус запуска",
+        "complete": "Завершён",
+        "complete_note": "Завершён в пределах записанного объёма; это не подтверждает полный обход сайта.",
+        "partial": "Частичный",
+        "failed": "Ошибка",
+        "unknown": "Неизвестен",
+        "summary": "Итоги аудита",
+        "findings": "Проблемы",
+        "pages": "Затронутые страницы",
+        "checks": "Проверки со статусом",
+        "backlog": "Задачи проекта",
+        "coverage": "Источники данных и покрытие проверок",
+        "coverage_reported": "Данные о покрытии записаны; отдельные проверки могут быть недоступны.",
+        "findings_by_severity": "Проблемы по важности",
+        "checks_by_state": "Проверки по статусу",
+        "critical": "Критические",
+        "warning": "Предупреждения",
+        "notice": "Замечания",
+        "ran": "Выполнены",
+        "failed_checks": "С ошибкой",
+        "skipped": "Пропущены",
+        "disabled": "Отключены",
+        "finding": "Проблема",
+        "severity": "Важность",
+        "page_url": "Затронутый URL",
+        "status_code": "Статус",
+        "title": "Заголовок страницы",
+        "observation": "Наблюдение",
+        "reproduction": "Сохранённое свидетельство",
+        "reason": "Причина",
+        "check": "Проверка",
+        "state_col": "Статус",
+        "item": "Пункт списка задач",
+        "count": "Количество",
+        "verification": "Проверка исправления",
+        "omissions": "Примечания к проекции",
+        "none": "Записей нет.",
+        "not_reported": "Не указано",
+        "not_requested": "Не запрашивалось",
+        "recorded": "Записаны",
+        "unavailable": "Недоступно",
+        "declared": "Заявлено",
+        "no_severity_data": "Исходный аудит не содержит счётчиков проблем по важности.",
+        "no_check_counts": "Исходный аудит не содержит счётчиков статусов проверок.",
+        "partial_warning": "Аудит выполнен частично. Счётчики относятся только к записанному объёму.",
+        "failed_warning": "Аудит завершился ошибкой. Данные о проблемах и покрытии могут быть неполными.",
+        "unknown_warning": "Источник не подтверждает, завершился ли аудит.",
+        "no_reported_scope": "Источник не записал объём обхода.",
+        "source": "Сохранённые данные",
+        "report_footer": "Технический аудит",
+        "domain": "Сайт",
+        "status_code_label": "HTTP-статус",
+        "occurrences_count_label": "Число повторений",
+        "occurrence_count_label": "Число повторений",
+        "fix_hint_label": "Рекомендация",
+        "remediation_status_label": "Статус исправления",
+        "verification_status_label": "Статус проверки",
+        "details_label": "Детали свидетельства",
+        "locations_label": "Места обнаружения",
+        "pages_checked_label": "Проверено страниц",
+        "findings_total_label": "Всего проблем",
+        "findings_by_severity_label": "Проблемы по важности",
+        "urls_crawled_label": "Обойдено URL",
+        "scope_reason_label": "Причина ограничения",
+        "operation_label": "Операция",
+        "operation_bounded_site_audit": "Ограниченный аудит сайта",
+    },
+}
+
+
+def _mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _escape(value: Any, fallback: str = "") -> str:
+    return html.escape(fallback if value is None else str(value), quote=True)
+
+
+def _count(value: Any, lang: str) -> str:
+    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+        return _LABELS[lang]["not_reported"]
+    integer = int(value)
+    return f"{integer:,}" if lang == "en" else f"{integer:,}".replace(",", "\u202f")
+
+
+def _field_rows(value: Any, lang: str) -> list[tuple[str, Any]]:
+    if not isinstance(value, Mapping):
+        return []
+    rows = []
+    for key, item in value.items():
+        if item is None or item == "":
+            continue
+        if isinstance(item, (Mapping, list)):
+            text = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        elif isinstance(item, (str, int, float, bool)):
+            text = str(item)
+        else:
+            continue
+        rows.append((_key_title(key, lang), text))
+    return rows
+
+
+def _key_title(value: Any, lang: str | None = None) -> str:
+    text = str(value or "").replace("_", " ").strip()
+    localized = _LABELS.get(lang or "", {}).get(f"{str(value or '').lower()}_label")
+    if localized:
+        return localized
+    return text[:1].upper() + text[1:] if text else ""
+
+
+def _state_label(value: Any, lang: str) -> str:
+    state = str(value or "unknown").lower()
+    labels = _LABELS[lang]
+    states = {
+        "complete": labels["complete"],
+        "partial": labels["partial"],
+        "failed": labels["failed"],
+        "unknown": labels["unknown"],
+        "not_requested": labels["not_requested"],
+        "recorded": labels["recorded"],
+        "reported": labels["recorded"],
+        "unavailable": labels["unavailable"],
+        "measured": "Measured" if lang == "en" else "Измерено",
+        "absent": "Absent" if lang == "en" else "Отсутствует",
+        "skipped": labels["skipped"],
+        "disabled": labels["disabled"],
+        "not_run": "Not run" if lang == "en" else "Не запускалось",
+        "run": "Run" if lang == "en" else "Запуск",
+        "stale": "Stale" if lang == "en" else "Устарело",
+        "not_applicable": "Not applicable" if lang == "en" else "Не применимо",
+        "open": "Open" if lang == "en" else "Открыто",
+        "verified": "Verified" if lang == "en" else "Проверено",
+    }
+    return states.get(state, str(value or labels["unknown"]))
+
+
+def _severity_label(value: Any, lang: str) -> str:
+    labels = _LABELS[lang]
+    return {
+        "critical": labels["critical"],
+        "warning": labels["warning"],
+        "notice": labels["notice"],
+    }.get(str(value or "").lower(), str(value or labels["not_reported"]))
+
+
+def _table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, lang: str) -> str:
+    header_html = "".join(f'<th scope="col">{_escape(label)}</th>' for label in headers)
+    if not rows:
+        return f'<p class="empty">{_escape(_LABELS[lang]["none"])}</p>'
+    body_html = "".join(
+        "<tr>" + "".join(f"<td>{_escape(value)}</td>" for value in row) + "</tr>" for row in rows
+    )
+    return f'<div class="table-wrap"><table><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table></div>'
+
+
+def _chapter(number: str, title: str, *, kicker: str = "") -> str:
+    return (
+        '<div class="chapter">'
+        f'<span class="chapter-number">{_escape(number)}</span>'
+        "<div>"
+        + (f'<p class="kicker">{_escape(kicker)}</p>' if kicker else "")
+        + f"<h2>{_escape(title)}</h2></div></div>"
+    )
+
+
+def _status(run: Mapping[str, Any], lang: str) -> str:
+    labels = _LABELS[lang]
+    value = run.get("state")
+    allowed = {"complete", "partial", "failed", "unknown"}
+    state = value if value in allowed else "unknown"
+    reasons = run.get("reasons")
+    reason_html = "".join(f"<li>{_escape(reason)}</li>" for reason in reasons or [])
+    scope = run.get("scope")
+    scope_text = _scope_text(scope, lang)
+    note = {
+        "complete": labels["complete_note"],
+        "partial": labels["partial_warning"],
+        "failed": labels["failed_warning"],
+        "unknown": labels["unknown_warning"],
+    }[state]
+    return (
+        f'<aside class="run-state state-{state}" data-state="{state}">'
+        f'<div class="state-label">{_escape(labels["state"])} · '
+        f"{_escape(labels[state])}</div>"
+        + (f'<p class="state-note">{_escape(note)}</p>' if note else "")
+        + f"<p><b>{_escape(labels['scope'])}:</b> {_escape(scope_text)}</p>"
+        + (f"<ul>{reason_html}</ul>" if reason_html else "")
+        + "</aside>"
+    )
+
+
+def _scope_text(scope: Any, lang: str) -> Any:
+    if scope in (None, "", {}, []):
+        return _LABELS[lang]["no_reported_scope"]
+    if isinstance(scope, Mapping):
+        parts = []
+        for key, value in scope.items():
+            operation = _LABELS[lang].get(f"operation_{value}") if key == "operation" else None
+            parts.append(f"{_key_title(key, lang)}: {operation or value}")
+        return "; ".join(parts)
+    if isinstance(scope, list):
+        return "; ".join(str(item) for item in scope)
+    return scope
+
+
+def _count_value(section: Mapping[str, Any], key: str) -> Any:
+    return _mapping(section.get(key)).get("projected_count")
+
+
+def _summary_cards(summary: Mapping[str, Any], lang: str) -> str:
+    labels = _LABELS[lang]
+    counts = _mapping(summary.get("counts"))
+    cards = []
+    for key, label in (
+        ("findings", labels["findings"]),
+        ("pages", labels["pages"]),
+        ("checks", labels["checks"]),
+        ("backlog", labels["backlog"]),
+    ):
+        record = _mapping(counts.get(key))
+        value = record.get("projected_count")
+        source_count = record.get("source_count", record.get("source_total"))
+        declared = record.get("declared_count")
+        details = []
+        if source_count is not None:
+            details.append(f"{_escape(labels['source'])}: {_escape(_count(source_count, lang))}")
+        if declared is not None and declared != source_count:
+            details.append(f"{_escape(labels['declared'])}: {_escape(_count(declared, lang))}")
+        cards.append(
+            '<div class="metric-card">'
+            f"<span>{_escape(label)}</span>"
+            f"<strong>{_escape(_count(value, lang))}</strong>"
+            f"<small>{' · '.join(details)}</small>"
+            "</div>"
+        )
+    return '<div class="metric-grid">' + "".join(cards) + "</div>"
+
+
+def _chart(
+    title: str, labels: Sequence[str], values: Sequence[Any], *, lang: str, brand: Brand
+) -> str:
+    pairs = list(zip(labels, values, strict=True))
+    if not pairs or any(
+        type(value) not in (int, float) or not math.isfinite(value) or value < 0
+        for _label, value in pairs
+    ):
+        return (
+            '<figure class="chart-card"><figcaption>'
+            + _escape(title)
+            + '</figcaption><p class="empty">'
+            + _escape(_LABELS[lang]["not_reported"])
+            + "</p></figure>"
+        )
+    chart = bar_chart(
+        [label for label, _value in pairs],
+        [
+            Series(
+                name=title,
+                values=[value for _label, value in pairs],
+                color=brand.accent,
+                labels=True,
+            )
+        ],
+        width=520,
+        height=210,
+        fmt=lambda value: _count(value, lang),
+        ink=brand.ink,
+        grid=brand.table_header,
+        title=title,
+    )
+    return f'<figure class="chart-card"><figcaption>{_escape(title)}</figcaption>{chart}</figure>'
+
+
+def _severity_chart(summary: Mapping[str, Any], *, lang: str, brand: Brand) -> str:
+    source = _mapping(summary.get("source"))
+    counts = next(
+        (
+            _mapping(source.get(key))
+            for key in ("findings_by_severity", "severity_counts", "by_severity")
+            if isinstance(source.get(key), Mapping)
+        ),
+        {},
+    )
+    labels = _LABELS[lang]
+    values = [counts.get(key) for key in ("critical", "warning", "notice")]
+    if any(type(value) not in (int, float) or not math.isfinite(value) for value in values):
+        return (
+            f'<figure class="chart-card"><figcaption>{_escape(labels["findings_by_severity"])}</figcaption>'
+            f'<p class="empty">{_escape(labels["no_severity_data"])}</p></figure>'
+        )
+    return _chart(
+        labels["findings_by_severity"],
+        [labels[key] for key in ("critical", "warning", "notice")],
+        values,
+        lang=lang,
+        brand=brand,
+    )
+
+
+def _checks_chart(summary: Mapping[str, Any], *, lang: str, brand: Brand) -> str:
+    counts = _mapping(_mapping(summary.get("counts")).get("checks"))
+    labels = _LABELS[lang]
+    fields = (
+        ("ran", labels["ran"]),
+        ("failed", labels["failed_checks"]),
+        ("skipped", labels["skipped"]),
+        ("disabled", labels["disabled"]),
+    )
+    values = [counts.get(key, counts.get(f"{key}_count")) for key, _label in fields]
+    if any(type(value) not in (int, float) or not math.isfinite(value) for value in values):
+        return (
+            f'<figure class="chart-card"><figcaption>{_escape(labels["checks_by_state"])}</figcaption>'
+            f'<p class="empty">{_escape(labels["no_check_counts"])}</p></figure>'
+        )
+    return _chart(
+        labels["checks_by_state"],
+        [label for _key, label in fields],
+        values,
+        lang=lang,
+        brand=brand,
+    )
+
+
+def _finding_cards(findings: Sequence[Any], *, lang: str) -> str:
+    labels = _LABELS[lang]
+    output = []
+    for index, value in enumerate(findings, start=1):
+        finding = _mapping(value)
+        display = _mapping(finding.get("display"))
+        record = _mapping(finding.get("record"))
+        severity = record.get("severity") or display.get("severity")
+        severity_label = _severity_label(severity, lang)
+        check = display.get("check_key") or record.get("check") or record.get("source") or ""
+        title = display.get("title") or record.get("title") or labels["finding"]
+        observation = display.get("observation")
+        reproduction = display.get("reproduction")
+        url = record.get("url")
+        source_ref = _mapping(finding.get("source_ref"))
+        source_id = source_ref.get("id_if_present")
+        parts = [
+            f'<article class="finding-card severity-{_escape(str(severity).lower())}">',
+            '<div class="finding-heading">',
+            f'<span class="finding-number">{index:02d}</span>',
+            f'<div><p class="finding-meta">{_escape(severity_label)}'
+            + (f" · {_escape(check)}" if check else "")
+            + (f" · {_escape(source_id)}" if source_id else "")
+            + "</p>"
+            + f"<h3>{_escape(title)}</h3></div></div>",
+        ]
+        if observation:
+            parts.append(f"<p><b>{_escape(labels['observation'])}:</b> {_escape(observation)}</p>")
+        if reproduction:
+            parts.append(
+                f"<p><b>{_escape(labels['reproduction'])}:</b> {_escape(reproduction)}</p>"
+            )
+        if url:
+            parts.append(f'<p class="url"><b>{_escape(labels["page_url"])}:</b> {_escape(url)}</p>')
+        for key in (
+            "status_code",
+            "occurrences_count",
+            "occurrence_count",
+            "fix_hint",
+            "remediation_status",
+            "verification_status",
+            "details",
+            "locations",
+        ):
+            if record.get(key) not in (None, "", [], {}):
+                rendered = (
+                    json.dumps(
+                        record[key], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                    )
+                    if isinstance(record[key], (Mapping, list))
+                    else str(record[key])
+                )
+                if key.endswith("_status") or key == "status":
+                    rendered = _state_label(rendered, lang)
+                parts.append(
+                    f'<p class="evidence-extra"><b>{_escape(_key_title(key, lang))}:</b> '
+                    f"{_escape(rendered)}</p>"
+                )
+        parts.append("</article>")
+        output.append("".join(parts))
+    return "".join(output) if output else f'<p class="empty">{_escape(labels["none"])}</p>'
+
+
+def _page_rows(pages: Sequence[Any]) -> list[list[Any]]:
+    rows = []
+    for value in pages:
+        page = _mapping(value)
+        record = _mapping(page.get("record"))
+        rows.append(
+            [
+                record.get("url"),
+                record.get("status", record.get("status_code")),
+                record.get("title"),
+            ]
+        )
+    return rows
+
+
+def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
+    labels = _LABELS[lang]
+    rows = []
+    entries = []
+    for section in ("source_evidence", "source_check_coverage", "groups", "checks"):
+        value = coverage.get(section)
+        if isinstance(value, list):
+            entries.extend(value)
+        elif isinstance(value, Mapping):
+            entries.append({"kind": section.replace("_", " "), "record": value})
+    for value in entries:
+        check = _mapping(value)
+        record = _mapping(check.get("record", check))
+        display = _mapping(check.get("display"))
+        key = (
+            display.get("title")
+            or check.get("kind")
+            or record.get("check")
+            or record.get("id")
+            or record.get("tool")
+            or record.get("name")
+            or labels["check"]
+        )
+        raw_state = check.get("state") or record.get("state")
+        state = _state_label(raw_state, lang) if raw_state else labels["not_reported"]
+        reason = check.get("reason") or record.get("reason") or record.get("error")
+        if not reason:
+            details = {
+                key: item
+                for key, item in record.items()
+                if key not in {"id", "name", "check", "tool", "state", "reason", "error"}
+            }
+            if details:
+                reason = json.dumps(
+                    details, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                )
+        rows.append([key, state, reason])
+    return rows
+
+
+def _backlog_rows(backlog: Mapping[str, Any], lang: str) -> list[list[Any]]:
+    labels = _LABELS[lang]
+    rows = []
+    for value in backlog.get("items") or []:
+        item = _mapping(value)
+        title = item.get("title") or item.get("name") or item.get("id") or labels["item"]
+        raw_state = item.get("state") or item.get("attempt_status") or item.get("status")
+        raw_verification = item.get("verification") or item.get("verification_status")
+        state = _state_label(raw_state, lang) if raw_state else labels["not_reported"]
+        verification = (
+            _state_label(raw_verification, lang) if raw_verification else labels["not_reported"]
+        )
+        reason = item.get("reason") or item.get("blocked_by")
+        rows.append([title, state, verification, reason])
+    return rows
+
+
+def _omission_rows(omissions: Any) -> list[list[Any]]:
+    rows = []
+    for value in omissions or []:
+        omission = _mapping(value)
+        rows.append(
+            [
+                omission.get("collection") or omission.get("field"),
+                omission.get("count"),
+                omission.get("reason"),
+            ]
+        )
+    return rows
+
+
+def _styles(brand: Brand, lang: str) -> str:
+    footer = _LABELS[lang]["report_footer"].replace("\\", "\\\\").replace('"', '\\"')
+    return f"""
+@page {{
+  size: 13.333in 7.5in;
+  margin: 15mm 17mm 18mm;
+  @bottom-left {{ content: "{footer}"; color: {brand.ink}; font: 8pt {brand.font_stack}; }}
+  @bottom-right {{ content: counter(page); color: {brand.accent}; font: 8pt {brand.font_stack}; }}
+}}
+* {{ box-sizing: border-box; }}
+html {{ color: {brand.ink}; font-family: {brand.font_stack}; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+body {{ margin: 0; line-height: 1.45; }}
+header {{ border-bottom: 1px solid {brand.table_header}; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 8px; margin: 0 0 18px; color: {brand.ink}; }}
+.brand {{ display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .04em; }}
+.brand-mark {{ display: inline-flex; align-items: end; gap: 2px; height: 16px; }}
+.brand-mark i {{ display: block; width: 4px; border-radius: 2px; background: {brand.accent}; }}
+.brand-mark i:nth-child(1) {{ height: 7px; }} .brand-mark i:nth-child(2) {{ height: 11px; }} .brand-mark i:nth-child(3) {{ height: 16px; }}
+.header-site {{ color: #64748B; font-size: 9pt; text-align: right; overflow-wrap: anywhere; }}
+h1 {{ font-size: 26pt; line-height: 1.08; letter-spacing: -.02em; margin: 5px 0 4px; }}
+h2 {{ font-size: 19pt; line-height: 1.15; margin: 0; }} h3 {{ font-size: 12pt; line-height: 1.25; margin: 2px 0 7px; }}
+p {{ margin: 5px 0; }} .subtitle {{ color: #64748B; font-size: 11pt; margin: 0 0 16px; }}
+.kicker {{ color: {brand.accent}; font-size: 8pt; font-weight: 700; letter-spacing: .1em; margin: 0 0 4px; text-transform: uppercase; }}
+.run-state {{ border-left: 4px solid {brand.accent}; background: {brand.card}; padding: 10px 13px; margin: 10px 0 14px; break-inside: avoid; }}
+.state-partial,.state-failed,.state-unknown {{ border-left-color: {brand.negative}; background: #FFF7F4; }}
+.state-label {{ font-weight: 700; font-size: 10pt; }} .state-note {{ font-weight: 600; }}
+.run-state ul {{ margin: 5px 0 0; padding-left: 18px; }}
+.metric-grid {{ display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; margin: 14px 0; }}
+.metric-card {{ min-height: 72px; border: 1px solid {brand.table_header}; border-top: 3px solid {brand.accent}; background: {brand.card}; padding: 9px 11px; break-inside: avoid; }}
+.metric-card span,.metric-card small {{ display: block; color: #64748B; font-size: 8pt; }} .metric-card strong {{ display:block; font-size: 20pt; line-height: 1.15; margin: 4px 0; }} .metric-card small {{ min-height: 10px; }}
+.chart-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }}
+.chart-card {{ border: 1px solid {brand.table_header}; border-radius: 5px; padding: 8px 10px; margin: 0; break-inside: avoid; }}
+.chart-card figcaption {{ font-size: 9pt; font-weight: 700; margin-bottom: 4px; }} .chart-card svg {{ display:block; width:100%; height:auto; max-height: 155px; }}
+.chart-legend {{ display:flex; flex-wrap:wrap; gap: 4px 12px; list-style:none; padding:0; margin:0; font-size:7pt; color:#475569; }} .chart-legend li {{ display:flex; gap:5px; align-items:center; }} .chart-legend i {{ display:inline-block; width:7px; height:7px; border-radius:50%; }}
+.chapter {{ display:flex; align-items:center; gap:11px; border-bottom:1px solid {brand.table_header}; padding:0 0 10px; margin:0 0 11px; break-after:avoid; }}
+.chapter-number {{ display:grid; place-items:center; flex:none; width:34px; height:34px; border-radius:50%; background:{brand.accent}; color:#fff; font-weight:700; font-size:10pt; }}
+.chapter h2 {{ font-size:17pt; }}
+.section {{ margin: 0 0 14px; }} .section-start {{ break-before: page; }}
+.finding-card {{ border:1px solid {brand.table_header}; border-left:4px solid {brand.accent}; border-radius:4px; padding:9px 11px; margin:0 0 8px; break-inside:avoid; overflow-wrap:anywhere; }}
+.finding-card.severity-critical {{ border-left-color:{brand.negative}; }} .finding-card.severity-warning {{ border-left-color:#E58A13; }}
+.finding-heading {{ display:flex; gap:10px; align-items:flex-start; }} .finding-number {{ font-size:16pt; line-height:1; color:{brand.accent}; font-weight:700; }}
+.finding-meta {{ color:#64748B; font-size:7.5pt; font-weight:700; letter-spacing:.04em; margin:0; text-transform:uppercase; }}
+.url {{ color:#475569; overflow-wrap:anywhere; }}
+.table-wrap {{ width:100%; overflow:visible; }} table {{ width:100%; border-collapse:collapse; table-layout:fixed; font-size:8pt; }}
+thead {{ display:table-header-group; }} tr {{ break-inside:avoid; }} th {{ text-align:left; color:{brand.ink}; background:{brand.table_header}; font-size:7.5pt; padding:7px 8px; }}
+td {{ border-bottom:1px solid #E8EDF4; padding:7px 8px; vertical-align:top; overflow-wrap:anywhere; }} tr:nth-child(even) td {{ background:#FAFBFD; }}
+.empty {{ color:#64748B; font-style:italic; padding:8px 0; }} .notes {{ border-left:3px solid #E58A13; background:#FFF9ED; padding:8px 11px; break-inside:avoid; }}
+.muted {{ color:#64748B; }} .identity {{ font-size:10pt; margin-bottom:10px; }}
+"""
+
+
+def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: Any = None) -> str:
+    """Render one versioned audit PDF model into offline, print-ready localized HTML."""
+    if lang not in _LABELS:
+        raise ValueError(f"unsupported report language {lang!r}; expected one of {tuple(_LABELS)}")
+    if not isinstance(model, Mapping) or model.get("schema") != _MODEL_SCHEMA:
+        raise ValueError(f"audit PDF model must declare schema {_MODEL_SCHEMA!r}")
+
+    labels = _LABELS[lang]
+    source = _mapping(model.get("source"))
+    run = _mapping(model.get("run"))
+    summary = _mapping(model.get("summary"))
+    coverage = _mapping(model.get("coverage"))
+    backlog = _mapping(model.get("backlog"))
+    findings = model.get("findings") if isinstance(model.get("findings"), list) else []
+    pages = model.get("pages") if isinstance(model.get("pages"), list) else []
+    loaded_brand = load_brand(brand)
+    title = labels["report"]
+    domain = source.get("domain") or source.get("url") or labels["not_reported"]
+    generated = source.get("generated_at")
+    source_kind = source.get("kind")
+    source_label = (
+        labels.get(f"source_{source_kind.replace('-', '_')}")
+        if isinstance(source_kind, str)
+        else None
+    )
+    source_label = source_label or source_kind or source.get("schema") or labels["not_reported"]
+
+    head = (
+        '<!doctype html><html lang="'
+        + lang
+        + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        + f"<title>{_escape(title)} · {_escape(domain)}</title><style>{_styles(loaded_brand, lang)}</style></head><body>"
+    )
+    header = (
+        '<header><div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>'
+        + f"<span>{_escape(loaded_brand.name or labels['report'])}</span>"
+        + (
+            f'<span class="muted">{_escape(loaded_brand.logo_text)}</span>'
+            if loaded_brand.logo_text
+            else ""
+        )
+        + f'</div><div class="header-site">{_escape(domain)}</div></header>'
+    )
+
+    summary_rows = _field_rows(summary.get("source"), lang)
+    summary_table = (
+        f'<section class="section">{_table([labels["item"], labels["state_col"]], summary_rows, lang=lang)}</section>'
+        if summary_rows
+        else ""
+    )
+
+    intro = (
+        "<main>"
+        + f'<p class="kicker">{_escape(source_label)}</p>'
+        + f"<h1>{_escape(title)}</h1>"
+        + f'<p class="subtitle"><b>{_escape(labels["audit_for"])}:</b> {_escape(domain)}'
+        + (f" · <b>{_escape(labels['prepared'])}:</b> {_escape(generated)}" if generated else "")
+        + "</p>"
+        + _status(run, lang)
+        + _summary_cards(summary, lang)
+        + '<div class="chart-grid">'
+        + _severity_chart(summary, lang=lang, brand=loaded_brand)
+        + _checks_chart(summary, lang=lang, brand=loaded_brand)
+        + "</div>"
+        + summary_table
+        + "</main>"
+    )
+
+    coverage_section = (
+        '<section class="section section-start"><div class="chapter">'
+        + '<span class="chapter-number">01</span><div>'
+        + f'<p class="kicker">{_escape(labels["source"])}</p><h2>{_escape(labels["coverage"])}</h2></div></div>'
+        + f'<p class="muted">{_escape(labels["coverage_reported"] if coverage.get("state") == "reported" else _state_label(coverage.get("state"), lang) if coverage.get("state") else labels["unavailable"])}</p>'
+        + _table(
+            [labels["check"], labels["state_col"], labels["reason"]],
+            _coverage_rows(coverage, lang),
+            lang=lang,
+        )
+        + "</section>"
+    )
+
+    findings_section = (
+        f'<section class="section section-start">{_chapter("02", labels["findings"])}'
+        + f'<p class="muted">{_escape(_count(_count_value(_mapping(summary.get("counts")), "findings"), lang))} · '
+        + f"{_escape(labels['state_col'])}: {_escape(_state_label(run.get('state'), lang))}</p>"
+        + _finding_cards(findings, lang=lang)
+        + "</section>"
+    )
+
+    pages_section = (
+        f'<section class="section section-start">{_chapter("03", labels["pages"])}'
+        + _table(
+            [labels["page_url"], labels["status_code"], labels["title"]],
+            _page_rows(pages),
+            lang=lang,
+        )
+        + "</section>"
+    )
+
+    backlog_state = _state_label(backlog.get("state"), lang)
+    backlog_section = (
+        f'<section class="section section-start">{_chapter("04", labels["backlog"])}'
+        + f'<p class="muted">{_escape(backlog_state)}</p>'
+        + _table(
+            [labels["item"], labels["state_col"], labels["verification"], labels["reason"]],
+            _backlog_rows(backlog, lang),
+            lang=lang,
+        )
+        + "</section>"
+    )
+
+    omission_rows = _omission_rows(model.get("omissions"))
+    omissions_section = ""
+    if omission_rows:
+        omissions_section = (
+            f'<section class="section">{_chapter("05", labels["omissions"])}'
+            + _table([labels["item"], labels["count"], labels["reason"]], omission_rows, lang=lang)
+            + "</section>"
+        )
+
+    footer = "</body></html>"
+    return (
+        head
+        + header
+        + intro
+        + coverage_section
+        + findings_section
+        + pages_section
+        + backlog_section
+        + omissions_section
+        + footer
+    )
