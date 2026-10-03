@@ -16,9 +16,9 @@ B = ROOT + "b"
 TARGET = ROOT + "target"
 
 
-def _scan(tmp_path, edges, *, pages=(ROOT, A, B, TARGET), partial=False):
+def _scan(tmp_path, edges, *, pages=(ROOT, A, B, TARGET), partial=False, overrides=None):
     path = tmp_path / "scan.sqlite"
-    with NativeScan.create(path, **_metadata()) as scan:
+    with NativeScan.create(path, **_metadata(**(overrides or {}))) as scan:
         scan.enqueue([(url, index) for index, url in enumerate(pages)])
         for url in pages:
             lease = scan.claim(1)[0]
@@ -116,6 +116,34 @@ def test_nofollow_external_and_representation_filter(tmp_path):
     assert "rendered representation was not captured" in rendered["coverage"]["reasons"]
 
 
+def test_path_scope_is_relative_to_scan_start_and_honors_exclusions(tmp_path):
+    partner = "https://other.test/partner"
+    path = _scan(
+        tmp_path,
+        {partner: [_edge(partner, TARGET)]},
+        pages=(ROOT, partner, TARGET),
+        overrides={"scope.segments": [{"name": "partner", "host": "other.test"}]},
+    )
+    result = shortest_observed_path(path, partner, TARGET)
+    assert result["state"] == "found"
+    assert result["hops"][0]["source_url"] == partner
+
+    excluded = "https://blocked.example.test/private"
+    blocked = _scan(
+        tmp_path / "blocked",
+        {ROOT: [_edge(ROOT, excluded)]},
+        pages=(ROOT,),
+        overrides={
+            "scope.internal": "registrable_domain",
+            "scope.exclude_hosts": ["blocked.example.test"],
+        },
+    )
+    assert reverse_inlinks(blocked, excluded)["returned"] == 1
+    assert shortest_observed_path(blocked, ROOT, excluded)["state"] == (
+        "unreachable_in_observed_graph"
+    )
+
+
 def test_raw_and_rendered_edges_are_separate_observations(tmp_path):
     path = tmp_path / "scan.sqlite"
     with NativeScan.create(path, **_metadata()) as scan:
@@ -163,7 +191,7 @@ def test_reverse_occurrences_are_distinct_paginated_and_fragment_aware(tmp_path)
         },
     )
     first = reverse_inlinks(path, TARGET, limit=2)
-    second = reverse_inlinks(path, TARGET, limit=2, after_link_id=first["next_after_link_id"])
+    second = reverse_inlinks(path, TARGET, limit=2, cursor=first["next_cursor"])
     assert first["has_more"] is True
     assert second["has_more"] is False
     assert first["returned"] == second["returned"] == 2
@@ -185,9 +213,7 @@ def test_reverse_byte_budget_returns_a_resumable_page(tmp_path):
     first = reverse_inlinks(path, TARGET, max_bytes=4096)
     assert first["returned"] == 1
     assert first["has_more"] is True
-    second = reverse_inlinks(
-        path, TARGET, max_bytes=4096, after_link_id=first["next_after_link_id"]
-    )
+    second = reverse_inlinks(path, TARGET, max_bytes=4096, cursor=first["next_cursor"])
     assert second["returned"] == 1
     assert second["has_more"] is False
 
@@ -212,3 +238,18 @@ def test_invalid_reverse_options_and_url_are_rejected(tmp_path):
         reverse_inlinks(tmp_path / "none.sqlite", "file:///etc/passwd")
     with pytest.raises(ScanError):
         reverse_inlinks(tmp_path / "none.sqlite", TARGET, limit=501)
+
+
+def test_reverse_cursor_rejects_other_target_representation_and_scan(tmp_path):
+    path = _scan(tmp_path, {ROOT: [_edge(ROOT, TARGET), _edge(ROOT, TARGET), _edge(ROOT, A)]})
+    cursor = reverse_inlinks(path, TARGET, limit=1)["next_cursor"]
+    assert isinstance(cursor, str)
+    with pytest.raises(ScanError, match="different scan, revision, target, or representation"):
+        reverse_inlinks(path, A, cursor=cursor)
+    with pytest.raises(ScanError, match="different scan, revision, target, or representation"):
+        reverse_inlinks(path, TARGET, representation="static", cursor=cursor)
+    other = _scan(tmp_path / "other", {ROOT: [_edge(ROOT, TARGET)]})
+    with pytest.raises(ScanError, match="different scan, revision, target, or representation"):
+        reverse_inlinks(other, TARGET, cursor=cursor)
+    with pytest.raises(ScanError, match="cursor is invalid"):
+        reverse_inlinks(path, TARGET, cursor="not-a-valid-cursor")

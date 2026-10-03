@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
+import re
 import sqlite3
 import time
 from collections import deque
@@ -15,6 +19,7 @@ from seohead.crawl.spider import Scope, _canonical_key
 from . import ScanError, open_scan
 
 _REPRESENTATIONS = {"all", "static", "rendered", "legacy_fragment", "legacy_unknown"}
+_CURSOR_CHARS = re.compile(r"[A-Za-z0-9_-]{1,2048}\Z")
 _ORDER = (
     "CASE l.evidence_representation WHEN 'static' THEN 0 "
     "WHEN 'rendered' THEN 1 WHEN 'legacy_fragment' THEN 2 ELSE 3 END, "
@@ -53,7 +58,7 @@ def _representation(value: str) -> str:
 def _header(con, representation: str) -> dict[str, Any]:
     row = con.execute(
         "SELECT scan_uuid,evidence_revision,lifecycle,finish_reason,crawl_partial,"
-        "capabilities_json,limitations_json,config_json FROM scan WHERE singleton=1"
+        "capabilities_json,limitations_json,config_json,start_url FROM scan WHERE singleton=1"
     ).fetchone()
     capabilities = json.loads(row["capabilities_json"])
     links = capabilities.get("links") or {
@@ -100,6 +105,7 @@ def _header(con, representation: str) -> dict[str, Any]:
             "scope": "retained links in this scan and selected representation",
         },
         "config": json.loads(row["config_json"]),
+        "start_url": row["start_url"],
     }
 
 
@@ -180,6 +186,9 @@ def shortest_observed_path(
     try:
         header = _header(con, representation)
         scope = Scope.from_config(header.pop("config").get("scope"))
+        scan_start = header.pop("start_url") or seed_key
+        start_host = (urlsplit(scan_start).hostname or "").lower()
+        start_key = _canonical_key(scan_start)
         result: dict[str, Any] = {
             **header,
             "seed": seed_key,
@@ -236,8 +245,8 @@ def shortest_observed_path(
                         break
                     examined += 1
                     destination = _canonical_key(row["destination_url"])
-                    if row["nofollow"] or not scope.is_internal(
-                        destination, urlsplit(seed_key).hostname or ""
+                    if row["nofollow"] or (
+                        destination != start_key and scope.rejection(destination, start_host)
                     ):
                         continue
                     if destination in parents:
@@ -278,12 +287,69 @@ def shortest_observed_path(
         con.close()
 
 
+def _encode_cursor(header: dict[str, Any], target: str, representation: str, link_id: int) -> str:
+    payload = {
+        "version": "scan_inlinks.v1",
+        "scan_uuid": header["scan_uuid"],
+        "evidence_revision": header["evidence_revision"],
+        "target_sha256": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+        "representation": representation,
+        "last_link_id": link_id,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _decode_cursor(
+    cursor: str | None, header: dict[str, Any], target: str, representation: str
+) -> int:
+    if cursor is None:
+        return 0
+    if not isinstance(cursor, str) or not _CURSOR_CHARS.fullmatch(cursor):
+        raise ScanError("inlink cursor is invalid")
+    try:
+        raw = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
+        value = json.loads(raw)
+    except (binascii.Error, UnicodeError, ValueError) as exc:
+        raise ScanError("inlink cursor is invalid") from exc
+    if (
+        not isinstance(value, dict)
+        or set(value)
+        != {
+            "version",
+            "scan_uuid",
+            "evidence_revision",
+            "target_sha256",
+            "representation",
+            "last_link_id",
+        }
+        or value["version"] != "scan_inlinks.v1"
+        or type(value["last_link_id"]) is not int
+        or value["last_link_id"] < 1
+        or type(value["evidence_revision"]) is not int
+    ):
+        raise ScanError("inlink cursor is invalid")
+    if any(
+        value[key] != expected
+        for key, expected in (
+            ("scan_uuid", header["scan_uuid"]),
+            ("evidence_revision", header["evidence_revision"]),
+            ("target_sha256", hashlib.sha256(target.encode("utf-8")).hexdigest()),
+            ("representation", representation),
+        )
+    ):
+        raise ScanError(
+            "inlink cursor belongs to a different scan, revision, target, or representation"
+        )
+    return value["last_link_id"]
+
+
 def reverse_inlinks(
     scan_path: str | Path,
     target: str,
     *,
     representation: str = "all",
-    after_link_id: int = 0,
+    cursor: str | None = None,
     limit: int = 100,
     max_bytes: int = 1_048_576,
     timeout_seconds: float = 15.0,
@@ -292,9 +358,7 @@ def reverse_inlinks(
     target_key = _url(target, "target")
     representation = _representation(representation)
     if (
-        type(after_link_id) is not int
-        or after_link_id < 0
-        or type(limit) is not int
+        type(limit) is not int
         or not 1 <= limit <= 500
         or type(max_bytes) is not int
         or not 4096 <= max_bytes <= 8_388_608
@@ -302,12 +366,14 @@ def reverse_inlinks(
         or not 0 < timeout_seconds <= 30
     ):
         raise ScanError(
-            "invalid inlink page; cursor >= 0, limit 1..500, max_bytes 4096..8388608, timeout 0..30s"
+            "invalid inlink page; limit 1..500, max_bytes 4096..8388608, timeout 0..30s"
         )
     con = open_scan(scan_path, require_audit=False)
     try:
         header = _header(con, representation)
         header.pop("config")
+        header.pop("start_url")
+        after_link_id = _decode_cursor(cursor, header, target_key, representation)
         where = "AND l.evidence_representation=?" if representation != "all" else ""
         first, second = _spellings(target_key)
         params = [
@@ -356,12 +422,19 @@ def reverse_inlinks(
                 raise
             state = "limit_reached"
             has_more = True
+        next_cursor = None
+        if has_more:
+            next_cursor = (
+                _encode_cursor(header, target_key, representation, items[-1]["link_id"])
+                if items
+                else cursor
+            )
         return {
             **header,
             "target": target_key,
             "representation": representation,
             "identity": "exact destination URL plus its fragment occurrences",
-            "after_link_id": after_link_id,
+            "cursor": cursor,
             "limit": limit,
             "max_bytes": max_bytes,
             "bytes": used,
@@ -370,7 +443,7 @@ def reverse_inlinks(
             "items": items,
             "returned": len(items),
             "has_more": has_more,
-            "next_after_link_id": items[-1]["link_id"] if has_more and items else None,
+            "next_cursor": next_cursor,
         }
     finally:
         con.close()

@@ -611,12 +611,13 @@ are excluded from traversal. URL identity follows the crawler's fragmentless
 exact URL rule; it does not fold a page's trailing slash or path case.
 
 `reverse_inlinks` returns retained occurrences, including duplicates and
-fragment links to the selected target, in stable link-ID pages. Its cursor is
-`after_link_id` and its defaults are 100 rows, 1 MiB serialized item bytes,
-and 15 seconds. Rows preserve raw/rendered identity. A blank position is
-unmeasured. Each result includes the scan UUID and evidence revision so clients
-can avoid combining pages from different scan snapshots. These are Python core
-functions; shared CLI/MCP registration belongs to issue #807.
+fragment links to the selected target, in stable link-ID pages. Its opaque
+`cursor` is bound to the scan UUID, evidence revision, target and representation;
+using it with another query is refused. Defaults are 100 rows, 1 MiB serialized
+item bytes, and 15 seconds. Rows preserve raw/rendered identity. A blank
+position is unmeasured. Each result includes the scan UUID and evidence revision
+so clients can avoid combining pages from different scan snapshots. These are
+Python core functions; shared CLI/MCP registration belongs to issue #807.
 
 A found path proves only that these retained edges connect the two URLs.
 `unreachable_in_observed_graph` does not prove a site-wide orphan. The result
