@@ -436,8 +436,14 @@ def snapshot_scan(path: str | Path, destination: str | Path) -> str:
                 temp_margin_bytes=audit_source.stat().st_size if has_audit_v2 else 0,
             )
             if has_audit_v2:
-                with audit_source.open("rb") as src, staged_audit.open("xb") as dest:
-                    shutil.copyfileobj(src, dest, length=1024 * 1024)
+                audit_fd = os.open(
+                    staged_audit,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                )
+                with os.fdopen(audit_fd, "wb") as dest:
+                    with audit_source.open("rb") as src:
+                        shutil.copyfileobj(src, dest, length=1024 * 1024)
                     dest.flush()
                     os.fsync(dest.fileno())
                 with AuditV2Reader(staged_scan):
@@ -649,7 +655,23 @@ def prune_apply(directory: str | Path, plan: dict) -> list[str]:
                 path.unlink()
             except OSError:
                 if hold_path is not None:
-                    os.link(hold_path, audit_path, follow_symlinks=False)
+                    try:
+                        os.link(hold_path, audit_path, follow_symlinks=False)
+                    except FileExistsError as exc:
+                        if not os.path.samefile(hold_path, audit_path):
+                            raise ScanError(
+                                f"could not restore pruned audit companion; recovery copy remains at {hold_path}"
+                            ) from exc
+                    except OSError as exc:
+                        raise ScanError(
+                            f"could not restore pruned audit companion; recovery copy remains at {hold_path}: {exc}"
+                        ) from exc
+                    try:
+                        hold_path.unlink()
+                    except OSError as exc:
+                        raise ScanError(
+                            f"scan was preserved but audit companion has a duplicate recovery link at {hold_path}: {exc}"
+                        ) from exc
                 raise
             if hold_path is not None:
                 hold_path.unlink()

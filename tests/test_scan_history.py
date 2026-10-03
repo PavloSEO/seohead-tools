@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -205,8 +206,14 @@ def test_snapshot_and_prune_keep_audit_v2_companions_paired(tmp_path):
     _finished(source, captured=False)
     attach_sidecar(source)
     target = tmp_path / "snapshot.sqlite"
-    snapshot_scan(source, target)
+    prior_umask = os.umask(0o022)
+    try:
+        snapshot_scan(source, target)
+    finally:
+        os.umask(prior_umask)
     assert target.exists() and audit_v2_path(target).exists()
+    if os.name != "nt":
+        assert stat.S_IMODE(audit_v2_path(target).stat().st_mode) == 0o600
     with AuditV2Reader(target) as audit:
         assert audit.count("/issues") == 0
     listing = list_scans(tmp_path)
@@ -225,6 +232,26 @@ def test_snapshot_and_prune_keep_audit_v2_companions_paired(tmp_path):
     victim = Path(plan["candidates"][0]["path"])
     victim_audit = audit_v2_path(victim)
     assert victim_audit.exists()
+    original_unlink = Path.unlink
+
+    def fail_scan_unlink(path, *args, **kwargs):
+        if path == victim:
+            raise PermissionError("injected scan unlink failure")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(Path, "unlink", fail_scan_unlink)
+    try:
+        with pytest.raises(PermissionError, match="injected scan unlink failure"):
+            prune_apply(prune_dir, plan)
+    finally:
+        monkeypatch.undo()
+    assert victim.exists() and victim_audit.exists()
+    assert victim_audit.stat().st_nlink == 1
+    assert not list(prune_dir.glob(".*.prune-hold-*"))
+    with AuditV2Reader(victim) as audit:
+        assert audit.count("/issues") == 0
+
     assert str(victim) in prune_apply(prune_dir, plan)
     assert not victim.exists()
     assert not victim_audit.exists()

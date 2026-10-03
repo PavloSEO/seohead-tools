@@ -217,7 +217,6 @@ def write_audit_v2(
         fd, temporary = tempfile.mkstemp(
             prefix=f".{companion.name}.", suffix=".tmp", dir=companion.parent
         )
-        os.fchmod(fd, 0o600)
         os.close(fd)
         fd = -1
         con = sqlite3.connect(temporary)
