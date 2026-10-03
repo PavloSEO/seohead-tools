@@ -253,6 +253,9 @@ Proxy failures never switch to direct egress. The manifest records the safe prox
 whether authentication was configured, never its value. Proxied crawls require `cache.mode=off`
 and cannot resume from saved legacy or SQLite frontiers; start a new output instead. CA bundles
 may be selected with `SSL_CERT_FILE` or `SSL_CERT_DIR`, while TLS verification remains enabled.
+Proxied HTTPS uses a fresh verified CONNECT tunnel for each request, with the origin hostname
+kept for SNI and certificate validation even though CONNECT names its vetted IP; HTTP/2 and
+keepalive reuse are disabled on this route to avoid mixing hostnames on one IP.
 The same policy is reachable with `--set http.proxy=env:SEOHEAD_CRAWL_PROXY` or the MCP
 `seo_crawl_site` overrides. Browser subrequests remain on the pinned HTTP route; unsupported
 methods and WebSockets retain their existing unavailable behavior.

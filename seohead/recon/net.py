@@ -28,6 +28,7 @@ import re
 import shutil
 import socket
 import subprocess
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
@@ -36,6 +37,9 @@ UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools
 PRIVATE_NETWORK_ENV = "SEOHEAD_ALLOW_PRIVATE_NETWORKS"
 PRIVATE_HOST_ALLOWLIST_ENV = "SEOHEAD_ALLOW_PRIVATE_HOSTS"
 _PROXY_ENV_REF = re.compile(r"^env:([A-Za-z_][A-Za-z0-9_]*)$")
+_PROXY_TLS_IDENTITY: ContextVar[tuple[str, str] | None] = ContextVar(
+    "seohead_proxy_tls_identity", default=None
+)
 
 DOH_ENDPOINTS = (
     "https://cloudflare-dns.com/dns-query",
@@ -60,6 +64,49 @@ class ProxyRoute:
     proxy: Any = field(repr=False)
     identity: str
     authenticated: bool
+
+
+class _ProxyTLSStream:
+    """Keep CONNECT's vetted IP while verifying TLS against the original host."""
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._stream.read(max_bytes, timeout=timeout)
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._stream.write(buffer, timeout=timeout)
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._stream.get_extra_info(info)
+
+    def start_tls(self, ssl_context: Any, server_hostname: str | None = None, timeout=None):
+        identity = _PROXY_TLS_IDENTITY.get()
+        if identity is None or server_hostname != identity[0]:
+            raise NetworkUnavailable("proxied TLS identity is unavailable")
+        return self._stream.start_tls(
+            ssl_context=ssl_context, server_hostname=identity[1], timeout=timeout
+        )
+
+
+class _ProxyTLSBackend:
+    """Wrap only an explicit HTTP proxy's tunnel stream; leave direct clients alone."""
+
+    def __init__(self, backend: Any) -> None:
+        self._backend = backend
+
+    def connect_tcp(self, *args: Any, **kwargs: Any) -> _ProxyTLSStream:
+        return _ProxyTLSStream(self._backend.connect_tcp(*args, **kwargs))
+
+    def connect_unix_socket(self, *args: Any, **kwargs: Any):
+        return self._backend.connect_unix_socket(*args, **kwargs)
+
+    def sleep(self, seconds: float) -> None:
+        self._backend.sleep(seconds)
 
 
 def resolve_proxy_route(value: str, *, allow_private: bool = False) -> ProxyRoute | None:
@@ -435,6 +482,13 @@ def _get_pinning_transport_cls() -> type:
                     stream=request.stream,
                     extensions={**request.extensions, **pin_extensions},
                 )
+            proxy_route = getattr(self, "_seohead_proxy_route", None)
+            tls_token = None
+            if proxy_route is not None and request.url.scheme == "https":
+                original_host = request.extensions.get("sni_hostname")
+                if not isinstance(original_host, str):
+                    raise NetworkUnavailable("proxied TLS identity is unavailable")
+                tls_token = _PROXY_TLS_IDENTITY.set((request.url.host, original_host))
             try:
                 response = super().handle_request(request)
             except httpx.ProxyError as exc:
@@ -459,6 +513,9 @@ def _get_pinning_transport_cls() -> type:
                 if getattr(self, "_seohead_proxy_route", None) is None:
                     raise
                 raise NetworkUnavailable("proxied request failed") from None
+            finally:
+                if tls_token is not None:
+                    _PROXY_TLS_IDENTITY.reset(tls_token)
             if (
                 getattr(self, "_seohead_proxy_route", None) is not None
                 and response.status_code == 407
@@ -469,6 +526,20 @@ def _get_pinning_transport_cls() -> type:
 
     _pinning_transport_cls = _PinningTransport
     return _pinning_transport_cls
+
+
+def _install_proxy_tls_backend(transport: Any) -> None:
+    """Fail closed if the installed HTTPX/httpcore proxy path cannot preserve SNI."""
+    import httpcore
+
+    pool = getattr(transport, "_pool", None)
+    backend = getattr(pool, "_network_backend", None)
+    if not isinstance(pool, httpcore.HTTPProxy) or backend is None:
+        transport.close()
+        raise NetworkUnavailable(
+            "installed HTTP proxy transport cannot preserve origin TLS identity"
+        )
+    pool._network_backend = _ProxyTLSBackend(backend)
 
 
 def http_client(timeout: float, **kwargs: Any):
@@ -502,6 +573,13 @@ def http_client(timeout: float, **kwargs: Any):
             raise TypeError("proxy_route must be a vetted ProxyRoute")
         kwargs["proxy"] = proxy_route.proxy
         kwargs["trust_env"] = False
+        # Pooling by the rewritten IP could reuse one TLS tunnel for a different
+        # hostname on the same address. Force a fresh verified tunnel per request.
+        prior_limits = kwargs.get("limits")
+        kwargs["limits"] = httpx.Limits(
+            max_connections=prior_limits.max_connections if prior_limits else 100,
+            max_keepalive_connections=0,
+        )
 
     supplied_hooks = kwargs.pop("event_hooks", None) or {}
     hooks = network_event_hooks()
@@ -519,6 +597,11 @@ def http_client(timeout: float, **kwargs: Any):
         "event_hooks": hooks,
         **client_kwargs,
     }
+    if proxy_route is not None:
+        transport = PinningTransport(http2=False, **transport_kwargs)
+        transport._seohead_proxy_route = proxy_route
+        _install_proxy_tls_backend(transport)
+        return httpx.Client(transport=transport, **options), False
     try:
         transport = PinningTransport(http2=True, **transport_kwargs)
         transport._seohead_proxy_route = proxy_route
