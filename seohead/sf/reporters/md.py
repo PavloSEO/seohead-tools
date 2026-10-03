@@ -232,7 +232,9 @@ def write_markdown(result: AuditResult, path: str) -> str:
     if finding_policy:
         w(f"## Finding exclusions ({len(finding_policy)} rules)")
         w("")
-        w("Rules are evaluated in order against finding target URLs; the first matching rule is used.")
+        w(
+            "Rules are evaluated in order against finding target URLs; the first matching rule is used."
+        )
         w("")
         w("| Rule | Pattern | Checks | Reason | Suppressed findings |")
         w("|---|---|---|---|---:|")
@@ -253,7 +255,9 @@ def write_markdown(result: AuditResult, path: str) -> str:
     if result.suppressed_issues:
         w(f"## Suppressed findings ({len(result.suppressed_issues)})")
         w("")
-        w("These measured findings are excluded from active totals, score and tasks by the explicit URL policy.")
+        w(
+            "These measured findings are excluded from active totals, score and tasks by the explicit URL policy."
+        )
         w("")
         w("| Check | Severity | URL | Rule | Reason |")
         w("|---|---|---|---|---|")

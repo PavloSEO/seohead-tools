@@ -11,6 +11,7 @@ import pathlib
 from typing import Any
 
 _HEAD = {"critical": "C00000", "warning": "BF8F00", "notice": "808080"}
+_MAX_SUPPRESSED_FINDINGS = 10000
 
 
 def _style_header(ws, row: int = 1) -> None:
@@ -48,7 +49,7 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
     from openpyxl.utils import get_column_letter
 
     from seohead.reports import checks_completed_display, neutralize_formula
-    from seohead.reports.client_findings import check_title
+    from seohead.reports.client_findings import check_title, finding_exclusion_report
 
     wb = Workbook()
     summary = document.get("summary") or {}
@@ -81,6 +82,18 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
         )
     for item in summary.get("checks_disabled") or []:
         scope_rows.append(f"Disabled check {check_title(item.get('id'))} -- {item.get('reason')}")
+    exclusions = finding_exclusion_report(summary, document.get("suppressed_issues"))
+    if exclusions is not None:
+        count = exclusions["suppressed_total"]
+        finding_label = "finding" if count == 1 else "findings"
+        occurrences = exclusions["suppressed_occurrences"]
+        occurrence_label = "occurrence" if occurrences == 1 else "occurrences"
+        rule_count = exclusions["rules_configured"]
+        rule_label = "rule" if rule_count == 1 else "rules"
+        scope_rows.append(
+            f"Finding exclusions: {count} {finding_label} and {occurrences} {occurrence_label} "
+            f"suppressed by {rule_count} configured URL {rule_label}; see Finding Exclusions."
+        )
 
     row = 4
     for text in scope_rows:
@@ -133,6 +146,51 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
             italic=True, size=9, color="808080"
         )
     _autofit(ws, {2: 40})
+
+    if exclusions is not None:
+        ws = wb.create_sheet("Finding Exclusions")
+        ws.append(["Rule", "Pattern", "Checks", "Suppressed findings", "Occurrences", "Reason"])
+        _style_header(ws)
+        for rule in exclusions["rules"]:
+            ws.append(
+                [
+                    neutralize_formula(rule["id"]),
+                    neutralize_formula(rule["pattern"]),
+                    neutralize_formula(", ".join(rule["checks"]) or "all checks"),
+                    rule["suppressed_findings"],
+                    rule["suppressed_occurrences"],
+                    neutralize_formula(rule["reason"]),
+                ]
+            )
+        _autofit(ws)
+
+        suppressed = exclusions["issues"]
+        if suppressed:
+            ws = wb.create_sheet("Suppressed Findings")
+            ws.append(["Issue ID", "Check", "Severity", "URL", "Occurrences", "Rule", "Reason"])
+            _style_header(ws)
+            for issue in suppressed[:_MAX_SUPPRESSED_FINDINGS]:
+                issue = issue if isinstance(issue, dict) else {}
+                marker = issue.get("suppression")
+                marker = marker if isinstance(marker, dict) else {}
+                ws.append(
+                    [
+                        neutralize_formula(issue.get("id", "")),
+                        neutralize_formula(check_title(issue.get("check"))),
+                        neutralize_formula(issue.get("severity", "")),
+                        neutralize_formula(issue.get("target_url", "")),
+                        issue.get("occurrences_count", ""),
+                        neutralize_formula(marker.get("rule_id", "")),
+                        neutralize_formula(marker.get("reason", "")),
+                    ]
+                )
+            if len(suppressed) > _MAX_SUPPRESSED_FINDINGS:
+                ws.append(
+                    [
+                        f"Showing {_MAX_SUPPRESSED_FINDINGS} of {len(suppressed)}; see source audit JSON for all records"
+                    ]
+                )
+            _autofit(ws)
 
     # -- Findings ------------------------------------------------------------
     # This sheet is the documented developer handoff for a Screaming Frog

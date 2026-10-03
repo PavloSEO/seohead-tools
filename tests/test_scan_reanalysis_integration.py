@@ -43,9 +43,7 @@ def _settings(*, body_mode: str = "captured_entity_bytes", finding_exclusions=No
     }
     if finding_exclusions is not None:
         overrides["analysis.finding_exclusions"] = finding_exclusions
-    return load(
-        overrides=overrides
-    )
+    return load(overrides=overrides)
 
 
 def _runtime_versions() -> dict[str, str]:
@@ -69,7 +67,9 @@ def _fetcher(url: str) -> _Response:
 def _missing_title_fetcher(url: str) -> _Response:
     if url.endswith("/robots.txt"):
         return _Response(b"User-agent: SEOHEAD-Tools\nAllow: /\n", "text/plain")
-    return _Response(b"<!doctype html><html><head></head><body><a href='/'>home</a></body></html>", "text/html")
+    return _Response(
+        b"<!doctype html><html><head></head><body><a href='/'>home</a></body></html>", "text/html"
+    )
 
 
 def _source(
@@ -243,7 +243,10 @@ def test_reanalysis_reuses_saved_finding_exclusions_without_network(tmp_path, mo
     ]
     settings = _source(source, finding_exclusions=policy, fetcher=_missing_title_fetcher)
     source_audit = read_audit(source)
-    assert source_audit["run"]["finding_exclusion_policy"] == settings["analysis"]["finding_exclusions"]
+    assert (
+        source_audit["run"]["finding_exclusion_policy"]
+        == settings["analysis"]["finding_exclusions"]
+    )
     assert len(source_audit["suppressed_issues"]) == 1
     assert source_audit["suppressed_issues"][0]["check"] == "TITLE_MISSING"
     assert source_audit["summary"]["finding_exclusions"]["suppressed_total"] == 1
@@ -252,9 +255,15 @@ def test_reanalysis_reuses_saved_finding_exclusions_without_network(tmp_path, mo
     reanalyze_scan(str(source), str(derived), producer_build="b" * 40)
 
     derived_audit = read_audit(derived)
-    assert derived_audit["run"]["finding_exclusion_policy"] == source_audit["run"]["finding_exclusion_policy"]
+    assert (
+        derived_audit["run"]["finding_exclusion_policy"]
+        == source_audit["run"]["finding_exclusion_policy"]
+    )
     assert derived_audit["suppressed_issues"] == source_audit["suppressed_issues"]
-    assert derived_audit["summary"]["finding_exclusions"] == source_audit["summary"]["finding_exclusions"]
+    assert (
+        derived_audit["summary"]["finding_exclusions"]
+        == source_audit["summary"]["finding_exclusions"]
+    )
     assert attempts == {}
 
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import pathlib
 from typing import Any
 
+_MAX_SUPPRESSED_ROWS = 100
+
 
 def _field(value: Any, limit: int | None = None) -> str:
     text = "" if value is None else str(value)
@@ -144,6 +146,63 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
             "",
         ]
         out += [f"- **{check_title(f.get('tool'))}** — {f.get('error')}" for f in failed] + [""]
+
+    from seohead.reports.client_findings import finding_exclusion_report
+
+    exclusions = finding_exclusion_report(summary, document.get("suppressed_issues"))
+    if exclusions is not None:
+        total = exclusions["suppressed_total"]
+        finding_label = "finding" if total == 1 else "findings"
+        rule_count = exclusions["rules_configured"]
+        rule_label = "rule" if rule_count == 1 else "rules"
+        out += [
+            "## Finding exclusions",
+            "",
+            f"The source audit records {total} {finding_label} excluded by "
+            f"{rule_count} configured URL {rule_label} "
+            f"({exclusions['suppressed_occurrences']} occurrences). These records are excluded "
+            "from the active findings and task tables below.",
+            "",
+            "| Rule | Pattern | Checks | Suppressed findings | Suppressed occurrences | Reason |",
+            "|---|---|---|---:|---:|---|",
+        ]
+        for rule in exclusions["rules"]:
+            checks = ", ".join(rule["checks"]) or "all checks"
+            out.append(
+                "| {} | {} | {} | {} | {} | {} |".format(
+                    _coverage_field(rule["id"]),
+                    _coverage_field(rule["pattern"]),
+                    _coverage_field(checks),
+                    rule["suppressed_findings"],
+                    rule["suppressed_occurrences"],
+                    _coverage_field(rule["reason"]),
+                )
+            )
+        out.append("")
+        excluded_issues = exclusions["issues"]
+        if excluded_issues:
+            out += [
+                "### Suppressed findings",
+                "",
+                "| Check | Severity | URL | Rule | Reason |",
+                "|---|---|---|---|---|",
+            ]
+            for issue in excluded_issues[:_MAX_SUPPRESSED_ROWS]:
+                issue = issue if isinstance(issue, dict) else {}
+                marker = issue.get("suppression")
+                marker = marker if isinstance(marker, dict) else {}
+                out.append(
+                    "| {} | {} | {} | {} | {} |".format(
+                        _coverage_field(check_title(issue.get("check"))),
+                        _coverage_field(issue.get("severity", "")),
+                        _coverage_field(issue.get("target_url", "")),
+                        _coverage_field(marker.get("rule_id", "")),
+                        _coverage_field(marker.get("reason", "")),
+                    )
+                )
+            if len(excluded_issues) > _MAX_SUPPRESSED_ROWS:
+                out.append(f"| … {len(excluded_issues) - _MAX_SUPPRESSED_ROWS} more | | | | |")
+            out.append("")
 
     findings = document.get("findings") or []
     for level in ("critical", "warning", "notice"):

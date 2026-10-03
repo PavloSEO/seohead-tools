@@ -293,6 +293,12 @@ def _normalize_sf_audit(document: dict[str, Any]) -> dict[str, Any]:
     # fields below and must not also flow through this generic trailing note,
     # which would show the same fact twice.
     severity_note = summary.get("health_score_basis")
+    # Suppressed findings are part of the measured audit even though they are
+    # intentionally absent from the active findings list used by task/report
+    # tables. Carry both the records and their exact policy into the normalized
+    # document so each renderer can disclose the exclusion without recalculating it.
+    suppressed_issues = document.get("suppressed_issues")
+    suppressed_issues = suppressed_issues if isinstance(suppressed_issues, list) else []
 
     crawl_valid = run.get("crawl_valid")
     crawl_valid = True if crawl_valid is None else bool(crawl_valid)
@@ -315,6 +321,7 @@ def _normalize_sf_audit(document: dict[str, Any]) -> dict[str, Any]:
         "generated_at": run.get("generated_at", ""),
         "findings": findings,
         "pages": pages,
+        "suppressed_issues": suppressed_issues,
         "summary": {
             "evidence_contract": summary.get("evidence_contract"),
             "pages_checked": totals.get("urls_crawled", len(pages)),
@@ -343,6 +350,8 @@ def _normalize_sf_audit(document: dict[str, Any]) -> dict[str, Any]:
             or run.get("crawl_stopped_reason"),
             "crawl_scope_note": summary.get("health_score_scope"),
             "severity_note": severity_note,
+            "finding_exclusions": summary.get("finding_exclusions"),
+            "finding_exclusion_policy": run.get("finding_exclusion_policy"),
         },
     }
 

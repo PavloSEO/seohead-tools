@@ -35,14 +35,15 @@
         "crawl_config": {"type": "object"},
         "finding_exclusion_policy": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "type": "object",
             "required": ["id", "pattern", "checks", "reason"],
             "properties": {
-              "id": {"type": "string"},
-              "pattern": {"type": "string"},
-              "checks": {"type": "array", "items": {"type": "string"}},
-              "reason": {"type": "string"}
+              "id": {"type": "string", "maxLength": 64},
+              "pattern": {"type": "string", "maxLength": 500},
+              "checks": {"type": "array", "maxItems": 200, "items": {"type": "string"}},
+              "reason": {"type": "string", "maxLength": 500}
             }
           }
         },
@@ -190,9 +191,9 @@
             "type": "object",
             "required": ["rule_id", "pattern", "reason", "matched_url"],
             "properties": {
-              "rule_id": {"type": "string"},
-              "pattern": {"type": "string"},
-              "reason": {"type": "string"},
+              "rule_id": {"type": "string", "maxLength": 64},
+              "pattern": {"type": "string", "maxLength": 500},
+              "reason": {"type": "string", "maxLength": 500},
               "matched_url": {"type": ["string", "null"]}
             }
           }

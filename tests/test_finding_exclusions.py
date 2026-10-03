@@ -119,7 +119,9 @@ def test_ordered_check_scoped_suppression_preserves_original_findings_and_covera
     assert "Suppressed findings (1)" in markdown
     assert "Finding exclusions (2 rules)" in markdown
     assert "Legacy templates are outside this audit scope." in markdown
-    assert suppressed["id"] not in markdown  # original detail remains in JSON, not duplicated in prose
+    assert (
+        suppressed["id"] not in markdown
+    )  # original detail remains in JSON, not duplicated in prose
 
     schema_path = Path(__file__).parents[1] / "seohead/sf/schema/audit.schema.json"
     jsonschema.validate(audit, json.loads(schema_path.read_text(encoding="utf-8")))
@@ -146,8 +148,14 @@ def test_rules_are_first_match_and_url_less_findings_never_match():
     rules = validate_rules(_policy())
     compiled = [(rule, re.compile(rule["pattern"])) for rule in rules]
 
-    assert matching_rule("TITLE_MISSING", "https://example.test/legacy/", compiled)["id"] == "legacy-title"
-    assert matching_rule("TITLE_TOO_LONG", "https://example.test/legacy/", compiled)["id"] == "all-legacy"
+    assert (
+        matching_rule("TITLE_MISSING", "https://example.test/legacy/", compiled)["id"]
+        == "legacy-title"
+    )
+    assert (
+        matching_rule("TITLE_TOO_LONG", "https://example.test/legacy/", compiled)["id"]
+        == "all-legacy"
+    )
     assert matching_rule("TITLE_MISSING", None, compiled) is None
     assert matching_rule("TITLE_MISSING", "https://example.test/current/", compiled) is None
 
@@ -156,7 +164,10 @@ def test_rules_are_first_match_and_url_less_findings_never_match():
     "policy",
     [
         [{"id": "bad", "pattern": "[", "reason": "invalid regex"}],
-        [{"id": "same", "pattern": ".*", "reason": "one"}, {"id": "same", "pattern": ".*", "reason": "two"}],
+        [
+            {"id": "same", "pattern": ".*", "reason": "one"},
+            {"id": "same", "pattern": ".*", "reason": "two"},
+        ],
         [{"id": "unknown-check", "pattern": ".*", "checks": ["NOT_A_CHECK"], "reason": "unknown"}],
     ],
 )
@@ -165,6 +176,23 @@ def test_sf_config_rejects_invalid_exclusion_rules(policy):
     config["finding_exclusions"] = policy
     with pytest.raises(ConfigError, match="finding_exclusions"):
         validate_config(config)
+
+
+def test_exclusion_rules_have_documented_size_limits():
+    valid = {
+        "id": "r" * 64,
+        "pattern": "." * 500,
+        "reason": "x" * 500,
+    }
+    assert len(validate_rules([valid])) == 1
+    with pytest.raises(ValueError, match="at most 100 rules"):
+        validate_rules([valid] * 101)
+    with pytest.raises(ValueError, match="checks may contain at most 200"):
+        validate_rules([{**valid, "checks": ["TITLE_MISSING"] * 201}])
+    for field, limit in (("id", 64), ("pattern", 500), ("reason", 500)):
+        invalid = {**valid, field: valid[field] + "x"}
+        with pytest.raises(ValueError, match=f"{field}.*at most {limit}"):
+            validate_rules([invalid])
 
 
 def test_crawl_analysis_policy_is_additive_and_not_a_scope_filter():

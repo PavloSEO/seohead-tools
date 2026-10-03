@@ -187,7 +187,9 @@ shape under `analysis.finding_exclusions` in the crawl config. Rules use Python
 regex search against a finding's target URL; `checks` optionally limits a rule
 to exact check IDs, and an empty or omitted `checks` list applies to every
 check. The first matching rule wins. Every rule needs an `id` and a
-human-readable `reason`.
+human-readable `reason`. A policy can contain up to 100 rules; each rule ID is
+at most 64 characters, each pattern and reason is at most 500 characters, and
+each `checks` list can contain up to 200 IDs.
 
 ```json
 {

@@ -13,6 +13,7 @@ from typing import Any
 
 _MAX_PAGES_IN_TABLE = 60
 _MAX_FINDINGS_PER_LEVEL = 40
+_MAX_SUPPRESSED_FINDINGS = 40
 
 
 def write(document: dict[str, Any], path: pathlib.Path) -> None:
@@ -76,6 +77,69 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
         for row in evidence:
             for cell, value in zip(table.add_row().cells, row, strict=True):
                 cell.text = value
+
+    from seohead.reports.client_findings import finding_exclusion_report
+
+    exclusions = finding_exclusion_report(summary, document.get("suppressed_issues"))
+    if exclusions is not None:
+        doc.add_heading("Finding Exclusions", level=1)
+        total = exclusions["suppressed_total"]
+        finding_label = "finding" if total == 1 else "findings"
+        rule_count = exclusions["rules_configured"]
+        rule_label = "rule" if rule_count == 1 else "rules"
+        doc.add_paragraph(
+            f"The source audit records {total} excluded {finding_label} "
+            f"across {rule_count} configured URL {rule_label}, representing "
+            f"{exclusions['suppressed_occurrences']} occurrences. They are absent from the "
+            "active findings below."
+        )
+        table = doc.add_table(rows=1, cols=6)
+        table.style = "Light Grid Accent 1"
+        for cell, label in zip(
+            table.rows[0].cells,
+            ("Rule", "Pattern", "Checks", "Findings", "Occurrences", "Reason"),
+            strict=True,
+        ):
+            cell.text = label
+        for rule in exclusions["rules"]:
+            values = (
+                rule["id"],
+                rule["pattern"],
+                ", ".join(rule["checks"]) or "all checks",
+                rule["suppressed_findings"],
+                rule["suppressed_occurrences"],
+                rule["reason"],
+            )
+            for cell, value in zip(table.add_row().cells, values, strict=True):
+                cell.text = "" if value is None else str(value)
+
+        excluded = exclusions["issues"]
+        if excluded:
+            doc.add_heading("Suppressed Findings", level=2)
+            table = doc.add_table(rows=1, cols=5)
+            table.style = "Light Grid Accent 1"
+            for cell, label in zip(
+                table.rows[0].cells, ("Check", "Severity", "URL", "Rule", "Reason"), strict=True
+            ):
+                cell.text = label
+            for issue in excluded[:_MAX_SUPPRESSED_FINDINGS]:
+                issue = issue if isinstance(issue, dict) else {}
+                suppression = issue.get("suppression")
+                suppression = suppression if isinstance(suppression, dict) else {}
+                values = (
+                    check_title(issue.get("check")),
+                    issue.get("severity", ""),
+                    issue.get("target_url", ""),
+                    suppression.get("rule_id", ""),
+                    suppression.get("reason", ""),
+                )
+                for cell, value in zip(table.add_row().cells, values, strict=True):
+                    cell.text = "" if value is None else str(value)
+            if len(excluded) > _MAX_SUPPRESSED_FINDINGS:
+                doc.add_paragraph(
+                    f"Showing {_MAX_SUPPRESSED_FINDINGS} of {len(excluded)} suppressed findings; "
+                    "the complete records remain in the source audit JSON."
+                )
 
     coverage = summary.get("project_coverage")
     if isinstance(coverage, dict):

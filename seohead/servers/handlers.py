@@ -951,9 +951,7 @@ def _audit_crawl_result(
     from seohead.sf.config import load_config, validate_config
 
     audit_config = load_config(None)
-    audit_config["finding_exclusions"] = settings.get("analysis", {}).get(
-        "finding_exclusions", []
-    )
+    audit_config["finding_exclusions"] = settings.get("analysis", {}).get("finding_exclusions", [])
     validate_config(audit_config)
     from seohead.sf.core.aggregate import aggregate
     from seohead.sf.core.context import AuditContext

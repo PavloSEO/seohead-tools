@@ -13,6 +13,11 @@ from re import Pattern
 from typing import Any
 
 _RULE_KEYS = frozenset({"id", "pattern", "checks", "reason"})
+MAX_RULES = 100
+MAX_RULE_ID_CHARS = 64
+MAX_PATTERN_CHARS = 500
+MAX_REASON_CHARS = 500
+MAX_CHECKS_PER_RULE = 200
 
 
 def validate_rules(
@@ -21,6 +26,8 @@ def validate_rules(
     """Validate and normalize the JSON policy, preserving its precedence order."""
     if not isinstance(value, list):
         raise ValueError("finding_exclusions must be a list")
+    if len(value) > MAX_RULES:
+        raise ValueError(f"finding_exclusions may contain at most {MAX_RULES} rules")
     allowed = set(known_checks) if known_checks is not None else None
     rules: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -38,21 +45,30 @@ def validate_rules(
         if not isinstance(rule_id, str) or not rule_id.strip():
             raise ValueError(f"{where}.id must be a non-empty string")
         rule_id = rule_id.strip()
+        if len(rule_id) > MAX_RULE_ID_CHARS:
+            raise ValueError(f"{where}.id must be at most {MAX_RULE_ID_CHARS} characters")
         if rule_id in seen_ids:
             raise ValueError(f"{where}.id duplicates {rule_id!r}")
         seen_ids.add(rule_id)
         if not isinstance(pattern, str) or not pattern:
             raise ValueError(f"{where}.pattern must be a non-empty regex string")
+        if len(pattern) > MAX_PATTERN_CHARS:
+            raise ValueError(f"{where}.pattern must be at most {MAX_PATTERN_CHARS} characters")
         try:
             re.compile(pattern)
         except re.error as exc:
             raise ValueError(f"{where}.pattern {pattern!r} is invalid: {exc}") from exc
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError(f"{where}.reason must be a non-empty string")
+        reason = reason.strip()
+        if len(reason) > MAX_REASON_CHARS:
+            raise ValueError(f"{where}.reason must be at most {MAX_REASON_CHARS} characters")
         if not isinstance(checks, list) or any(
             not isinstance(check_id, str) or not check_id for check_id in checks
         ):
             raise ValueError(f"{where}.checks must be a list of non-empty check IDs")
+        if len(checks) > MAX_CHECKS_PER_RULE:
+            raise ValueError(f"{where}.checks may contain at most {MAX_CHECKS_PER_RULE} IDs")
         if len(checks) != len(set(checks)):
             raise ValueError(f"{where}.checks contains duplicate check IDs")
         if allowed is not None:
@@ -64,7 +80,7 @@ def validate_rules(
                 "id": rule_id,
                 "pattern": pattern,
                 "checks": list(checks),
-                "reason": reason.strip(),
+                "reason": reason,
             }
         )
     return rules

@@ -31,6 +31,96 @@ def check_title(check: Any) -> str:
     return "Audit finding"
 
 
+def finding_exclusion_report(
+    summary: dict[str, Any], suppressed_issues: list[dict[str, Any]] | None = None
+) -> dict[str, Any] | None:
+    """Join saved exclusion rules to their recorded counts without recomputing them."""
+    exclusion = summary.get("finding_exclusions")
+    exclusion = exclusion if isinstance(exclusion, dict) else {}
+    policy = summary.get("finding_exclusion_policy")
+    policy = policy if isinstance(policy, list) else []
+    suppressed = suppressed_issues if isinstance(suppressed_issues, list) else []
+    if not exclusion and not policy and not suppressed:
+        return None
+
+    counts_by_rule: dict[str, dict[str, Any]] = {}
+    raw_counts = exclusion.get("by_rule")
+    if isinstance(raw_counts, list):
+        for row in raw_counts:
+            if isinstance(row, dict) and row.get("id") is not None:
+                counts_by_rule[str(row["id"])] = row
+    elif isinstance(raw_counts, dict):
+        for rule_id, count in raw_counts.items():
+            counts_by_rule[str(rule_id)] = (
+                count if isinstance(count, dict) else {"suppressed_findings": count}
+            )
+
+    policy_by_id = {
+        str(row["id"]): row for row in policy if isinstance(row, dict) and row.get("id") is not None
+    }
+    for issue in suppressed:
+        marker = issue.get("suppression") if isinstance(issue, dict) else None
+        if isinstance(marker, dict) and marker.get("rule_id") is not None:
+            rule_id = str(marker["rule_id"])
+            policy_by_id.setdefault(
+                rule_id,
+                {
+                    "id": rule_id,
+                    "pattern": marker.get("pattern", ""),
+                    "reason": marker.get("reason", ""),
+                    "checks": [],
+                },
+            )
+
+    rules = []
+    for rule_id, rule in policy_by_id.items():
+        counts = counts_by_rule.get(rule_id, {})
+        rules.append(
+            {
+                "id": rule_id,
+                "pattern": rule.get("pattern", ""),
+                "checks": rule.get("checks") or [],
+                "reason": rule.get("reason") or counts.get("reason", ""),
+                "suppressed_findings": counts.get("suppressed_findings", 0),
+                "suppressed_occurrences": counts.get("suppressed_occurrences", 0),
+            }
+        )
+    for rule_id, counts in counts_by_rule.items():
+        if rule_id not in policy_by_id:
+            rules.append(
+                {
+                    "id": rule_id,
+                    "pattern": "",
+                    "checks": [],
+                    "reason": counts.get("reason", ""),
+                    "suppressed_findings": counts.get("suppressed_findings", 0),
+                    "suppressed_occurrences": counts.get("suppressed_occurrences", 0),
+                }
+            )
+
+    total = exclusion.get("suppressed_total")
+    if type(total) is not int or total < 0:
+        total = len(suppressed)
+    rules_configured = exclusion.get("rules_configured")
+    if type(rules_configured) is not int or rules_configured < 0:
+        rules_configured = len(policy_by_id)
+    totals = summary.get("totals") if isinstance(summary.get("totals"), dict) else {}
+    occurrences = totals.get("suppressed_occurrences")
+    if type(occurrences) is not int or occurrences < 0:
+        occurrences = sum(
+            value["suppressed_occurrences"]
+            for value in rules
+            if type(value["suppressed_occurrences"]) is int and value["suppressed_occurrences"] >= 0
+        )
+    return {
+        "suppressed_total": total,
+        "suppressed_occurrences": occurrences,
+        "rules_configured": rules_configured,
+        "rules": rules,
+        "issues": suppressed,
+    }
+
+
 def _detail_rows(details: Any) -> list[str]:
     """Keep primitive recorded details, with readable labels and bounded shape."""
     if not isinstance(details, dict):

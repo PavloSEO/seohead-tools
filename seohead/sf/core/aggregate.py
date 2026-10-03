@@ -395,8 +395,7 @@ def aggregate(
             ],
             "by_check": dict(sorted(suppressed_by_check.items())),
             "by_severity": {
-                sev: suppressed_by_severity.get(sev, 0)
-                for sev in ("critical", "warning", "notice")
+                sev: suppressed_by_severity.get(sev, 0) for sev in ("critical", "warning", "notice")
             },
         }
 
