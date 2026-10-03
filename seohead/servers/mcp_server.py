@@ -564,6 +564,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         viewport: str = "desktop",
         wait: str = "load",
         user_agent: str | None = None,
+        transport_config: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Compare the raw server HTML with the DOM after JavaScript runs — the gap between
         them is what a non-rendering crawler loses. Reports an empty SPA shell
@@ -582,7 +583,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A requested wait milestone that times out (networkidle on a site with long-polling
         scripts) falls back to reading the DOM at domcontentloaded, recorded in
         wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity;
-        user_agent overrides that identity for both requests."""
+        user_agent overrides that identity for both requests. `transport_config`
+        opts into an operator-supplied remote Playwright connection using
+        `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env`
+        and `remote_playwright_version`. It never provisions a server or falls
+        back to local launch after a remote failure."""
+        if transport_config is not None:
+            return _checked(
+                handlers.render_check(
+                    url=url,
+                    viewport=viewport,
+                    wait=wait,
+                    user_agent=user_agent,
+                    transport_config=transport_config,
+                )
+            )
         return _checked(
             handlers.render_check(url=url, viewport=viewport, wait=wait, user_agent=user_agent)
         )
@@ -691,6 +706,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 out_urls=out_urls,
             )
         )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_crawl_import(manifest_path: str) -> dict[str, Any]:
+        """Read a versioned third-party crawl CSV bundle from a local manifest.
+
+        The manifest maps source headers to page, link, status, and redirect
+        fields. The result is ``third_party_crawl.v1`` with source identity and
+        per-field coverage; it is not scan.v1 or SF audit evidence.
+        """
+        return _checked(handlers.crawl_import(manifest_path=manifest_path))
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_segment_diff(audit: Any, source: str, target: str) -> dict[str, Any]:
@@ -826,6 +851,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 country=country,
             )
         )
+
+    @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_topvisor_read(
+        operation: str = "projects", params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Read existing Topvisor projects, competitors, groups, keywords, history or summary.
+        Uses topvisor/access_token and topvisor/user_id under the central credential root
+        (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100,
+        maximum 1000; the continuation signal is the provider's nextOffset — present on
+        non-final pages, absent on the last — not len(result) == limit. Provider total
+        and limitedBy pass through when sent, separate from the echoed request limit/offset.
+        projects/competitors/groups/keywords return arrays; history and summary return
+        objects (history rows at result.keywords; summary covers the two requested dates).
+        Non-project operations require project_id. History regions_indexes are project
+        region indexes (projects with show_searchers_and_regions:2), not geographic region
+        keys; summary takes the singular region_index. In positionsData, position is an
+        integer ordinal rank; "--" means the query had no position inside the checked
+        depth — unavailable, not rank 0 or 100 — and a requested date without an entry is
+        a missing observation. headers.dates lists dates actually returned; topsByDepth is
+        percent of queries in Top N; visitors, dynamics and tops are counts; avgs is an
+        average rank. Does not launch checks, add/edit/delete records, or authorize paid
+        operations. Transport redirects are refused and provider errors are redacted."""
+        return _checked(handlers.topvisor_read(operation=operation, params=params))
 
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_metrika_counters() -> dict[str, Any]:

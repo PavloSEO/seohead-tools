@@ -114,6 +114,10 @@ def _substitute(raw: str, base_url: str) -> str:
 def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     """Materialize every fixture a documented command's relative path expects."""
     shutil.copytree(ROOT / "examples", tmp_path / "examples")
+    shutil.copytree(
+        ROOT / "tests" / "fixtures_third_party_crawl",
+        tmp_path / "third_party_crawl",
+    )
     shutil.copytree(ROOT / "examples" / "exports", tmp_path / "exports")
     shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "audit.json")
     shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "old-audit.json")

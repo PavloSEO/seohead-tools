@@ -99,7 +99,7 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-64 of the 94 commands are not named in any skill's own body (a mention inside
+65 of the 95 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing
 inside a workflow's write-up, or not yet needed by one at all — and have no
 skill of their own, deliberately: a skill per single command is noise.
@@ -107,7 +107,7 @@ skill of their own, deliberately: a skill per single command is noise.
 for each command name, so it cannot silently rot the way this line once did.
 
 Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
-`boilerplate-report` · `crawl-describe-settings` · `crawl-enrich` ·
+`boilerplate-report` · `crawl-describe-settings` · `crawl-enrich` · `crawl-import` ·
 `crtsh-subdomains` · `crux-report` · `facts-export` · `google-keywords` ·
 `google-serp` · `gsc-query` · `hreflang-check` · `images-download` ·
 `images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` ·
@@ -123,11 +123,13 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
 `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` ·
 `scan-status` · `scenario-show` · `segment-diff` · `serp-fetch` · `skill-list` ·
 `skill-show` · `soft404-check` · `spend-report` · `tool-catalog` ·
-`wayback-history`
+`topvisor-read` · `wayback-history`
 
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and
 `redirects-generate` (site migrations).
+
+`topvisor-read` reads existing Topvisor data using central credential files.
 
 ## Skill rules
 
