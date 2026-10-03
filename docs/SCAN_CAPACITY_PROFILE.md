@@ -12,7 +12,7 @@ Declare the budgets before a run and retain the command, JSON output, stderr,
 artifact and source SHA-256 outside this repository. The defaults are 900 seconds
 per process, 2048 MiB peak RSS, 8192 MiB database plus WAL/shm, and at least
 32768 MiB free disk. A budget failure is `status=blocked`, never a passed result.
-The build stage checks those limits every 256 accepted pages. The read, inspect,
+The build stage checks those limits every 256 seeded and accepted pages. The read, inspect,
 snapshot and integrity stages report elapsed time and peak RSS but currently do
 not enforce an independent process watchdog; callers must give each a timeout.
 `disk_bytes` names the database, WAL and shared-memory files at the end of build;

@@ -226,13 +226,16 @@ def _build(args: argparse.Namespace) -> dict[str, object]:
         scan = NativeScan.create(path, **metadata)
         resumed = False
     with scan:
+        peak_sizes = _sizes(path)
         if resumed:
             scan.recover_inflight()
         else:
             for start in range(0, args.pages, 256):
                 scan.enqueue((_url(page), 0) for page in range(start, min(start + 256, args.pages)))
+                _budget(args, started, path)
+                for name, size in _sizes(path).items():
+                    peak_sizes[name] = max(peak_sizes[name], size)
         before = scan.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
-        peak_sizes = _sizes(path)
         for page in range(before, args.pages):
             lease = scan.claim(1)[0]
             record = vars(
