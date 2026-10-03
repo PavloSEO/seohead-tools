@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import sqlite3
@@ -15,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,6 +43,39 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
+
+
+class MeasuredCommandError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        stdout_tail: str,
+        stderr_tail: str,
+        measurements: dict[str, Any],
+    ) -> None:
+        super().__init__(message)
+        self.stdout_tail = stdout_tail
+        self.stderr_tail = stderr_tail
+        self.measurements = measurements
+
+
+def validate_revision(value: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise ValueError("revision must be a full lowercase 40-character Git commit SHA")
+    return value
+
+
+def has_linux_procfs() -> bool:
+    return sys.platform == "linux" and Path("/proc/self/stat").exists()
+
+
+def _within(path: Path, root: Path) -> Path:
+    resolved = path.resolve()
+    root_resolved = root.resolve()
+    if resolved == root_resolved or root_resolved not in resolved.parents:
+        raise ValueError(f"path resolves outside its owned root: {path}")
+    return resolved
 
 
 def run(
@@ -85,31 +120,60 @@ def run_measured(
     args: list[str], *, cwd: Path, env: dict[str, str], timeout: int = 900
 ) -> tuple[str, dict[str, float | int]]:
     started = time.monotonic()
-    process = subprocess.Popen(
-        args,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    peak_rss_kib = 0
-    deadline = started + timeout
-    while process.poll() is None:
+    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+        process = subprocess.Popen(
+            args,
+            cwd=cwd,
+            env=env,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+        peak_rss_kib = 0
+        deadline = started + timeout
+        timed_out = False
+        while process.poll() is None:
+            peak_rss_kib = max(peak_rss_kib, process_group_rss_kib(process.pid))
+            if time.monotonic() >= deadline:
+                timed_out = True
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+                break
+            time.sleep(0.1)
         peak_rss_kib = max(peak_rss_kib, process_group_rss_kib(process.pid))
-        if time.monotonic() >= deadline:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.communicate()
-            raise TimeoutError(f"command exceeded {timeout}s: {args[0]}")
-        time.sleep(0.1)
-    stdout, stderr = process.communicate()
-    peak_rss_kib = max(peak_rss_kib, process_group_rss_kib(process.pid))
-    if process.returncode:
-        raise subprocess.CalledProcessError(process.returncode, args, stdout, stderr)
+
+        def output_tail(stream, limit: int = 16 * 1024) -> tuple[str, int]:
+            stream.flush()
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(0 if size <= limit else size - limit)
+            return stream.read().decode("utf-8", errors="replace"), size
+
+        stdout, stdout_bytes = output_tail(stdout_file)
+        stderr, stderr_bytes = output_tail(stderr_file)
+        measurements: dict[str, float | int | bool | str] = {
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+            "sampled_process_tree_peak_rss_kib": peak_rss_kib,
+            "timed_out": timed_out,
+            "exit_code": process.returncode,
+            "stdout_bytes": stdout_bytes,
+            "stderr_bytes": stderr_bytes,
+        }
+        if timed_out or process.returncode:
+            state = f"timed out after {timeout}s" if timed_out else f"exited {process.returncode}"
+            raise MeasuredCommandError(
+                f"command {state}: {args[0]}",
+                stdout_tail=stdout,
+                stderr_tail=stderr,
+                measurements=measurements,
+            )
     return stdout.strip(), {
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "sampled_process_tree_peak_rss_kib": peak_rss_kib,
+        "timed_out": timed_out,
+        "exit_code": process.returncode,
+        "stdout_bytes": stdout_bytes,
+        "stderr_bytes": stderr_bytes,
     }
 
 
@@ -141,10 +205,21 @@ def identity(python: Path, env: dict[str, str], cwd: Path) -> dict[str, str]:
     return value
 
 
-def switch_current(current: Path, release: Path, suffix: str) -> None:
-    temporary = current.with_name(f".current-{suffix}")
-    temporary.unlink(missing_ok=True)
-    temporary.symlink_to(release, target_is_directory=True)
+def switch_current(
+    current: Path,
+    release: Path,
+    suffix: str,
+    *,
+    release_root: Path,
+    install_root: Path,
+) -> None:
+    resolved_release = _within(release, release_root)
+    if current.name != "current" or current.parent.resolve() != install_root.resolve():
+        raise ValueError("current release pointer must be under the install root")
+    if not resolved_release.is_dir():
+        raise ValueError(f"release directory does not exist: {release}")
+    temporary = current.with_name(f".current-{suffix}-{uuid.uuid4().hex}")
+    temporary.symlink_to(resolved_release, target_is_directory=True)
     os.replace(temporary, current)
 
 
@@ -243,14 +318,21 @@ def main() -> int:
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args()
 
-    if sys.platform != "linux" or not Path("/proc/self/stat").exists():
+    try:
+        base_revision = validate_revision(args.base_ref)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if not has_linux_procfs():
         parser.error("this disposable lifecycle smoke requires Linux procfs")
 
     repository = args.project_root.resolve()
     if run(["git", "status", "--porcelain"], cwd=repository):
         parser.error("run from a clean checkout so packaged producer revisions are verifiable")
-    candidate_revision = run(["git", "rev-parse", "HEAD"], cwd=repository)
-    base_revision = run(["git", "rev-parse", f"{args.base_ref}^{{commit}}"], cwd=repository)
+    try:
+        candidate_revision = validate_revision(run(["git", "rev-parse", "HEAD"], cwd=repository))
+        run(["git", "cat-file", "-e", f"{base_revision}^{{commit}}"], cwd=repository)
+    except (ValueError, subprocess.CalledProcessError) as exc:
+        parser.error(f"base and candidate must be available commit SHAs: {exc}")
     if base_revision == candidate_revision:
         parser.error("base and candidate revisions must differ")
 
@@ -260,39 +342,13 @@ def main() -> int:
     install_root = temp_root / "install"
     project = temp_root / "workspace" / "synthetic-project"
     config = temp_root / "workspace" / "crawl.json"
-    browser_cache = temp_root / "browser-cache"
     uv_cache = temp_root / "uv-cache"
-    install_root.mkdir()
-    releases.mkdir()
-    project.mkdir(parents=True)
-    browser_cache.mkdir()
-    uv_cache.mkdir()
-    config.write_text(
-        json.dumps(
-            {
-                "limits": {"max_urls": 1, "max_depth": 0},
-                "speed": {"min_delay_seconds": 0.05},
-                "robots": {"policy": "ignore"},
-                "rendering": {
-                    "mode": "js",
-                    "escalation": {
-                        "policy": "full",
-                        "sample_per_pattern": 1,
-                        "max_render_urls": 1,
-                    },
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
     worktree_added = False
+    failed = False
     metrics: dict[str, Any] = {
         "os": platform.platform(),
         "python": platform.python_version(),
         "sqlite": sqlite3.sqlite_version,
-        "uv": run(["uv", "--version"]),
         "dependency_profile": ["render", "reports"],
         "base_revision": base_revision,
         "candidate_revision": candidate_revision,
@@ -301,6 +357,30 @@ def main() -> int:
     }
 
     try:
+        install_root.mkdir()
+        releases.mkdir()
+        project.mkdir(parents=True)
+        uv_cache.mkdir()
+        config.write_text(
+            json.dumps(
+                {
+                    "limits": {"max_urls": 1, "max_depth": 0},
+                    "speed": {"min_delay_seconds": 0.05},
+                    "robots": {"policy": "ignore"},
+                    "rendering": {
+                        "mode": "js",
+                        "escalation": {
+                            "policy": "full",
+                            "sample_per_pattern": 1,
+                            "max_render_urls": 1,
+                        },
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        metrics["uv"] = run(["uv", "--version"])
         run(["git", "worktree", "add", "--detach", str(base_source), base_revision], cwd=repository)
         worktree_added = True
         sources = {base_revision: base_source, candidate_revision: repository}
@@ -389,7 +469,13 @@ def main() -> int:
             command.parent.mkdir()
             command.symlink_to(current / "venv" / "bin" / "seohead")
 
-            switch_current(current, releases / base_revision, "base")
+            switch_current(
+                current,
+                releases / base_revision,
+                "base",
+                release_root=releases,
+                install_root=install_root,
+            )
             metrics["base_scan"] = scan_once(
                 command=command,
                 python=environments[base_revision] / "bin/python",
@@ -401,7 +487,13 @@ def main() -> int:
                 label="base",
             )
 
-            switch_current(current, releases / candidate_revision, "candidate")
+            switch_current(
+                current,
+                releases / candidate_revision,
+                "candidate",
+                release_root=releases,
+                install_root=install_root,
+            )
             metrics["candidate_scan"] = scan_once(
                 command=command,
                 python=environments[candidate_revision] / "bin/python",
@@ -413,7 +505,13 @@ def main() -> int:
                 label="candidate",
             )
 
-            switch_current(current, releases / base_revision, "rollback")
+            switch_current(
+                current,
+                releases / base_revision,
+                "rollback",
+                release_root=releases,
+                install_root=install_root,
+            )
             rollback_env = os.environ.copy()
             rollback_env["PLAYWRIGHT_BROWSERS_PATH"] = str(releases / base_revision / "browsers")
             rollback_identity = identity(
@@ -450,6 +548,26 @@ def main() -> int:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+    except Exception as exc:
+        failed = True
+        failure: dict[str, Any] = {"type": type(exc).__name__, "message": str(exc)}
+        if isinstance(exc, MeasuredCommandError):
+            failure.update(
+                stdout_tail=exc.stdout_tail,
+                stderr_tail=exc.stderr_tail,
+                measurements=exc.measurements,
+            )
+        elif isinstance(exc, subprocess.CalledProcessError):
+            failure.update(
+                stdout_tail=(exc.stdout or "")[-16_384:],
+                stderr_tail=(exc.stderr or "")[-16_384:],
+            )
+        metrics["failure"] = failure
+        print(f"Linux lifecycle smoke failed: {failure['message']}", file=sys.stderr)
+        if failure.get("stderr_tail"):
+            print(failure["stderr_tail"], file=sys.stderr)
+        if failure.get("stdout_tail"):
+            print(failure["stdout_tail"], file=sys.stderr)
     finally:
         if worktree_added:
             subprocess.run(
@@ -466,7 +584,7 @@ def main() -> int:
         json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(json.dumps(metrics, indent=2, sort_keys=True))
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
