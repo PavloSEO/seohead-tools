@@ -268,7 +268,9 @@ def _request(method: str, url: str, payload: dict[str, Any] | None, token: str) 
 _SERVICE_ACCOUNT_ERRORS = {
     "missing": "GSC service-account JSON file is not configured or readable",
     "unsafe_file": "GSC service-account JSON must be a private regular file (mode 0600)",
-    "malformed_json": "GSC service-account JSON is unreadable or malformed",
+    "too_large": "GSC service-account JSON exceeds the maximum supported size",
+    "unreadable": "GSC service-account JSON exists but cannot be read",
+    "malformed_json": "GSC service-account JSON is not valid JSON",
     "unsupported_shape": "GSC service-account JSON has an unsupported type or token URI",
 }
 

@@ -183,10 +183,10 @@ def gsc_service_account_document() -> tuple[str, dict[str, Any] | None]:
 
     ``document`` is populated only for ``"configured_unverified"`` and is intended for the
     runtime auth path. Diagnostics report the status alone — ``"missing"``,
-    ``"unsafe_file"``, ``"malformed_json"``, or ``"unsupported_shape"`` — which never
-    carries key material, the account email, or document fragments. A structurally valid
-    document is configuration only; authenticated access is established separately by
-    ``provider-verify``.
+    ``"unsafe_file"``, ``"too_large"``, ``"unreadable"``, ``"malformed_json"``, or
+    ``"unsupported_shape"`` — which never carries key material, the account email, or
+    document fragments. A structurally valid document is configuration only; authenticated
+    access is established separately by ``provider-verify``.
     """
     path = _gsc_service_account_candidate_path()
     state = _gsc_service_account_file_state(path)
@@ -197,10 +197,12 @@ def gsc_service_account_document() -> tuple[str, dict[str, Any] | None]:
     except OSError:
         return "missing", None
     if size > GSC_SERVICE_ACCOUNT_MAX_BYTES:
-        return "malformed_json", None
+        return "too_large", None
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except OSError:
+        return "unreadable", None
+    except ValueError:
         return "malformed_json", None
     if not isinstance(document, dict):
         return "unsupported_shape", None

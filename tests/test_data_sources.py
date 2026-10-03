@@ -304,7 +304,7 @@ def test_sources_doctor_gsc_service_account_missing_required_field(
 
 
 def test_sources_doctor_gsc_service_account_over_size_limit(monkeypatch, tmp_path):
-    """A file past the bound is malformed, never parsed, never "ready"."""
+    """A file past the bound is never parsed, never "ready" — but it is not malformed JSON."""
     from seohead.data_sources import oauth
     from seohead.servers import handlers
 
@@ -316,7 +316,29 @@ def test_sources_doctor_gsc_service_account_over_size_limit(monkeypatch, tmp_pat
 
     gsc = handlers.sources_doctor()["sources"]["gsc"]
     assert gsc["ready"] is False
-    assert gsc["service_account_status"] == "malformed_json"
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == "too_large"
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or getattr(os, "geteuid", lambda: -1)() == 0,
+    reason="POSIX permission bits do not apply on Windows; root bypasses them",
+)
+def test_sources_doctor_gsc_service_account_owner_unreadable(monkeypatch, tmp_path):
+    """A private file the owner cannot read is unreadable, not malformed JSON."""
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    account = _write_service_account(tmp_path)
+    account.chmod(0o200)
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == "unreadable"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits do not apply on Windows")
@@ -467,7 +489,7 @@ def test_gsc_malformed_service_account_reports_safe_error(monkeypatch, tmp_path)
 
     bearer, error = gsc_core._acquire_token(None)
     assert bearer is None
-    assert error == "OAuth bearer unavailable; GSC service-account JSON is unreadable or malformed"
+    assert error == "OAuth bearer unavailable; GSC service-account JSON is not valid JSON"
     assert "{broken" not in error
 
 
