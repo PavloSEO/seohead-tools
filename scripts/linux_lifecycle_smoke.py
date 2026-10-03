@@ -287,6 +287,9 @@ def scan_once(
             "SELECT representation,body_state,body_reason,renderer_json "
             "FROM documents ORDER BY document_id"
         ).fetchall()
+        capture_rows = connection.execute(
+            "SELECT payload_json FROM context_items WHERE kind='content_evidence' ORDER BY item_key"
+        ).fetchall()
     if row != ("Rendered lifecycle title", "rendered"):
         raise AssertionError(
             "saved scan is missing rendered page evidence: "
@@ -303,6 +306,7 @@ def scan_once(
                         }
                         for item in document_rows
                     ],
+                    "capture_reasons": [json.loads(item[0]).get("reason") for item in capture_rows],
                 },
                 ensure_ascii=False,
             )
