@@ -15,7 +15,10 @@ The directory contains `project.json`, `scans/`, `reports/` and `log.md`.
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.
 Existing project directories are never overwritten. Move the entire directory to
-preserve the relative artifact references.
+preserve the relative artifact references. The `ledger.v1` remediation ledger
+([LEDGER.md](LEDGER.md)) binds to this project UUID and normalized site target: it
+tracks the project's findings and their observation history in a separate artifact,
+never inside a scan.
 
 Facts are optional scalar values with a name, source (`provenance`) and UTC
 `observed_at` timestamp, or null when the observation time is unknown. Keep secrets
