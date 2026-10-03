@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
+**96 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 101 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -492,6 +492,20 @@ Answer "is the boilerplate actually the same everywhere?" across a crawled corpu
 |---|---|---|
 | `pages` | `list[dict] | None` | `None` |
 | `scan` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `semantic-inputs`
+
+MCP name: `seo_semantic_inputs`
+
+Build the reproducible normalized-input manifest for semantic analysis over retained page content. Each document entry names the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy that was applied, and the language evidence (the page's own <html lang> declaration plus letter-script shares over the normalized text) — the normalized text itself is never returned. Pass scan for a validated read-only scan.v1 corpus: it streams retained complete bodies offline with no refetch, under the crawl's recorded content_area config, and a missing or partial body stays an explicit omission — never an empty clean result. Or pass items as a list of {"url", "html"} to normalize supplied markup offline under an optional content_area config. The corpus is capped at 10,000 documents and 16 MiB of normalized retained input; reaching a bound reports the exact partial coverage.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `content_area` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

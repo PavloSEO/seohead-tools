@@ -226,6 +226,7 @@ onto the handler's arguments. Frequent parameters are duplicated as flags:
 seohead duplicate-check --input '{"items":[{"id":"a","text":"..."},{"id":"b","text":"..."}],"threshold":0.9}'
 seohead duplicate-check --scan saved.sqlite
 seohead boilerplate-report --scan saved.sqlite
+seohead semantic-inputs --scan saved.sqlite
 echo '{"url": "https://example.com"}' | seohead parse          # stdin JSON also works
 ```
 
@@ -267,7 +268,7 @@ Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 95 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 96 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

@@ -2120,6 +2120,64 @@ def boilerplate_report(pages: list[dict] | None = None, scan: str | None = None)
     return bp_core.boilerplate_consistency_report(pages)
 
 
+def semantic_inputs(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    content_area: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the reproducible normalized-input manifest for semantic analysis.
+
+    Each document's entry names the retained body hash, the exact decoded
+    input hash, the normalized output hash, the content-area strategy, and the
+    language evidence — the normalized text itself stays inside the corpus
+    boundary for the analyzer that consumes it (issue #801).
+    """
+    if items is not None and scan is not None:
+        raise ValueError("items[] and scan are mutually exclusive")
+    from seohead.tools import text_normalize as norm_core
+
+    if scan is not None:
+        if content_area is not None:
+            raise ValueError("scan input uses the crawl's recorded content_area config")
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        documents = [norm_core.manifest_entry(item) for item in corpus["items"]]
+        return {
+            "ok": True,
+            "count": len(documents),
+            "documents": documents,
+            **corpus_public(corpus, analyzed=len(documents)),
+        }
+    if not items:
+        raise ValueError("items[] required (list of {url, html})")
+    prepared = norm_core.prepare_items(items, content_area=content_area)
+    documents = [norm_core.manifest_entry(item) for item in prepared]
+    unavailable = sum(1 for document in documents if document["state"] == "unavailable")
+    return {
+        "ok": True,
+        "count": len(documents),
+        "documents": documents,
+        "normalization": norm_core.normalization_policy(content_area),
+        "coverage": {
+            "state": "partial" if unavailable else "complete",
+            "reason": "items without a usable html body are unavailable" if unavailable else "",
+            "eligible_documents": len(items),
+            "prepared_documents": len(documents) - unavailable,
+            "analyzed_documents": len(documents) - unavailable,
+            "measured_empty_documents": sum(
+                1 for document in documents if document["state"] == "empty"
+            ),
+            "omitted_documents": unavailable,
+            "omission_reasons": (
+                {"item supplies no html body": unavailable} if unavailable else {}
+            ),
+        },
+    }
+
+
 def social_meta_check(
     url: str | None = None, og: dict[str, str] | None = None, twitter: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -3385,6 +3443,7 @@ _RAW_HANDLERS = {
     "citability_check": citability_check,
     "markdown_extract": markdown_extract,
     "boilerplate_report": boilerplate_report,
+    "semantic_inputs": semantic_inputs,
     "log_scan": log_scan,
     "social_meta_check": social_meta_check,
     "soft404_check": soft404_check,
