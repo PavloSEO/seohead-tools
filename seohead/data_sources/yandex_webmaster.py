@@ -102,10 +102,12 @@ def collect(
     ``user_id`` is resolved from the token when omitted. ``params`` become the query string;
     a list value repeats the key (``query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS``).
     With ``paginate`` the paged sample lists (search queries, crawl events, indexing and broken
-    links samples) are read page by page up to ``max_rows``; without it one page is still read
-    and validated. ``truncated`` is set whenever the documented ``count`` says rows remain
-    unread — a ``max_rows`` cut, a single-page slice, or a page that ended early — and the
-    state becomes ``partial``; a response without the documented list or count fails.
+    links samples) are read page by page up to ``max_rows`` — each page requests at most the
+    remaining row budget; without it one page is still read and validated. ``truncated`` is
+    set whenever the documented ``count`` says rows remain unread — a ``max_rows`` cut, a
+    single-page slice, or a page that ended early — and the state becomes ``partial``; a
+    response without the documented list or count, or whose ``count`` contradicts the rows
+    returned, fails.
     """
     from seohead.data_sources.credentials import MissingCredential, yandex_webmaster_token
 
@@ -122,6 +124,8 @@ def collect(
     send = transport or _default_transport
     query = dict(DEFAULT_PARAMS.get(operation, {}), **(params or {}))
     spec = PAGED.get(operation)
+    if paginate and spec is not None and max_rows < 1:
+        raise ValueError("paginate requires a positive max_rows")
     try:
         user = user_id or resolve_user_id(bearer, send)
         path = (
@@ -144,21 +148,28 @@ def collect(
             body = get({})
         else:
             list_key, page_size = spec
-            first, rows, offset = None, [], int(query.get("offset", 0))
+            first, rows = None, []
+            start = int(query.get("offset", 0))
+            offset = start
             while True:
-                page = get({"offset": offset, "limit": page_size} if paginate else {})
+                limit = min(page_size, max_rows - len(rows))
+                page = get({"offset": offset, "limit": limit} if paginate else {})
                 chunk, count = _sample_page(page, list_key)
+                if count < offset + len(chunk):
+                    raise ValueError(
+                        "malformed Yandex Webmaster response: 'count' is below the returned rows"
+                    )
                 first = first if first is not None else page
                 rows.extend(chunk)
                 offset += len(chunk)
-                truncated = offset < count
                 if not paginate:
                     break
                 if len(rows) >= max_rows:
                     rows = rows[:max_rows]
                     break
-                if offset >= count or len(chunk) < page_size:
+                if offset >= count or len(chunk) < limit:
                     break
+            truncated = start + len(rows) < count
             body = dict(first or {}, **{list_key: rows})
             returned = len(rows)
     except (

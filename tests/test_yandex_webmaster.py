@@ -2,6 +2,7 @@
 
 import json
 import urllib.error
+import urllib.parse
 
 import pytest
 
@@ -277,6 +278,98 @@ def test_a_decimal_string_count_is_parsed(operation, list_key, cap):
     assert result["ok"] and result["state"] == "complete"
     assert result["returned"] == cap and result["truncated"] is False
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(("operation", "list_key", "cap"), PAGED_OPS)
+def test_a_final_page_past_the_ceiling_stays_partial(operation, list_key, cap):
+    def pages(url):
+        params = dict(urllib.parse.parse_qsl(url.split("?", 1)[1]))
+        offset = int(params["offset"])
+        size = cap if offset == 0 else min(int(params["limit"]), 50)
+        return {list_key: [{}] * size, "count": cap + 50}
+
+    send, calls = _transport(pages)
+    result = wm.collect(
+        operation,
+        user_id="1",
+        host_id="h",
+        paginate=True,
+        max_rows=cap + 20,
+        token="t",
+        transport=send,
+    )
+    assert result["state"] == "partial" and result["truncated"] is True
+    assert result["returned"] == cap + 20
+    assert "limit=20" in calls[1]
+
+    evidence = _evidence(
+        operation,
+        {"user_id": "1", "host_id": "h", "paginate": True, "max_rows": cap + 20},
+        send,
+    )
+    assert evidence["pagination"] == {"returned": cap + 20, "truncated": True}
+    assert evidence["status"] == "partial" and evidence["complete"] is False
+
+
+@pytest.mark.parametrize(("operation", "list_key", "cap"), PAGED_OPS)
+def test_an_over_returning_page_still_reports_the_ceiling_cut(operation, list_key, cap):
+    def pages(url):
+        offset = int(url.split("offset=")[1].split("&")[0])
+        return {list_key: [{}] * (cap if offset == 0 else 50), "count": cap + 50}
+
+    send, _ = _transport(pages)
+    result = wm.collect(
+        operation,
+        user_id="1",
+        host_id="h",
+        paginate=True,
+        max_rows=cap + 20,
+        token="t",
+        transport=send,
+    )
+    assert result["state"] == "partial" and result["truncated"] is True
+    assert result["returned"] == cap + 20
+
+
+@pytest.mark.parametrize(("operation", "list_key", "cap"), PAGED_OPS)
+@pytest.mark.parametrize("paginate", [True, False])
+def test_a_count_below_the_returned_rows_fails(operation, list_key, cap, paginate):
+    send, _ = _transport(lambda url: {list_key: [{}], "count": 0})
+    result = wm.collect(
+        operation, user_id="1", host_id="h", paginate=paginate, token="t", transport=send
+    )
+    assert result["ok"] is False and result["state"] == "failed"
+
+    evidence = _evidence(operation, {"user_id": "1", "host_id": "h", "paginate": paginate}, send)
+    assert evidence["status"] == "failed" and evidence["complete"] is False
+
+
+@pytest.mark.parametrize(("operation", "list_key", "cap"), PAGED_OPS)
+def test_a_later_page_contradicting_count_fails(operation, list_key, cap):
+    def pages(url):
+        offset = int(url.split("offset=")[1].split("&")[0])
+        if offset == 0:
+            return {list_key: [{}] * cap, "count": cap + 1}
+        return {list_key: [{}] * 5, "count": cap + 1}
+
+    send, _ = _transport(pages)
+    result = wm.collect(
+        operation, user_id="1", host_id="h", paginate=True, token="t", transport=send
+    )
+    assert result["ok"] is False and result["state"] == "failed"
+
+
+def test_paginate_requires_a_positive_max_rows():
+    with pytest.raises(ValueError, match="max_rows"):
+        wm.collect(
+            "indexing",
+            user_id="1",
+            host_id="h",
+            paginate=True,
+            max_rows=0,
+            token="t",
+            transport=lambda *a: "{}",
+        )
 
 
 @pytest.mark.parametrize(("operation", "list_key", "cap"), PAGED_OPS)

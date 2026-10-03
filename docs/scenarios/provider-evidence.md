@@ -147,8 +147,10 @@ token when the request omits it; `host_id` has the form `https:example.com:443`.
 `params` becomes the query string — a list repeats the key, e.g.
 `{"query_indicator": ["TOTAL_SHOWS", "TOTAL_CLICKS"], "date_from": "2025-10-01"}`; with
 `"paginate": true` the query and sample lists are read page by page (500 per page for queries,
-100 for the sample lists — the documented API caps — up to `max_rows`, 50 000 by default).
+100 for the sample lists — the documented API caps — up to `max_rows`, 50 000 by default; the
+last page requests only the remaining row budget).
 Each paged response is validated against the documented `count` and list shape; `truncated`
 marks rows left unread (a `max_rows` cut, a single first page, or a page that ended before
-`count`) and reports `partial`, while a page without the documented list or count fails —
+`count`) and reports `partial`, while a page without the documented list or count, or whose
+`count` is below the rows it returned, fails —
 a paged operation never reports a complete zero-row collection while rows remain.
