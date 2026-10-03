@@ -289,6 +289,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
 | `scan-snapshot` | Makes a validated, portable single-file SQLite copy. `--out` may name a new file or an existing directory; a directory receives a UTC timestamp, host, and short scan UUID filename. Existing destinations are never overwritten. | writes a new file |
+| `scan-export` | Exports retained scan data under the versioned `scan_export.v1` contract as CSV, XLSX, JSON, or XML. Accepts a `scan.v1` artifact or an SF Analyzer `audit.json`; validates `--records`/`--fields` before writing; XML uses the documented `scan-export` root element and namespace. | writes new files |
 | `scan-pin` | Explicitly pins a scan, or unpins it with `--unpin`, so retention will not select it. | changes scan metadata |
 | `scan-prune` | Produces a retention plan by default. Deletion needs `--apply` and the exact reviewed plan. | deletes only with `--apply` |
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
@@ -310,6 +311,11 @@ seohead scan-status --scan native.sqlite
 # no-clobber snapshot: either a new filename or an existing directory
 seohead scan-snapshot --scan native.sqlite --out snapshot.sqlite
 seohead scan-snapshot --scan native.sqlite --out .
+
+# versioned scan_export.v1 data export; field selection is validated upfront
+seohead scan-export --scan native.sqlite --out export.json --format json
+seohead scan-export --scan native.sqlite --out export.xml --format xml
+seohead scan-export --scan audit.json --out export.csv --format csv --records pages,findings --fields pages=url,status_code
 
 # pin before retaining a comparison baseline; use --unpin to reverse only the pin
 seohead scan-pin --scan native.sqlite
@@ -533,7 +539,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(99 + 5):
+(101 + 5):
 
 ```bash
 seohead mcp        # stdio

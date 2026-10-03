@@ -92,6 +92,7 @@ COMMANDS = (
     "scan-status",
     "scan-rendered-routes",
     "scan-snapshot",
+    "scan-export",
     "scan-pin",
     "scan-prune",
     "scan-body-diff",
@@ -695,6 +696,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["input_path"] = args.input_path
         if getattr(args, "out", None):
             kw["out"] = args.out
+    if cmd == "scan-export":
+        for name in ("input_path", "out", "format", "records", "fields"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     if cmd == "scan-pin":
         if getattr(args, "input_path", None):
             kw["input_path"] = args.input_path
@@ -1400,6 +1406,31 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
     if cmd == "scan-snapshot":
         _source_flag(sub, "--out", help="new snapshot SQLite file")
+    if cmd == "scan-export":
+        _source_flag(
+            sub,
+            "--scan",
+            dest="input_path",
+            metavar="FILE",
+            help="scan.v1 SQLite artifact or SF Analyzer audit.json to export",
+        )
+        sub.add_argument(
+            "--out",
+            metavar="PATH",
+            help="output file; CSV mode treats it as the base for per-entity files",
+        )
+        sub.add_argument("--format", choices=("csv", "xlsx", "json", "xml"), default="json")
+        sub.add_argument(
+            "--records",
+            metavar="TYPES",
+            help="comma-separated record types: pages, links, findings (default: all available)",
+        )
+        sub.add_argument(
+            "--fields",
+            action="append",
+            metavar="TYPE=F1,F2",
+            help="record field selection, repeatable, e.g. --fields pages=url,title",
+        )
     if cmd == "scan-pin":
         sub.add_argument("--unpin", action="store_true")
     if cmd == "scan-prune":
@@ -1642,6 +1673,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         "rendered-routes",
         "snapshot",
+        "export",
         "pin",
         "prune",
         "body-diff",

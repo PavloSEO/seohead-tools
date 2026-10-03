@@ -1556,6 +1556,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Create a consistent new SQLite snapshot without overwriting a destination."""
         return _checked(handlers.scan_snapshot(input_path=input_path, out=out))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_scan_export(
+        input_path: str,
+        out: str,
+        format: str = "json",
+        records: list[str] | None = None,
+        fields: dict[str, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        """Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML."""
+        return _checked(
+            handlers.scan_export(
+                input_path=input_path,
+                out=out,
+                format=format,
+                records=records,
+                fields=fields,
+            )
+        )
+
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_scan_pin(input_path: str, pinned: bool = True) -> dict[str, Any]:
         """Pin or unpin a finished scan; this is an explicit metadata mutation."""

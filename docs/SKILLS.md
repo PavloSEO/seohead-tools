@@ -99,7 +99,7 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-69 of the 99 commands are not named in any skill's own body (a mention inside
+71 of the 101 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing
 inside a workflow's write-up, or not yet needed by one at all — and have no
 skill of their own, deliberately: a skill per single command is noise.
@@ -119,7 +119,8 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
 `project-status` ·
 `provider-auth` · `provider-collect` · `provider-join` · `provider-registry` ·
 `provider-replay` · `provider-verify` · `redirects-check` · `redirects-generate` ·
-`regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-extract` ·
+`regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-export` ·
+`scan-extract` ·
 `scan-import-urls` · `scan-inspect` · `scan-list` · `scan-pin` · `scan-prune` ·
 `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` ·
 `scan-status` · `scenario-show` · `segment-diff` · `serp-fetch` · `skill-list` ·
