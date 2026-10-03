@@ -41,8 +41,9 @@ seohead crawl-diagnose --scan native.sqlite --export diagnostic-redacted.json
 ```
 
 The readable diagnosis goes to stderr and bounded JSON to stdout. Its decision
-samples name the recorded URL, reason, source and depth; the optional export
-removes URLs, local paths and identity fields. A saved scan cannot prove whether
+samples name the recorded URL, reason, source and depth; the optional CLI export
+removes URLs, local paths, scan identity and unknown freeform labels. The MCP
+diagnostic remains read-only; file export requires the explicit CLI option. A saved scan cannot prove whether
 a worker process is still alive, and a one-page crawl does not establish the
 site-wide URL total. The command recommends a focused check or an explicit
 configuration change; it never changes robots policy or crawl settings.

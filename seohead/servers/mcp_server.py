@@ -251,20 +251,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             handlers.log_scan(run=run, images_dir=images_dir, max_per_rule=max_per_rule)
         )
 
-    @mcp.tool(annotations=create_files, structured_output=True)
+    @mcp.tool(annotations=pure, structured_output=True)
     def seo_crawl_diagnose(
         scan: str | None = None,
         run: str | None = None,
         max_decisions: int = 20,
-        export: str | None = None,
     ) -> dict[str, Any]:
         """Explain a small or unfinished native crawl from retained scan or run evidence.
-        No network request is made. An optional ``export`` writes a new redacted JSON file
-        with URL and identity fields removed; existing files are never overwritten.
+        This MCP tool is read-only and makes no network request. To deliberately write a
+        new redacted JSON file, use the CLI's ``crawl-diagnose --export`` option.
         """
-        return _checked(
-            handlers.crawl_diagnose(scan=scan, run=run, max_decisions=max_decisions, export=export)
-        )
+        return _checked(handlers.crawl_diagnose(scan=scan, run=run, max_decisions=max_decisions))
 
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_sitemap_crawl(url: str, concurrency: int = 3) -> dict[str, Any]:

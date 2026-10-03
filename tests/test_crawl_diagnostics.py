@@ -62,6 +62,7 @@ def legacy_run(tmp_path, *, html_page=None, decisions=(), run_fields=None):
         "input_mode": "crawl",
         "source": URL,
         "crawl_finish_reason": "finished",
+        "crawl_partial": False,
         "crawl_config": manifest(load()),
         **(run_fields or {}),
     }
@@ -216,6 +217,37 @@ def test_missing_or_corrupt_legacy_evidence_does_not_look_complete(tmp_path):
         handlers.crawl_diagnose(run=str(run))
 
 
+def test_partial_native_link_evidence_does_not_claim_complete_one_page(tmp_path):
+    from tests.test_scan_native import _metadata, _record, _runtime
+
+    path = tmp_path / "partial.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([(URL, 0)])
+        scan.commit_page(
+            scan.claim(1)[0],
+            _record(URL),
+            runtime=_runtime(),
+            partial_reasons=("link_observations_omitted",),
+        )
+        scan.finish_capture()
+    result = handlers.crawl_diagnose(scan=str(path))
+    assert result["source"]["crawl_partial"] is True
+    assert result["coverage"]["links"] == "partial"
+    assert "coverage_gap" in codes(result)
+    assert "complete_one_page" not in codes(result)
+
+
+def test_missing_legacy_decisions_does_not_claim_complete_one_page(tmp_path):
+    run = legacy_run(tmp_path, html_page={"outlinks": 0})
+    (run / "links.jsonl").write_text("")
+    (run / "decisions.jsonl").unlink()
+    result = handlers.crawl_diagnose(run=str(run))
+    assert result["source"]["crawl_partial"] is False
+    assert result["coverage"]["decisions"] == "unavailable"
+    assert "coverage_gap" in codes(result)
+    assert "complete_one_page" not in codes(result)
+
+
 def test_redacted_export_is_opt_in_bounded_and_never_overwrites(tmp_path):
     run = legacy_run(
         tmp_path,
@@ -241,6 +273,32 @@ def test_redacted_export_is_opt_in_bounded_and_never_overwrites(tmp_path):
     assert len(result["decisions"]["sample"]) == 1
 
 
+def test_export_redacts_freeform_labels_and_scan_identity(tmp_path):
+    secret = "supersecrettoken"
+    run = legacy_run(
+        tmp_path,
+        html_page={"error_kind": secret},
+        decisions=[{"url": URL, "source": URL, "reason": secret, "depth": 1}],
+        run_fields={"crawl_finish_reason": secret},
+    )
+    output = tmp_path / "freeform-redacted.json"
+    handlers.crawl_diagnose(run=str(run), export=str(output))
+    redacted = json.loads(output.read_text())
+    assert secret not in output.read_text()
+    assert redacted["source"]["finish_reason"] == "[redacted]"
+    assert redacted["observed"]["page_errors"] == {"[redacted]": 1}
+    assert redacted["decisions"]["by_reason"] == {"[redacted]": 1}
+    assert redacted["decisions"]["sample"][0]["reason"] == "[redacted]"
+
+    scan_dir = tmp_path / "native"
+    scan_dir.mkdir()
+    scan, _ = saved_scan(scan_dir)
+    output = tmp_path / "native-redacted.json"
+    raw = handlers.crawl_diagnose(scan=str(scan), export=str(output))
+    assert raw["source"]["scan_uuid"] not in output.read_text()
+    assert json.loads(output.read_text())["source"]["scan_uuid"] == "[redacted]"
+
+
 def test_cli_prints_readable_summary_and_json(tmp_path, capsys):
     from seohead.cli import main
 
@@ -262,3 +320,11 @@ def test_cli_prints_readable_summary_and_json(tmp_path, capsys):
     assert "decision #1: depth_limit" in captured.err
     assert "elapsed=unknown duration" in captured.err
     assert json.loads(captured.out)["schema_version"] == "crawl_diagnostics.v1"
+
+
+def test_mcp_diagnosis_has_no_file_write_permission_or_export_argument():
+    from seohead.servers.tool_reference import load_seo_tools
+
+    tool = next(spec for spec in load_seo_tools() if spec.name == "seo_crawl_diagnose")
+    assert tool.writes is False
+    assert "export" not in {argument.name for argument in tool.arguments}

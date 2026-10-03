@@ -186,16 +186,15 @@ Report claims a finished run makes that cannot all be true at once: a recorded s
 
 MCP name: `seo_crawl_diagnose`
 
-Explain a small or unfinished native crawl from retained scan or run evidence. No network request is made. An optional ``export`` writes a new redacted JSON file with URL and identity fields removed; existing files are never overwritten.
+Explain a small or unfinished native crawl from retained scan or run evidence. This MCP tool is read-only and makes no network request. To deliberately write a new redacted JSON file, use the CLI's ``crawl-diagnose --export`` option.
 
 | Argument | Type | Default |
 |---|---|---|
 | `scan` | `str | None` | `None` |
 | `run` | `str | None` | `None` |
 | `max_decisions` | `int` | `20` |
-| `export` | `str | None` | `None` |
 
-**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 ### `sitemap-crawl`
 

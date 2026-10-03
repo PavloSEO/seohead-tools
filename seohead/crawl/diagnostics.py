@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,56 @@ from typing import Any
 MAX_DECISIONS = 20
 MAX_AUDIT_BYTES = 64 * 1024 * 1024
 MAX_JSONL_LINE_BYTES = 8 * 1024 * 1024
+SAFE_FINISH_REASONS = frozenset(
+    {
+        "finished",
+        "running",
+        "url_limit",
+        "request_limit",
+        "duration_limit",
+        "robots_unavailable",
+        "errors",
+        "interrupted",
+        "storage_backpressure",
+        "finalization_blocked",
+        "offline_reanalysis",
+        "operator_requested_stop",
+        "capture_finished_no_audit",
+    }
+)
+SAFE_ERROR_KINDS = frozenset({"timeout", "connection", "blocked_redirect", "decoding"})
+SAFE_DECISION_REASONS = frozenset(
+    {
+        "blocked_by_robots",
+        "depth_limit",
+        "outside_host",
+        "excluded_host",
+        "excluded_by_pattern",
+        "outside_segment",
+        "redirect_off_host",
+        "url_too_long",
+        "query_variants_limit",
+        "nofollow",
+        "link_observations_limit",
+        "form_observations_limit",
+    }
+)
+SAFE_MEDIA_TYPES = frozenset(
+    {
+        "text/html",
+        "text/plain",
+        "text/xml",
+        "text/css",
+        "application/json",
+        "application/xml",
+        "application/pdf",
+        "application/javascript",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+    }
+)
 
 
 def _render_failure_kind(reason: str) -> str:
@@ -183,6 +232,7 @@ def _scan(path: Path, limit: int) -> dict[str, Any]:
                 "path": str(path),
                 "lifecycle": header["lifecycle"],
                 "finish_reason": header["finish_reason"],
+                "crawl_partial": bool(header["crawl_partial"]),
                 "start_url": header["start_url"],
             },
             "settings": _settings(config),
@@ -216,7 +266,7 @@ def _scan(path: Path, limit: int) -> dict[str, Any]:
             "limitations_count": len(json.loads(header["limitations_json"])),
             "coverage": {
                 "pages": "recorded",
-                "links": "recorded",
+                "links": "partial" if header["crawl_partial"] else "recorded",
                 "decisions": "recorded",
                 "frontier": "recorded"
                 if header["source_kind"] == "native"
@@ -375,6 +425,7 @@ def _run(path: Path, limit: int) -> dict[str, Any]:
             if run.get("crawl_finish_reason") == "finished"
             else "interrupted",
             "finish_reason": run.get("crawl_finish_reason"),
+            "crawl_partial": run.get("crawl_partial"),
             "start_url": run.get("source"),
         },
         "settings": _settings(settings),
@@ -406,7 +457,11 @@ def _run(path: Path, limit: int) -> dict[str, Any]:
         "limitations_count": len(run.get("checks_skipped", [])),
         "coverage": {
             "pages": "recorded" if (path / "pages.jsonl").is_file() else "unavailable",
-            "links": "recorded" if (path / "links.jsonl").is_file() else "unavailable",
+            "links": "partial"
+            if run.get("crawl_partial") is True
+            else "recorded"
+            if (path / "links.jsonl").is_file()
+            else "unavailable",
             "decisions": "recorded" if (path / "decisions.jsonl").is_file() else "unavailable",
             "frontier": "unavailable",
             "audit": "recorded",
@@ -418,12 +473,27 @@ def _run(path: Path, limit: int) -> dict[str, Any]:
 
 def _explain(result: dict[str, Any]) -> list[dict[str, Any]]:
     source, obs, decisions = result["source"], result["observed"], result["decisions"]
+    coverage = result["coverage"]
     reasons = decisions["by_reason"]
     findings = []
 
     def add(code: str, conclusion: str, evidence: list[str], next_step: str) -> None:
         findings.append(
             {"code": code, "conclusion": conclusion, "evidence": evidence, "next_step": next_step}
+        )
+
+    complete_discovery = (
+        source.get("crawl_partial") is False
+        and coverage["pages"] == "recorded"
+        and coverage["links"] == "recorded"
+        and coverage["decisions"] == "recorded"
+    )
+    if not complete_discovery:
+        add(
+            "coverage_gap",
+            "Discovery or decision evidence is partial or unavailable; zero observed links cannot prove the crawl exhausted the site's routes.",
+            ["source.crawl_partial", "coverage.pages", "coverage.links", "coverage.decisions"],
+            "Inspect the missing or omitted evidence before treating a one-page result as complete.",
         )
 
     if source["lifecycle"] == "running":
@@ -556,6 +626,7 @@ def _explain(result: dict[str, Any]) -> list[dict[str, Any]]:
         and first.get("outlinks") == 0
         and not reasons
         and not obs["page_errors"]
+        and complete_discovery
     ):
         add(
             "complete_one_page",
@@ -597,36 +668,80 @@ def diagnose(
     result["diagnoses"] = _explain(result)
     if export is not None:
         redacted = json.loads(json.dumps(result))
-        redacted["source"]["path"] = "[redacted]"
-        redacted["source"]["start_url"] = "[redacted]"
-        if not re.fullmatch(r"[a-z_]{1,64}", str(redacted["source"]["finish_reason"])):
-            redacted["source"]["finish_reason"] = "[redacted]"
-        redacted["settings"]["user_agent"] = "[redacted]"
-        redacted["settings"]["robots_token"] = "[redacted]"
-        redacted["settings"]["scope"] = "[redacted]"
+        source = redacted["source"]
+        for key in ("path", "start_url", "scan_uuid"):
+            if key in source:
+                source[key] = "[redacted]"
+        if source.get("finish_reason") is not None and (
+            not isinstance(source["finish_reason"], str)
+            or source["finish_reason"] not in SAFE_FINISH_REASONS
+        ):
+            source["finish_reason"] = "[redacted]"
+        if type(source.get("crawl_partial")) is not bool:
+            source["crawl_partial"] = None
+        settings = redacted["settings"]
+        for key in ("user_agent", "robots_token", "scope"):
+            settings[key] = "[redacted]"
+        if settings.get("robots_policy") not in ("respect", "report_only", "ignore"):
+            settings["robots_policy"] = "[redacted]"
+        if settings.get("rendering_mode") not in ("raw", "js", "legacy_fragment"):
+            settings["rendering_mode"] = "[redacted]"
+        settings["limits"] = {
+            key: value if type(value) is int and value >= 0 else None
+            for key, value in settings["limits"].items()
+        }
+        settings["discovery"] = {
+            key: value if type(value) is bool else None
+            for key, value in settings["discovery"].items()
+        }
         observed = redacted["observed"]
+        if type(observed.get("requires_rendering")) is not bool:
+            observed["requires_rendering"] = None
 
-        def safe_groups(groups: dict[str, int], pattern: str) -> dict[str, int]:
+        def safe_groups(groups: dict[str, int], allowed: frozenset[str]) -> dict[str, int]:
             redacted_groups: Counter[str] = Counter()
             for key, count in groups.items():
-                redacted_groups[key if re.fullmatch(pattern, key) else "[redacted]"] += count
+                redacted_groups[key if key in allowed else "[redacted]"] += count
             return dict(redacted_groups)
 
-        observed["content_types"] = safe_groups(
-            observed["content_types"], r"[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+"
-        )
-        observed["page_errors"] = safe_groups(observed["page_errors"], r"[a-z_]{1,64}")
+        media_groups: Counter[str] = Counter()
+        for key, count in observed["content_types"].items():
+            media = key.split(";", 1)[0].strip().lower()
+            media_groups[media if media in SAFE_MEDIA_TYPES else "[redacted]"] += count
+        observed["content_types"] = dict(media_groups)
+        observed["page_errors"] = safe_groups(observed["page_errors"], SAFE_ERROR_KINDS)
         if observed["start_page"]:
             observed["start_page"]["content_type"] = "[redacted]"
             observed["start_page"]["error_kind"] = "[redacted]"
+            for key in ("status_code", "outlinks"):
+                value = observed["start_page"].get(key)
+                observed["start_page"][key] = value if type(value) is int and value >= 0 else None
+            if observed["start_page"].get("representation") not in (
+                "static",
+                "rendered",
+                "legacy_fragment",
+            ):
+                observed["start_page"]["representation"] = "[redacted]"
+        if isinstance(observed.get("render"), dict):
+            render = observed["render"]
+            for key in ("render_requests", "unprobed_patterns"):
+                value = render.get(key)
+                render[key] = value if type(value) is int and value >= 0 else None
+            render["budget_exhausted"] = render.get("budget_exhausted") is True
+            render["failure_reasons"] = safe_groups(
+                render.get("failure_reasons") or {},
+                frozenset({"missing_dependency", "timeout", "other"}),
+            )
         redacted["decisions"]["by_reason"] = safe_groups(
-            redacted["decisions"]["by_reason"], r"[a-z_]{1,64}"
+            redacted["decisions"]["by_reason"], SAFE_DECISION_REASONS
         )
         for item in redacted["decisions"]["sample"]:
             item["url"] = "[redacted]"
             item["source"] = "[redacted]"
-            if not re.fullmatch(r"[a-z_]{1,64}", str(item["reason"])):
+            if not isinstance(item["reason"], str) or item["reason"] not in SAFE_DECISION_REASONS:
                 item["reason"] = "[redacted]"
+            if type(item["depth"]) is not int or item["depth"] < 0:
+                item["depth"] = None
         path = Path(export)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
