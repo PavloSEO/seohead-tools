@@ -500,7 +500,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(95 + 5):
+(97 + 5):
 
 ```bash
 seohead mcp        # stdio
