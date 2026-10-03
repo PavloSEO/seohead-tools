@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -132,10 +133,54 @@ def test_sources_doctor_uses_shared_dataforseo_readiness(monkeypatch, tmp_path, 
 
 # --- GSC readiness (bearer OR durable grant OR service account, issue #717) --
 
+# Synthetic shape only: no usable key material, real email, or real token endpoint fields.
+_SYNTHETIC_SERVICE_ACCOUNT = {
+    "type": "service_account",
+    "project_id": "synthetic-project",
+    "private_key_id": "synthetic-key-id",
+    "private_key": "synthetic-placeholder-not-a-real-key",
+    "client_email": "synthetic-service-account@example.invalid",
+    "client_id": "synthetic-client-id",
+    "token_uri": "https://oauth2.googleapis.com/token",
+}
+
 
 def _clear_gsc_env(monkeypatch):
     monkeypatch.delenv("GSC_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
+
+
+def _gsc_config_dir(tmp_path):
+    path = tmp_path / "gsc"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def _write_durable_grant(tmp_path):
+    grant = _gsc_config_dir(tmp_path) / "oauth.json"
+    grant.write_text(
+        json.dumps(
+            {
+                "refresh_token": "synthetic-refresh-token",
+                "client_id": "synthetic-client-id",
+                "client_secret": "synthetic-client-secret",
+                "scopes": ["https://www.googleapis.com/auth/webmasters.readonly"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    grant.chmod(0o600)
+    return grant
+
+
+def _write_service_account(tmp_path, raw_text=None):
+    account = _gsc_config_dir(tmp_path) / "service-account.json"
+    account.write_text(
+        raw_text if raw_text is not None else json.dumps(_SYNTHETIC_SERVICE_ACCOUNT),
+        encoding="utf-8",
+    )
+    account.chmod(0o600)
+    return account
 
 
 @pytest.mark.parametrize("component", ["oauth_bearer", "durable_oauth", "service_account"])
@@ -147,28 +192,13 @@ def test_sources_doctor_gsc_ready_with_any_working_credential(monkeypatch, tmp_p
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
     _clear_gsc_env(monkeypatch)
-    gsc_dir = tmp_path / "gsc"
-    gsc_dir.mkdir()
+    _gsc_config_dir(tmp_path)
     if component == "oauth_bearer":
         monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-bearer")
     elif component == "durable_oauth":
-        grant = gsc_dir / "oauth.json"
-        grant.write_text(
-            json.dumps(
-                {
-                    "refresh_token": "synthetic-refresh-token",
-                    "client_id": "synthetic-client-id",
-                    "client_secret": "synthetic-client-secret",
-                    "scopes": ["https://www.googleapis.com/auth/webmasters.readonly"],
-                }
-            ),
-            encoding="utf-8",
-        )
-        grant.chmod(0o600)
+        _write_durable_grant(tmp_path)
     else:
-        account = gsc_dir / "service-account.json"
-        account.write_text("{}", encoding="utf-8")
-        account.chmod(0o600)
+        _write_service_account(tmp_path)
 
     doctor = handlers.sources_doctor()
     gsc = doctor["sources"]["gsc"]
@@ -193,6 +223,267 @@ def test_sources_doctor_gsc_not_ready_without_any_credential(monkeypatch, tmp_pa
         "service_account": False,
         "durable_oauth": False,
     }
+    assert gsc["service_account_status"] == "missing"
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "status"),
+    [
+        ("{not valid json", "malformed_json"),
+        ('"just a string"', "unsupported_shape"),
+        ("[]", "unsupported_shape"),
+    ],
+    ids=["invalid_json", "json_string", "json_array"],
+)
+def test_sources_doctor_gsc_service_account_malformed_document(
+    monkeypatch, tmp_path, raw_text, status
+):
+    """A broken service-account file is not ready; the doctor reports a safe status enum."""
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path, raw_text=raw_text)
+
+    doctor = handlers.sources_doctor()
+    gsc = doctor["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == status
+    assert doctor["provider_status"]["gsc"]["service_account_status"] == status
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {},
+        {**_SYNTHETIC_SERVICE_ACCOUNT, "type": "authorized_user"},
+        {**_SYNTHETIC_SERVICE_ACCOUNT, "token_uri": "https://example.invalid/token"},
+        {**_SYNTHETIC_SERVICE_ACCOUNT, "private_key": 42},
+        {**_SYNTHETIC_SERVICE_ACCOUNT, "client_email": ""},
+    ],
+    ids=["empty_object", "wrong_type", "wrong_token_uri", "non_string_key", "empty_email"],
+)
+def test_sources_doctor_gsc_service_account_unsupported_shape(monkeypatch, tmp_path, document):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path, raw_text=json.dumps(document))
+
+    doctor = handlers.sources_doctor()
+    gsc = doctor["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == "unsupported_shape"
+
+
+@pytest.mark.parametrize("missing_field", ["client_email", "private_key", "token_uri"])
+def test_sources_doctor_gsc_service_account_missing_required_field(
+    monkeypatch, tmp_path, missing_field
+):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    document = {
+        key: value for key, value in _SYNTHETIC_SERVICE_ACCOUNT.items() if key != missing_field
+    }
+    _write_service_account(tmp_path, raw_text=json.dumps(document))
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == "unsupported_shape"
+
+
+def test_sources_doctor_gsc_service_account_over_size_limit(monkeypatch, tmp_path):
+    """A file past the bound is malformed, never parsed, never "ready"."""
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    document = {**_SYNTHETIC_SERVICE_ACCOUNT, "padding": "x" * 70_000}
+    _write_service_account(tmp_path, raw_text=json.dumps(document))
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["service_account_status"] == "malformed_json"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits do not apply on Windows")
+def test_sources_doctor_gsc_service_account_group_readable_is_unsafe(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    account = _write_service_account(tmp_path)
+    account.chmod(0o640)
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["components"]["service_account"] is False
+    assert gsc["service_account_status"] == "unsafe_file"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks are not portable on Windows")
+def test_sources_doctor_gsc_service_account_symlink_is_unsafe(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    real = tmp_path / "real-service-account.json"
+    real.write_text(json.dumps(_SYNTHETIC_SERVICE_ACCOUNT), encoding="utf-8")
+    real.chmod(0o600)
+    (_gsc_config_dir(tmp_path) / "service-account.json").symlink_to(real)
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is False
+    assert gsc["service_account_status"] == "unsafe_file"
+
+
+def test_sources_doctor_gsc_service_account_status_honors_env_override(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path / "other-config")
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "other-config")
+    _clear_gsc_env(monkeypatch)
+    account = _write_service_account(tmp_path)
+    monkeypatch.setenv("GSC_SERVICE_ACCOUNT_FILE", str(account))
+
+    gsc = handlers.sources_doctor()["sources"]["gsc"]
+    assert gsc["ready"] is True
+    assert gsc["components"]["service_account"] is True
+    assert gsc["service_account_status"] == "configured_unverified"
+
+
+def test_sources_doctor_gsc_never_exposes_service_account_contents(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path)
+
+    serialized = json.dumps(handlers.sources_doctor())
+    for marker in (
+        "synthetic-service-account@example.invalid",
+        "synthetic-placeholder-not-a-real-key",
+        "synthetic-project",
+        "synthetic-key-id",
+    ):
+        assert marker not in serialized
+
+
+def test_gsc_service_account_document_returns_document_only_when_valid(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    account = _write_service_account(tmp_path)
+
+    status, document = credentials.gsc_service_account_document()
+    assert status == "configured_unverified"
+    assert document["client_email"] == "synthetic-service-account@example.invalid"
+
+    account.write_text("{broken", encoding="utf-8")
+    assert credentials.gsc_service_account_document() == ("malformed_json", None)
+
+
+def test_gsc_bearer_wins_over_service_account_file(monkeypatch, tmp_path):
+    """Token precedence stays bearer, then durable grant, then service account."""
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path)
+    monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-bearer")
+
+    bearer, error = gsc_core._acquire_token(None)
+    assert bearer == "synthetic-bearer"
+    assert error is None
+
+
+def test_gsc_durable_grant_wins_over_service_account(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_durable_grant(tmp_path)
+    _write_service_account(tmp_path)
+    monkeypatch.setattr(
+        gsc_core, "durable_oauth_token", lambda: {"access_token": "refreshed-bearer"}
+    )
+
+    bearer, error = gsc_core._acquire_token(None)
+    assert bearer == "refreshed-bearer"
+    assert error is None
+
+
+def test_gsc_failed_grant_refresh_returns_before_service_account(monkeypatch, tmp_path):
+    """A durable-grant refresh failure must not silently fall back to the service account."""
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_durable_grant(tmp_path)
+    _write_service_account(tmp_path)
+
+    def fail_refresh():
+        raise credentials.MissingCredential("synthetic refresh failure")
+
+    monkeypatch.setattr(gsc_core, "durable_oauth_token", fail_refresh)
+
+    bearer, error = gsc_core._acquire_token(None)
+    assert bearer is None
+    assert error == "stored OAuth grant refresh failed; reconnect or check the grant"
+
+
+def test_gsc_malformed_service_account_reports_safe_error(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path, raw_text="{broken")
+
+    bearer, error = gsc_core._acquire_token(None)
+    assert bearer is None
+    assert error == "OAuth bearer unavailable; GSC service-account JSON is unreadable or malformed"
+    assert "{broken" not in error
+
+
+def test_provider_verify_gsc_not_configured_reports_service_account_status(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth, providers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    _clear_gsc_env(monkeypatch)
+    _write_service_account(tmp_path, raw_text="{broken")
+
+    result = providers.provider_verify("gsc")
+    assert result["state"] == "not_configured"
+    assert result["verified"] is False
+    assert result["service_account_status"] == "malformed_json"
+    assert "{broken" not in json.dumps(result)
 
 
 # --- Spend journal ---------------------------------------------------------

@@ -14,8 +14,10 @@ could leave forgotten copies behind. Therefore:
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 CONFIG_ROOT = Path(os.path.expanduser("~/.config"))
 
@@ -138,29 +140,90 @@ def gsc_access_token() -> str:
     )
 
 
-def gsc_service_account_path() -> Path:
-    """Return a restricted local service-account JSON path without reading or printing its key."""
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GSC_SERVICE_ACCOUNT_MAX_BYTES = 65536
+_GSC_SERVICE_ACCOUNT_REQUIRED_FIELDS = ("client_email", "private_key", "token_uri")
+
+
+def _gsc_service_account_candidate_path() -> Path:
     configured = os.environ.get("GSC_SERVICE_ACCOUNT_FILE")
-    path = Path(configured).expanduser() if configured else CONFIG_ROOT / "gsc/service-account.json"
+    if configured:
+        return Path(configured).expanduser()
+    return CONFIG_ROOT / "gsc/service-account.json"
+
+
+def _gsc_service_account_file_state(path: Path) -> str:
+    """Coarse filesystem state of the candidate path; contents are never inspected here."""
+    if path.is_symlink():
+        return "unsafe_file"
     try:
         info = path.stat()
-    except OSError as exc:
-        raise MissingCredential(
-            "GSC service-account JSON file is not configured or readable"
-        ) from exc
-    if path.is_symlink() or not path.is_file() or not is_private_mode(info.st_mode):
+    except OSError:
+        return "missing"
+    if not path.is_file() or not is_private_mode(info.st_mode):
+        return "unsafe_file"
+    return "present"
+
+
+def gsc_service_account_path() -> Path:
+    """Return a restricted local service-account JSON path without reading or printing its key."""
+    path = _gsc_service_account_candidate_path()
+    state = _gsc_service_account_file_state(path)
+    if state == "missing":
+        raise MissingCredential("GSC service-account JSON file is not configured or readable")
+    if state == "unsafe_file":
         raise MissingCredential(
             "GSC service-account JSON must be a private regular file (mode 0600)"
         )
     return path
 
 
-def gsc_service_account_available() -> bool:
+def gsc_service_account_document() -> tuple[str, dict[str, Any] | None]:
+    """Validate the configured service-account JSON and return ``(status, document)``.
+
+    ``document`` is populated only for ``"configured_unverified"`` and is intended for the
+    runtime auth path. Diagnostics report the status alone — ``"missing"``,
+    ``"unsafe_file"``, ``"malformed_json"``, or ``"unsupported_shape"`` — which never
+    carries key material, the account email, or document fragments. A structurally valid
+    document is configuration only; authenticated access is established separately by
+    ``provider-verify``.
+    """
+    path = _gsc_service_account_candidate_path()
+    state = _gsc_service_account_file_state(path)
+    if state != "present":
+        return state, None
     try:
-        gsc_service_account_path()
-    except MissingCredential:
-        return False
-    return True
+        size = path.stat().st_size
+    except OSError:
+        return "missing", None
+    if size > GSC_SERVICE_ACCOUNT_MAX_BYTES:
+        return "malformed_json", None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "malformed_json", None
+    if not isinstance(document, dict):
+        return "unsupported_shape", None
+    if (
+        document.get("type") != "service_account"
+        or document.get("token_uri") != GOOGLE_TOKEN_URI
+        or any(
+            not isinstance(document.get(field), str) or not document[field]
+            for field in _GSC_SERVICE_ACCOUNT_REQUIRED_FIELDS
+        )
+    ):
+        return "unsupported_shape", None
+    return "configured_unverified", document
+
+
+def gsc_service_account_status() -> str:
+    """Coarse credential state for diagnostics; never a verification claim."""
+    status, _document = gsc_service_account_document()
+    return status
+
+
+def gsc_service_account_available() -> bool:
+    return gsc_service_account_status() == "configured_unverified"
 
 
 def ga4_access_token() -> str:

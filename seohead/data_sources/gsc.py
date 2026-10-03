@@ -45,7 +45,6 @@ TIMEOUT = 30
 PACIFIC = ZoneInfo("America/Los_Angeles")
 DEFAULT_WINDOW_DAYS = 28
 READONLY_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly"
-GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 _LEGACY_START_LABEL = "28daysAgo"
 _LEGACY_END_LABEL = "today"
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -266,12 +265,20 @@ def _request(method: str, url: str, payload: dict[str, Any] | None, token: str) 
         return response.read().decode("utf-8")
 
 
+_SERVICE_ACCOUNT_ERRORS = {
+    "missing": "GSC service-account JSON file is not configured or readable",
+    "unsafe_file": "GSC service-account JSON must be a private regular file (mode 0600)",
+    "malformed_json": "GSC service-account JSON is unreadable or malformed",
+    "unsupported_shape": "GSC service-account JSON has an unsupported type or token URI",
+}
+
+
 def _acquire_token(value: str | None) -> tuple[str | None, str | None]:
-    """Choose an explicit bearer first, then a library-managed service-account token."""
+    """Choose an explicit bearer first, then a durable grant, then a service account."""
     from seohead.data_sources.credentials import (
         MissingCredential,
         gsc_access_token,
-        gsc_service_account_available,
+        gsc_service_account_status,
     )
 
     try:
@@ -284,8 +291,11 @@ def _acquire_token(value: str | None) -> tuple[str | None, str | None]:
                 return durable_oauth_token()["access_token"], None
             except (MissingCredential, OSError, ValueError):
                 return None, "stored OAuth grant refresh failed; reconnect or check the grant"
-        if not gsc_service_account_available():
+        status = gsc_service_account_status()
+        if status == "missing":
             return None, str(bearer_error)
+        if status != "configured_unverified":
+            return None, f"OAuth bearer unavailable; {_SERVICE_ACCOUNT_ERRORS[status]}"
         try:
             return service_account_access_token(), None
         except MissingCredential as service_error:
@@ -294,7 +304,10 @@ def _acquire_token(value: str | None) -> tuple[str | None, str | None]:
 
 def service_account_access_token() -> str:
     """Refresh one scoped GSC token through google-auth; this module never handles JWT keys."""
-    from seohead.data_sources.credentials import MissingCredential, gsc_service_account_path
+    from seohead.data_sources.credentials import (
+        MissingCredential,
+        gsc_service_account_document,
+    )
 
     try:
         import requests
@@ -304,17 +317,9 @@ def service_account_access_token() -> str:
         raise MissingCredential(
             "GSC service-account authentication requires the optional gsc extra (google-auth)"
         ) from exc
-    path = gsc_service_account_path()
-    try:
-        info = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise MissingCredential("GSC service-account JSON is unreadable or malformed") from exc
-    if (
-        not isinstance(info, dict)
-        or info.get("type") != "service_account"
-        or info.get("token_uri") != GOOGLE_TOKEN_URI
-    ):
-        raise MissingCredential("GSC service-account JSON has an unsupported type or token URI")
+    status, info = gsc_service_account_document()
+    if info is None:
+        raise MissingCredential(_SERVICE_ACCOUNT_ERRORS[status])
     try:
         credentials = service_account.Credentials.from_service_account_info(
             info, scopes=[READONLY_SCOPE]

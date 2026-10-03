@@ -364,6 +364,9 @@ account JSON outside the repository at a private regular file such as
 `~/.config/gsc/service-account.json` (mode `0600`), or set
 `GSC_SERVICE_ACCOUNT_FILE=/private/path/gsc-service-account.json`. The JSON must be a Google
 `service_account` document whose token URI is exactly `https://oauth2.googleapis.com/token`.
+`seohead sources-doctor` reports the local state as `service_account_status` (`missing`,
+`unsafe_file`, `malformed_json`, `unsupported_shape`, or `configured_unverified`) without
+exposing the document's contents.
 SEOHEAD uses `google-auth` to obtain a short-lived token with only
 `https://www.googleapis.com/auth/webmasters.readonly`; it does not create or sign JWTs itself.
 
