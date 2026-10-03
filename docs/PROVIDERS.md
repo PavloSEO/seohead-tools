@@ -30,7 +30,7 @@ Rendered from the registry exactly as `provider-registry` reports it.
 | `pagespeed` | read-only | mobile_samples, desktop_samples | api_key | Google API quota | aggregate statistics |
 | `ga4` | read-only | landing_pages | oauth_bearer | GA4 Data API quota | restricted site/account data |
 | `metrika` | read-only | counters, aggregate_report, ~~raw_logs~~ (excluded) | oauth_bearer | Yandex Metrika API quota | restricted site/account data |
-| `yandex_webmaster` | read-only | hosts, indexing, crawl, sitemaps, search_performance, summary, diagnostics, sqi_history, search_history, query_history, in_search_history, events_history, indexing_history, important_urls, broken_links_history, external_links_history | oauth_bearer | Yandex Webmaster application quota | restricted site/account data |
+| `yandex_webmaster` | read-only | hosts, indexing, crawl, sitemaps, search_performance, summary, diagnostics, sqi_history, search_history, query_history, in_search_history, events_history, indexing_history, important_urls, broken_links_samples, broken_links_history, external_links_history | oauth_bearer | Yandex Webmaster application quota | restricted site/account data |
 | `bing_webmaster` | read-only | sites, crawl, links, keywords, search_performance | api_key | Bing Webmaster API quota | restricted site/account data |
 | `dataforseo_backlinks` (off by default) | read-only, paid, off by default | backlinks_summary | login, password | paid per provider response | restricted site/account data |
 | `indexnow` (off by default) | confirmed write, off by default | submit | submission_key | provider submission quota | caller-supplied URL list, public endpoint |
