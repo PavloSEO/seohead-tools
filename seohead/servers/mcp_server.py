@@ -746,7 +746,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Exact frequency (!W) for a list of phrases via Arsenkin — the number Wordstat's
         API will not give you. Paid, spends account limits. The charge and task_id are
         journaled the moment the task is created, so a paid result is never lost: pass
-        wait=false to get the task_id and collect the result later for free."""
+        wait=false to get the task_id and collect the result later for free.
+
+        On success with wait=true: ok, task_id, cost, region, frequencies, result (the raw
+        provider payload). frequencies maps each phrase to {"base": N, "overal": N} —
+        overal is Arsenkin's field for !W (!WS, exact wordform); quoted is the "WS" phrase
+        operator and exact is the [!WS] strict-order operator, so neither appears here as
+        !W. A phrase with no data for the requested region is omitted and named in
+        warnings instead of borrowing another region's number; an absent frequency field
+        stays null rather than becoming zero. cleaned lists phrases whose punctuation was
+        stripped because the provider rejects them; those phrases are measured in their
+        rewritten form. With wait=false the task is only created: the reply is ok,
+        task_id, cost, region, cleaned, and a recovery note — no frequencies."""
         return _checked(handlers.keywords_exact(keywords=keywords, region=region, wait=wait))
 
     @mcp.tool(annotations=paid, structured_output=True)
