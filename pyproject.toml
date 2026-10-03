@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seohead-seotools"
 version = "3.0.0"
-description = "Local-first Python SEO evidence toolkit: analyzes Screaming Frog exports, adds bounded live and infrastructure checks, and produces structured audits, task backlogs, and reports via CLI and local MCP."
+description = "Local-first Python SEO crawler and scan-analysis toolkit: native website crawling, retained scans and offline reanalysis, Screaming Frog export analysis, structured audits and reports via CLI and local MCP."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
