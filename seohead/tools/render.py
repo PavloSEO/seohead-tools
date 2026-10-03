@@ -31,6 +31,7 @@ import os
 import re
 import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 
@@ -39,6 +40,12 @@ from bs4 import BeautifulSoup
 from seohead.recon.net import UA, client_network_policy, http_client, normalize_url, validate_url
 from seohead.recon.remote_policy import RemoteTargetError, current_remote_policy
 from seohead.tools import dualcrawl
+from seohead.tools.browser_transport import (
+    BrowserTransportError,
+    open_browser,
+    open_context,
+    prepare,
+)
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
 # renders a different DOM at different widths, so comparing two runs requires
@@ -733,6 +740,7 @@ def render_check(
     *,
     settle_ms: int = SETTLE_MS,
     request_gate: Callable[[], None] | None = None,
+    transport_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compare a server response with the DOM produced after JavaScript executes.
 
@@ -779,10 +787,15 @@ def render_check(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        remote = (transport_config or {}).get("transport") == "remote"
         return {
             "ok": False,
             "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else "pip install 'seohead[render]' && python -m playwright install chromium"
+            ),
         }
     try:
         from playwright.sync_api import TimeoutError as navigation_timeout
@@ -793,7 +806,12 @@ def render_check(
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     try:
-        _refuse_if_root()
+        endpoint, transport_facts = prepare(transport_config)
+        transport_info = {"browser_transport": transport_facts} if endpoint is not None else {}
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
 
@@ -829,7 +847,17 @@ def render_check(
             timeout, follow_redirects=False, headers={"User-Agent": selected_user_agent}
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = open_browser(
+                pw.chromium,
+                endpoint,
+                timeout_seconds=timeout,
+                local_launch_options=(
+                    _local_chromium_launch_options()
+                    if endpoint is None
+                    else {"chromium_sandbox": True}
+                ),
+            )
+            context = None
             try:
                 # service_workers="block": a default-configuration service
                 # worker can serve requests the page.route() guard below never
@@ -840,12 +868,16 @@ def render_check(
                 # JavaScript) looks indistinguishable from a page that genuinely needs a
                 # renderer -- issue #199. Matching identity removes that confound rather
                 # than trying to detect it after the fact.
-                context = browser.new_context(
-                    viewport=size,
-                    is_mobile=(viewport == "mobile"),
-                    has_touch=(viewport == "mobile"),
-                    service_workers="block",
-                    user_agent=selected_user_agent,
+                context = open_context(
+                    browser,
+                    endpoint,
+                    {
+                        "viewport": size,
+                        "is_mobile": viewport == "mobile",
+                        "has_touch": viewport == "mobile",
+                        "service_workers": "block",
+                        "user_agent": selected_user_agent,
+                    },
                 )
                 context.add_init_script(_CLS_INIT_JS)
                 route_handler, limitations = _pinned_browser_route(
@@ -869,16 +901,34 @@ def render_check(
                 if limitations:
                     raise RuntimeError("; ".join(limitations))
             finally:
-                browser.close()
+                if context is not None:
+                    try:
+                        context.close()
+                    finally:
+                        browser.close()
+    except BrowserTransportError as exc:
+        return {
+            "ok": False,
+            "reason": exc.code,
+            "error": str(exc),
+            "url": target,
+            **transport_info,
+        }
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Browser rendering failed: {_error_summary(exc)}",
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+            "error": (
+                "Remote browser rendering failed after connection"
+                if endpoint is not None
+                else f"Browser rendering failed: {_error_summary(exc)}"
+            ),
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
             "user_agent": selected_user_agent,
             "raw": _snapshot(raw_html, final_url),
+            **transport_info,
         }
     finally:
         if browser_client is not None:
@@ -918,6 +968,7 @@ def render_check(
             # Neither True nor False: this run does not know.
             "js_dependent": None,
             "metrics_lab": metrics,
+            **transport_info,
         }
     findings = compare(raw, rendered, raw_html, shell)
     # Keep the summary aligned with findings: five widget words do not make a
@@ -977,6 +1028,7 @@ def render_check(
         "metrics_lab": metrics,
         "findings": findings,
         "dual_crawl": dual_crawl,
+        **transport_info,
     }
 
 
@@ -986,6 +1038,7 @@ def rendered_html(
     wait: str = "load",
     *,
     request_gate: Callable[[], None] | None = None,
+    transport_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return rendered HTML for tools that require the final DOM.
 
@@ -995,10 +1048,15 @@ def rendered_html(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        remote = (transport_config or {}).get("transport") == "remote"
         return {
             "ok": False,
             "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else "pip install 'seohead[render]' && python -m playwright install chromium"
+            ),
         }
     target = normalize_url(str(url or "").strip())
     if not target:
@@ -1008,7 +1066,11 @@ def rendered_html(
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     try:
-        _refuse_if_root()
+        endpoint, transport_facts = prepare(transport_config)
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     browser_client = None
@@ -1017,9 +1079,21 @@ def rendered_html(
             timeout, follow_redirects=False, headers={"User-Agent": UA}
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = open_browser(
+                pw.chromium,
+                endpoint,
+                timeout_seconds=timeout,
+                local_launch_options=(
+                    _local_chromium_launch_options()
+                    if endpoint is None
+                    else {"chromium_sandbox": True}
+                ),
+            )
+            context = None
             try:
-                context = browser.new_context(service_workers="block", user_agent=UA)
+                context = open_context(
+                    browser, endpoint, {"service_workers": "block", "user_agent": UA}
+                )
                 try:
                     route_handler, limitations = _pinned_browser_route(
                         browser_client, request_gate=request_gate
@@ -1032,13 +1106,29 @@ def rendered_html(
                     page.goto(target, wait_until=wait, timeout=timeout * 1000)
                     if limitations:
                         raise RuntimeError("; ".join(limitations))
-                    return {"ok": True, "url": page.url, "html": page.content()}
+                    result = {"ok": True, "url": page.url, "html": page.content()}
+                    if endpoint is not None:
+                        result["browser_transport"] = transport_facts
+                    return result
                 finally:
                     context.close()
             finally:
-                browser.close()
+                if context is not None:
+                    browser.close()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except Exception as exc:
-        return {"ok": False, "error": _error_summary(exc), "url": target}
+        error = (
+            "Remote browser rendering failed after connection"
+            if endpoint is not None
+            else _error_summary(exc)
+        )
+        return {
+            "ok": False,
+            "error": error,
+            "url": target,
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+        }
     finally:
         if browser_client is not None:
             browser_client.close()
@@ -1109,6 +1199,24 @@ def _safe_policy_facts(policy_facts: dict[str, Any] | None) -> dict[str, bool]:
     }
 
 
+def _local_chromium_launch_options() -> dict[str, Any]:
+    """Keep Chromium sandboxed and optionally select an installed local browser.
+
+    ``SEOHEAD_CHROME`` is an operator-controlled executable override. It applies
+    only to local Chromium launches; remote transport and other browser engines
+    do not consume it. An explicit but invalid path is an error rather than a
+    silent fallback to a different browser binary.
+    """
+    options: dict[str, Any] = {"chromium_sandbox": True}
+    executable = os.environ.get("SEOHEAD_CHROME")
+    if executable:
+        path = Path(executable).expanduser()
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise RuntimeError("SEOHEAD_CHROME must point to an executable local Chrome binary")
+        options["executable_path"] = str(path.resolve())
+    return options
+
+
 def render_document(
     url: str,
     rendering_config: dict[str, Any],
@@ -1139,10 +1247,15 @@ def render_document(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        remote = rendering_config.get("browser", {}).get("transport") == "remote"
         return {
             "ok": False,
             "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else "pip install 'seohead[render]' && python -m playwright install chromium"
+            ),
         }
     target = normalize_url(str(url or "").strip())
     if not target:
@@ -1151,8 +1264,13 @@ def render_document(
         validate_url(target)
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
+    browser_cfg = rendering_config.get("browser", {})
     try:
-        _refuse_if_root()
+        endpoint, transport_facts = prepare(browser_cfg, embedded=True)
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
 
@@ -1162,7 +1280,6 @@ def render_document(
             "url": target,
             "error": "max_html_bytes must be a non-negative integer",
         }
-    browser_cfg = rendering_config.get("browser", {})
     if browser_cfg.get("persistent_profile"):
         return {
             "ok": False,
@@ -1244,8 +1361,17 @@ def render_document(
                 # requests page.route() never sees.
                 "service_workers": "block",
             }
-            browser = pw.chromium.launch(chromium_sandbox=True)
-            context = browser.new_context(**context_options)
+            browser = open_browser(
+                pw.chromium,
+                endpoint,
+                timeout_seconds=nav_timeout,
+                local_launch_options=(
+                    _local_chromium_launch_options()
+                    if endpoint is None
+                    else {"chromium_sandbox": True}
+                ),
+            )
+            context = open_context(browser, endpoint, context_options)
             actual_browser = browser if browser is not None else getattr(context, "browser", None)
             engine_version = str(getattr(actual_browser, "version", "unknown"))
             try:
@@ -1306,11 +1432,25 @@ def render_document(
                 if browser_limitations:
                     raise RuntimeError("; ".join(browser_limitations))
             finally:
-                context.close()
-                if browser is not None:
-                    browser.close()
+                try:
+                    context.close()
+                finally:
+                    if browser is not None:
+                        browser.close()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except Exception as exc:
-        return {"ok": False, "url": target, "error": _error_summary(exc)}
+        error = (
+            "Remote browser rendering failed after connection"
+            if endpoint is not None
+            else _error_summary(exc)
+        )
+        return {
+            "ok": False,
+            "url": target,
+            "error": error,
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+        }
     finally:
         if network_client is not None:
             network_client.close()
@@ -1345,6 +1485,8 @@ def render_document(
         "policy": observed_policy,
         "console_error_count": len(console_errors) + console_errors_omitted,
     }
+    if endpoint is not None:
+        renderer["transport"] = transport_facts
     if not isinstance(dom, dict) or not dom.get("complete"):
         return {
             "ok": False,

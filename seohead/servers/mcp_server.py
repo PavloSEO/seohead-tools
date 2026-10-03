@@ -564,6 +564,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         viewport: str = "desktop",
         wait: str = "load",
         user_agent: str | None = None,
+        transport_config: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Compare the raw server HTML with the DOM after JavaScript runs — the gap between
         them is what a non-rendering crawler loses. Reports an empty SPA shell
@@ -582,7 +583,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A requested wait milestone that times out (networkidle on a site with long-polling
         scripts) falls back to reading the DOM at domcontentloaded, recorded in
         wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity;
-        user_agent overrides that identity for both requests."""
+        user_agent overrides that identity for both requests. `transport_config`
+        opts into an operator-supplied remote Playwright connection using
+        `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env`
+        and `remote_playwright_version`. It never provisions a server or falls
+        back to local launch after a remote failure."""
+        if transport_config is not None:
+            return _checked(
+                handlers.render_check(
+                    url=url,
+                    viewport=viewport,
+                    wait=wait,
+                    user_agent=user_agent,
+                    transport_config=transport_config,
+                )
+            )
         return _checked(
             handlers.render_check(url=url, viewport=viewport, wait=wait, user_agent=user_agent)
         )
@@ -691,6 +706,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 out_urls=out_urls,
             )
         )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_crawl_import(manifest_path: str) -> dict[str, Any]:
+        """Read a versioned third-party crawl CSV bundle from a local manifest.
+
+        The manifest maps source headers to page, link, status, and redirect
+        fields. The result is ``third_party_crawl.v1`` with source identity and
+        per-field coverage; it is not scan.v1 or SF audit evidence.
+        """
+        return _checked(handlers.crawl_import(manifest_path=manifest_path))
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_segment_diff(audit: Any, source: str, target: str) -> dict[str, Any]:

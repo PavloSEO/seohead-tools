@@ -1,7 +1,8 @@
 # Setup from zero
 
-Everything below was verified on macOS (darwin, arm64) with the repo's own
-venv; the same steps work on Linux. Windows paths for the SF CLI are
+The general venv workflow below is verified on macOS (darwin, arm64). For a
+versioned headless install, upgrade, and rollback over SSH on Ubuntu Server,
+follow [Linux VPS over SSH](LINUX_VPS.md). Windows paths for the SF CLI are
 supported by `config.json` search paths.
 
 ## Requirements
@@ -27,6 +28,11 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"            # everything incl. reports, render, tests
 python -m playwright install chromium  # browser for render-check (~150 MB)
 ```
+
+The optional remote Playwright transport needs the Python `render` extra, but
+does not need a locally installed browser binary. It connects only to a browser
+server that the operator has already provisioned; see [TOOLS.md](TOOLS.md) for
+the explicit endpoint/version configuration and security boundary.
 
 Why `-e`: the `seohead` entry point must see the working tree while you edit
 it. The install is not global — everything lives inside `.venv/` (which is
