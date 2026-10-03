@@ -10,8 +10,9 @@ The client includes four operational safeguards:
 
 * retries inspect the real HTTP status and **honor the ``Retry-After`` header** on HTTP 429;
 * a ``Query is too complicated`` refusal is retried in calendar-month slices with a backoff
-  and, when a slice still refuses, at a sampled accuracy; the merged body states the slices
-  and the accuracy actually used;
+  and, when a slice still refuses, at a sampled accuracy; only count metrics that are
+  additive over disjoint periods are merged — distinct-visitor, ratio, and unknown metrics
+  refuse rather than sum into a wrong full-period answer;
 * ``offset``/``limit`` pagination has a row ceiling so an accidental query cannot download a
   million rows, plus an inter-page delay so thousands of sequential pages do not exhaust quota;
 * exceptions carry the status and message returned by the API instead of a generic
@@ -31,8 +32,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from seohead.data_sources import spend
 from seohead.data_sources.credentials import metrika_token
@@ -56,8 +58,15 @@ COMPLEXITY_PAUSE = 5.0  # Seconds between attempts; grows toward COMPLEXITY_PAUS
 COMPLEXITY_PAUSE_MAX = 15.0
 SAMPLED_ACCURACY = 0.1  # Last-resort sample share for a slice that stays too complex.
 
+# Metrics provably additive over disjoint calendar periods: every session and pageview is
+# attributed to exactly one day, so monthly counts sum to the full-period count. Unique
+# visitors (ym:s:users) overlap between months, percentages and averages cannot be summed,
+# and unknown or parameterized ids are unverifiable — none of those may be merged.
+ADDITIVE_METRICS = frozenset({"ym:s:visits", "ym:s:pageviews"})
+
 _DAYS_AGO_RE = re.compile(r"^(\d+)daysAgo$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TZ_OFFSET_RE = re.compile(r"^([+-])(\d{2}):(\d{2})$")
 _COMPLEXITY_MARKERS = ("too complicated", "слишком сложн")
 
 
@@ -177,9 +186,10 @@ class MetrikaClient:
         same query succeeds over a shorter period or a smaller sample. The period is then
         retried in calendar-month slices with a backoff, a slice that still refuses is
         resubmitted at :data:`SAMPLED_ACCURACY`, and the merged body states what happened via
-        ``split`` and ``accuracy_used``. Summed slices keep additive metrics exact;
-        distinct-visitor and ratio metrics become approximations, so a merged body that
-        needed sampling is flagged ``sampled``.
+        ``split`` and ``accuracy_used``. Only metrics in :data:`ADDITIVE_METRICS` — counts
+        provably additive over disjoint periods — may be merged this way; a query that asks
+        for anything else is refused instead of returning a summed value that would be
+        wrong. Sampling fields reflect what the API actually reported, never the request.
         """
         base = {"accuracy": "full", **params}
         try:
@@ -195,7 +205,20 @@ class MetrikaClient:
         self, base: dict[str, Any], *, paginate: bool, limit: int, offset: int
     ) -> dict:
         if not paginate:
-            body = self._request(self._url(API_REPORTS, dict(base, limit=limit, offset=offset)))
+            try:
+                body = self._request(self._url(API_REPORTS, dict(base, limit=limit, offset=offset)))
+            except MetrikaError:
+                # A refused request still consumed provider quota; journal it so a
+                # complexity refusal does not look like it never reached the API.
+                spend.record(
+                    SOURCE,
+                    "report",
+                    cost=1,
+                    unit="requests",
+                    items=0,
+                    extra={"metrics": base.get("metrics"), "outcome": "failed"},
+                )
+                raise
             spend.record(
                 SOURCE,
                 "report",
@@ -261,6 +284,33 @@ class MetrikaClient:
         result["capped"] = len(rows) >= ROW_CAP
         return result
 
+    def _report_timezone(self, base: dict[str, Any]) -> tzinfo | None:
+        """The timezone the API applies to the report period, or ``None`` when unknown.
+
+        The request's ``timezone`` parameter wins; otherwise the counter's own zone is
+        looked up through the Management API. The host clock is never substituted — the
+        API resolves ``today``/``yesterday``/``NdaysAgo`` in the counter's zone, so a
+        guess here would slice the wrong days.
+        """
+        tz = _parse_timezone(base.get("timezone"))
+        if tz is not None:
+            return tz
+        first = str(base.get("ids") or "").split(",")[0].strip()
+        if not first:
+            return None
+        try:
+            body = self.counter(first) or {}
+        except MetrikaError:
+            return None
+        info = body.get("counter") if isinstance(body.get("counter"), dict) else body
+        name = info.get("time_zone") if isinstance(info, dict) else None
+        if not isinstance(name, str) or not name:
+            return None
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            return None
+
     def _split_report(
         self,
         base: dict[str, Any],
@@ -270,8 +320,39 @@ class MetrikaClient:
         offset: int,
         cause: MetrikaError,
     ) -> dict:
-        """Collect a refused period in calendar-month slices and merge the bodies."""
-        period = _resolve_period(base.get("date1"), base.get("date2"))
+        """Collect a refused period in calendar-month slices and merge the bodies.
+
+        Summing slice values is valid only for metrics that are additive over disjoint
+        periods (:data:`ADDITIVE_METRICS`); anything else is refused before the first
+        slice request so it cannot burn calls and then be mislabeled as complete.
+        """
+        metrics = _csv_ids(base.get("metrics"))
+        unsupported = [m for m in metrics if m not in ADDITIVE_METRICS]
+        if unsupported:
+            spend.record(
+                SOURCE,
+                "report.split",
+                cost=0,
+                unit="requests",
+                items=0,
+                extra={
+                    "metrics": base.get("metrics"),
+                    "outcome": "unsupported",
+                    "unsupported": unsupported,
+                },
+            )
+            raise MetrikaError(
+                cause.status,
+                f"cannot merge a split of {base.get('date1')}..{base.get('date2')} "
+                f"(cause: {cause.message}): metrics {', '.join(unsupported)} are not "
+                "additive over disjoint periods, so a summed full-period value would be "
+                "wrong — request the period month by month and aggregate accordingly",
+            )
+        tz = None
+        if _needs_today(base.get("date1")) or _needs_today(base.get("date2")):
+            tz = self._report_timezone(base)
+        today = _now().astimezone(tz).date() if tz is not None else None
+        period = _resolve_period(base.get("date1"), base.get("date2"), today=today)
         # An unresolvable or single-day period cannot be sliced: it is retried as-is and
         # only the accuracy ladder can still help.
         spans = _month_slices(*period) if period else [None]
@@ -281,77 +362,142 @@ class MetrikaClient:
             chunk = dict(base)
             if span is not None:
                 chunk["date1"], chunk["date2"] = span[0].isoformat(), span[1].isoformat()
-            body, accuracy = self._fetch_slice(chunk, limit=limit)
+            try:
+                body, accuracy, attempts = self._fetch_slice(chunk, limit=limit)
+            except MetrikaError as exc:
+                completed = ", ".join(f"{s['date1']}..{s['date2']}" for s in slices) or "none"
+                spend.record(
+                    SOURCE,
+                    "report.split",
+                    cost=0,
+                    unit="requests",
+                    items=sum(len(b.get("data") or []) for b in bodies),
+                    extra={
+                        "metrics": base.get("metrics"),
+                        "slices": index,
+                        "outcome": "failed",
+                    },
+                )
+                raise MetrikaError(
+                    exc.status,
+                    f"report split of {base.get('date1')}..{base.get('date2')} failed at "
+                    f"partition {chunk.get('date1')}..{chunk.get('date2')}: {exc.message}; "
+                    f"completed partitions: {completed}",
+                ) from exc
             bodies.append(body)
             slices.append(
                 {
                     "date1": chunk.get("date1"),
                     "date2": chunk.get("date2"),
                     "accuracy": accuracy,
+                    "attempts": attempts,
+                    "rows": len(body.get("data") or []),
+                    "sampled": body.get("sampled"),
+                    "sample_share": body.get("sample_share"),
+                    "sample_size": body.get("sample_size"),
+                    "sample_space": body.get("sample_space"),
+                    "data_lag": body.get("data_lag"),
                 }
             )
             if index + 1 < len(spans):
                 time.sleep(PAGE_PAUSE)
-        rows, totals = _merge_slice_rows(bodies)
-        _sort_rows(rows, base.get("sort"), base.get("metrics"))
-        accuracy = _accuracy_used([s["accuracy"] for s in slices])
-        result = dict(bodies[0])
-        result["data"] = rows if paginate else rows[offset - 1 : offset - 1 + limit]
-        result["totals"] = totals
-        result["total_rows"] = len(rows)
-        result["query"] = dict(
-            (bodies[0].get("query") or {}),
-            date1=base.get("date1"),
-            date2=base.get("date2"),
-            limit=limit,
-            offset=offset,
-            accuracy=accuracy,
+        rows, totals, overflow, incomplete = _merge_slice_rows(bodies, cap=ROW_CAP)
+        unapplied_sort = _sort_rows(
+            rows, base.get("sort"), base.get("metrics"), base.get("dimensions")
         )
-        result["sampled"] = accuracy != "full" or any(b.get("sampled") for b in bodies)
-        result["accuracy_used"] = accuracy
-        result["capped"] = any(b.get("capped") for b in bodies) or len(rows) >= ROW_CAP
-        shares = [
-            b["sample_share"] for b in bodies if isinstance(b.get("sample_share"), int | float)
-        ]
+        accuracy = _accuracy_used([s["accuracy"] for s in slices])
+        slices_capped = any(b.get("capped") for b in bodies)
+        collected = not slices_capped and not overflow
+        window_end = ROW_CAP if paginate else max(offset - 1, 0) + limit
+        result: dict[str, Any] = {
+            "data": rows[max(offset - 1, 0) : window_end],
+            # A merged total exists only when every row of every slice was collected.
+            "total_rows": len(rows) if collected else None,
+            "totals": totals,
+            "capped": not collected,
+            "incomplete": not collected or incomplete,
+            "accuracy_used": accuracy,
+            "query": dict(
+                (bodies[0].get("query") or {}),
+                date1=base.get("date1"),
+                date2=base.get("date2"),
+                limit=limit,
+                offset=offset,
+                accuracy=accuracy,
+            ),
+            "split": {
+                "reason": cause.message,
+                "requested": {"date1": base.get("date1"), "date2": base.get("date2")},
+                "resolved": (
+                    {"date1": period[0].isoformat(), "date2": period[1].isoformat()}
+                    if period
+                    else None
+                ),
+                "timezone": str(tz) if tz is not None else None,
+                "periods": slices,
+                "metrics": metrics,
+                "rows_dropped": len(overflow),
+                "unapplied_sort": unapplied_sort or None,
+                "note": (
+                    "rows are summed per dimension key across calendar-month slices; "
+                    "only count metrics additive over disjoint periods are merged"
+                ),
+            },
+        }
+        # Sampling and sensitivity describe what the API actually did, not what was
+        # requested: a slice asked at accuracy=0.1 may still answer sampled=false, and a
+        # missing share is unknown rather than equal to the request.
+        reported_sampled = [b["sampled"] for b in bodies if "sampled" in b]
+        if any(reported_sampled):
+            result["sampled"] = True
+        elif len(reported_sampled) == len(bodies):
+            result["sampled"] = False
+        shares = [b["sample_share"] for b in bodies if _is_number(b.get("sample_share"))]
         if shares:
             result["sample_share"] = min(shares)
-        elif isinstance(accuracy, int | float) and not isinstance(accuracy, bool):
-            result["sample_share"] = float(accuracy)
-        result["split"] = {
-            "reason": cause.message,
-            "periods": slices,
-            "note": (
-                "metrics are summed across the slices, so distinct-visitor and ratio "
-                "metrics are approximations of the unsplit answer"
-            ),
-        }
+        reported_sensitive = [
+            b["contains_sensitive_data"] for b in bodies if "contains_sensitive_data" in b
+        ]
+        if any(reported_sensitive):
+            result["contains_sensitive_data"] = True
+        elif len(reported_sensitive) == len(bodies):
+            result["contains_sensitive_data"] = False
+        # ``min``/``max`` are recomputed over the merged rows — never copied from a slice,
+        # because summed rows have their own bounds; per-slice ``sample_size``,
+        # ``sample_space`` and ``data_lag`` stay inside ``split.periods`` since they have
+        # no documented whole-period aggregation.
+        if collected and not incomplete and rows:
+            result["min"], result["max"] = _metric_bounds(rows)
         spend.record(
             SOURCE,
             "report.split",
             cost=0,
             unit="requests",
-            items=len(rows),
+            items=len(result["data"]),
             extra={
                 "metrics": base.get("metrics"),
                 "slices": len(slices),
                 "accuracy": accuracy,
+                "outcome": "complete" if collected and not incomplete else "partial",
             },
         )
         return result
 
-    def _fetch_slice(self, chunk: dict[str, Any], *, limit: int) -> tuple[dict, Any]:
+    def _fetch_slice(self, chunk: dict[str, Any], *, limit: int) -> tuple[dict, Any, int]:
         """Fetch one period slice, retrying the complexity error then degrading accuracy.
 
-        Returns ``(body, accuracy)`` so the merged report can state the sampling actually
-        used. The slice is always collected paginated: merging needs every row of the
-        slice, not just the caller's window.
+        Returns ``(body, accuracy, attempts)`` so the merged report can state the
+        accuracy and request count each partition needed. The slice is always collected
+        paginated: merging needs every row of the slice, not just the caller's window.
         """
         ladder = [chunk.get("accuracy", "full")]
-        if ladder[0] == "full":
+        if ladder[0] == "full" or (_is_number(ladder[0]) and ladder[0] > SAMPLED_ACCURACY):
             ladder.append(SAMPLED_ACCURACY)
+        attempts = 0
         last: MetrikaError | None = None
         for accuracy in ladder:
             for attempt in range(COMPLEXITY_ATTEMPTS):
+                attempts += 1
                 try:
                     return (
                         self._fetch_report(
@@ -361,6 +507,7 @@ class MetrikaClient:
                             offset=1,
                         ),
                         accuracy,
+                        attempts,
                     )
                 except MetrikaError as exc:
                     if not _is_too_complicated(exc):
@@ -368,9 +515,12 @@ class MetrikaClient:
                     last = exc
                     if attempt + 1 < COMPLEXITY_ATTEMPTS:
                         time.sleep(min(COMPLEXITY_PAUSE * (attempt + 1), COMPLEXITY_PAUSE_MAX))
-        if last is not None:
-            raise last
-        raise MetrikaError(0, "report slice failed without an API error")
+        tried = ", ".join(str(a) for a in ladder)
+        raise MetrikaError(
+            last.status if last else 0,
+            f"still too complicated after {attempts} attempts (accuracies tried: {tried})"
+            + (f": {last.message}" if last else ""),
+        )
 
     def by_time(self, params: dict[str, Any], *, limit: int = 100, offset: int = 1) -> dict:
         """Return a time trend from ``stat/v1/data/bytime`` rather than a point-in-time slice."""
@@ -476,8 +626,52 @@ def _is_too_complicated(exc: MetrikaError) -> bool:
     return any(marker in message for marker in _COMPLEXITY_MARKERS)
 
 
-def _resolve_date(value: Any, today: date) -> date | None:
-    """Map an absolute or relative API date onto a calendar day; ``None`` when unknown."""
+def _now() -> datetime:
+    """Current instant in UTC, kept behind a function so tests can freeze it."""
+    return datetime.now(timezone.utc)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _csv_ids(value: Any) -> list[str]:
+    """A comma-separated API id list, or a list that already arrived split."""
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value]
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+def _needs_today(value: Any) -> bool:
+    """Whether a date parameter is relative and needs a resolved "today"."""
+    return isinstance(value, str) and (
+        value in ("today", "yesterday") or _DAYS_AGO_RE.match(value) is not None
+    )
+
+
+def _parse_timezone(value: Any) -> tzinfo | None:
+    """Parse the API ``timezone`` parameter: a ``±hh:mm`` offset or an IANA zone name."""
+    if not isinstance(value, str):
+        return None
+    match = _TZ_OFFSET_RE.match(value)
+    if match:
+        sign = -1 if match.group(1) == "-" else 1
+        hours, minutes = int(match.group(2)), int(match.group(3))
+        if hours > 23 or minutes > 59:
+            return None
+        return timezone(sign * timedelta(hours=hours, minutes=minutes))
+    try:
+        return ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+
+
+def _resolve_date(value: Any, today: date | None) -> date | None:
+    """Map an absolute or relative API date onto a calendar day; ``None`` when unknown.
+
+    Relative forms need ``today`` in the report's timezone; without it they stay
+    unresolvable rather than borrowing the host date.
+    """
     if not isinstance(value, str):
         return None
     if _ISO_DATE_RE.match(value):
@@ -485,6 +679,8 @@ def _resolve_date(value: Any, today: date) -> date | None:
             return date.fromisoformat(value)
         except ValueError:
             return None
+    if today is None:
+        return None
     if value == "today":
         return today
     if value == "yesterday":
@@ -497,7 +693,6 @@ def _resolve_period(
     date1: Any, date2: Any, *, today: date | None = None
 ) -> tuple[date, date] | None:
     """Resolve the requested period to calendar dates; ``None`` when it cannot be split."""
-    today = today or date.today()
     start, end = _resolve_date(date1, today), _resolve_date(date2, today)
     if start is None or end is None or start >= end:
         return None
@@ -521,55 +716,126 @@ def _month_slices(start: date, end: date) -> list[tuple[date, date]]:
 def _metric_value(row: dict, index: int) -> float:
     values = row.get("metrics") or []
     value = values[index] if index < len(values) else None
-    return value if isinstance(value, int | float) and not isinstance(value, bool) else 0
+    return value if _is_number(value) else 0
 
 
-def _sum_metrics(left: list, right: list) -> list:
+def _dimension_value(row: dict, index: int) -> str:
+    values = row.get("dimensions") or []
+    value = values[index] if index < len(values) else None
+    if isinstance(value, dict):
+        value = value.get("name")
+    return "" if value is None else str(value)
+
+
+def _sum_metrics(left: list, right: list) -> tuple[list, bool]:
+    """Sum two metric vectors cell-wise.
+
+    A cell sums only when both sides are numeric: a missing or suppressed value is not
+    zero, so ``(5, None)`` merges to ``None`` plus an incomplete flag rather than a
+    confident ``5``.
+    """
     out = []
+    incomplete = False
     for index in range(max(len(left), len(right))):
         a = left[index] if index < len(left) else None
         b = right[index] if index < len(right) else None
-        numeric = (
-            isinstance(a, int | float)
-            and not isinstance(a, bool)
-            and isinstance(b, int | float)
-            and not isinstance(b, bool)
-        )
-        out.append(a + b if numeric else (a if b is None else b))
-    return out
+        if _is_number(a) and _is_number(b):
+            out.append(a + b)
+        elif a is None and b is None:
+            out.append(None)
+        else:
+            out.append(None)
+            incomplete = True
+    return out, incomplete
 
 
-def _merge_slice_rows(bodies: list[dict]) -> tuple[list[dict], list | None]:
-    """Sum the metrics of rows that share a dimension key across slices."""
+def _merge_slice_rows(
+    bodies: list[dict], *, cap: int
+) -> tuple[list[dict], list | None, set[str], bool]:
+    """Sum additive metrics per dimension key across slices, bounded by one global cap.
+
+    Returns ``(rows, totals, overflow_keys, incomplete)``. At most ``cap`` distinct
+    dimension keys are accumulated; further distinct keys land in ``overflow_keys`` so
+    the caller knows the merged set is truncated (their metrics were never summed, so a
+    global ranking cannot be proven below the cap). ``totals`` is the elementwise sum of
+    the slice totals, or ``None`` when a slice did not report any. ``incomplete`` flags
+    metric cells that could not be summed.
+    """
     merged: dict[str, dict] = {}
     order: list[str] = []
+    overflow: set[str] = set()
     totals: list | None = None
+    totals_missing = False
+    incomplete = False
     for body in bodies:
         for row in body.get("data") or []:
             key = json.dumps(row.get("dimensions"), sort_keys=True, ensure_ascii=False)
             existing = merged.get(key)
             if existing is None:
+                if len(merged) >= cap or key in overflow:
+                    overflow.add(key)
+                    continue
                 merged[key] = dict(row, metrics=list(row.get("metrics") or []))
                 order.append(key)
             else:
-                existing["metrics"] = _sum_metrics(existing["metrics"], row.get("metrics") or [])
+                summed, bad = _sum_metrics(existing["metrics"], row.get("metrics") or [])
+                existing["metrics"] = summed
+                incomplete = incomplete or bad
         slice_totals = body.get("totals")
         if isinstance(slice_totals, list):
-            totals = slice_totals if totals is None else _sum_metrics(totals, slice_totals)
-    return [merged[key] for key in order], totals
+            if totals is None:
+                totals = list(slice_totals)
+            else:
+                totals, bad = _sum_metrics(totals, slice_totals)
+                incomplete = incomplete or bad
+        else:
+            totals_missing = True
+            incomplete = True
+    if totals_missing:
+        # A slice without totals cannot contribute to a whole-period total.
+        totals = None
+    return [merged[key] for key in order], totals, overflow, incomplete
 
 
-def _sort_rows(rows: list[dict], sort: Any, metrics: Any) -> None:
-    """Re-apply the caller's metric sort after merging; slices arrive sorted only locally."""
-    names = [m.strip() for m in str(metrics or "").split(",") if m.strip()]
-    tokens = [t.strip() for t in str(sort or "").split(",") if t.strip()]
+def _sort_rows(rows: list[dict], sort: Any, metrics: Any, dimensions: Any) -> list[str]:
+    """Order merged rows like one API answer and return the tokens that did not apply.
+
+    Explicit ``sort`` tokens address either a metric (numeric) or a dimension (string);
+    without ``sort`` the API default is the first metric, descending. Each token is a
+    separate stable sort applied from last to first, so multi-key ordering survives.
+    """
+    metric_ids = _csv_ids(metrics)
+    dimension_ids = _csv_ids(dimensions)
+    tokens = _csv_ids(sort)
+    if not tokens and metric_ids:
+        tokens = [f"-{metric_ids[0]}"]
+    unapplied: list[str] = []
     for token in reversed(tokens):
         descending = token.startswith("-")
         name = token.lstrip("-")
-        if name not in names:
-            continue
-        index = names.index(name)
-        rows.sort(key=lambda row, i=index: _metric_value(row, i), reverse=descending)
+        if name in metric_ids:
+            index = metric_ids.index(name)
+            rows.sort(key=lambda row, i=index: _metric_value(row, i), reverse=descending)
+        elif name in dimension_ids:
+            index = dimension_ids.index(name)
+            rows.sort(key=lambda row, i=index: _dimension_value(row, i), reverse=descending)
+        else:
+            unapplied.append(token)
+    return unapplied[::-1]  # report tokens in the caller's order, not sort order
+
+
+def _metric_bounds(rows: list[dict]) -> tuple[list, list]:
+    """Elementwise min/max over merged row metrics; ``None`` where no numeric cell exists."""
+    width = max((len(row.get("metrics") or []) for row in rows), default=0)
+    mins: list = [None] * width
+    maxs: list = [None] * width
+    for row in rows:
+        for index, value in enumerate(row.get("metrics") or []):
+            if not _is_number(value):
+                continue
+            mins[index] = value if mins[index] is None else min(mins[index], value)
+            maxs[index] = value if maxs[index] is None else max(maxs[index], value)
+    return mins, maxs
 
 
 def _accuracy_used(accuracies: list) -> Any:

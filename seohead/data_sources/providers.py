@@ -466,13 +466,15 @@ def provider_collect(
                 )
                 result = {
                     "ok": True,
-                    "state": "partial" if body.get("capped") else "complete",
+                    "state": "partial"
+                    if body.get("capped") or body.get("incomplete")
+                    else "complete",
                     "period": {"start_date": request["date1"], "end_date": request["date2"]},
                     "rows": rows_to_records(body),
                     "returned": len(body.get("data") or []),
                     "truncated": bool(body.get("capped")),
-                    "sampled": bool(body.get("sampled"))
-                    or body.get("accuracy_used") not in (None, "full"),
+                    "incomplete": bool(body.get("incomplete")),
+                    "sampled": bool(body.get("sampled")),
                     "accuracy": body.get("accuracy_used")
                     or (body.get("query") or {}).get("accuracy"),
                     "split": body.get("split"),

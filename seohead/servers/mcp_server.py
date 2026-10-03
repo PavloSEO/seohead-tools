@@ -844,7 +844,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         perfect and get no visits at all. paginate=true walks every page but stops at
         100 000 rows, and says so via "capped". A "Query is too complicated" refusal is
         retried month by month and, when a month still refuses, at a sampled accuracy;
-        "split", "accuracy" and "sampled" in the answer say what was actually used."""
+        "split", "accuracy" and "sampled" in the answer say what was actually used. Only
+        count metrics additive over disjoint periods (ym:s:visits, ym:s:pageviews) can be
+        merged — unique-visitor, ratio or average metrics fail rather than sum wrong."""
         return _checked(
             handlers.metrika_report(
                 counter_id=counter_id,
