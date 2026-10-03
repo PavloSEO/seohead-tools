@@ -13,6 +13,7 @@ import urllib.parse
 from collections import OrderedDict, defaultdict
 from typing import Any
 
+from seohead.canonical_policy import matching_canonical_rule
 from seohead.tools.parser import robots_directives, uses_ajax_crawling_scheme
 
 from .context import AuditContext
@@ -624,6 +625,79 @@ def check_canonical_directives(ctx: AuditContext) -> None:
             )
     if not has_meta_keywords:
         ctx.skip("META_KEYWORDS_PRESENT", "no Meta Keywords 1 column in Internal:All")
+
+
+def check_canonical_policy(ctx: AuditContext) -> None:
+    """Compare configured pagination/filter canonicals with fetched URL evidence.
+
+    An empty policy is explicitly unmeasured. If any matched source's declared
+    or expected target is absent from Internal:All, withhold that category's
+    findings: an unfetched target cannot establish the policy relationship.
+    """
+    policy = ctx.config.get("canonical_policy", {})
+    for category, check_id in (
+        ("pagination", "PAGINATION_CANONICAL_POLICY"),
+        ("filters", "FILTER_CANONICAL_POLICY"),
+    ):
+        if not ctx.enabled(check_id):
+            continue
+        rules = policy.get(category, [])
+        if not rules:
+            ctx.skip(check_id, f"no {category} canonical policy configured")
+            continue
+        if not _has_column(ctx, "canonical"):
+            ctx.skip(check_id, "no Canonical column in Internal:All")
+            continue
+
+        candidates: list[tuple[Page, dict[str, Any], str, str | None]] = []
+        unavailable: list[tuple[str, str]] = []
+        for page in ctx.html_pages():
+            rule = matching_canonical_rule(policy, category, page.url)
+            if rule is None:
+                continue
+            expected = page.url if rule["policy"] == "self" else rule["target"]
+            canonical = _rec(page).get("canonical") or None
+            if ctx.page_by_norm.get(norm_url(expected)) is None:
+                unavailable.append((page.url, expected))
+                continue
+            if canonical and ctx.page_by_norm.get(norm_url(canonical)) is None:
+                unavailable.append((page.url, canonical))
+                continue
+            candidates.append((page, rule, expected, canonical))
+
+        if not candidates and not unavailable:
+            ctx.skip(check_id, f"no crawled URLs matched the configured {category} patterns")
+            continue
+        if unavailable:
+            examples = "; ".join(f"{source} -> {target}" for source, target in unavailable[:3])
+            ctx.skip(
+                check_id,
+                f"canonical policy targets are absent from crawl evidence for "
+                f"{len(unavailable)} matched URL(s); examples: {examples}",
+            )
+            continue
+
+        for page, rule, expected, canonical in candidates:
+            if canonical and norm_url(canonical) == norm_url(expected):
+                continue
+            ctx.add(
+                check_id,
+                target_url=page.url,
+                details={
+                    "canonical_policy": {
+                        "source_url": page.url,
+                        "declared_canonical_url": canonical,
+                        "expected_canonical_url": expected,
+                        "policy": rule["policy"],
+                        "matched_pattern": rule["pattern"],
+                    }
+                },
+                evidence={
+                    "frame": "Internal:All",
+                    "canonical_column": "Canonical Link Element 1",
+                    "expected_target_in_crawl": True,
+                },
+            )
 
 
 # --------------------------------------------------------------------------
@@ -2094,6 +2168,7 @@ ALL_CHECKS = [
     check_heading_outline,
     check_link_placement,
     check_canonical_directives,
+    check_canonical_policy,
     check_content,
     check_url_and_perf,
     check_schema,

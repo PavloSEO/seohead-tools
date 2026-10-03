@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**162 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**164 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -75,6 +75,8 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `CANONICAL_MISSING` | warning | SF-derived | Indexable page has no canonical URL | Add a valid <link rel="canonical"> element. |
 | `CANONICALISED` | notice | SF-derived | Canonical points to a different URL | Confirm that cross-canonicalization is intentional and that the target is the preferred version. |
+| `PAGINATION_CANONICAL_POLICY` | warning | SF-derived | Paginated URL canonical does not match the configured project policy | Review the canonical against the configured pagination policy; the expected target is included in the evidence. |
+| `FILTER_CANONICAL_POLICY` | warning | SF-derived | Filtered URL canonical does not match the configured project policy | Review the canonical against the configured filter policy; the expected target is included in the evidence. |
 | `CANONICAL_NON_INDEXABLE` | warning | SF-derived | Canonical points to a non-indexable URL | Point the canonical to an indexable preferred version. |
 | `NOINDEX` | notice | SF:Directives:Noindex | Page contains a noindex directive | Confirm that exclusion from indexing is intentional. |
 | `NOFOLLOW_PAGE` | notice | SF:Directives:Nofollow | Page-level nofollow directive is present | Confirm the directive is intentional and review its effect on crawling and internal link equity. |

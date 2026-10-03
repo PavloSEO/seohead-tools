@@ -265,6 +265,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Canonical points to a different URL",
         "fix": "Confirm that cross-canonicalization is intentional and that the target is the preferred version.",
     },
+    "PAGINATION_CANONICAL_POLICY": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Paginated URL canonical does not match the configured project policy",
+        "fix": "Review the canonical against the configured pagination policy; the expected target is included in the evidence.",
+    },
+    "FILTER_CANONICAL_POLICY": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Filtered URL canonical does not match the configured project policy",
+        "fix": "Review the canonical against the configured filter policy; the expected target is included in the evidence.",
+    },
     "CANONICAL_NON_INDEXABLE": {
         "severity": "warning",
         "source": "SF-derived",
@@ -1132,6 +1144,8 @@ def check_meta(check_id: str) -> dict[str, Any]:
 # covers the entries declared here. Checks absent from this map rely on their
 # own evidence guards; this map does not provide a universal inline-skip gate.
 CHECK_REQUIRES: dict[str, tuple[str, ...]] = {
+    "PAGINATION_CANONICAL_POLICY": ("internal_all",),
+    "FILTER_CANONICAL_POLICY": ("internal_all",),
     "IMG_MISSING_ALT": ("images_missing_alt",),
     "IMG_OVER_KB": ("images_over_kb",),
     "IMG_MISSING_DIMENSIONS": ("images_missing_size",),

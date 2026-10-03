@@ -1090,7 +1090,11 @@ def _audit_crawl_result(
     exports.found = list(evidence["found"])
     exports.missing = list(evidence["missing"])
 
-    ctx = AuditContext(exports, load_config(None))
+    audit_config = load_config(None)
+    # Canonical expectations are project policy in the native crawl config;
+    # pass them into the same SF-derived rule pipeline used for exports.
+    audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
+    ctx = AuditContext(exports, audit_config)
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
     # 0 for every seeded URL, so the click-depth walk would start from an
