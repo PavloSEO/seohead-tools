@@ -17,6 +17,15 @@ Two distinctions the matrix exists to keep visible:
 - ``registered operation`` is not ``shipped surface``. An operation the
   registry declares but no handler or collection dispatch reaches stays
   ``unsupported`` here, by name.
+
+Provider identity is typed, not a bare name, because the same vendor reaches
+the code through different routes. ``registry`` references are ids in
+``provider_registry()`` reached through ``provider-verify`` /
+``provider-collect``; ``dedicated`` references are integration modules the
+handlers call directly (``google-keywords`` and ``google-serp`` reach
+``seohead.data_sources.dataforseo`` — source ``dataforseo`` — which is not the
+``dataforseo_backlinks`` registry entry); ``local`` references are in-process
+tools with no provider transport at all.
 """
 
 from __future__ import annotations
@@ -26,6 +35,8 @@ from dataclasses import dataclass
 from seohead.data_sources.providers import provider_registry
 
 SUPPORT_STATES = ("supported", "partial", "unsupported", "unverified")
+
+PROVIDER_REF_KINDS = ("registry", "dedicated", "local")
 
 # Providers whose credentials are optional-by-default or paid per response;
 # the registry's ``default_enabled=False`` already marks them.
@@ -45,17 +56,44 @@ _PRIVACY_LABELS = {
 
 
 @dataclass(frozen=True)
+class ProviderRef:
+    """One typed route to a provider or in-process capability.
+
+    ``kind`` is one of :data:`PROVIDER_REF_KINDS`: ``registry`` (an id in
+    ``provider_registry()``), ``dedicated`` (a named integration the handlers
+    call directly, bypassing the registry), or ``local`` (an in-process tool
+    with no provider transport).
+    """
+
+    kind: str
+    name: str
+
+
+def _reg(name: str) -> ProviderRef:
+    return ProviderRef("registry", name)
+
+
+def _ded(name: str) -> ProviderRef:
+    return ProviderRef("dedicated", name)
+
+
+def _loc(name: str) -> ProviderRef:
+    return ProviderRef("local", name)
+
+
+@dataclass(frozen=True)
 class WorkflowRow:
     """One specialist workflow against the shipped provider surface.
 
-    ``surface`` holds CLI command names; each is verified against the command
-    registry by tests. ``status`` is one of :data:`SUPPORT_STATES` and reflects
+    ``providers`` holds typed :class:`ProviderRef` routes; ``surface`` holds CLI
+    command names; each is verified against the command registry or the code it
+    names by tests. ``status`` is one of :data:`SUPPORT_STATES` and reflects
     code and test evidence, never an assumed provider capability.
     """
 
     workflow: str
     use_case: str
-    providers: tuple[str, ...]
+    providers: tuple[ProviderRef, ...]
     surface: tuple[str, ...]
     status: str
     auth: str
@@ -69,7 +107,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="yandex-demand",
         use_case="Expand a seed phrase and read demand seasonality for Yandex",
-        providers=("yandex_cloud",),
+        providers=(_reg("yandex_cloud"),),
         surface=("keywords-expand", "keywords-seasonality", "regions-tree"),
         status="supported",
         auth="API key + folder ID",
@@ -84,7 +122,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="yandex-exact-frequency",
         use_case="Exact !W frequency the Wordstat API does not expose",
-        providers=("arsenkin",),
+        providers=(_reg("arsenkin"),),
         surface=("keywords-exact",),
         status="supported",
         auth="API token",
@@ -96,54 +134,72 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="google-demand",
         use_case="Search volume, seed expansion, and keyword difficulty for Google",
-        providers=("dataforseo_backlinks",),
+        providers=(_ded("dataforseo"),),
         surface=("google-keywords",),
         status="supported",
         auth="Login + password",
         cost_quota="Paid per response; sandbox is the default and is free",
         privacy="restricted",
         limitations=(
-            "Keyword endpoints run through the dedicated DataForSEO module, not the "
-            "registry; Russia and Belarus locations are refused by the coverage guard "
-            "before any paid call"
+            "The handler calls seohead.data_sources.dataforseo (source `dataforseo`) "
+            "directly — a dedicated integration, not the `dataforseo_backlinks` registry "
+            "entry, which declares only backlinks_summary; Russia and Belarus locations "
+            "are refused by the coverage guard before any paid call"
         ),
         csv_fallback="not applicable",
     ),
     WorkflowRow(
         workflow="serp-collection",
         use_case="Fetch ranked results for queries on Yandex or Google",
-        providers=("yandex_cloud", "dataforseo_backlinks"),
+        providers=(_reg("yandex_cloud"), _ded("dataforseo")),
         surface=("serp-fetch", "google-serp"),
         status="supported",
         auth="Yandex: API key + folder ID; DataForSEO: login + password",
         cost_quota="Metered; Yandex async endpoint only — the ~16x-costlier sync endpoint is excluded",
         privacy="aggregate",
         limitations=(
-            "Queries billed but not returned before timeout stay visible in the spend "
+            "google-serp reaches the dedicated dataforseo integration, not the registry; "
+            "queries billed but not returned before timeout stay visible in the spend "
             "journal as named operations"
         ),
         csv_fallback="not applicable",
     ),
     WorkflowRow(
+        workflow="keyword-text-clustering",
+        use_case="Draft-group a caller-supplied keyword list by text similarity",
+        providers=(_loc("seohead.tools.clusterer"),),
+        surface=("keywords-cluster",),
+        status="supported",
+        auth="None — in-process computation",
+        cost_quota="Free; requires the optional 'cluster' dependency extra (scikit-learn)",
+        privacy="caller-supplied keyword list stays in-process; no provider transport exists",
+        limitations=(
+            "TF-IDF similarity over keyword text only — it never fetches or compares "
+            "search results and has no provider route; SERP-based clustering is the "
+            "separate serp-clustering workflow below"
+        ),
+        csv_fallback="a user-supplied keyword list is the input itself",
+    ),
+    WorkflowRow(
         workflow="serp-clustering",
         use_case="Cluster a keyword set by overlapping search results",
-        providers=("arsenkin",),
-        surface=("keywords-cluster",),
-        status="partial",
-        auth="None for keywords-cluster; Arsenkin API token would be required for the declared provider operation",
-        cost_quota="keywords-cluster is free; the declared Arsenkin operation is paid",
+        providers=(_reg("arsenkin"),),
+        surface=(),
+        status="unsupported",
+        auth="Arsenkin API token would be required for the declared provider operation",
+        cost_quota="Declared paid operation; consumes Arsenkin account limits",
         privacy="aggregate",
         limitations=(
             "The registry declares arsenkin serp_clustering, but provider-collect "
             "deliberately refuses the paid Arsenkin contract and no dedicated handler "
-            "ships it — the shipped surface is the free draft clustering only"
+            "ships it — keywords-cluster is text-similarity clustering, not this workflow"
         ),
-        csv_fallback="a user-supplied keyword list can seed keywords-cluster; no provider CSV join",
+        csv_fallback="none",
     ),
     WorkflowRow(
         workflow="search-console-evidence",
         use_case="Clicks, impressions, position, indexing verdicts, and sitemap status for a property you own",
-        providers=("gsc",),
+        providers=(_reg("gsc"),),
         surface=("gsc-query", "provider-auth", "provider-verify", "provider-collect"),
         status="supported",
         auth="OAuth bearer or service account; durable grant via provider-auth",
@@ -158,7 +214,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="webmaster-evidence",
         use_case="Yandex and Bing webmaster data: hosts, indexing, diagnostics, search performance, history",
-        providers=("yandex_webmaster", "bing_webmaster"),
+        providers=(_reg("yandex_webmaster"), _reg("bing_webmaster")),
         surface=("provider-verify", "provider-collect"),
         status="supported",
         auth="Yandex: OAuth bearer; Bing: API key",
@@ -173,7 +229,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="traffic-analytics",
         use_case="Counter configuration, aggregate reports, and landing-page evidence",
-        providers=("metrika", "ga4"),
+        providers=(_reg("metrika"), _reg("ga4")),
         surface=(
             "metrika-counters",
             "metrika-setup",
@@ -193,23 +249,40 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     ),
     WorkflowRow(
         workflow="field-vitals",
-        use_case="Core Web Vitals as real users measured them, at origin or URL level",
-        providers=("crux", "pagespeed"),
+        use_case="Core Web Vitals as real users measured them — CrUX field data at origin or URL level",
+        providers=(_reg("crux"),),
         surface=("crux-report", "provider-collect"),
         status="supported",
-        auth="Google Cloud API key for both providers",
+        auth="Google Cloud API key",
         cost_quota="Free within Google API quotas",
         privacy="aggregate",
         limitations=(
-            "PageSpeed mobile_samples/desktop_samples run only via provider-collect — "
-            "no dedicated command ships"
+            "Field metrics exist only where Chrome has enough real-user traffic; a "
+            "target with too little data returns ok with empty metrics, not an error"
         ),
-        csv_fallback="no provider CSV join; CrUX/PSI have no user-export path here",
+        csv_fallback="no provider CSV join; CrUX has no user-export path here",
+    ),
+    WorkflowRow(
+        workflow="lab-vitals",
+        use_case="Lighthouse lab samples via PageSpeed Insights — categories and audits",
+        providers=(_reg("pagespeed"),),
+        surface=("provider-collect",),
+        status="supported",
+        auth="Google API key",
+        cost_quota="Free within Google API quotas",
+        privacy="aggregate",
+        limitations=(
+            "The PSI parser deliberately returns Lighthouse lab data marked "
+            "lab_only: true — a synthetic measurement, not real-user field data; "
+            "mobile_samples/desktop_samples run only via provider-collect, no "
+            "dedicated command ships"
+        ),
+        csv_fallback="no provider CSV join; PSI has no user-export path here",
     ),
     WorkflowRow(
         workflow="link-evidence",
         use_case="Backlink summary for a target from a paid index",
-        providers=("dataforseo_backlinks",),
+        providers=(_reg("dataforseo_backlinks"),),
         surface=("provider-collect",),
         status="partial",
         auth="Login + password",
@@ -225,7 +298,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="url-submission",
         use_case="Notify Bing, Yandex, Naver, and Seznam that URLs changed",
-        providers=("indexnow",),
+        providers=(_reg("indexnow"),),
         surface=("indexnow-submit",),
         status="supported",
         auth="Self-generated key hosted on the target site",
@@ -240,7 +313,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="public-recon",
         use_case="Snapshot history of a URL and subdomains named in public certificate logs",
-        providers=("wayback", "crtsh"),
+        providers=(_reg("wayback"), _reg("crtsh")),
         surface=("wayback-history", "crtsh-subdomains"),
         status="supported",
         auth="None — public services",
@@ -252,7 +325,13 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     WorkflowRow(
         workflow="evidence-join",
         use_case="Attach external URL-keyed rows to a crawl and surface orphan candidates for explicit review",
-        providers=("gsc", "ga4", "metrika", "yandex_webmaster", "bing_webmaster"),
+        providers=(
+            _reg("gsc"),
+            _reg("ga4"),
+            _reg("metrika"),
+            _reg("yandex_webmaster"),
+            _reg("bing_webmaster"),
+        ),
         surface=("provider-join", "provider-replay"),
         status="supported",
         auth="None — operates on already-collected or user-supplied rows",
@@ -294,6 +373,17 @@ UNSUPPORTED_WORK: tuple[tuple[str, str], ...] = (
 RELATED_ISSUES = ("#716", "#718", "#719", "#724", "#730")
 
 
+_PROVIDER_SUFFIX = {
+    "registry": "",
+    "dedicated": " (dedicated integration)",
+    "local": " (in-process)",
+}
+
+
+def _provider_label(ref: ProviderRef) -> str:
+    return f"`{ref.name}`{_PROVIDER_SUFFIX[ref.kind]}"
+
+
 def _cell(text: str) -> str:
     return text.replace("|", "\\|")
 
@@ -327,6 +417,12 @@ def render() -> str:
         "is labelled live-verified: a registry entry is a declared contract, a present "
         "credential is configuration state, and only an explicit `provider-verify` read "
         "returning `target_access=verified` proves live target access.",
+        "",
+        "Provider names in the workflow matrix are typed routes: a bare ``name`` is a "
+        "registry id reached through `provider-verify`/`provider-collect`; "
+        "``name`` *(dedicated integration)* is a module the handlers call directly "
+        "outside the registry; ``name`` *(in-process)* is a local computation with no "
+        "provider transport.",
         "",
         "## Provider inventory",
         "",
@@ -373,8 +469,8 @@ def render() -> str:
                 for value in (
                     f"`{row.workflow}`",
                     row.use_case,
-                    ", ".join(f"`{p}`" for p in row.providers),
-                    ", ".join(f"`{c}`" for c in row.surface),
+                    ", ".join(_provider_label(p) for p in row.providers),
+                    ", ".join(f"`{c}`" for c in row.surface) or "—",
                     row.status,
                     row.auth,
                     row.cost_quota,
@@ -397,16 +493,17 @@ def render() -> str:
         "",
         "The first release phase covers the workflows whose evidence is free or already "
         "bounded by first-party quotas: `public-recon`, `evidence-join`, "
-        "`search-console-evidence`, `webmaster-evidence`, `field-vitals`, "
-        "`traffic-analytics`, and `url-submission` behind its existing confirmed-write "
-        "gate. Phase two adds the metered demand and SERP workflows (`yandex-demand`, "
-        "`yandex-exact-frequency`, `google-demand`, `serp-collection`) once the caller "
-        "deliberately configures the paid credentials they require — sandbox remains the "
-        "DataForSEO default. Deferred by design, not by omission: `serp-clustering` via "
-        "the paid Arsenkin contract, Metrika raw logs, dedicated CLI commands for the "
-        "collect-only providers, and any backlink discovery beyond `backlinks_summary`. "
-        "This is a selected subset of the provider landscape, not a claim that every "
-        "SEO data service is covered.",
+        "`keyword-text-clustering`, `search-console-evidence`, `webmaster-evidence`, "
+        "`field-vitals`, `lab-vitals`, `traffic-analytics`, and `url-submission` behind "
+        "its existing confirmed-write gate. Phase two adds the metered demand and SERP "
+        "workflows (`yandex-demand`, `yandex-exact-frequency`, `google-demand`, "
+        "`serp-collection`) once the caller deliberately configures the paid credentials "
+        "they require — sandbox remains the DataForSEO default. Deferred by design, not "
+        "by omission: `serp-clustering` via the paid Arsenkin contract (declared but "
+        "unsupported), Metrika raw logs, dedicated CLI commands for the collect-only "
+        "providers, and any backlink discovery beyond `backlinks_summary`. This is a "
+        "selected subset of the provider landscape, not a claim that every SEO data "
+        "service is covered.",
         "",
         "Every row above reflects code and test evidence in this repository; no provider "
         "is described as live-verified by this document.",
