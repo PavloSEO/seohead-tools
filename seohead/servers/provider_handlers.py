@@ -11,6 +11,9 @@ from seohead.data_sources.providers import (
     provider_join as _join,
 )
 from seohead.data_sources.providers import (
+    provider_readiness as _readiness,
+)
+from seohead.data_sources.providers import (
     provider_registry as _registry,
 )
 from seohead.data_sources.providers import (
@@ -23,6 +26,11 @@ from seohead.data_sources.providers import (
 
 def provider_registry() -> dict[str, Any]:
     return _registry()
+
+
+def provider_readiness(provider: str | None = None, operation: str | None = None) -> dict[str, Any]:
+    """Inspect provider credential state and operation support without network access."""
+    return _readiness(provider=provider, operation=operation)
 
 
 def provider_doctor() -> dict[str, Any]:

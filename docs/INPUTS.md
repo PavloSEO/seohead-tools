@@ -100,6 +100,7 @@ and this decision makes no backend migration.
 | `skill-show` | Selector (`name`) | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
+| `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |
 | `provider-verify` | Provider identifier (`provider`)<br>Inline JSON (`request`) | Optional read-only target-access request. |
 | `provider-collect` | Provider identifier (`provider`)<br>Selector (`operation`)<br>Inline JSON (`request`)<br>Local directory (`artifact_dir`) | Optional restricted raw-evidence location. |
 | `provider-join` | Inline JSON (`crawl_pages`)<br>Inline JSON (`evidence_rows`)<br>Inline JSON (`adjustments`) | Optional evidence-backed priority adjustments. |

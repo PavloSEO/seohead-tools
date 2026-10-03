@@ -111,6 +111,7 @@ COMMANDS = (
     "provider-replay",
     "provider-auth",
     "provider-registry",
+    "provider-readiness",
     "provider-verify",
     "provider-collect",
     "provider-join",

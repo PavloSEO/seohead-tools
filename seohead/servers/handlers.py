@@ -2835,7 +2835,7 @@ def spend_report(since: str | None = None) -> dict[str, Any]:
 
 
 def sources_doctor() -> dict[str, Any]:
-    """Report provider readiness and credential locations without exposing secret values."""
+    """Report redacted credential references and readiness without verifying provider access."""
     from seohead.data_sources import credentials as creds
 
     checks = {
@@ -3171,6 +3171,12 @@ def provider_registry() -> dict[str, Any]:
     return core()
 
 
+def provider_readiness(provider: str | None = None, operation: str | None = None) -> dict[str, Any]:
+    from seohead.servers.provider_handlers import provider_readiness as core
+
+    return core(provider=provider, operation=operation)
+
+
 def provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
     from seohead.servers.provider_handlers import provider_verify as core
 
@@ -3433,6 +3439,7 @@ _RAW_HANDLERS = {
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,
     "provider_registry": provider_registry,
+    "provider_readiness": provider_readiness,
     "provider_verify": provider_verify,
     "provider_collect": provider_collect,
     "provider_join": provider_join,

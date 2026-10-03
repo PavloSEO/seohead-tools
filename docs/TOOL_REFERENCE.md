@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
+**96 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 101 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -902,11 +902,16 @@ What the paid sources have actually charged: totals by source, by operation and 
 
 MCP name: `seo_sources_doctor`
 
-Which external data sources are ready to use: whether each secret is present, where it is read from, and where the spend journal lives. Call this before planning a paid run — a missing key is cheaper to find now than mid-collection.
+Inspect redacted credential references, readiness and declared provider operations.
 
 Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Configured credentials do not verify account or target permission. This local check makes
+no provider requests; use seo_provider_verify for an explicit bounded read.
 
 ### `wayback-history`
 
@@ -1271,6 +1276,24 @@ List provider operations, credential components, quota and privacy boundaries.
 Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `provider-readiness`
+
+MCP name: `seo_provider_readiness`
+
+Inspect configured credential sources and declared operation routes offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `provider` | `str | None` | `None` |
+| `operation` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Credential configuration never proves account or target permission. Use
+seo_provider_verify for an explicit bounded read-only access check.
 
 ### `provider-verify`
 

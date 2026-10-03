@@ -66,6 +66,9 @@ NEEDS_LIVE_INFRASTRUCTURE = {
     # PDF. Both are environment, not command, so the documented flags are parsed instead.
     "metrika-traffic-pdf",
     "regions-tree",
+    # Verification is an explicit provider read; documentation examples are
+    # syntax-checked here, never run against an account.
+    "provider-verify",
     "mcp",
 }
 
@@ -468,6 +471,19 @@ def test_documented_command_executes_or_at_least_still_parses(
         )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_NETWORKS", "1")
+    if spellings & {"sources-doctor", "provider-readiness"}:
+        # Setup diagnostics are offline, but their normal credential root is the
+        # user's shared config directory. Keep documentation examples synthetic
+        # and prevent CI from even inspecting developer credentials.
+        from seohead.data_sources import credentials, oauth, providers
+
+        isolated_config = tmp_path / "config"
+        monkeypatch.setattr(credentials, "CONFIG_ROOT", isolated_config)
+        monkeypatch.setattr(oauth, "CONFIG_ROOT", isolated_config)
+        for component_sources in providers._CREDENTIAL_SOURCES.values():
+            for _path, env_var in component_sources.values():
+                monkeypatch.delenv(env_var, raising=False)
+        monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
     # A command with no explicit `echo ... |` payload still probes stdin for JSON
     # input; pytest's own captured stdin raises on read instead of giving EOF, so
     # every case (not only the piped ones) gets a real, harmless stream here.

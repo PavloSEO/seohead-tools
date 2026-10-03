@@ -336,6 +336,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
     _command(
+        "provider-readiness",
+        "provider_readiness",
+        _form(
+            "inline_json",
+            "provider",
+            "operation",
+            note="Offline readiness and operation discovery; no provider requests.",
+        ),
+    ),
+    _command(
         "provider-verify",
         "provider_verify",
         _form("provider_identifier", "provider"),
