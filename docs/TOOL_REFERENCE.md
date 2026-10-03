@@ -585,7 +585,7 @@ Run the whole live toolkit over one site and return a single audit document (sch
 
 MCP name: `seo_report_build`
 
-Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report; the original JSON audit remains unchanged. This never makes a network request.
+Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git; pdf is a localized offline Chromium printout (en or ru). PDF requires the optional `pdf` dependencies and a local Chrome, Edge or Chromium. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report; the original JSON audit remains unchanged. This never makes a network request.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -593,6 +593,7 @@ Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict r
 | `fmt` | `str` | `'xlsx'` |
 | `out` | `str | None` | `None` |
 | `project` | `str | None` | `None` |
+| `lang` | `str` | `'en'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 

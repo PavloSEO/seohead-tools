@@ -142,6 +142,13 @@ coverage or backlog rows.
 This model defines content fields only. Localized labels, brand tokens, charts,
 page flow and HTML belong to the separate PDF layout/rendering work.
 
+The shared `report-build` command and MCP tool can render this model to PDF in
+English or Russian with `--format pdf --lang en|ru`. The report is built from
+saved evidence and local checklist state only; rendering performs no network
+requests. It requires the `seohead-seotools[pdf]` extra and a local
+Chrome/Edge/Chromium installation. Output is validated before it replaces the
+requested destination.
+
 ## What each format provides
 
 | Format | Intended use | Contents |
