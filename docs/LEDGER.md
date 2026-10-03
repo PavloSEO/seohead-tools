@@ -87,9 +87,10 @@ table, then `unknown`.
 `discriminator` separates firings of one check on one URL. `primary` is the
 finding's own subject. `subject` carries the finding subject so two findings
 of the same check landing on the same page stay two cases (for example two
-different broken links both reported from `/a`). `locator` is reserved for a
-stable sub-locator when a check fires more than once at the same URL under
-the same subject.
+different broken links both reported from `/a`). `locator` carries a digest of
+the typed subject and stable link path when one check fires more than once at
+the same URL. If repeated locations lack unique stable locators, the finding
+stays aggregate-only rather than claiming those occurrences were enumerated.
 
 The key deliberately **excludes**: severity, message, HTTP status, evidence
 value or hash, configuration fingerprint, producer build, timestamps, the
@@ -138,9 +139,10 @@ resolved.
 
 `finding_observation.coverage_state` records how much of the audit's
 `occurrences_count` the saved document enumerates: `enumerated`, `capped`
-(bounded location list), `aggregate_only` (count with no members), or
-`unknown`. `enumerated_count` counts the members the ledger actually
-recorded; the unenumerated remainder is never synthesized.
+(bounded location list), `aggregate_only` (a count or repeated location set
+without enough stable event identity), or `unknown`. `enumerated_count` counts
+identified occurrence locations, independently of affected-URL membership;
+the unenumerated remainder is never synthesized.
 
 ## Versioning and migration
 

@@ -656,24 +656,34 @@ def _occurrence_evidence(
     }
 
 
-def _coverage_state(
-    reported: int | None, locations: list, members: list[tuple[str, str]]
-) -> tuple[str, int]:
+def _coverage_state(issue: dict[str, Any], locations: list) -> tuple[str, int]:
     """Classify how much of a reported total the audit enumerated.
 
     ``enumerated`` means the saved document names the whole reported total;
     ``capped`` means the audit kept only a bounded location list;
-    ``aggregate_only`` means it reported a count the location list does not
-    enumerate at all.  ``unknown`` means the document does not state a usable
-    total.  The enumerated count is the distinct affected-URL membership the
-    ledger actually recorded -- it never invents the unenumerated remainder.
+    ``aggregate_only`` means repeated locations lack enough stable locator
+    data to distinguish their events. ``unknown`` means the document does not
+    state a usable total. The enumerated count is stable location events, not
+    distinct affected URLs; those memberships are stored separately.
     """
-    enumerated = len({url for url, _role in members})
+    reported = issue.get("occurrences_count")
+    entries = _location_entries(locations)
+    by_url: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        by_url.setdefault(entry["url"], []).append(entry)
+    locator_groups = _locator_groups(issue, entries)
+    enumerated = sum(len(locator_groups[url]) if url in locator_groups else 1 for url in by_url)
+    if not locations and isinstance(issue.get("target_url"), str):
+        enumerated = 1
     if type(reported) is not int or reported < 0:
         return "unknown", enumerated
     if not locations:
         return ("enumerated" if reported <= enumerated else "aggregate_only"), enumerated
-    return ("capped" if reported > len(locations) else "enumerated"), enumerated
+    if reported > len(locations):
+        return "capped", min(reported, enumerated)
+    if reported > enumerated:
+        return "aggregate_only", enumerated
+    return "enumerated", min(reported, enumerated)
 
 
 def _check_id(con, check_key: str, refuse_new: bool) -> int:
@@ -929,6 +939,55 @@ def _affected_urls(issue: dict[str, Any]) -> list[tuple[str, str]]:
     return members
 
 
+def _location_entries(locations: list[Any]) -> list[dict[str, Any]]:
+    """Return the stable source/page locator data carried by audit locations."""
+    entries = []
+    for location in locations:
+        if not isinstance(location, dict):
+            continue
+        raw_url = location.get("source_url") or location.get("url")
+        if not isinstance(raw_url, str) or not raw_url.strip():
+            continue
+        try:
+            url = canonical_url(raw_url)
+        except LedgerError:
+            continue
+        path = location.get("link_path")
+        entries.append(
+            {
+                "url": url,
+                "link_path": path.strip()
+                if isinstance(path, str) and path.strip() and len(path) <= 2048
+                else None,
+                "representation": location.get("representation"),
+            }
+        )
+    return entries
+
+
+def _locator_groups(
+    issue: dict[str, Any], entries: list[dict[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """Return repeated URL locations whose link paths make each occurrence stable."""
+    reported = issue.get("occurrences_count")
+    by_url: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        by_url.setdefault(entry["url"], []).append(entry)
+    if type(reported) is not int or reported <= len(by_url):
+        return {}
+    return {
+        url: rows
+        for url, rows in by_url.items()
+        if len(rows) > 1
+        and all(row["link_path"] for row in rows)
+        and len({row["link_path"] for row in rows}) == len(rows)
+    }
+
+
+def _locator_discriminator(subject_value: str, url: str, link_path: str) -> str:
+    return "link_path:" + _key("seohead.ledger-link-path.v1", subject_value, url, link_path)
+
+
 def _occurrence_specs(
     issue: dict[str, Any],
     *,
@@ -951,6 +1010,9 @@ def _occurrence_specs(
             return "unknown"
         return value
 
+    locations = issue.get("locations") if isinstance(issue.get("locations"), list) else []
+    entries = _location_entries(locations)
+    locator_groups = _locator_groups(issue, entries)
     specs = []
     if subject_type == "scope":
         specs.append(
@@ -963,6 +1025,23 @@ def _occurrence_specs(
                 "role": "target",
             }
         )
+    elif subject_value in locator_groups:
+        for entry in locator_groups[subject_value]:
+            representation = entry["representation"]
+            if representation not in _REPRESENTATIONS:
+                representation = repr_for(subject_value)
+            specs.append(
+                {
+                    "subject_type": "url",
+                    "subject_value": subject_value,
+                    "representation": representation,
+                    "discriminator_type": "locator",
+                    "discriminator_value": _locator_discriminator(
+                        subject_value, subject_value, entry["link_path"]
+                    ),
+                    "role": "target",
+                }
+            )
     else:
         specs.append(
             {
@@ -974,32 +1053,37 @@ def _occurrence_specs(
                 "role": "target",
             }
         )
-    locations = issue.get("locations") if isinstance(issue.get("locations"), list) else []
-    declared_repr: dict[str, str] = {}
-    for location in locations:
-        if not isinstance(location, dict):
-            continue
-        for key in ("source_url", "url"):
-            raw = location.get(key)
-            if isinstance(raw, str) and raw.strip():
-                canon = canonical_url(raw)
-                value = location.get("representation")
-                if isinstance(value, str) and value:
-                    declared_repr.setdefault(canon, value)
     for url, _member_role in members:
         if subject_type == "url" and url == subject_value:
             continue
-        override = declared_repr.get(url)
-        specs.append(
-            {
-                "subject_type": "url",
-                "subject_value": url,
-                "representation": override or repr_for(url),
-                "discriminator_type": "subject",
-                "discriminator_value": subject_value,
-                "role": "source",
-            }
-        )
+        if url in locator_groups:
+            for entry in locator_groups[url]:
+                representation = entry["representation"]
+                if representation not in _REPRESENTATIONS:
+                    representation = repr_for(url)
+                specs.append(
+                    {
+                        "subject_type": "url",
+                        "subject_value": url,
+                        "representation": representation,
+                        "discriminator_type": "locator",
+                        "discriminator_value": _locator_discriminator(
+                            subject_value, url, entry["link_path"]
+                        ),
+                        "role": "source",
+                    }
+                )
+        else:
+            specs.append(
+                {
+                    "subject_type": "url",
+                    "subject_value": url,
+                    "representation": repr_for(url),
+                    "discriminator_type": "subject",
+                    "discriminator_value": subject_value,
+                    "role": "source",
+                }
+            )
     return specs
 
 
@@ -1247,9 +1331,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                 if isinstance(projected_issue.get("locations"), list)
                 else []
             )
-            coverage_state, enumerated = _coverage_state(
-                projected_issue.get("occurrences_count"), locations, members
-            )
+            coverage_state, enumerated = _coverage_state(projected_issue, locations)
             payload = _dump(issue)
             if len(payload.encode("utf-8")) > MAX_PAYLOAD_BYTES:
                 raise LedgerError("saved issue projection exceeds the ledger payload bound")

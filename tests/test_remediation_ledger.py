@@ -445,7 +445,7 @@ def test_capped_locations_aggregate_counts_and_unavailable_evidence_are_data(tmp
     templated = next(f for f in cases["findings"] if f["check"] == "GRAPH_WIDE_CHECK")
     projection = link["projections"][0]
     assert (projection["occurrences_count"], projection["coverage_state"]) == (600, "capped")
-    assert projection["enumerated_count"] == 2
+    assert projection["enumerated_count"] == 1
     # Only the two named members exist; the unenumerated remainder is never fabricated.
     assert len(link["occurrences"]) == 2
     assert len(link["affected_urls"]) == 2
@@ -464,6 +464,59 @@ def test_capped_locations_aggregate_counts_and_unavailable_evidence_are_data(tmp
     assert templated["projections"][0]["coverage_state"] == "aggregate_only"
     assert templated["occurrences"][0]["representation"] == "scope"
     assert templated["occurrences"][0]["current_state"] == "detected"
+
+
+def test_repeated_same_url_locations_keep_stable_link_path_occurrences(tmp_path):
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[
+            _issue(
+                "ISSUE-000001",
+                "GENERIC_ANCHOR_TEXT",
+                target=A,
+                count=2,
+                locations=[
+                    {"source_url": A, "anchor": "Read more", "link_path": "/main/a[1]"},
+                    {"source_url": A, "anchor": "Read more", "link_path": "/main/a[2]"},
+                ],
+            )
+        ],
+    )
+    ingest_scan(ledger, scan)
+    finding = read_cases(ledger, check="GENERIC_ANCHOR_TEXT")["findings"][0]
+    projection = finding["projections"][0]
+
+    assert projection["coverage_state"] == "enumerated"
+    assert projection["enumerated_count"] == 2
+    assert len(finding["affected_urls"]) == 2  # one URL, two membership roles
+    occurrences = finding["occurrences"]
+    assert len(occurrences) == 2
+    assert {item["subject_value"] for item in occurrences} == {A}
+    assert {item["discriminator_type"] for item in occurrences} == {"locator"}
+    assert len({item["discriminator_value"] for item in occurrences}) == 2
+
+
+def test_repeated_same_url_without_stable_locators_stays_aggregate(tmp_path):
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[
+            _issue(
+                "ISSUE-000001",
+                "GENERIC_ANCHOR_TEXT",
+                target=A,
+                count=2,
+                locations=[{"source_url": A, "anchor": "Read more"}] * 2,
+            )
+        ],
+    )
+    ingest_scan(ledger, scan)
+    finding = read_cases(ledger, check="GENERIC_ANCHOR_TEXT")["findings"][0]
+
+    assert finding["projections"][0]["coverage_state"] == "aggregate_only"
+    assert finding["projections"][0]["enumerated_count"] == 1
+    assert len(finding["occurrences"]) == 1
 
 
 def test_later_scan_omission_never_resolves_baseline_cases(tmp_path):
