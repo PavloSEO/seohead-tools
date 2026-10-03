@@ -319,6 +319,40 @@ anchors were never inspected for this, which is not the same as finding none.
 `og_*` columns above; it is nullable because a crawl written before it was
 collected never read the tag, and the Open Graph check names `og:url` missing
 whenever this reads empty.
+
+### Per-occurrence link context
+
+`seohead.storage.link_context.context_for_link(scan, link_id)` and
+`contexts_for_document(scan, document_id, offset=0, limit=100)` derive the
+versioned `link_occurrence_context.v1` result **on demand** from one complete
+retained HTML body or rendered DOM. They do not change `scan.v1`/`scan.v2`,
+fetch a URL or touch the frontier. Every result cites its scan UUID, evidence
+revision, `link_id`, source document, representation and stored ordinal. Repeated
+source-target links remain separate. Raw and rendered documents are read and
+reported independently; a rendered position never fills an unavailable raw
+position. A missing, omitted, truncated, non-HTML or over-budget body returns
+`unavailable` with a reason rather than a fabricated placement or heading.
+
+The extractor uses the recorded content-root and position rules. A matched
+selector is positive placement evidence; a content-root match is labelled as
+inference and names the root-selection strategy. The bounded DOM path uses
+`nth-of-type` segments without page-specific IDs or classes. For content links,
+the nearest preceding heading in the same section/article wins; otherwise the
+nearest preceding content heading is used. Nav/footer links do not borrow a
+content heading. Heading text and selector excerpts are capped at 160
+characters, DOM paths at 12 levels/512 characters, and truncation is explicit.
+
+The reader replays the saved link-storage filter against the document and
+checks every retained occurrence in ordinal order. If old parser behavior or
+missing configuration prevents an exact replay, the document context is
+`unavailable`; it never guesses which duplicate anchor was stored. It processes
+one document at a time, with at most 20,000 eligible anchors, a default 5 MiB
+decoded-body budget (hard cap 8 MiB), and a 500-row/1 MiB serialized-item
+page default (hard item-byte cap 8 MiB). Byte-limited pages stop before a whole occurrence and
+return the next offset. Omitted
+anchors make document coverage `partial`; a single-link result also carries that
+coverage. Shared CLI/MCP inspection is tracked by #807.
+
 `body_unavailable` records why collection could not parse a page
 body (for example, an oversized response); it does **not** describe whether this
 artifact retained that body. `meta_refresh` and `http_refresh` retain the markup
