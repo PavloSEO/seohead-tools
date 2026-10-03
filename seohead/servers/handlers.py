@@ -1387,34 +1387,33 @@ def _audit_crawl_result(
         fragment_evaluation = fragment_links.evaluate(stored_scan.con, max_decoded_bytes=body_limit)
         fragment_states = fragment_evaluation["states"]
         if fragment_evaluation["coverage"]["source_documents_evaluated"]:
-            if (
-                fragment_states["skipped"]
-                and not fragment_states["resolved"]
-                and not fragment_states["missing"]
-            ):
-                # Complete sources but every destination unreadable: the check
-                # answered nothing and must not sit in the silent bucket.
+            bookmark_findings = fragment_links.findings(fragment_evaluation)
+            for item in bookmark_findings:
+                ctx.add(
+                    "BROKEN_BOOKMARK",
+                    target_url=item["target_url"],
+                    occurrences_count=item["occurrences_count"],
+                    locations=item["locations"],
+                    details={
+                        "fragment": item["fragment"],
+                        "decoded_fragment": item["decoded_fragment"],
+                        "destination_representation": item["destination_representation"],
+                        "locations_omitted": item["locations_omitted"],
+                        "occurrences_skipped": fragment_states["skipped"],
+                        "coverage": fragment_evaluation["coverage"]["state"],
+                    },
+                )
+            if not bookmark_findings and fragment_evaluation["coverage"]["state"] != "complete":
+                # Evaluated sources but no finding to fire, while part of the
+                # anchors went unanswered (skipped destinations, unavailable
+                # lanes, unresolvable hrefs, capped or truncated inventories):
+                # silent here would read as a clean pass the partial evidence
+                # cannot support.
                 ctx.skip(
                     "BROKEN_BOOKMARK",
-                    "every retained fragment destination was unavailable; "
-                    "summary.fragment_links names each skipped occurrence",
+                    "fragment evidence is partial; summary.fragment_links names "
+                    "each skipped occurrence and unavailable source",
                 )
-            else:
-                for item in fragment_links.findings(fragment_evaluation):
-                    ctx.add(
-                        "BROKEN_BOOKMARK",
-                        target_url=item["target_url"],
-                        occurrences_count=item["occurrences_count"],
-                        locations=item["locations"],
-                        details={
-                            "fragment": item["fragment"],
-                            "decoded_fragment": item["decoded_fragment"],
-                            "destination_representation": item["destination_representation"],
-                            "locations_omitted": item["locations_omitted"],
-                            "occurrences_skipped": fragment_states["skipped"],
-                            "coverage": fragment_evaluation["coverage"]["state"],
-                        },
-                    )
         else:
             ctx.skip(
                 "BROKEN_BOOKMARK",

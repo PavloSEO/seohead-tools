@@ -121,8 +121,9 @@ followed inside the retained corpus; a different query string is a different
 document. Each occurrence is `resolved`, `missing` (the only state that can
 become a `BROKEN_BOOKMARK` finding) or `skipped` with a named reason: a
 destination absent from the scan, a non-HTML, truncated, omitted, failed or
-budget-exhausted body, an unsupported URL scheme, or an unverifiable `#:~:`
-text directive is always a named skip, never a broken bookmark. Inert
+budget-exhausted body, an unsupported URL scheme, an href the URL resolver
+refuses, or an unverifiable `#:~:` text directive is always a named skip,
+never a broken bookmark. Inert
 `<template>` content contributes neither anchors nor targets. Results are
 deterministically ordered by page ordinal, representation and in-document
 anchor order, and paginated with `offset`/`limit` plus `total`/`returned`/

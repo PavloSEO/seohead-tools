@@ -20,6 +20,9 @@ Evidence contract:
 - HTML only: a document whose media type is not exactly ``text/html`` cannot
   carry element-id fragment semantics (``application/xhtml+xml`` follows XML
   fragment rules instead), so its lane is skipped by name.
+- An ``href`` the URL resolver refuses stays a ``skipped`` occurrence
+  (``href_unresolvable``): dropping it would erase an unverified anchor and
+  let coverage claim ``complete`` over a document that was not fully read.
 - ``<template>`` content is inert (see parser's ``_INERT_LINK_CONTAINERS``):
   anchors and ``id``/``name`` attributes inside it are never measured.
 - Effective ``<base href>`` resolves relative hrefs, mirroring browser URL
@@ -207,18 +210,29 @@ def _extract(html: str, final_url: str) -> _DocEvidence:
             if len(evidence.anchors) >= MAX_ANCHORS_PER_DOCUMENT:
                 evidence.anchors_omitted += 1
                 continue
+            unresolvable = False
             try:
                 resolved = urljoin(evidence.base_url, href)
             except ValueError:
                 resolved = ""
-            if "#" not in resolved:
+                unresolvable = True
+            if "#" in resolved:
+                fragment = resolved.split("#", 1)[1]
+            elif unresolvable and "#" in href:
+                # The resolver refused the href, but it still visibly carries
+                # a fragment. Keep it as an unmeasurable occurrence: dropping
+                # it would report the document as holding no unverified
+                # anchors, which a complete coverage state would then imply.
+                fragment = href.split("#", 1)[1]
+            else:
                 continue
             evidence.anchors.append(
                 {
                     "ordinal": len(evidence.anchors),
                     "raw_href": href,
                     "resolved_url": resolved,
-                    "fragment": resolved.split("#", 1)[1],
+                    "fragment": fragment,
+                    "unresolvable": unresolvable,
                 }
             )
     evidence.ids = frozenset(ids)
@@ -448,6 +462,17 @@ def evaluate(
                 }
                 if len(occurrences) >= max_occurrences:
                     occurrences_omitted += 1
+                    continue
+                if anchor["unresolvable"]:
+                    occurrences.append(
+                        base_occurrence
+                        | {
+                            "state": _SKIP,
+                            "match": None,
+                            "reason": "href_unresolvable",
+                            "note": "",
+                        }
+                    )
                     continue
                 dest_url = base_occurrence["destination_url"]
                 if _scheme(dest_url) not in {"http", "https"}:

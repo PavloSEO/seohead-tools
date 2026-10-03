@@ -177,6 +177,50 @@ def _one(result: dict, raw_href: str) -> dict:
     return matched[0]
 
 
+def _native_audit(path: Path, config: dict, monkeypatch) -> dict:
+    """Rebuild a retained scan into a native audit document, fully offline."""
+    import seohead.recon.net as net
+    import seohead.sf.core.sitemap_coverage as sitemap_coverage
+    import seohead.tools.render as render
+    from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
+    from seohead.crawl.sqlite_adapter import retained_start_gate
+    from seohead.servers import handlers
+    from seohead.servers.scan_handlers import _rebuild_page_result
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("network forbidden")
+
+    monkeypatch.setattr(socket, "socket", fail)
+    monkeypatch.setattr(socket, "getaddrinfo", fail)
+    monkeypatch.setattr(net, "http_client", fail)
+    monkeypatch.setattr(sitemap_coverage, "_fetch", fail)
+    monkeypatch.setattr(sitemap_coverage, "http_client", fail)
+    monkeypatch.setattr(render, "render_check", fail)
+    monkeypatch.setattr(render, "render_document", fail)
+
+    with NativeScan.open(path) as scan:
+        result = _rebuild_page_result(scan)
+        result.start_page_evidence = retained_start_gate(scan, config) or {}
+        with prepare_sitemap_reconciliation(scan.con, start_url=f"{BASE}/") as sitemap:
+            _unused, audit = handlers._audit_crawl_result(
+                result,
+                settings=config,
+                url=f"{BASE}/",
+                sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
+                discovery={
+                    "mode": "spider",
+                    "directive_policy": config["robots"]["policy"],
+                    "robots_blocked": 0,
+                    "sitemap_url": None,
+                    "sitemap_urls": [],
+                    "sitemap_seeded": 0,
+                },
+                stored_scan=scan,
+                stored_sitemap=sitemap,
+            )
+    return audit
+
+
 def test_same_page_targets_resolve_or_report_missing(tmp_path):
     path = tmp_path / "scan.sqlite"
     html = (
@@ -713,45 +757,7 @@ def test_native_audit_reports_broken_bookmarks_and_summary(tmp_path, monkeypatch
         )
         _commit(scan, f"{BASE}/guide", '<html><body><div id="section"></div></body></html>')
 
-    import seohead.recon.net as net
-    import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.render as render
-    from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
-    from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers import handlers
-    from seohead.servers.scan_handlers import _rebuild_page_result
-
-    def fail(*_args, **_kwargs):
-        raise AssertionError("network forbidden")
-
-    monkeypatch.setattr(socket, "socket", fail)
-    monkeypatch.setattr(socket, "getaddrinfo", fail)
-    monkeypatch.setattr(net, "http_client", fail)
-    monkeypatch.setattr(sitemap_coverage, "_fetch", fail)
-    monkeypatch.setattr(sitemap_coverage, "http_client", fail)
-    monkeypatch.setattr(render, "render_check", fail)
-    monkeypatch.setattr(render, "render_document", fail)
-
-    with NativeScan.open(path) as scan:
-        result = _rebuild_page_result(scan)
-        result.start_page_evidence = retained_start_gate(scan, config)
-        with prepare_sitemap_reconciliation(scan.con, start_url=f"{BASE}/") as sitemap:
-            _unused, audit = handlers._audit_crawl_result(
-                result,
-                settings=config,
-                url=f"{BASE}/",
-                sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
-                discovery={
-                    "mode": "spider",
-                    "directive_policy": config["robots"]["policy"],
-                    "robots_blocked": 0,
-                    "sitemap_url": None,
-                    "sitemap_urls": [],
-                    "sitemap_seeded": 0,
-                },
-                stored_scan=scan,
-                stored_sitemap=sitemap,
-            )
+    audit = _native_audit(path, config, monkeypatch)
 
     bookmarks = [issue for issue in audit["issues"] if issue["check"] == "BROKEN_BOOKMARK"]
     assert len(bookmarks) == 1
@@ -777,45 +783,7 @@ def test_native_audit_skips_the_check_when_no_complete_html(tmp_path, monkeypatc
             event={"body_state": "truncated", "body_reason": "truncated"},
         )
 
-    import seohead.recon.net as net
-    import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.render as render
-    from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
-    from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers import handlers
-    from seohead.servers.scan_handlers import _rebuild_page_result
-
-    def fail(*_args, **_kwargs):
-        raise AssertionError("network forbidden")
-
-    monkeypatch.setattr(socket, "socket", fail)
-    monkeypatch.setattr(socket, "getaddrinfo", fail)
-    monkeypatch.setattr(net, "http_client", fail)
-    monkeypatch.setattr(sitemap_coverage, "_fetch", fail)
-    monkeypatch.setattr(sitemap_coverage, "http_client", fail)
-    monkeypatch.setattr(render, "render_check", fail)
-    monkeypatch.setattr(render, "render_document", fail)
-
-    with NativeScan.open(path) as scan:
-        result = _rebuild_page_result(scan)
-        result.start_page_evidence = retained_start_gate(scan, config) or {}
-        with prepare_sitemap_reconciliation(scan.con, start_url=f"{BASE}/") as sitemap:
-            _unused, audit = handlers._audit_crawl_result(
-                result,
-                settings=config,
-                url=f"{BASE}/",
-                sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
-                discovery={
-                    "mode": "spider",
-                    "directive_policy": config["robots"]["policy"],
-                    "robots_blocked": 0,
-                    "sitemap_url": None,
-                    "sitemap_urls": [],
-                    "sitemap_seeded": 0,
-                },
-                stored_scan=scan,
-                stored_sitemap=sitemap,
-            )
+    audit = _native_audit(path, config, monkeypatch)
 
     assert not [issue for issue in audit["issues"] if issue["check"] == "BROKEN_BOOKMARK"]
     skipped = {entry["id"]: entry["reason"] for entry in audit["run"]["checks_skipped"]}
@@ -841,51 +809,85 @@ def test_native_audit_names_the_check_when_every_destination_is_unavailable(tmp_
             event={"body_state": "truncated", "body_reason": "truncated"},
         )
 
-    import seohead.recon.net as net
-    import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.render as render
-    from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
-    from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers import handlers
-    from seohead.servers.scan_handlers import _rebuild_page_result
-
-    def fail(*_args, **_kwargs):
-        raise AssertionError("network forbidden")
-
-    monkeypatch.setattr(socket, "socket", fail)
-    monkeypatch.setattr(socket, "getaddrinfo", fail)
-    monkeypatch.setattr(net, "http_client", fail)
-    monkeypatch.setattr(sitemap_coverage, "_fetch", fail)
-    monkeypatch.setattr(sitemap_coverage, "http_client", fail)
-    monkeypatch.setattr(render, "render_check", fail)
-    monkeypatch.setattr(render, "render_document", fail)
-
-    with NativeScan.open(path) as scan:
-        result = _rebuild_page_result(scan)
-        result.start_page_evidence = retained_start_gate(scan, config)
-        with prepare_sitemap_reconciliation(scan.con, start_url=f"{BASE}/") as sitemap:
-            _unused, audit = handlers._audit_crawl_result(
-                result,
-                settings=config,
-                url=f"{BASE}/",
-                sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
-                discovery={
-                    "mode": "spider",
-                    "directive_policy": config["robots"]["policy"],
-                    "robots_blocked": 0,
-                    "sitemap_url": None,
-                    "sitemap_urls": [],
-                    "sitemap_seeded": 0,
-                },
-                stored_scan=scan,
-                stored_sitemap=sitemap,
-            )
+    audit = _native_audit(path, config, monkeypatch)
 
     assert not [issue for issue in audit["issues"] if issue["check"] == "BROKEN_BOOKMARK"]
     skipped = {entry["id"]: entry["reason"] for entry in audit["run"]["checks_skipped"]}
     assert "BROKEN_BOOKMARK" in skipped
     assert "BROKEN_BOOKMARK" not in audit["summary"]["check_coverage"]["checks_silent_ids"]
     assert audit["summary"]["fragment_links"]["coverage"]["state"] == "partial"
+
+
+def test_native_audit_names_partial_coverage_beside_resolved_links(tmp_path, monkeypatch):
+    """A resolved link next to an unverifiable destination produces no finding
+    and no clean pass either: the check must be a named skip, never silent."""
+    path = tmp_path / "scan.sqlite"
+    config = _config()
+    with NativeScan.create(path, **_metadata(config)) as scan:
+        _commit(
+            scan,
+            f"{BASE}/",
+            '<html><body><a href="#ok">y</a><a href="/not-in-scan#x">x</a>'
+            '<div id="ok"></div></body></html>',
+        )
+
+    audit = _native_audit(path, config, monkeypatch)
+    assert not [issue for issue in audit["issues"] if issue["check"] == "BROKEN_BOOKMARK"]
+    skipped = {entry["id"]: entry["reason"] for entry in audit["run"]["checks_skipped"]}
+    assert "BROKEN_BOOKMARK" in skipped
+    coverage = audit["summary"]["check_coverage"]
+    assert "BROKEN_BOOKMARK" not in coverage["checks_silent_ids"]
+    summary = audit["summary"]["fragment_links"]
+    assert summary["states"] == {"resolved": 1, "missing": 0, "skipped": 1}
+    assert summary["coverage"]["state"] == "partial"
+
+
+def test_malformed_fragment_href_is_a_named_skip(tmp_path):
+    """A fragment-bearing href the URL resolver refuses is unanswered
+    evidence: dropping it would report the page as fully verified."""
+    path = tmp_path / "scan.sqlite"
+    html = (
+        '<html><body><a href="#yes">y</a><a href="http://[bad#frag">bad</a>'
+        '<div id="yes"></div></body></html>'
+    )
+    with NativeScan.create(path, **_metadata(_config())) as scan:
+        _commit(scan, f"{BASE}/", html)
+
+    result = _evaluate(path)
+    bad = _one(result, "http://[bad#frag")
+    assert bad["state"] == "skipped"
+    assert bad["reason"] == "href_unresolvable"
+    assert bad["resolved_url"] == ""
+    assert bad["fragment"] == "frag"
+    assert result["states"] == {"resolved": 1, "missing": 0, "skipped": 1}
+    assert result["coverage"]["anchors_seen"] == 2
+    assert result["coverage"]["state"] == "partial"
+    assert result["coverage"]["skip_reasons"] == {"href_unresolvable": 1}
+
+
+def test_native_audit_names_an_unresolvable_fragment_href(tmp_path, monkeypatch):
+    """The malformed-href skip reaches the audit: partial evidence keeps
+    BROKEN_BOOKMARK out of the silent bucket instead of reading clean."""
+    path = tmp_path / "scan.sqlite"
+    config = _config()
+    with NativeScan.create(path, **_metadata(config)) as scan:
+        _commit(
+            scan,
+            f"{BASE}/",
+            '<html><body><a href="#ok">y</a><a href="http://[bad#frag">bad</a>'
+            '<div id="ok"></div></body></html>',
+        )
+
+    audit = _native_audit(path, config, monkeypatch)
+    assert not [issue for issue in audit["issues"] if issue["check"] == "BROKEN_BOOKMARK"]
+    skipped = {entry["id"]: entry["reason"] for entry in audit["run"]["checks_skipped"]}
+    assert "BROKEN_BOOKMARK" in skipped
+    assert "BROKEN_BOOKMARK" not in audit["summary"]["check_coverage"]["checks_silent_ids"]
+    summary = audit["summary"]["fragment_links"]
+    assert summary["states"] == {"resolved": 1, "missing": 0, "skipped": 1}
+    assert summary["coverage"]["anchors_seen"] == 2
+    assert summary["coverage"]["skip_reasons"] == {"href_unresolvable": 1}
+    assert summary["coverage"]["state"] == "partial"
 
 
 def test_export_audit_names_the_check_unavailable(tmp_path):
