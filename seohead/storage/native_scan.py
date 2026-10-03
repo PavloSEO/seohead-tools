@@ -155,6 +155,9 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             expected["limits"].pop("max_requests")
         if "evidence" in config and "retain_no_store_acknowledged" not in config["evidence"]:
             expected["evidence"].pop("retain_no_store_acknowledged")
+        for key in ("proxy", "proxy_allow_private", "proxy_identity", "proxy_authenticated"):
+            if key not in config.get("http", {}):
+                expected["http"].pop(key)
     require_fields(config, expected)
     validation_config = copy.deepcopy(config)
     if recorded:
@@ -173,6 +176,10 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
         validation_config["limits"].setdefault("max_requests", 0)
         validation_config.setdefault("evidence", {})
         validation_config["evidence"].setdefault("retain_no_store_acknowledged", False)
+        validation_config.setdefault("http", {})
+        validation_config["http"].update(
+            proxy="", proxy_allow_private=False, proxy_identity="", proxy_authenticated=False
+        )
     try:
         validate_crawl_config(
             validate_recorded_credentials(validation_config) if recorded else value
@@ -225,6 +232,12 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
         and expected["evidence"].get("retain_no_store_acknowledged") is False
     ):
         expected["evidence"].pop("retain_no_store_acknowledged")
+    for key in ("proxy", "proxy_allow_private", "proxy_identity", "proxy_authenticated"):
+        if (
+            key not in recorded.get("http", {})
+            and expected.get("http", {}).get(key) == DEFAULTS["http"][key]
+        ):
+            expected["http"].pop(key)
     return crawl_config_fingerprint(expected)
 
 

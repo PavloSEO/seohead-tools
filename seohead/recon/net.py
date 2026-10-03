@@ -28,12 +28,14 @@ import re
 import shutil
 import socket
 import subprocess
+from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 PRIVATE_NETWORK_ENV = "SEOHEAD_ALLOW_PRIVATE_NETWORKS"
 PRIVATE_HOST_ALLOWLIST_ENV = "SEOHEAD_ALLOW_PRIVATE_HOSTS"
+_PROXY_ENV_REF = re.compile(r"^env:([A-Za-z_][A-Za-z0-9_]*)$")
 
 DOH_ENDPOINTS = (
     "https://cloudflare-dns.com/dns-query",
@@ -49,6 +51,94 @@ _DOMAIN_RE = re.compile(
 
 class NetworkUnavailable(RuntimeError):
     """Raised internally when the base HTTP client is unavailable."""
+
+
+@dataclass(frozen=True)
+class ProxyRoute:
+    """One vetted proxy socket and a shareable identity without credentials."""
+
+    proxy: Any = field(repr=False)
+    identity: str
+    authenticated: bool
+
+
+def resolve_proxy_route(value: str, *, allow_private: bool = False) -> ProxyRoute | None:
+    """Resolve and pin an explicitly configured HTTP forward proxy.
+
+    The proxy's private-address opt-in is independent of the target allowlist.
+    Target URLs are still validated and pinned by ``_PinningTransport``.
+    """
+    if value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError("http.proxy must be a URL or env:VARIABLE reference")
+    reference = _PROXY_ENV_REF.fullmatch(value)
+    from_env = reference is not None
+    if value.startswith("env:") and not from_env:
+        raise ValueError("http.proxy needs a valid env:VARIABLE reference")
+    raw = os.environ.get(reference.group(1), "") if reference else value
+    if not raw:
+        raise ValueError("http.proxy environment reference is missing or empty")
+    if any(ord(char) < 33 or ord(char) == 127 for char in raw):
+        raise ValueError("http.proxy URL contains whitespace or control characters")
+    try:
+        parts = urlsplit(raw)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        raise ValueError("http.proxy URL is malformed") from None
+    if parts.scheme != "http":
+        raise ValueError("http.proxy supports only an http:// forward proxy")
+    if not host or port is None or not 1 <= port <= 65535:
+        raise ValueError("http.proxy requires a host and explicit port")
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise ValueError("http.proxy URL cannot have a path, query, or fragment")
+    if parts.username is not None or parts.password is not None:
+        if not from_env:
+            raise ValueError("http.proxy inline authentication is forbidden; use env:VARIABLE")
+        if not parts.username or not parts.password:
+            raise ValueError("http.proxy authentication needs both username and password")
+        if re.search(r"%(?![0-9A-Fa-f]{2})", parts.username + parts.password):
+            raise ValueError("http.proxy authentication has invalid percent encoding")
+        auth = (unquote(parts.username), unquote(parts.password))
+        if any(ord(char) < 33 or ord(char) == 127 for item in auth for char in item):
+            raise ValueError("http.proxy authentication contains control characters")
+        if ":" in auth[0]:
+            raise ValueError("http.proxy username cannot contain a colon")
+    else:
+        auth = None
+    try:
+        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise ValueError("http.proxy host could not be resolved safely") from None
+    if not records:
+        raise ValueError("http.proxy host could not be resolved safely")
+    if not allow_private and any(not _is_public_address(item[4][0]) for item in records):
+        raise ValueError(
+            "http.proxy resolves to a private address; set http.proxy_allow_private=true"
+        )
+    address = records[0][4][0].split("%", 1)[0]
+    literal = f"[{address}]" if ":" in address else address
+    import httpx
+
+    proxy = httpx.Proxy(f"http://{literal}:{port}", auth=auth)
+    return ProxyRoute(
+        proxy=proxy, identity=f"http://{host.lower()}:{port}", authenticated=bool(auth)
+    )
+
+
+def crawl_transport_options(proxy_route: ProxyRoute | None = None) -> dict[str, Any]:
+    """Ignore ambient proxy variables while retaining an explicitly chosen CA bundle."""
+    options: dict[str, Any] = {"trust_env": False}
+    cafile = os.environ.get("SSL_CERT_FILE")
+    capath = os.environ.get("SSL_CERT_DIR")
+    if cafile or capath:
+        import ssl
+
+        options["verify"] = ssl.create_default_context(cafile=cafile, capath=capath)
+    if proxy_route is not None:
+        options["proxy_route"] = proxy_route
+    return options
 
 
 def private_networks_enabled() -> bool:
@@ -345,7 +435,37 @@ def _get_pinning_transport_cls() -> type:
                     stream=request.stream,
                     extensions={**request.extensions, **pin_extensions},
                 )
-            return super().handle_request(request)
+            try:
+                response = super().handle_request(request)
+            except httpx.ProxyError as exc:
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                reason = (
+                    "proxy authentication failed (HTTP 407)"
+                    if "407" in str(exc)
+                    else "proxy CONNECT failed"
+                )
+                raise NetworkUnavailable(reason) from None
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                reason = (
+                    "proxied origin TLS verification failed"
+                    if "CERTIFICATE_VERIFY_FAILED" in str(exc)
+                    else "proxy connection failed"
+                )
+                raise NetworkUnavailable(reason) from None
+            except httpx.RequestError:
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                raise NetworkUnavailable("proxied request failed") from None
+            if (
+                getattr(self, "_seohead_proxy_route", None) is not None
+                and response.status_code == 407
+            ):
+                response.close()
+                raise NetworkUnavailable("proxy authentication failed (HTTP 407)")
+            return response
 
     _pinning_transport_cls = _PinningTransport
     return _pinning_transport_cls
@@ -366,6 +486,8 @@ def http_client(timeout: float, **kwargs: Any):
     except ImportError as exc:  # pragma: no cover - a base dependency
         raise NetworkUnavailable("httpx is required") from exc
 
+    if "proxy" in kwargs:
+        raise TypeError("http_client() requires a vetted proxy_route, not a raw proxy")
     reserved = kwargs.keys() & {"transport", "http2"}
     if reserved:
         raise TypeError(
@@ -374,13 +496,20 @@ def http_client(timeout: float, **kwargs: Any):
             "overridable by callers"
         )
 
+    proxy_route = kwargs.pop("proxy_route", None)
+    if proxy_route is not None:
+        if not isinstance(proxy_route, ProxyRoute):
+            raise TypeError("proxy_route must be a vetted ProxyRoute")
+        kwargs["proxy"] = proxy_route.proxy
+        kwargs["trust_env"] = False
+
     supplied_hooks = kwargs.pop("event_hooks", None) or {}
     hooks = network_event_hooks()
     for phase, values in supplied_hooks.items():
         hooks.setdefault(phase, []).extend(values)
 
     transport_kwargs = {k: kwargs[k] for k in _TRANSPORT_KWARGS if k in kwargs}
-    client_kwargs = {k: v for k, v in kwargs.items() if k not in _TRANSPORT_ONLY_KWARGS}
+    client_kwargs = {k: v for k, v in kwargs.items() if k not in (*_TRANSPORT_ONLY_KWARGS, "proxy")}
     PinningTransport = _get_pinning_transport_cls()
 
     options = {
@@ -392,9 +521,11 @@ def http_client(timeout: float, **kwargs: Any):
     }
     try:
         transport = PinningTransport(http2=True, **transport_kwargs)
+        transport._seohead_proxy_route = proxy_route
         return httpx.Client(http2=True, transport=transport, **options), True
     except ImportError:
         transport = PinningTransport(http2=False, **transport_kwargs)
+        transport._seohead_proxy_route = proxy_route
         return httpx.Client(transport=transport, **options), False
 
 

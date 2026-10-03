@@ -156,6 +156,7 @@ def _seed_urls_from_sitemap(
     request_gate: Callable[[], None] | None = None,
     robots_token: str = "*",
     throttle=None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Resolve and expand the sitemap(s) that should seed a crawl, if any.
 
@@ -175,6 +176,8 @@ def _seed_urls_from_sitemap(
         from seohead.tools.robots import check_robots
 
         options = {"request_gate": request_gate} if request_gate is not None else {}
+        if proxy_route is not None:
+            options["proxy_route"] = proxy_route
         checked = check_robots(url, **options)
         targets = list(checked.get("sitemaps") or [])
         if throttle is not None and checked.get("ok") and isinstance(checked.get("groups"), list):
@@ -194,6 +197,8 @@ def _seed_urls_from_sitemap(
     seen: set[str] = set()
     for target in targets:
         options = {"request_gate": request_gate} if request_gate is not None else {}
+        if proxy_route is not None:
+            options["proxy_route"] = proxy_route
         expanded = sitemap_tool.crawl(target, **options)
         for entry in expanded.get("urls") or []:
             loc = entry.get("loc")
@@ -209,6 +214,7 @@ def _run_render_escalation(
     settings: dict[str, Any],
     *,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> Any:
     """Bind the escalation orchestrator to a real probe and re-fetch.
 
@@ -239,6 +245,8 @@ def _run_render_escalation(
 
     if mode == "js":
         gate_kwargs = {"request_gate": request_gate} if request_gate is not None else {}
+        if proxy_route is not None:
+            gate_kwargs["proxy_route"] = proxy_route
 
         def probe(target: str) -> dict[str, Any]:
             probed = render_tool.render_check(
@@ -286,7 +294,9 @@ def _run_render_escalation(
             options = {}
             if request_gate is not None:
                 options["event_hooks"] = {"request": [lambda _request: request_gate()]}
-            client, _ = http_client(timeout, **options)
+            from seohead.recon.net import crawl_transport_options
+
+            client, _ = http_client(timeout, **crawl_transport_options(proxy_route), **options)
             try:
                 return client.get(target).text
             except Exception:
@@ -661,6 +671,7 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    proxy_route = crawl_config.resolve_proxy(settings)
     if project_root is not None:
         gate = admission(str(project_root), settings, approved=approve_large_crawl)
         if not gate["ok"]:
@@ -721,6 +732,7 @@ def crawl_site(
             sitemap=sitemap,
             producer_build=producer_build,
             progress=progress,
+            proxy_route=proxy_route,
         )
     dispatch_gate = None
     if url:
@@ -736,6 +748,14 @@ def crawl_site(
             throttle, time.sleep, max_requests=settings["limits"]["max_requests"]
         )
     out_dir = settings["output"]["dir"] or None
+    if (
+        proxy_route is not None
+        and out_dir
+        and os.path.exists(os.path.join(out_dir, "crawl_state.json"))
+    ):
+        raise ValueError(
+            "proxied legacy crawls cannot resume from a saved frontier; start with a new output directory"
+        )
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     # The human-readable export: absent whenever the operator turned it off. Only
@@ -790,6 +810,7 @@ def crawl_site(
             request_gate=dispatch_gate.wait_turn,
             robots_token=settings["robots"]["user_agent_token"],
             throttle=throttle,
+            proxy_route=proxy_route,
         )
 
     if url:
@@ -835,6 +856,7 @@ def crawl_site(
             capture_link_attributes=settings["link_attributes"]["capture"],
             dispatch_gate=dispatch_gate,
             progress=progress,
+            proxy_route=proxy_route,
         )
         # Nothing left to resume into, so the private sidecar (used only when the
         # human-readable export was off) would otherwise linger as a hidden, ever
@@ -891,6 +913,7 @@ def crawl_site(
             robots_token=settings["robots"]["user_agent_token"],
             resolve_redirect_destination=settings["discovery"]["resolve_redirect_destination"],
             resolve_canonical_destination=settings["discovery"]["resolve_canonical_destination"],
+            proxy_route=proxy_route,
         )
         discovery = {
             "mode": "list",
@@ -912,6 +935,7 @@ def crawl_site(
         out_dir=out_dir,
         pages_resume_path=pages_resume_path,
         dispatch_gate=dispatch_gate,
+        proxy_route=proxy_route,
     )
     return response
 
@@ -930,6 +954,7 @@ def _audit_crawl_result(
     offline: bool = False,
     captured_render_summary: dict[str, Any] | None = None,
     dispatch_gate=None,
+    proxy_route=None,
 ):
     """Run the existing native analysis over a complete, admitted population."""
     import json
@@ -981,6 +1006,7 @@ def _audit_crawl_result(
                     rendering_config,
                     settings,
                     request_gate=dispatch_gate.wait_turn if dispatch_gate is not None else None,
+                    proxy_route=proxy_route,
                 )
                 render_escalation.apply_rendered_evidence(result.pages, result.links, escalation)
                 # The spider already streamed pages_resume_path during the crawl, before
@@ -1002,6 +1028,7 @@ def _audit_crawl_result(
                     result,
                     settings,
                     request_gate=dispatch_gate.wait_turn if dispatch_gate is not None else None,
+                    proxy_route=proxy_route,
                 )
                 if not offline:
                     from seohead.crawl.sqlite_resources import capture_resources
@@ -1012,7 +1039,9 @@ def _audit_crawl_result(
                             "throttle": dispatch_gate.throttle,
                             "dispatch_gate": dispatch_gate,
                         }
-                    capture_resources(stored_scan, settings, **resource_kwargs)
+                    capture_resources(
+                        stored_scan, settings, proxy_route=proxy_route, **resource_kwargs
+                    )
                 coverage = stored_scan.con.execute(
                     "SELECT crawl_partial,limitations_json FROM scan"
                 ).fetchone()
@@ -1154,6 +1183,8 @@ def _audit_crawl_result(
         sitemap_kwargs = {}
         if dispatch_gate is not None:
             sitemap_kwargs["request_gate"] = dispatch_gate.wait_turn
+        if proxy_route is not None:
+            sitemap_kwargs["proxy_route"] = proxy_route
         measured = run_sitemap(
             ctx,
             sitemap_url=sitemap_seed["sitemap_url"],

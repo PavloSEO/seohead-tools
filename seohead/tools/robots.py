@@ -219,13 +219,18 @@ def check_robots(
     timeout: float = 20.0,
     *,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> RobotsCheckResult:
     robots_url = _robots_url(url)
     try:
         options = {"follow_redirects": True, "headers": {"User-Agent": _UA}}
         if request_gate is not None:
             options["event_hooks"] = {"request": [lambda _request: request_gate()]}
-        client, _http2_capable = http_client(timeout, **options)
+        from seohead.recon.net import crawl_transport_options
+
+        client, _http2_capable = http_client(
+            timeout, **crawl_transport_options(proxy_route), **options
+        )
         with client:
             resp = client.get(robots_url)
     except Exception as exc:

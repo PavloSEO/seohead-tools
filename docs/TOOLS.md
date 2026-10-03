@@ -178,6 +178,12 @@ details (adaptive back-off, which checks come back `skipped` and why) and
 | `segment-diff` | Answers "which pages exist in one segment and not in another" from one crawl, using the site's own hreflang declarations as the authority. Mirrored paths are a fallback only where the site's declared pairs prove it mirrors them; a partially crawled target segment yields no absences at all, because a page nobody fetched is not a page that is missing. Reads a native crawl whose config declared `scope.segments`, not an SF export | — |
 | `crawl-describe-settings` | Lists every `crawl-site` config setting — dotted path, type, default, description, and whether it is results-affecting — generated from `seohead/crawl/settings.py`. Same source as `crawl-site --config-help`, reachable over MCP for an agent with no filesystem access | — |
 
+Native `crawl-site` can use an explicit `http.proxy` policy from JSON config, CLI `--set`, or
+MCP overrides. It supports one HTTP forward proxy for HTTP and HTTPS CONNECT, with credentials
+only through an `env:VARIABLE` URL reference. Proxy and target addresses are separately vetted;
+ambient proxy variables are ignored. Proxied runs require cache off and a fresh output artifact.
+See [SETUP.md](SETUP.md#crawler-configuration) for the supported transport and limits.
+
 `rendering.mode=raw` remains static-only. When a fuller representation is
 enabled, `rendering.escalation.policy=sampled` is the default: it uses the
 configured per-pattern sample before deciding which evidence is worth fuller

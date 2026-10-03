@@ -163,6 +163,13 @@ DEFAULTS: dict[str, Any] = {
         "user_agent": "",  # empty = the toolkit's identifiable default
         "headers": {},
         "retry_on_timeout": 0,
+        # Empty is direct. Credentials may appear only in an env:VARIABLE URL.
+        "proxy": "",
+        "proxy_allow_private": False,
+        # Safe route facts are frozen when load() resolves the proxy. They keep
+        # stored scan fingerprints inspectable after the environment changes.
+        "proxy_identity": "",
+        "proxy_authenticated": False,
         # Each entry is {"host": "...", "headers": {"Authorization": "env:VAR"}}.
         # Bound to one host and resolved from the environment — never a bare
         # value in the file — so a credential cannot leak into a config export
@@ -396,6 +403,10 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "http.user_agent",
         "http.headers",
         "http.retry_on_timeout",
+        "http.proxy",
+        "http.proxy_allow_private",
+        "http.proxy_identity",
+        "http.proxy_authenticated",
         # Which host gets sent extra access changes what the crawl can reach.
         "http.credential_headers",
         "http.credentials_acknowledged",
@@ -563,6 +574,16 @@ DESCRIPTIONS: dict[str, str] = {
         "Extra request headers to send with every fetch. With --set, pass a JSON object."
     ),
     "http.retry_on_timeout": "Number of retries after a request times out.",
+    "http.proxy": (
+        "Explicit http:// forward proxy with host and port, or env:VARIABLE containing its URL "
+        "and optional username/password. No ambient proxy variables are used by a native crawl."
+    ),
+    "http.proxy_allow_private": (
+        "Explicitly allow only the configured proxy endpoint to resolve privately; target URL "
+        "private-network guards remain unchanged."
+    ),
+    "http.proxy_identity": "Resolved nonsecret proxy endpoint; managed by the crawler, not user input.",
+    "http.proxy_authenticated": "Whether the resolved proxy used authentication; managed by the crawler.",
     "http.credential_headers": (
         "Host-bound extra headers for authenticated crawling: "
         "[{'host': ..., 'headers': {name: 'env:VAR_NAME'}}]."
@@ -784,6 +805,8 @@ def parse_setting_assignment(text: str) -> tuple[str, Any]:
     path, sep, raw = text.partition("=")
     path = path.strip()
     if not sep or not path:
+        if "proxy" in text.lower():
+            raise ConfigError("--set expects PATH=VALUE for http.proxy")
         raise ConfigError(f"--set expects PATH=VALUE, got {text!r}")
     known = _flatten(DEFAULTS)
     if path not in known:
@@ -793,6 +816,8 @@ def parse_setting_assignment(text: str) -> tuple[str, Any]:
     try:
         return path, _coerce(path, raw)
     except ValueError as exc:
+        if path == "http.proxy":
+            raise ConfigError("http.proxy value is invalid") from None
         raise ConfigError(f"{path}={raw!r} is not valid: {exc}") from exc
 
 
@@ -944,7 +969,35 @@ def validate(config: dict[str, Any]) -> None:
         raise ConfigError("analysis.segments must be a list")
     _validate_http_headers(config["http"])
     _validate_credential_headers(config["http"])
+    route = resolve_proxy(config)
+    identity = config["http"]["proxy_identity"]
+    authenticated = config["http"]["proxy_authenticated"]
+    if not isinstance(identity, str) or type(authenticated) is not bool:
+        raise ConfigError("http.proxy route facts are invalid")
+    if identity and (route is None or identity != route.identity):
+        raise ConfigError("http.proxy_identity differs from the configured proxy")
+    if identity and authenticated is not route.authenticated:
+        raise ConfigError("http.proxy_authenticated differs from the configured proxy")
+    if not identity and authenticated:
+        raise ConfigError("http.proxy_authenticated is managed by the crawler")
+    if config["http"]["proxy"] and config["cache"]["mode"] != "off":
+        raise ConfigError(
+            "http.proxy requires cache.mode=off to avoid mixing direct and proxy evidence"
+        )
     _validate_rendering(config["rendering"])
+
+
+def resolve_proxy(config: dict[str, Any]):
+    """Resolve an explicit proxy reference without storing its credentials in settings."""
+    from seohead.recon.net import resolve_proxy_route
+
+    allow_private = config["http"]["proxy_allow_private"]
+    if type(allow_private) is not bool:
+        raise ConfigError("http.proxy_allow_private must be true or false")
+    try:
+        return resolve_proxy_route(config["http"]["proxy"], allow_private=allow_private)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from None
 
 
 def _validate_segments(scope: dict[str, Any]) -> None:
@@ -1171,6 +1224,9 @@ def load(
         ]
 
     validate(config)
+    route = resolve_proxy(config)
+    config["http"]["proxy_identity"] = route.identity if route else ""
+    config["http"]["proxy_authenticated"] = route.authenticated if route else False
     return config
 
 
@@ -1203,6 +1259,18 @@ def manifest(config: dict[str, Any]) -> dict[str, Any]:
             value = redact_sensitive_headers(value)
         elif path == "http.credential_headers":
             value = _redact_credential_headers(value)
+        elif path == "http.proxy":
+            identity = config["http"].get("proxy_identity", "")
+            authenticated = config["http"].get("proxy_authenticated", False)
+            if not identity and value:
+                route = resolve_proxy(config)
+                identity = route.identity if route else ""
+                authenticated = route.authenticated if route else False
+            value = {
+                "mode": "proxy" if identity else "direct",
+                "endpoint": identity or None,
+                "authenticated": authenticated,
+            }
         out[path] = value
     return out
 

@@ -710,6 +710,7 @@ def render_check(
     *,
     settle_ms: int = SETTLE_MS,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Compare a server response with the DOM produced after JavaScript executes.
 
@@ -775,13 +776,19 @@ def render_check(
         return {"ok": False, "url": target, "error": str(exc)}
 
     # Fetch raw HTML with the regular client: this is what a non-rendering crawler receives.
+    from seohead.recon.net import crawl_transport_options
+
+    transport_options = crawl_transport_options(proxy_route)
     if request_gate is None:
-        client, _ = http_client(timeout, headers={"User-Agent": selected_user_agent})
+        client, _ = http_client(
+            timeout, headers={"User-Agent": selected_user_agent}, **transport_options
+        )
     else:
         client, _ = http_client(
             timeout,
             headers={"User-Agent": selected_user_agent},
             event_hooks={"request": [lambda _request: request_gate()]},
+            **transport_options,
         )
     try:
         resp = client.get(target)
@@ -803,7 +810,10 @@ def render_check(
     browser_client = None
     try:
         browser_client, _http2 = http_client(
-            timeout, follow_redirects=False, headers={"User-Agent": selected_user_agent}
+            timeout,
+            follow_redirects=False,
+            headers={"User-Agent": selected_user_agent},
+            **transport_options,
         )
         with sync_playwright() as pw:
             browser = pw.chromium.launch(chromium_sandbox=True)
@@ -963,6 +973,7 @@ def rendered_html(
     wait: str = "load",
     *,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Return rendered HTML for tools that require the final DOM.
 
@@ -990,8 +1001,13 @@ def rendered_html(
         return {"ok": False, "url": target, "error": str(exc)}
     browser_client = None
     try:
+        from seohead.recon.net import crawl_transport_options
+
         browser_client, _http2 = http_client(
-            timeout, follow_redirects=False, headers={"User-Agent": UA}
+            timeout,
+            follow_redirects=False,
+            headers={"User-Agent": UA},
+            **crawl_transport_options(proxy_route),
         )
         with sync_playwright() as pw:
             browser = pw.chromium.launch(chromium_sandbox=True)
@@ -1096,6 +1112,7 @@ def render_document(
     max_html_bytes: int | None = None,
     policy_facts: dict[str, Any] | None = None,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Render one URL under the full crawler rendering configuration.
 
@@ -1195,10 +1212,13 @@ def render_document(
     browser = None
     network_client = None
     try:
+        from seohead.recon.net import crawl_transport_options
+
         network_client, _http2 = http_client(
             nav_timeout,
             follow_redirects=False,
             headers={"User-Agent": user_agent or UA},
+            **crawl_transport_options(proxy_route),
         )
         with sync_playwright() as pw:
             context_options = {

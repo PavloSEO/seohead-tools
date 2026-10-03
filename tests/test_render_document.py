@@ -203,6 +203,34 @@ def test_happy_path_returns_the_rendered_html(fake_stack):
     assert result["final_url"] == "https://example.com/"
 
 
+def test_crawler_render_document_uses_the_same_pinned_proxy_route(fake_stack, monkeypatch):
+    from seohead.recon.net import ProxyRoute
+    from seohead.tools import render
+
+    route = ProxyRoute(
+        proxy=object(), identity="http://proxy.example.test:3128", authenticated=False
+    )
+    calls = []
+
+    class Client:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(render, "validate_url", lambda url: url)
+    monkeypatch.setattr(render, "_refuse_if_root", lambda: None)
+    monkeypatch.setattr(
+        render,
+        "http_client",
+        lambda timeout, **kwargs: (calls.append(kwargs) or Client(), True),
+    )
+    result = render_document("https://example.test/", _rendering_config(), proxy_route=route)
+
+    assert result["ok"] is True
+    assert len(calls) == 1
+    assert calls[0]["proxy_route"] is route
+    assert calls[0]["trust_env"] is False
+
+
 def test_a_cookie_the_browser_carries_is_not_the_operators_credential(fake_stack, monkeypatch):
     """#656: a browser carries back whatever the site's own Set-Cookie gave it.
 

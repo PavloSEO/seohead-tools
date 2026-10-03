@@ -232,6 +232,31 @@ Use `http.headers` only for non-credential request headers such as `Accept-Langu
 headers, cookies, API keys, and tokens are refused there: put them in host-bound
 `http.credential_headers` as `env:VARIABLE` references and set `http.credentials_acknowledged=true`.
 
+For a native crawl through an HTTP forward proxy, set `http.proxy` explicitly. The default is
+direct and ignores ambient `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. An anonymous
+endpoint may be written as `http://proxy.example.test:3128`; credentials must come through an
+environment reference to the complete URL:
+
+```json
+{"http": {"proxy": "env:SEOHEAD_CRAWL_PROXY"}}
+```
+
+For example, `SEOHEAD_CRAWL_PROXY` may contain an `http://` URL with a percent-encoded username
+and password (`@` as `%40`, `:` in a password as `%3A`; colons in usernames are refused).
+It is read at crawl start, never stored in the scan or manifest. Only `http://`
+forward proxies with an explicit port are supported for HTTP targets and HTTPS CONNECT targets;
+HTTPS proxy endpoints, SOCKS, PAC, bypass lists and browser-native proxy fallback are rejected.
+`http.proxy_allow_private=true` authorizes a private **proxy socket** only; it never authorizes
+private target URLs. The crawler validates and pins both the proxy socket and each target/redirect
+before connecting. A proxy's onward behavior cannot be attested after the request reaches it.
+Proxy failures never switch to direct egress. The manifest records the safe proxy endpoint and
+whether authentication was configured, never its value. Proxied crawls require `cache.mode=off`
+and cannot resume from saved legacy or SQLite frontiers; start a new output instead. CA bundles
+may be selected with `SSL_CERT_FILE` or `SSL_CERT_DIR`, while TLS verification remains enabled.
+The same policy is reachable with `--set http.proxy=env:SEOHEAD_CRAWL_PROXY` or the MCP
+`seo_crawl_site` overrides. Browser subrequests remain on the pinned HTTP route; unsupported
+methods and WebSockets retain their existing unavailable behavior.
+
 `crawl-site --help` only shows the handful of settings used directly on the command line
 (`--url`, `--max-urls`, `--out-dir`, `--scan-out`, `--config`, `--robots`, `--sitemap`); everything else — the
 settings above and every one the crawler build-out has added since — lives in the config file. Run

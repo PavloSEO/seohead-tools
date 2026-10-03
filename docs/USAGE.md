@@ -33,6 +33,9 @@ seohead report-build --audit native.sqlite --format md --out native-report.md --
 seohead crawl-site --resume native.sqlite
 ```
 
+Proxied native crawls require a fresh output artifact; `--resume` refuses a saved proxy route
+because it cannot safely reconstruct the original connection and credentials from redacted state.
+
 SQLite mode keeps queue, evidence and runtime in one transactional scan and resumes
 an interrupted file under the same build/configuration: `--resume` reads the start
 URL and that configuration back from the artifact, and refuses by name when the
