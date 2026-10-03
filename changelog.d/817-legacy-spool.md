@@ -5,5 +5,6 @@
   audit bridge names its page/form/link materialization bounds and preserves
   collected evidence when an audit is unavailable. A prior report is retained
   under a stale filename rather than presented as the current run. Native
-  JavaScript escalation checks the current audit bound before rebuilding all
-  page objects. Full large-audit streaming remains tracked by #816/#817.
+  JavaScript escalation reads page records through a re-iterable SQLite view
+  instead of rebuilding all page objects. Full large-audit streaming remains
+  tracked by #816/#817.

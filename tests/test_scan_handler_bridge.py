@@ -54,8 +54,7 @@ class _Scan:
         return True
 
     def resume_snapshot(self, *, include_edges=False):
-        assert include_edges
-        return {"counts": self.con.counts}
+        return {"counts": {**self.con.counts, "queued": 0}}
 
     def sitemap_roots(self):
         return []
@@ -150,7 +149,7 @@ def test_page_limit_is_guarded_before_materialization_or_audit(bridge, monkeypat
     assert bridge.saved is None and bridge.finished
 
 
-def test_page_limit_is_guarded_before_js_materialization(bridge, monkeypatch):
+def test_large_js_render_uses_a_cursor_backed_page_view(bridge, monkeypatch):
     pages = scan_handlers.MAX_AUDIT_PAGES + 1
     bridge.con.counts["pages"] = pages
     monkeypatch.setattr(
@@ -160,10 +159,13 @@ def test_page_limit_is_guarded_before_js_materialization(bridge, monkeypatch):
     monkeypatch.setattr(
         scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
     )
-    monkeypatch.setattr(
-        "seohead.crawl.sqlite_render.run_render_escalation",
-        lambda *_args, **_kwargs: pytest.fail("rendered an unbounded page view"),
-    )
+    observed = []
+
+    def render(_scan, result, _settings, **_kwargs):
+        observed.append(result.pages)
+        assert isinstance(result.pages, scan_handlers._StoredPages)
+
+    monkeypatch.setattr("seohead.crawl.sqlite_render.run_render_escalation", render)
 
     response = scan_handlers.crawl_site_scan(
         "https://example.test/",
@@ -177,7 +179,29 @@ def test_page_limit_is_guarded_before_js_materialization(bridge, monkeypatch):
 
     assert response["audit_available"] is False
     assert f"pages={pages}/" in response["audit_reason"]
+    assert len(observed) == 1
     assert bridge.saved is None
+
+
+def test_stored_page_view_iterates_and_resolves_exact_urls(tmp_path):
+    from seohead.storage import open_scan
+    from tests.test_scan_corpus_inputs import _scan
+
+    url_a = "https://example.test/a"
+    url_b = "https://example.test/b"
+    path = _scan(
+        tmp_path,
+        [
+            (url_a, "<html><body><main>A</main></body></html>"),
+            (url_b, "<html><body><main>B</main></body></html>"),
+        ],
+    )
+    with open_scan(path, require_audit=False) as con:
+        pages = scan_handlers._StoredPages(con)
+        assert len(pages) == 2
+        assert [page.url for page in pages] == [url_a, url_b]
+        assert pages.get(url_b).url == url_b
+        assert pages.get("https://example.test/missing") is None
 
 
 def test_resumed_scan_without_transient_html_is_named_no_audit(bridge, monkeypatch):

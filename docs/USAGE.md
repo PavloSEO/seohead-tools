@@ -55,6 +55,9 @@ counts and a reason while keeping the JSONL evidence. A prior `audit.json` or
 tasks file in that directory is renamed to a hidden `.stale-*` copy so it
 cannot be mistaken for the new run's report. The large-audit representation is
 tracked in #816; these collection bounds do not raise the 50,000-URL crawl cap.
+Native JS escalation reads page records from SQLite without first building a
+full PageRecord list; its later saved audit still follows the audit bridge's
+declared limits until #816 supplies a large-audit representation.
 
 ## Saved scan artifact
 
