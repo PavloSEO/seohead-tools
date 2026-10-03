@@ -71,6 +71,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "unknown_warning": "The source does not establish whether this audit completed.",
         "no_reported_scope": "The source did not record a crawl scope.",
         "source": "Source evidence",
+        "source_check_coverage": "Source check coverage",
         "report_footer": "Technical audit report",
         "domain": "Site",
         "status_code_label": "HTTP status",
@@ -145,6 +146,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "unknown_warning": "Источник не подтверждает, завершился ли аудит.",
         "no_reported_scope": "Источник не записал объём обхода.",
         "source": "Сохранённые данные",
+        "source_check_coverage": "Покрытие проверок по источнику",
         "report_footer": "Технический аудит",
         "domain": "Сайт",
         "status_code_label": "HTTP-статус",
@@ -506,7 +508,8 @@ def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
         if isinstance(value, list):
             entries.extend(value)
         elif isinstance(value, Mapping):
-            entries.append({"kind": section.replace("_", " "), "record": value})
+            kind = labels.get(section, section.replace("_", " "))
+            entries.append({"kind": kind, "state": "recorded", "record": value})
     for value in entries:
         check = _mapping(value)
         record = _mapping(check.get("record", check))
