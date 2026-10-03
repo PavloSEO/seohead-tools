@@ -80,6 +80,12 @@ class RemoteEgressPolicy:
         normalized: set[str] = set()
         for value in self.allowed_private_hosts:
             host = str(value).rstrip(".").lower()
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("private host allowlist requires DNS hostnames, not IP literals")
             if (
                 not host
                 or host == "localhost"
