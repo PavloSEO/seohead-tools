@@ -2870,6 +2870,19 @@ def scan_snapshot(input_path: str, out: str) -> dict[str, Any]:
     return core(input_path, out)
 
 
+def scan_export(
+    input_path: str,
+    out: str,
+    format: str = "json",
+    records: Any = None,
+    fields: Any = None,
+) -> dict[str, Any]:
+    """Export retained scan data under the versioned ``scan_export.v1`` contract."""
+    from seohead.storage.scan_export import export_scan_data
+
+    return export_scan_data(input_path, out, fmt=format, records=records, fields=fields)
+
+
 def scan_pin(input_path: str, pinned: bool = True) -> dict[str, Any]:
     from seohead.servers.history_handlers import scan_pin as core
 
@@ -3351,6 +3364,7 @@ _RAW_HANDLERS = {
     "scan_requeue": scan_requeue,
     "scan_import_urls": scan_import_urls,
     "scan_snapshot": scan_snapshot,
+    "scan_export": scan_export,
     "scan_pin": scan_pin,
     "scan_prune": scan_prune,
     "scan_body_diff": scan_body_diff,

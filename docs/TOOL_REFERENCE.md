@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1467,6 +1467,22 @@ Create a consistent new SQLite snapshot without overwriting a destination.
 |---|---|---|
 | `input_path` | `str` | `required` |
 | `out` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `scan-export`
+
+MCP name: `seo_scan_export`
+
+Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `out` | `str` | `required` |
+| `format` | `str` | `'json'` |
+| `records` | `list[str] | None` | `None` |
+| `fields` | `dict[str, list[str]] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 

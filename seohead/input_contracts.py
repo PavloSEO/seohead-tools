@@ -374,6 +374,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("scan-status", "scan_status", _form("scan_artifact", "input_path")),
     _command("scan-rendered-routes", "scan_rendered_routes", _form("scan_artifact", "input_path")),
     _command("scan-snapshot", "scan_snapshot", _form("scan_artifact", "input_path")),
+    _command(
+        "scan-export",
+        "scan_export",
+        _form(
+            "scan_artifact",
+            "input_path",
+            note="Also accepts an SF Analyzer audit.json document; links are unavailable there.",
+        ),
+        _form(
+            "selector",
+            "records",
+            "fields",
+            note="Optional record-type and field projection validated before any file is written.",
+        ),
+    ),
     _command("scan-pin", "scan_pin", _form("scan_artifact", "input_path")),
     _command(
         "scan-prune",
