@@ -2804,10 +2804,16 @@ def sources_doctor() -> dict[str, Any]:
     from seohead.data_sources import spend as spend_core
     from seohead.data_sources.providers import sources_doctor as provider_doctor
 
+    provider_status = provider_doctor()["providers"]
+    gsc_provider = provider_status["gsc"]
+    gsc_components = gsc_provider["credential_components"]
+    sources["gsc"]["ready"] = any(gsc_components.values())
+    sources["gsc"]["components"] = gsc_components
+    sources["gsc"]["service_account_status"] = gsc_provider["service_account_status"]
     return {
         "ok": True,
         "sources": sources,
-        "provider_status": provider_doctor()["providers"],
+        "provider_status": provider_status,
         "spend_log": str(spend_core.log_path()),
     }
 

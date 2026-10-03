@@ -180,6 +180,8 @@ def sources_doctor() -> dict[str, Any]:
             "verified": False,
             "note": "run explicit provider-verify; configured credentials are not verified access",
         }
+        if name == "gsc":
+            providers[name]["service_account_status"] = credentials.gsc_service_account_status()
     return {"format": "seohead.provider-doctor.v1", "providers": providers}
 
 
@@ -281,13 +283,16 @@ def provider_verify(
         }
     ready = any(components.values()) if provider == "gsc" else all(components.values())
     if not ready:
-        return {
+        result = {
             "ok": False,
             "provider": provider,
             "state": "not_configured",
             "verified": False,
             "credential_components": components,
         }
+        if provider == "gsc":
+            result["service_account_status"] = credentials.gsc_service_account_status()
+        return result
     if provider == "gsc":
         from seohead.data_sources.gsc import discover_properties
 
