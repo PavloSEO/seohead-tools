@@ -103,8 +103,14 @@ def _coverage(source: dict[str, Any], summary: dict[str, Any], kind: str) -> dic
                 else None
             )
             reason = record.get(reason_field) if reason_field and isinstance(record, dict) else None
+            record_state = state
+            if name == "capabilities" and isinstance(record, dict):
+                row_state = record.get("state")
+                record_state = (
+                    row_state if isinstance(row_state, str) and row_state else "unreported"
+                )
             coverage = _coverage_record(
-                collection, index, record, state, identifier=identifier, reason=reason
+                collection, index, record, record_state, identifier=identifier, reason=reason
             )
             if name == "fired" and isinstance(record, dict):
                 key = str(record.get("id") or "")
@@ -119,6 +125,14 @@ def _coverage(source: dict[str, Any], summary: dict[str, Any], kind: str) -> dic
         add_group("ran", "summary.tools_run", summary.get("tools_run"), "ran", record_kind="string")
         add_group(
             "failed", "summary.tools_failed", summary.get("tools_failed"), "failed", "tool", "error"
+        )
+        add_group(
+            "page_tools_failed",
+            "summary.page_tools_failed",
+            summary.get("page_tools_failed"),
+            "failed",
+            "tool",
+            "reason",
         )
         add_group(
             "disabled",
@@ -136,7 +150,7 @@ def _coverage(source: dict[str, Any], summary: dict[str, Any], kind: str) -> dic
             "capabilities",
             "summary.evidence_contract.capability_rows",
             capabilities,
-            "source_reported",
+            "unreported",
             "check",
             "reason",
         )
@@ -289,7 +303,7 @@ def _validate_optional_containers(
             "check_coverage",
             "project_coverage",
         )
-        list_fields = ("tools_run", "tools_failed", "checks_disabled")
+        list_fields = ("tools_run", "tools_failed", "page_tools_failed", "checks_disabled")
         container = summary
         label = "summary"
     else:
@@ -323,6 +337,32 @@ def _validate_optional_containers(
             and not isinstance(container[name], list)
         ):
             raise ValueError(f"{label}.{name} must be a list when present")
+    if kind == "site-audit":
+        page_failures = summary.get("page_tools_failed")
+        if page_failures is not None and any(not isinstance(row, dict) for row in page_failures):
+            raise ValueError("summary.page_tools_failed must contain objects")
+    else:
+        by_check = summary.get("by_check")
+        if isinstance(by_check, dict):
+            for check, count in by_check.items():
+                if not isinstance(check, str) or not check:
+                    raise ValueError("summary.by_check keys must be non-empty strings")
+                if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+                    raise ValueError(f"summary.by_check[{check!r}] must be a positive integer")
+    total_fields = (
+        (("findings_total", summary), ("pages_checked", summary))
+        if kind == "site-audit"
+        else (
+            ("issues_total", summary.get("totals") or {}),
+            ("urls_crawled", summary.get("totals") or {}),
+        )
+    )
+    for name, container in total_fields:
+        if name in container and container[name] is not None:
+            value = container[name]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                prefix = "summary." if kind == "site-audit" else "summary.totals."
+                raise ValueError(f"{prefix}{name} must be a non-negative integer")
     evidence = summary.get("evidence_contract")
     if isinstance(evidence, dict) and "capability_rows" in evidence:
         rows = evidence["capability_rows"]
@@ -539,6 +579,7 @@ def build_pdf_model(data: Any, *, project: str | None = None) -> dict[str, Any]:
                     "ran": group_count("ran") if kind == "site-audit" else group_count("fired"),
                     "skipped": group_count("skipped"),
                     "failed": group_count("failed"),
+                    "page_tools_failed": group_count("page_tools_failed"),
                     "disabled": group_count("disabled"),
                     "capabilities": group_count("capabilities"),
                     "silent": group_count("silent"),
