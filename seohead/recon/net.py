@@ -192,6 +192,8 @@ def resolve_socket_addresses(
             if policy is not None
             else f"hostname could not be resolved safely: {host}"
         )
+    if policy is not None and len({_is_public_address(record[4][0]) for record in records}) > 1:
+        raise ValueError("mixed public and private DNS answers blocked")
     if policy is not None and any(
         not _is_public_address(record[4][0])
         and not policy.allows_private_address(host, record[4][0])

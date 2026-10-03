@@ -122,6 +122,8 @@ def test_staging_allowlist_is_exact_and_never_authorizes_metadata(monkeypatch):
         policy.authorize_submission("project-a", "https://stage.example.test/", _config())
     with pytest.raises(ValueError):
         RemoteEgressPolicy("project-a", frozenset({"*.example.test"}))
+    with pytest.raises(ValueError, match="DNS hostnames"):
+        RemoteEgressPolicy("project-a", frozenset({"10.1.2.3"}))
 
 
 def test_mixed_dns_answers_are_rejected_for_remote_jobs(monkeypatch):
@@ -129,6 +131,14 @@ def test_mixed_dns_answers_are_rejected_for_remote_jobs(monkeypatch):
     policy = RemoteEgressPolicy("project-a")
     with pytest.raises(RemoteTargetError) as rejected:
         policy.authorize_submission("project-a", "https://public.example.test/", _config())
+    assert rejected.value.code == "unsafe_target"
+
+
+def test_allowlisted_staging_name_rejects_mixed_public_private_answers(monkeypatch):
+    _dns(monkeypatch, {"stage.example.test": ["93.184.216.34", "10.1.2.3"]})
+    policy = RemoteEgressPolicy("project-a", frozenset({"stage.example.test"}))
+    with pytest.raises(RemoteTargetError) as rejected:
+        policy.authorize_submission("project-a", "https://stage.example.test/", _config())
     assert rejected.value.code == "unsafe_target"
 
 
