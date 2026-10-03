@@ -2,12 +2,10 @@
 
 The `remote` extra defines a versioned, authenticated ASGI adapter for self-hosted scan jobs.
 `create_app(backend, authenticator, target_policy=...)` creates an app; it does not start a
-listener, create a public account, or execute a crawl. The local `seohead` CLI and stdio MCP
-remain available without the extra. The durable queue/artifact backend is #785, the target and
-worker-egress policy is #786, and deployment is #787. No production service is supplied by this
-contract alone. The submission policy object does not spend request counters; #785 must create a
-fresh trusted policy for each job at worker dispatch and use its `checked_job` context for
-DNS-pinned redirects and browser subresources.
+listener or public account. The local `seohead` CLI and stdio MCP remain available without the
+extra. [The optional SQLite job backend](REMOTE_JOBS.md) supplies the durable queue, worker and
+artifact lifecycle; [the target policy](REMOTE_TARGET_SAFETY.md) protects submission and worker
+egress. Deployment remains #787. No production service is started by installation alone.
 
 Install the adapter only where needed with `python -m pip install '.[remote]'`. Importing the
 contract models does not require that extra; calling `create_app` without FastAPI installed gives
@@ -26,6 +24,7 @@ separate: `scan:submit`, `scan:list`, `scan:read`, `scan:cancel`, and `scan:resu
 | `GET` | `/projects/{project_id}/scans/{job_id}` | Status and progress. |
 | `POST` | `/projects/{project_id}/scans/{job_id}/cancel` | Request cancellation; the backend owns terminal state. |
 | `GET` | `/projects/{project_id}/scans/{job_id}/result` | Terminal coverage, saved scan-status evidence, and opaque artifact references. Pending jobs return 409. |
+| `GET` | `/projects/{project_id}/scans/{job_id}/artifacts/{artifact_id}` | Stream one registered artifact after `scan:result` authorization and a project/job-scoped lookup. |
 
 The submit body is `{"target_url":"https://example.test/","options":{...}}`. Options are a
 remote-safe subset of native settings: URL, depth, request and wall-clock budgets, concurrency,
@@ -57,6 +56,7 @@ tokens are compared with configured SHA-256 digests; neither tokens nor invalid 
 appear in API errors. A deployment must provision high-entropy tokens and TLS, keep digests
 outside the repository, and apply body limits again at its reverse proxy.
 
-Synthetic local verification uses `tests/test_remote_api.py` and FastAPI's in-process test
-client. It supplies a fake backend and fake target policy; it makes no live provider call and
-does not demonstrate workers, browser egress, persistence, or VPS readiness.
+Synthetic local verification uses `tests/test_remote_api.py` for the API contract and
+`tests/test_remote_backend.py` for API → durable queue → actual native collector → retained
+evidence/report download using fake DNS and HTTP. Neither test starts a public listener, contacts
+a live provider or demonstrates VPS deployment readiness.

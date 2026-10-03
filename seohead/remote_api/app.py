@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from seohead.remote_api.contracts import (
@@ -249,6 +249,22 @@ def create_app(
         if record is None or record.job.project_id != project_id:
             raise ApiFault(404, "not_found", "project or job was not found")
         return record
+
+    @router.get("/projects/{project_id}/scans/{job_id}/artifacts/{artifact_id}")
+    def artifact(
+        project_id: str,
+        job_id: str,
+        artifact_id: str,
+        actor: Principal = Depends(principal),
+    ) -> FileResponse:
+        access(project_id, actor, "scan:result")
+        visible(backend.get_job(project_id, checked_job_id(job_id)), project_id)
+        if not re.fullmatch(r"[0-9a-f]{32}", artifact_id):
+            raise ApiFault(404, "not_found", "artifact was not found")
+        path = backend.artifact_path(project_id, job_id, artifact_id)
+        if path is None:
+            raise ApiFault(404, "not_found", "artifact was not found")
+        return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
     app.include_router(router)
     return app

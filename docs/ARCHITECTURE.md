@@ -3,10 +3,11 @@
 One package `seohead/`, two faces (CLI and MCP), three core layers plus two
 service layers. Everything else follows from that.
 
-The optional remote service in epic #754 is being built as a separate delivery
-adapter. `recon/remote_policy.py` supplies its project-bound target and egress
-guard; it does not create an HTTP endpoint or alter local CLI/MCP defaults. See
-[Remote target safety](REMOTE_TARGET_SAFETY.md) for the worker binding contract.
+The optional remote service in epic #754 is a separate delivery adapter.
+`recon/remote_policy.py` supplies its project-bound target and egress guard;
+`remote_api/backend.py` supplies its durable queue and worker. Neither starts
+a listener or alters local CLI/MCP defaults. See [remote target safety](REMOTE_TARGET_SAFETY.md)
+and [durable jobs](REMOTE_JOBS.md) for their binding contracts.
 
 ## Package layout
 

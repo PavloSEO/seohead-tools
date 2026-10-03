@@ -391,9 +391,9 @@ The image is a multi-stage build on `python:3.12-slim`, runs as non-root user `s
 
 ## What is intentionally absent
 
-- **Local installation remains CLI and stdio MCP.** An optional authenticated remote API contract
-  exists for a future self-hosted service; it requires a separate durable backend and egress
-  policy and starts no listener on installation. See [REMOTE_API.md](REMOTE_API.md). Reports are files.
+- **Local installation remains CLI and stdio MCP.** The optional authenticated
+  [remote API](REMOTE_API.md) and [durable job backend](REMOTE_JOBS.md) require
+  explicit service construction and start no listener on installation. Reports are files.
 - **No push deploy.** `git push` deploys nothing — there are no deploy
   workflows, hooks or scripts in this repo.
 

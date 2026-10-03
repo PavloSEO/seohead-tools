@@ -7,6 +7,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
@@ -259,6 +260,8 @@ class JobBackend(Protocol):
     def cancel_job(self, project_id: str, job_id: str) -> JobStatus | None: ...
 
     def get_result(self, project_id: str, job_id: str) -> JobResult | None: ...
+
+    def artifact_path(self, project_id: str, job_id: str, artifact_id: str) -> Path | None: ...
 
 
 class RemoteTargetPolicy(Protocol):
