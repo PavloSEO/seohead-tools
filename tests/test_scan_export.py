@@ -389,7 +389,7 @@ def test_csv_formula_leading_values_are_neutralized(tmp_path):
     result = export_scan_data(_document(), str(out), fmt="csv", records=["findings"])
     assert result["ok"], result
     text = (tmp_path / "e.findings.csv").read_text(encoding="utf-8-sig")
-    assert "'=cmd|'/c calc'!A1" in text
+    assert "\\F=cmd|'/c calc'!A1" in text
     assert "\n=cmd" not in text
 
 
@@ -404,7 +404,7 @@ def test_xlsx_bounded_workbook_and_formula_neutralization(tmp_path):
     findings = list(workbook["Findings"].iter_rows(values_only=True))
     assert list(findings[0]) == list(export_module.FINDING_FIELDS)
     hint = findings[1][list(export_module.FINDING_FIELDS).index("fix_hint")]
-    assert hint == "'=cmd|'/c calc'!A1"
+    assert hint == "\\F=cmd|'/c calc'!A1"
     summary = {
         row[0]: row[1]
         for row in workbook["Summary"].iter_rows(min_row=2, values_only=True)
@@ -412,6 +412,40 @@ def test_xlsx_bounded_workbook_and_formula_neutralization(tmp_path):
     }
     assert summary["format"] == EXPORT_FORMAT_VERSION
     assert summary["statistics.rows.findings"] == 1
+
+
+def test_tabular_null_empty_formula_and_escape_values_are_distinct(tmp_path):
+    from openpyxl import load_workbook
+
+    values = [None, "", r"\N", r"\E", r"\F=literal", "=SUM(1,1)", "\t=SUM(1,1)", "plain"]
+    expected = [
+        r"\N",
+        r"\E",
+        r"\\N",
+        r"\\E",
+        r"\\F=literal",
+        r"\F=SUM(1,1)",
+        "\\F\t=SUM(1,1)",
+        "plain",
+    ]
+    document = _document()
+    document["pages"] = [
+        {"url": f"https://example.com/{index}", "indexability_status": value}
+        for index, value in enumerate(values)
+    ]
+    fields = {"pages": ["url", "indexability_status"]}
+    csv_out = tmp_path / "values.csv"
+    xlsx_out = tmp_path / "values.xlsx"
+    for fmt, out in (("csv", csv_out), ("xlsx", xlsx_out)):
+        result = export_scan_data(document, out, fmt=fmt, records=["pages"], fields=fields)
+        assert result["ok"], result
+    with (tmp_path / "values.pages.csv").open(encoding="utf-8-sig", newline="") as handle:
+        csv_rows = list(csv.reader(handle, delimiter=";"))
+    assert [row[1] for row in csv_rows[1:]] == expected
+    workbook = load_workbook(xlsx_out, read_only=True)
+    xlsx_rows = list(workbook["Pages"].iter_rows(values_only=True))
+    assert [row[1] for row in xlsx_rows[1:]] == expected
+    assert all(not value.startswith("=") for value in expected)
 
 
 def test_xlsx_row_limit_fails_before_writing(artifact, tmp_path, monkeypatch):

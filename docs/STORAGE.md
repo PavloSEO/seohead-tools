@@ -168,8 +168,8 @@ XLSX Summary sheet carry the same fields as key/value rows:
 `--records` selects record types (default: every type the input can provide).
 `--fields TYPE=f1,f2` (repeatable) projects record fields; a field a source
 never recorded exports as an explicit absent value — JSON `null`, XML
-`state="absent"`, an empty CSV/XLSX cell — always distinguishable from a
-measured zero. An `audit.json` input retains no link records: `links` is then
+`state="absent"`, CSV/XLSX `\N` — always distinguishable from an empty string
+or a measured zero. An `audit.json` input retains no link records: `links` is then
 `unavailable` in coverage, skipped by the default selection, and an explicit
 `--records links` request fails rather than emitting an empty table.
 
@@ -237,13 +237,22 @@ sibling temp file and linked into place; existing destinations are refused,
 and a failure removes exactly the files it created — no plausible partial
 artifact remains and the result is `ok: false`.
 
+CSV and XLSX data cells and envelope values use the same reversible text
+encoding: `\N` means absent (`null`), `\E` means an empty string, a leading
+`\\` represents one literal leading backslash, and `\F` prefixes an original
+string beginning with `=`, `+`, `-`, `@`, tab, or carriage return. Decode these
+tokens in that order after reading a cell; for example, source `\N` exports as
+`\\N`, and source `=SUM(1,1)` exports as `\F=SUM(1,1)`. Other text is unchanged.
+The `\F` prefix keeps spreadsheet software from evaluating source text as a
+formula. JSON and XML retain the original values without these escapes.
+
 Records stream from the validated storage iterators; neither format builds a
 second in-memory copy of the scan. XLSX uses openpyxl's write-only workbook and
 refuses rather than truncates when data exceeds Excel's limits: 1,048,576 rows
 or 16,384 columns per sheet, or 32,767 characters per cell. Workbook splitting
 is not implemented; it is #759's scope, like finding filters, segment
-selection, and an export index manifest. CSV and XLSX neutralize
-formula-leading cell text (CWE-1236); JSON and XML carry raw retained values.
+selection, and an export index manifest. CSV and XLSX encode formula-leading
+cell text safely (CWE-1236); JSON and XML carry raw retained values.
 
 ## Offline reanalysis
 

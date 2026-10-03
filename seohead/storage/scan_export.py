@@ -20,10 +20,9 @@ same fields as key/value rows; XLSX carries it on the Summary sheet):
   check inventory, and the scan's declared capabilities and limitations.
 - ``records``: the projected page/link/finding rows in deterministic order.
 
-``None`` stays ``None`` in JSON and becomes ``state="absent"`` in XML, so a
-field the source never recorded is always distinguishable from a measured zero
-or an empty string. Spreadsheet formula-leading values are neutralized only in
-the CSV and XLSX representations; JSON and XML carry the raw retained value.
+``None`` stays ``None`` in JSON and becomes ``state="absent"`` in XML. CSV and
+XLSX use reversible text escapes for absent, empty, and formula-leading values,
+so these states remain distinct without evaluating spreadsheet formulas.
 XML output is generated serialization of retained data only — this module never
 parses caller-supplied XML, DTDs, stylesheets, or entities.
 """
@@ -736,17 +735,33 @@ def _xml_chunks(
 
 
 def _csv_cell(value: Any) -> Any:
-    from seohead.reports import neutralize_formula
-
     if value is None:
-        return ""
+        return r"\N"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
         return value
     if isinstance(value, str):
-        return neutralize_formula(value)
-    return neutralize_formula(json.dumps(value, ensure_ascii=False, allow_nan=False))
+        return _tabular_text(value)
+    return _tabular_text(json.dumps(value, ensure_ascii=False, allow_nan=False))
+
+
+def _tabular_text(value: str) -> str:
+    """Encode special text without losing source values or enabling formulas.
+
+    A leading backslash in source text is doubled so reserved tokens can never
+    collide with literal input. ``\\F`` shields formula-leading text while still
+    allowing a consumer to reconstruct the original string.
+    """
+    from seohead.reports import neutralize_formula
+
+    if not value:
+        return r"\E"
+    if value.startswith("\\"):
+        return "\\" + value
+    if neutralize_formula(value) != value:
+        return r"\F" + value
+    return value
 
 
 def _csv_chunks(fields: tuple[str, ...], stream: Iterable[dict[str, Any]]) -> Iterable[bytes]:
@@ -791,19 +806,20 @@ def _manifest_rows(head: Mapping[str, Any], files: dict[str, Path]) -> Iterable[
 
 
 def _xlsx_cell(value: Any, *, name: str, field: str, ordinal: int) -> Any:
-    from seohead.reports import neutralize_formula
-
-    if value is None or isinstance(value, (bool, int, float)):
+    if value is None:
+        return r"\N"
+    if isinstance(value, (bool, int, float)):
         return value
     text = (
         value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False)
     )
+    text = _tabular_text(text)
     if len(text) > EXCEL_MAX_CELL_TEXT:
         raise ScanError(
             f"{name} row {ordinal} field {field!r} exceeds the Excel cell-text limit "
             f"({EXCEL_MAX_CELL_TEXT} characters); the export refuses to truncate"
         )
-    return neutralize_formula(text)
+    return text
 
 
 def _create_tracked(path: Path, owned: dict[Path, tuple[int, int]]) -> None:
