@@ -1101,6 +1101,14 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Serve the page itself over HTTPS; an HTTPS form action does not protect "
         "input typed on an HTTP page.",
     },
+    "BROKEN_BOOKMARK": {
+        "severity": "warning",
+        "source": "crawl:fragment_links",
+        "message": "Link fragment identifies no element on the destination page",
+        "fix": "Point the href at an element id or <a name> that exists in the "
+        "destination document, or add the missing target; a different query "
+        "string is a different document.",
+    },
 }
 
 

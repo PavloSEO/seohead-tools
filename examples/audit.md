@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-09-26T20:19:36Z
+- **Generated:** 2026-10-03T18:17:13Z
 
 ## Health summary
 
-> **No health score.** only 70 of 162 checks could run (43% coverage); too little evidence to score.
+> **No health score.** only 70 of 163 checks could run (43% coverage); too little evidence to score.
 
-_70 of 162 checks could run; the score is not comparable to a run with full evidence_
+_70 of 163 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **16 fired**, 92 skipped, 54 silent, 0 disabled (of 162 total)
+- Checks: **16 fired**, 93 skipped, 54 silent, 0 disabled (of 163 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **21**
@@ -204,6 +204,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | Sitemap URL returns a 4xx or 5xx response | missing export: sitemap_non_200 |
 | Sitemap URL returns a 3xx response | missing export: sitemap_redirects |
 | Sitemap contains a non-indexable URL | missing export: sitemap_non_indexable |
+| Link fragment identifies no element on the destination page | export input retains no HTML/DOM bodies; fragment targets are measured only from a native retained scan |
 | More than one <meta name="description"> element is present | no meta description count evidence (native crawl only) |
 | Page has an H1 but no H2 headings | requirements.require_h2 is false; the check was not evaluated |
 | The H1 has no text of its own; its only content is an image's alt attribute | no H1 alt-text evidence (native crawl only) |

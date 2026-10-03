@@ -146,6 +146,10 @@ seohead scan-prune --directory . > plan.json
 
 # compare retained, compatible evidence only; no network request and no SEO score
 seohead scan-body-diff --left before.sqlite --right after.sqlite --url https://example.com/ --text
+
+# broken bookmarks: resolve every retained link fragment against the retained
+# destination document; missing or incomplete bodies stay named skips, never findings
+seohead scan-fragment-links --scan native.sqlite --state missing --limit 50
 ```
 
 `scan snapshot` assigns a directory output a no-clobber
@@ -157,7 +161,9 @@ same host/configuration. It never automatically selects `crawl_partial` or
 every candidate and its current retention rank before deleting anything.
 
 Each flat form also has a nested `scan` equivalent: `scan list`, `scan inspect`,
-`scan status`, `scan snapshot`, `scan pin`, `scan prune`, and `scan body-diff`.
+`scan status`, `scan snapshot`, `scan pin`, `scan prune`, `scan body-diff`,
+`scan evidence`, `scan extract`, `scan fragment-links`, `scan requeue`, and
+`scan import-urls`.
 
 `scan pin` takes the artifact's writer lock and uses SQLite DELETE journal mode.
 It changes only the pin bit: the SQLite file hash changes, while the saved audit,
@@ -267,7 +273,7 @@ Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 94 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 95 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

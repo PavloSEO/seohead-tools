@@ -118,6 +118,7 @@ COMMANDS = (
     "tool-catalog",
     "scan-evidence",
     "scan-extract",
+    "scan-fragment-links",
     "scan-requeue",
     "scan-import-urls",
 )
@@ -306,10 +307,17 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, flag, None)
             if value is not None:
                 kw[flag] = value
-    elif cmd in {"scan-evidence", "scan-extract", "scan-requeue", "scan-import-urls"}:
+    elif cmd in {
+        "scan-evidence",
+        "scan-extract",
+        "scan-fragment-links",
+        "scan-requeue",
+        "scan-import-urls",
+    }:
         for name in (
             "input_path",
             "section",
+            "state",
             "limit",
             "offset",
             "where",
@@ -1000,8 +1008,27 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="verify bot identities with forward-confirmed reverse DNS "
             "(performs network lookups)",
         )
-    if cmd in {"scan-evidence", "scan-extract", "scan-requeue", "scan-import-urls"}:
+    if cmd in {
+        "scan-evidence",
+        "scan-extract",
+        "scan-fragment-links",
+        "scan-requeue",
+        "scan-import-urls",
+    }:
         _source_flag(sub, "--scan", dest="input_path", help="existing SQLite artifact")
+    if cmd == "scan-fragment-links":
+        sub.add_argument(
+            "--state",
+            choices=("resolved", "missing", "skipped"),
+            help="occurrence state filter",
+        )
+        sub.add_argument(
+            "--representation",
+            choices=("static", "rendered", "legacy_fragment"),
+            help="source representation filter",
+        )
+        sub.add_argument("--offset", type=int)
+        sub.add_argument("--limit", type=int)
     if cmd == "scan-evidence":
         sub.add_argument(
             "--section",
@@ -1548,6 +1575,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
 # (#13 onward) has added or will add lives in --config instead, so --help stays short as the
 # surface grows. This note is the pointer from one to the other.
 CRAWL_SITE_HELP_NOTE = "More crawler settings: seohead crawl-site --config-help."
+SCAN_FRAGMENT_LINKS_HELP_NOTE = (
+    "Measures only retained complete HTML/DOM from the saved scan; missing, "
+    "truncated or otherwise incomplete evidence stays skipped/unavailable and "
+    "is never reported as a broken fragment. No network access."
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1555,7 +1587,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"seohead {__version__}")
     subs = p.add_subparsers(dest="command", metavar="<command>")
     for cmd in COMMANDS:
-        epilog = CRAWL_SITE_HELP_NOTE if cmd == "crawl-site" else None
+        epilog = (
+            CRAWL_SITE_HELP_NOTE
+            if cmd == "crawl-site"
+            else SCAN_FRAGMENT_LINKS_HELP_NOTE
+            if cmd == "scan-fragment-links"
+            else None
+        )
         sp = subs.add_parser(cmd, help=f"run the {cmd} tool", epilog=epilog)
         _add_flags(sp, cmd)
     scan = subs.add_parser("scan", help="saved SQLite scan history")
@@ -1571,6 +1609,7 @@ def build_parser() -> argparse.ArgumentParser:
         "body-diff",
         "evidence",
         "extract",
+        "fragment-links",
         "requeue",
         "import-urls",
     ):

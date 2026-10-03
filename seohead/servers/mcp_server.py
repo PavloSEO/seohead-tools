@@ -1381,6 +1381,31 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_fragment_links(
+        input_path: str,
+        state: Literal["resolved", "missing", "skipped"] | None = None,
+        representation: Literal["static", "rendered", "legacy_fragment"] | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Evaluate every retained fragment anchor offline and page the results.
+
+        Only complete retained HTML/DOM is measured: a missing, truncated,
+        unsupported, failed or budget-exhausted body is a named skipped
+        occurrence or unavailable source, never a broken fragment. Nothing is
+        fetched and the artifact is not modified.
+        """
+        return _checked(
+            handlers.scan_fragment_links(
+                input_path=input_path,
+                offset=offset,
+                limit=limit,
+                state=state,
+                representation=representation,
+            )
+        )
+
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_scan_requeue(
         input_path: str, where: str, backup_path: str, from_scan: str | None = None
