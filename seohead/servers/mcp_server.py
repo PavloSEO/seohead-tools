@@ -564,6 +564,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         viewport: str = "desktop",
         wait: str = "load",
         user_agent: str | None = None,
+        transport_config: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Compare the raw server HTML with the DOM after JavaScript runs — the gap between
         them is what a non-rendering crawler loses. Reports an empty SPA shell
@@ -582,7 +583,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A requested wait milestone that times out (networkidle on a site with long-polling
         scripts) falls back to reading the DOM at domcontentloaded, recorded in
         wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity;
-        user_agent overrides that identity for both requests."""
+        user_agent overrides that identity for both requests. `transport_config`
+        opts into an operator-supplied remote Playwright connection using
+        `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env`
+        and `remote_playwright_version`. It never provisions a server or falls
+        back to local launch after a remote failure."""
+        if transport_config is not None:
+            return _checked(
+                handlers.render_check(
+                    url=url,
+                    viewport=viewport,
+                    wait=wait,
+                    user_agent=user_agent,
+                    transport_config=transport_config,
+                )
+            )
         return _checked(
             handlers.render_check(url=url, viewport=viewport, wait=wait, user_agent=user_agent)
         )

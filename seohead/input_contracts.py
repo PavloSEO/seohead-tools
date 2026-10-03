@@ -187,7 +187,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("soft404-check", "soft404_check", _form("live_url", "url")),
     _command("log-analyze", "log_analyze", _form("local_log", "path")),
     _command("regions-check", "regions_check", _form("live_url", "url")),
-    _command("render-check", "render_check", _form("live_url", "url")),
+    _command(
+        "render-check",
+        "render_check",
+        _form("live_url", "url"),
+        _form(
+            "inline_json",
+            "transport_config",
+            note="Optional local/remote Playwright transport selection; endpoint is named by environment variable.",
+        ),
+    ),
     _command("site-audit", "site_audit", _form("live_url", "url"), _form("url_list", "urls")),
     _command(
         "report-build",
