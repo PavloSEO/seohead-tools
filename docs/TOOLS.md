@@ -53,6 +53,7 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-new` | Create a portable local project with site facts and custom template/profile references; does not execute a checklist | no |
 | `project-open` | Validate and open a saved project without rewriting it | no |
 | `project-status` | Show scan history and explicit pending checklist/preparation states | no |
+| `project-progress` | Show a compact, bounded page of checklist states and next actions; any percentage is explicitly labelled audit-task completion and requires an agreed scope | no |
 | `project-facts` | Preview or record the project's stack facts; `--detect` fetches the target once after robots.txt, and an unavailable or ambiguous detection leaves the fact absent with its reason | only with `--detect` |
 | `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue, an optional data-only template, and an optional agreed scope `plan` that fixes the URL-population and task denominators; does not execute items | no |
 | `project-checklist-update` | Add or edit one checklist definition with an expected revision; does not execute it | no |
@@ -63,9 +64,10 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-start` | Creates a new local project then enters the same bounded preparation path | yes |
 
 The nested aliases are `seohead project new`, `seohead project open`,
-`seohead project status`, `seohead project facts`, `seohead project checklist-init`,
-`seohead project checklist-update`, `seohead project checklist-record`,
-`seohead project priorities`, `seohead project policy`, `seohead project prepare`,
+`seohead project status`, `seohead project progress`, `seohead project facts`,
+`seohead project checklist-init`, `seohead project checklist-update`,
+`seohead project checklist-record`, `seohead project priorities`,
+`seohead project policy`, `seohead project prepare`,
 and `seohead project start`.
 See [PROJECTS.md](PROJECTS.md) for the format, custom references and shared
 CLI/MCP scan-routing rules.
@@ -520,7 +522,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(96 + 5):
+(97 + 5):
 
 ```bash
 seohead mcp        # stdio

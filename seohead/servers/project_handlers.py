@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from seohead.projects.coverage import initialize_coverage, record_execution, update_item
+from seohead.projects.progress import project_progress as _project_progress
 from seohead.projects.workspace import create_project, open_project, project_status
 
 
@@ -32,6 +33,11 @@ def project_open(directory: str, expected_site: str | None = None) -> dict[str, 
 
 def project_basic_status(directory: str) -> dict[str, Any]:
     return project_status(directory)
+
+
+def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    """Return a bounded project progress page without running or changing work."""
+    return _project_progress(directory, limit=limit, offset=offset)
 
 
 def project_facts(

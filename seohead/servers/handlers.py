@@ -3045,6 +3045,12 @@ def project_status(directory: str) -> dict[str, Any]:
     return project_basic_status(directory)
 
 
+def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_progress as core
+
+    return core(directory, limit=limit, offset=offset)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
@@ -3449,6 +3455,7 @@ _RAW_HANDLERS = {
     "project_new": project_new,
     "project_open": project_open,
     "project_status": project_status,
+    "project_progress": project_progress,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,

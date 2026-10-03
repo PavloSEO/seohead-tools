@@ -1117,6 +1117,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Show project scan history and named pending checklist/preparation states."""
         return _checked(handlers.project_status(directory=directory))
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+        """Show a compact, paginated project checklist view and its next actions.
+
+        The page contains at most 100 checklist items. Audit-task completion is a
+        percentage only when every included site has an explicit agreed plan and
+        the shared coverage axis has a measured, nonzero denominator. It is
+        explicitly task completion, not a site-health or remediation percentage.
+        """
+        return _checked(handlers.project_progress(directory=directory, limit=limit, offset=offset))
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_facts(
         directory: str,

@@ -8,6 +8,7 @@ under its `scans/` directory. Each scan keeps its own site, build and configurat
 seohead project new --directory ./example-project --target https://example.test/ --label "Example"
 seohead project open --directory ./example-project
 seohead project status --directory ./example-project
+seohead project progress --directory ./example-project --limit 20 --offset 0
 ```
 
 The directory contains `project.json`, `scans/`, `reports/` and `log.md`.
@@ -43,6 +44,32 @@ deliverable review are explicit local coverage operations described below; creat
 or opening a project never runs them. Before checklist initialization, status says
 `not_initialized`. Automatic project preparation remains `pending`; neither state
 is a 0/0 result or a completed audit.
+
+## Compact progress and next actions
+
+`project progress` and MCP `seo_project_progress` return a bounded checklist page,
+state counts and up to five next actions without returning the full scan history.
+The `limit` is 1–100 (default 20); `offset` is a zero-based item offset. Pages
+include the checklist revision so a caller can detect that the project changed
+between reads. Item states separate completed, remaining, running, blocked, stale,
+unavailable, review, deliverable, excluded and not-agreed work. Failed attempts
+remain visible as blocked with their original attempt status; an excluded or
+not-agreed item stays outside next actions.
+
+The only percentage is labelled **Audit-task completion**. It reuses the
+checklist's `coverage.audit_tasks` numerator and denominator, and appears only
+when every included site has an explicitly recorded plan and that axis has a
+measured, nonzero denominator. It is not a site-health or remediation percentage.
+URL-population coverage is returned separately. Without an explicit plan, for an
+unknown or partial task denominator, or when no applicable tasks remain, the
+percentage is null with a reason; it is never presented as 100% by default.
+The pagination total counts visible checklist rows, while the checklist's own
+counts and coverage axes retain their applicability rules.
+
+```bash
+seohead project progress --directory ./example-project --limit 10 --offset 0
+seohead project progress --directory ./example-project --limit 10 --offset 10
+```
 
 ## Recording stack facts
 

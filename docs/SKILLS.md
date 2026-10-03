@@ -106,27 +106,27 @@ Then by the layer of the task.
 | **analytics-console-review** | A user-authorized signed-in console or aggregate export is available, but no provider API is configured | Host browser or user export; optional `sources-doctor`, `metrika-report`, and page/SF checks |
 
 ## Tools without a skill of their own
-
-61 of the 96 commands are not named in any skill's own body (a mention inside
+62 of the 97 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing inside
 a workflow's write-up, or not yet needed by one at all — and have no skill of their own,
-deliberately: a skill per single command is noise. `tests/test_docs_drift.py` recomputes this list by scanning every skill file
-for each command name, so it cannot silently rot.
+deliberately: a skill per single command is noise. `tests/test_docs_drift.py` recomputes this
+list by scanning every skill file for each command name, so it cannot silently rot.
 
-Commands without their own skill: `asset-weight-check` · `audit-workflow` · `boilerplate-report` · `crawl-describe-settings` ·
-`crawl-enrich` · `crawl-import` · `crtsh-subdomains` · `crux-report` · `facts-export` ·
-`google-keywords` · `google-serp` · `gsc-query` · `hreflang-check` · `images-download` ·
-`images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` · `keywords-exact`
-· `keywords-expand` · `keywords-seasonality` · `log-analyze` · `mirror-check` ·
-`project-checklist-init` · `project-checklist-record` · `project-checklist-update` ·
-`project-facts` · `project-new` · `project-open` · `project-policy` · `project-priorities` ·
-`project-start` · `project-status` · `provider-auth` · `provider-collect` · `provider-join` ·
-`provider-registry` · `provider-replay` · `provider-verify` · `redirects-check` ·
-`redirects-generate` · `regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-extract` ·
-`scan-import-urls` · `scan-inspect` · `scan-list` · `scan-pin` · `scan-prune` ·
-`scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `segment-diff` ·
-`serp-fetch` · `soft404-check` · `spend-report` · `tool-catalog` · `topvisor-read` ·
-`wayback-history`
+Commands without their own skill: `asset-weight-check` · `audit-workflow` · `boilerplate-report`
+· `crawl-describe-settings` · `crawl-enrich` · `crawl-import` · `crtsh-subdomains`
+· `crux-report` · `facts-export` · `google-keywords` · `google-serp` · `gsc-query`
+· `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url`
+· `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality`
+· `log-analyze` · `mirror-check` · `project-checklist-init` · `project-checklist-record`
+· `project-checklist-update` · `project-facts` · `project-new` · `project-open`
+· `project-policy` · `project-priorities` · `project-progress` · `project-start`
+· `project-status` · `provider-auth` · `provider-collect` · `provider-join`
+· `provider-registry` · `provider-replay` · `provider-verify` · `redirects-check`
+· `redirects-generate` · `regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-extract`
+· `scan-import-urls` · `scan-inspect` · `scan-list` · `scan-pin` · `scan-prune`
+· `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `segment-diff`
+· `serp-fetch` · `soft404-check` · `spend-report` · `tool-catalog` · `topvisor-read`
+· `wayback-history`
 
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and
