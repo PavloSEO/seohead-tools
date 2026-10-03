@@ -2277,7 +2277,10 @@ def keywords_exact(
     from seohead.data_sources.credentials import MissingCredential
 
     try:
-        client = ArsenkinClient()
+        try:
+            region_id = int(region)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": f"invalid region {region!r}", "code": "INVALID_REGION"}
         # Report every phrase the provider would have rejected, so a caller comparing
         # frequencies against its own list can see which ones were measured differently.
         cleaned = {
@@ -2286,27 +2289,28 @@ def keywords_exact(
             if sanitize_wordstat_query(original) != str(original)
         }
         try:
-            payload = wordstat_payload(list(keywords), region)
+            payload = wordstat_payload(list(keywords), region_id)
         except ValueError as exc:
             return {"ok": False, "error": str(exc), "code": "EMPTY_QUERIES", "cleaned": cleaned}
+        client = ArsenkinClient()
         task = client.set_task(WORDSTAT_TOOL, payload)
         if not wait:
             return {
                 "ok": True,
                 "task_id": task["task_id"],
                 "cost": task["cost"],
-                "region": int(region),
+                "region": region_id,
                 "cleaned": cleaned,
                 "note": "task created and billed; retrieve the result later by task_id",
             }
         result = client.wait(task["task_id"])
         payload_result = result.get("result", result)
-        parsed = parse_wordstat(payload_result, region)
+        parsed = parse_wordstat(payload_result, region_id)
         response: dict[str, Any] = {
             "ok": True,
             "task_id": task["task_id"],
             "cost": task["cost"],
-            "region": int(region),
+            "region": region_id,
             "cleaned": cleaned,
             "frequencies": parsed["frequencies"],
             "result": payload_result,
