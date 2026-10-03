@@ -296,6 +296,24 @@ def _validate_optional_containers(
     document: dict[str, Any], summary: dict[str, Any], kind: str
 ) -> None:
     """Reject malformed optional evidence containers instead of hiding them."""
+
+    def validate_count(value: Any, name: str, *, positive: bool = False) -> None:
+        if type(value) is not int or value < (1 if positive else 0):
+            qualifier = "positive" if positive else "non-negative"
+            raise ValueError(f"{name} must be a {qualifier} integer")
+
+    def string_ids(raw: Any, name: str) -> set[str] | None:
+        if raw is None:
+            return None
+        if not isinstance(raw, list) or any(
+            not isinstance(value, str) or not value for value in raw
+        ):
+            raise ValueError(f"{name} must be a list of non-empty strings")
+        ids = set(raw)
+        if len(ids) != len(raw):
+            raise ValueError(f"{name} must not contain duplicate IDs")
+        return ids
+
     if kind == "site-audit":
         mapping_fields = (
             "findings_by_severity",
@@ -341,6 +359,20 @@ def _validate_optional_containers(
         page_failures = summary.get("page_tools_failed")
         if page_failures is not None and any(not isinstance(row, dict) for row in page_failures):
             raise ValueError("summary.page_tools_failed must contain objects")
+        for index, row in enumerate(page_failures or []):
+            for name in ("failed_pages", "pages_checked"):
+                if name in row:
+                    validate_count(row[name], f"summary.page_tools_failed[{index}].{name}")
+            if (
+                row.get("failed_pages") is not None
+                and row.get("pages_checked") is not None
+                and row["failed_pages"] > row["pages_checked"]
+            ):
+                raise ValueError(
+                    f"summary.page_tools_failed[{index}].failed_pages exceeds pages_checked"
+                )
+        severity = summary.get("findings_by_severity")
+        severity_prefix = "summary.findings_by_severity"
     else:
         by_check = summary.get("by_check")
         if isinstance(by_check, dict):
@@ -349,20 +381,37 @@ def _validate_optional_containers(
                     raise ValueError("summary.by_check keys must be non-empty strings")
                 if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
                     raise ValueError(f"summary.by_check[{check!r}] must be a positive integer")
-    total_fields = (
-        (("findings_total", summary), ("pages_checked", summary))
-        if kind == "site-audit"
-        else (
-            ("issues_total", summary.get("totals") or {}),
-            ("urls_crawled", summary.get("totals") or {}),
-        )
+        totals = summary.get("totals") or {}
+        for name, value in totals.items():
+            if name == "pages_by_representation":
+                if not isinstance(value, dict):
+                    raise ValueError("summary.totals.pages_by_representation must be an object")
+                for representation, amount in value.items():
+                    if not isinstance(representation, str) or not representation:
+                        raise ValueError(
+                            "summary.totals.pages_by_representation keys must be non-empty strings"
+                        )
+                    validate_count(
+                        amount, f"summary.totals.pages_by_representation[{representation!r}]"
+                    )
+            else:
+                validate_count(value, f"summary.totals.{name}")
+        severity = summary.get("by_severity")
+        severity_prefix = "summary.by_severity"
+
+    if isinstance(severity, dict):
+        for name, value in severity.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"{severity_prefix} keys must be non-empty strings")
+            validate_count(value, f"{severity_prefix}.{name}")
+
+    declared_total_fields = (
+        (("findings_total", summary), ("pages_checked", summary)) if kind == "site-audit" else ()
     )
-    for name, container in total_fields:
+    for name, container in declared_total_fields:
         if name in container and container[name] is not None:
-            value = container[name]
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                prefix = "summary." if kind == "site-audit" else "summary.totals."
-                raise ValueError(f"{prefix}{name} must be a non-negative integer")
+            validate_count(container[name], f"summary.{name}")
+
     evidence = summary.get("evidence_contract")
     if isinstance(evidence, dict) and "capability_rows" in evidence:
         rows = evidence["capability_rows"]
@@ -370,6 +419,87 @@ def _validate_optional_containers(
             not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows)
         ):
             raise ValueError("summary.evidence_contract.capability_rows must contain objects")
+
+    if kind != "sf-audit":
+        return
+
+    totals = summary.get("totals") or {}
+    check_coverage = summary.get("check_coverage")
+    run = document.get("run") or {}
+    skipped_rows = run.get("checks_skipped") or []
+    disabled_rows = run.get("checks_disabled") or []
+    for collection_name, rows in (
+        ("run.checks_skipped", skipped_rows),
+        ("run.checks_disabled", disabled_rows),
+    ):
+        if any(not isinstance(row, dict) for row in rows):
+            raise ValueError(f"{collection_name} must contain objects")
+        ids = [row.get("id") for row in rows]
+        string_ids(ids, f"{collection_name} IDs")
+    skipped_ids = {row["id"] for row in skipped_rows}
+    run_disabled_ids = {row["id"] for row in disabled_rows}
+
+    if not isinstance(check_coverage, dict):
+        return
+    for name, value in check_coverage.items():
+        if not isinstance(name, str):
+            raise ValueError("summary.check_coverage keys must be strings")
+        if name.startswith("checks_") and not name.endswith("_ids"):
+            validate_count(value, f"summary.check_coverage.{name}")
+
+    silent_ids = string_ids(
+        check_coverage.get("checks_silent_ids"), "summary.check_coverage.checks_silent_ids"
+    )
+    disabled_ids = string_ids(
+        check_coverage.get("checks_disabled_ids"), "summary.check_coverage.checks_disabled_ids"
+    )
+    fired_ids = (
+        set(summary.get("by_check") or {}) if isinstance(summary.get("by_check"), dict) else None
+    )
+    effective_disabled_ids = run_disabled_ids | (disabled_ids or set())
+
+    if silent_ids is not None and fired_ids is not None and silent_ids & fired_ids:
+        raise ValueError("summary.by_check and checks_silent_ids contain the same check")
+    if fired_ids is not None and fired_ids & effective_disabled_ids:
+        raise ValueError("summary.by_check contains a disabled check")
+    if silent_ids is not None and silent_ids & effective_disabled_ids:
+        raise ValueError("checks_silent_ids contains a disabled check")
+    if silent_ids is not None and silent_ids & skipped_ids:
+        raise ValueError("checks_silent_ids contains a skipped check")
+    if disabled_ids is not None and "checks_disabled" in run and disabled_ids != run_disabled_ids:
+        raise ValueError("checks_disabled_ids disagrees with run.checks_disabled")
+
+    count_fields = check_coverage
+    checks_fired = count_fields.get("checks_fired")
+    checks_silent = count_fields.get("checks_silent")
+    checks_disabled = count_fields.get("checks_disabled")
+    checks_skipped = count_fields.get("checks_skipped")
+    checks_total = count_fields.get("checks_total")
+    if checks_fired is not None and fired_ids is not None and checks_fired != len(fired_ids):
+        raise ValueError("checks_fired disagrees with summary.by_check")
+    if checks_silent is not None and silent_ids is not None and checks_silent != len(silent_ids):
+        raise ValueError("checks_silent disagrees with checks_silent_ids")
+    if checks_disabled is not None:
+        declared_disabled = effective_disabled_ids
+        if (disabled_ids is not None or disabled_rows) and checks_disabled != len(
+            declared_disabled
+        ):
+            raise ValueError("checks_disabled disagrees with disabled check IDs")
+    if checks_skipped is not None and (
+        skipped_rows or fired_ids is not None or effective_disabled_ids
+    ):
+        effective_skipped = skipped_ids - (fired_ids or set()) - effective_disabled_ids
+        if checks_skipped != len(effective_skipped):
+            raise ValueError("checks_skipped disagrees with run.checks_skipped")
+    if (
+        checks_total is not None
+        and checks_fired is not None
+        and checks_skipped is not None
+        and checks_disabled is not None
+        and checks_silent is not None
+        and checks_total != checks_fired + checks_skipped + checks_disabled + checks_silent
+    ):
+        raise ValueError("check coverage counts do not sum to checks_total")
 
 
 def build_pdf_model(data: Any, *, project: str | None = None) -> dict[str, Any]:
