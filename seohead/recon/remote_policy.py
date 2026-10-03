@@ -62,11 +62,20 @@ class RemoteEgressPolicy:
     def __post_init__(self) -> None:
         if not self.project_id or not isinstance(self.project_id, str):
             raise ValueError("project_id must be a nonempty string")
-        if self.max_requests_per_origin < 1 or self.max_total_requests < 1:
-            raise ValueError("remote request limits must be positive")
-        if self.max_concurrency < 1:
-            raise ValueError("remote concurrency limit must be positive")
-        if not math.isfinite(self.min_delay_seconds) or self.min_delay_seconds < 0:
+        if any(
+            type(value) is not int or value < 1
+            for value in (
+                self.max_requests_per_origin,
+                self.max_total_requests,
+                self.max_concurrency,
+            )
+        ):
+            raise ValueError("remote request and concurrency limits must be positive integers")
+        if (
+            type(self.min_delay_seconds) not in (int, float)
+            or not math.isfinite(self.min_delay_seconds)
+            or self.min_delay_seconds < 0
+        ):
             raise ValueError("remote delay floor must be finite and nonnegative")
         normalized: set[str] = set()
         for value in self.allowed_private_hosts:
