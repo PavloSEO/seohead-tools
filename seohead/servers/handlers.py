@@ -1702,11 +1702,22 @@ def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -
     dropped out of the crawl entirely. See seohead.sf.core.compare for why
     "fixed" and "no longer crawled" are kept apart rather than merged."""
     from seohead.sf.core.compare import compare
+    from seohead.storage.inputs import load_audit_source
 
     diagnostics: list[dict[str, str]] = []
-    before_doc = _load_audit(before, "before", diagnostics)
-    after_doc = _load_audit(after, "after", diagnostics)
-    result = compare(before_doc, after_doc, force=force)
+    before_doc = load_audit_source(before, "before", diagnostics)
+    after_doc = load_audit_source(after, "after", diagnostics)
+    try:
+        result = compare(before_doc, after_doc, force=force)
+    finally:
+        if not hasattr(before, "iter_collection") and hasattr(before_doc, "close"):
+            before_doc.close()
+        if (
+            not hasattr(after, "iter_collection")
+            and after_doc is not before_doc
+            and hasattr(after_doc, "close")
+        ):
+            after_doc.close()
     if diagnostics:
         result["input_diagnostics"] = diagnostics
     return result
