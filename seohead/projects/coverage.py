@@ -1115,7 +1115,7 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
             if row["applicability"] in {"excluded", "not_agreed"}:
                 continue
             if (
-                rows[dep]["applicability"] in {"applicable", "pending_exclusion"}
+                rows[dep]["applicability"] in {"applicable", "pending_exclusion", "not_agreed"}
                 and not rows[dep]["complete"]
             ):
                 row["blocked_by"].append(dep)

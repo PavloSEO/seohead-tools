@@ -222,6 +222,68 @@ def test_missing_plan_returns_unknown_url_coverage(project):
     assert "no agreed URL population" in axis["reason"]
 
 
+def test_selected_dependent_stays_blocked_when_prerequisite_is_not_agreed(project):
+    initialize_coverage(project)
+    edit(project, id="custom:prerequisite")
+    edit(project, id="custom:dependent", dependencies=["custom:prerequisite"])
+    status = init_scoped(
+        project,
+        {"kind": "selection", "ids": ["custom:dependent"], "source": "Synthetic scope"},
+        kind="complete_set",
+        urls=["https://example.test/"],
+    )
+
+    assert row(status, "custom:prerequisite")["applicability"] == "not_agreed"
+    dependent = row(status, "custom:dependent")
+    assert dependent["blocked_by"] == ["custom:prerequisite"]
+    assert not dependent["complete"]
+    with pytest.raises(ValueError, match="dependencies are not complete"):
+        record(
+            project,
+            "custom:dependent",
+            status="succeeded",
+            reason="Synthetic signoff cannot bypass the prerequisite",
+            reviewer="Lead auditor",
+            signoff=True,
+        )
+
+
+def test_reviewed_not_applicable_dependency_is_an_explicit_waiver(project):
+    initialize_coverage(project)
+    edit(project, id="custom:prerequisite")
+    edit(project, id="custom:dependent", dependencies=["custom:prerequisite"])
+    status = init_scoped(
+        project,
+        {
+            "kind": "selection",
+            "ids": ["custom:prerequisite", "custom:dependent"],
+            "source": "Synthetic scope",
+        },
+        kind="complete_set",
+        urls=["https://example.test/"],
+    )
+    status = record(
+        project,
+        "custom:prerequisite",
+        status="not_applicable",
+        reason="The prerequisite is outside the reviewed synthetic scope",
+        reviewer="Lead auditor",
+        evidence="Synthetic scope memo",
+    )
+    assert row(status, "custom:prerequisite")["applicability"] == "excluded"
+    assert row(status, "custom:dependent")["blocked_by"] == []
+
+    status = record(
+        project,
+        "custom:dependent",
+        status="succeeded",
+        reason="Synthetic signoff after the reviewed waiver",
+        reviewer="Lead auditor",
+        signoff=True,
+    )
+    assert row(status, "custom:dependent")["complete"]
+
+
 def test_empty_applicable_set_is_undefined_not_complete(project):
     status = initialize_coverage(project)
     deliverables = status["coverage"]["deliverable_review"]
