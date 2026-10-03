@@ -28,6 +28,14 @@ logo, names, URL, analytics values, screenshots or report-specific facts.
 The [visual brief](seo-audit-sample/visual-brief.md) provides prompts for future layout
 and fictional-logo work.
 
+The technical-audit PDF layout is a separate renderer in `seohead/reports/audit_pdf.py`.
+`render_audit_pdf_html` accepts a `seohead.technical-audit-pdf/1` presentation model and
+returns self-contained English or Russian 16:9 HTML with neutral brand tokens, inline
+charts, and print pagination. It does not build the model or run checks. The PDF model builder
+and `report-build` CLI/MCP integration are separate work items; the existing report
+command does not yet emit technical-audit PDFs. Printing uses the existing local Chromium
+helper and a system font stack; no external fonts or services are fetched.
+
 ## Try it now
 
 ```bash
