@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001 -- Intentional Russian test expectations.
 from __future__ import annotations
 
 from copy import deepcopy
@@ -399,7 +400,125 @@ def test_page_tool_failures_are_rendered_from_model_coverage_rows():
 
     assert "Page checks failed" in html
     assert "HTML_TOOL" in html
-    assert "All 3 synthetic pages failed" in html
+    assert "All 3 synthetic pages failed; Errors on 3 of 3 pages" in html
+
+
+def test_nested_summary_and_coverage_evidence_are_readable_without_raw_json():
+    model = _model()
+    model["summary"]["source"].update(
+        {
+            "tools_run": ["parse", "robots"],
+            "tools_failed": [{"tool": "robots_check", "error": "Synthetic unavailable response"}],
+            "findings_by_severity": {"critical": 1, "warning": 0},
+        }
+    )
+    model["coverage"]["source_evidence"]["record"] = {
+        "scan_identity_state": "partial",
+        "scan_uuid": "synthetic-scan-1",
+        "evidence_contract": {
+            "capability_rows": [
+                {"check": "TITLE_MISSING", "state": "measured", "reason": "Synthetic fixture"}
+            ]
+        },
+    }
+    model["coverage"]["source_evidence"]["source_ref"] = {"pointer": "#/summary/evidence_contract"}
+    model["coverage"]["checks"] = [
+        {
+            "source_ref": {
+                "collection": "summary.tools_run",
+                "index": 0,
+                "pointer": "#/summary/tools_run/0",
+            },
+            "id": "parse",
+            "state": "ran",
+            "record": "parse",
+        },
+        {
+            "source_ref": {
+                "collection": "summary.tools_failed",
+                "index": 0,
+                "pointer": "#/summary/tools_failed/0",
+            },
+            "id": "robots_check",
+            "state": "failed",
+            "reason": "Synthetic unavailable response",
+            "record": {"tool": "robots_check", "error": "Synthetic unavailable response"},
+        },
+        {
+            "source_ref": {
+                "collection": "summary.evidence_contract.capability_rows",
+                "index": 0,
+                "pointer": "#/summary/evidence_contract/capability_rows/0",
+            },
+            "id": "TITLE_MISSING",
+            "state": "measured",
+            "reason": "Synthetic fixture",
+            "record": {
+                "check": "TITLE_MISSING",
+                "state": "measured",
+                "reason": "Synthetic fixture",
+            },
+        },
+    ]
+
+    html = render_audit_pdf_html(model)
+
+    for expected in (
+        "Scan identity status: partial",
+        "Scan ID: synthetic-scan-1",
+        "parse",
+        "robots_check",
+        "Synthetic unavailable response",
+        "1 Capability records listed below",
+        "TITLE_MISSING",
+        "Synthetic fixture",
+        "#/summary/evidence_contract",
+        "#/summary/tools_failed/0",
+    ):
+        assert expected in html
+    assert '{"critical":1,"warning":0}' not in html
+    assert '{"capability_rows"' not in html
+    assert "Source reference" in html
+    assert '{"tool":"robots_check"' not in html
+
+
+@pytest.mark.parametrize(
+    ("check", "title", "reason", "expected_title", "expected_reason"),
+    [
+        (
+            "TITLE_MISSING",
+            "Title element is missing",
+            "no stable saved-evidence reference is present in this audit",
+            "Отсутствует заголовок страницы",
+            "В этом аудите нет стабильной ссылки на сохранённое свидетельство",
+        ),
+        (
+            "SCHEMA_MISSING",
+            "Audit finding",
+            "saved evidence is unavailable",
+            "Проблема аудита",
+            "Сохранённое свидетельство недоступно",
+        ),
+    ],
+)
+def test_generated_finding_fallbacks_are_localized_in_russian(
+    check, title, reason, expected_title, expected_reason
+):
+    model = _model()
+    model["findings"][0]["display"].update(
+        {
+            "check_key": check,
+            "title": title,
+            "evidence_reference": {"state": "unavailable", "reason": reason},
+        }
+    )
+
+    html = render_audit_pdf_html(model, lang="ru")
+
+    assert expected_title in html
+    assert expected_reason in html
+    assert title not in html
+    assert reason not in html
 
 
 @pytest.mark.parametrize(
