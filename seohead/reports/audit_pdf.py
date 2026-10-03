@@ -104,6 +104,12 @@ _LABELS: dict[str, dict[str, str]] = {
         "verification_status_label": "Verification status",
         "details_label": "Evidence details",
         "locations_label": "Affected locations",
+        "evidence_status": "Status",
+        "evidence_reason": "Reason",
+        "evidence_id": "Evidence ID",
+        "evidence_source_table": "Source table",
+        "evidence_observation_id": "Observation ID",
+        "evidence_role": "Role",
         "pages_checked_label": "Pages checked",
         "findings_total_label": "Total findings",
         "findings_by_severity_label": "Findings by severity",
@@ -201,6 +207,12 @@ _LABELS: dict[str, dict[str, str]] = {
         "verification_status_label": "Статус проверки",
         "details_label": "Детали свидетельства",
         "locations_label": "Места обнаружения",
+        "evidence_status": "Статус",
+        "evidence_reason": "Причина",
+        "evidence_id": "Идентификатор свидетельства",
+        "evidence_source_table": "Таблица источника",
+        "evidence_observation_id": "Идентификатор наблюдения",
+        "evidence_role": "Роль",
         "pages_checked_label": "Проверено страниц",
         "findings_total_label": "Всего проблем",
         "findings_by_severity_label": "Проблемы по важности",
@@ -274,6 +286,9 @@ def _state_label(value: Any, lang: str) -> str:
         "not_applicable": "Not applicable" if lang == "en" else "Не применимо",
         "open": "Open" if lang == "en" else "Открыто",
         "verified": "Verified" if lang == "en" else "Проверено",
+        "imported_projection": "Imported evidence projection"
+        if lang == "en"
+        else "Импортированная проекция свидетельства",
     }
     return states.get(state, str(value or labels["unknown"]))
 
@@ -285,6 +300,31 @@ def _severity_label(value: Any, lang: str) -> str:
         "warning": labels["warning"],
         "notice": labels["notice"],
     }.get(str(value or "").lower(), str(value or labels["not_reported"]))
+
+
+def _evidence_reference_rows(value: Mapping[str, Any], lang: str) -> list[tuple[str, Any]]:
+    labels = _LABELS[lang]
+    fields = (
+        ("state", labels["evidence_status"]),
+        ("reason", labels["evidence_reason"]),
+        ("id", labels["evidence_id"]),
+        ("source_table", labels["evidence_source_table"]),
+        ("observation_id", labels["evidence_observation_id"]),
+        ("role", labels["evidence_role"]),
+    )
+    rows = []
+    for key, title in fields:
+        if key not in value or value[key] is None:
+            continue
+        content = _state_label(value[key], lang) if key == "state" else value[key]
+        rows.append((title, content))
+    for key, content in sorted(value.items()):
+        if key in {name for name, _title in fields} or content is None:
+            continue
+        if isinstance(content, (Mapping, list)):
+            content = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        rows.append((_key_title(key, lang), content))
+    return rows
 
 
 def _table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, lang: str) -> str:
@@ -668,8 +708,8 @@ def _finding_cards(findings: Sequence[Any], *, lang: str) -> str:
                 )
         evidence_ref = display.get("evidence_reference")
         if isinstance(evidence_ref, Mapping) and evidence_ref:
-            reference = json.dumps(
-                evidence_ref, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            reference = "; ".join(
+                f"{label}: {value}" for label, value in _evidence_reference_rows(evidence_ref, lang)
             )
             parts.append(
                 f'<p class="evidence-extra"><b>{_escape(labels["source"])}:</b> '
