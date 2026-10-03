@@ -104,3 +104,35 @@ record has no 50k, 100k or 1M completed writer result, no raw/rendered
 1M corpus result, and no audit/report capacity result. An adjacent versioned
 large-audit companion, if used, has separate disk and snapshot costs not measured
 here.
+
+## Dependent experimental storage run (#818)
+
+The following is an exploratory run against the unmerged #818 storage commit
+`fcd01f46e546147d507258af7fc42d337c40e62b`, with profiler commit
+`6500811b3cf38bfb5c5569a1acbc39a9d6e8ee4d` and script SHA-256
+`19919c86c6dc7e0cc4502452a292fd71f11368eb40abbd9b4e0bac953147f862`.
+Both checkouts were clean. The stored configuration includes
+`storage.capacity_profile=experimental_synthetic`; public crawl collectors still
+refuse this marker and retain the stable 50k guard. The 100k run used the same
+900 s / 2048 MiB / 8192 MiB / 32768 MiB resource limits as above. A separate
+**admission-only** 1M probe declared a 120 s wall limit before starting. The
+host was shared with other agents and tests: two read-only samples had load
+averages around 5, 14–15 Python processes and 4–6 Devin processes. These are
+observed wall times under contention, not idle-machine throughput bounds.
+
+| Experimental stage | Outcome | Wall / peak RSS | Retained size |
+|---|---|---:|---:|
+| 100k sparse writer, intentional process exit at 50k | 50,000 committed pages; reopened as lifecycle `running`; integrity and foreign keys `ok` | 865.392 s / 246.30 MiB | 33,714,176 B DB + 4,218,912 B WAL at checkpoint |
+| 100k sparse resumed writer | **blocked** by the second 900 s budget at 69,120/100,000 pages; lifecycle remains `running` | 905.628 s / 246.41 MiB | 41,664,512 B DB |
+| 100k partial read / inspect / snapshot / integrity | 69,120 pages read and validated; snapshot and both SQLite checks passed. This is not a completed scan | 1.664 / 2.429 / 3.382 / 0.135 s | snapshot 41,664,512 B |
+| 1M-config sparse admission-only build | **blocked** by its separate 120 s limit after 1,000,000 frontier rows were seeded and 20,480 pages committed. Config marker and requested max are stored; lifecycle `running` | 120.565 s / 237.12 MiB | 143,777,792 B DB |
+| 1M-config partial read / inspect / snapshot / integrity | 20,480 pages read and validated; snapshot and both SQLite checks passed. This is not a completed 1M scan | 1.141 / 1.763 / 2.158 / 0.714 s | snapshot 143,777,792 B |
+
+The experimental gate establishes representation and safe readback of a
+**partially filled** 1M-config artifact, not one million committed pages. It
+does not prove 100k/1M completion within budget, 100k interruption at the
+requested fill target, 1M body/DOM retention, audit/report capacity or live
+crawling. The full #815 acceptance remains open. A separate bounded cProfile
+diagnosis found that the current writer recomputes corpus summaries over all
+accumulated pages after each page and render commit; improving that path needs
+its own atomicity and recovery regression proof before repeating these scales.
