@@ -296,7 +296,7 @@ priority adjustment. It never changes a technical finding's severity. See the
 |---|---|---|
 | `keywords-expand` | Expand a phrase via Yandex Wordstat: refinements (left column) + similar queries (right column) with base frequency | RUB 20/1000 GetTop requests at the first snapshot; quota **100/hour**; verify current tariff |
 | `keywords-seasonality` | Demand over months/weeks/days — tell a dead query from a seasonal one | same |
-| `keywords-exact` | Exact `!W` frequency via Arsenkin — what the Wordstat API will not give you | Arsenkin account limits |
+| `keywords-exact` | Exact `!W` frequency (Arsenkin's `overal`/`!WS` selector) — what the Wordstat API, base-only, will not give you | Arsenkin account limits; the charge and `task_id` are journaled at task creation |
 | `serp-fetch` | Yandex SERP for a query or a batch. Async only | metered; synchronous search is intentionally absent; verify current tariff |
 | `spend-report` | What was actually charged: by source, operation and day, from the local journal | free |
 | `sources-doctor` | Which sources have their secret and where it lives | free |
