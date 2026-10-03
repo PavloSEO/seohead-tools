@@ -149,8 +149,8 @@ def run_measured(
             stream.seek(0 if size <= limit else size - limit)
             return stream.read().decode("utf-8", errors="replace"), size
 
-        stdout, stdout_bytes = output_tail(stdout_file)
-        stderr, stderr_bytes = output_tail(stderr_file)
+        stdout_tail, stdout_bytes = output_tail(stdout_file)
+        stderr_tail, stderr_bytes = output_tail(stderr_file)
         measurements: dict[str, float | int | bool | str] = {
             "elapsed_seconds": round(time.monotonic() - started, 3),
             "sampled_process_tree_peak_rss_kib": peak_rss_kib,
@@ -163,10 +163,12 @@ def run_measured(
             state = f"timed out after {timeout}s" if timed_out else f"exited {process.returncode}"
             raise MeasuredCommandError(
                 f"command {state}: {args[0]}",
-                stdout_tail=stdout,
-                stderr_tail=stderr,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
                 measurements=measurements,
             )
+        stdout_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace")
     return stdout.strip(), {
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "sampled_process_tree_peak_rss_kib": peak_rss_kib,

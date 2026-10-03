@@ -99,8 +99,8 @@ def test_run_measured_drains_large_stdout_and_stderr_without_deadlock(tmp_path, 
         timeout=10,
     )
 
-    assert len(stdout) >= 16_000
-    assert stdout.endswith("O" * 32)
+    assert len(stdout) == 200_000
+    assert stdout == "O" * 200_000
     assert measurements["timed_out"] is False
     assert measurements["stdout_bytes"] > 200_000
     assert measurements["stderr_bytes"] > 200_000
