@@ -283,8 +283,30 @@ def scan_once(
 
     with sqlite3.connect(f"file:{scan}?mode=ro", uri=True) as connection:
         row = connection.execute("SELECT title, representation FROM pages LIMIT 1").fetchone()
+        document_rows = connection.execute(
+            "SELECT representation,body_state,body_reason,renderer_json "
+            "FROM documents ORDER BY document_id"
+        ).fetchall()
     if row != ("Rendered lifecycle title", "rendered"):
-        raise AssertionError(f"saved scan is missing rendered page evidence: {row!r}")
+        raise AssertionError(
+            "saved scan is missing rendered page evidence: "
+            + json.dumps(
+                {
+                    "page": row,
+                    "render_escalation": rendered,
+                    "documents": [
+                        {
+                            "representation": item[0],
+                            "body_state": item[1],
+                            "body_reason": item[2],
+                            "renderer": json.loads(item[3]),
+                        }
+                        for item in document_rows
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        )
 
     status = json.loads(
         run(
