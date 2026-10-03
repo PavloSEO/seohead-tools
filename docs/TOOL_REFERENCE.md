@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**94 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 99 in total.
+**95 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 100 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -181,6 +181,21 @@ Report claims a finished run makes that cannot all be true at once: a recorded s
 | `max_per_rule` | `int` | `20` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `crawl-diagnose`
+
+MCP name: `seo_crawl_diagnose`
+
+Explain a small or unfinished native crawl from retained scan or run evidence. No network request is made. An optional ``export`` writes a new redacted JSON file with URL and identity fields removed; existing files are never overwritten.
+
+| Argument | Type | Default |
+|---|---|---|
+| `scan` | `str | None` | `None` |
+| `run` | `str | None` | `None` |
+| `max_decisions` | `int` | `20` |
+| `export` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
 ### `sitemap-crawl`
 

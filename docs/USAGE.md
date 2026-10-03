@@ -31,7 +31,21 @@ seohead report-build --audit native.sqlite --format md --out native-report.md --
 
 # if the crawl was interrupted, continue it from the artifact -- no other flag
 seohead crawl-site --resume native.sqlite
+
+# Explain a one-page or interrupted crawl from saved evidence; no new requests.
+seohead crawl-diagnose --scan native.sqlite
+seohead crawl-diagnose --run ./run --max-decisions 10
+
+# Optional redacted copy for sharing: creates a new file, never overwrites.
+seohead crawl-diagnose --scan native.sqlite --export diagnostic-redacted.json
 ```
+
+The readable diagnosis goes to stderr and bounded JSON to stdout. Its decision
+samples name the recorded URL, reason, source and depth; the optional export
+removes URLs, local paths and identity fields. A saved scan cannot prove whether
+a worker process is still alive, and a one-page crawl does not establish the
+site-wide URL total. The command recommends a focused check or an explicit
+configuration change; it never changes robots policy or crawl settings.
 
 SQLite mode keeps queue, evidence and runtime in one transactional scan and resumes
 an interrupted file under the same build/configuration: `--resume` reads the start
@@ -267,7 +281,7 @@ Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 94 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 95 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):
