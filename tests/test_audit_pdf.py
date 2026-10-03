@@ -151,6 +151,7 @@ def test_renders_localized_audit_report_with_neutral_branding(lang, expected):
         assert "Критические" in html
         assert "Число повторений" in html
         assert "Проверка исправления" in html
+        assert "Покрытие проверок по источнику" in html
         assert (
             "\u041d\u0435 \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u043b\u043e\u0441\u044c"
             in html
@@ -166,7 +167,7 @@ def test_partial_scope_and_each_coverage_state_are_visible():
     assert "Synthetic timeout" in html
     assert "Synthetic input unavailable" in html
     assert "Only 12 synthetic URLs." in html
-    assert "source check coverage" in html
+    assert "Source check coverage" in html
     assert "Synthetic group" in html
     assert "checks_available" in html and "checks_skipped" in html
 
