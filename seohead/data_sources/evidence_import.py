@@ -384,7 +384,7 @@ def validate_manifest(manifest: Any) -> dict[str, Any]:
                 raise EvidenceImportError("mapping source timezone must be an IANA name string")
             try:
                 ZoneInfo(timezone)
-            except (KeyError, ValueError) as exc:
+            except (KeyError, OSError, ValueError) as exc:
                 raise EvidenceImportError(
                     f"mapping source timezone is not a known IANA name: {timezone!r}"
                 ) from exc

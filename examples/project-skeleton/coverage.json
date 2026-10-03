@@ -8641,7 +8641,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "1c7da9828f5395d36abf916596a17e7267fb172da3e4e7c67721bda83d65395e",
+        "source_hash": "4dc35044782d5e4bf399cd876a87ee7d7b590269422143db16b7bc4cf48179c4",
         "title": "Provider evidence \u2014 connect, verify, collect, join, and revoke"
       },
       "definitions": [
@@ -8661,7 +8661,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "1c7da9828f5395d36abf916596a17e7267fb172da3e4e7c67721bda83d65395e",
+            "source_hash": "4dc35044782d5e4bf399cd876a87ee7d7b590269422143db16b7bc4cf48179c4",
             "title": "Provider evidence \u2014 connect, verify, collect, join, and revoke"
           },
           "observed_at": "2026-09-09T00:00:00Z"

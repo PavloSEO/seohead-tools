@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import json
 import socket
+from unittest.mock import patch
 
 import pytest
 
@@ -209,6 +210,14 @@ def test_manifest_rejects_malformed_and_unknown_fields():
         evidence_import.validate_manifest(
             {"format": MAPPING, "metrics": [{"name": "label", "type": "string"}]}
         )
+
+
+def test_manifest_reports_timezone_path_errors_as_invalid_names():
+    with (
+        patch.object(evidence_import, "ZoneInfo", side_effect=IsADirectoryError("Pacific")),
+        pytest.raises(evidence_import.EvidenceImportError, match=r"timezone.*known IANA"),
+    ):
+        evidence_import.validate_manifest({"format": MAPPING, "source": {"timezone": "Pacific"}})
 
 
 # --- provider envelopes ---------------------------------------------------------
