@@ -185,6 +185,34 @@ collection. `full` requests the fuller policy deliberately. Both remain bounded
 by render URL/time settings, and a route or corpus relation stays unknown when
 one representation was not completely captured.
 
+The browser transport defaults to a local sandboxed Chromium launch. An operator
+can instead connect to an already running Playwright browser server by setting
+`rendering.browser.transport=remote`, `remote_endpoint_env` to the **name** of an
+environment variable containing its WebSocket endpoint, and
+`remote_playwright_version` to the server's declared version. The Python client
+and server must share a Playwright major/minor version; the Playwright connection
+also performs its protocol handshake. Only the Playwright protocol is supported;
+CDP is refused. A remote connection error never starts a local browser. The tool
+neither launches nor provisions a remote service. The endpoint value, including
+any query token, is never recorded in a scan or returned in an error.
+
+Remote browser requests still pass through the existing pinned HTTP route;
+page WebSockets are blocked and service workers disabled. An unsupported route
+capability fails before a page opens. Use `wss://` for a non-loopback endpoint;
+plain `ws://` is accepted only on loopback. The operator is responsible for
+trusting and securing the server because rendered page data travels over this
+connection. Closing the connected Browser releases its contexts and disconnects
+the client; it does not stop the operator's browser server. See the
+[Playwright BrowserType.connect contract](https://playwright.dev/python/docs/api/class-browsertype#connect).
+
+```bash
+# The value stays in the environment, not in CLI arguments or saved crawl config.
+export SEOHEAD_REMOTE_BROWSER_WS='wss://browser.example.test/playwright'
+seohead render-check --url https://example.test/ --browser-transport remote \
+  --remote-endpoint-env SEOHEAD_REMOTE_BROWSER_WS --remote-playwright-version 1.55.0
+# For crawl-site, set the same fields under rendering.browser in its JSON config.
+```
+
 Render elapsed time is saved in the scan context across resume cycles. If a
 previous process died while an active finite render phase was running, the next
 cycle conservatively treats that budget as exhausted instead of resetting it and

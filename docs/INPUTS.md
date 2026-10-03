@@ -61,7 +61,7 @@ and this decision makes no backend migration.
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
 | `regions-check` | Live URL (`url`) | — |
-| `render-check` | Live URL (`url`) | — |
+| `render-check` | Live URL (`url`)<br>Inline JSON (`transport_config`) | Optional local/remote Playwright transport selection; endpoint is named by environment variable. |
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `report-build` | Audit document (`audit`)<br>Project directory (`project`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage in human reports; JSON audit is unchanged. |
 | `facts-export` | Inline JSON (`sites`) | — |
