@@ -320,7 +320,12 @@ def test_keywords_exact_uses_the_dedicated_arsenkin_client(monkeypatch):
 
     result = handlers.keywords_exact(keywords=["synthetic kw"], wait=False)
     assert result["ok"] is True and result["task_id"] == 1
-    assert calls == [("keywords_frequency", {"keywords": ["synthetic kw"], "region": 225})]
+    assert calls == [
+        (
+            "wordstat",
+            {"type": 1, "regions": [225], "ws": ["base", "overal"], "queries": ["synthetic kw"]},
+        )
+    ]
 
     assert [(ref.kind, ref.name) for ref in _row("yandex-exact-frequency").providers] == [
         ("dedicated", "arsenkin")

@@ -12,12 +12,13 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Looking for a copy-paste command | [USAGE.md](USAGE.md) — runnable examples |
 | Checking which source inputs a command accepts | [INPUTS.md](INPUTS.md) — generated command-input catalogue |
 | Managing or inspecting saved scans | [STORAGE.md](STORAGE.md) — SQLite import, provenance, retained bodies, snapshots, and reviewed retention |
+| Importing a third-party crawl export | [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md) — versioned CSV manifest, field coverage, and limits |
 | Tracking findings and their history across scans | [LEDGER.md](LEDGER.md) — the `ledger.v1` remediation ledger: identity, observations, coverage, migration |
 | Operating a SQLite scan baseline or reviewing capacity evidence | [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md) — capture-to-prune workflow, evidence limits, and the measured release-profile record with its two named limits |
 | New to the toolkit | [GUIDELINE.md](GUIDELINE.md) — what it is, the first run, reading an audit honestly, the usual mistakes |
 | A native crawl stopped early | [RECOVERY.md](RECOVERY.md) — the two checkpoints, `--resume`, resume vs. intentional fresh start |
 | Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 59 chains, each with its commands, its output, its cost and its limits |
-| Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 63 |
+| Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 100 |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
 | Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — all 149, generated from the registry |

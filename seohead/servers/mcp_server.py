@@ -692,6 +692,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_crawl_import(manifest_path: str) -> dict[str, Any]:
+        """Read a versioned third-party crawl CSV bundle from a local manifest.
+
+        The manifest maps source headers to page, link, status, and redirect
+        fields. The result is ``third_party_crawl.v1`` with source identity and
+        per-field coverage; it is not scan.v1 or SF audit evidence.
+        """
+        return _checked(handlers.crawl_import(manifest_path=manifest_path))
+
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_segment_diff(audit: Any, source: str, target: str) -> dict[str, Any]:
         """Cross-segment counterpart diff (#358): which pages in the ``source`` segment
