@@ -75,6 +75,7 @@ COMMANDS = (
     "spend-report",
     "sources-doctor",
     "regions-tree",
+    "topvisor-read",
     "metrika-counters",
     "metrika-setup",
     "metrika-report",

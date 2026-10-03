@@ -123,11 +123,13 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
 `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` ·
 `scan-status` · `scenario-show` · `segment-diff` · `serp-fetch` · `skill-list` ·
 `skill-show` · `soft404-check` · `spend-report` · `tool-catalog` ·
-`wayback-history`
+`topvisor-read` · `wayback-history`
 
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and
 `redirects-generate` (site migrations).
+
+`topvisor-read` reads existing Topvisor data using central credential files.
 
 ## Skill rules
 
