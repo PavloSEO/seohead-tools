@@ -16,7 +16,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Operating a SQLite scan baseline or reviewing capacity evidence | [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md) — capture-to-prune workflow, evidence limits, and the measured release-profile record with its two named limits |
 | New to the toolkit | [GUIDELINE.md](GUIDELINE.md) — what it is, the first run, reading an audit honestly, the usual mistakes |
 | A native crawl stopped early | [RECOVERY.md](RECOVERY.md) — the two checkpoints, `--resume`, resume vs. intentional fresh start |
-| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 59 chains, each with its commands, its output, its cost and its limits |
+| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 60 chains, each with its commands, its output, its cost and its limits |
 | Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 100 |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
@@ -49,7 +49,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
   retained scan artifacts, audit documents, inline corpora, provider queries,
   and the distinct operational stores. Generated from
   `seohead/input_contracts.py` (`scripts/generate_input_reference.py`).
-- **[CHECKS.md](CHECKS.md)** — the 162 checks the SF crawl audit runs: what each fires
+- **[CHECKS.md](CHECKS.md)** — the 164 checks the SF crawl audit runs: what each fires
   on, what evidence it needs, and the fix that ships with the finding. Generated
   from `seohead/sf/core/registry.py` (`scripts/generate_checks_reference.py`);
   `tests/test_docs_drift.py` fails the build if it drifts from the registry.

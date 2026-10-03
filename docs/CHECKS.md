@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**162 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**164 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -197,6 +197,8 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `CANONICAL_CHAIN` | warning | SF-derived | Canonical chain: the target canonicalizes to another URL (two or more steps) | Point the canonical directly to the final canonical URL in one step and break any canonical loops. |
 | `CANONICAL_TO_REDIRECT` | warning | SF-derived | Canonical points to a redirecting URL (3xx) | Point the canonical to the final 200-status URL; otherwise search engines must resolve conflicting canonical signals. |
+| `CANONICAL_TARGET_ERROR` | warning | SF-derived | Canonical points to a URL returning 4xx or 5xx | Point the canonical to a fetched, successful URL; restore the target or redirect it to the intended canonical page. |
+| `CANONICAL_HOMEPAGE_GROUP` | warning | SF-derived | Distinct indexable pages in multiple sections canonicalize to the homepage | Review each listed page's canonical. Use a self-canonical for distinct indexable content, or configure an explicit pagination/filter policy when a landing canonical is intentional. |
 | `UNLINKED_CANONICAL` | warning | SF-derived | Canonical target has no hyperlink pointing to it anywhere in the crawl | Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional. |
 | `HREFLANG_BROKEN_TARGET` | warning | inlinks:All Hreflang | Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx) | Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling. |
 | `HREFLANG_INVALID_CODE` | warning | inlinks:All Hreflang | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | Use a valid language code, optionally followed by a valid region (e.g. en-GB, not en-UK). |

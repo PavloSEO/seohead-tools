@@ -673,6 +673,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Canonical points to a redirecting URL (3xx)",
         "fix": "Point the canonical to the final 200-status URL; otherwise search engines must resolve conflicting canonical signals.",
     },
+    "CANONICAL_TARGET_ERROR": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Canonical points to a URL returning 4xx or 5xx",
+        "fix": "Point the canonical to a fetched, successful URL; restore the target or redirect it to the intended canonical page.",
+    },
+    "CANONICAL_HOMEPAGE_GROUP": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Distinct indexable pages in multiple sections canonicalize to the homepage",
+        "fix": "Review each listed page's canonical. Use a self-canonical for distinct indexable content, or configure an explicit pagination/filter policy when a landing canonical is intentional.",
+    },
     "UNLINKED_CANONICAL": {
         "severity": "warning",
         "source": "SF-derived",

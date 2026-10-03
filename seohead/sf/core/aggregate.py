@@ -163,6 +163,18 @@ def _withhold_depth_findings(ctx: AuditContext, issues: list[Issue]) -> list[Iss
     return [i for i in issues if i.check not in DEPTH_FINDING_CHECKS]
 
 
+def _withhold_canonical_homepage_group(ctx: AuditContext, issues: list[Issue]) -> list[Issue]:
+    """A partial crawl cannot support a site-wide homepage-canonical pattern."""
+    check_id = "CANONICAL_HOMEPAGE_GROUP"
+    if not any(item.id == check_id for item in ctx.skipped):
+        ctx.retract(
+            check_id,
+            "crawl is partial: a site-wide canonical pattern cannot be established "
+            "from an incomplete page population",
+        )
+    return [issue for issue in issues if issue.check != check_id]
+
+
 def _crawl_validity(
     n_pages: int, by_check: dict[str, int], urls_crawled: int
 ) -> tuple[bool, str | None]:
@@ -283,6 +295,7 @@ def aggregate(
     if crawl_partial:
         issues = _withhold_unlinked_findings(ctx, issues)
         issues = _withhold_graph_wide_findings(ctx, issues)
+        issues = _withhold_canonical_homepage_group(ctx, issues)
         issues = _withhold_depth_findings(ctx, issues)
 
     # assign ordered ids + fingerprints (sorted for determinism)

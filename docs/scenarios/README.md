@@ -1,7 +1,7 @@
 # Usage scenarios
 
 The rest of the documentation lists what this toolkit *has*: 95 commands, 100 callable tools,
-162 checks, 30 workflow skills, each described on its own. This directory describes what it
+164 checks, 30 workflow skills, each described on its own. This directory describes what it
 **does** — the chains that run several of them in order and end in something a person can act on.
 
 The distinction matters. One command is a measurement. A chain is a deliverable:
@@ -33,7 +33,7 @@ build rather than sitting here misleading its next reader.
 
 ## The scenarios
 
-59 chains, grouped by the question you arrived with. Every issue this toolkit can find
+60 chains, grouped by the question you arrived with. Every issue this toolkit can find
 appears in at least one of them — `tests/test_scenario_coverage.py` asserts that against
 [COVERAGE_SF_ISSUES.md](../COVERAGE_SF_ISSUES.md), so the catalogue is decided by what the code
 does rather than by what somebody thought of.
@@ -63,6 +63,7 @@ does rather than by what somebody thought of.
 | # | Scenario | Start here when |
 |---:|---|---|
 | 9 | [Canonical basics](canonical-basics.md) | the defects that are a typo, not a strategy |
+| 60 | [Canonical destinations](canonical-destinations.md) | where the target responds, and when distinct sections point home |
 | 10 | [Conflicting canonicals](canonical-conflicts.md) | two answers to a question that takes one |
 | 11 | [Canonicalised pages](canonicalised-pages.md) | how much of the site is deliberately not itself |
 | 12 | [The canonical nobody links to](unlinked-canonical.md) | a preferred URL with no way in |
