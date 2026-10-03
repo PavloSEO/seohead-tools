@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
+import random
 import sqlite3
 
 from seohead import cli
@@ -22,8 +24,8 @@ def _scan(tmp_path, pages, *, retain_bodies=True, finish=True):
     path = tmp_path / "corpus.sqlite"
     metadata = _metadata(**({} if retain_bodies else {"storage.body_mode": "off"}))
     with NativeScan.create(path, **metadata) as scan:
-        scan.enqueue([(url, index) for index, (url, _html) in enumerate(pages)])
-        for url, html in pages:
+        for index, (url, html) in enumerate(pages):
+            scan.enqueue([(url, index)])
             lease = scan.claim(1)[0]
             record = _record(url)
             record["crawl_depth"] = lease.depth
@@ -274,6 +276,83 @@ def test_scan_read_deadline_scales_with_artifact_size(tmp_path):
     with large.open("wb") as stream:
         stream.truncate(200 * 1024 * 1024)
     assert _read_deadline_seconds(large) == 200 * 1024 * 1024 / READ_TIMEOUT_BYTES_PER_SECOND
+
+
+_LARGE_CORPUS_PAGE_COUNT = 30
+# base64 of a seeded random stream: unique per page and nearly incompressible,
+# so the artifact itself also exceeds the old 16 MiB retained-body ceiling
+# (issue #710), which zlib-stored boilerplate-only pages would never reach.
+_LARGE_SCRIPT_BYTES = 825_000
+
+
+def _large_corpus_pages():
+    """Yield distinct complete pages without holding the whole corpus in memory."""
+    chrome = (
+        "<header>Example masthead</header><nav>site menu</nav>"
+        "<main><h1>Shared page</h1><p>Identical retained content words.</p></main>"
+        "<footer>Example footer</footer>"
+    )
+    for index in range(_LARGE_CORPUS_PAGE_COUNT):
+        payload = base64.b64encode(random.Random(index).randbytes(_LARGE_SCRIPT_BYTES)).decode(
+            "ascii"
+        )
+        assert "noindex" not in payload  # _scan marks any "noindex" page non-indexable
+        yield (
+            f"https://example.test/page-{index}",
+            "<html><head><title>Shared page</title><script>"
+            + payload
+            + "</script></head><body>"
+            + chrome
+            + "</body></html>",
+        )
+
+
+def _assert_complete_coverage(result, page_count=_LARGE_CORPUS_PAGE_COUNT):
+    coverage = result["coverage"]
+    assert coverage["state"] == "complete"
+    assert coverage["eligible_documents"] == page_count
+    assert coverage["prepared_documents"] == page_count
+    assert coverage["analyzed_documents"] == page_count
+    assert coverage["omitted_documents"] == 0
+    assert coverage["omission_reasons"] == {}
+
+
+def test_scan_corpus_streams_a_retained_corpus_past_the_old_16_mib_ceiling(tmp_path):
+    """Both scan analyzers must complete on an artifact bigger than the former
+    16 MiB input-byte budget, which metered raw HTML rather than retained input."""
+    metered = {"count": 0, "bytes": 0}
+
+    def pages():
+        for url, html in _large_corpus_pages():
+            metered["count"] += 1
+            metered["bytes"] += len(html.encode("utf-8"))
+            yield url, html
+
+    scan = _scan(tmp_path, pages())
+    urls = [f"https://example.test/page-{index}" for index in range(_LARGE_CORPUS_PAGE_COUNT)]
+
+    # Pin the fixture above the old boundary so a later reduction cannot
+    # silently stop exercising the regression.
+    assert metered["count"] == _LARGE_CORPUS_PAGE_COUNT
+    assert metered["bytes"] > 16 * 1024 * 1024
+    assert scan.stat().st_size > 16 * 1024 * 1024
+
+    boilerplate = handlers.boilerplate_report(scan=str(scan))
+    _assert_complete_coverage(boilerplate)
+    assert boilerplate["count"] == _LARGE_CORPUS_PAGE_COUNT
+    assert len(boilerplate["groups"]) == 1
+    group = boilerplate["groups"][0]
+    assert group["dominant"] is True
+    assert group["count"] == _LARGE_CORPUS_PAGE_COUNT
+    assert group["urls"] == sorted(urls)
+    assert boilerplate["minority_groups"] == []
+
+    duplicates = handlers.duplicate_check(scan=str(scan))
+    _assert_complete_coverage(duplicates)
+    assert duplicates["count"] == _LARGE_CORPUS_PAGE_COUNT
+    assert duplicates["clusters"] == []
+    assert len(duplicates["exact_duplicates"]) == 1
+    assert duplicates["exact_duplicates"][0]["members"] == sorted(urls)
 
 
 def test_inline_duplicate_positional_arguments_keep_the_existing_contract():
