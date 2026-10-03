@@ -11044,6 +11044,50 @@
         }
       ],
       "records": []
+    },
+    "skill:workflow/traffic-report": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "manual",
+        "id": "skill:workflow/traffic-report",
+        "kind": "skill",
+        "operation": null,
+        "order": 251,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "a935ce16fdae8df563272e86df3e9ead2cd314322fb5f891708b2a9c506633d9",
+        "title": "traffic-report"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "manual",
+            "id": "skill:workflow/traffic-report",
+            "kind": "skill",
+            "operation": null,
+            "order": 251,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "a935ce16fdae8df563272e86df3e9ead2cd314322fb5f891708b2a9c506633d9",
+            "title": "traffic-report"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
     }
   },
   "project_uuid": "00000000-0000-4000-8000-000000000001",
