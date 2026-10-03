@@ -39,7 +39,7 @@ The backend must atomically bind an idempotency key to `(project_id, subject, re
 The same key and body return the original job; a changed body returns 409. It must scope **every**
 lookup, cancellation and artifact read to the authorized project, prevent two jobs from
 overwriting each other's files, and preserve result evidence across restarts. The API checks
-project grants and returned job project IDs as a second boundary, but cannot make an unsafe
+project grants and returned job project **and job IDs** as a second boundary, but cannot make an unsafe
 backend durable or isolated. There is no built-in memory queue masquerading as production storage.
 
 Status has explicit `queued`, `running`, `cancel_requested`, `cancelled`, `finished`, `partial`,
@@ -49,7 +49,9 @@ is `complete`, `partial`, `failed`, or `skipped`; absent audit evidence is named
 frontier and committed-page-outcome fields as local `scan-status` rather than recalculating a
 second verdict. Artifact references are opaque IDs and media metadata, never filesystem paths.
 
-The request body limit is 16 KiB and remote crawl options have explicit upper bounds. Anonymous
+The request body limit is 16 KiB, checked against the actual ASGI stream even when Content-Length
+understates it; missing or contradictory lengths are rejected. The app refuses to start without
+an operable job backend. Remote crawl options have explicit upper bounds. Anonymous
 requests return 401, missing project grants return 404, missing operation grants return 403,
 and a rejected target returns a generic 403 without echoing the URL or policy detail. Bearer
 tokens are compared with configured SHA-256 digests; neither tokens nor invalid request values
