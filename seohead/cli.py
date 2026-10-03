@@ -36,6 +36,7 @@ COMMANDS = (
     "log-scan",
     "compare-crawls",
     "crawl-enrich",
+    "crawl-import",
     "segment-diff",
     "redirects-generate",
     "redirects-check",
@@ -77,6 +78,7 @@ COMMANDS = (
     "spend-report",
     "sources-doctor",
     "regions-tree",
+    "topvisor-read",
     "metrika-counters",
     "metrika-setup",
     "metrika-report",
@@ -542,6 +544,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
+    elif cmd == "crawl-import":
+        if getattr(args, "manifest", None):
+            kw["manifest_path"] = args.manifest
     elif cmd == "segment-diff":
         if getattr(args, "audit", None):
             kw["audit"] = args.audit
@@ -783,6 +788,17 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw["wait"] = args.wait
             if getattr(args, "user_agent", None):
                 kw["user_agent"] = args.user_agent
+            if (
+                getattr(args, "browser_transport", None)
+                or getattr(args, "remote_endpoint_env", None)
+                or getattr(args, "remote_playwright_version", None)
+            ):
+                kw["transport_config"] = {
+                    "transport": args.browser_transport or "local",
+                    "remote_protocol": "playwright",
+                    "remote_endpoint_env": args.remote_endpoint_env or "",
+                    "remote_playwright_version": args.remote_playwright_version or "",
+                }
         if cmd == "llms-txt-check" and getattr(args, "brand", None):
             kw["brand"] = args.brand
     return handler_name, kw
@@ -1189,6 +1205,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--out-urls",
             help="write reliable external-only URLs as a list-mode input file",
         )
+    if cmd == "crawl-import":
+        _source_flag(
+            sub,
+            "--manifest",
+            help="versioned third-party crawl manifest JSON (CSV files stay beside it)",
+        )
     if cmd == "site-audit":
         _source_flag(sub, "--url", help="site home page")
         _source_flag(
@@ -1513,6 +1535,19 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="find JavaScript-rendered city selectors (requires Playwright)",
         )
     if cmd == "render-check":
+        sub.add_argument(
+            "--browser-transport",
+            choices=("local", "remote"),
+            help="local browser launch (default) or explicit remote Playwright connection",
+        )
+        sub.add_argument(
+            "--remote-endpoint-env",
+            help="environment variable containing a remote Playwright ws/wss endpoint",
+        )
+        sub.add_argument(
+            "--remote-playwright-version",
+            help="operator-declared remote Playwright version; major/minor must match the client",
+        )
         sub.add_argument(
             "--viewport",
             choices=("desktop", "mobile"),

@@ -624,6 +624,34 @@ file hashes. It keeps no full edge graph in Python. See
 
 ### SQL graph and sitemap projections
 
+The read-only Python core also provides
+`seohead.storage.link_queries.shortest_observed_path(scan, seed, target)` and
+`reverse_inlinks(scan, target)`. The first uses indexed source-link reads and a
+bounded FIFO walk; each returned hop carries the exact `links.link_id`, source
+document ID, representation, and stored ordinal. Equal-hop ties use source
+queue order, then static/rendered/legacy representation, occurrence ordinal,
+and link ID. Its default ceilings are 10,000 visited nodes, 200,000 examined
+edges, 20 hops, and 15 seconds; callers may lower them or raise them only to the
+documented hard caps in the Python signature. Nofollow and out-of-scope links
+are excluded from traversal. URL identity follows the crawler's fragmentless
+exact URL rule; it does not fold a page's trailing slash or path case.
+
+`reverse_inlinks` returns retained occurrences, including duplicates and
+fragment links to the selected target, in stable link-ID pages. Its opaque
+`cursor` is bound to the scan UUID, evidence revision, target and representation;
+using it with another query is refused. Defaults are 100 rows, 1 MiB serialized
+item bytes, and 15 seconds. Rows preserve raw/rendered identity. A blank
+position is unmeasured. Each result includes the scan UUID and evidence revision
+so clients can avoid combining pages from different scan snapshots. These are
+Python core functions; shared CLI/MCP registration belongs to issue #807.
+
+A found path proves only that these retained edges connect the two URLs.
+`unreachable_in_observed_graph` does not prove a site-wide orphan. The result
+always marks global reachability unknown and carries partial or unavailable
+link-coverage reasons. Budget exhaustion returns `limit_reached` rather than an
+absence conclusion. Neither query fetches URLs, rewrites the artifact, or
+builds a second permanent graph.
+
 Native scan graph projections now read a validated `scan.v1` artifact through a
 read-only SQLite snapshot. They use bounded cursors and connection-local,
 file-backed temporary tables; they do not rebuild the stored graph as a Python

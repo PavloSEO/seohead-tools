@@ -16,6 +16,36 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+## Topvisor
+
+`topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
+competitors, keyword groups, keywords, position history or summaries. Pass an
+`operation` and a `params` object through the ordinary JSON input. Credentials are
+`~/.config/topvisor/access_token` and `~/.config/topvisor/user_id`, with environment
+overrides `TOPVISOR_TOKEN` and `TOPVISOR_USER_ID`. No project-local credential copies
+are needed. This tool never launches checks or modifies provider records.
+
+Paginate explicitly using `limit` and `offset`; a single page is not a complete
+inventory. The continuation signal is the provider's `nextOffset` key — present on
+every non-final page, absent on the last — not `len(result) == limit`. `total` and
+`limitedBy` pass through when Topvisor sends them, separately from the echoed
+request `limit`/`offset`. `projects`, `competitors`, `groups` and `keywords`
+return arrays; `history` and `summary` return objects — history rows live at
+`result.keywords`, and `summary` covers the two requested dates rather than a
+page of rows.
+
+Field semantics worth keeping straight: a `position` inside
+`result.keywords[N].positionsData[date:projectId:regionIndex]` is an ordinal
+rank; Topvisor's `"--"` marker means the query had no position inside the
+checked depth — an unavailable value, never rank 0 or 100 — and a requested
+date with no `positionsData` entry is a missing observation, not zero
+movement. `result.headers.dates` lists the dates actually included in a
+history report; `existsDates` can name checks outside the requested interval.
+`topsByDepth` is a percent of queries in Top N; `visitors`, `dynamics` and
+`tops` are counts; `avgs` is an average rank. History needs `regions_indexes` —
+the project region *index* from `projects` with `show_searchers_and_regions:2`,
+not the geographic region `key`; `summary` takes the singular `region_index`.
+
 ## Project workspace
 
 | Command | What it does | Network |
@@ -175,6 +205,7 @@ details (adaptive back-off, which checks come back `skipped` and why) and
 | `crawl-site` | Follows links from a start URL on the same host, respects `robots.txt`, and audits the result. A URL crawl writes one collision-safe native SQLite artifact under `./scans/` by default; `--out-dir` is the explicit legacy directory route. Not full Screaming Frog parity — checks needing evidence a native crawl cannot produce (redirect chains, near-duplicates, readability, ...) come back `skipped`, never a false clean | writes a native scan, or legacy files under explicit `--out-dir` |
 | `compare-crawls` | Diffs two audit documents into `entered` / `left` / `appeared` / `disappeared` findings, so a fix is distinguished from a page that simply dropped out of the crawl. Refuses known-different effective crawl settings unless the operator explicitly passes `--force`. | — |
 | `crawl-enrich` | Joins an existing audit or scan to a local URL-keyed traffic/search CSV. It keeps matched, crawl-only, external-only, and unkeyable rows distinct; a completed crawl can export reliable same-origin external-only URLs for list mode. | optionally writes a URL-list file under `--out-urls` |
+| `crawl-import` | Reads a local manifest-mapped CSV crawl bundle and returns `third_party_crawl.v1` with foreign source identity, pages/links/statuses/redirects, exact field coverage, duplicate counts and input hashes. This is not a native scan or SF audit. | reads the manifest and listed CSV files |
 | `segment-diff` | Answers "which pages exist in one segment and not in another" from one crawl, using the site's own hreflang declarations as the authority. Mirrored paths are a fallback only where the site's declared pairs prove it mirrors them; a partially crawled target segment yields no absences at all, because a page nobody fetched is not a page that is missing. Reads a native crawl whose config declared `scope.segments`, not an SF export | — |
 | `crawl-describe-settings` | Lists every `crawl-site` config setting — dotted path, type, default, description, and whether it is results-affecting — generated from `seohead/crawl/settings.py`. Same source as `crawl-site --config-help`, reachable over MCP for an agent with no filesystem access | — |
 
@@ -185,6 +216,34 @@ collection. `full` requests the fuller policy deliberately. Both remain bounded
 by render URL/time settings, and a route or corpus relation stays unknown when
 one representation was not completely captured.
 
+The browser transport defaults to a local sandboxed Chromium launch. An operator
+can instead connect to an already running Playwright browser server by setting
+`rendering.browser.transport=remote`, `remote_endpoint_env` to the **name** of an
+environment variable containing its WebSocket endpoint, and
+`remote_playwright_version` to the server's declared version. The Python client
+and server must share a Playwright major/minor version; the Playwright connection
+also performs its protocol handshake. Only the Playwright protocol is supported;
+CDP is refused. A remote connection error never starts a local browser. The tool
+neither launches nor provisions a remote service. The endpoint value, including
+any query token, is never recorded in a scan or returned in an error.
+
+Remote browser requests still pass through the existing pinned HTTP route;
+page WebSockets are blocked and service workers disabled. An unsupported route
+capability fails before a page opens. Use `wss://` for a non-loopback endpoint;
+plain `ws://` is accepted only on loopback. The operator is responsible for
+trusting and securing the server because rendered page data travels over this
+connection. Closing the connected Browser releases its contexts and disconnects
+the client; it does not stop the operator's browser server. See the
+[Playwright BrowserType.connect contract](https://playwright.dev/python/docs/api/class-browsertype#connect).
+
+```bash
+# The value stays in the environment, not in CLI arguments or saved crawl config.
+export SEOHEAD_REMOTE_BROWSER_WS='wss://browser.example.test/playwright'
+seohead render-check --url https://example.test/ --browser-transport remote \
+  --remote-endpoint-env SEOHEAD_REMOTE_BROWSER_WS --remote-playwright-version 1.55.0
+# For crawl-site, set the same fields under rendering.browser in its JSON config.
+```
+
 Render elapsed time is saved in the scan context across resume cycles. If a
 previous process died while an active finite render phase was running, the next
 cycle conservatively treats that budget as exhausted instead of resetting it and
@@ -193,9 +252,13 @@ claiming the original time bound still applies.
 ```bash
 seohead crawl-site --url https://example.com/ --max-urls 200
 seohead compare-crawls --before old-audit.json --after new-audit.json
+seohead crawl-import --manifest third_party_crawl/full/manifest.json
 seohead segment-diff --audit ./multilingual/audit.json --source en --target pl
 seohead crawl-describe-settings
 ```
+
+The supported manifest, field, coverage, normalization, and size-limit contract
+is documented in [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md).
 
 ---
 
@@ -458,7 +521,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(95 + 5):
+(97 + 5):
 
 ```bash
 seohead mcp        # stdio
