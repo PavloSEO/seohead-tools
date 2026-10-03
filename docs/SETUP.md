@@ -391,8 +391,9 @@ The image is a multi-stage build on `python:3.12-slim`, runs as non-root user `s
 
 ## What is intentionally absent
 
-- **No GUI, no web service, no HTTP API.** The two interfaces are the CLI and the local stdio MCP
-  server. Reports are files.
+- **Local installation remains CLI and stdio MCP.** An optional authenticated remote API contract
+  exists for a future self-hosted service; it requires a separate durable backend and egress
+  policy and starts no listener on installation. See [REMOTE_API.md](REMOTE_API.md). Reports are files.
 - **No push deploy.** `git push` deploys nothing — there are no deploy
   workflows, hooks or scripts in this repo.
 
