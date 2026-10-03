@@ -1,5 +1,10 @@
 # SQLite operator workflow and acceptance record
 
+For the newer staged storage and recovery profile toward a one-million-URL target,
+see [SCAN_CAPACITY_PROFILE.md](SCAN_CAPACITY_PROFILE.md). It records separate
+experimental admission and incomplete capacity outcomes without changing this
+release baseline.
+
 > **The capacity profile has been run and did not pass in full.** Two limits were
 > measured and are published by name below: the 64 MiB saved-audit ceiling stops
 > the whole path at 10,000 pages, and the 50,000-page case reaches the profiler's
