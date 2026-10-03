@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -162,6 +163,15 @@ def test_submit_denies_anonymous_foreign_and_missing_policy_before_backend():
     assert not backend.jobs
 
 
+def test_missing_or_incomplete_backend_is_rejected_when_app_is_created():
+    grants = {TokenAuthenticator.digest(TOKEN): Principal("operator-a", {"alpha": frozenset()})}
+    auth = TokenAuthenticator(grants)
+    with pytest.raises(ValueError, match="job backend"):
+        create_app(None, auth, target_policy=FakePolicy())
+    with pytest.raises(ValueError, match="job backend"):
+        create_app(object(), auth, target_policy=FakePolicy())
+
+
 def test_submit_uses_validated_cli_settings_and_policy_before_enqueue():
     api, backend, policy = client()
     response = submit(
@@ -236,6 +246,45 @@ def test_body_size_and_idempotency_key_are_bounded():
         content=b"{" + b"x" * 20_000 + b"}",
     )
     assert oversized.status_code == 413
+    understated = api.post(
+        PATH,
+        headers={**auth(), "Idempotency-Key": KEY, "Content-Length": "1"},
+        content=b"{" + b"x" * 20_000 + b"}",
+    )
+    assert understated.status_code == 413
+    assert understated.json()["error"]["code"] == "body_too_large"
+    assert not backend.jobs
+
+
+def test_actual_asgi_chunks_are_bounded_even_with_false_content_length():
+    api, backend, _ = client()
+    messages = iter(
+        (
+            {"type": "http.request", "body": b"{" + b"x" * 8_000, "more_body": True},
+            {"type": "http.request", "body": b"x" * 9_000, "more_body": False},
+        )
+    )
+    sent = []
+
+    async def receive():
+        return next(messages)
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": PATH,
+        "headers": [(b"content-length", b"1")],
+        "query_string": b"",
+        "http_version": "1.1",
+        "scheme": "http",
+        "server": ("test", 80),
+        "client": ("test", 12345),
+    }
+    asyncio.run(api.app(scope, receive, send))
+    assert sent[0]["type"] == "http.response.start" and sent[0]["status"] == 413
     assert not backend.jobs
 
 
@@ -255,6 +304,35 @@ def test_each_operation_has_a_project_scope_and_foreign_jobs_do_not_leak():
         == 404
     )
     assert len(backend.jobs) == 1
+
+
+def test_backend_cannot_swap_another_job_from_the_same_project(monkeypatch):
+    api, backend, _ = client()
+    requested = submit(api, key="request-key-a").json()["job_id"]
+    other = submit(api, key="request-key-b", url="https://example.test/other").json()["job_id"]
+    original_get = backend.get_job
+    monkeypatch.setattr(
+        backend,
+        "get_job",
+        lambda project_id, job_id: (
+            backend.jobs[other] if job_id == requested else original_get(project_id, job_id)
+        ),
+    )
+    assert api.get(f"{PATH}/{requested}", headers=auth()).status_code == 503
+    monkeypatch.setattr(backend, "cancel_job", lambda _project_id, _job_id: backend.jobs[other])
+    assert api.post(f"{PATH}/{requested}/cancel", headers=auth()).status_code == 503
+
+    monkeypatch.setattr(backend, "get_job", original_get)
+    backend.jobs[requested] = backend.jobs[requested].model_copy(update={"state": "finished"})
+    backend.results[requested] = JobResult(
+        job=backend.jobs[other],
+        coverage="partial",
+        audit_available=False,
+        audit_reason="synthetic mismatch",
+    )
+    result = api.get(f"{PATH}/{requested}/result", headers=auth())
+    assert result.status_code == 503
+    assert result.json()["error"]["code"] == "backend_identity_failure"
 
 
 def test_list_status_cancel_and_result_contracts():

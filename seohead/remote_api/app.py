@@ -77,6 +77,69 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
 
 
+class BoundedSubmissionBody:
+    """Check actual ASGI body bytes before FastAPI parses a scan submission."""
+
+    def __init__(self, app: Any):
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if (
+            scope["type"] != "http"
+            or scope["method"] != "POST"
+            or not re.fullmatch(r"/api/v1/projects/[^/]+/scans", scope["path"])
+        ):
+            await self.app(scope, receive, send)
+            return
+        headers = scope.get("headers", [])
+        lengths = [value for name, value in headers if name.lower() == b"content-length"]
+        transfer = any(name.lower() == b"transfer-encoding" for name, _ in headers)
+        if transfer or len(lengths) != 1 or not lengths[0].isdigit():
+            await _error(411, "length_required", "a bounded Content-Length is required")(
+                scope, receive, send
+            )
+            return
+        if len(lengths[0]) > 5 or int(lengths[0]) > MAX_SUBMISSION_BYTES:
+            await _error(413, "body_too_large", "scan request exceeds the body limit")(
+                scope, receive, send
+            )
+            return
+        chunks: list[bytes] = []
+        received = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            if message["type"] != "http.request":
+                continue
+            chunk = message.get("body", b"")
+            received += len(chunk)
+            if received > MAX_SUBMISSION_BYTES:
+                await _error(413, "body_too_large", "scan request exceeds the body limit")(
+                    scope, receive, send
+                )
+                return
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        if received != int(lengths[0]):
+            await _error(
+                400, "invalid_content_length", "Content-Length disagrees with request body"
+            )(scope, receive, send)
+            return
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay() -> dict[str, Any]:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+
 def create_app(
     backend: JobBackend,
     authenticator: TokenAuthenticator,
@@ -91,6 +154,11 @@ def create_app(
     also scope its query by project. The API enforces both project grants and a
     second project-id check on returned records.
     """
+    required = ("submit", "list_jobs", "get_job", "cancel_job", "get_result")
+    if backend is None or any(not callable(getattr(backend, name, None)) for name in required):
+        raise ValueError("a remote job backend with all job operations is required")
+    if authenticator is None or not callable(getattr(authenticator, "authenticate", None)):
+        raise ValueError("a bearer authenticator is required")
     app = FastAPI(
         title="SEOHEAD Remote Scan API",
         version="1.0.0",
@@ -102,6 +170,7 @@ def create_app(
             "backend and egress policy are separate components; this app starts no listener."
         ),
     )
+    app.add_middleware(BoundedSubmissionBody)
     bearer_scheme = HTTPBearer(auto_error=False)
     router = APIRouter(
         prefix="/api/v1",
@@ -121,18 +190,6 @@ def create_app(
         # secret-bearing URL or token. The schema remains explicit and stable.
         return _error(422, "invalid_request", "request does not match the API schema")
 
-    @app.middleware("http")
-    async def bound_submission(request: Request, call_next: Any) -> Any:
-        if request.method == "POST" and re.fullmatch(
-            r"/api/v1/projects/[^/]+/scans", request.url.path
-        ):
-            length = request.headers.get("content-length")
-            if request.headers.get("transfer-encoding") or length is None or not length.isdecimal():
-                return _error(411, "length_required", "a bounded Content-Length is required")
-            if len(length) > 5 or int(length) > MAX_SUBMISSION_BYTES:
-                return _error(413, "body_too_large", "scan request exceeds the body limit")
-        return await call_next(request)
-
     def principal(
         credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     ) -> Principal:
@@ -149,9 +206,11 @@ def create_app(
         if not actor.allows(project_id, permission):
             raise ApiFault(403, "forbidden", "operation is not permitted for this project")
 
-    def visible(job: JobStatus | None, project_id: str) -> JobStatus:
+    def visible(job: JobStatus | None, project_id: str, job_id: str | None = None) -> JobStatus:
         if job is None or job.project_id != project_id:
             raise ApiFault(404, "not_found", "project or job was not found")
+        if job_id is not None and job.job_id != job_id:
+            raise ApiFault(503, "backend_identity_failure", "job identity could not be verified")
         return job
 
     def checked_job_id(job_id: str) -> str:
@@ -230,24 +289,27 @@ def create_app(
     @router.get("/projects/{project_id}/scans/{job_id}", response_model=JobStatus)
     def status(project_id: str, job_id: str, actor: Principal = Depends(principal)) -> JobStatus:
         access(project_id, actor, "scan:read")
-        return visible(backend.get_job(project_id, checked_job_id(job_id)), project_id)
+        job_id = checked_job_id(job_id)
+        return visible(backend.get_job(project_id, job_id), project_id, job_id)
 
     @router.post("/projects/{project_id}/scans/{job_id}/cancel", response_model=JobStatus)
     def cancel(project_id: str, job_id: str, actor: Principal = Depends(principal)) -> JobStatus:
         access(project_id, actor, "scan:cancel")
-        return visible(backend.cancel_job(project_id, checked_job_id(job_id)), project_id)
+        job_id = checked_job_id(job_id)
+        return visible(backend.cancel_job(project_id, job_id), project_id, job_id)
 
     @router.get("/projects/{project_id}/scans/{job_id}/result", response_model=JobResult)
     def result(project_id: str, job_id: str, actor: Principal = Depends(principal)) -> JobResult:
         access(project_id, actor, "scan:result")
         job_id = checked_job_id(job_id)
-        visible(backend.get_job(project_id, job_id), project_id)
+        visible(backend.get_job(project_id, job_id), project_id, job_id)
         try:
             record = backend.get_result(project_id, job_id)
         except JobNotReady as exc:
             raise ApiFault(409, "result_not_ready", "job has no terminal result yet") from exc
-        if record is None or record.job.project_id != project_id:
+        if record is None:
             raise ApiFault(404, "not_found", "project or job was not found")
+        visible(record.job, project_id, job_id)
         return record
 
     app.include_router(router)
