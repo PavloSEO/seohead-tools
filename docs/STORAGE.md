@@ -755,7 +755,15 @@ The default backup deadline is 60 seconds. Finalization has a separate 10-second
 deadline; a reader that blocks checkpointing leaves `lifecycle=interrupted` and
 `finish_reason=finalization_blocked`, preserving collection completeness separately.
 After the reader closes, `resume_or_finalize()` with an empty frontier only
-finalizes the file. WAL/SHM files are never manually deleted.
+finalizes the file. A successful finalization marks the capture `finished` and
+stamps `finished_at` once no queued or inflight frontier work remains; omitted
+observations are carried by `crawl_partial`, so a drained queue with partial
+evidence still finishes instead of reading as interrupted. An explicit stop --
+aborted before it accepted work, cancelled, or halted by the error circuit --
+keeps `interrupted` and its recorded reason even after the queue drains, so
+cancel, error, and resume paths never receive a false finished timestamp; only
+a `finalization_blocked` retry may still finish. WAL/SHM files are never
+manually deleted.
 
 The current native lanes use these versioned context rows:
 

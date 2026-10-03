@@ -18,6 +18,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 59 chains, each with its commands, its output, its cost and its limits |
 | Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 63 |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
+| Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
 | Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — all 149, generated from the registry |
 | Wondering how this compares to a licensed crawler | [COVERAGE_SF_ISSUES.md](COVERAGE_SF_ISSUES.md) — all 320 published issues, each with a status |
 | Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 24 skills |
@@ -52,6 +53,12 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
   on, what evidence it needs, and the fix that ships with the finding. Generated
   from `seohead/sf/core/registry.py` (`scripts/generate_checks_reference.py`);
   `tests/test_docs_drift.py` fails the build if it drifts from the registry.
+- **[PROVIDERS.md](PROVIDERS.md)** — which external providers are declared, which
+  specialist workflows they actually back, what each needs (auth, quota, privacy),
+  what is explicitly unsupported, and the phased first release. Generated from
+  `seohead/data_sources/providers.py` and the workflow catalogue in
+  `seohead/provider_matrix.py` (`scripts/generate_provider_matrix.py`);
+  `tests/test_docs_drift.py` fails the build if it drifts.
 - **[SETUP.md](SETUP.md)** — install from scratch: Python version, dependency
   groups, venv, optional system tools (SF CLI, `whois`), environment variable
   names (names only, never values), first run checks.
@@ -117,6 +124,8 @@ recounts them. It fails when:
   would produce from the registry right now, or is missing a check id.
 - `docs/TOOL_REFERENCE.md` disagrees with what `scripts/generate_tool_reference.py`
   would produce from the MCP tool definitions right now, or is missing a tool.
+- `docs/PROVIDERS.md` disagrees with what `scripts/generate_provider_matrix.py`
+  would produce from the provider registry and workflow catalogue right now.
 - a command shown in a fenced code block anywhere in the docs no longer runs
   against fixtures (`tests/test_docs_commands_execute.py`).
 
