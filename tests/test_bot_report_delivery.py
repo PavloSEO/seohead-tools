@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import socket
 
 import httpx
@@ -11,6 +12,8 @@ from seohead.bot import (
     AuthorizedReportDelivery,
     DeliveryReceipts,
     DeliveryUnavailable,
+    JobOwnershipStore,
+    ProjectAuthorizationStore,
     ReportProfile,
 )
 from seohead.recon import net
@@ -100,9 +103,7 @@ def test_delivery_refuses_foreign_destination_partial_job_and_unknown_profile(
     with pytest.raises(PermissionError, match="destination"):
         delivery.deliver("alpha", job_id, "other", ReportProfile("json"))
     with pytest.raises(DeliveryUnavailable, match="unavailable"):
-        delivery.preview("alpha", job_id, ReportProfile("pdf"))
-    with pytest.raises(DeliveryUnavailable, match="findings-only"):
-        delivery.preview("alpha", job_id, ReportProfile("json", findings_only=True))
+        ReportProfile("unknown")
     queued = ScanSubmission(target_url="https://public.example.test/", options={"max_urls": 1})
     pending = backend.submit(
         "alpha",
@@ -114,3 +115,99 @@ def test_delivery_refuses_foreign_destination_partial_job_and_unknown_profile(
     ).job
     with pytest.raises(DeliveryUnavailable, match="complete"):
         delivery.preview("alpha", pending.job_id, ReportProfile("json"))
+
+
+def test_findings_only_json_is_rendered_from_retained_evidence(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    sent = []
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda destination, opened, receipt: sent.append(
+            (destination, receipt, json.loads(opened.handle.read()))
+        ),
+    )
+    profile = ReportProfile("json", findings_only=True, severities=("critical",))
+    receipt = delivery.deliver("alpha", job_id, "requester", profile)
+    assert sent[0][:2] == ("requester", receipt)
+    document = sent[0][2]
+    rows = document.get("findings", document.get("issues"))
+    assert isinstance(rows, list)
+    assert all(row.get("severity") == "critical" for row in rows)
+    assert document["summary"]["finding_view"]["coverage_note"]
+
+
+def test_profile_receipts_are_distinct_and_size_limit_is_honest(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    delivery = AuthorizedReportDelivery(
+        backend, {"alpha"}, {"requester"}, receipts, lambda *_: None, max_file_bytes=1
+    )
+    with pytest.raises(DeliveryUnavailable, match="size limit"):
+        delivery.deliver("alpha", job_id, "requester", ReportProfile("json", findings_only=True))
+    full = delivery.preview("alpha", job_id, ReportProfile("json"))
+    filtered = delivery.preview("alpha", job_id, ReportProfile("json", findings_only=True))
+    assert full.artifact_id != filtered.artifact_id
+
+
+def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    delivered = []
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda _destination, opened, _receipt: delivered.append(
+            (opened.filename, opened.media_type, opened.handle.read(2))
+        ),
+    )
+    delivery.deliver("alpha", job_id, "requester", ReportProfile("xlsx", findings_only=True))
+    assert delivered == [
+        (
+            "report.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            b"PK",
+        )
+    ]
+
+
+def test_durable_delivery_ownership_rejects_a_foreign_subject(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    ownership = JobOwnershipStore(tmp_path / "ownership.sqlite")
+    ownership.record(job_id, "requester-a", "alpha")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: None,
+        subject="requester-b",
+        ownership=ownership,
+    )
+    with pytest.raises(PermissionError, match="job is not authorized"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))
+
+
+def test_revoked_subject_cannot_deliver_a_previously_owned_job(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    ownership = JobOwnershipStore(tmp_path / "ownership.sqlite")
+    ownership.record(job_id, "requester", "alpha")
+    authorization = ProjectAuthorizationStore(tmp_path / "grants.sqlite")
+    authorization.grant("requester", "alpha")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: None,
+        subject="requester",
+        ownership=ownership,
+        authorization=authorization,
+    )
+    assert delivery.preview("alpha", job_id, ReportProfile("json")).kind == "audit_json"
+    authorization.revoke("requester", "alpha")
+    with pytest.raises(PermissionError, match="project is not authorized"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))

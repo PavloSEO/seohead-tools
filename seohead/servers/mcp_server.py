@@ -2213,6 +2213,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_bi_destination_apply(
+        package: str,
+        target: str,
+        destination: str,
+        operation: str = "replace",
+        apply: bool = False,
+    ) -> dict[str, Any]:
+        """Request a BI destination write; host authorization is required and credentials are never accepted."""
+        return _checked(
+            handlers.bi_destination_apply(
+                package=package,
+                target=target,
+                destination=destination,
+                operation=operation,
+                apply=apply,
+            )
+        )
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
         """Inspect one URL with bounded metadata/header/robots/redirect/structured/render steps."""
         return _checked(handlers.inspect_url(url=url, checks=checks))

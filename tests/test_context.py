@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import csv
+import itertools
 from pathlib import Path
 
+import pytest
+
+from seohead.crawl.settings import fingerprint
+from seohead.crawl.settings import load as load_crawl_settings
 from seohead.sf.config import load_config
 from seohead.sf.core.aggregate import aggregate
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import load_exports
+from seohead.storage.audit_v2 import AuditV2Reader
+from seohead.storage.native_scan import NativeScan
 
 
 def test_duplicate_urls_collapse(tmp_path):
@@ -92,7 +99,8 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
     assert not groups_path.exists()
 
 
-def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_writes(tmp_path):
+@pytest.mark.parametrize("count", (1_000, 50_000))
+def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_writes(tmp_path, count):
     """The final sort/suppression stage must not reassemble native findings in RAM."""
     p = tmp_path / "internal_all.csv"
     with open(p, "w", encoding="utf-8-sig", newline="") as f:
@@ -101,7 +109,7 @@ def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_wr
         writer.writerows(
             [
                 [f"https://example.com/{index}", "text/html", "200", "OK", "Indexable"]
-                for index in range(1000)
+                for index in range(count)
             ]
         )
     ctx = AuditContext(load_exports(str(tmp_path)), load_config(None), disk_backed_pages=True)
@@ -111,14 +119,37 @@ def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_wr
             ctx.add("TITLE_MISSING", target_url=page.url)
         result = aggregate(ctx, {"input_mode": "crawl", "crawl_partial": False}, {}, {})
         assert not isinstance(result.issues, list)
-        assert len(result.issues) == 1000
-        assert [issue.id for issue in result.issues][:2] == ["ISSUE-000001", "ISSUE-000002"]
-        assert list(result.audit_v2_parts()[1]["/issues"]) == list(
-            result.audit_v2_parts()[1]["/issues"]
-        )
+        assert len(result.issues) == count
+        assert [issue.id for issue in itertools.islice(result.issues, 2)] == [
+            "ISSUE-000001",
+            "ISSUE-000002",
+        ]
+        header, collections = result.audit_v2_parts()
+        assert next(iter(collections["/issues"])) == next(iter(collections["/issues"]))
         assert ctx.page_by_url["https://example.com/0"].issue_ids == ["ISSUE-000001"]
         final_path = Path(ctx._disk_final_issues.path)
         assert final_path.exists()
+        scan_path = tmp_path / "native.sqlite"
+        config = load_crawl_settings(overrides={"speed.min_delay_seconds": 0})
+        with NativeScan.create(
+            scan_path,
+            start_url="https://example.com/",
+            config=config,
+            config_fingerprint=fingerprint(config),
+            writer_version="test",
+            writer_revision="a" * 40,
+            runtime_versions={
+                "python": "test",
+                "sqlite": "test",
+                "httpx": "test",
+                "lxml": "test",
+                "beautifulsoup4": "test",
+            },
+        ) as scan:
+            scan.save_audit_v2(header, collections)
+            assert scan.finish_without_audit("disk-backed aggregate fixture")
+        with AuditV2Reader(scan_path) as reader:
+            assert reader.count("/issues") == reader.count("/pages") == count
     finally:
         ctx.close()
     assert final_path is not None and not final_path.exists()

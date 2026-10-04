@@ -123,6 +123,30 @@ def test_native_scan_saves_audit_result_collections_without_legacy_document(tmp_
         assert con.execute("SELECT COUNT(*) FROM audit").fetchone()[0] == 0
 
 
+def test_audit_v2_moves_sitemap_url_lists_out_of_the_header_without_losing_compatibility():
+    result = AuditResult(
+        run={},
+        summary={
+            "sitemap": {
+                "urls_in_sitemap": 2,
+                "linked_not_in_sitemap": ["https://example.test/a", "https://example.test/b"],
+            }
+        },
+    )
+    header, collections = result.audit_v2_parts()
+    pointer = "/summary/sitemap/linked_not_in_sitemap"
+    assert header["summary"]["sitemap"]["linked_not_in_sitemap"] == []
+    assert list(collections[pointer]) == ["https://example.test/a", "https://example.test/b"]
+    assert result.summary["sitemap"]["linked_not_in_sitemap"] == [
+        "https://example.test/a",
+        "https://example.test/b",
+    ]
+    assert result.to_json()["summary"]["sitemap"]["linked_not_in_sitemap"] == [
+        "https://example.test/a",
+        "https://example.test/b",
+    ]
+
+
 def test_audit_v2_enforces_legacy_export_limit_while_streaming(tmp_path):
     scan = tmp_path / "scan.sqlite"
     binding = _scan(scan)

@@ -347,3 +347,86 @@ def test_remote_disconnect_is_redacted_and_closes_context(monkeypatch, fake_stac
         assert result["renderer"]["transport"]["mode"] == "remote"
     assert fake_stack["context"].closed and fake_stack["browser"].closed
     assert fake_stack["chromium"].launch_calls == []
+
+
+def test_remote_popup_inherits_context_route_before_it_can_navigate(monkeypatch, fake_stack):
+    """A popup belongs to its parent's routed context, never a page-local route."""
+    config = _remote(monkeypatch)
+    monkeypatch.setattr(
+        fake_stack["chromium"],
+        "connect",
+        lambda _endpoint, **_kwargs: fake_stack["browser"],
+        raising=False,
+    )
+    original_goto = fake_stack["page"].goto
+    popup = type("PopupRoute", (), {})()
+    popup.request = type("PopupRequest", (), {})()
+    popup.request.url = "http://169.254.169.254/latest"
+    popup.request.method = "GET"
+    popup.request.all_headers = lambda: {"accept": "text/html"}
+    popup.aborted = []
+    popup.fulfilled = []
+    popup.abort = lambda reason: popup.aborted.append(reason)
+    popup.fulfill = lambda **kwargs: popup.fulfilled.append(kwargs)
+
+    def goto_with_popup(*args, **kwargs):
+        original_goto(*args, **kwargs)
+        fake_stack["context"].new_page()  # controlled popup/new-page fixture
+        fake_stack["context"].routes[-1][1](popup)
+
+    monkeypatch.setattr(fake_stack["page"], "goto", goto_with_popup)
+    result = render.render_document("https://example.com/", _rendering_config(**config))
+
+    assert result["ok"] is False
+    snapshots = fake_stack["context"].new_page_route_snapshots
+    assert len(snapshots) == 2
+    assert all(snapshot[-1][0] == "**/*" for snapshot in snapshots)
+    assert popup.aborted == ["blockedbyclient"] and popup.fulfilled == []
+
+
+def test_remote_navigation_timeout_closes_context_and_browser(monkeypatch, fake_stack):
+    config = _remote(monkeypatch)
+    monkeypatch.setattr(
+        fake_stack["chromium"],
+        "connect",
+        lambda _endpoint, **_kwargs: fake_stack["browser"],
+        raising=False,
+    )
+
+    def timeout(*_args, **_kwargs):
+        raise TimeoutError("synthetic remote navigation timeout")
+
+    monkeypatch.setattr(fake_stack["page"], "goto", timeout)
+    result = render.render_document("https://example.com/", _rendering_config(**config))
+
+    assert result["reason"] == "remote_render_failed"
+    assert fake_stack["context"].closed and fake_stack["browser"].closed
+
+
+def test_remote_jobs_create_fresh_cookie_free_contexts(monkeypatch, fake_stack):
+    config = _remote(monkeypatch)
+    contexts = []
+    initial_cookies = []
+
+    def new_context(**options):
+        context = type(fake_stack["context"])(type(fake_stack["page"])(), **options)
+        context.cookies = {}
+        initial_cookies.append(dict(context.cookies))
+        contexts.append(context)
+        return context
+
+    monkeypatch.setattr(fake_stack["browser"], "new_context", new_context)
+    monkeypatch.setattr(
+        fake_stack["chromium"],
+        "connect",
+        lambda _endpoint, **_kwargs: fake_stack["browser"],
+        raising=False,
+    )
+
+    assert render.render_document("https://example.com/one", _rendering_config(**config))["ok"]
+    contexts[0].cookies["session"] = "first-job"
+    assert render.render_document("https://example.com/two", _rendering_config(**config))["ok"]
+
+    assert len(contexts) == 2 and contexts[0] is not contexts[1]
+    assert initial_cookies == [{}, {}]
+    assert contexts[1].cookies == {}

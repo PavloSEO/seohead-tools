@@ -142,6 +142,7 @@ and this decision makes no backend migration.
 | `gsc-progress` | Inline JSON (`document`)<br>Local file (`file`)<br>Local directory (`out_dir`) | Reads saved normalized GSC evidence only; no provider calls or rank-placement claims.; seohead.gsc-progress-input.v1 document.; Alternative versioned offline GSC input JSON.; Required new local package directory; existing output is refused. |
 | `bi-sheets-plan` | Local directory (`package`)<br>Inline JSON (`max_cells`) | Offline package/checksum/capacity preflight; no Google authentication or write.; Optional declared capacity, never an API quota check. |
 | `bi-bigquery-plan` | Local directory (`package`)<br>Selector (`dataset, operation`) | Offline optional-load plan; no project selection, billing, authentication, or write. |
+| `bi-destination-apply` | Local directory (`package`)<br>Selector (`target, destination, operation`)<br>Inline JSON (`apply`) | Never accepts credentials; a missing host client fails before any destination write.; Requires true and a host-injected authorized client. |
 | `inspect-url` | Live URL (`url`)<br>Inline JSON (`checks`) | Optional bounded selection of closed investigation checks. |
 | `audit-workflow` | Project directory (`directory`)<br>Selector (`action`)<br>Live URL (`target`)<br>Audit document (`audit`) | status, start, prepare, or report.; Required only for action=start.; Required only for action=report. |
 | `workflow-status` | Project directory (`directory`) | — |
@@ -166,13 +167,6 @@ and this decision makes no backend migration.
 | `scan-fragment-links` | Scan artifact (`input_path`)<br>Selector (`state`)<br>Selector (`representation`) | Optional resolved, missing, or skipped occurrence filter.; Optional static, rendered, or legacy_fragment source filter. |
 | `scan-requeue` | Scan artifact (`input_path`)<br>Selector (`where`)<br>Local file (`backup_path`)<br>Scan artifact (`from_scan`) | Restricted saved URL/page predicate.; Mandatory new verified backup destination.; Optional alternate saved selection source. |
 | `scan-import-urls` | Scan artifact (`input_path`)<br>Local file (`urls_file`)<br>Local file (`backup_path`) | Explicit TXT, CSV, XLSX, or XML URL source.; Mandatory new verified backup destination. |
-| `workflow-start` | Project directory (`directory`)<br>Selector (`scenario_id, steps, expected_revision`) | — |
-| `workflow-checkpoint` | Project directory (`directory`)<br>Selector (`run_id, step_id, state, expected_revision`)<br>Inline JSON (`evidence`) | — |
-| `workflow-status` | Project directory (`directory`) | — |
-| `workflow-execute` | Project directory (`directory`)<br>Selector (`scenario_id, steps`)<br>Inline JSON (`outcomes`) | — |
-| `monitor-configure` | Project directory (`directory`)<br>Inline JSON (`policy, expected_revision`) | — |
-| `monitor-run` | Project directory (`directory`)<br>Selector (`scan_id, expected_revision`)<br>Inline JSON (`observations`) | — |
-| `monitor-status` | Project directory (`directory`) | — |
 | `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`)<br>Local file (`auth_config`)<br>Inline text (`auth`)<br>Local file (`sf_cli`)<br>Live URL (`sitemap`)<br>Local directory (`out`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal; Optional SF authentication profile.; Optional HTTP Basic credentials; do not persist or log them.; Optional explicit licensed SF CLI path.; Optional explicit sitemap URL for live rechecks.; Local audit and optional task output directory. |
 | `sf tasks` | Audit document (`audit_json`)<br>Local configuration (`config`)<br>Local directory (`out`) | Local task output directory. |
 | `sf doctor` | Local configuration (`config`)<br>Local file (`sf_cli`) | Optional explicit licensed SF CLI path. |

@@ -164,6 +164,7 @@ COMMANDS = (
     "gsc-progress",
     "bi-sheets-plan",
     "bi-bigquery-plan",
+    "bi-destination-apply",
     "inspect-url",
     "audit-workflow",
     "tool-catalog",
@@ -647,8 +648,16 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = getattr(args, name)
         if getattr(args, "provider_join", None):
             kw["provider_joins"] = args.provider_join
-    elif cmd in {"bi-sheets-plan", "bi-bigquery-plan"}:
-        for name in ("package", "max_cells", "dataset", "operation"):
+    elif cmd in {"bi-sheets-plan", "bi-bigquery-plan", "bi-destination-apply"}:
+        for name in (
+            "package",
+            "max_cells",
+            "dataset",
+            "target",
+            "destination",
+            "operation",
+            "apply",
+        ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd in {"publication-cohorts", "gsc-progress"}:
@@ -2081,6 +2090,14 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--dataset", required=True, help="planned BigQuery dataset name; no cloud write occurs"
         )
         sub.add_argument("--operation", choices=("replace", "append"), default="replace")
+    if cmd == "bi-destination-apply":
+        _source_flag(sub, "--package", help="complete local BI package directory")
+        sub.add_argument("--target", required=True, help="explicit authorized destination target")
+        sub.add_argument("--destination", choices=("sheets", "bigquery"), required=True)
+        sub.add_argument("--operation", choices=("replace", "append"), default="replace")
+        sub.add_argument(
+            "--apply", action="store_true", help="request an injected host-authorized write"
+        )
     if cmd in {"publication-cohorts", "gsc-progress"}:
         _source_flag(sub, "--file", help="versioned offline cohort input JSON")
         _source_flag(

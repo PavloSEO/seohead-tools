@@ -27,6 +27,15 @@ collector starts. Remote rendering still uses the same pinned HTTP fulfiller
 for navigation, redirects, subresources and popups; WebSockets are blocked,
 and a failed remote connection never launches a local browser.
 
+### Rotating or revoking a trusted header reference
+
+Credential headers are stored only as host-bound `env:NAME` references. Rotate
+one by replacing that environment value before the worker starts; validation at
+worker dispatch and resolution for each matching request use the current value,
+not a value written into the queued job. To revoke access, remove the variable.
+Queued work then fails before the collector starts. The job/event records keep
+the reference or its safe failure code, never the header value.
+
 Each submit is atomically keyed by `(project_id, subject, Idempotency-Key)`.
 An identical request returns its existing job; a changed request conflicts.
 Claims use SQLite `BEGIN IMMEDIATE`, a lease owner, expiry and heartbeat.
