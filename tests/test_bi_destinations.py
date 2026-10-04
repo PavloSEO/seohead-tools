@@ -7,6 +7,7 @@ from seohead.reports.bi_destinations import (
     BIDestinationError,
     apply_with_client,
     bigquery_plan,
+    filter_package,
     sheets_plan,
 )
 
@@ -66,3 +67,19 @@ def test_injected_destination_client_is_explicit_transactional_and_streamed(tmp_
     assert result["rows"]["pages"] == 1
     assert client.calls[0] == ("authorize", "synthetic")
     assert client.calls[-1] == ("commit", "tx")
+
+
+def test_filtered_bi_export_is_exact_and_partitioned(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    filtered = filter_package(
+        package,
+        dataset="cohorts",
+        out_dir=tmp_path / "filtered",
+        where={"cohort_id": ["observed_status", "crawl_relative_depth"]},
+        columns=["run_id", "cohort_id", "value_label", "state"],
+        max_rows_per_file=1,
+    )
+    assert filtered["row_count"] == 2
+    assert [part["rows"] for part in filtered["partitions"]] == [1, 1]
+    assert (tmp_path / "filtered" / "manifest.json").is_file()

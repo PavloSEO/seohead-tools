@@ -271,17 +271,16 @@ def filter_package(
             stream = None
 
         open_part()
-        for rows in _csv_chunks(root, manifest["datasets"][dataset]):
-            header, *data = rows
-            for values in data:
-                row = dict(zip(header, values, strict=True))
-                if all(row[key] in allowed for key, allowed in predicates.items()):
-                    if part_rows >= max_rows_per_file:
-                        close_part()
-                        open_part()
-                    writer.writerow({key: row[key] for key in selected})
-                    part_rows += 1
-                    total += 1
+        for part in manifest["datasets"][dataset]["partitions"]:
+            with (root / part["path"]).open(encoding="utf-8", newline="") as source:
+                for row in csv.DictReader(source):
+                    if all(row[key] in allowed for key, allowed in predicates.items()):
+                        if part_rows >= max_rows_per_file:
+                            close_part()
+                            open_part()
+                        writer.writerow({key: row[key] for key in selected})
+                        part_rows += 1
+                        total += 1
         close_part()
         result = {
             "format": "seohead.bi-filter.v1",
