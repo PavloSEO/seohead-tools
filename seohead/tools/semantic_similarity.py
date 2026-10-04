@@ -14,8 +14,9 @@ import json
 import math
 import sqlite3
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence, Sized
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -110,7 +111,23 @@ def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
         raise ValueError("embedding adapter settings must be an object")
     if declared["kind"] == "provider" and not declared.get("external_authorized", False):
         raise PermissionError("external semantic provider is not explicitly authorized")
-    return {"cache_schema": CACHE_SCHEMA_VERSION, **declared}
+    # Keep cache/report identity reproducible without leaking local model paths,
+    # credential references or arbitrary adapter implementation fields.
+    allowed = {
+        name: declared[name]
+        for name in (
+            "kind",
+            "provider",
+            "model_id",
+            "model_version",
+            "settings",
+            "data_transfer",
+            "paid",
+            "external_authorized",
+        )
+        if name in declared
+    }
+    return {"cache_schema": CACHE_SCHEMA_VERSION, **allowed}
 
 
 def cache_key(source_sha256: str, identity: dict[str, Any]) -> str:
@@ -211,11 +228,13 @@ def analyze_semantic_documents(
         raise ValueError("semantic threshold must be in (0, 1]")
     if max_candidate_comparisons < 0:
         raise ValueError("max_candidate_comparisons cannot be negative")
-    selected = list(documents)
-    if len(selected) > MAX_DOCUMENTS:
-        selected = selected[:MAX_DOCUMENTS]
+    total = len(documents) if isinstance(documents, Sized) else None
+    selected = list(islice(documents, MAX_DOCUMENTS + 1))
+    truncated = len(selected) > MAX_DOCUMENTS
+    if truncated:
+        selected.pop()
     coverage: dict[str, Any] = {
-        "eligible_documents": len(selected),
+        "eligible_documents": total if total is not None else len(selected),
         "analyzed_documents": 0,
         "omitted_documents": 0,
         "omission_reasons": {},
@@ -228,6 +247,10 @@ def analyze_semantic_documents(
             "groups": [],
         }
     identity = adapter_identity(adapter)
+    if truncated:
+        omitted = (total - len(selected)) if total is not None else 1
+        coverage["omitted_documents"] += omitted
+        coverage["omission_reasons"]["semantic document limit exceeded"] = omitted
     usable: list[tuple[dict[str, Any], list[float]]] = []
     pending: list[tuple[dict[str, Any], str]] = []
     for document in selected:
