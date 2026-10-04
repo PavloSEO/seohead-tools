@@ -145,6 +145,23 @@ def test_evidence_detail_can_scroll_and_return_to_selected_scan():
     assert state.view == "watch" and state.watch_section == "scans"
 
 
+def test_note_draft_is_visible_before_background_evidence_finishes():
+    state = ShellState(commands=[], view="note", note_text="Typed draft remains visible")
+    console = Console(width=120, height=30, record=True, no_color=True)
+    console.print(
+        build_frame(
+            state,
+            width=120,
+            height=30,
+            palette=theme.resolve_palette(color=False),
+            project="pending",
+            snapshot_override=(None, []),
+        )
+    )
+    assert "Typed draft remains visible" in console.export_text()
+    assert "Enter Save" in console.export_text()
+
+
 def test_dashboard_is_bounded_in_fullscreen_compact_and_each_section(tmp_path):
     root = tmp_path / "project"
     create_project(root, "https://example.test/")
