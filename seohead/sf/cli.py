@@ -7,6 +7,7 @@ This module deliberately remains a thin argument-mapping layer over
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import time
@@ -52,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     run.add_argument("--out", default="report", help="Report output directory (default: ./report)")
+    run.add_argument(
+        "--project",
+        default=None,
+        help="validated local project workspace for read-only live observation",
+    )
     run.add_argument(
         "--profile",
         choices=["lite", "full", "custom"],
@@ -431,11 +437,62 @@ def main(argv: list[str] | None = None) -> int:
     if args.command != "run":
         return 1
 
+    input_mode, source, exports_dir = _resolve_input(args)
+    observed: tuple[str, str] | None = None
+    observed_phase: str | None = None
+
+    def record_phase(name: str) -> None:
+        nonlocal observed_phase
+        if observed is None or observed_phase == name:
+            return
+        from seohead.projects.run_observation import phase
+
+        try:
+            phase(observed[0], observed[1], name)
+        except (OSError, ValueError):
+            return
+        observed_phase = name
+
+    if args.project is not None:
+        import hashlib
+        import json
+        from pathlib import Path
+
+        from seohead.projects.run_observation import start
+        from seohead.projects.workspace import open_project
+
+        project = open_project(args.project)
+        root = Path(project["path"])
+        try:
+            artifact = Path(args.out).resolve().relative_to(root.resolve())
+        except (OSError, ValueError):
+            artifact = None
+        config = load_config(args.config)
+        fingerprint = hashlib.sha256(
+            json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        run = start(
+            root,
+            kind="screaming_frog",
+            mode="sf_live" if input_mode in {"crawl", "crawl-list", "load-crawl"} else "sf_exports",
+            max_urls=0,
+            config_fingerprint=fingerprint,
+            artifact=root / artifact if artifact is not None else None,
+            counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
+        )
+        observed = (str(root), run["id"])
+        record_phase(
+            "collection" if input_mode in {"crawl", "crawl-list", "load-crawl"} else "analysis"
+        )
+
     def log(msg: str) -> None:
+        if msg.startswith("[audit] exports written") or msg.startswith("[audit] loaded exports"):
+            record_phase("analysis")
+        elif msg.startswith("[runner]"):
+            record_phase("collection")
         if args.verbose and not args.quiet:  # progress only when asked
             print(msg, file=sys.stderr)
 
-    input_mode, source, exports_dir = _resolve_input(args)
     if input_mode in ("crawl", "crawl-list") and not args.quiet:
         # Mode B already has the exports; only a fresh crawl can still be fixed.
         for warning in preflight_warnings(
@@ -516,6 +573,11 @@ def main(argv: list[str] | None = None) -> int:
     # The CLI converts any core failure into a concise user-facing error; verbose
     # mode still exposes the traceback for diagnosis.
     except Exception as err:
+        if observed is not None:
+            from seohead.projects.run_observation import finish
+
+            with contextlib.suppress(OSError, ValueError):
+                finish(observed[0], observed[1], state="failed", reason=type(err).__name__)
         print(f"error: {err}", file=sys.stderr)
         if args.verbose:
             import traceback
@@ -540,6 +602,16 @@ def main(argv: list[str] | None = None) -> int:
         log(f"[out] {mp}")
 
     crawl_valid = result.run.get("crawl_valid") is not False
+    if observed is not None:
+        from seohead.projects.run_observation import finish
+
+        with contextlib.suppress(OSError, ValueError):
+            finish(
+                observed[0],
+                observed[1],
+                state="finished" if crawl_valid else "failed",
+                reason="finished" if crawl_valid else "crawl_invalid",
+            )
     if not args.quiet:
         sev = result.summary["by_severity"]
         health = result.summary["health_score"]

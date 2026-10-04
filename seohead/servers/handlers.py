@@ -6,6 +6,7 @@ behavior to the core + a handler here, then surface it in each face.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
 from collections.abc import Callable
@@ -639,18 +640,79 @@ def crawl_site(
             )
         from seohead.servers.scan_handlers import resume_scan
 
+        resume_data = None
         if project_root is not None:
             from seohead.projects.runtime import admission
             from seohead.servers.scan_handlers import resume_inputs
 
+            resume_data = resume_inputs(resume)
             gate = admission(
-                str(project_root), resume_inputs(resume)["settings"], approved=approve_large_crawl
+                str(project_root), resume_data["settings"], approved=approve_large_crawl
             )
             if not gate["ok"]:
                 return {"ok": False, "error": gate["reason"], "admission": gate}
+            from seohead.projects.run_observation import NativeRunReporter, finish, start
+
+            try:
+                within_project = Path(resume).resolve().is_relative_to(project_root.resolve())
+            except OSError:
+                within_project = False
+            if within_project:
+                from math import isfinite
+
+                from seohead.crawl.settings import effective_request_rate
+
+                rate = effective_request_rate(resume_data["settings"])
+                observed = start(
+                    project_root,
+                    kind="native",
+                    mode="spider",
+                    max_urls=resume_data["settings"]["limits"]["max_urls"],
+                    max_requests=resume_data["settings"]["limits"].get("max_requests", 0),
+                    max_crawl_seconds=resume_data["settings"]["limits"].get("max_crawl_seconds", 0),
+                    max_requests_per_second=float(rate) if isfinite(rate) else None,
+                    config_fingerprint=str(resume_data.get("config_fingerprint") or "unknown"),
+                    artifact=resume,
+                    resumed=True,
+                )
+                reporter = NativeRunReporter(project_root, observed["id"], progress)
+                try:
+                    result = resume_scan(
+                        resume,
+                        url=url,
+                        producer_build=producer_build,
+                        progress=reporter,
+                        observation=reporter.enter,
+                    )
+                except BaseException as exc:
+                    with contextlib.suppress(OSError, ValueError):
+                        finish(
+                            project_root,
+                            observed["id"],
+                            state="failed",
+                            reason=type(exc).__name__,
+                            counters=reporter.counters(),
+                        )
+                    raise
+                with contextlib.suppress(OSError, ValueError):
+                    finish(
+                        project_root,
+                        observed["id"],
+                        state=(
+                            "partial"
+                            if result.get("partial") or result.get("audit_available") is False
+                            else "finished"
+                        ),
+                        reason=str(
+                            result.get("audit_reason") or "audit_unavailable"
+                            if result.get("audit_available") is False
+                            else result.get("finish_reason") or "finished"
+                        ),
+                        counters=reporter.counters(),
+                    )
+                return {**result, "observer_run_id": observed["id"]}
         return resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
 
-    import contextlib
     import os
 
     from seohead.crawl import cache as http_cache
@@ -786,15 +848,76 @@ def crawl_site(
             raise ValueError("scan_out and a legacy output directory cannot be combined")
         from seohead.servers.scan_handlers import crawl_site_scan
 
-        return crawl_site_scan(
-            url,
-            scan_out=scan_out,
-            settings=settings,
-            sitemap=sitemap,
-            producer_build=producer_build,
-            progress=progress,
-            proxy_route=proxy_route,
-        )
+        observed = None
+        reporter = None
+        if project_root is not None:
+            from seohead.projects.run_observation import NativeRunReporter, start
+
+            try:
+                within_project = Path(scan_out).resolve().is_relative_to(project_root.resolve())
+            except OSError:
+                within_project = False
+            if within_project:
+                from math import isfinite
+
+                rate = crawl_config.effective_request_rate(settings)
+                observed = start(
+                    project_root,
+                    kind="native",
+                    mode="spider",
+                    max_urls=settings["limits"]["max_urls"],
+                    max_requests=settings["limits"]["max_requests"],
+                    max_crawl_seconds=settings["limits"]["max_crawl_seconds"],
+                    max_requests_per_second=float(rate) if isfinite(rate) else None,
+                    config_fingerprint=crawl_config.fingerprint(settings),
+                    artifact=scan_out,
+                )
+                reporter = NativeRunReporter(project_root, observed["id"], progress)
+        try:
+            result = crawl_site_scan(
+                url,
+                scan_out=scan_out,
+                settings=settings,
+                sitemap=sitemap,
+                producer_build=producer_build,
+                progress=reporter or progress,
+                observation=reporter.enter if reporter is not None else None,
+                proxy_route=proxy_route,
+            )
+        except BaseException as exc:
+            if observed is not None and reporter is not None:
+                from seohead.projects.run_observation import finish
+
+                with contextlib.suppress(OSError, ValueError):
+                    finish(
+                        project_root,
+                        observed["id"],
+                        state="failed",
+                        reason=type(exc).__name__,
+                        counters=reporter.counters(),
+                    )
+            raise
+        if observed is not None and reporter is not None:
+            from seohead.projects.run_observation import finish
+
+            with contextlib.suppress(OSError, ValueError):
+                finish(
+                    project_root,
+                    observed["id"],
+                    state=(
+                        "partial"
+                        if result.get("partial") or result.get("audit_available") is False
+                        else "finished"
+                    ),
+                    reason=str(
+                        result.get("audit_reason") or "audit_unavailable"
+                        if result.get("audit_available") is False
+                        else result.get("finish_reason") or "finished"
+                    ),
+                    counters=reporter.counters(),
+                )
+            return {**result, "observer_run_id": observed["id"]}
+        return result
     dispatch_gate = None
     if url:
         from seohead.crawl.throttle import DispatchGate, Throttle

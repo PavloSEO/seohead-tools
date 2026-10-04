@@ -12,8 +12,12 @@ live-rechecks, remain opt-in.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
+from hashlib import sha256
+from json import dumps
+from pathlib import Path
 from typing import Any
 
 from seohead.sf.core.audit import INPUT_MODES, run_audit
@@ -68,6 +72,7 @@ def _do_run(
     out: str = "report",
     config: str | None = None,
     sitemap: str | None = None,
+    project: str | None = None,
 ) -> dict[str, Any]:
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {sorted(VALID_MODES)}, got {mode!r}")
@@ -75,28 +80,90 @@ def _do_run(
         raise ValueError(f"profile must be one of {sorted(VALID_PROFILES)}, got {profile!r}")
     if not source:
         raise ValueError("`input` (exports dir / .seospider / url / list) is required")
-    if mode == "parse-exports":
-        result = run_audit(
-            input_mode=mode,
-            exports_dir=source,
-            profile=profile,
-            config_path=config or "config.json",
-            sitemap_url=sitemap,
-            log=lambda m: None,
+    observed: tuple[str, str] | None = None
+    observed_phase: str | None = None
+
+    def record_phase(name: str) -> None:
+        nonlocal observed_phase
+        if observed is None or observed_phase == name:
+            return
+        from seohead.projects.run_observation import phase
+
+        try:
+            phase(observed[0], observed[1], name)
+        except (OSError, ValueError):
+            return
+        observed_phase = name
+
+    if project is not None:
+        from seohead.projects.run_observation import start
+        from seohead.projects.workspace import open_project
+        from seohead.sf.config import load_config
+
+        opened = open_project(project)
+        root = Path(opened["path"])
+        try:
+            artifact = Path(out).resolve().relative_to(root.resolve())
+        except (OSError, ValueError):
+            artifact = None
+        resolved_config = load_config(config or "config.json")
+        run = start(
+            root,
+            kind="screaming_frog",
+            mode="sf_live" if mode != "parse-exports" else "sf_exports",
+            max_urls=0,
+            config_fingerprint=sha256(
+                dumps(resolved_config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            artifact=root / artifact if artifact is not None else None,
+            counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
         )
-    else:
-        result = run_audit(
-            input_mode=mode,
-            source=source,
-            profile=profile,
-            config_path=config or "config.json",
-            sitemap_url=sitemap,
-            output_dir=os.path.join(out, "exports"),
-            log=lambda m: None,
-        )
-    os.makedirs(out, exist_ok=True)
-    json_path = write_json(result, os.path.join(out, "audit.json"))
-    md_path = write_markdown(result, os.path.join(out, "audit.md"))
+        observed = (str(root), run["id"])
+        record_phase("collection" if mode != "parse-exports" else "analysis")
+
+    def log(message: str) -> None:
+        if message.startswith("[audit] exports written") or message.startswith(
+            "[audit] loaded exports"
+        ):
+            record_phase("analysis")
+        elif message.startswith("[runner]"):
+            record_phase("collection")
+
+    try:
+        if mode == "parse-exports":
+            result = run_audit(
+                input_mode=mode,
+                exports_dir=source,
+                profile=profile,
+                config_path=config or "config.json",
+                sitemap_url=sitemap,
+                log=log,
+            )
+        else:
+            result = run_audit(
+                input_mode=mode,
+                source=source,
+                profile=profile,
+                config_path=config or "config.json",
+                sitemap_url=sitemap,
+                output_dir=os.path.join(out, "exports"),
+                log=log,
+            )
+        os.makedirs(out, exist_ok=True)
+        json_path = write_json(result, os.path.join(out, "audit.json"))
+        md_path = write_markdown(result, os.path.join(out, "audit.md"))
+    except Exception as exc:
+        if observed is not None:
+            from seohead.projects.run_observation import finish
+
+            with contextlib.suppress(OSError, ValueError):
+                finish(observed[0], observed[1], state="failed", reason=type(exc).__name__)
+        raise
+    if observed is not None:
+        from seohead.projects.run_observation import finish
+
+        with contextlib.suppress(OSError, ValueError):
+            finish(observed[0], observed[1], state="finished", reason="finished")
     return {
         "summary": result.summary,
         "json_path": os.path.abspath(json_path),
@@ -111,6 +178,7 @@ async def _do_run_cancellable(
     out: str = "report",
     config: str | None = None,
     sitemap: str | None = None,
+    project: str | None = None,
 ) -> dict[str, Any]:
     """Run ``_do_run`` off the event loop and stop its child on cancellation.
 
@@ -136,7 +204,15 @@ async def _do_run_cancellable(
 
     def blocking() -> dict[str, Any]:
         with _RUN_LOCK:
-            return _do_run(mode, source, profile=profile, out=out, config=config, sitemap=sitemap)
+            return _do_run(
+                mode,
+                source,
+                profile=profile,
+                out=out,
+                config=config,
+                sitemap=sitemap,
+                project=project,
+            )
 
     try:
         return await anyio.to_thread.run_sync(blocking, abandon_on_cancel=True)
@@ -190,6 +266,7 @@ def register(mcp):  # pragma: no cover - needs the SDK
         out: str = "report",
         config: str | None = None,
         sitemap: str | None = None,
+        project: str | None = None,
     ) -> dict[str, Any]:
         """Run an SF audit and write audit.json plus audit.md.
 
@@ -210,7 +287,7 @@ def register(mcp):  # pragma: no cover - needs the SDK
         same ``out`` path.
         """
         return await _do_run_cancellable(
-            mode, input, profile=profile, out=out, config=config, sitemap=sitemap
+            mode, input, profile=profile, out=out, config=config, sitemap=sitemap, project=project
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)

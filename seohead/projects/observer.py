@@ -151,54 +151,74 @@ def _retained_findings(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
-    """Read retained scan evidence only; failures remain observable data."""
+    """Read collector evidence even while an audit is not yet available."""
     from seohead.storage import open_scan
     from seohead.storage.status import scan_status
 
     path = row["path"]
     try:
         status = scan_status(path)
-        retained = _retained_findings(row)
-        by_severity: dict[str, int] = {}
-        finding_items = []
-        for issue in retained["issues"]:
-            severity = issue.get("severity") if isinstance(issue, dict) else None
-            if isinstance(severity, str):
-                by_severity[severity] = by_severity.get(severity, 0) + 1
-            if isinstance(issue, dict) and len(finding_items) < 20:
-                finding_items.append(
-                    {
-                        key: issue.get(key)
-                        for key in (
-                            "id",
-                            "check",
-                            "severity",
-                            "target_url",
-                            "message",
-                            "fingerprint",
-                        )
-                    }
-                )
         with open_scan(path, require_audit=False) as con:
             sitemap_rows = con.execute(
                 "SELECT completeness,COUNT(*) FROM context_items "
                 "WHERE kind='sitemap_fetch_summary' GROUP BY completeness"
             ).fetchall()
-        return {
-            "state": "available",
-            "frontier": status["frontier"],
-            "committed_page_outcomes": status["committed_page_outcomes"],
-            "findings": {
-                "total": sum(by_severity.values()),
-                "by_severity": by_severity,
-                "items": finding_items,
-                "truncated": len(retained["issues"]) > len(finding_items),
-            },
-            "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
-            "skipped_checks": retained["skipped_checks"],
-        }
     except (OSError, ValueError, KeyError) as exc:
         return {"state": "unavailable", "reason": str(exc)}
+
+    evidence = {
+        "state": "available",
+        "frontier": status["frontier"],
+        "committed_page_outcomes": status["committed_page_outcomes"],
+        "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
+    }
+    try:
+        retained = _retained_findings(row)
+    except (OSError, ValueError, KeyError) as exc:
+        evidence.update(
+            findings={
+                "state": "unavailable",
+                "reason": str(exc),
+                "total": None,
+                "by_severity": {},
+                "items": [],
+                "truncated": False,
+            },
+            skipped_checks=None,
+        )
+        return evidence
+    by_severity: dict[str, int] = {}
+    finding_items = []
+    for issue in retained["issues"]:
+        severity = issue.get("severity") if isinstance(issue, dict) else None
+        if isinstance(severity, str):
+            by_severity[severity] = by_severity.get(severity, 0) + 1
+        if isinstance(issue, dict) and len(finding_items) < 20:
+            finding_items.append(
+                {
+                    key: issue.get(key)
+                    for key in (
+                        "id",
+                        "check",
+                        "severity",
+                        "target_url",
+                        "message",
+                        "fingerprint",
+                    )
+                }
+            )
+    evidence.update(
+        findings={
+            "state": "available",
+            "reason": None,
+            "total": sum(by_severity.values()),
+            "by_severity": by_severity,
+            "items": finding_items,
+            "truncated": len(retained["issues"]) > len(finding_items),
+        },
+        skipped_checks=retained["skipped_checks"],
+    )
+    return evidence
 
 
 def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
@@ -576,6 +596,7 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     from .coverage import coverage_status
     from .execution import status as execution_status
     from .monitoring import status as monitor_status
+    from .run_observation import status as run_status
     from .runtime import project_policy
 
     execution = execution_status(root)
@@ -627,6 +648,7 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         "progress": progress,
         "execution": execution,
         "monitor": monitor,
+        "runs": run_status(root),
         "policy": project_policy(str(root)),
         "sites": {
             "total": len(sites),

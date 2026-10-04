@@ -317,6 +317,7 @@ def resume_inputs(scan_path: str) -> dict[str, Any]:
         "start_url": header["start_url"],
         "settings": settings,
         "writer_revision": header["writer_revision"],
+        "config_fingerprint": header["config_fingerprint"],
     }
 
 
@@ -326,6 +327,7 @@ def resume_scan(
     url: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    observation: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Continue an interrupted native scan from its stored frontier and throttle state.
 
@@ -356,6 +358,7 @@ def resume_scan(
         settings=inputs["settings"],
         producer_build=revision,
         progress=progress,
+        observation=observation,
     )
 
 
@@ -367,6 +370,7 @@ def crawl_site_scan(
     sitemap: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    observation: Callable[[str], None] | None = None,
     proxy_route=None,
 ) -> dict[str, Any]:
     """Collect a native scan, then audit its SQL graph with finite page/output bounds.
@@ -411,6 +415,15 @@ def crawl_site_scan(
     from seohead.crawl.sqlite_adapter import crawl_to_scan
     from seohead.storage.native_scan import NativeScan
 
+    def announce(name: str) -> None:
+        if observation is None:
+            return
+        try:
+            observation(name)
+        except (OSError, ValueError):
+            return
+
+    announce("collection")
     run = crawl_to_scan(
         url,
         scan_out=scan_out,
@@ -425,6 +438,7 @@ def crawl_site_scan(
     )
     external_summary = None
     if external_crawl:
+        announce("external")
         from time import monotonic
         from urllib.parse import urlsplit
 
@@ -482,6 +496,7 @@ def crawl_site_scan(
         settings.get("rendering", {}).get("rendered_links", {}).get("crawl", False)
         and settings.get("rendering", {}).get("mode", "raw") != "raw"
     ):
+        announce("render")
         from dataclasses import replace
 
         from seohead.crawl.sqlite_render import run_render_escalation
@@ -586,6 +601,7 @@ def crawl_site_scan(
         # from a lost crawl, so an unexpected failure here is named by phase and points
         # at the retained, re-analysable artifact instead of propagating as-is.
         try:
+            announce("analysis")
             with prepare_sitemap_reconciliation(scan.con, start_url=url) as reconciliation:
                 _response_data, audit = _audit_crawl_result(
                     result,
@@ -638,6 +654,7 @@ def crawl_site_scan(
             scan.note_audit_unavailable(reason)
             finalized = scan.finish_capture(reason=run.finish_reason)
             return _response(run, audit_available=False, audit_reason=reason, finalized=finalized)
+        announce("finalizing")
         finalized = scan.finish_capture(reason=run.finish_reason)
     _response_data.update(
         _response(run, audit_available=True, audit_reason="", finalized=finalized)

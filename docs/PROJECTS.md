@@ -132,6 +132,19 @@ quick-crawl and approval budgets, while project template/profile references iden
 the saved setup. Unknown or unavailable coverage remains named as such; it is never
 reported as a completed audit.
 
+Project-bound native crawls and optional `sf run --project DIRECTORY` attempts
+also retain a small live-run record. It shows the collector mode, the recorded
+URL budget, the current measured frontier counters when the collector exposes
+them, its retained request/time budgets and configured request-rate ceiling,
+the measured recent request rate when available, phase events, a
+project-relative artifact reference, and whether the
+launching local PID is live, abandoned, unknown, or retained after a terminal
+outcome. A crawler's discovered frontier and configured URL budget are separate
+values; neither is presented as a site-total percentage. Screaming Frog exposes
+no reliable live URL counter, so its counter fields stay unavailable while its
+collection/analysis phases remain observable. The observer only reads these
+records and never starts, cancels, resumes, or acknowledges a run.
+
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
 They accept ordinary terminal text, including OS dictation committed as text; no
 speech-recognition integration is involved. These are the only writes from the
