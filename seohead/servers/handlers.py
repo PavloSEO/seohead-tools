@@ -4064,16 +4064,18 @@ def project_open(directory: str, expected_site: str | None = None) -> dict[str, 
     return core(directory, expected_site=expected_site)
 
 
-def project_status(directory: str) -> dict[str, Any]:
+def project_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_basic_status
 
-    return project_basic_status(directory)
+    return project_basic_status(directory, consumer=consumer)
 
 
-def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+def project_progress(
+    directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
+) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_progress as core
 
-    return core(directory, limit=limit, offset=offset)
+    return core(directory, limit=limit, offset=offset, consumer=consumer)
 
 
 def remediation_summary(ledger: str) -> dict[str, Any]:

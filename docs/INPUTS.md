@@ -62,6 +62,8 @@ and this decision makes no backend migration.
 | `markdown-extract` | Live URL (`url`)<br>Inline HTML (`html`) | — |
 | `boilerplate-report` | Inline corpus (`pages`)<br>Scan artifact (`scan`) | — |
 | `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
+| `semantic-similarity` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`embeddings, adapter`)<br>Local file (`cache_path`)<br>Selector (`threshold, max_candidate_comparisons`) | — |
+| `meta-description-drafts` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context, drafts, executor`)<br>Local file (`checkpoint_path, json_path, csv_path`)<br>Selector (`batch_size`) | — |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
@@ -70,6 +72,7 @@ and this decision makes no backend migration.
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset. |
 | `facts-export` | Inline JSON (`sites`) | — |
+| `marketing-inventory` | Inline JSON (`documents`)<br>Selector (`cta_selector, form_selector, id_attributes, id_parameters`)<br>Local directory (`out_dir`) | — |
 | `keywords-expand` | Provider query (`phrase`) | — |
 | `keywords-seasonality` | Provider query (`phrase`) | — |
 | `keywords-exact` | Provider query (`keywords`) | — |
@@ -100,6 +103,18 @@ and this decision makes no backend migration.
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
 | `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
+| `project-observe` | Project directory (`directory`)<br>Selector (`consumer`)<br>Inline JSON (`scan_limit`) | Optional scoped unread-notice recipient.; Bounded retained scan-history page. |
+| `project-inbox-submit` | Project directory (`directory`)<br>Inline text (`text`)<br>Selector (`kind, references, author_role`) | — |
+| `project-inbox-list` | Project directory (`directory`)<br>Selector (`consumer, offset, limit, include_acknowledged`) | — |
+| `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-acknowledge` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
+| `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `remediation-summary` | Local file (`ledger`) | — |
+| `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |
+| `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |
+| `remediation-record-verification` | Local file (`ledger, verification_path`)<br>Selector (`actor, expected_revision`) | — |
+| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`) | — |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
 | `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |

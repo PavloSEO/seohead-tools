@@ -1498,10 +1498,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A stable consumer optionally receives a bounded inbox notice.  Reading a
         status never marks notes read or acknowledged.
         """
-        result = handlers.project_status(directory=directory)
-        if consumer is not None:
-            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
-        return _checked(result)
+        return _checked(handlers.project_status(directory=directory, consumer=consumer))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_progress(
@@ -1514,10 +1511,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         the shared coverage axis has a measured, nonzero denominator. It is
         explicitly task completion, not a site-health or remediation percentage.
         """
-        result = handlers.project_progress(directory=directory, limit=limit, offset=offset)
-        if consumer is not None:
-            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
-        return _checked(result)
+        return _checked(
+            handlers.project_progress(
+                directory=directory, limit=limit, offset=offset, consumer=consumer
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_observe(
@@ -1527,7 +1525,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         retained scan state and the execution-log tail.  It never starts work or
         consumes inbox entries; a consumer only receives its own unread summary.
         """
-        return _checked(handlers.project_observe(directory, consumer, scan_limit))
+        return _checked(
+            handlers.project_observe(
+                directory=directory, consumer=consumer, scan_limit=scan_limit
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_inbox_submit(

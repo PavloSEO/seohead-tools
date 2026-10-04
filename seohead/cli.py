@@ -2361,7 +2361,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        return tui_run(no_color=args.no_color, project=getattr(args, "project", None))
+        return tui_run(
+            no_color=args.no_color,
+            project=getattr(args, "project", None),
+            commands=COMMANDS,
+        )
     from seohead.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))

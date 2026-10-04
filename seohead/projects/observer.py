@@ -32,6 +32,9 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     root, _ = _load(directory)
     status = project_status(root)
     progress = project_progress(root, limit=100)
+    from .execution import status as execution_status
+
+    execution = execution_status(root)
     preparation = status["preparation"]
     checks = status["checklist"].get("items", [])
     methods = [
@@ -53,6 +56,7 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         "ok": True,
         "project": status["project"],
         "progress": progress,
+        "execution": execution,
         "methods": methods,
         "preparation": {
             "state": preparation["state"],

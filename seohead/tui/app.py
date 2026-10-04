@@ -12,6 +12,7 @@ Rendering uses ``rich`` (optional ``tui`` extra); keyboard input is stdlib
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from typing import TextIO
 
 from rich.console import Console, Group
@@ -50,11 +51,9 @@ _HELP_LINES = (
 )
 
 
-def command_rows() -> list[str]:
-    """The palette source: the shared CLI command table plus group namespaces."""
-    from seohead.cli import COMMANDS
-
-    return list(COMMANDS)
+def command_rows(commands: Sequence[str]) -> list[str]:
+    """The CLI passes its command table in, keeping presentation out of the core graph."""
+    return list(commands)
 
 
 def _header_text(palette: theme.Palette) -> Text:
@@ -178,6 +177,9 @@ def _watch_lines(
                 Text(
                     f"goals/notes  {snapshot['inbox']['pagination']['total']} retained prompts and handoffs"
                 ),
+                Text(
+                    f"workflow runs {len(snapshot['execution']['runs'])} · next {snapshot['execution']['next_action'] or 'none'}"
+                ),
                 Text(""),
                 Text("Use numbered views to inspect evidence rather than an agent claim."),
             )
@@ -198,6 +200,8 @@ def _watch_lines(
         for item in preparation["competitors"]:
             lines.append(Text(f"  [{item.get('state', 'unknown')}] {item['url']}"))
         lines.append(Text("goals and prompts:"))
+        for run in snapshot["execution"]["runs"][-3:]:
+            lines.append(Text(f"  [{run['state']}] {run['scenario_id']} · {run['id']}"))
         for item in snapshot["inbox"]["entries"][-5:]:
             lines.append(Text(f"  [{item['goal_state'] or item['kind']}] {item['text']}"))
     elif section == "scans":
@@ -281,6 +285,7 @@ def run(
     stdin: TextIO | None = None,
     console: Console | None = None,
     project: str | None = None,
+    commands: Sequence[str] = (),
 ) -> int:
     """Launch the interactive shell; returns a process exit code."""
     stdin = sys.stdin if stdin is None else stdin
@@ -295,7 +300,7 @@ def run(
             file=sys.stderr,
         )
         return 1
-    state = ShellState(commands=command_rows(), view="watch" if project else "palette")
+    state = ShellState(commands=command_rows(commands), view="watch" if project else "palette")
     fd = stdin.fileno()
     message: str | None = None
     try:

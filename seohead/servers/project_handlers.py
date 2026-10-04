@@ -31,13 +31,24 @@ def project_open(directory: str, expected_site: str | None = None) -> dict[str, 
     return open_project(directory, expected_site=expected_site)
 
 
-def project_basic_status(directory: str) -> dict[str, Any]:
-    return project_status(directory)
+def _with_inbox_notice(result: dict[str, Any], directory: str, consumer: str | None) -> dict[str, Any]:
+    """Add only this project's unread summary without consuming it."""
+    if consumer is None:
+        return result
+    from seohead.projects.inbox import unread_summary
+
+    return {**result, "inbox_unread": unread_summary(directory, consumer=consumer)}
 
 
-def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+def project_basic_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
+    return _with_inbox_notice(project_status(directory), directory, consumer)
+
+
+def project_progress(
+    directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
+) -> dict[str, Any]:
     """Return a bounded project progress page without running or changing work."""
-    return _project_progress(directory, limit=limit, offset=offset)
+    return _with_inbox_notice(_project_progress(directory, limit=limit, offset=offset), directory, consumer)
 
 
 def project_inbox_submit(
