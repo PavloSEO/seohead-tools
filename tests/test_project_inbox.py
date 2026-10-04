@@ -78,6 +78,21 @@ def test_mcp_progress_returns_notice_without_consuming_it(tmp_path):
     assert unread_summary(root, consumer="agent/session-a")["count"] == 1
 
 
+def test_project_bound_mcp_work_call_gets_only_its_consumer_notice(tmp_path):
+    root = _project(tmp_path)
+    submit(root, text="Scoped note")
+    server = build_server()
+    facts = server._tool_manager.get_tool("seo_project_facts")
+    result = facts.fn(
+        directory=str(root),
+        facts=[{"name": "cms", "value": "fixture", "provenance": "operator", "observed_at": None}],
+        consumer="agent/session-a",
+    )
+    assert result["inbox_unread"]["count"] == 1
+    assert unread_summary(root, consumer="agent/other-session")["count"] == 1
+    assert unread_summary(root, consumer="agent/session-a")["count"] == 1
+
+
 def test_observer_snapshot_keeps_missing_work_and_logs_visible(tmp_path):
     root = _project(tmp_path)
     (root / "log.md").write_text("# Project log\n\nSynthetic handoff evidence\n", encoding="utf-8")

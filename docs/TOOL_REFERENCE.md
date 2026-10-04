@@ -1290,6 +1290,7 @@ Preview or record project stack facts that stack-aware priorities then read.
 | `facts` | `list[dict[str, Any]] | None` | `None` |
 | `detect` | `bool` | `False` |
 | `apply` | `bool` | `False` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
@@ -1370,6 +1371,7 @@ Record supplied evidence for one checklist item without executing its operation.
 | `item_id` | `str` | `required` |
 | `record` | `dict` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1498,6 +1500,7 @@ Prepare an existing project with a bounded native crawl and saved sitemap covera
 | `competitors` | `list | None` | `None` |
 | `approve_large_crawl` | `bool` | `False` |
 | `producer_build` | `str | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 

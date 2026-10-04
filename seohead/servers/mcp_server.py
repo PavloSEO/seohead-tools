@@ -84,6 +84,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 
+    def with_project_notice(
+        result: dict[str, Any], directory: str, consumer: str | None
+    ) -> dict[str, Any]:
+        """Attach a scoped notice without letting an unrelated project leak in."""
+        if consumer is None:
+            return result
+        result = dict(result)
+        result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return result
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_parse(
         url: str = "", urls: list[str] | None = None, options: dict[str, Any] | None = None
@@ -1663,6 +1673,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         facts: list[dict[str, Any]] | None = None,
         detect: bool = False,
         apply: bool = False,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Preview or record project stack facts that stack-aware priorities then read.
 
@@ -1672,9 +1683,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         with its reason instead of guessing. The default is a read-only preview;
         apply=true records the result in project.json.
         """
-        return _checked(
-            handlers.project_facts(directory=directory, facts=facts, detect=detect, apply=apply)
-        )
+        return _checked(with_project_notice(
+            handlers.project_facts(directory=directory, facts=facts, detect=detect, apply=apply),
+            directory, consumer,
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_init(
@@ -1732,7 +1744,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_record(
-        directory: str, item_id: str, record: dict, expected_revision: int
+        directory: str, item_id: str, record: dict, expected_revision: int, consumer: str | None = None
     ) -> dict[str, Any]:
         """Record supplied evidence for one checklist item without executing its operation.
 
@@ -1743,14 +1755,14 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
         ``pending_exclusion`` inside the denominator. This never makes a network request.
         """
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_checklist_record(
                 directory=directory,
                 item_id=item_id,
                 record=record,
                 expected_revision=expected_revision,
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_view_list(directory: str) -> dict[str, Any]:
@@ -1831,21 +1843,22 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         competitors: list | None = None,
         approve_large_crawl: bool = False,
         producer_build: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Prepare an existing project with a bounded native crawl and saved sitemap coverage.
 
         Competitors must be supplied candidates with provenance; absent sources stay pending.
         All site checklists remain separate. Paid provider calls are never hidden in preparation.
         """
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_prepare(
                 directory,
                 template=template,
                 competitors=competitors,
                 approve_large_crawl=approve_large_crawl,
                 producer_build=producer_build,
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_start(
