@@ -66,6 +66,7 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
         )
     ctx = AuditContext(load_exports(str(tmp_path)), load_config(None), disk_backed_pages=True)
     store_path = Path(ctx._disk_pages.path)
+    issues_path = Path(ctx.issues.path)
     try:
         assert len(ctx.pages) == 2
         live = ctx.page_by_norm["https://example.com/live"]
@@ -75,7 +76,12 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
         reopened = ctx.page_by_url["https://example.com/live/"]
         assert reopened.metrics["bytes_per_word"] == 3.5
         assert reopened.issue_ids == ["ISSUE-000001"]
+        ctx.add("TITLE_MISSING", target_url="https://example.com/live/")
+        assert [issue.check for issue in ctx.issues] == ["TITLE_MISSING"]
+        ctx.retract("TITLE_MISSING", "fixture withdrawal")
+        assert list(ctx.issues) == []
         assert [page.url for page in ctx.indexable_html_pages()] == ["https://example.com/live/"]
     finally:
         ctx.close()
     assert not store_path.exists()
+    assert not issues_path.exists()

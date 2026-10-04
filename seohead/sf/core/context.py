@@ -204,6 +204,45 @@ class _DiskPages:
         return _representative(pages) if pages else None
 
 
+class _DiskIssues:
+    """Ordered pre-aggregation findings kept out of the Python heap."""
+
+    def __init__(self) -> None:
+        descriptor, name = tempfile.mkstemp(prefix="seohead-audit-issues-", suffix=".sqlite")
+        os.close(descriptor)
+        self.path, self.closed = name, False
+        self.con = sqlite3.connect(name)
+        self.con.execute(
+            "CREATE TABLE issues (ordinal INTEGER PRIMARY KEY, check_id TEXT, value_json TEXT)"
+        )
+        self.con.execute("CREATE INDEX issues_check ON issues(check_id, ordinal)")
+
+    def append(self, issue: Issue) -> None:
+        ordinal = self.con.execute("SELECT COALESCE(MAX(ordinal) + 1, 0) FROM issues").fetchone()[0]
+        self.con.execute(
+            "INSERT INTO issues VALUES (?,?,?)",
+            (ordinal, issue.check, json.dumps(issue.__dict__, ensure_ascii=False)),
+        )
+
+    def __iter__(self) -> Iterator[Issue]:
+        for row in self.con.execute("SELECT value_json FROM issues ORDER BY ordinal"):
+            yield Issue(**json.loads(row[0]))
+
+    def __len__(self) -> int:
+        return self.con.execute("SELECT COUNT(*) FROM issues").fetchone()[0]
+
+    def remove_check(self, check_id: str) -> None:
+        self.con.execute("DELETE FROM issues WHERE check_id=?", (check_id,))
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.con.close()
+        with suppress(FileNotFoundError):
+            os.unlink(self.path)
+
+
 class _PageLookup(Mapping[str, Page]):
     def __init__(self, pages: _DiskPages, *, normalized: bool = False) -> None:
         self.pages, self.normalized = pages, normalized
@@ -302,7 +341,7 @@ class AuditContext:
         self.trust_evidence: dict[str, Any] = {}
         self.thresholds: dict[str, Any] = config.get("thresholds", {})
         self.requirements: dict[str, Any] = config.get("requirements", {})
-        self.issues: list[Issue] = []
+        self.issues: Any = _DiskIssues() if disk_backed_pages else []
         self.groups: list[Group] = []
         self.skipped: list[SkippedCheck] = []
         self._skipped_ids: set[str] = set()
@@ -495,7 +534,10 @@ class AuditContext:
         buckets has to be one operation, or the issues are dropped while the
         skip is silently refused and the check vanishes from both.
         """
-        self.issues = [i for i in self.issues if i.check != check_id]
+        if isinstance(self.issues, _DiskIssues):
+            self.issues.remove_check(check_id)
+        else:
+            self.issues = [i for i in self.issues if i.check != check_id]
         self._fired_ids.discard(check_id)
         self.skip(check_id, reason)
 
@@ -539,6 +581,8 @@ class AuditContext:
         if self._disk_pages is not None:
             self._disk_pages.close()
             self._disk_pages = None
+        if isinstance(self.issues, _DiskIssues):
+            self.issues.close()
 
     def __del__(self) -> None:
         self.close()
