@@ -48,6 +48,7 @@ class ShellState:
     note_error: str = ""
     note_limit: int = 8000
     paste_active: bool = False
+    motion_enabled: bool = True
     watch_section: str = "overview"
     watch_index: int = 0
     watch_offset: int = 0
@@ -175,7 +176,9 @@ class ShellState:
                 self.quit_requested = key == "ctrl_c"
             return
         if self.view == "watch":
-            if key == "char:n":
+            if key == "char:m":
+                self.motion_enabled = not self.motion_enabled
+            elif key == "char:n":
                 self.note_text = ""
                 self.note_error = ""
                 self.note_kind = "note"

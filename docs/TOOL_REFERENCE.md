@@ -2664,6 +2664,7 @@ Run an SF audit and write audit.json plus audit.md.
 | `out` | `str` | `'report'` |
 | `config` | `str | None` | `None` |
 | `sitemap` | `str | None` | `None` |
+| `project` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 

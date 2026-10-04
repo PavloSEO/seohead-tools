@@ -11,6 +11,7 @@ Rendering uses ``rich`` (optional ``tui`` extra); keyboard input is stdlib
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections.abc import Sequence
@@ -708,6 +709,18 @@ def _watch_dashboard(
                 recent_run["events"][-1]["phase"] if recent_run["events"] else "unknown phase"
             )
             run_hint = f"{recent_run['kind']} · {recent_run['state']} · {last_phase}"
+            runtime = (
+                recent_run.get("collector_runtime")
+                if recent_run["kind"] == "screaming_frog"
+                else recent_run.get("controller")
+            )
+            if recent_run["state"] == "running" and (runtime or {}).get("state") == "live":
+                marker = (
+                    "◐◓◑◒"[int(time.monotonic()) % 4]
+                    if state.motion_enabled and palette.color
+                    else "+"
+                )
+                run_hint = f"{marker} observed active · {run_hint}"
         header.add_row(
             Text(
                 f"Notes {snapshot['inbox']['pagination']['total']}  ·  "
@@ -1022,7 +1035,7 @@ def _watch_dashboard(
     else:
         footer.append("↑ ↓ Browse   Enter Evidence   1-9 / 0 Switch section\n", style=muted)
     if state.view == "watch":
-        footer.append("n Note   g Goal   Esc Back   q Quit", style=accent)
+        footer.append("n Note   g Goal   m Motion   Esc Back   q Quit", style=accent)
     footer.no_wrap = True
     footer.overflow = "ellipsis"
     root["footer"].update(footer)
@@ -1112,6 +1125,11 @@ def run(
         )
         return 1
     state = ShellState(commands=command_rows(commands), view="watch" if project else "palette")
+    state.motion_enabled = os.environ.get("SEOHEAD_REDUCED_MOTION", "").lower() not in {
+        "1",
+        "true",
+        "yes",
+    }
     if project:
         from seohead.projects.inbox import MAX_TEXT
 
