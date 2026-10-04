@@ -474,8 +474,12 @@ def triage(
         elif kind == "goal":
             goal_id = outcome.get("goal_id")
             goal = next((item for item in document["entries"] if item["id"] == goal_id), None)
-            if goal is None or goal["kind"] != "proposed_goal":
-                raise ValueError("goal triage requires a stored proposed goal id")
+            if (
+                goal is None
+                or goal["kind"] != "proposed_goal"
+                or goal["goal_state"] not in {"proposed", "accepted"}
+            ):
+                raise ValueError("goal triage requires a current stored proposed goal id")
             receipt["goal_id"] = goal_id
         elif kind == "competitor":
             competitors = outcome.get("competitors")

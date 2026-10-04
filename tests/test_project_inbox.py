@@ -161,6 +161,25 @@ def test_specialist_note_triage_requires_explicit_nonexecution_reason(tmp_path, 
     assert result["entry"]["triage"][-1]["reason"] == "Synthetic missing evidence."
 
 
+def test_specialist_note_triage_does_not_link_a_completed_goal(tmp_path):
+    root = _project(tmp_path)
+    goal = submit(root, text="Completed work", kind="proposed_goal")
+    set_goal_state(root, entry_id=goal["entry"]["id"], state="accepted")
+    set_goal_state(root, entry_id=goal["entry"]["id"], state="completed")
+    note = submit(root, text="Reuse the completed goal")
+    with pytest.raises(ValueError, match="current stored proposed goal"):
+        triage(
+            root,
+            entry_id=note["entry"]["id"],
+            outcome={
+                "kind": "goal",
+                "reason": "This must fail because the target is already complete.",
+                "goal_id": goal["entry"]["id"],
+            },
+            actor="agent/controller",
+        )
+
+
 def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tmp_path):
     root = _project(tmp_path)
     scan_hash = fingerprint(root)
