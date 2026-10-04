@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Thread
 from typing import TextIO
@@ -43,6 +44,7 @@ _DETAIL_HINTS = "enter/esc back · ctrl-c quit"
 _HELP_HINTS = "esc back · ctrl-c quit"
 _WATCH_HINTS = (
     "1 overview · 2 tasks · 3 methods · 4 scans · 5 findings · 6 views · 7 activity · 8 log "
+    "· 9 Screaming Frog · 0 inbox "
     "· arrows/page browse · n note · g goal · q quit"
 )
 _NOTE_HINTS = "type dictated note · enter save · esc discard"
@@ -367,6 +369,62 @@ def _watch_lines(
                 palette,
             )
         )
+    elif section == "sf":
+        runs = [
+            item
+            for item in snapshot.get("runs", {}).get("items", [])
+            if item["kind"] == "screaming_frog"
+        ]
+        lines.append(Text("Project-bound Screaming Frog runs · live CLI / supplied exports"))
+        if not runs:
+            lines.append(Text("No Screaming Frog run is recorded for this project."))
+        for run in runs[:10]:
+            collector = run["collector"]
+            events = run.get("events", [])
+            phase = events[-1]["phase"] if events else "not recorded"
+            lines.extend(
+                [
+                    Text(f"{run['state']} · {collector['mode']} · phase {phase}"),
+                    Text(
+                        f"Owner PID {run['pid']} · {run['pid_state']} · started {run['started_at']}"
+                    ),
+                    Text(
+                        f"Collector PID {run.get('collector_pid') or 'not recorded'} · "
+                        f"{run.get('collector_runtime', {}).get('state', 'unknown')} · "
+                        f"observed {run.get('collector_runtime', {}).get('observed_at', 'not recorded')}"
+                    ),
+                    Text(f"Artifact: {run.get('artifact') or 'not recorded'}"),
+                    Text(f"Finish: {run.get('finish_reason') or 'not recorded'}"),
+                    Text(""),
+                ]
+            )
+        lines.append(
+            Text("Live SF URL counts/speed are unavailable unless the collector records them.")
+        )
+    elif section == "inbox":
+        from seohead.projects.inbox import list_entries
+
+        page = list_entries(project, consumer="observer/local", limit=50, offset=state.watch_offset)
+        entries = page["entries"]
+        state.watch_index = min(state.watch_index, max(0, len(entries) - 1))
+        state.watch_inbox_entry_id = entries[state.watch_index]["id"] if entries else None
+        lines.append(
+            Text(
+                f"Inbox · offset {state.watch_offset} · {page['pagination']['total']} entries · Enter opens outcome"
+            )
+        )
+        lines.extend(
+            _select(
+                [
+                    f"{item['id']} · {item['kind']} · "
+                    f"{item['triage'][-1]['kind'] if item.get('triage') else 'waiting for agent'} · "
+                    f"{item['text'].replace(chr(10), ' ')}"
+                    for item in entries
+                ],
+                state.watch_index,
+                palette,
+            )
+        )
     else:
         lines.append(Text("project execution log (bounded retained tail):"))
         lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-20:])
@@ -382,6 +440,43 @@ def _watch_lines(
 
 
 def _watch_detail_lines(project: str, state: ShellState, palette: theme.Palette) -> list[Text]:
+    if state.watch_detail_kind == "inbox":
+        from seohead.projects.inbox import list_entries
+
+        page = list_entries(project, consumer="observer/local", limit=50, offset=state.watch_offset)
+        entry = next(
+            (item for item in page["entries"] if item["id"] == state.watch_inbox_entry_id), None
+        )
+        if entry is None:
+            return [Text("Selected inbox entry is unavailable; return and refresh.")]
+        lines = [
+            Text(entry["id"], style=palette.title if palette.color else ""),
+            Text(
+                f"{entry['kind']} · {entry['created_at']} · goal {entry.get('goal_state') or 'none'}"
+            ),
+            Text(entry["text"]),
+            Text(""),
+            Text("Agent triage / linked work:"),
+        ]
+        for outcome in entry.get("triage", []):
+            lines.extend(
+                [
+                    Text(f"{outcome['kind']} · {outcome['actor']} · {outcome['recorded_at']}"),
+                    Text(outcome["reason"]),
+                    Text(
+                        str(
+                            {
+                                key: outcome[key]
+                                for key in ("task_ids", "goal_id", "competitors")
+                                if key in outcome
+                            }
+                        )
+                    ),
+                ]
+            )
+        if not entry.get("triage"):
+            lines.append(Text("Saved locally; no agent triage receipt recorded."))
+        return lines
     from seohead.projects.observer import finding_detail, saved_view_page
 
     try:
@@ -605,8 +700,24 @@ def _watch_dashboard(
         Text(site.get("label") or site.get("host") or "Project", style="bold"),
         Text(f"{width + 4} x {height + 2}", style=muted),
     )
+    if snapshot:
+        recent_run = next(iter(snapshot.get("runs", {}).get("items", [])), None)
+        run_hint = "No project run recorded"
+        if recent_run:
+            last_phase = (
+                recent_run["events"][-1]["phase"] if recent_run["events"] else "unknown phase"
+            )
+            run_hint = f"{recent_run['kind']} · {recent_run['state']} · {last_phase}"
+        header.add_row(
+            Text(
+                f"Notes {snapshot['inbox']['pagination']['total']}  ·  "
+                f"Competitors {len(snapshot['preparation']['competitors'])}  ·  0 Inbox",
+                style=muted,
+            ),
+            Text(run_hint, style=accent),
+        )
     root["header"].update(header)
-    sidebar = width >= 96 and height >= 20
+    sidebar = width >= 130 and height >= 26
     if sidebar:
         root["body"].split_row(Layout(name="nav", size=23), Layout(name="content"))
         nav = [Text("WORKSPACE", style=muted), Text("")]
@@ -614,7 +725,7 @@ def _watch_dashboard(
             selected = section == state.watch_section
             nav.append(
                 Text(
-                    f" {'>' if selected else ' '} {index}  {section.title()}",
+                    f" {'>' if selected else ' '} {index % 10}  {'Screaming Frog' if section == 'sf' else section.title()}",
                     style=palette.highlight if selected and palette.color else "",
                 )
             )
@@ -647,8 +758,21 @@ def _watch_dashboard(
         body = _watch_lines(project, state, palette, message, snapshot=snapshot)
     available = max(1, height - 10)
     if state.view == "watch_detail":
+        content_width = max(10, width - (27 if sidebar else 4))
+        wrapping_console = Console(width=content_width)
+        body = [
+            wrapped
+            for line in body
+            for wrapped in line.wrap(
+                wrapping_console, content_width, overflow="fold", no_wrap=False
+            )
+        ]
         state.watch_detail_offset = min(state.watch_detail_offset, max(0, len(body) - available))
         body = body[state.watch_detail_offset :]
+    elif state.view == "note":
+        content_width = max(10, width - (27 if sidebar else 4))
+        draft_lines = list(body[-1].wrap(Console(width=content_width), content_width))
+        body = body[:-1] + draft_lines[-max(1, available - 3) :]
     # Scroll selected rows into the viewport while retaining their context.
     if state.view == "watch" and state.watch_section not in {"overview", "log"}:
         first = max(0, state.watch_index - max(1, available - 6) + 1)
@@ -662,6 +786,20 @@ def _watch_dashboard(
         latest = scans[0] if scans else {}
         evidence = latest.get("evidence", {})
         counts = evidence.get("frontier", {}).get("counts") or {}
+        native_run = next(
+            (
+                run
+                for run in snapshot.get("runs", {}).get("items", [])
+                if run["kind"] == "native"
+                and run.get("artifact")
+                and latest.get("path")
+                and (Path(project) / run["artifact"]).resolve() == Path(latest["path"]).resolve()
+                and run["collector"]["config_fingerprint"] == latest.get("config_fingerprint")
+            ),
+            None,
+        )
+        outcomes = evidence.get("committed_page_outcomes")
+        retained_pages = sum(outcomes.values()) if isinstance(outcomes, dict) else None
         findings = evidence.get("findings", {}).get("total")
         cards = Table.grid(expand=True, padding=(0, 1))
         for _ in range(3):
@@ -670,7 +808,7 @@ def _watch_dashboard(
             *[
                 Panel(Text(f"{value}\n{label}", style=accent), border_style=border)
                 for value, label in [
-                    (str(counts.get("done", "—")), "URLs retained"),
+                    (str(retained_pages) if retained_pages is not None else "—", "Pages retained"),
                     (str(findings) if findings is not None else "—", "Findings"),
                     (str(snapshot["scans"]["total"]), "Saved scans"),
                 ]
@@ -678,7 +816,7 @@ def _watch_dashboard(
         )
         content.split_column(
             Layout(name="metrics", size=4),
-            Layout(name="crawl", size=8),
+            Layout(name="crawl", size=11 if native_run and height >= 32 else 8),
             Layout(name="evidence"),
         )
         content["metrics"].update(cards)
@@ -687,7 +825,7 @@ def _watch_dashboard(
         )
         discovered = sum(counts.get(key, 0) for key in ("done", "queued", "inflight"))
         sitemap = evidence.get("sitemaps", {}).get("fetch_summaries", {})
-        crawl = Group(
+        crawl_lines = [
             Text(
                 f"{scan_state}  ·  {latest.get('source_kind', 'collector unknown')}  ·  {latest.get('finish_reason') or 'no finish recorded'}",
                 style=accent,
@@ -702,11 +840,31 @@ def _watch_dashboard(
                 "Sitemap: " + (str(sitemap) if sitemap else "NOT MEASURED"),
                 style="#fbbf24" if palette.color and not sitemap else "",
             ),
-        )
+        ]
+        if native_run:
+            collector = native_run["collector"]
+            rate = native_run["counters"].get("rate_per_second")
+            crawl_lines.insert(
+                1,
+                Text(
+                    f"Mode {collector['mode']} · last collection sample "
+                    f"{f'{rate:.2f} URLs/s' if rate is not None else 'speed unavailable'}"
+                ),
+            )
+            if height >= 32:
+                crawl_lines.append(
+                    _meter(
+                        "Run URL budget · not whole-site completion",
+                        native_run["counters"].get("fetched"),
+                        collector.get("max_urls"),
+                        palette,
+                    )
+                )
+        crawl = Group(*crawl_lines)
         content["crawl"].update(
             Panel(
                 crawl,
-                title="Spider & collection",
+                title="Collection & scope",
                 title_align="left",
                 border_style=border,
                 padding=(0, 1),
@@ -721,23 +879,34 @@ def _watch_dashboard(
             {},
         )
         method_counts = primary.get("methods", {}).get("kinds", {})
-        checklist = [Text("WORK COVERAGE", style=accent), Text("")]
+        meters = Table.grid(expand=True, padding=(0, 1))
+        meters.add_column(ratio=1)
+        meters.add_column(ratio=1)
+        meter_cells = []
         for kind, label in [("scenario", "Scenarios"), ("skill", "Skills")]:
             record = method_counts.get(kind, {})
-            checklist.extend(
-                [_meter(label, record.get("completed"), record.get("expected"), palette), Text("")]
+            meter_cells.append(
+                _meter(label, record.get("completed"), record.get("expected"), palette)
             )
+        meters.add_row(*meter_cells)
+        checklist = [meters, Text("")]
         items = snapshot["progress"]["items"]
-        checklist.append(Text("CHECKLIST PREVIEW", style=muted))
-        for item in items[: max(3, height - 26)]:
+        custom = [item for item in items if str(item.get("id", "")).startswith("custom:")]
+        checklist.append(Text("AGENT TASKS" if custom else "NEXT ACTIONS", style=accent))
+        work_items = custom if custom else snapshot["progress"]["next_actions"]
+        for item in work_items[: max(3, height - 26)]:
             marker = "+" if item["state"] == "completed" else "-"
             checklist.append(
                 Text(
-                    f"{marker} [{item['state']}] {item['title']}", overflow="ellipsis", no_wrap=True
+                    f"{marker} [{item['state']}] {item.get('title') or item.get('action') or item['id']}",
+                    overflow="ellipsis",
+                    no_wrap=True,
                 )
             )
-        if not items:
-            checklist.append(Text("No checklist evidence recorded", style=muted))
+        if not work_items:
+            checklist.append(
+                Text("No agent task recorded · 2 opens the complete checklist", style=muted)
+            )
         findings_lines = [Text("FINDINGS BY SEVERITY", style=accent), Text("")]
         severity = evidence.get("findings", {}).get("by_severity", {})
         peak = max(severity.values(), default=1) or 1
@@ -843,7 +1012,7 @@ def _watch_dashboard(
         footer.append("↑ ↓ Scroll evidence   PgUp/PgDn Scroll page   Enter/Esc Back", style=accent)
     elif not sidebar:
         footer.append(
-            "1 Overview  2 Tasks  3 Methods  4 Scans  5 Findings  6 Views  7 Activity  8 Log\n",
+            "1 Home  2 Tasks  3 Methods  4 Scans  5 Findings\n6 Views  7 Activity  8 Log  9 SF  0 Inbox\n",
             style=muted,
         )
     elif state.watch_section == "findings":
@@ -851,7 +1020,7 @@ def _watch_dashboard(
             "↑ ↓ Browse   Enter Evidence   PgUp/PgDn Page   f Filter   s Sort\n", style=muted
         )
     else:
-        footer.append("↑ ↓ Browse   Enter Evidence   1-8 Switch section\n", style=muted)
+        footer.append("↑ ↓ Browse   Enter Evidence   1-9 / 0 Switch section\n", style=muted)
     if state.view == "watch":
         footer.append("n Note   g Goal   Esc Back   q Quit", style=accent)
     footer.no_wrap = True

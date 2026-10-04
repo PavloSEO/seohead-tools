@@ -22,6 +22,8 @@ WATCH_SECTIONS = (
     "views",
     "activity",
     "log",
+    "sf",
+    "inbox",
 )
 
 #: Commands offered next to the flat tool list. Grouped namespaces keep their
@@ -57,6 +59,7 @@ class ShellState:
     watch_detail_kind: str = "finding"
     watch_selected_scan_uuid: str | None = None
     watch_view_name: str | None = None
+    watch_inbox_entry_id: str | None = None
     _all: list[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -191,6 +194,8 @@ class ShellState:
                 "char:6",
                 "char:7",
                 "char:8",
+                "char:9",
+                "char:0",
             }:
                 self.watch_section = {
                     "char:1": "overview",
@@ -201,6 +206,8 @@ class ShellState:
                     "char:6": "views",
                     "char:7": "activity",
                     "char:8": "log",
+                    "char:9": "sf",
+                    "char:0": "inbox",
                 }[key]
                 self.watch_index = 0
                 self.watch_offset = 0
@@ -231,12 +238,13 @@ class ShellState:
                 self.watch_descending = not self.watch_descending
                 self.watch_offset = 0
                 self.watch_index = 0
-            elif key == "enter" and self.watch_section in {"findings", "scans", "views"}:
+            elif key == "enter" and self.watch_section in {"findings", "scans", "views", "inbox"}:
                 self.watch_detail_offset = 0
                 self.watch_detail_kind = {
                     "findings": "finding",
                     "scans": "scan",
                     "views": "view",
+                    "inbox": "inbox",
                 }[self.watch_section]
                 self.view = "watch_detail"
             elif key in ("escape", "char:q", "ctrl_c"):

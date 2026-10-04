@@ -131,6 +131,64 @@ def test_saved_note_is_linked_to_selected_finding(tmp_path):
     assert state.note_text == "" and not state.note_ready
 
 
+def test_sf_and_inbox_tabs_expose_bound_runs_and_human_notes(tmp_path):
+    from seohead.projects.inbox import submit
+    from seohead.projects.observer import observe
+    from seohead.projects.run_observation import start
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    start(
+        root,
+        kind="screaming_frog",
+        mode="sf_exports",
+        max_urls=0,
+        config_fingerprint="offline-exports",
+        artifact=None,
+        counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
+    )
+    submit(root, text="Please inspect this competitor")
+    snapshot = observe(root)
+    palette = theme.resolve_palette(color=False)
+    state = ShellState(commands=[], view="watch")
+    state.handle_key("char:9")
+    sf = "\n".join(
+        line.plain for line in _watch_lines(str(root), state, palette, None, snapshot=snapshot)
+    )
+    assert "sf_exports" in sf and "Collector PID not recorded" in sf
+    assert "unavailable" in sf
+    state.handle_key("char:0")
+    inbox = "\n".join(
+        line.plain for line in _watch_lines(str(root), state, palette, None, snapshot=snapshot)
+    )
+    assert "Please inspect this competitor" in inbox and "waiting for agent" in inbox
+    state.handle_key("enter")
+    assert state.watch_detail_kind == "inbox"
+
+
+def test_inbox_page_after_first_hundred_is_reachable(tmp_path):
+    import json
+
+    from seohead.projects.inbox import submit
+    from seohead.projects.observer import observe
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    submit(root, text="Note 0")
+    path = root / "inbox.json"
+    document = json.loads(path.read_text())
+    first = document["entries"][0]
+    document["entries"] = [
+        {**first, "id": f"inbox:synthetic-{index}", "text": f"Note {index}"} for index in range(101)
+    ]
+    path.write_text(json.dumps(document))
+    state = ShellState(commands=[], view="watch", watch_section="inbox", watch_offset=100)
+    lines = _watch_lines(
+        str(root), state, theme.resolve_palette(color=False), None, snapshot=observe(root)
+    )
+    assert "Note 100" in "\n".join(line.plain for line in lines)
+
+
 def test_raw_input_preserves_terminal_newline_output_and_restores_attributes():
     master, slave = pty.openpty()
     try:
@@ -289,6 +347,8 @@ def test_dashboard_is_bounded_in_fullscreen_compact_and_each_section(tmp_path):
             "views",
             "activity",
             "log",
+            "sf",
+            "inbox",
         ):
             state = ShellState(commands=[], view="watch", watch_section=section)
             console = Console(width=width, height=height, no_color=True)
