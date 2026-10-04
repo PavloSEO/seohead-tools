@@ -4819,6 +4819,33 @@ def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> 
     return {"ok": True, **bigquery_plan(package, dataset=dataset, operation=operation)}
 
 
+def bi_destination_apply(
+    package: str,
+    target: str,
+    destination: str,
+    operation: str,
+    apply: bool = False,
+    *,
+    client: Any = None,
+) -> dict[str, Any]:
+    """Apply a verified local BI package through an injected authorized destination client."""
+    if destination not in {"sheets", "bigquery"}:
+        raise ValueError("destination must be 'sheets' or 'bigquery'")
+    if client is None:
+        raise ValueError(
+            "destination apply requires an injected authorized client; CLI/MCP never accepts credentials"
+        )
+    from seohead.reports.bi_destinations import apply_with_client
+
+    return {
+        "ok": True,
+        "destination": destination,
+        **apply_with_client(
+            package, target=target, operation=operation, client=client, apply=apply
+        ),
+    }
+
+
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
     """Run a closed, bounded single-URL investigation using the existing shared tools."""
     chosen = checks if checks is not None else ["metadata", "headers", "robots"]
@@ -5136,6 +5163,7 @@ _RAW_HANDLERS = {
     "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,
     "bi_bigquery_plan": bi_bigquery_plan,
+    "bi_destination_apply": bi_destination_apply,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server
