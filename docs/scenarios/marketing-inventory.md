@@ -40,7 +40,7 @@ as a page with no CTAs or forms.
 ## Run
 
 ```bash
-seohead marketing-inventory < ./inventory-input.json
+seohead marketing-inventory --input '{"documents":[{"url":"https://example.com/pricing","document_ref":"scan:demo/document:12","representation":"raw","html":"<a class=\"cta\" href=\"/demo\">Book a demo</a><a class=\"cta\">Talk to us</a><form data-form-id=\"lead\" action=\"/send\"></form>"}]}'
 ```
 
 To write inspectable local artifacts, select a new directory explicitly:

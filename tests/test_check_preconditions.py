@@ -106,11 +106,12 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # skip or fire. Its sibling H2_DUPLICATE, added in the same change, reads
     # the same column and happens to fire here instead (two fixture rows
     # already share an H2), which is why only one id moved, not two.
-    # 59 -> 61 after the bounded native-only duplicate-id check and the
-    # recorded URL hygiene checks joined the registry. The fixture neither
-    # carries duplicate-id evidence nor an observed slash/session candidate,
-    # so these remain named silent checks rather than manufactured findings.
-    assert coverage["checks_silent"] <= 61
+    # 59 -> 62 after the bounded native-only duplicate-id check, URL hygiene,
+    # and literal placeholder-marker check joined the registry. The fixture
+    # has no parser evidence for duplicate ids and no marker/session/slash
+    # candidate, so these remain named silent checks rather than manufactured
+    # findings.
+    assert coverage["checks_silent"] <= 62
 
 
 def test_a_disabled_check_is_its_own_bucket_never_silent_or_clean(tmp_path):
