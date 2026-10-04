@@ -119,6 +119,7 @@ COMMANDS = (
     "remediation-summary",
     "remediation-cases",
     "remediation-transition",
+    "remediation-record-verification",
     "remediation-report",
     "project-facts",
     "project-checklist-init",
@@ -469,6 +470,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "remediation-summary",
         "remediation-cases",
         "remediation-transition",
+        "remediation-record-verification",
         "remediation-report",
     }:
         for name in (
@@ -484,6 +486,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "observation_id",
             "decided_at",
             "out_dir",
+            "verification_path",
         ):
             value = getattr(args, name, None)
             if value is not None:
@@ -1789,6 +1792,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "remediation-summary",
         "remediation-cases",
         "remediation-transition",
+        "remediation-record-verification",
         "remediation-report",
     }:
         _source_flag(sub, "--ledger", help="validated local ledger.v1 SQLite artifact")
@@ -1806,6 +1810,15 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--expected-revision", dest="expected_revision", type=int)
         sub.add_argument("--observation-id", dest="observation_id", type=int)
         sub.add_argument("--decided-at", dest="decided_at", help="UTC ISO-8601 decision time")
+    if cmd == "remediation-record-verification":
+        _source_flag(
+            sub,
+            "--verification-path",
+            dest="verification_path",
+            help="retained verification.v1 JSON",
+        )
+        sub.add_argument("--actor", help="recheck actor")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
     if cmd == "remediation-report":
         sub.add_argument("--out-dir", dest="out_dir", help="new directory for JSON and Markdown")
     if cmd == "project-open":

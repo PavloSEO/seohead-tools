@@ -27,6 +27,7 @@ from seohead.storage.ledger import (
     occurrence_key,
     open_ledger,
     read_cases,
+    record_verification,
     remediation_report,
     remediation_summary,
     transition_occurrence,
@@ -511,6 +512,53 @@ def test_remediation_report_writes_deterministic_review_files_without_mutating_l
     assert ledger.read_bytes() == before
     with pytest.raises(FileExistsError):
         write_remediation_report(ledger, tmp_path / "report")
+
+
+def test_retained_verification_artifact_records_pending_case_outcome_atomically(tmp_path):
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)],
+    )
+    ingest_scan(ledger, scan)
+    occurrence = _occurrences(read_cases(ledger))[0]
+    revision = ledger_summary(ledger)["ledger_revision"]
+    for state in ("verified", "fix_reported", "recheck_pending"):
+        transition_occurrence(
+            ledger,
+            occurrence_key=occurrence["occurrence_key"],
+            state=state,
+            actor="reviewer",
+            reason=f"move to {state}",
+            expected_revision=revision,
+        )
+        revision += 1
+    verification = tmp_path / "verification.json"
+    verification.write_text(
+        json.dumps(
+            {
+                "schema_version": "verification.v1",
+                "findings": [
+                    {
+                        "finding_id": "ISSUE-000001",
+                        "check": "CHECK_ONE",
+                        "url": A,
+                        "status": "resolved",
+                        "reason": "measured clean verdict",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    recorded = record_verification(
+        ledger, verification, actor="bounded-recheck", expected_revision=revision
+    )
+    assert recorded["recorded"] == 1
+    stored = _occurrences(read_cases(ledger))[0]
+    assert stored["current_state"] == "resolved"
+    assert stored["decisions"][-1]["observation_id"] is None
+    assert recorded["verification_sha256"] in stored["decisions"][-1]["reason"]
 
 
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):

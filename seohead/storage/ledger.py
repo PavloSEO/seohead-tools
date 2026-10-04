@@ -1725,6 +1725,127 @@ def transition_occurrence(
     }
 
 
+def record_verification(
+    ledger: str | Path | sqlite3.Connection,
+    verification_path: str | Path,
+    *,
+    actor: str,
+    expected_revision: int,
+) -> dict[str, Any]:
+    """Apply one retained ``verification.v1`` artifact to pending ledger cases.
+
+    The verification artifact is already the immutable evidence produced by the
+    bounded recheck lane.  This records its byte digest and row id alongside
+    every resulting decision, rather than pretending a missing after-finding is
+    an observation.  All rows must map to exactly one pending local occurrence;
+    an ambiguous, incomplete or stale batch is refused atomically.
+    """
+    path = Path(verification_path)
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > MAX_PAYLOAD_BYTES:
+        raise LedgerError("verification artifact must be a bounded regular file")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise LedgerError("verification artifact is not valid JSON") from exc
+    if document.get("schema_version") != "verification.v1":
+        raise LedgerError("verification artifact must use schema_version verification.v1")
+    findings = document.get("findings")
+    if not isinstance(findings, list) or not findings:
+        raise LedgerError("verification artifact has no finding results")
+    if type(expected_revision) is not int or expected_revision < 0:
+        raise LedgerError("expected_revision must be a nonnegative integer")
+    actor = _lifecycle_text(actor, "actor", 128)
+    artifact_sha256 = _sha256_file(path)
+    outcomes = {
+        "resolved": "resolved",
+        "persisting": "persisting",
+        "changed": "regressed",
+        "not_verifiable": "unverifiable",
+    }
+
+    own = not isinstance(ledger, sqlite3.Connection)
+    con = open_ledger(ledger, write=True) if own else ledger
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        header = con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()
+        if header is None or header["ledger_revision"] != expected_revision:
+            raise LedgerError("ledger revision changed; reread cases before recording verification")
+        prepared: list[tuple[sqlite3.Row, str, str]] = []
+        seen: set[int] = set()
+        for index, item in enumerate(findings):
+            if not isinstance(item, dict):
+                raise LedgerError("verification finding result must be an object")
+            check, url, status = item.get("check"), item.get("url"), item.get("status")
+            if not isinstance(check, str) or not isinstance(url, str) or status not in outcomes:
+                raise LedgerError("verification finding has unsupported check, URL or status")
+            rows = con.execute(
+                "SELECT o.occurrence_id,o.finding_id,o.current_state FROM occurrence o "
+                "JOIN check_def c ON c.check_id=o.check_id "
+                "WHERE c.check_key=? AND o.subject_type='url' AND o.subject_value=?",
+                (check, canonical_url(url)),
+            ).fetchall()
+            if len(rows) != 1:
+                raise LedgerError(
+                    "verification finding does not map to exactly one ledger occurrence"
+                )
+            occurrence = rows[0]
+            if occurrence["occurrence_id"] in seen:
+                raise LedgerError(
+                    "verification artifact maps multiple rows to one ledger occurrence"
+                )
+            if occurrence["current_state"] != "recheck_pending":
+                raise LedgerError("verification result requires a recheck_pending occurrence")
+            detail = item.get("reason")
+            if not isinstance(detail, str):
+                detail = ""
+            reason = _lifecycle_text(
+                f"verification.v1 sha256={artifact_sha256} row={index}; {detail or 'bounded recheck result'}",
+                "reason",
+                2048,
+            )
+            prepared.append((occurrence, outcomes[status], reason))
+            seen.add(int(occurrence["occurrence_id"]))
+        next_revision = expected_revision + 1
+        for occurrence, state, reason in prepared:
+            con.execute(
+                "INSERT INTO decision(occurrence_id,state,actor,reason,decided_at,decided_at_state,"
+                "observation_id,ledger_revision) VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    occurrence["occurrence_id"],
+                    state,
+                    actor,
+                    reason,
+                    _utc(),
+                    "known",
+                    None,
+                    next_revision,
+                ),
+            )
+            con.execute(
+                "UPDATE occurrence SET current_state=? WHERE occurrence_id=?",
+                (state, occurrence["occurrence_id"]),
+            )
+            finding_state = _finding_state(con, int(occurrence["finding_id"]))
+            con.execute(
+                "UPDATE finding SET current_state=? WHERE finding_id=?",
+                (finding_state, occurrence["finding_id"]),
+            )
+        con.execute("UPDATE ledger SET ledger_revision=? WHERE singleton=1", (next_revision,))
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    finally:
+        if own:
+            con.close()
+    return {
+        "ok": True,
+        "ledger_revision": next_revision,
+        "verification_sha256": artifact_sha256,
+        "recorded": len(prepared),
+    }
+
+
 def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
     """Return case counts and explicitly named remediation/recheck denominators.
 

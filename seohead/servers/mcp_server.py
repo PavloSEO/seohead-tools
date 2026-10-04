@@ -1547,6 +1547,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_record_verification(
+        ledger: str, verification_path: str, actor: str, expected_revision: int
+    ) -> dict[str, Any]:
+        """Attach a retained bounded verification artifact to pending cases.
+
+        Every result must map to exactly one pending ledger case. The artifact
+        byte digest is saved in the decision evidence; ambiguous or stale
+        batches are rejected atomically.
+        """
+        return _checked(
+            handlers.remediation_record_verification(
+                ledger=ledger,
+                verification_path=verification_path,
+                actor=actor,
+                expected_revision=expected_revision,
+            )
+        )
+
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
         """Render retained before/after remediation evidence without network access.

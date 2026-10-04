@@ -4057,6 +4057,17 @@ def remediation_transition(
     )
 
 
+def remediation_record_verification(
+    ledger: str, verification_path: str, actor: str, expected_revision: int
+) -> dict[str, Any]:
+    """Persist a retained bounded recheck artifact against pending ledger cases."""
+    from seohead.storage.ledger import record_verification
+
+    return record_verification(
+        ledger, verification_path, actor=actor, expected_revision=expected_revision
+    )
+
+
 def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
     """Render retained remediation evidence, optionally to a new local directory."""
     from seohead.storage.ledger import remediation_report as build
@@ -4810,6 +4821,7 @@ _RAW_HANDLERS = {
     "remediation_summary": remediation_summary,
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
+    "remediation_record_verification": remediation_record_verification,
     "remediation_report": remediation_report,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
