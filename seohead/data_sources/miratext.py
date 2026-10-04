@@ -54,16 +54,15 @@ def analyze(
         or not 1 <= top <= 500
     ):
         raise ValueError("timeout must be 1..600 and top must be 1..500")
-    if paid or keywords:
-        if not confirm_paid:
-            return {
-                "ok": False,
-                "state": "confirmation_required",
-                "error": "paid or keyword analysis requires confirm_paid=true",
-            }
+    if (paid or keywords) and not confirm_paid:
+        return {
+            "ok": False,
+            "state": "confirmation_required",
+            "error": "paid or keyword analysis requires confirm_paid=true",
+        }
     if hash is None and not ((urls or texts) and my):
         raise ValueError("pass hash to resume, or URLs/texts and my")
-    if urls and texts or (urls and len(urls) > 10) or (texts and len(texts) > 10):
+    if (urls and texts) or (urls and len(urls) > 10) or (texts and len(texts) > 10):
         raise ValueError("pass one of urls or texts with at most 10 items")
     try:
         key = api_key or miratext_api_key()

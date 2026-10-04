@@ -1265,7 +1265,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """
         return _checked(
             handlers.webmaster_url_queries(
-                host_id, url, url_contains, max_urls, max_queries_per_url
+                host_id=host_id,
+                url=url,
+                url_contains=url_contains,
+                max_urls=max_urls,
+                max_queries_per_url=max_queries_per_url,
             )
         )
 
