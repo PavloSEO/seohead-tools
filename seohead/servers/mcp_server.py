@@ -1793,6 +1793,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         template: dict | None = None,
         expected_revision: int | None = None,
         plan: dict | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Initialize or reconcile a local checklist without executing a check, skill, or scenario.
 
@@ -1816,18 +1817,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         returns the current state, revision, counts, coverage axes, views and items; use that
         revision for a later conditional write. This never makes a network request.
         """
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_checklist_init(
                 directory=directory,
                 template=template,
                 expected_revision=expected_revision,
                 plan=plan,
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_update(
-        directory: str, item: dict, expected_revision: int
+        directory: str, item: dict, expected_revision: int, consumer: str | None = None
     ) -> dict[str, Any]:
         """Add or update one local checklist definition without executing it.
 
@@ -1835,11 +1836,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         identity and source provenance remain validated by the project core. This never makes a
         network request.
         """
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_checklist_update(
                 directory=directory, item=item, expected_revision=expected_revision
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_record(
@@ -1872,42 +1873,46 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_view_list(directory: str) -> dict[str, Any]:
+    def seo_project_view_list(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """List saved declarative finding views and the current project view-config revision."""
-        return _checked(handlers.project_view_list(directory=directory))
+        return _checked(with_project_notice(handlers.project_view_list(directory=directory), directory, consumer))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_view_show(directory: str, name: str) -> dict[str, Any]:
+    def seo_project_view_show(
+        directory: str, name: str, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Read one saved finding view with its stable identity, schema version and revision."""
-        return _checked(handlers.project_view_show(directory=directory, name=name))
+        return _checked(with_project_notice(
+            handlers.project_view_show(directory=directory, name=name), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_view_save(
-        directory: str, view: dict[str, Any], expected_revision: int
+        directory: str, view: dict[str, Any], expected_revision: int, consumer: str | None = None
     ) -> dict[str, Any]:
         """Create or revise a bounded declarative finding view using an expected config revision.
 
         Filters are closed severity/check/URL/segment selections. Sorting and column projection
         use registered fields only; no SQL, code, or regular expressions are accepted. This
         changes project view configuration only; it does not edit scans or affect scores/tasks."""
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_view_save(
                 directory=directory, view=view, expected_revision=expected_revision
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_findings_view(
-        directory: str, name: str, audit: dict | str, offset: int = 0
+        directory: str, name: str, audit: dict | str, offset: int = 0, consumer: str | None = None
     ) -> dict[str, Any]:
         """Apply one saved view to an audit object, JSON file, or validated scan.v1 SQLite artifact.
 
         Returns a deterministic projected page with total matches, missing-field counts,
         truncation, source identity, and view/config revisions. Filtering never suppresses
         findings or changes audit coverage/scoring; no crawl or provider call occurs."""
-        return _checked(
-            handlers.findings_view(directory=directory, name=name, audit=audit, offset=offset)
-        )
+        return _checked(with_project_notice(
+            handlers.findings_view(directory=directory, name=name, audit=audit, offset=offset), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_priorities(
