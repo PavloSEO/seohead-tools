@@ -614,6 +614,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
+            "search_metric",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2007,6 +2008,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-rows-per-file", type=int, help="CSV partition row bound")
         sub.add_argument("--max-bytes-per-file", type=int, help="CSV partition byte bound")
         sub.add_argument("--max-output-bytes", type=int, help="hard total package byte bound")
+        sub.add_argument(
+            "--search-metric",
+            choices=("clicks", "impressions"),
+            help="explicit Search Console axis for complete compatible GA sessions quadrants",
+        )
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":

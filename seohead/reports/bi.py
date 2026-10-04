@@ -287,6 +287,40 @@ COVERAGE_FIELDS = (
     Field("details_json", "json", False),
 )
 
+# Cohorts deliberately remain URL observations rather than aggregate claims.  A
+# report can group them, while retaining the input values, scope, and every
+# reason an observation could not be classified.
+COHORT_FIELDS = (
+    Field("run_id", "string", False),
+    Field("cohort_observation_id", "string", False),
+    Field("cohort_id", "string", False),
+    Field("definition_version", "string", False),
+    Field("definition", "string", False),
+    Field("url", "string", True),
+    Field("url_key", "string", True),
+    Field("url_key_state", "string", False),
+    Field("url_key_reason", "string", True),
+    Field("membership", "string", False),
+    Field("state", "string", False),
+    Field("reason", "string", True),
+    Field("value_label", "string", True),
+    Field("value_number", "number", True),
+    Field("threshold", "number", True),
+    Field("numerator", "integer", True),
+    Field("denominator", "integer", True),
+    Field("extraction_coverage_state", "string", False),
+    Field("extraction_coverage_reason", "string", True),
+    Field("search_metric", "string", True),
+    Field("search_value", "number", True),
+    Field("search_value_state", "string", False),
+    Field("sessions_value", "number", True),
+    Field("sessions_value_state", "string", False),
+    Field("period_start", "date", True),
+    Field("period_end", "date", True),
+    Field("timezone", "string", True),
+    Field("source_metric_observations_json", "json", False),
+)
+
 DATASET_SPECS = {
     "pages": (
         PAGE_FIELDS,
@@ -312,6 +346,11 @@ DATASET_SPECS = {
         COVERAGE_FIELDS,
         "one row per dataset, provider population, or check coverage state",
         ("run_id", "dataset", "evidence_source_id", "population"),
+    ),
+    "cohorts": (
+        COHORT_FIELDS,
+        "one evidence-qualified URL cohort observation per run, URL, and cohort definition",
+        ("run_id", "cohort_observation_id"),
     ),
 }
 
@@ -2054,6 +2093,325 @@ def _metric_rows(
             yield result
 
 
+def _cohort_row(
+    run: _RunInput,
+    page: dict[str, Any],
+    ordinal: int,
+    cohort_id: str,
+    definition: str,
+    *,
+    membership: str,
+    state: str,
+    reason: str | None = None,
+    value_label: str | None = None,
+    value_number: int | float | None = None,
+    threshold: int | float | None = None,
+    numerator: int | None = None,
+    denominator: int | None = None,
+    extraction_state: str = "not_applicable",
+    extraction_reason: str | None = None,
+    search_metric: str | None = None,
+    search_value: int | float | None = None,
+    search_state: str = "not_configured",
+    sessions_value: int | float | None = None,
+    sessions_state: str = "not_configured",
+    period_start: str | None = None,
+    period_end: str | None = None,
+    timezone: str | None = None,
+    source_observations: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    url = _page_url(page)
+    key, key_state, key_reason = _page_key(url)
+    return {
+        "run_id": run.run_id,
+        "cohort_observation_id": _digest_parts(run.run_id, str(ordinal), cohort_id)[:32],
+        "cohort_id": cohort_id,
+        "definition_version": "seohead.bi.cohort.v1",
+        "definition": definition,
+        "url": url,
+        "url_key": key,
+        "url_key_state": key_state,
+        "url_key_reason": key_reason,
+        "membership": membership,
+        "state": state,
+        "reason": reason,
+        "value_label": value_label,
+        "value_number": value_number,
+        "threshold": threshold,
+        "numerator": numerator,
+        "denominator": denominator,
+        "extraction_coverage_state": extraction_state,
+        "extraction_coverage_reason": extraction_reason,
+        "search_metric": search_metric,
+        "search_value": search_value,
+        "search_value_state": search_state,
+        "sessions_value": sessions_value,
+        "sessions_value_state": sessions_state,
+        "period_start": period_start,
+        "period_end": period_end,
+        "timezone": timezone,
+        "source_metric_observations_json": source_observations or [],
+    }
+
+
+def _quadrant_candidates(
+    sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
+    search_metric: str | None,
+) -> tuple[dict[str, tuple[dict[str, Any], dict[str, Any]]], str | None]:
+    """Return only one-to-one, complete, same-window search/session pairs.
+
+    The normalized provider grain may include query/device dimensions.  Those
+    rows cannot be summed into a URL metric here, so they remain explicitly
+    unclassified rather than becoming a dashboard-friendly fiction.
+    """
+    if search_metric not in {"clicks", "impressions"}:
+        return {}, "choose search_metric 'clicks' or 'impressions' to enable quadrants"
+    search: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    sessions: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for _provider, observations, info in sources:
+        header = info["evidence"]
+        provider_name = str(header.get("provider") or "").casefold()
+        collection = header.get("collection") or {}
+        period = header.get("period") or {}
+        timezone = header.get("timezone")
+        if (
+            collection.get("state") != "complete"
+            or collection.get("sampled")
+            or collection.get("thresholded")
+            or collection.get("truncated")
+            or not isinstance(timezone, str)
+            or not isinstance(period.get("start_date"), str)
+            or not isinstance(period.get("end_date"), str)
+        ):
+            continue
+        for observation in observations:
+            row = observation["row"]
+            url = observation["url"]
+            entry = observation["entry"]
+            metric = observation["metric"]
+            if (
+                observation["population"] != "matched"
+                or url.get("state") != "keyed"
+                or entry.get("state") != "measured"
+                or row.get("dimensions")
+            ):
+                continue
+            key = url.get("normalized")
+            if not isinstance(key, str):
+                continue
+            source = {
+                "provider": header.get("provider"),
+                "metric": metric.get("name"),
+                "source_row_index": row.get("row_index"),
+                "natural_key_sha256": row.get("natural_key_sha256"),
+                "value": entry.get("value"),
+                "period_start": period["start_date"],
+                "period_end": period["end_date"],
+                "timezone": timezone,
+            }
+            window = (key, period["start_date"], period["end_date"], timezone)
+            if (
+                provider_name in {"gsc", "google_search_console", "search_console"}
+                and metric.get("name") == search_metric
+            ):
+                search[window].append(source)
+            elif (
+                provider_name in {"ga4", "google_analytics_4", "google_analytics"}
+                and metric.get("name") == "sessions"
+            ):
+                sessions[window].append(source)
+    paired_by_url: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
+    for key, search_rows in search.items():
+        session_rows = sessions.get(key, [])
+        if len(search_rows) == 1 and len(session_rows) == 1:
+            paired_by_url[key[0]].append((search_rows[0], session_rows[0]))
+    # Two compatible windows for one URL are still not one selected reporting
+    # window. Keep the URL unclassified until the operator supplies one source
+    # period, rather than allowing iteration order to choose it.
+    return {url: pairs[0] for url, pairs in paired_by_url.items() if len(pairs) == 1}, None
+
+
+def _cohort_rows(
+    run: _RunInput,
+    sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
+    search_metric: str | None,
+) -> Iterator[dict[str, Any]]:
+    """Yield transparent technical cohorts and optional provider quadrants."""
+    definition_status = (
+        "Observed HTTP status group for this retained crawl URL; no Google-crawl claim."
+    )
+    definition_indexability = (
+        "Captured indexability/directive state from the selected retained run."
+    )
+    definition_depth = "Crawl-relative depth band; deep means retained crawl depth >= 3."
+    definition_inlinks = (
+        "Observed unique in-scope linking-page share: numerator is retained unique inlinks; "
+        "denominator is retained crawl pages only when link extraction is complete."
+    )
+    definition_quadrant = (
+        "Search Console {metric} and GA sessions are separate axes. A quadrant needs one measured "
+        "dimensionless URL value from each complete source for the same inclusive local-date window "
+        "and timezone; values are never summed."
+    )
+    pairs, pair_reason = _quadrant_candidates(sources, search_metric)
+    denominator = len(run.pages)
+    for ordinal, page in enumerate(run.pages):
+        projected = _page_row(run, page, ordinal)
+        status = projected["status_code"]
+        if projected["status_code_state"] == "measured":
+            label = (
+                "successful_html"
+                if status is not None and 200 <= status < 300
+                else "redirect"
+                if status is not None and 300 <= status < 400
+                else "client_error"
+                if status is not None and 400 <= status < 500
+                else "server_error"
+                if status is not None and 500 <= status < 600
+                else "other_status"
+            )
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "observed_status",
+                definition_status,
+                membership="member",
+                state="available",
+                value_label=label,
+                value_number=status,
+            )
+        else:
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "observed_status",
+                definition_status,
+                membership="unclassified",
+                state="unavailable",
+                reason=projected["status_code_reason"],
+            )
+        indexability = projected["indexability"]
+        index_state = projected["indexability_state"]
+        yield _cohort_row(
+            run,
+            page,
+            ordinal,
+            "captured_indexability",
+            definition_indexability,
+            membership="member" if index_state == "measured" else "unclassified",
+            state="available" if index_state == "measured" else index_state,
+            reason=projected["indexability_reason"],
+            value_label=str(indexability) if indexability is not None else None,
+        )
+        depth = projected["crawl_depth"]
+        if projected["crawl_depth_state"] == "measured":
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "crawl_relative_depth",
+                definition_depth,
+                membership="member",
+                state="available",
+                value_label="deep" if depth >= 3 else "shallow",
+                value_number=depth,
+                threshold=3,
+            )
+        else:
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "crawl_relative_depth",
+                definition_depth,
+                membership="unclassified",
+                state="unavailable",
+                reason=projected["crawl_depth_reason"],
+                threshold=3,
+            )
+        inlinks = projected["unique_inlinks"]
+        link_state = projected["link_counts_state"]
+        if link_state == "measured" and type(inlinks) is int and denominator:
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "observed_unique_inlink_share",
+                definition_inlinks,
+                membership="member",
+                state="available",
+                value_number=inlinks / denominator,
+                numerator=inlinks,
+                denominator=denominator,
+                extraction_state="complete",
+            )
+        else:
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "observed_unique_inlink_share",
+                definition_inlinks,
+                membership="unclassified",
+                state="partial" if link_state == "partial" else "unavailable",
+                reason=projected["link_counts_reason"] or "complete link extraction is required",
+                extraction_state=link_state,
+                extraction_reason=projected["link_counts_reason"],
+            )
+        key = projected["url_key"]
+        pair = pairs.get(key) if isinstance(key, str) else None
+        if pair is not None:
+            search, sessions = pair
+            search_value = search["value"]
+            sessions_value = sessions["value"]
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "search_visibility_vs_sessions",
+                definition_quadrant.format(metric=search_metric),
+                membership="member",
+                state="available",
+                value_label=(
+                    "positive_search_positive_sessions"
+                    if search_value > 0 and sessions_value > 0
+                    else "positive_search_zero_sessions"
+                    if search_value > 0
+                    else "zero_search_positive_sessions"
+                    if sessions_value > 0
+                    else "zero_search_zero_sessions"
+                ),
+                search_metric=search_metric,
+                search_value=search_value,
+                search_state="measured",
+                sessions_value=sessions_value,
+                sessions_state="measured",
+                period_start=search["period_start"],
+                period_end=search["period_end"],
+                timezone=search["timezone"],
+                source_observations=[search, sessions],
+            )
+        else:
+            yield _cohort_row(
+                run,
+                page,
+                ordinal,
+                "search_visibility_vs_sessions",
+                definition_quadrant.format(
+                    metric=search_metric or "selected Search Console metric"
+                ),
+                membership="unclassified",
+                state="not_configured" if pair_reason else "incomplete",
+                reason=pair_reason
+                or "no one-to-one complete compatible URL metric pair is retained",
+                search_metric=search_metric,
+                search_state="not_configured" if pair_reason else "unavailable",
+                sessions_state="not_configured" if pair_reason else "unavailable",
+            )
+
+
 def _coverage_row(
     run_id: str,
     dataset: str,
@@ -2089,6 +2447,7 @@ def _coverage_rows(
     findings_result = dataset_results["findings"]
     links_result = dataset_results["link_occurrences"]
     metrics_result = dataset_results["metrics"]
+    cohorts_result = dataset_results["cohorts"]
     yield _coverage_row(
         run.run_id,
         "run",
@@ -2106,6 +2465,7 @@ def _coverage_rows(
         ("findings", findings_result, len(run.findings)),
         ("link_occurrences", links_result, run.link_count),
         ("metrics", metrics_result, None),
+        ("cohorts", cohorts_result, len(run.pages) * 5),
     ):
         yield _coverage_row(
             run.run_id,
@@ -2321,6 +2681,7 @@ def export_bi(
     max_rows_per_file: int = DEFAULT_ROWS_PER_PARTITION,
     max_bytes_per_file: int = DEFAULT_BYTES_PER_PARTITION,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    search_metric: str | None = None,
 ) -> dict[str, Any]:
     """Write a complete local BI package from one saved run and optional joins."""
     if (scan is None) == (audit is None):
@@ -2342,6 +2703,8 @@ def export_bi(
         raise BIExportError(
             f"max_output_bytes must be at least max_bytes_per_file and at most {MAX_OUTPUT_BYTES}"
         )
+    if search_metric is not None and search_metric not in {"clicks", "impressions"}:
+        raise BIExportError("search_metric must be 'clicks', 'impressions', or null")
     provider_paths = list(provider_joins or [])
     if len(provider_paths) > MAX_PROVIDER_SOURCES:
         raise BIExportError(f"provider_joins is limited to {MAX_PROVIDER_SOURCES} sources")
@@ -2371,6 +2734,7 @@ def export_bi(
         "max_rows_per_file": max_rows_per_file,
         "max_bytes_per_file": max_bytes_per_file,
         "max_output_bytes": max_output_bytes,
+        "search_metric": search_metric,
     }
     if scan is not None:
         return _scan_run(scan, destination, providers, **limits)
@@ -2386,6 +2750,7 @@ def _write_package(
     max_rows_per_file: int,
     max_bytes_per_file: int,
     max_output_bytes: int,
+    search_metric: str | None,
 ) -> dict[str, Any]:
     provider_joins: list[dict[str, Any] | None] = []
     dimension_names: set[str] = set()
@@ -2523,12 +2888,14 @@ def _write_package(
             "findings": finding_rows(),
             "metrics": (row for row in _metric_rows(run, provider_observations, dimension_fields)),
             "link_occurrences": link_rows(),
+            "cohorts": _cohort_rows(run, provider_observations, search_metric),
         }
         schemas = {
             "pages": PAGE_FIELDS,
             "findings": FINDING_FIELDS,
             "metrics": metric_fields,
             "link_occurrences": LINK_FIELDS,
+            "cohorts": COHORT_FIELDS,
         }
         dataset_states = {
             "pages": (
@@ -2569,8 +2936,14 @@ def _write_package(
                 "retained scan links" if con is not None else "audit does not retain link rows",
                 {"source_rows": run.link_count},
             ),
+            "cohorts": (
+                "available",
+                None,
+                "derived retained URL observations; unclassified rows retain their reason",
+                {"search_metric": search_metric, "page_rows": len(run.pages)},
+            ),
         }
-        for name in ("pages", "findings", "metrics", "link_occurrences"):
+        for name in ("pages", "findings", "metrics", "link_occurrences", "cohorts"):
             state, reason, population, coverage = dataset_states[name]
             writer = _PartitionWriter(
                 stage,
@@ -2627,6 +3000,7 @@ def _write_package(
             "findings": FINDING_FIELDS,
             "metrics": metric_fields,
             "link_occurrences": LINK_FIELDS,
+            "cohorts": COHORT_FIELDS,
             "coverage": COVERAGE_FIELDS,
         }
         datasets = {

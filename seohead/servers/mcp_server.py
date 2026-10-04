@@ -2069,6 +2069,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         max_rows_per_file: int = 25_000,
         max_bytes_per_file: int = 8 * 1024 * 1024,
         max_output_bytes: int = 512 * 1024 * 1024,
+        search_metric: str | None = None,
     ) -> dict[str, Any]:
         """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
 
@@ -2085,6 +2086,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_rows_per_file=max_rows_per_file,
                 max_bytes_per_file=max_bytes_per_file,
                 max_output_bytes=max_output_bytes,
+                search_metric=search_metric,
             )
         )
 
