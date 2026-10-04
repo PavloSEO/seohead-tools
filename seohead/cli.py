@@ -121,7 +121,6 @@ COMMANDS = (
     "remediation-transition",
     "remediation-record-verification",
     "remediation-report",
-<<<<<<< HEAD
     "project-observe",
     "project-inbox-submit",
     "project-inbox-list",
@@ -129,12 +128,13 @@ COMMANDS = (
     "project-inbox-acknowledge",
     "project-inbox-goal",
     "project-inbox-unread",
-=======
     "workflow-start",
     "workflow-checkpoint",
     "workflow-status",
     "workflow-execute",
->>>>>>> ddbccbdf (Expose resumable registered workflow execution)
+    "monitor-configure",
+    "monitor-run",
+    "monitor-status",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -484,6 +484,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
     elif cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
+        if getattr(args, "directory", None):
+            kw["directory"] = args.directory
+    elif cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
         if getattr(args, "directory", None):
             kw["directory"] = args.directory
     elif cmd in {
@@ -1856,7 +1859,6 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--label", help="human project label")
     if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
-<<<<<<< HEAD
     if cmd == "project-observe":
         _source_flag(sub, "--directory", help="validated local project workspace")
         sub.add_argument("--consumer", help="stable local agent/session consumer id")
@@ -1885,10 +1887,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--entry-id", required=True)
         sub.add_argument("--state", required=True, choices=("accepted", "completed"))
         sub.add_argument("--expected-revision", type=int)
-=======
     if cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
         _source_flag(sub, "--directory", help="project directory")
->>>>>>> ddbccbdf (Expose resumable registered workflow execution)
+    if cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
+        _source_flag(sub, "--directory", help="project directory")
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")

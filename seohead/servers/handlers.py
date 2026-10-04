@@ -4089,6 +4089,26 @@ def workflow_execute(
     return execute(directory, scenario_id=scenario_id, steps=steps, outcomes=outcomes)
 
 
+def monitor_configure(directory: str, policy: dict, expected_revision: int = 0) -> dict[str, Any]:
+    from seohead.projects.monitoring import configure
+
+    return configure(directory, policy, expected_revision)
+
+
+def monitor_run(
+    directory: str, scan_id: str, observations: list[dict], expected_revision: int
+) -> dict[str, Any]:
+    from seohead.projects.monitoring import run
+
+    return run(directory, scan_id, observations, expected_revision)
+
+
+def monitor_status(directory: str) -> dict[str, Any]:
+    from seohead.projects.monitoring import status
+
+    return status(directory)
+
+
 def remediation_cases(
     ledger: str,
     check: str | None = None,
@@ -5014,6 +5034,9 @@ _RAW_HANDLERS = {
     "workflow_checkpoint": workflow_checkpoint,
     "workflow_status": workflow_status,
     "workflow_execute": workflow_execute,
+    "monitor_configure": monitor_configure,
+    "monitor_run": monitor_run,
+    "monitor_status": monitor_status,
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,

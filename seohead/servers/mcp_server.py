@@ -1636,6 +1636,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Run a supplied local synthetic sequence, checkpointing every step."""
         return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_configure(
+        directory: str, policy: dict, expected_revision: int = 0
+    ) -> dict[str, Any]:
+        """Configure a disabled local incremental monitor; this starts no schedule or message delivery."""
+        return _checked(handlers.monitor_configure(directory, policy, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_run(
+        directory: str, scan_id: str, observations: list[dict], expected_revision: int
+    ) -> dict[str, Any]:
+        """Record one bounded retained-scan diff; quiet runs do not notify anyone."""
+        return _checked(handlers.monitor_run(directory, scan_id, observations, expected_revision))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_monitor_status(directory: str) -> dict[str, Any]:
+        """Read local monitor policy and its last retained checkpoint."""
+        return _checked(handlers.monitor_status(directory))
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_cases(
         ledger: str,
