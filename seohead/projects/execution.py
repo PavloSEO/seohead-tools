@@ -112,7 +112,15 @@ def _review(value: Any, execution_kind: str, state: str) -> dict[str, str] | Non
 
 
 def _rows(root: Path) -> dict[str, dict[str, Any]]:
-    return {row["id"]: row for row in coverage_status(root)["items"]}
+    view = coverage_status(root)
+    if view.get("state") == "not_initialized":
+        return {}
+    items = view.get("items")
+    if not isinstance(items, list) or any(
+        not isinstance(row, dict) or "id" not in row for row in items
+    ):
+        raise ValueError("initialized coverage status has invalid checklist items")
+    return {row["id"]: row for row in items}
 
 
 def _public_run(run: dict[str, Any], rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
