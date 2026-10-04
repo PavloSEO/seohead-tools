@@ -68,8 +68,10 @@ path is `SEOHEAD_BI_DESTINATIONS_FILE` or the local credentials directory's
 `bi-destinations.json`. It is local-only and must not be committed.
 
 Call it once without `--apply` to obtain the immutable local manifest hash, per-dataset
-rows/columns/bytes, named target and requested operation. It makes no Google request. A second
-call with `--apply` is the explicit write authorization for that reviewed target and operation.
+rows/columns/bytes, named target, requested operation, and the sanitized configured destination
+mapping (spreadsheet plus worksheet IDs/titles, or project/dataset/table IDs). It makes no Google
+request or authentication call. A second call with `--apply` is the explicit write authorization
+for that reviewed target and operation.
 
 Each configured Sheets target has `kind: google_sheets_service_account`, one
 `spreadsheet_id`, and an exact `worksheets` mapping for every package dataset:
@@ -103,7 +105,12 @@ the tool refuses before obtaining a token, checking the dataset or creating a st
 Both transports use the existing local service-account helper with the narrow Sheets or BigQuery
 scope. The preflight commands remain fully offline. Keep the local package and its manifest: it
 is the row/hash source of truth and the fallback when a destination rejects a write or cannot
-hold the selected population.
+hold the selected population. Partition checksums, byte counts, CSV headers, row widths and row
+counts are streamed from disk; they never load a whole partition into memory. The destination
+also accepts a local `seohead.bi-filter.v1` selected projection when its declared columns are a
+typed subset of the corresponding versioned BI dataset. Every row and remote JSON payload is
+bounded before transport; a too-wide row fails during preflight rather than constructing a giant
+request.
 
 ## Publication cohorts
 
