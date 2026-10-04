@@ -10,6 +10,8 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -198,3 +200,100 @@ def apply_with_client(
         "operation": operation,
         "rows": written,
     }
+
+
+def filter_package(
+    package: str | Path,
+    *,
+    dataset: str,
+    out_dir: str | Path,
+    where: dict[str, list[str]] | None = None,
+    columns: list[str] | None = None,
+    max_rows_per_file: int = 250_000,
+) -> dict[str, Any]:
+    """Stream one exact-filtered BI dataset to a new local CSV package.
+
+    Predicates are closed equality sets over declared CSV fields; no SQL, regex,
+    formulas or inferred segment is accepted.  An empty result remains an
+    explicitly complete selected population, never an unavailable measurement.
+    """
+    if type(max_rows_per_file) is not int or max_rows_per_file < 1:
+        raise BIDestinationError("max_rows_per_file must be a positive integer")
+    root, manifest = _manifest(package)
+    datasets = _verify_partitions(root, manifest)
+    if dataset not in datasets:
+        raise BIDestinationError("dataset is not declared by the BI package")
+    declared = [field["name"] for field in manifest["datasets"][dataset]["fields"]]
+    selected = list(columns or declared)
+    if not selected or len(set(selected)) != len(selected) or set(selected) - set(declared):
+        raise BIDestinationError("columns must be a non-empty unique subset of declared fields")
+    predicates = where or {}
+    if not isinstance(predicates, dict) or set(predicates) - set(declared):
+        raise BIDestinationError("where keys must be declared fields")
+    if any(
+        not isinstance(values, list) or any(not isinstance(value, str) for value in values)
+        for values in predicates.values()
+    ):
+        raise BIDestinationError("where values must be lists of exact string values")
+    destination = Path(out_dir).absolute()
+    if destination.is_symlink() or os.path.lexists(destination) or not destination.parent.is_dir():
+        raise BIDestinationError("out_dir must be a new child of an existing non-symlink directory")
+    output_parts = []
+    total = part_rows = 0
+    stream = writer = path = None
+    with tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent) as temp:
+        stage = Path(temp)
+
+        def open_part():
+            nonlocal stream, writer, path, part_rows
+            path = stage / f"{dataset}-{len(output_parts) + 1:04d}.csv"
+            stream = path.open("w", encoding="utf-8", newline="")
+            writer = csv.DictWriter(stream, fieldnames=selected, lineterminator="\n")
+            writer.writeheader()
+            part_rows = 0
+
+        def close_part():
+            nonlocal stream
+            if stream is None:
+                return
+            stream.flush()
+            os.fsync(stream.fileno())
+            stream.close()
+            content = path.read_bytes()
+            output_parts.append(
+                {
+                    "path": path.name,
+                    "rows": part_rows,
+                    "bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+            )
+            stream = None
+
+        open_part()
+        for rows in _csv_chunks(root, manifest["datasets"][dataset]):
+            header, *data = rows
+            for values in data:
+                row = dict(zip(header, values, strict=True))
+                if all(row[key] in allowed for key, allowed in predicates.items()):
+                    if part_rows >= max_rows_per_file:
+                        close_part()
+                        open_part()
+                    writer.writerow({key: row[key] for key in selected})
+                    part_rows += 1
+                    total += 1
+        close_part()
+        result = {
+            "format": "seohead.bi-filter.v1",
+            "source_schema_version": manifest["schema_version"],
+            "dataset": dataset,
+            "columns": selected,
+            "where": predicates,
+            "row_count": total,
+            "partitions": output_parts,
+        }
+        (stage / "manifest.json").write_text(
+            json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        os.replace(stage, destination)
+    return {"ok": True, "output_directory": str(destination), **result}
