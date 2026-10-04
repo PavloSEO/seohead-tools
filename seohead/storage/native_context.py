@@ -79,6 +79,11 @@ def validate_context(
         ):
             raise ScanError("invalid render phase summary envelope")
         return
+    if item["kind"] in {"external_check", "external_checks_summary"}:
+        from .external_checks import validate_check, validate_summary
+
+        (validate_check if item["kind"] == "external_check" else validate_summary)(item, payload)
+        return
     if item["kind"] == "render_elapsed":
         if (
             not isinstance(payload, dict)
