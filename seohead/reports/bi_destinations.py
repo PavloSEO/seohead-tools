@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from seohead.reports.bi import BI_SCHEMA_VERSION, MANIFEST_FORMAT
+from seohead.reports.bi import BI_SCHEMA_VERSION, DATASET_SPECS, MANIFEST_FORMAT
 
 SHEETS_MAX_CELLS = 10_000_000
 HOST_CONFIG_ENV = "SEOHEAD_BI_DESTINATIONS_FILE"
@@ -28,6 +28,8 @@ SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 BIGQUERY_SCOPE = "https://www.googleapis.com/auth/bigquery"
 _GOOGLE_RETRIES = 3
 _GOOGLE_CHUNK_ROWS = 1_000
+_GOOGLE_REQUEST_BYTES = 4 * 1024 * 1024
+_GOOGLE_CHUNK_SOURCE_BYTES = _GOOGLE_REQUEST_BYTES // 2
 
 
 class BIDestinationError(ValueError):
@@ -44,13 +46,23 @@ def register_host_client(destination: str, target: str, client: Any) -> None:
 
 
 def _require_dataset_mapping(
-    supplied: Any, datasets: dict[str, Any], *, label: str, id_name: str
+    supplied: Any,
+    datasets: dict[str, Any],
+    *,
+    label: str,
+    id_name: str,
+    allow_extra: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Require one closed, host-owned mapping for every declared package dataset."""
-    if not isinstance(supplied, dict) or set(supplied) != set(datasets):
+    if (
+        not isinstance(supplied, dict)
+        or not set(datasets).issubset(supplied)
+        or (not allow_extra and set(supplied) != set(datasets))
+    ):
         raise BIDestinationError(f"{label} mapping must name every BI package dataset exactly once")
     mapped: dict[str, dict[str, Any]] = {}
-    for name, value in supplied.items():
+    for name in datasets:
+        value = supplied[name]
         if not isinstance(value, dict) or not isinstance(value.get(id_name), (str, int)):
             raise BIDestinationError(f"{label} mapping for {name!r} is invalid")
         mapped[name] = value
@@ -102,10 +114,16 @@ class _GoogleRESTClient:
                     encoded = (
                         body
                         if isinstance(body, bytes)
-                        else json.dumps(body, separators=(",", ":")).encode("utf-8")
+                        else json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode(
+                            "utf-8"
+                        )
                         if body is not None
                         else None
                     )
+                    if encoded is not None and len(encoded) > _GOOGLE_REQUEST_BYTES:
+                        raise BIDestinationError(
+                            "Google request exceeds the bounded payload size before transport"
+                        )
                     request_headers = {
                         "Authorization": request["authorization"],
                         "Content-Type": "application/json",
@@ -175,13 +193,18 @@ class GoogleSheetsClient(_GoogleRESTClient):
         schema_version: str,
         datasets: dict[str, Any],
         package_sha256: str,
+        selected_projection: bool = False,
     ):
         if operation != "replace":
             raise BIDestinationError(
                 "Google Sheets append is unavailable: use replace so every package is reconciled"
             )
         mapping = _require_dataset_mapping(
-            self.worksheets, datasets, label="Google Sheets worksheet", id_name="worksheet_id"
+            self.worksheets,
+            datasets,
+            label="Google Sheets worksheet",
+            id_name="worksheet_id",
+            allow_extra=selected_projection,
         )
         for name, value in mapping.items():
             if (
@@ -477,6 +500,7 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         schema_version: str,
         datasets: dict[str, Any],
         package_sha256: str,
+        selected_projection: bool = False,
     ) -> dict[str, Any]:
         if operation not in {"replace", "append"}:
             raise BIDestinationError("BigQuery operation must be replace or append")
@@ -485,7 +509,11 @@ class GoogleBigQueryClient(_GoogleRESTClient):
                 "BigQuery apply requires a host-owned cost_authorized=true for this project and dataset"
             )
         mapping = _require_dataset_mapping(
-            self.tables, datasets, label="BigQuery table", id_name="table_id"
+            self.tables,
+            datasets,
+            label="BigQuery table",
+            id_name="table_id",
+            allow_extra=selected_projection,
         )
         for name, table in mapping.items():
             if not isinstance(table.get("table_id"), str) or not table["table_id"]:
@@ -601,10 +629,19 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         stage = transaction["stage_ids"][dataset]
         disposition = "WRITE_TRUNCATE" if part == 0 else "WRITE_APPEND"
         job_id = f"seohead_{transaction['token']}_{dataset}_{part}"
-        ndjson = b"".join(
-            json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
-            for value in objects
-        )
+        payload_rows: list[bytes] = []
+        payload_bytes = 0
+        for value in objects:
+            line = (
+                json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
+            )
+            payload_bytes += len(line)
+            if payload_bytes > _GOOGLE_REQUEST_BYTES:
+                raise BIDestinationError(
+                    "BigQuery load chunk exceeds the bounded payload size before transport"
+                )
+            payload_rows.append(line)
+        ndjson = b"".join(payload_rows)
         result = self._job(
             job_id,
             {
@@ -721,8 +758,8 @@ class GoogleBigQueryClient(_GoogleRESTClient):
                 continue
 
 
-def resolve_host_client(destination: str, target: str) -> Any:
-    """Resolve an exact allowlisted host target without reading credentials from input."""
+def _host_target_config(destination: str, target: str) -> dict[str, Any]:
+    """Load one exact enabled host target without constructing an auth client."""
     from seohead.data_sources.credentials import CONFIG_ROOT
 
     path = Path(os.environ.get(HOST_CONFIG_ENV, CONFIG_ROOT / "bi-destinations.json"))
@@ -741,10 +778,85 @@ def resolve_host_client(destination: str, target: str) -> Any:
         or not allowed[target].get("enabled")
     ):
         raise BIDestinationError("destination target is not host-allowlisted")
+    return allowed[target]
+
+
+def _resolved_target_mapping(
+    destination: str, target: str, datasets: dict[str, Any], *, selected_projection: bool = False
+) -> dict[str, Any]:
+    """Return only the non-secret configured target mapping shown before apply."""
+    target_config = _host_target_config(destination, target)
+    if destination == "sheets" and target_config.get("kind") == "google_sheets_service_account":
+        spreadsheet_id = target_config.get("spreadsheet_id")
+        worksheets = _require_dataset_mapping(
+            target_config.get("worksheets"),
+            datasets,
+            label="Google Sheets worksheet",
+            id_name="worksheet_id",
+            allow_extra=selected_projection,
+        )
+        if not isinstance(spreadsheet_id, str) or not spreadsheet_id:
+            raise BIDestinationError("Google Sheets target has no valid spreadsheet ID")
+        for name, value in worksheets.items():
+            if (
+                not isinstance(value.get("worksheet_id"), int)
+                or not isinstance(value.get("worksheet_title"), str)
+                or not value["worksheet_title"]
+            ):
+                raise BIDestinationError(f"Google Sheets worksheet mapping for {name!r} is invalid")
+        return {
+            "kind": "google_sheets_service_account",
+            "spreadsheet_id": spreadsheet_id,
+            "worksheets": {
+                name: {
+                    "worksheet_id": value["worksheet_id"],
+                    "worksheet_title": value["worksheet_title"],
+                }
+                for name, value in worksheets.items()
+            },
+        }
+    if destination == "bigquery" and target_config.get("kind") == "google_bigquery_service_account":
+        project_id = target_config.get("project_id")
+        dataset_id = target_config.get("dataset_id")
+        tables = _require_dataset_mapping(
+            target_config.get("tables"),
+            datasets,
+            label="BigQuery table",
+            id_name="table_id",
+            allow_extra=selected_projection,
+        )
+        location = target_config.get("location")
+        if (
+            not isinstance(project_id, str)
+            or not isinstance(dataset_id, str)
+            or not project_id
+            or not dataset_id
+        ):
+            raise BIDestinationError("BigQuery target has no valid project or dataset ID")
+        if location is not None and not isinstance(location, str):
+            raise BIDestinationError("BigQuery target location is invalid")
+        if any(
+            not isinstance(value.get("table_id"), str) or not value["table_id"]
+            for value in tables.values()
+        ):
+            raise BIDestinationError("BigQuery target has an invalid table mapping")
+        return {
+            "kind": "google_bigquery_service_account",
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+            "location": location,
+            "cost_authorized": target_config.get("cost_authorized") is True,
+            "tables": {name: {"table_id": value["table_id"]} for name, value in tables.items()},
+        }
+    raise BIDestinationError("host has no authorized client for the allowlisted target")
+
+
+def resolve_host_client(destination: str, target: str) -> Any:
+    """Resolve an exact allowlisted host target without reading credentials from input."""
+    target_config = _host_target_config(destination, target)
     registered = _HOST_CLIENTS.get((destination, target))
     if registered is not None:
         return registered
-    target_config = allowed[target]
     if destination == "sheets" and target_config.get("kind") == "google_sheets_service_account":
         spreadsheet_id = target_config.get("spreadsheet_id")
         worksheets = target_config.get("worksheets")
@@ -787,33 +899,150 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BIDestinationError(f"package manifest is unreadable: {exc}") from exc
-    if value.get("format") != MANIFEST_FORMAT or value.get("schema_version") != BI_SCHEMA_VERSION:
-        raise BIDestinationError("package has an unsupported BI manifest/schema version")
-    if not isinstance(value.get("datasets"), dict):
-        raise BIDestinationError("package manifest has no dataset declarations")
-    return root, value
+    if value.get("format") == MANIFEST_FORMAT and value.get("schema_version") == BI_SCHEMA_VERSION:
+        if not isinstance(value.get("datasets"), dict):
+            raise BIDestinationError("package manifest has no dataset declarations")
+        return root, value
+    if (
+        value.get("format") == "seohead.bi-filter.v1"
+        and value.get("source_schema_version") == BI_SCHEMA_VERSION
+    ):
+        name = value.get("dataset")
+        columns = value.get("columns")
+        partitions = value.get("partitions")
+        row_count = value.get("row_count")
+        if (
+            not isinstance(name, str)
+            or name not in DATASET_SPECS
+            or not isinstance(columns, list)
+            or not columns
+            or not isinstance(partitions, list)
+            or type(row_count) is not int
+            or row_count < 0
+        ):
+            raise BIDestinationError("selected BI projection manifest is invalid")
+        expected = {field.name: field for field in DATASET_SPECS[name][0]}
+        if (
+            any(not isinstance(column, str) for column in columns)
+            or len(set(columns)) != len(columns)
+            or any(column not in expected for column in columns)
+        ):
+            raise BIDestinationError("selected BI projection has unsupported or duplicate columns")
+        fields = [
+            {"name": column, "type": expected[column].type, "nullable": expected[column].nullable}
+            for column in columns
+        ]
+        return root, {
+            "format": MANIFEST_FORMAT,
+            "schema_version": BI_SCHEMA_VERSION,
+            "source_package_format": "seohead.bi-filter.v1",
+            "selected_projection": True,
+            "datasets": {
+                name: {
+                    "fields": fields,
+                    "partitions": partitions,
+                    "row_count": row_count,
+                    "bytes": sum(
+                        part.get("bytes", 0) for part in partitions if isinstance(part, dict)
+                    ),
+                }
+            },
+        }
+    raise BIDestinationError("package has an unsupported BI manifest/schema version")
+
+
+def _validated_fields(name: str, fields: Any, *, selected_projection: bool) -> list[str]:
+    if name not in DATASET_SPECS or not isinstance(fields, list) or not fields:
+        raise BIDestinationError(f"dataset {name!r} has no declared fields")
+    expected = {field.name: field for field in DATASET_SPECS[name][0]}
+    names: list[str] = []
+    for value in fields:
+        if not isinstance(value, dict) or not isinstance(value.get("name"), str):
+            raise BIDestinationError(f"dataset {name!r} field declaration is invalid")
+        field = expected.get(value["name"])
+        if (
+            field is None
+            or value.get("type") != field.type
+            or value.get("nullable") is not field.nullable
+        ):
+            raise BIDestinationError(f"dataset {name!r} fields do not match the BI schema")
+        names.append(field.name)
+    if len(set(names)) != len(names):
+        raise BIDestinationError(f"dataset {name!r} field names are duplicated")
+    if not selected_projection and names != [field.name for field in DATASET_SPECS[name][0]]:
+        raise BIDestinationError(f"dataset {name!r} fields do not match the complete BI schema")
+    return names
+
+
+def _checksum_and_rows(path: Path, expected_header: list[str]) -> tuple[str, int, int]:
+    digest = hashlib.sha256()
+    bytes_count = 0
+    with path.open("rb") as stream:
+        while block := stream.read(1024 * 1024):
+            digest.update(block)
+            bytes_count += len(block)
+    try:
+        with path.open(encoding="utf-8", newline="") as stream:
+            reader = csv.reader(stream)
+            header = next(reader)
+            if header != expected_header:
+                raise BIDestinationError(
+                    "CSV partition header does not match the declared BI schema"
+                )
+            rows = 0
+            for row in reader:
+                if len(row) != len(header):
+                    raise BIDestinationError("CSV partition row width does not match the BI schema")
+                if (
+                    sum(len(value.encode("utf-8")) + 4 for value in row)
+                    > _GOOGLE_CHUNK_SOURCE_BYTES
+                ):
+                    raise BIDestinationError("BI CSV row exceeds the bounded Google request size")
+                rows += 1
+            return digest.hexdigest(), bytes_count, rows
+    except (OSError, UnicodeDecodeError, csv.Error, StopIteration) as exc:
+        if isinstance(exc, BIDestinationError):
+            raise
+        raise BIDestinationError("CSV partition cannot be read as a declared BI dataset") from exc
 
 
 def _verify_partitions(root: Path, manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     datasets: dict[str, dict[str, Any]] = {}
     for name, dataset in manifest["datasets"].items():
-        if not isinstance(dataset, dict) or not isinstance(dataset.get("fields"), list):
-            raise BIDestinationError(f"dataset {name!r} has no declared fields")
+        if not isinstance(name, str) or not isinstance(dataset, dict):
+            raise BIDestinationError("package dataset declaration is invalid")
+        fields = _validated_fields(
+            name,
+            dataset.get("fields"),
+            selected_projection=manifest.get("selected_projection") is True,
+        )
+        if type(dataset.get("row_count")) is not int or dataset["row_count"] < 0:
+            raise BIDestinationError(f"dataset {name!r} row count is invalid")
+        if type(dataset.get("bytes")) is not int or dataset["bytes"] < 0:
+            raise BIDestinationError(f"dataset {name!r} byte count is invalid")
         rows = bytes_count = 0
         for part in dataset.get("partitions") or []:
+            if not isinstance(part, dict):
+                raise BIDestinationError(f"dataset {name!r} partition declaration is invalid")
             path = root / str(part.get("path") or "")
             if path.parent != root or path.is_symlink() or not path.is_file():
                 raise BIDestinationError(f"dataset {name!r} has an invalid partition path")
-            content = path.read_bytes()
-            if hashlib.sha256(content).hexdigest() != part.get("sha256"):
+            checksum, part_bytes, part_rows = _checksum_and_rows(path, fields)
+            if checksum != part.get("sha256"):
                 raise BIDestinationError(
                     f"dataset {name!r} partition checksum does not match manifest"
                 )
-            rows += int(part.get("rows") or 0)
-            bytes_count += len(content)
+            if type(part.get("rows")) is not int or part["rows"] != part_rows:
+                raise BIDestinationError(f"dataset {name!r} partition row count does not match CSV")
+            if type(part.get("bytes")) is not int or part["bytes"] != part_bytes:
+                raise BIDestinationError(
+                    f"dataset {name!r} partition byte count does not match CSV"
+                )
+            rows += part_rows
+            bytes_count += part_bytes
         if rows != dataset.get("row_count") or bytes_count != dataset.get("bytes"):
             raise BIDestinationError(f"dataset {name!r} partition totals do not match manifest")
-        datasets[name] = {"rows": rows, "fields": len(dataset["fields"]), "bytes": bytes_count}
+        datasets[name] = {"rows": rows, "fields": len(fields), "bytes": bytes_count}
     return datasets
 
 
@@ -882,23 +1111,36 @@ def bigquery_plan(
 
 
 def _csv_chunks(root: Path, dataset: dict[str, Any], size: int = 1_000):
-    """Yield a header once and bounded rows from every verified partition."""
+    """Yield a header once and rows bounded before any remote payload is built."""
     header = None
-    chunk = []
+    chunk: list[list[str]] = []
+    chunk_bytes = 0
     for part in dataset["partitions"]:
         with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
             rows = csv.reader(stream)
             current_header = next(rows)
             if header is None:
                 header = current_header
+                header_bytes = sum(len(value.encode("utf-8")) + 4 for value in header)
+                if header_bytes > _GOOGLE_CHUNK_SOURCE_BYTES:
+                    raise BIDestinationError(
+                        "BI CSV header exceeds the bounded Google request size"
+                    )
                 yield [header]
             elif current_header != header:
                 raise BIDestinationError("dataset partition headers disagree")
             for row in rows:
-                chunk.append(row)
-                if len(chunk) == size:
+                row_bytes = sum(len(value.encode("utf-8")) + 4 for value in row)
+                if row_bytes > _GOOGLE_CHUNK_SOURCE_BYTES:
+                    raise BIDestinationError("BI CSV row exceeds the bounded Google request size")
+                if chunk and (
+                    len(chunk) >= size or chunk_bytes + row_bytes > _GOOGLE_CHUNK_SOURCE_BYTES
+                ):
                     yield chunk
                     chunk = []
+                    chunk_bytes = 0
+                chunk.append(row)
+                chunk_bytes += row_bytes
     if chunk:
         yield chunk
 
@@ -932,11 +1174,18 @@ def destination_preview(
         raise BIDestinationError("an explicit destination target is required")
     root, manifest = _manifest(package)
     datasets = _verify_partitions(root, manifest)
+    resolved_target = _resolved_target_mapping(
+        destination,
+        target,
+        manifest["datasets"],
+        selected_projection=manifest.get("selected_projection") is True,
+    )
     return {
         "format": "seohead.bi-destination-preview.v1",
         "state": "ready_to_apply",
         "destination": destination,
         "target": target,
+        "resolved_target": resolved_target,
         "operation": operation,
         "package_schema_version": manifest["schema_version"],
         "manifest_sha256": hashlib.sha256((root / "manifest.json").read_bytes()).hexdigest(),
@@ -979,6 +1228,7 @@ def apply_with_client(
         schema_version=BI_SCHEMA_VERSION,
         datasets=manifest["datasets"],
         package_sha256=manifest_sha256,
+        selected_projection=manifest.get("selected_projection") is True,
     )
     written = {}
     commit_started = False

@@ -1542,16 +1542,7 @@ def render_document(
     navigation_started = time.monotonic()
     navigation_events: list[dict[str, Any]] = []
     navigation_events_omitted = 0
-
-    def _same_document(left: str, right: str) -> bool:
-        a, b = urlparse(left), urlparse(right)
-        return (a.scheme, a.netloc, a.path, a.params, a.query) == (
-            b.scheme,
-            b.netloc,
-            b.path,
-            b.params,
-            b.query,
-        )
+    main_document_requests: set[str] = set()
 
     def _on_frame_navigated(frame: Any) -> None:
         nonlocal navigation_events_omitted
@@ -1574,13 +1565,23 @@ def render_document(
                 "kind": (
                     "initial_http_navigation"
                     if not navigation_events
-                    else "spa_history_change"
-                    if _same_document(source, destination)
                     else "script_navigation"
+                    if destination in main_document_requests
+                    else "spa_history_change"
                 ),
                 "user_click": False,
             }
         )
+
+    def _on_request(request: Any) -> None:
+        """Remember navigation identity only; never inspect wire headers (#656)."""
+        is_navigation = getattr(request, "is_navigation_request", None)
+        if not callable(is_navigation) or not is_navigation():
+            return
+        if getattr(request, "frame", None) is getattr(page, "main_frame", None):
+            url = getattr(request, "url", None)
+            if isinstance(url, str):
+                main_document_requests.add(url)
 
     # There is deliberately no request hook beside _capture_response. Reading the
     # browser's own wire headers upgraded credentials_used the moment any request
@@ -1688,6 +1689,7 @@ def render_document(
                 )
                 page = context.new_page()
                 page.on("framenavigated", _on_frame_navigated)
+                page.on("request", _on_request)
                 if max_html_bytes is not None:
                     page.on("response", _capture_response)
                 page.on("console", _on_console)

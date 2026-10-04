@@ -29,7 +29,7 @@ def test_real_browser_records_spa_and_script_navigation(monkeypatch):
             if self.path == "/next":
                 body = b"<html><body>next</body></html>"
             else:
-                body = b"<script>history.pushState({},'', '#spa'); setTimeout(()=>location.assign('/next'), 20)</script>"
+                body = b"<script>history.pushState({},'', '/spa'); history.replaceState({},'', '?view=rendered'); setTimeout(()=>location.assign('/next'), 20)</script>"
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.send_header("Content-Length", str(len(body)))
@@ -55,6 +55,7 @@ def test_real_browser_records_spa_and_script_navigation(monkeypatch):
     events = result["renderer"]["navigation"]["events"]
     assert [event["kind"] for event in events] == [
         "initial_http_navigation",
+        "spa_history_change",
         "spa_history_change",
         "script_navigation",
     ]

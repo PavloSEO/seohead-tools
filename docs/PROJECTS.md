@@ -72,6 +72,34 @@ seohead project progress --directory ./example-project --limit 10 --offset 0
 seohead project progress --directory ./example-project --limit 10 --offset 10
 ```
 
+## Terminal observer and inbox
+
+`seohead watch --project DIRECTORY` is an optional Rich terminal observer for a
+second screen beside an AI chat. Install the `tui` extra when it is not already
+present. The selected project is the explicit `--project` workspace; the command
+does not discover or scan arbitrary directories.
+
+```bash
+seohead watch --project ./example-project
+```
+
+The numbered screens show saved checklist state, scenarios and skills, competitor
+coverage, native/Screaming Frog scan state, a paginated finding browser, saved
+finding views, workflow/monitor status, and a bounded log tail. In Findings,
+`f` filters retained rows, `s` selects a sort field, `r` reverses it, page keys
+move through the result set, and Enter opens a bounded source-evidence detail.
+Selecting a retained scan changes only the observer's local selection; it does
+not resume, cancel, or rerun work. Saved-view and review readiness screens do
+not export or publish a report.
+
+`n` writes one explicit project note and `g` writes one explicit proposed goal.
+They accept ordinary terminal text, including OS dictation committed as text; no
+speech-recognition integration is involved. These are the only writes from the
+observer. Reading a screen never marks an inbox entry read, acknowledged, or
+accepted. Agents receive a bounded unread summary only when their MCP process
+has an explicit consumer identity and a matching project allowlist; see
+[MCP_PROFILES.md](MCP_PROFILES.md) for the local stdio boundary.
+
 ## Recording stack facts
 
 Facts entered at creation are not the only way in. `project-facts` records them

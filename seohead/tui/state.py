@@ -11,7 +11,18 @@ from dataclasses import dataclass, field
 
 #: Views the shell can be in. ``palette`` is the command list, ``detail`` the
 #: selected command's read-only page, ``help`` the key reference.
-VIEWS = ("palette", "detail", "help", "watch", "note")
+VIEWS = ("palette", "detail", "help", "watch", "note", "watch_filter", "watch_detail")
+
+WATCH_SECTIONS = (
+    "overview",
+    "tasks",
+    "methods",
+    "scans",
+    "findings",
+    "views",
+    "activity",
+    "log",
+)
 
 #: Commands offered next to the flat tool list. Grouped namespaces keep their
 #: own subcommands in the CLI; the palette lists them as single entries whose
@@ -33,6 +44,15 @@ class ShellState:
     note_ready: bool = False
     note_kind: str = "note"
     watch_section: str = "overview"
+    watch_index: int = 0
+    watch_offset: int = 0
+    watch_query: str = ""
+    watch_sort: str = "severity"
+    watch_descending: bool = False
+    watch_detail_ordinal: int | None = None
+    watch_detail_kind: str = "finding"
+    watch_selected_scan_uuid: str | None = None
+    watch_view_name: str | None = None
     _all: list[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -104,6 +124,23 @@ class ShellState:
             elif key.startswith("char:") and key[5:].isprintable():
                 self.note_text += key[5:]
             return
+        if self.view == "watch_filter":
+            if key == "escape":
+                self.view = "watch"
+            elif key == "backspace":
+                self.watch_query = self.watch_query[:-1]
+            elif key == "enter":
+                self.watch_offset = 0
+                self.watch_index = 0
+                self.view = "watch"
+            elif key.startswith("char:") and key[5:].isprintable() and len(self.watch_query) < 256:
+                self.watch_query += key[5:]
+            return
+        if self.view == "watch_detail":
+            if key in {"escape", "enter", "ctrl_c"}:
+                self.view = "watch"
+                self.quit_requested = key == "ctrl_c"
+            return
         if self.view == "watch":
             if key == "char:n":
                 self.note_text = ""
@@ -113,14 +150,62 @@ class ShellState:
                 self.note_text = ""
                 self.note_kind = "proposed_goal"
                 self.view = "note"
-            elif key in {"char:1", "char:2", "char:3", "char:4", "char:5"}:
+            elif key in {
+                "char:1",
+                "char:2",
+                "char:3",
+                "char:4",
+                "char:5",
+                "char:6",
+                "char:7",
+                "char:8",
+            }:
                 self.watch_section = {
                     "char:1": "overview",
                     "char:2": "tasks",
                     "char:3": "methods",
                     "char:4": "scans",
-                    "char:5": "log",
+                    "char:5": "findings",
+                    "char:6": "views",
+                    "char:7": "activity",
+                    "char:8": "log",
                 }[key]
+                self.watch_index = 0
+                self.watch_offset = 0
+                self.watch_detail_ordinal = None
+                self.watch_detail_kind = "finding"
+            elif key == "up":
+                self.watch_index = max(0, self.watch_index - 1)
+            elif key == "down":
+                self.watch_index += 1
+            elif key == "page_up":
+                self.watch_offset = max(0, self.watch_offset - 50)
+                self.watch_index = 0
+            elif key == "page_down":
+                self.watch_offset += 50
+                self.watch_index = 0
+            elif key == "char:f" and self.watch_section == "findings":
+                self.view = "watch_filter"
+            elif key == "char:c" and self.watch_section == "findings":
+                self.watch_query = ""
+                self.watch_offset = 0
+                self.watch_index = 0
+            elif key == "char:s" and self.watch_section == "findings":
+                choices = ("severity", "check", "target_url", "id")
+                self.watch_sort = choices[(choices.index(self.watch_sort) + 1) % len(choices)]
+                self.watch_offset = 0
+                self.watch_index = 0
+            elif key == "char:r" and self.watch_section == "findings":
+                self.watch_descending = not self.watch_descending
+                self.watch_offset = 0
+                self.watch_index = 0
+            elif key == "enter" and self.watch_section in {"findings", "scans", "views"}:
+                self.watch_detail_kind = {
+                    "findings": "finding",
+                    "scans": "scan",
+                    "views": "view",
+                }[self.watch_section]
+                self.view = "watch_detail"
             elif key in ("escape", "char:q", "ctrl_c"):
                 self.quit_requested = True
             return

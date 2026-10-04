@@ -136,3 +136,28 @@ crawling. The full #815 acceptance remains open. A separate bounded cProfile
 diagnosis found that the current writer recomputes corpus summaries over all
 accumulated pages after each page and render commit; improving that path needs
 its own atomicity and recovery regression proof before repeating these scales.
+
+## Current sparse one-million-page storage measurement
+
+On 2026-10-04, a fresh current-source synthetic `example.test` run used the
+experimental storage profile with a fixed one-million-URL frontier, zero links,
+and no retained body or DOM. It intentionally terminated at exactly 300,000
+committed pages (`os._exit(75)`), reopened the same artifact, and resumed in
+two bounded stages. The final artifact and a separately created snapshot both
+contained 1,000,000 frontier rows and 1,000,000 committed page records with
+`lifecycle=finished`; SQLite integrity and foreign-key checks passed.
+
+| Stage | Result |
+|---|---|
+| Process-loss checkpoint | 300,000 committed pages after 67.034 s; 250.76 MiB DB + 3.98 MiB WAL; post-crash inspect reopened the running artifact |
+| Resume 1 | 300,000 → 848,896 under a 900-second declared budget; retained prefix remained `running` and was not reported as completion |
+| Resume 2 | 848,896 → 1,000,000 under a 600-second declared budget; `finished` with `synthetic_profile_complete` |
+| Full reader | 1,000,000 URLs in 26.165 s; 239.73 MiB peak RSS |
+| Full integrity | `integrity_check=ok`, `foreign_key_check=ok` in 1.946 s; 231.42 MiB peak RSS |
+| Snapshot | 535 MiB; inspected as finished with the same one-million page/frontier counts |
+
+The final scan was 535 MiB. This confirms sparse metadata storage, snapshot,
+readback, and crash/reopen recovery at one million records. It does **not**
+raise the public 50,000-URL crawl ceiling or establish one-million-page live
+crawling, link density, retained HTML/DOM, audit/report, or concurrent-reader
+capacity. Those claims remain separate acceptance work.

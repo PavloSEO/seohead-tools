@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +15,7 @@ from seohead.reports.bi_destinations import (
     GoogleSheetsClient,
     apply_with_client,
     bigquery_plan,
+    destination_preview,
     filter_package,
     register_host_client,
     resolve_host_client,
@@ -94,6 +97,89 @@ def test_filtered_bi_export_is_exact_and_partitioned(tmp_path):
     assert (tmp_path / "filtered" / "manifest.json").is_file()
 
 
+def test_destination_preflight_streams_partitions_and_accepts_selected_projection(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    filtered = filter_package(
+        package,
+        dataset="cohorts",
+        out_dir=tmp_path / "filtered",
+        columns=["run_id", "cohort_id", "state"],
+    )
+    assert filtered["row_count"] > 0
+    monkeypatch.setattr(
+        Path, "read_bytes", lambda *_args: pytest.fail("must stream partition bytes")
+    )
+    plan = sheets_plan(tmp_path / "filtered")
+    assert [worksheet["worksheet"] for worksheet in plan["worksheets"]] == ["cohorts"]
+    assert plan["worksheets"][0]["columns"] == 3
+
+
+def test_selected_projection_preview_uses_its_mapping_from_a_full_target_config(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    filter_package(
+        package,
+        dataset="cohorts",
+        out_dir=tmp_path / "filtered",
+        columns=["run_id", "cohort_id", "state"],
+    )
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "sheets": {
+                    "targets": {
+                        "reporting": {
+                            "enabled": True,
+                            "kind": "google_sheets_service_account",
+                            "spreadsheet_id": "1Qs8BdfxZXALh6vX4zrE7ZyGnR3h5k",
+                            "worksheets": _worksheet_mapping(package),
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    preview = destination_preview(
+        tmp_path / "filtered", target="reporting", destination="sheets", operation="replace"
+    )
+    assert set(preview["resolved_target"]["worksheets"]) == {"cohorts"}
+
+
+def test_destination_preflight_rejects_manifest_type_or_csv_header_drift(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["datasets"]["pages"]["fields"][0]["type"] = "integer"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(BIDestinationError, match="fields do not match"):
+        sheets_plan(package)
+
+    package = tmp_path / "header-package"
+    export_bi(audit=_audit(), out_dir=package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    part = manifest["datasets"]["pages"]["partitions"][0]
+    path = package / part["path"]
+    content = path.read_text()
+    path.write_text(content.replace("run_id", "wrong_header", 1))
+    raw = path.read_bytes()
+    old_bytes = part["bytes"]
+    part["bytes"] = len(raw)
+    part["sha256"] = sha256(raw).hexdigest()
+    manifest["datasets"]["pages"]["bytes"] += len(raw) - old_bytes
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(BIDestinationError, match="header"):
+        sheets_plan(package)
+
+
 def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path, monkeypatch):
     package = tmp_path / "package"
     export_bi(audit=_audit(), out_dir=package)
@@ -143,9 +229,35 @@ def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path
     assert hosted["rows"]["pages"] == 1
 
 
-def test_destination_preview_shows_the_target_and_operation_without_a_write(tmp_path):
+def test_destination_preview_shows_resolved_target_and_operation_without_auth_or_transport(
+    tmp_path, monkeypatch
+):
     package = tmp_path / "package"
     export_bi(audit=_audit(), out_dir=package)
+    worksheets = _worksheet_mapping(package)
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "sheets": {
+                    "targets": {
+                        "reporting": {
+                            "enabled": True,
+                            "kind": "google_sheets_service_account",
+                            "spreadsheet_id": "1Qs8BdfxZXALh6vX4zrE7ZyGnR3h5k",
+                            "worksheets": worksheets,
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    auth_calls = []
+    monkeypatch.setattr(
+        "seohead.data_sources.gsc.service_account_access_token",
+        lambda *_args: auth_calls.append(True) or pytest.fail("preview must not authenticate"),
+    )
     result = handlers.bi_destination_apply(
         package=str(package),
         target="reporting",
@@ -155,6 +267,55 @@ def test_destination_preview_shows_the_target_and_operation_without_a_write(tmp_
     assert result["state"] == "ready_to_apply"
     assert result["target"] == "reporting" and result["operation"] == "replace"
     assert result["datasets"]["pages"]["rows"] == 1
+    assert result["resolved_target"] == {
+        "kind": "google_sheets_service_account",
+        "spreadsheet_id": "1Qs8BdfxZXALh6vX4zrE7ZyGnR3h5k",
+        "worksheets": worksheets,
+    }
+    assert auth_calls == []
+
+
+def test_bigquery_preview_discloses_resolved_project_dataset_and_table_mapping(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    tables = _table_mapping(package)
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "bigquery": {
+                    "targets": {
+                        "warehouse": {
+                            "enabled": True,
+                            "kind": "google_bigquery_service_account",
+                            "project_id": "reporting-project",
+                            "dataset_id": "seohead_reporting",
+                            "location": "EU",
+                            "cost_authorized": False,
+                            "tables": tables,
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    result = handlers.bi_destination_apply(
+        package=str(package),
+        target="warehouse",
+        destination="bigquery",
+        operation="replace",
+    )
+    assert result["resolved_target"] == {
+        "kind": "google_bigquery_service_account",
+        "project_id": "reporting-project",
+        "dataset_id": "seohead_reporting",
+        "location": "EU",
+        "cost_authorized": False,
+        "tables": tables,
+    }
 
 
 def _worksheet_mapping(package):

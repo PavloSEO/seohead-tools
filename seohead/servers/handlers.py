@@ -3601,6 +3601,8 @@ def webmaster_url_queries(
     url_contains: str | None = None,
     max_urls: int = 100,
     max_queries_per_url: int = 500,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict[str, Any]:
     """Read bounded URL-to-query evidence from an own Yandex Webmaster host."""
     if not host_id:
@@ -3613,6 +3615,8 @@ def webmaster_url_queries(
         url_contains=url_contains,
         max_urls=max_urls,
         max_queries_per_url=max_queries_per_url,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
