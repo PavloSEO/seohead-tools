@@ -349,18 +349,23 @@ def build_tasks_from_audit_v2(scan_path: str, config: dict[str, Any] | None = No
     from seohead.storage.audit_v2 import AuditV2Reader
 
     cfg = _pipeline_cfg(config)
-    if cfg["group_by"] != "check":
-        raise ValueError("streamed audit.v2 tasks currently require tasks_pipeline.group_by=check")
+    if cfg["group_by"] not in {"check", "check_assignment"}:
+        raise ValueError("streamed audit.v2 tasks require tasks_pipeline.group_by=check or check_assignment")
+    declared = _declared_assignments(cfg) if cfg["group_by"] == "check_assignment" else {}
+    if cfg["group_by"] == "check_assignment" and not declared:
+        raise ValueError("streamed audit.v2 check_assignment tasks require declared assignments")
     with AuditV2Reader(scan_path) as reader:
         if "/issues" not in reader.collections:
             raise ValueError("audit.v2 has no findings collection")
         return _stream_grouped_tasks(
             reader.header.get("run") or {}, reader.header.get("summary") or {},
-            reader.iter_collection("/issues"), cfg,
+            reader.iter_collection("/issues"), cfg, declared,
         )
 
 
-def _stream_grouped_tasks(run: dict[str, Any], summary: dict[str, Any], rows, cfg: dict[str, Any]):
+def _stream_grouped_tasks(
+    run: dict[str, Any], summary: dict[str, Any], rows, cfg: dict[str, Any], declared: dict[str, dict[str, Any]]
+):
     """Aggregate default check tasks in SQLite, retaining only capped samples in RAM."""
     descriptor, name = tempfile.mkstemp(prefix="seohead-task-rows-", suffix=".sqlite")
     os.close(descriptor)
@@ -378,21 +383,30 @@ def _stream_grouped_tasks(run: dict[str, Any], summary: dict[str, Any], rows, cf
         cap = cfg["max_urls_per_task"]
         loc_cap = cfg.get("max_locations_per_task", DEFAULT_CONFIG["tasks_pipeline"]["max_urls_per_task"])
         groups: dict[str, dict[str, Any]] = {}
+        unassigned_findings = 0
         for ordinal, issue in enumerate(rows):
             if not isinstance(issue, dict) or issue.get("severity") not in severities:
                 continue
             check = issue.get("check")
             if not isinstance(check, str) or (include and check not in include) or check in exclude:
                 continue
+            url = issue.get("target_url")
+            assignment = None
+            group_key = check
+            if cfg["group_by"] == "check_assignment":
+                assignment = declared.get(url) or _unassigned_assignment(
+                    "No declared template/component assignment matched this finding."
+                )
+                group_key = f"{check}\x00{assignment['id']}"
+                unassigned_findings += int(assignment["id"] == "unassigned")
             group = groups.setdefault(
-                check,
-                {"first": issue, "issues": 0, "occurrences": 0, "reproductions": [], "reproduction_seen": set(), "links": [], "links_total": 0},
+                group_key,
+                {"check": check, "assignment": assignment, "first": issue, "issues": 0, "occurrences": 0, "reproductions": [], "reproduction_seen": set(), "links": [], "links_total": 0},
             )
             group["issues"] += 1
             group["occurrences"] += issue.get("occurrences_count", 1)
-            url = issue.get("target_url")
             if isinstance(url, str) and url:
-                con.execute("INSERT OR IGNORE INTO urls VALUES (?,?,?)", (check, url, ordinal))
+                con.execute("INSERT OR IGNORE INTO urls VALUES (?,?,?)", (group_key, url, ordinal))
             for value in _reproductions([issue], 1):
                 if value not in group["reproduction_seen"] and len(group["reproductions"]) < cap:
                     group["reproduction_seen"].add(value)
@@ -402,7 +416,7 @@ def _stream_grouped_tasks(run: dict[str, Any], summary: dict[str, Any], rows, cf
                 key = json.dumps(value, sort_keys=True, separators=(",", ":"))
                 con.execute(
                     "INSERT OR IGNORE INTO evidence VALUES (?,?,?,?)",
-                    (check, key, ordinal, json.dumps(value, ensure_ascii=False)),
+                    (group_key, key, ordinal, json.dumps(value, ensure_ascii=False)),
                 )
             locations = issue.get("locations") or []
             group["links_total"] += len(locations) if check in LINK_CHECKS else 0
@@ -416,17 +430,25 @@ def _stream_grouped_tasks(run: dict[str, Any], summary: dict[str, Any], rows, cf
                         "link_position": location.get("link_position"), "link_path": location.get("link_path"),
                     })
         tasks = []
-        for check, group in groups.items():
+        for group_key, group in groups.items():
             if group["occurrences"] < cfg["min_occurrences"]:
                 continue
-            urls = [row[0] for row in con.execute("SELECT url FROM urls WHERE check_id=? ORDER BY ordinal LIMIT ?", (check, cap))]
-            url_total = con.execute("SELECT COUNT(*) FROM urls WHERE check_id=?", (check,)).fetchone()[0]
-            evidence = [json.loads(row[0]) for row in con.execute("SELECT value_json FROM evidence WHERE check_id=? ORDER BY ordinal LIMIT ?", (check, cap))]
-            evidence_total = con.execute("SELECT COUNT(*) FROM evidence WHERE check_id=?", (check,)).fetchone()[0]
+            check, assignment = group["check"], group["assignment"]
+            urls = [row[0] for row in con.execute("SELECT url FROM urls WHERE check_id=? ORDER BY ordinal LIMIT ?", (group_key, cap))]
+            url_total = con.execute("SELECT COUNT(*) FROM urls WHERE check_id=?", (group_key,)).fetchone()[0]
+            evidence = [json.loads(row[0]) for row in con.execute("SELECT value_json FROM evidence WHERE check_id=? ORDER BY ordinal LIMIT ?", (group_key, cap))]
+            evidence_total = con.execute("SELECT COUNT(*) FROM evidence WHERE check_id=?", (group_key,)).fetchone()[0]
             first, meta = group["first"], check_meta(check)
             severity = first["severity"]
             label = "page" if url_total == 1 else "pages"
-            task = {"id": _task_id(check, "all"), "check": check, "priority": cfg["priority_map"].get(severity, "P3"), "severity": severity, "effort": cfg["effort_map"].get(severity, "medium"), "title": f"{meta['message']} — {url_total} {label}" if url_total else meta["message"], "fix_hint": meta.get("fix"), "source": first.get("source"), "affected_count": url_total or group["issues"], "occurrences": group["occurrences"], "urls": urls, "urls_truncated": max(0, url_total - len(urls)), "reproductions": group["reproductions"], "evidence_references": evidence, "evidence_references_truncated": max(0, evidence_total - len(evidence))}
+            title = f"{meta['message']} — {url_total} {label}" if url_total else meta["message"]
+            if assignment is not None:
+                title = f"{meta['message']} — {assignment['name']} — {url_total} {label}"
+            task = {"id": _task_id(check, assignment["id"] if assignment is not None else "all"), "check": check, "priority": cfg["priority_map"].get(severity, "P3"), "severity": severity, "effort": cfg["effort_map"].get(severity, "medium"), "title": title, "fix_hint": meta.get("fix"), "source": first.get("source"), "affected_count": url_total or group["issues"], "occurrences": group["occurrences"], "urls": urls, "urls_truncated": max(0, url_total - len(urls)), "reproductions": group["reproductions"], "evidence_references": evidence, "evidence_references_truncated": max(0, evidence_total - len(evidence))}
+            if assignment is not None:
+                task["assignment"] = assignment
+                task["membership"] = {"findings_total": group["issues"], "affected_urls_total": url_total, "urls_returned": len(urls), "urls_truncated": max(0, url_total - len(urls)), "retrieval": "Filter the source audit by this task's check and assignment provenance; URL caps do not change the source findings."}
+                task["verification_scope"] = {"state": assignment["state"], "affected_urls_total": url_total, "representative_urls": urls, "representative_urls_truncated": max(0, url_total - len(urls)), "guidance": "Inspect a representative page, then verify every affected URL after a change; assignment alone does not prove a shared cause."}
             if check in LINK_CHECKS:
                 task.update(broken_links=group["links"], broken_links_total=group["links_total"], broken_links_truncated=max(0, group["links_total"] - len(group["links"])))
             tasks.append(task)
@@ -434,6 +456,8 @@ def _stream_grouped_tasks(run: dict[str, Any], summary: dict[str, Any], rows, cf
         tasks.sort(key=lambda task: (_PRIORITY_ORDER.get(task["priority"], 9), -task["affected_count"]))
         base["tasks"] = tasks
         base["summary"] = {"tasks_total": len(tasks), "by_priority": {priority: sum(1 for task in tasks if task["priority"] == priority) for priority in sorted({task["priority"] for task in tasks})}}
+        if cfg["group_by"] == "check_assignment":
+            base["grouping"] = {"mode": "operator_assignments", "assignment_count": len({row["id"] for row in declared.values()}), "unassigned_findings": unassigned_findings}
         return base
     finally:
         con.close()

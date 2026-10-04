@@ -409,6 +409,54 @@ def test_default_task_backlog_streams_audit_v2_findings_without_legacy_materiali
     assert len(task["urls"]) == 25 and task["urls_truncated"] == 9_975
 
 
+def test_declared_component_tasks_stream_audit_v2_findings(tmp_path):
+    from seohead.sf.tasks import build_tasks_from_audit_v2
+
+    scan = tmp_path / "scan.sqlite"
+    binding = _scan(scan)
+    write_audit_v2(
+        scan,
+        {"run": {}, "summary": {}, "issues": []},
+        {
+            "/issues": [
+                {
+                    "check": "TITLE_MISSING",
+                    "severity": "warning",
+                    "source": "fixture",
+                    "target_url": "https://example.test/catalogue",
+                },
+                {
+                    "check": "TITLE_MISSING",
+                    "severity": "warning",
+                    "source": "fixture",
+                    "target_url": "https://example.test/about",
+                },
+            ]
+        },
+        binding,
+    )
+    backlog = build_tasks_from_audit_v2(
+        str(scan),
+        {
+            "tasks_pipeline": {
+                "group_by": "check_assignment",
+                "assignments": [
+                    {
+                        "name": "Catalogue template",
+                        "kind": "template",
+                        "rationale": "Declared fixture ownership.",
+                        "urls": ["https://example.test/catalogue"],
+                    }
+                ],
+            }
+        },
+    )
+    assert backlog["grouping"]["unassigned_findings"] == 1
+    assigned = next(task for task in backlog["tasks"] if task["assignment"]["id"] != "unassigned")
+    assert assigned["assignment"]["name"] == "Catalogue template"
+    assert assigned["membership"]["affected_urls_total"] == 1
+
+
 def test_report_refuses_stale_severity_summary_instead_of_claiming_clean(tmp_path):
     scan = tmp_path / "scan.sqlite"
     binding = _scan(scan)
