@@ -86,3 +86,37 @@ def test_full_refresh_keeps_unavailable_evidence_without_inventing_resolutions(t
     assert retained["run"]["state"] == "partial"
     assert retained["run"]["recoveries"] == []
     assert retained["run"]["baseline"]["scan_id"] == "scan:full"
+
+
+def test_claimed_full_refresh_keeps_its_plan_and_enforces_request_budgets(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": True,
+            "urls": ["https://example.test/a", "https://example.test/b"],
+            "max_urls": 1,
+            "max_requests": 2,
+            "max_render_requests": 1,
+            "full_refresh_every": 2,
+        },
+    )
+    claimed = schedule(project, action="start", expected_revision=configured["revision"])
+    retained = run(
+        project,
+        "scan:full-revalidated",
+        [
+            {
+                "url": "https://example.test/a",
+                "changes": [],
+                "qualifier": "revalidated",
+                "cache_state": "revalidated",
+            },
+            {"url": "https://example.test/b", "changes": [], "cache_state": "cached"},
+        ],
+        claimed["revision"],
+    )
+    assert retained["run"]["mode"] == "full"
+    assert retained["run"]["observations"][0]["cache_state"] == "revalidated"
+    assert status(project)["runner"]["state"] == "idle"

@@ -114,6 +114,15 @@ def _due(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _planned_due(document: dict[str, Any]) -> dict[str, Any]:
+    """Keep a claimed full pass full even when the runner is already active."""
+    runner = document["runner"]
+    plan = runner.get("plan")
+    if runner.get("state") == "running" and isinstance(plan, dict) and plan.get("state") == "due":
+        return plan
+    return _due(document)
+
+
 def configure(directory: str | Path, policy: dict, expected_revision: int = 0) -> dict[str, Any]:
     root, document = _load(directory)
     if document["revision"] != expected_revision:
@@ -143,13 +152,30 @@ def _threshold(policy: dict[str, Any], change: dict[str, Any]) -> bool:
 
 
 def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(item, dict) or set(item) - {"url", "changes", "qualifier", "measurement"}:
+    if not isinstance(item, dict) or set(item) - {
+        "url",
+        "changes",
+        "qualifier",
+        "measurement",
+        "request_count",
+        "render_request_count",
+        "cache_state",
+    }:
         raise ValueError("invalid scoped monitor observation")
     if item.get("url") not in policy["urls"] or not isinstance(item.get("changes"), list):
         raise ValueError("invalid scoped monitor observation")
     qualifier = item.get("qualifier", "fresh")
     if qualifier not in _QUALIFIERS:
         raise ValueError("monitor observation qualifier is invalid")
+    cache_state = item.get("cache_state", qualifier)
+    if cache_state not in {"fresh", "revalidated", "cached", "unavailable"}:
+        raise ValueError("monitor observation cache_state is invalid")
+    request_count = item.get("request_count", 1)
+    render_request_count = item.get("render_request_count", 0)
+    if type(request_count) is not int or request_count < 0:
+        raise ValueError("monitor observation request_count is invalid")
+    if type(render_request_count) is not int or render_request_count < 0:
+        raise ValueError("monitor observation render_request_count is invalid")
     measurement = item.get("measurement")
     if measurement is not None and (not isinstance(measurement, dict) or len(measurement) > 32):
         raise ValueError("monitor observation measurement is invalid")
@@ -163,6 +189,9 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "changes": changes,
         "qualifier": qualifier,
         "measurement": measurement,
+        "request_count": request_count,
+        "render_request_count": render_request_count,
+        "cache_state": cache_state,
         "measured_at": _now(),
     }
 
@@ -186,13 +215,17 @@ def run(
     policy = document["policy"]
     if not isinstance(scan_id, str) or not scan_id.strip() or len(scan_id) > 512:
         raise ValueError("scan_id required")
-    due = _due(document)
+    due = _planned_due(document)
     limit = len(policy["urls"]) if due.get("mode") == "full" else policy["max_urls"]
     if not isinstance(observations, list) or not observations or len(observations) > limit:
         raise ValueError("observations exceed configured incremental scope")
     normalized = [_observation(item, policy) for item in observations]
     if len({item["url"] for item in normalized}) != len(normalized):
         raise ValueError("monitor observations may contain each URL only once")
+    if sum(item["request_count"] for item in normalized) > policy["max_requests"]:
+        raise ValueError("monitor observations exceed configured request budget")
+    if sum(item["render_request_count"] for item in normalized) > policy["max_render_requests"]:
+        raise ValueError("monitor observations exceed configured render request budget")
     if (
         due.get("state") == "due"
         and due.get("mode") == "full"
