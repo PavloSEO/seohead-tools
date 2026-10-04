@@ -12,7 +12,74 @@ from typing import Any
 from seohead.data_sources.http import open_no_redirect
 
 ENDPOINT = "https://miratext.com/api2/call/article/seoAnalizText"
+SOURCE = "miratext"
 Transport = Callable[[str, bytes], str]
+
+
+def _table(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list) and all(isinstance(row, dict) for row in value):
+        return value
+    if isinstance(value, dict):
+        rows = value.get("items") or value.get("rows") or value.get("data")
+        if isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
+            return rows
+    return []
+
+
+def _first(row: dict[str, Any], *names: str) -> Any:
+    return next((row[name] for name in names if name in row), None)
+
+
+def _author_tables(data: Any, top: int) -> dict[str, Any]:
+    """Reduce variable provider result shapes without inventing units or recommendations."""
+    if not isinstance(data, dict):
+        return {
+            "state": "unavailable",
+            "reason": "missing_result_data",
+            "words": [],
+            "density_deviation": [],
+        }
+    tz = data.get("tz") if isinstance(data.get("tz"), dict) else data
+    word_rows = _table(tz.get("keywordsAll"))
+    deviation_rows = _table(tz.get("densityDeviation") or tz.get("density_deviation"))
+    words = []
+    for row in word_rows:
+        word = _first(row, "word", "keyword", "text", "name")
+        if not isinstance(word, str) or not word.strip():
+            continue
+        words.append(
+            {
+                "word": word,
+                "sites": _first(row, "sites", "count_sites", "competitors"),
+                "median_density": _first(row, "median_density", "density", "median"),
+                "mine": _first(row, "mine", "my_count", "count_my"),
+                "recommended": _first(row, "recommended", "recommend", "recommended_count"),
+                "unit": "provider_reported",
+            }
+        )
+    deviations = []
+    for row in deviation_rows:
+        word = _first(row, "word", "keyword", "text", "name")
+        if isinstance(word, str) and word.strip():
+            deviations.append(
+                {
+                    "word": word,
+                    "mine": _first(row, "mine", "my_density", "count_my"),
+                    "median_density": _first(row, "median_density", "density", "median"),
+                    "deviation": _first(row, "deviation", "delta", "difference"),
+                    "unit": "provider_reported",
+                }
+            )
+    return {
+        "state": "complete" if words or deviations else "unavailable",
+        "reason": None
+        if words or deviations
+        else "provider_result_has_no_recognized_author_tables",
+        "words": words[:top],
+        "density_deviation": deviations[:top],
+        "stopwords": tz.get("stopwords") or tz.get("stop_words") or "provider_not_reported",
+        "filters": tz.get("filters") or "provider_not_reported",
+    }
 
 
 def _transport(key: str) -> Transport:
@@ -100,6 +167,8 @@ def analyze(
         "paid": paid,
         "resumable": state in {"draft", "working"},
     }
+    if state == "accepted":
+        result["author_tables"] = _author_tables(body.get("data"), top)
     if paid and not hash:
         from seohead.data_sources import spend
 

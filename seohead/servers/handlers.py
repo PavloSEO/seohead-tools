@@ -449,8 +449,8 @@ def _rewrite_pages_sidecar(path: str, pages: list[Any]) -> None:
 
 
 def _segment_counts(
-    pages: list[Any],
-    issues: list[dict[str, Any]],
+    pages,
+    issues,
     scope_config: dict[str, Any],
     analysis_segments: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, int]]:
@@ -517,14 +517,16 @@ def _segment_counts(
     # Pages decide segment membership first, so dependency rules see the full
     # collected population. An issue targeting a collected page reuses that
     # assignment below; an audit-only target is evaluated on its own evidence.
-    page_records = [record(page) for page in pages]
-    assignment = assign_segments(page_records, engine_segments)
     if analysis_segments:
-        for name in assignment["order"]:
+        for name in [item["name"] for item in engine_segments]:
             bucket(name)
-    page_primary = assignment["primary"]
-    for page_record in page_records:
-        bucket(page_primary.get(page_record["url"]))["pages"] += 1
+    page_primary: dict[str, str | None] = {}
+    for page in pages:
+        page_record = record(page)
+        assignment = assign_segments([page_record], engine_segments)
+        primary = assignment["primary"].get(page_record["url"])
+        page_primary[page_record["url"]] = primary
+        bucket(primary)["pages"] += 1
 
     for issue in issues:
         target = issue.get("target_url")
@@ -1099,6 +1101,7 @@ def _audit_crawl_result(
     captured_render_summary: dict[str, Any] | None = None,
     dispatch_gate=None,
     proxy_route=None,
+    streaming: bool = False,
 ):
     """Run the existing native analysis over a complete, admitted population."""
     import json
@@ -1663,7 +1666,7 @@ def _audit_crawl_result(
             "only from a native retained scan",
         )
 
-    audit = aggregate(
+    audit_result = aggregate(
         ctx,
         {
             "input_mode": "crawl" if url else "crawl-list",
@@ -1705,7 +1708,42 @@ def _audit_crawl_result(
         },
         {},
         sitemap_summary,
-    ).to_json()
+    )
+    if streaming:
+        header, collections = audit_result.audit_v2_parts()
+        analysis_segments = settings["analysis"]["segments"]
+        header["segments"] = (
+            _segment_counts(
+                result.pages, collections["/issues"], settings["scope"], analysis_segments
+            )
+            if settings["scope"]["segments"] or analysis_segments
+            else {}
+        )
+        if fragment_evaluation is not None:
+            header["summary"]["fragment_links"] = {
+                "analysis": fragment_evaluation["analysis"],
+                "states": fragment_evaluation["states"],
+                "coverage": fragment_evaluation["coverage"],
+            }
+        if stored_scan is not None:
+            from seohead.sf.core.evidence_contract import (
+                attach_contract_parts,
+                attach_saved_corpus_header,
+            )
+
+            identity = stored_scan.con.execute(
+                "SELECT scan_uuid FROM scan WHERE singleton=1"
+            ).fetchone()[0]
+            header, collections["/issues"] = attach_contract_parts(
+                header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
+            )
+            header = attach_saved_corpus_header(header, stored_scan.con, derived=saved_corpus)
+        # The lazy page/group factories retain the disk-backed context until
+        # the writer has consumed every collection.
+        for rows in collections.values():
+            setattr(rows, "_context_owner", ctx)
+        return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
+    audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator
     # actually declared segments, so a plain crawl's audit.json is unchanged.
     analysis_segments = settings["analysis"]["segments"]
@@ -4026,16 +4064,18 @@ def project_open(directory: str, expected_site: str | None = None) -> dict[str, 
     return core(directory, expected_site=expected_site)
 
 
-def project_status(directory: str) -> dict[str, Any]:
+def project_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_basic_status
 
-    return project_basic_status(directory)
+    return project_basic_status(directory, consumer=consumer)
 
 
-def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+def project_progress(
+    directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
+) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_progress as core
 
-    return core(directory, limit=limit, offset=offset)
+    return core(directory, limit=limit, offset=offset, consumer=consumer)
 
 
 def remediation_summary(ledger: str) -> dict[str, Any]:
@@ -4043,6 +4083,70 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
     from seohead.storage.ledger import remediation_summary as core
 
     return core(ledger)
+
+
+def workflow_start(
+    directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+) -> dict[str, Any]:
+    from seohead.projects.execution import start
+
+    return start(
+        directory, scenario_id=scenario_id, steps=steps, expected_revision=expected_revision
+    )
+
+
+def workflow_checkpoint(
+    directory: str,
+    run_id: str,
+    step_id: str,
+    state: str,
+    evidence: list[dict] | None = None,
+    expected_revision: int = 0,
+) -> dict[str, Any]:
+    from seohead.projects.execution import checkpoint
+
+    return checkpoint(
+        directory,
+        run_id=run_id,
+        step_id=step_id,
+        state=state,
+        evidence=evidence,
+        expected_revision=expected_revision,
+    )
+
+
+def workflow_status(directory: str) -> dict[str, Any]:
+    from seohead.projects.execution import status
+
+    return status(directory)
+
+
+def workflow_execute(
+    directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+) -> dict[str, Any]:
+    from seohead.projects.execution import execute
+
+    return execute(directory, scenario_id=scenario_id, steps=steps, outcomes=outcomes)
+
+
+def monitor_configure(directory: str, policy: dict, expected_revision: int = 0) -> dict[str, Any]:
+    from seohead.projects.monitoring import configure
+
+    return configure(directory, policy, expected_revision)
+
+
+def monitor_run(
+    directory: str, scan_id: str, observations: list[dict], expected_revision: int
+) -> dict[str, Any]:
+    from seohead.projects.monitoring import run
+
+    return run(directory, scan_id, observations, expected_revision)
+
+
+def monitor_status(directory: str) -> dict[str, Any]:
+    from seohead.projects.monitoring import status
+
+    return status(directory)
 
 
 def remediation_cases(
@@ -4692,6 +4796,24 @@ def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
     return {"ok": True, **sheets_plan(package, max_cells=max_cells)}
 
 
+def publication_cohorts(
+    document: Any = None, file: str | None = None, out_dir: str | None = None
+) -> dict[str, Any]:
+    """Write an offline publication-cohort package from saved normalized evidence."""
+    from seohead.reports.cohorts import publication_cohorts as core
+
+    return {"ok": True, **core(document=document, file=file, out_dir=out_dir)}
+
+
+def gsc_progress(
+    document: Any = None, file: str | None = None, out_dir: str | None = None
+) -> dict[str, Any]:
+    """Write an offline branded/non-branded GSC progress package."""
+    from seohead.reports.cohorts import gsc_progress as core
+
+    return {"ok": True, **core(document=document, file=file, out_dir=out_dir)}
+
+
 def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> dict[str, Any]:
     """Describe a BigQuery load without a project, credentials, billing, or writes."""
     from seohead.reports.bi_destinations import bigquery_plan
@@ -4966,6 +5088,13 @@ _RAW_HANDLERS = {
     "project_status": project_status,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
+    "workflow_start": workflow_start,
+    "workflow_checkpoint": workflow_checkpoint,
+    "workflow_status": workflow_status,
+    "workflow_execute": workflow_execute,
+    "monitor_configure": monitor_configure,
+    "monitor_run": monitor_run,
+    "monitor_status": monitor_status,
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,
@@ -5005,6 +5134,8 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "publication_cohorts": publication_cohorts,
+    "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,
     "bi_bigquery_plan": bi_bigquery_plan,
 }

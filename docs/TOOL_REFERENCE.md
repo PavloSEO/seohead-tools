@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**135 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 140 in total.
+**144 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 149 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1472,6 +1472,106 @@ The result keeps verified original cases, resolved, persisting,
 regressed, false-positive-reviewed and unverifiable states separate.
 It does not run a crawl or infer that omitted evidence is clean.
 
+### `workflow-start`
+
+MCP name: `seo_workflow_start`
+
+Start a local registered workflow; it performs no scan or provider call.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `scenario_id` | `str` | `required` |
+| `steps` | `list[str]` | `required` |
+| `expected_revision` | `int` | `0` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `workflow-checkpoint`
+
+MCP name: `seo_workflow_checkpoint`
+
+Persist one registered-step result before the next step or agent handoff.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `run_id` | `str` | `required` |
+| `step_id` | `str` | `required` |
+| `state` | `str` | `required` |
+| `evidence` | `list[dict] | None` | `None` |
+| `expected_revision` | `int` | `0` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `workflow-status`
+
+MCP name: `seo_workflow_status`
+
+Recover the exact next registered step after interruption or handoff.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `workflow-execute`
+
+MCP name: `seo_workflow_execute`
+
+Run a supplied local synthetic sequence, checkpointing every step.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `scenario_id` | `str` | `required` |
+| `steps` | `list[str]` | `required` |
+| `outcomes` | `list[dict]` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-configure`
+
+MCP name: `seo_monitor_configure`
+
+Configure a disabled local incremental monitor; this starts no schedule or message delivery.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `policy` | `dict` | `required` |
+| `expected_revision` | `int` | `0` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-run`
+
+MCP name: `seo_monitor_run`
+
+Record one bounded retained-scan diff; quiet runs do not notify anyone.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `scan_id` | `str` | `required` |
+| `observations` | `list[dict]` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-status`
+
+MCP name: `seo_monitor_status`
+
+Read local monitor policy and its last retained checkpoint.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `remediation-cases`
 
 MCP name: `seo_remediation_cases`
@@ -2042,6 +2142,45 @@ Preflight a complete local BI package for Sheets without Google access or writes
 | `max_cells` | `int` | `10000000` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `publication-cohorts`
+
+MCP name: `seo_publication_cohorts`
+
+Project saved publication metadata and normalized provider evidence locally.
+
+| Argument | Type | Default |
+|---|---|---|
+| `out_dir` | `str` | `required` |
+| `document` | `dict[str, Any] | None` | `None` |
+| `file` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Publication, modification and first-observed dates stay distinct. GSC
+and analytics observations stay separately labelled; this makes no
+causal traffic claim and never calls a provider.
+
+### `gsc-progress`
+
+MCP name: `seo_gsc_progress`
+
+Project saved GSC query evidence into branded/non-branded summaries.
+
+| Argument | Type | Default |
+|---|---|---|
+| `out_dir` | `str` | `required` |
+| `document` | `dict[str, Any] | None` | `None` |
+| `file` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Matching is supplied by versioned aliases. Missing query rows remain
+unknown, and average-position values are never rank-placement claims.
 
 ### `bi-bigquery-plan`
 

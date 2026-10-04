@@ -128,6 +128,13 @@ COMMANDS = (
     "project-inbox-acknowledge",
     "project-inbox-goal",
     "project-inbox-unread",
+    "workflow-start",
+    "workflow-checkpoint",
+    "workflow-status",
+    "workflow-execute",
+    "monitor-configure",
+    "monitor-run",
+    "monitor-status",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -153,6 +160,8 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "publication-cohorts",
+    "gsc-progress",
     "bi-sheets-plan",
     "bi-bigquery-plan",
     "inspect-url",
@@ -476,6 +485,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "all_pages", False):
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
+    elif cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
+        if getattr(args, "directory", None):
+            kw["directory"] = args.directory
+    elif cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
+        if getattr(args, "directory", None):
+            kw["directory"] = args.directory
     elif cmd in {
         "remediation-summary",
         "remediation-cases",
@@ -629,6 +644,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["provider_joins"] = args.provider_join
     elif cmd in {"bi-sheets-plan", "bi-bigquery-plan"}:
         for name in ("package", "max_cells", "dataset", "operation"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd in {"publication-cohorts", "gsc-progress"}:
+        for name in ("file", "out_dir"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd in {
@@ -1874,6 +1893,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--entry-id", required=True)
         sub.add_argument("--state", required=True, choices=("accepted", "completed"))
         sub.add_argument("--expected-revision", type=int)
+    if cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
+        _source_flag(sub, "--directory", help="project directory")
+    if cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
+        _source_flag(sub, "--directory", help="project directory")
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
@@ -2053,6 +2076,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--dataset", required=True, help="planned BigQuery dataset name; no cloud write occurs"
         )
         sub.add_argument("--operation", choices=("replace", "append"), default="replace")
+    if cmd in {"publication-cohorts", "gsc-progress"}:
+        _source_flag(sub, "--file", help="versioned offline cohort input JSON")
+        _source_flag(
+            sub, "--out-dir", help="new local cohort package directory (never overwritten)"
+        )
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":
@@ -2344,7 +2372,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        return tui_run(no_color=args.no_color, project=getattr(args, "project", None))
+        return tui_run(
+            no_color=args.no_color,
+            project=getattr(args, "project", None),
+            commands=COMMANDS,
+        )
     from seohead.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))

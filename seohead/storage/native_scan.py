@@ -1528,6 +1528,39 @@ class NativeScan:
         ).fetchone()
         return json.loads(row[0]) if row else None
 
+    def record_external_check(self, ordinal: int, payload: dict[str, Any]) -> None:
+        """Persist one bounded external outcome in stable decision order."""
+        from .external_checks import check_item
+        from .native_context import put_context
+
+        self._assert_mutable()
+        self._begin()
+        try:
+            put_context(self.con, check_item(ordinal, payload))
+            self.con.commit()
+        except BaseException:
+            self._rollback()
+            raise
+
+    def external_checks(self):
+        for row in self.con.execute(
+            "SELECT payload_json FROM context_items WHERE kind='external_check' ORDER BY CAST(item_key AS INTEGER)"
+        ):
+            yield json.loads(row[0])
+
+    def record_external_checks_summary(self, summary: dict[str, Any]) -> None:
+        from .external_checks import summary_item
+        from .native_context import put_context
+
+        self._assert_mutable()
+        self._begin()
+        try:
+            put_context(self.con, summary_item(summary))
+            self.con.commit()
+        except BaseException:
+            self._rollback()
+            raise
+
     def _sync_corpus(self) -> None:
         """Update declared corpus availability in the evidence transaction."""
         from .corpus import corpus_summary

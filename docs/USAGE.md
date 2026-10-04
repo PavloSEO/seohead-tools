@@ -137,7 +137,7 @@ seohead report-build --audit scan.sqlite --format md --out report.md
 seohead compare-crawls --before before.sqlite --after after.sqlite
 # Optional declared release mapping; never inferred from titles or page text.
 seohead compare-crawls --before before.sqlite --after after.sqlite \
-  --correspondence ./url-correspondence.json
+  --correspondence ./examples/url-correspondence.json
 seohead sf tasks --json scan.sqlite --out tasks
 
 # retained native evidence only: create a new derived artifact without network replay
@@ -336,8 +336,8 @@ seohead duplicate-check --input '{"items":[{"id":"a","text":"..."},{"id":"b","te
 seohead duplicate-check --scan saved.sqlite
 seohead boilerplate-report --scan saved.sqlite
 seohead semantic-inputs --scan saved.sqlite
-seohead semantic-similarity --scan saved.sqlite --cache-path semantic-cache.sqlite --input '{"adapter":{"kind":"local","model_id":"caller-model","model_version":"1","settings":{},"data_transfer":"none"},"embeddings":[{"url":"https://example.com/page","vector":[0.1,0.2]}]}'
-seohead meta-description-drafts --scan saved.sqlite --input '{"context":{"language":"en"}}'  # dry-run, no model call
+seohead semantic-similarity --cache-path semantic-cache.sqlite --input '{"items":[{"url":"https://example.com/page","html":"<main>Synthetic pump catalogue content for a deterministic offline example.</main>"}],"adapter":{"kind":"local","model_id":"synthetic-fixture","model_version":"1","settings":{"dimensions":2},"data_transfer":"none"},"embeddings":[{"url":"https://example.com/page","vector":[0.1,0.2]}]}'
+seohead meta-description-drafts --input '{"items":[{"url":"https://example.com/page","html":"<html lang=en><head><title>Synthetic pumps</title></head><body><main>Synthetic pump catalogue content for a deterministic offline example.</main></body></html>"}],"context":{"language":"en"}}'  # dry-run, no model call
 echo '{"url": "https://example.com"}' | seohead parse          # stdin JSON also works
 ```
 
@@ -388,7 +388,7 @@ Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 135 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 137 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

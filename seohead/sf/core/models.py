@@ -15,6 +15,16 @@ from typing import Any
 SEVERITIES: tuple[str, ...] = ("critical", "warning", "notice")
 
 
+class _Rows(Iterable[Any]):
+    """A re-iterable lazy collection for audit.v2 transforms."""
+
+    def __init__(self, factory) -> None:
+        self.factory = factory
+
+    def __iter__(self):
+        return self.factory()
+
+
 @dataclass
 class Link:
     """A single link instance, as found in a ``*:Inlinks`` bulk export.
@@ -207,13 +217,13 @@ class AuditResult:
             "groups": [],
         }
         collections: dict[str, Iterable[Any]] = {
-            "/issues": (issue.to_json() for issue in self.issues),
-            "/pages": (page.to_json() for page in self.pages),
-            "/groups": (group.to_json() for group in self.groups),
+            "/issues": _Rows(lambda: (issue.to_json() for issue in self.issues)),
+            "/pages": _Rows(lambda: (page.to_json() for page in self.pages)),
+            "/groups": _Rows(lambda: (group.to_json() for group in self.groups)),
         }
         if self.suppressed_issues:
             header["suppressed_issues"] = []
-            collections["/suppressed_issues"] = iter(self.suppressed_issues)
+            collections["/suppressed_issues"] = _Rows(lambda: iter(self.suppressed_issues))
         return header, collections
 
     def to_json(self) -> dict[str, Any]:

@@ -43,3 +43,27 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
 def test_url_query_failures_do_not_echo_token():
     result = wm.url_queries("h", token="canary", user_id="7", transport=lambda *_: "not json")
     assert result["ok"] is False and "canary" not in json.dumps(result)
+
+
+def test_url_queries_paginate_with_explicit_cap():
+    def send(_method, _url, payload, _token):
+        if payload["text_indicator"] == "URL":
+            return json.dumps(
+                {
+                    "count": 2,
+                    "text_indicator_to_statistics": [
+                        {"text_indicator": {"value": f"https://example.test/{payload['offset']}"}}
+                    ],
+                }
+            )
+        return json.dumps(
+            {
+                "count": 1,
+                "text_indicator_to_statistics": [
+                    {"text_indicator": {"value": "pump"}, "statistics": []}
+                ],
+            }
+        )
+
+    result = wm.url_queries("h", max_urls=2, token="t", user_id="7", transport=send)
+    assert result["returned_urls"] == 2 and result["state"] == "complete"

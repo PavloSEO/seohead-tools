@@ -50,6 +50,14 @@ SESSION_PARAM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Deliberately literal editorial/template placeholders only. Broad words such
+# as "coming soon" and "sample" describe legitimate content too often to be
+# audit facts; these bracketed tokens are an observed unfinished declaration.
+PLACEHOLDER_MARKER_RE = re.compile(
+    r"(?:\{\{\s*(?:todo|tbd|placeholder)\s*\}\}|\[\s*(?:todo|tbd|placeholder)\s*\])",
+    re.IGNORECASE,
+)
+
 
 def _tracking_params(url: str) -> list[str]:
     """Param names on ``url`` that look like tracking IDs (empty == clean)."""
@@ -2575,6 +2583,24 @@ def check_url_hygiene(ctx: AuditContext) -> None:
         )
 
 
+def check_placeholder_markers(ctx: AuditContext) -> None:
+    """Literal non-Lorem template markers in existing page declarations (#828)."""
+    for page in ctx.html_pages():
+        rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
+        observed = []
+        for field in ("title", "meta_description", "h1", "h1_2", "h2"):
+            value = rec.get(field)
+            if not isinstance(value, str):
+                continue
+            markers = sorted(set(PLACEHOLDER_MARKER_RE.findall(value)), key=str.lower)
+            if markers:
+                observed.append({"field": field, "markers": markers, "value": value[:240]})
+        if observed:
+            ctx.add("PLACEHOLDER_MARKER", target_url=page.url, details={"observed": observed})
+
+
 def check_native_page_evidence(ctx: AuditContext) -> None:
     """LOREM_IPSUM_PLACEHOLDER, UNSUPPORTED_PLUGIN, IMG_MISSING_ALT_ATTRIBUTE, IMG_ALT_TOO_LONG.
 
@@ -2865,6 +2891,7 @@ ALL_CHECKS = [
     check_document_skeleton,
     check_html_structure,
     check_url_hygiene,
+    check_placeholder_markers,
     check_og,
     check_redirect_chains,
     check_native_exports,

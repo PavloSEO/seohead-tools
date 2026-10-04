@@ -55,8 +55,8 @@ _RECORD_LABELS = {"pages": "Pages", "links": "Links", "findings": "Findings"}
 
 # Excel's hard XLSX limits: rows and columns per sheet and characters per cell.
 # They are checked before and during writing so an overflow is a clear refusal
-# rather than a silently truncated or corrupt workbook (workbook splitting is
-# #759's scope; until then overflow fails).
+# rather than a silently truncated or corrupt workbook.  Records beyond one
+# sheet are deterministically split into numbered sheets (#759).
 EXCEL_MAX_ROWS = 1_048_576
 EXCEL_MAX_COLUMNS = 16_384
 EXCEL_MAX_CELL_TEXT = 32_767
@@ -853,23 +853,40 @@ def _write_xlsx(
         _flatten(head, "", rows)
         for key, value in rows:
             summary.append([key, _xlsx_cell(value, name="summary", field=key, ordinal=0)])
+        partitions = workbook.create_sheet("Partitions")
+        partitions.append(["record_type", "sheet", "first_record", "last_record", "rows"])
         for name, fields, stream in selection:
-            sheet = workbook.create_sheet(_RECORD_LABELS[name])
-            sheet.append(list(fields))
-            ordinal = 1
+            sheet_number = 0
+            sheet = None
+            ordinal = 0
+            first_record = 0
+            rows_in_sheet = 0
             for record in stream:
                 ordinal += 1
-                if ordinal > EXCEL_MAX_ROWS:
-                    raise ScanError(
-                        f"{name} exceeds the Excel row limit ({EXCEL_MAX_ROWS} rows per sheet); "
-                        "workbook splitting is not implemented yet (#759)"
+                if sheet is None or rows_in_sheet >= EXCEL_MAX_ROWS - 1:
+                    if sheet is not None:
+                        partitions.append(
+                            [name, sheet.title, first_record, ordinal - 1, rows_in_sheet]
+                        )
+                    sheet_number += 1
+                    title = (
+                        _RECORD_LABELS[name]
+                        if sheet_number == 1
+                        else f"{_RECORD_LABELS[name]} {sheet_number}"
                     )
+                    sheet = workbook.create_sheet(title)
+                    sheet.append(list(fields))
+                    first_record = ordinal
+                    rows_in_sheet = 0
                 sheet.append(
                     [
                         _xlsx_cell(record.get(field), name=name, field=field, ordinal=ordinal)
                         for field in fields
                     ]
                 )
+                rows_in_sheet += 1
+            if sheet is not None:
+                partitions.append([name, sheet.title, first_record, ordinal, rows_in_sheet])
         workbook.save(path)
     except BaseException:
         for sheet in workbook:
@@ -888,13 +905,6 @@ def _check_excel_limits(
             raise ScanError(
                 f"{name}: {len(projection[name])} fields exceed the Excel column limit "
                 f"({EXCEL_MAX_COLUMNS})"
-            )
-        count = source.counts[name]
-        if count is not None and count + 1 > EXCEL_MAX_ROWS:
-            raise ScanError(
-                f"{name}: {count} records exceed the Excel row limit "
-                f"({EXCEL_MAX_ROWS} including the header); workbook splitting is not "
-                "implemented yet (#759)"
             )
 
 

@@ -58,3 +58,27 @@ vanish behind the inline slot. The scan input remains limited to 120 MiB and 50,
 pages; providers and total output have separate hard budgets. This implementation
 materializes bounded pages/findings/provider observations; it does not demonstrate
 streaming million-page BI, Google Sheets publication or a copyable Looker Studio template.
+
+## Publication cohorts
+
+`publication-cohorts` consumes `seohead.publication-cohort-input.v1` and
+saved `seohead.normalized-evidence.v1` rows. It writes local inventory,
+multi-author, provider-observation, publication-month and optional age-window
+datasets with a manifest. Publication, modification and first-observed dates
+retain separate raw value, parsed value, state and source; none substitutes for
+another. GSC and analytics remain separate labelled sources with their period,
+timezone, attribution and coverage. Missing or suppressed evidence is not zero,
+and URL-key collisions remain unjoined. Publication timing is descriptive, not
+evidence that publication caused traffic.
+
+## Branded and non-branded GSC progress
+
+`gsc-progress` consumes `seohead.gsc-progress-input.v1` with explicit exact or
+token aliases, comparable windows and saved normalized GSC query rows. Unicode
+NFKC/case-folding is applied before matching; zero, one and multiple rule
+matches remain non-branded, branded and ambiguous states, while a missing query
+is unknown. Optional operator overrides remain recorded in contributions.
+Weighted CTR uses compatible measured clicks and impressions, never row CTR
+averages; zero-baseline changes are `new_from_zero`, not infinite. Scope is
+kept separate, and average-position bands are not rank or page-placement
+claims. Neither command collects GSC or makes a causal SEO diagnosis.

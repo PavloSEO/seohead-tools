@@ -106,8 +106,10 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
                     stored_sitemap=reconciliation,
                     offline=True,
                     captured_render_summary=captured_run.get("render_escalation"),
+                    streaming=True,
                 )
-            audit["run"]["reanalysis"] = {
+            header, collections = audit
+            header["run"]["reanalysis"] = {
                 "parent_scan_uuid": parent["scan_uuid"],
                 "parent_writer_version": parent["writer_version"],
                 "parent_writer_revision": parent["writer_revision"],
@@ -115,7 +117,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
                 "network": "disabled",
             }
             try:
-                scan.save_audit(audit)
+                scan.save_audit_v2(header, collections)
             except AuditSizeError as exc:
                 reason = str(exc)
         if reason:

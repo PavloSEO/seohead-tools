@@ -379,17 +379,6 @@ def crawl_site_scan(
         raise ValueError("url is required for a SQLite scan crawl")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
-    if settings.get("discovery", {}).get("external", {}).get("crawl"):
-        # External-destination checking is wired into the legacy directory
-        # route first (#746); the native scan collector has no external
-        # subsystem yet, so an artifact cannot honour the option. Refusing
-        # here too covers callers that bypass handlers.crawl_site's own
-        # guard — an artifact written under a silently-dropped option would
-        # claim coverage it never produced.
-        raise ValueError(
-            "discovery.external.crawl is unavailable for native SQLite capture; "
-            "pass --out-dir for the legacy directory route"
-        )
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
     sitemap_seed = {
         "sitemap_url": sitemap,
@@ -424,6 +413,61 @@ def crawl_site_scan(
         progress=progress,
         proxy_route=proxy_route,
     )
+    external_summary = None
+    if settings["discovery"]["external"]["crawl"]:
+        from time import monotonic
+        from urllib.parse import urlsplit
+
+        from seohead.crawl.external import ExternalCheck, ExternalPolicy, run_external_checks
+        from seohead.crawl.spider import Scope
+        from seohead.crawl.sql_graph import StoredGraph
+        from seohead.recon.net import http_client
+
+        rules = Scope.from_config(settings["scope"])
+        start_host = (urlsplit(url).hostname or "").lower()
+        started = monotonic()
+        client, _http2 = http_client(
+            settings["http"]["timeout_seconds"],
+            headers={"User-Agent": settings["http"]["user_agent"]},
+        )
+        try:
+            with (
+                NativeScan.open(run.path) as external_scan,
+                StoredGraph(external_scan.con) as graph,
+            ):
+                done = [ExternalCheck.from_dict(item) for item in external_scan.external_checks()]
+
+                def emit(check: ExternalCheck) -> None:
+                    external_scan.record_external_check(len(done), check.as_dict())
+                    done.append(check)
+
+                external_summary = run_external_checks(
+                    graph.iter_links(),
+                    policy=ExternalPolicy.from_config(settings["external_checks"]),
+                    is_internal=lambda target: rules.is_internal(target, start_host),
+                    excluded_host=lambda target: bool(
+                        any(
+                            (urlsplit(target).hostname or "").lower() == host
+                            or (urlsplit(target).hostname or "").lower().endswith("." + host)
+                            for host in rules.exclude_hosts
+                        )
+                    ),
+                    emit=emit,
+                    done=done,
+                    client=client,
+                    headers_for_url=lambda target: {},
+                    user_agent=settings["http"]["user_agent"],
+                    max_response_bytes=settings["limits"]["max_response_bytes"],
+                    retry_on_timeout=settings["http"]["retry_on_timeout"],
+                    dispatch_gate=run.dispatch_gate,
+                    time_exhausted=lambda: (
+                        settings["limits"]["max_crawl_seconds"] > 0
+                        and monotonic() - started >= settings["limits"]["max_crawl_seconds"]
+                    ),
+                )
+                external_scan.record_external_checks_summary(external_summary)
+        finally:
+            client.close()
     if (
         settings.get("rendering", {}).get("rendered_links", {}).get("crawl", False)
         and settings.get("rendering", {}).get("mode", "raw") != "raw"
@@ -445,6 +489,7 @@ def crawl_site_scan(
                     if run.dispatch_gate is not None
                     else None,
                     proxy_route=proxy_route,
+                    streaming=True,
                 )
                 queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
             if not queued_before or run.partial:
@@ -510,6 +555,8 @@ def crawl_site_scan(
             "sitemap_urls": sitemap_seed["sitemap_urls"],
             "sitemap_seeded": len(result.seed_urls),
         }
+        if external_summary is not None:
+            discovery["external_checks"] = external_summary
         from dataclasses import replace
 
         from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
@@ -557,7 +604,11 @@ def crawl_site_scan(
                     rendered_bodies=rendered_body_retention(scan.con),
                 )
 
-            scan.save_audit(audit)
+            if isinstance(audit, tuple):
+                header, collections = audit
+                scan.save_audit_v2(header, collections)
+            else:  # compatibility for injected audit bridges
+                scan.save_audit(audit)
         except AuditSizeError as exc:
             reason = str(exc)
             scan.note_audit_unavailable(reason)

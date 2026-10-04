@@ -420,6 +420,12 @@ def test_companion_audit_findings_are_projected_without_reading_empty_inline_slo
             "analyzer_revision": metadata["writer_revision"],
         },
     )
+    monkeypatch.setattr(
+        "seohead.storage.audit_v2.AuditV2Reader.materialize_legacy",
+        lambda *_args, **_kwargs: pytest.fail(
+            "BI must stream audit.v2 findings, not materialize legacy JSON"
+        ),
+    )
     package = tmp_path / "companion-bi"
     export_bi(scan=scan_path, out_dir=package)
     manifest = json.loads((package / "manifest.json").read_text())

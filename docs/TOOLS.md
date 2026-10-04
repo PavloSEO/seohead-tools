@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 135 commands and 140 callable tools,
+The current registry has 137 commands and 142 callable tools,
 with 181 audit checks. These are inventories, not coverage on every input.
 
 ## Offline BI projection
@@ -28,6 +28,11 @@ It makes no provider requests or remote writes.
 
 `bi-sheets-plan` and `bi-bigquery-plan` verify a complete local package and emit only an
 offline preflight. They never authenticate, select a cloud target, activate billing, or write.
+
+`publication-cohorts` and `gsc-progress` write separate offline cohort packages
+from saved normalized evidence. They do not collect providers, infer missing
+rows as zero, blend analytics with GSC, or make causal/rank-placement claims.
+Their explicit input contracts and CSV/JSON manifests are in [BI.md](BI.md).
 
 ## Topvisor
 
@@ -322,7 +327,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
 | `scan-snapshot` | Makes a validated, portable single-file SQLite copy. `--out` may name a new file or an existing directory; a directory receives a UTC timestamp, host, and short scan UUID filename. Existing destinations are never overwritten. | writes a new file |
-| `scan-export` | Exports retained scan data under the versioned `scan_export.v1` contract as CSV, XLSX, JSON, or XML. Accepts a `scan.v1` artifact or an SF Analyzer `audit.json`; validates `--records`/`--fields` before writing; XML uses the documented `scan-export` root element and namespace. | writes new files |
+| `scan-export` | Exports retained scan data under the versioned `scan_export.v1` contract as CSV, XLSX, JSON, or XML. Accepts a `scan.v1` artifact or an SF Analyzer `audit.json`; validates `--records`/`--fields` before writing; XLSX splits oversized record types into numbered sheets and records every partition; XML uses the documented `scan-export` root element and namespace. | writes new files |
 | `scan-pin` | Explicitly pins a scan, or unpins it with `--unpin`, so retention will not select it. | changes scan metadata |
 | `scan-prune` | Produces a retention plan by default. Deletion needs `--apply` and the exact reviewed plan. | deletes only with `--apply` |
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
@@ -452,6 +457,11 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
 | `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
+
+`miratext-analyze` returns a resumable hash while the provider queues work. An accepted result
+contains bounded `author_tables.words` and `author_tables.density_deviation` JSON arrays for
+direct CLI/MCP export or joining into a local report. Values, filters, and stopword handling keep
+the provider's stated units; an unknown or malformed final table is marked unavailable.
 | `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
 | `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
 | `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
@@ -644,7 +654,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(135 + 5):
+(137 + 5):
 
 ```bash
 seohead mcp        # stdio

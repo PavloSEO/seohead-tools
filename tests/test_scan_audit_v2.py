@@ -91,8 +91,9 @@ def test_native_scan_saves_audit_result_collections_without_legacy_document(tmp_
         ],
     )
     expected = result.to_json()
+    header, collections = result.audit_v2_parts()
+    assert list(collections["/issues"]) == list(collections["/issues"])
     with NativeScan.create(scan_path, **_metadata()) as scan:
-        header, collections = result.audit_v2_parts()
         scan.save_audit_v2(header, collections)
         assert scan.finish_without_audit("audit.v2 result")
     with AuditV2Reader(scan_path) as reader:

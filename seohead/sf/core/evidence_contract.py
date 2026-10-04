@@ -557,6 +557,42 @@ def attach_contract(
     return projected
 
 
+def attach_contract_parts(header, issues, *, scan_uuid: str | None = None, con: Any = None):
+    """Attach contract metadata while preserving a re-iterable issue collection."""
+    projected = copy.deepcopy(dict(header))
+    if projected.get("schema_version") != AUDIT_SCHEMA_VERSION:
+        raise ValueError("evidence contract supports only audit.json schema_version 2.0")
+    run = projected.get("run") if isinstance(projected.get("run"), dict) else {}
+    projected["run"] = run
+    summary = projected.get("summary") if isinstance(projected.get("summary"), dict) else {}
+    projected["summary"] = summary
+    identity = _scan_uuid(scan_uuid) or _scan_uuid(run.get("scan_uuid"))
+    fired = sorted({item.get("check") for item in issues if isinstance(item.get("check"), str)})
+    summary["evidence_contract"] = {
+        "schema_version": CONTRACT_VERSION,
+        "audit_schema_version": projected.get("schema_version"),
+        "scan_uuid": identity,
+        "scan_identity_state": "measured" if identity else "unavailable",
+        "scan_identity_reason": "" if identity else "no retained scan UUID in this audit document",
+        "population": _population(projected),
+        "capability_rows": capability_rows(
+            {**projected, "issues": [{"check": check} for check in fired]}
+        ),
+    }
+
+    def rows():
+        for issue in issues:
+            item = dict(issue)
+            evidence = dict(item.get("evidence") or {})
+            evidence["contract"] = _issue_reference(item, con=con, scan_uuid=identity)
+            item["evidence"] = evidence
+            yield item
+
+    from .models import _Rows
+
+    return projected, _Rows(rows)
+
+
 def attach_saved_corpus(
     document: Mapping[str, Any],
     con: Any,
@@ -587,6 +623,22 @@ def attach_saved_corpus(
     if derived.get("schema_version") != SAVED_CORPUS_VERSION:
         raise ValueError("saved corpus derivation has an unsupported schema version")
     summary["saved_corpus_derivations"] = derived
+    return projected
+
+
+def attach_saved_corpus_header(header, con: Any, *, derived: Mapping[str, Any] | None = None):
+    """Attach corpus derivations to an audit header without reading collections."""
+    projected = copy.deepcopy(dict(header))
+    if projected.get("schema_version") != AUDIT_SCHEMA_VERSION:
+        raise ValueError("saved corpus attachment supports only audit.json schema_version 2.0")
+    summary = projected.get("summary") if isinstance(projected.get("summary"), dict) else {}
+    projected["summary"] = summary
+    from .corpus_derivations import derive as derive_corpus
+
+    payload = dict(derived) if derived is not None else derive_corpus(con)
+    if payload.get("schema_version") != SAVED_CORPUS_VERSION:
+        raise ValueError("saved corpus derivation has an unsupported schema version")
+    summary["saved_corpus_derivations"] = payload
     return projected
 
 

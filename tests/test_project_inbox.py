@@ -127,6 +127,7 @@ def test_observer_snapshot_keeps_missing_work_and_logs_visible(tmp_path):
 
     assert result["progress"]["audit_complete"] is False
     assert result["preparation"]["state"] == "pending"
+    assert result["execution"]["runs"] == []
     assert result["scans"]["total"] == 0
     assert result["inbox_unread"]["count"] == 1
     assert "Synthetic handoff evidence" in result["log"]["text"]

@@ -1,0 +1,10 @@
+{
+  "schema_version": "url-correspondence.v1",
+  "origin_map": {},
+  "pairs": [
+    {
+      "before": "https://example.com/",
+      "after": "https://example.com/"
+    }
+  ]
+}

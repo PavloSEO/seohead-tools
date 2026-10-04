@@ -62,6 +62,8 @@ and this decision makes no backend migration.
 | `markdown-extract` | Live URL (`url`)<br>Inline HTML (`html`) | — |
 | `boilerplate-report` | Inline corpus (`pages`)<br>Scan artifact (`scan`) | — |
 | `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
+| `semantic-similarity` | Inline corpus (`items`); requires `embeddings, adapter, cache_path`<br>Scan artifact (`scan`); requires `embeddings, adapter, cache_path`<br>Inline JSON (`embeddings, adapter`)<br>Local file (`cache_path`)<br>Selector (`threshold, max_candidate_comparisons`) | Supplied normalized-vector evidence; no model is loaded or called.; Uses the retained semantic corpus and its recorded normalization policy.; Local SQLite embedding cache. |
+| `meta-description-drafts` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context`)<br>Inline JSON (`drafts, executor`); requires `checkpoint_path`<br>Local file (`checkpoint_path, json_path, csv_path`)<br>Selector (`batch_size`) | Dry-run needs only supplied page HTML.; Uses retained normalized page content offline.; Optional versioned site instructions.; Optional structured caller/delegated-agent results; no provider call. |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
@@ -70,6 +72,7 @@ and this decision makes no backend migration.
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset. |
 | `facts-export` | Inline JSON (`sites`) | — |
+| `marketing-inventory` | Inline JSON (`documents`)<br>Selector (`cta_selector, form_selector, id_attributes, id_parameters`)<br>Local directory (`out_dir`) | — |
 | `keywords-expand` | Provider query (`phrase`) | — |
 | `keywords-seasonality` | Provider query (`phrase`) | — |
 | `keywords-exact` | Provider query (`keywords`) | — |
@@ -100,6 +103,18 @@ and this decision makes no backend migration.
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
 | `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
+| `project-observe` | Project directory (`directory`)<br>Selector (`consumer`)<br>Inline JSON (`scan_limit`) | Optional scoped unread-notice recipient.; Bounded retained scan-history page. |
+| `project-inbox-submit` | Project directory (`directory`)<br>Inline text (`text`)<br>Selector (`kind, references, author_role`) | — |
+| `project-inbox-list` | Project directory (`directory`)<br>Selector (`consumer, offset, limit, include_acknowledged`) | — |
+| `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-acknowledge` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
+| `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `remediation-summary` | Local file (`ledger`) | — |
+| `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |
+| `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |
+| `remediation-record-verification` | Local file (`ledger, verification_path`)<br>Selector (`actor, expected_revision`) | — |
+| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`) | — |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
 | `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |
@@ -123,6 +138,8 @@ and this decision makes no backend migration.
 | `evidence-normalize` | Local file (`file`)<br>Inline JSON (`mapping`)<br>Local directory (`out_dir`) | Supplied CSV/XLSX/JSON rows or a saved provider-evidence envelope; fully offline.; Optional seohead.evidence-mapping.v1 manifest, inline or file path.; Optional restricted normalized artifact directory. |
 | `evidence-join` | Scan artifact (`scan`)<br>Audit document (`audit`)<br>Inline JSON (`pages`)<br>Local file (`evidence, compare`)<br>Inline JSON (`mapping, compare_mapping, policy`)<br>Local directory (`out_dir`) | Alternative crawl side; offline scan read like provider-replay.; Alternative crawl side.; Alternative crawl side, page objects.; CSV/XLSX/JSON or saved provider envelope; inline JSON also accepted.; Mapping manifests and the declared comparison policy, inline or file path.; Optional private join/compatibility artifact directory. |
 | `bi-export` | Scan artifact (`scan`)<br>Audit document (`audit`)<br>Local file (`provider_joins`)<br>Local directory (`out_dir`)<br>Inline JSON (`max_rows_per_file, max_bytes_per_file, max_output_bytes, search_metric`) | Reads saved artifacts only; no provider calls, crawl, or remote writes.; Alternative validated scan.v1 source.; Alternative supported audit JSON source.; Optional saved issue #781 evidence-join/normalized-evidence JSON files; repeatable.; Required new local package directory; existing output is refused.; Optional positive partition/total-output bounds and explicit Search Console clicks or impressions axis; exceeding a hard limit fails without publishing a package. |
+| `publication-cohorts` | Inline JSON (`document`)<br>Local file (`file`)<br>Local directory (`out_dir`) | Reads saved normalized evidence only; no provider calls or causal inference.; seohead.publication-cohort-input.v1 document.; Alternative versioned offline cohort input JSON.; Required new local package directory; existing output is refused. |
+| `gsc-progress` | Inline JSON (`document`)<br>Local file (`file`)<br>Local directory (`out_dir`) | Reads saved normalized GSC evidence only; no provider calls or rank-placement claims.; seohead.gsc-progress-input.v1 document.; Alternative versioned offline GSC input JSON.; Required new local package directory; existing output is refused. |
 | `bi-sheets-plan` | Local directory (`package`)<br>Inline JSON (`max_cells`) | Offline package/checksum/capacity preflight; no Google authentication or write.; Optional declared capacity, never an API quota check. |
 | `bi-bigquery-plan` | Local directory (`package`)<br>Selector (`dataset, operation`) | Offline optional-load plan; no project selection, billing, authentication, or write. |
 | `inspect-url` | Live URL (`url`)<br>Inline JSON (`checks`) | Optional bounded selection of closed investigation checks. |
@@ -142,8 +159,23 @@ and this decision makes no backend migration.
 | `scan-fragment-links` | Scan artifact (`input_path`)<br>Selector (`state`)<br>Selector (`representation`) | Optional resolved, missing, or skipped occurrence filter.; Optional static, rendered, or legacy_fragment source filter. |
 | `scan-requeue` | Scan artifact (`input_path`)<br>Selector (`where`)<br>Local file (`backup_path`)<br>Scan artifact (`from_scan`) | Restricted saved URL/page predicate.; Mandatory new verified backup destination.; Optional alternate saved selection source. |
 | `scan-import-urls` | Scan artifact (`input_path`)<br>Local file (`urls_file`)<br>Local file (`backup_path`) | Explicit TXT, CSV, XLSX, or XML URL source.; Mandatory new verified backup destination. |
-| `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal |
-| `sf tasks` | Audit document (`audit_json`)<br>Local configuration (`config`) | — |
-| `sf doctor` | Local configuration (`config`) | — |
-| `sf save-config` | No direct input | — |
+| `marketing-inventory` | Inline JSON (`documents`)<br>Local directory (`out_dir`) | Supplied page records; no fetch occurs.; Optional local inventory output. |
+| `meta-description-drafts` | Inline JSON (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context, drafts, executor`)<br>Local file (`checkpoint_path, json_path, csv_path`) | Supplied page evidence for planning or validation.; Optional retained source scan.; Optional caller-supplied editorial context, drafts, and executor metadata.; Optional local checkpoint and export destinations. |
+| `semantic-similarity` | Inline JSON (`items, embeddings, adapter`)<br>Scan artifact (`scan`)<br>Local file (`cache_path`) | Supplied corpus, optional embeddings, and adapter declaration.; Optional retained source scan.; Optional local similarity cache. |
+| `remediation-summary` | Local file (`ledger`) | — |
+| `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |
+| `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`) | — |
+| `remediation-record-verification` | Local file (`ledger, verification_path`)<br>Selector (`actor, expected_revision`) | — |
+| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`) | Optional local report destination. |
+| `project-observe` | Project directory (`directory`)<br>Selector (`consumer, scan_limit`) | Optional observer identity and bounded scan page. |
+| `project-inbox-submit` | Project directory (`directory`)<br>Inline text (`text`)<br>Inline JSON (`references`)<br>Selector (`kind, author_role, expected_revision`) | Optional validated project references. |
+| `project-inbox-list` | Project directory (`directory`)<br>Selector (`consumer, offset, limit, include_acknowledged`) | — |
+| `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-acknowledge` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
+| `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`)<br>Local file (`auth_config`)<br>Inline text (`auth`)<br>Local file (`sf_cli`)<br>Live URL (`sitemap`)<br>Local directory (`out`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal; Optional SF authentication profile.; Optional HTTP Basic credentials; do not persist or log them.; Optional explicit licensed SF CLI path.; Optional explicit sitemap URL for live rechecks.; Local audit and optional task output directory. |
+| `sf tasks` | Audit document (`audit_json`)<br>Local configuration (`config`)<br>Local directory (`out`) | Local task output directory. |
+| `sf doctor` | Local configuration (`config`)<br>Local file (`sf_cli`) | Optional explicit licensed SF CLI path. |
+| `sf save-config` | Local file (`out`) | — |
 | `mcp` | No direct input | Starts the local stdio server; profile and progress-notification behavior are startup options. |

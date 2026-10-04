@@ -1498,10 +1498,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A stable consumer optionally receives a bounded inbox notice.  Reading a
         status never marks notes read or acknowledged.
         """
-        result = handlers.project_status(directory=directory)
-        if consumer is not None:
-            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
-        return _checked(result)
+        return _checked(handlers.project_status(directory=directory, consumer=consumer))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_progress(
@@ -1514,10 +1511,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         the shared coverage axis has a measured, nonzero denominator. It is
         explicitly task completion, not a site-health or remediation percentage.
         """
-        result = handlers.project_progress(directory=directory, limit=limit, offset=offset)
-        if consumer is not None:
-            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
-        return _checked(result)
+        return _checked(
+            handlers.project_progress(
+                directory=directory, limit=limit, offset=offset, consumer=consumer
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_observe(
@@ -1527,7 +1525,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         retained scan state and the execution-log tail.  It never starts work or
         consumes inbox entries; a consumer only receives its own unread summary.
         """
-        return _checked(handlers.project_observe(directory, consumer, scan_limit))
+        return _checked(
+            handlers.project_observe(directory=directory, consumer=consumer, scan_limit=scan_limit)
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_inbox_submit(
@@ -1600,6 +1600,60 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         It does not run a crawl or infer that omitted evidence is clean.
         """
         return _checked(handlers.remediation_summary(ledger=ledger))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_start(
+        directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+    ) -> dict[str, Any]:
+        """Start a local registered workflow; it performs no scan or provider call."""
+        return _checked(handlers.workflow_start(directory, scenario_id, steps, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_checkpoint(
+        directory: str,
+        run_id: str,
+        step_id: str,
+        state: str,
+        evidence: list[dict] | None = None,
+        expected_revision: int = 0,
+    ) -> dict[str, Any]:
+        """Persist one registered-step result before the next step or agent handoff."""
+        return _checked(
+            handlers.workflow_checkpoint(
+                directory, run_id, step_id, state, evidence, expected_revision
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_workflow_status(directory: str) -> dict[str, Any]:
+        """Recover the exact next registered step after interruption or handoff."""
+        return _checked(handlers.workflow_status(directory))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_execute(
+        directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+    ) -> dict[str, Any]:
+        """Run a supplied local synthetic sequence, checkpointing every step."""
+        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_configure(
+        directory: str, policy: dict, expected_revision: int = 0
+    ) -> dict[str, Any]:
+        """Configure a disabled local incremental monitor; this starts no schedule or message delivery."""
+        return _checked(handlers.monitor_configure(directory, policy, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_run(
+        directory: str, scan_id: str, observations: list[dict], expected_revision: int
+    ) -> dict[str, Any]:
+        """Record one bounded retained-scan diff; quiet runs do not notify anyone."""
+        return _checked(handlers.monitor_run(directory, scan_id, observations, expected_revision))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_monitor_status(directory: str) -> dict[str, Any]:
+        """Read local monitor policy and its last retained checkpoint."""
+        return _checked(handlers.monitor_status(directory))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_cases(
@@ -2123,6 +2177,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
         """Preflight a complete local BI package for Sheets without Google access or writes."""
         return _checked(handlers.bi_sheets_plan(package=package, max_cells=max_cells))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_publication_cohorts(
+        out_dir: str, document: dict[str, Any] | None = None, file: str | None = None
+    ) -> dict[str, Any]:
+        """Project saved publication metadata and normalized provider evidence locally.
+
+        Publication, modification and first-observed dates stay distinct. GSC
+        and analytics observations stay separately labelled; this makes no
+        causal traffic claim and never calls a provider.
+        """
+        return _checked(handlers.publication_cohorts(document=document, file=file, out_dir=out_dir))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_gsc_progress(
+        out_dir: str, document: dict[str, Any] | None = None, file: str | None = None
+    ) -> dict[str, Any]:
+        """Project saved GSC query evidence into branded/non-branded summaries.
+
+        Matching is supplied by versioned aliases. Missing query rows remain
+        unknown, and average-position values are never rank-placement claims.
+        """
+        return _checked(handlers.gsc_progress(document=document, file=file, out_dir=out_dir))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_bi_bigquery_plan(

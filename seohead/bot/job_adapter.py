@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from seohead.bot.wizard import ScanJobSpec
-from seohead.remote_api.contracts import JobBackend, JobStatus, ScanOptions, ScanSubmission
+from seohead.job_contracts import JobBackend, JobStatus, ScanOptions, ScanSubmission
 
 
 @dataclass
