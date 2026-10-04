@@ -25,6 +25,37 @@ def _log(root: Path) -> dict[str, Any]:
     return {"text": text, "truncated": size > LOG_BYTES, "bytes": size}
 
 
+def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    """Read retained scan evidence only; failures remain observable data."""
+    from seohead.storage import open_scan, read_audit
+    from seohead.storage.status import scan_status
+
+    path = row["path"]
+    try:
+        status = scan_status(path)
+        audit = read_audit(path)
+        by_severity: dict[str, int] = {}
+        for issue in audit.get("issues", []):
+            severity = issue.get("severity") if isinstance(issue, dict) else None
+            if isinstance(severity, str):
+                by_severity[severity] = by_severity.get(severity, 0) + 1
+        with open_scan(path, require_audit=False) as con:
+            sitemap_rows = con.execute(
+                "SELECT completeness,COUNT(*) FROM context_items "
+                "WHERE kind='sitemap_fetch_summary' GROUP BY completeness"
+            ).fetchall()
+        return {
+            "state": "available",
+            "frontier": status["frontier"],
+            "committed_page_outcomes": status["committed_page_outcomes"],
+            "findings": {"total": sum(by_severity.values()), "by_severity": by_severity},
+            "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
+            "skipped_checks": audit.get("run", {}).get("checks_skipped", []),
+        }
+    except (OSError, ValueError, KeyError) as exc:
+        return {"state": "unavailable", "reason": str(exc)}
+
+
 def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20) -> dict[str, Any]:
     """Return a bounded observer snapshot without changing project evidence."""
     if type(scan_limit) is not int or not 1 <= scan_limit <= 100:
@@ -51,7 +82,9 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         if item["kind"] in {"scenario", "skill"}
     ]
     scans = status["scans"]
-    scan_rows = scans["items"][:scan_limit]
+    scan_rows = [
+        {**row, "evidence": _scan_evidence(row)} for row in scans["items"][:scan_limit]
+    ]
     snapshot: dict[str, Any] = {
         "ok": True,
         "project": status["project"],

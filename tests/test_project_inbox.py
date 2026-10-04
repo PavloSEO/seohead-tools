@@ -19,6 +19,7 @@ from seohead.projects.inbox import (
 from seohead.projects.observer import observe
 from seohead.projects.workspace import create_project
 from seohead.servers.mcp_server import build_server
+from tests.test_scan_history import _finished
 
 
 def _project(tmp_path):
@@ -142,3 +143,19 @@ def test_utf8_dictation_text_survives_handoff_and_restart(tmp_path):
     restored = list_entries(root, consumer="agent/next-session")["entries"]
     assert restored[0]["id"] == entry["id"]
     assert restored[0]["text"] == text
+
+
+def test_observer_reads_retained_frontier_findings_and_sitemap_without_mutation(tmp_path):
+    root = _project(tmp_path)
+    scan = root / "scans" / "synthetic.sqlite"
+    _finished(scan)
+    before = scan.read_bytes()
+
+    result = observe(root)
+
+    evidence = result["scans"]["items"][0]["evidence"]
+    assert evidence["state"] == "available"
+    assert evidence["frontier"]["state"] == "available"
+    assert evidence["findings"]["total"] >= 0
+    assert "fetch_summaries" in evidence["sitemaps"]
+    assert scan.read_bytes() == before

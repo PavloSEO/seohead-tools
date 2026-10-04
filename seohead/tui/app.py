@@ -215,6 +215,19 @@ def _watch_lines(
                     f"  [{state}] {scan['uuid']} · {scan['source_kind']} · {scan['finish_reason'] or 'unknown stop'}"
                 )
             )
+            evidence = scan["evidence"]
+            if evidence["state"] == "available":
+                frontier = evidence["frontier"]
+                counts = frontier.get("counts") if frontier["state"] == "available" else None
+                lines.append(
+                    Text(
+                        f"    frontier {counts if counts is not None else 'unknown'} · "
+                        f"findings {evidence['findings']['total']} · "
+                        f"sitemaps {evidence['sitemaps']['fetch_summaries']}"
+                    )
+                )
+            else:
+                lines.append(Text(f"    evidence unavailable: {evidence['reason']}"))
         if not snapshot["scans"]["items"]:
             lines.append(Text("  no retained scan; counts and sitemap state are unknown"))
         for name, step in preparation["steps"].items():
