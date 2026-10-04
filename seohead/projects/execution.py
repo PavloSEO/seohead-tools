@@ -129,3 +129,31 @@ def status(directory: str | Path) -> dict:
         "runs": document["runs"],
         "next_action": next_action,
     }
+
+
+def execute(
+    directory: str | Path, *, scenario_id: str, steps: list[str], outcomes: list[dict]
+) -> dict:
+    """Checkpoint a supplied local registered-step sequence without any network work."""
+    started = start(
+        directory,
+        scenario_id=scenario_id,
+        steps=steps,
+        expected_revision=status(directory)["revision"],
+    )
+    run, revision = started["run"], started["revision"]
+    if not isinstance(outcomes, list) or [item.get("id") for item in outcomes] != steps:
+        raise ValueError("outcomes must cover registered steps once in declared order")
+    for outcome in outcomes:
+        result = checkpoint(
+            directory,
+            run_id=run["id"],
+            step_id=outcome.get("id"),
+            state=outcome.get("state"),
+            evidence=outcome.get("evidence"),
+            expected_revision=revision,
+        )
+        revision = result["revision"]
+        if result["run"]["state"] != "running":
+            return result
+    return status(directory)

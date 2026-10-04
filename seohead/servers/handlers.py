@@ -4045,6 +4045,50 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
     return core(ledger)
 
 
+def workflow_start(
+    directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+) -> dict[str, Any]:
+    from seohead.projects.execution import start
+
+    return start(
+        directory, scenario_id=scenario_id, steps=steps, expected_revision=expected_revision
+    )
+
+
+def workflow_checkpoint(
+    directory: str,
+    run_id: str,
+    step_id: str,
+    state: str,
+    evidence: list[dict] | None = None,
+    expected_revision: int = 0,
+) -> dict[str, Any]:
+    from seohead.projects.execution import checkpoint
+
+    return checkpoint(
+        directory,
+        run_id=run_id,
+        step_id=step_id,
+        state=state,
+        evidence=evidence,
+        expected_revision=expected_revision,
+    )
+
+
+def workflow_status(directory: str) -> dict[str, Any]:
+    from seohead.projects.execution import status
+
+    return status(directory)
+
+
+def workflow_execute(
+    directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+) -> dict[str, Any]:
+    from seohead.projects.execution import execute
+
+    return execute(directory, scenario_id=scenario_id, steps=steps, outcomes=outcomes)
+
+
 def remediation_cases(
     ledger: str,
     check: str | None = None,
@@ -4966,6 +5010,10 @@ _RAW_HANDLERS = {
     "project_status": project_status,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
+    "workflow_start": workflow_start,
+    "workflow_checkpoint": workflow_checkpoint,
+    "workflow_status": workflow_status,
+    "workflow_execute": workflow_execute,
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,

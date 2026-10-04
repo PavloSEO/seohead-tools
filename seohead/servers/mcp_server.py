@@ -1601,6 +1601,41 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """
         return _checked(handlers.remediation_summary(ledger=ledger))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_start(
+        directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+    ) -> dict[str, Any]:
+        """Start a local registered workflow; it performs no scan or provider call."""
+        return _checked(handlers.workflow_start(directory, scenario_id, steps, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_checkpoint(
+        directory: str,
+        run_id: str,
+        step_id: str,
+        state: str,
+        evidence: list[dict] | None = None,
+        expected_revision: int = 0,
+    ) -> dict[str, Any]:
+        """Persist one registered-step result before the next step or agent handoff."""
+        return _checked(
+            handlers.workflow_checkpoint(
+                directory, run_id, step_id, state, evidence, expected_revision
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_workflow_status(directory: str) -> dict[str, Any]:
+        """Recover the exact next registered step after interruption or handoff."""
+        return _checked(handlers.workflow_status(directory))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_execute(
+        directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+    ) -> dict[str, Any]:
+        """Run a supplied local synthetic sequence, checkpointing every step."""
+        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes))
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_cases(
         ledger: str,
