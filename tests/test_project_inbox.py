@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import get_context
 
 import pytest
 
@@ -24,6 +25,10 @@ def _project(tmp_path):
     root = tmp_path / "synthetic-project"
     create_project(root, "https://example.test/", label="Synthetic observer fixture")
     return root
+
+
+def _separate_writer(directory: str) -> None:
+    submit(directory, text="Written by a separate collector", references=["scan:synthetic-process"])
 
 
 def test_note_read_ack_and_goal_transitions_are_explicit_and_durable(tmp_path):
@@ -62,6 +67,18 @@ def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tm
     again = fingerprint(root)
     unread_summary(root, consumer="agent/session-a")
     assert fingerprint(root) == again
+
+
+def test_separate_process_handoff_survives_writer_exit(tmp_path):
+    root = _project(tmp_path)
+    writer = get_context("spawn").Process(target=_separate_writer, args=(str(root),))
+    writer.start()
+    writer.join(timeout=15)
+    assert writer.exitcode == 0
+
+    handed_off = list_entries(root, consumer="agent/replacement")
+    assert handed_off["entries"][0]["text"] == "Written by a separate collector"
+    assert unread_summary(root, consumer="agent/replacement")["count"] == 1
 
 
 def test_mcp_progress_returns_notice_without_consuming_it(tmp_path):
