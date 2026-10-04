@@ -33,22 +33,22 @@ BI_SCHEMA_VERSION = "seohead.bi.v1"
 JOIN_FORMAT = "seohead.evidence-join.v1"
 NORMALIZED_FORMAT = "seohead.normalized-evidence.v1"
 MAX_AUDIT_BYTES = 64 * 1024 * 1024
-MAX_SCAN_BYTES = 120 * 1024 * 1024
+MAX_SCAN_BYTES = 4 * 1024 * 1024 * 1024
 MAX_PROVIDER_JOIN_BYTES = 128 * 1024 * 1024
 MAX_PROVIDER_JOIN_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_PROVIDER_SOURCES = 8
 MAX_PROVIDER_ROWS_PER_SOURCE = 100_000
-MAX_PAGES = 50_000
+MAX_PAGES = 1_000_000
 MAX_FINDINGS = 1_000_000
 MAX_LINK_OCCURRENCES = 5_000_000
 MAX_ROWS_PER_PARTITION = 250_000
 MAX_BYTES_PER_PARTITION = 64 * 1024 * 1024
-MAX_OUTPUT_BYTES = 1024 * 1024 * 1024
+MAX_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
 MAX_OUTPUT_ROWS = 10_000_000
 MAX_CELL_BYTES = 8 * 1024 * 1024
 DEFAULT_ROWS_PER_PARTITION = 25_000
 DEFAULT_BYTES_PER_PARTITION = 8 * 1024 * 1024
-DEFAULT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024
+DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024 * 1024
 
 
 class BIExportError(ValueError):
@@ -676,7 +676,8 @@ class _RunInput:
     source_sha256: str
     source_bytes: int
     run_metadata: dict[str, Any]
-    pages: list[dict[str, Any]]
+    pages_factory: Any
+    page_count: int
     findings_factory: Any
     finding_count: int
     groups: list[dict[str, Any]]
@@ -753,6 +754,11 @@ def _audit_source(document: dict[str, Any], raw: bytes, source_name: str | None)
         raise BIExportError(f"audit findings exceed the {MAX_FINDINGS}-row source bound")
     if any(not isinstance(page, dict) for page in pages):
         raise BIExportError("audit contains a non-object page row")
+    page_urls = [_page_url(page) for page in pages]
+    if len(set(page_urls)) != len(page_urls):
+        raise BIExportError(
+            "source audit has duplicate raw page URLs; page rows cannot be keyed uniquely"
+        )
     if any(not isinstance(finding, dict) for finding in findings):
         raise BIExportError("audit contains a non-object finding row")
     raw_sha = _digest(raw)
@@ -888,7 +894,8 @@ def _audit_source(document: dict[str, Any], raw: bytes, source_name: str | None)
         source_sha256=raw_sha,
         source_bytes=len(raw),
         run_metadata=metadata,
-        pages=pages,
+        pages_factory=lambda: iter(pages),
+        page_count=len(pages),
         findings_factory=lambda: iter(findings),
         finding_count=len(findings),
         groups=groups,
@@ -990,14 +997,15 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
         raise BIExportError(f"validated scan metadata could not be decoded: {exc}") from exc
     if not isinstance(capabilities, dict) or not isinstance(settings_json, dict):
         raise BIExportError("validated scan capabilities or settings are malformed")
-    pages = [
-        dict(page)
-        for page in con.execute(
-            "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
-        )
-    ]
-    if len(pages) > MAX_PAGES:
+    page_count = int(con.execute("SELECT COUNT(*) FROM pages").fetchone()[0])
+    if page_count > MAX_PAGES:
         raise BIExportError(f"scan pages exceed the {MAX_PAGES}-row source bound")
+    if con.execute(
+        "SELECT 1 FROM pages p JOIN urls u USING(url_id) GROUP BY u.url HAVING COUNT(*) > 1 LIMIT 1"
+    ).fetchone():
+        raise BIExportError(
+            "retained scan has duplicate raw page URLs; page rows cannot be keyed uniquely"
+        )
     findings = audit.get("issues") if isinstance(audit, dict) else []
     groups = audit.get("groups") if isinstance(audit, dict) else []
     findings = findings if isinstance(findings, list) else []
@@ -1013,7 +1021,9 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
             if "/groups" in audit_reader.collections
             else []
         )
-        audit_page_rows = audit_reader.iter_collection("/pages")
+        audit_page_rows = (
+            audit_reader.iter_collection("/pages") if "/pages" in audit_reader.collections else ()
+        )
     else:
 
         def findings_factory():
@@ -1030,11 +1040,9 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
             for page in audit_page_rows
             if isinstance(page, dict) and isinstance(page.get("url"), str)
         }
-        if isinstance(audit, dict)
-        else {}
+        if audit_reader is None
+        else None
     )
-    for page in pages:
-        page["_bi_audit_page"] = audit_pages.get(page.get("url"))
     if finding_count > MAX_FINDINGS:
         raise BIExportError(f"scan findings exceed the {MAX_FINDINGS}-row source bound")
     link_count = int(con.execute("SELECT COUNT(*) FROM links").fetchone()[0])
@@ -1127,6 +1135,36 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
         for record in cursor:
             yield dict(record)
 
+    def pages_factory() -> Iterator[dict[str, Any]]:
+        overlays = (
+            iter(audit_reader.iter_collection("/pages"))
+            if audit_reader is not None and "/pages" in audit_reader.collections
+            else None
+        )
+        for record in con.execute(
+            "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
+        ):
+            page = dict(record)
+            overlay = (
+                next(overlays, None)
+                if overlays is not None
+                else (audit_pages or {}).get(page["url"])
+            )
+            if overlay is not None:
+                if not isinstance(overlay, dict) or overlay.get("url") != page["url"]:
+                    raise BIExportError(
+                        "saved audit page order does not match retained scan pages for streaming projection"
+                    )
+                page["_bi_audit_page"] = {
+                    "indexability": overlay.get("indexability"),
+                    "indexability_status": overlay.get("indexability_status"),
+                }
+            yield page
+        if overlays is not None and next(overlays, None) is not None:
+            raise BIExportError(
+                "saved audit has more page rows than the retained scan for streaming projection"
+            )
+
     return _RunInput(
         run_id=str(scan["scan_uuid"]),
         source_kind="scan",
@@ -1135,7 +1173,8 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
         source_sha256=scan_sha,
         source_bytes=scan_bytes,
         run_metadata=metadata,
-        pages=pages,
+        pages_factory=pages_factory,
+        page_count=page_count,
         findings_factory=findings_factory,
         finding_count=finding_count,
         groups=groups,
@@ -1804,9 +1843,7 @@ def _validate_join(join: dict[str, Any]) -> None:
         raise BIExportError("provider join page populations do not conserve crawl pages")
 
 
-def _join_from_provider(
-    provider: _ProviderInput, pages: list[dict[str, Any]], run: _RunInput
-) -> dict[str, Any] | None:
+def _join_from_provider(provider: _ProviderInput, run: _RunInput) -> dict[str, Any] | None:
     if provider.join is not None:
         join = provider.join
         crawl = join.get("crawl") or {}
@@ -1819,10 +1856,16 @@ def _join_from_provider(
         return join
     if provider.normalized is None:
         return None
+    if run.page_count > 50_000:
+        raise BIExportError(
+            "normalized provider evidence must be joined before a large scan BI export; "
+            "supply the saved evidence-join artifact to avoid materializing crawl pages"
+        )
     document = provider.normalized
     rows = document.get("rows") or []
     page_counts: Counter[str] = Counter()
     evidence_counts: Counter[str] = Counter()
+    pages = list(run.pages_factory())
     for page in pages:
         key = normalize_join_key(_page_url(page))
         if key is not None:
@@ -2279,8 +2322,8 @@ def _cohort_rows(
         "and timezone; values are never summed."
     )
     pairs, pair_reason = _quadrant_candidates(sources, search_metric)
-    denominator = len(run.pages)
-    for ordinal, page in enumerate(run.pages):
+    denominator = run.page_count
+    for ordinal, page in enumerate(run.pages_factory()):
         projected = _page_row(run, page, ordinal)
         status = projected["status_code"]
         if projected["status_code_state"] == "measured":
@@ -2480,17 +2523,17 @@ def _coverage_rows(
         "crawl",
         run.run_metadata["crawl_state"],
         run.run_metadata.get("crawl_reason"),
-        len(run.pages),
-        len(run.pages),
-        0 if run.run_metadata["crawl_state"] == "complete" else len(run.pages),
+        run.page_count,
+        run.page_count,
+        0 if run.run_metadata["crawl_state"] == "complete" else run.page_count,
         {"source_kind": run.source_kind, "source_schema": run.source_schema},
     )
     for dataset, result, source_count in (
-        ("pages", pages_result, len(run.pages)),
+        ("pages", pages_result, run.page_count),
         ("findings", findings_result, run.finding_count),
         ("link_occurrences", links_result, run.link_count),
         ("metrics", metrics_result, None),
-        ("cohorts", cohorts_result, len(run.pages) * 5),
+        ("cohorts", cohorts_result, run.page_count * 5),
     ):
         yield _coverage_row(
             run.run_id,
@@ -2785,7 +2828,7 @@ def _write_package(
     dimension_names: set[str] = set()
     provider_observations: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]] = []
     for provider in providers:
-        join = _join_from_provider(provider, run.pages, run)
+        join = _join_from_provider(provider, run)
         provider.join = join
         provider_joins.append(join)
         if join is not None:
@@ -2800,14 +2843,8 @@ def _write_package(
     )
     group_map = _group_map(run.groups)
 
-    page_urls = [_page_url(page) for page in run.pages]
-    if len(set(page_urls)) != len(page_urls):
-        raise BIExportError(
-            "source audit has duplicate raw page URLs; page rows cannot be keyed uniquely"
-        )
-
     def page_rows() -> Iterator[dict[str, Any]]:
-        for ordinal, page in enumerate(run.pages):
+        for ordinal, page in enumerate(run.pages_factory()):
             yield _page_row(run, page, ordinal)
 
     def finding_rows() -> Iterator[dict[str, Any]]:
@@ -2931,7 +2968,7 @@ def _write_package(
                 "available",
                 None,
                 "retained source page rows",
-                {"source_rows": len(run.pages)},
+                {"source_rows": run.page_count},
             ),
             "findings": (
                 "available" if run.run_metadata.get("audit_available", True) else "unavailable",
@@ -2969,7 +3006,7 @@ def _write_package(
                 "available",
                 None,
                 "derived retained URL observations; unclassified rows retain their reason",
-                {"search_metric": search_metric, "page_rows": len(run.pages)},
+                {"search_metric": search_metric, "page_rows": run.page_count},
             ),
         }
         for name in ("pages", "findings", "metrics", "link_occurrences", "cohorts"):

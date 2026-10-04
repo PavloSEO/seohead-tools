@@ -54,10 +54,13 @@ Output is staged and published only after bounds and row conservation pass; exis
 output is refused. Scan access is read-only. A missing saved audit makes findings
 unavailable, rather than a clean zero-findings audit. Valid audit.v2 companions are
 read with an explicit 64 MiB compatibility bound so their findings cannot silently
-vanish behind the inline slot. The scan input remains limited to 120 MiB and 50,000
-pages; providers and total output have separate hard budgets. This implementation
-materializes bounded pages/findings/provider observations; it does not demonstrate
-streaming million-page BI or a copyable Looker Studio template.
+vanish behind the inline slot. A native scan may contain up to 1,000,000 retained pages and
+is read through re-iterable SQLite cursors rather than a page list; pages and cohorts are written
+as partitioned streams with exact source-row conservation. The caller can raise the output budget
+up to 16 GiB for that full local package. Providers and total output retain separate hard budgets:
+for a large scan, normalized provider evidence must first be saved as an `evidence-join` artifact,
+so the BI exporter never materializes a million crawl pages to re-join it. This implementation does
+not demonstrate a copyable Looker Studio template.
 
 ## Explicit Google destinations
 
