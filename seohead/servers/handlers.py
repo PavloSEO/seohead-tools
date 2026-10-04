@@ -3427,6 +3427,13 @@ def webmaster_url_queries(
     )
 
 
+def miratext_analyze(**request: Any) -> dict[str, Any]:
+    """Start or resume a bounded Miratext analysis; paid modes need explicit confirmation."""
+    from seohead.data_sources import miratext
+
+    return miratext.analyze(**request)
+
+
 def gsc_archive(
     database: str | None = None,
     action: str = "status",
@@ -4607,6 +4614,7 @@ _RAW_HANDLERS = {
     "crtsh_subdomains": crtsh_subdomains,
     "gsc_query": gsc_query,
     "webmaster_url_queries": webmaster_url_queries,
+    "miratext_analyze": miratext_analyze,
     "gsc_archive": gsc_archive,
     "crux_report": crux_report,
     "indexnow_submit": indexnow_submit,

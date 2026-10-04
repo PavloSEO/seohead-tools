@@ -329,6 +329,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("provider_query", "host_id", note="Bounded Yandex URL-to-query evidence."),
     ),
     _command(
+        "miratext-analyze",
+        "miratext_analyze",
+        _form("inline_json", note="Miratext analysis; paid modes require confirmation."),
+    ),
+    _command(
         "gsc-archive",
         "gsc_archive",
         _form(

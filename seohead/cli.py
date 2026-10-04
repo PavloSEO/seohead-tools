@@ -96,6 +96,7 @@ COMMANDS = (
     "crtsh-subdomains",
     "gsc-query",
     "webmaster-url-queries",
+    "miratext-analyze",
     "gsc-archive",
     "crux-report",
     "indexnow-submit",

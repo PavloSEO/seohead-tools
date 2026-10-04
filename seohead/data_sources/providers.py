@@ -80,6 +80,13 @@ _REGISTRY: dict[str, dict[str, Any]] = {
         "quota_mode": "Yandex Webmaster application quota",
         "privacy_class": "restricted",
     },
+    "miratext": {
+        "credential_components": ["api_key"],
+        "access": "read_only_optional_paid",
+        "operations": ["seo_analysis"],
+        "quota_mode": "free queue or explicitly confirmed paid provider task",
+        "privacy_class": "restricted",
+    },
     "bing_webmaster": {
         "credential_components": ["api_key"],
         "access": "read_only",
@@ -135,6 +142,7 @@ _CREDENTIAL_SOURCES: dict[str, dict[str, tuple[str, str]]] = {
     "yandex_webmaster": {
         "oauth_bearer": ("yandex-webmaster/access_token", "YANDEX_WEBMASTER_TOKEN")
     },
+    "miratext": {"api_key": ("miratext/api_key", "MIRATEXT_API_KEY")},
     "bing_webmaster": {"api_key": ("bing-webmaster/api_key", "BING_WEBMASTER_API_KEY")},
     "dataforseo_backlinks": {
         "login": ("dataforseo/login", "DATAFORSEO_LOGIN"),
@@ -164,6 +172,7 @@ _DEDICATED_OPERATIONS = {
         "web_search": "serp-fetch",
     },
     "indexnow": {"submit": "indexnow-submit"},
+    "miratext": {"seo_analysis": "miratext-analyze"},
 }
 
 

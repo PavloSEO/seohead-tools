@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**117 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 122 in total.
+**118 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 123 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1134,6 +1134,27 @@ Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
 
 This is provider data, not crawl evidence. It preserves URL/query statistics without
 summing CTR or average position across pages; caps remain explicit in the response.
+
+### `miratext-analyze`
+
+MCP name: `seo_miratext_analyze`
+
+Start or resume Miratext analysis; paid and keyword modes need confirmation.
+
+| Argument | Type | Default |
+|---|---|---|
+| `urls` | `list[str] | None` | `None` |
+| `texts` | `list[str] | None` | `None` |
+| `my` | `str | None` | `None` |
+| `hash` | `str | None` | `None` |
+| `check_type` | `str` | `'url'` |
+| `keywords` | `str | None` | `None` |
+| `paid` | `bool` | `False` |
+| `confirm_paid` | `bool` | `False` |
+| `timeout` | `int` | `120` |
+| `top` | `int` | `100` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota
 
 ### `gsc-archive`
 

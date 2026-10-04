@@ -166,6 +166,10 @@ def metrika_token() -> str:
     )
 
 
+def miratext_api_key() -> str:
+    return read("miratext/api_key", "MIRATEXT_API_KEY")
+
+
 def dataforseo_login() -> str:
     return read("dataforseo/login", "DATAFORSEO_LOGIN")
 

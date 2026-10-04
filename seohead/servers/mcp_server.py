@@ -1269,6 +1269,35 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=paid, structured_output=True)
+    def seo_miratext_analyze(
+        urls: list[str] | None = None,
+        texts: list[str] | None = None,
+        my: str | None = None,
+        hash: str | None = None,
+        check_type: str = "url",
+        keywords: str | None = None,
+        paid: bool = False,
+        confirm_paid: bool = False,
+        timeout: int = 120,
+        top: int = 100,
+    ) -> dict[str, Any]:
+        """Start or resume Miratext analysis; paid and keyword modes need confirmation."""
+        return _checked(
+            handlers.miratext_analyze(
+                urls=urls,
+                texts=texts,
+                my=my,
+                hash=hash,
+                check_type=check_type,
+                keywords=keywords,
+                paid=paid,
+                confirm_paid=confirm_paid,
+                timeout=timeout,
+                top=top,
+            )
+        )
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_gsc_archive(
         database: str,
