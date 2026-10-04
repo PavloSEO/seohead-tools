@@ -15,6 +15,7 @@ from seohead.data_sources.http import open_no_redirect
 
 ENDPOINT = "https://miratext.com/api2/call/article/seoAnalizText"
 SOURCE = "miratext"
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 Transport = Callable[[str, bytes], str]
 
 
@@ -93,7 +94,10 @@ def _transport(key: str) -> Transport:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         with open_no_redirect(request, timeout=30) as response:
-            return response.read().decode("utf-8")
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ValueError("Miratext response exceeds 20 MiB")
+        return body.decode("utf-8")
 
     return send
 
