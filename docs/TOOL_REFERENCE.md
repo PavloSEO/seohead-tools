@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**116 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 121 in total.
+**117 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 122 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1113,6 +1113,27 @@ Google Search Console: search performance for a verified property (mode=search_a
 Requires an OAuth2 bearer token for an own, verified property — see seo_sources_doctor
 and docs/SETUP.md for how to obtain one. A missing token returns an explicit failure
 naming what to configure; it never fabricates a result.
+
+### `webmaster-url-queries`
+
+MCP name: `seo_webmaster_url_queries`
+
+Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
+
+| Argument | Type | Default |
+|---|---|---|
+| `host_id` | `str` | `required` |
+| `url` | `str | None` | `None` |
+| `url_contains` | `str | None` | `None` |
+| `max_urls` | `int` | `100` |
+| `max_queries_per_url` | `int` | `500` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+This is provider data, not crawl evidence. It preserves URL/query statistics without
+summing CTR or average position across pages; caps remain explicit in the response.
 
 ### `gsc-archive`
 

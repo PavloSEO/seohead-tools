@@ -1250,6 +1250,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_webmaster_url_queries(
+        host_id: str,
+        url: str | None = None,
+        url_contains: str | None = None,
+        max_urls: int = 100,
+        max_queries_per_url: int = 500,
+    ) -> dict[str, Any]:
+        """Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
+
+        This is provider data, not crawl evidence. It preserves URL/query statistics without
+        summing CTR or average position across pages; caps remain explicit in the response.
+        """
+        return _checked(
+            handlers.webmaster_url_queries(
+                host_id, url, url_contains, max_urls, max_queries_per_url
+            )
+        )
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_gsc_archive(
         database: str,

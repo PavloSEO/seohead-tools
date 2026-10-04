@@ -324,6 +324,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("crtsh-subdomains", "crtsh_subdomains", _form("domain", "domain")),
     _command("gsc-query", "gsc_query", _form("provider_query", "site_url")),
     _command(
+        "webmaster-url-queries",
+        "webmaster_url_queries",
+        _form("provider_query", "host_id", note="Bounded Yandex URL-to-query evidence."),
+    ),
+    _command(
         "gsc-archive",
         "gsc_archive",
         _form(

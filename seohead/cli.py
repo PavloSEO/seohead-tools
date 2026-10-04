@@ -95,6 +95,7 @@ COMMANDS = (
     "wayback-history",
     "crtsh-subdomains",
     "gsc-query",
+    "webmaster-url-queries",
     "gsc-archive",
     "crux-report",
     "indexnow-submit",
@@ -756,6 +757,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["dimensions"] = _split_list(args.dimensions)
         if getattr(args, "row_limit", None):
             kw["row_limit"] = args.row_limit
+    if cmd == "webmaster-url-queries":
+        for name in ("host_id", "url", "url_contains", "max_urls", "max_queries_per_url"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     if cmd == "gsc-archive":
         for name in (
             "database",
@@ -1206,6 +1212,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="verify bot identities with forward-confirmed reverse DNS "
             "(performs network lookups)",
         )
+    if cmd == "webmaster-url-queries":
+        _source_flag(sub, "--host-id", dest="host_id", help="verified Yandex Webmaster host ID")
+        _source_flag(sub, "--url", help="one exact page URL")
+        _source_flag(sub, "--url-contains", dest="url_contains", help="page URL substring")
+        sub.add_argument("--max-urls", dest="max_urls", type=int, help="URL cap, 1..500")
+        sub.add_argument("--max-queries-per-url", dest="max_queries_per_url", type=int, help="query cap per URL, 1..500")
     if cmd in {
         "scan-evidence",
         "scan-extract",

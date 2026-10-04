@@ -3406,6 +3406,27 @@ def gsc_query(
     )
 
 
+def webmaster_url_queries(
+    host_id: str | None = None,
+    url: str | None = None,
+    url_contains: str | None = None,
+    max_urls: int = 100,
+    max_queries_per_url: int = 500,
+) -> dict[str, Any]:
+    """Read bounded URL-to-query evidence from an own Yandex Webmaster host."""
+    if not host_id:
+        raise ValueError("host_id required")
+    from seohead.data_sources import yandex_webmaster as core
+
+    return core.url_queries(
+        host_id,
+        url=url,
+        url_contains=url_contains,
+        max_urls=max_urls,
+        max_queries_per_url=max_queries_per_url,
+    )
+
+
 def gsc_archive(
     database: str | None = None,
     action: str = "status",
@@ -4585,6 +4606,7 @@ _RAW_HANDLERS = {
     "wayback_history": wayback_history,
     "crtsh_subdomains": crtsh_subdomains,
     "gsc_query": gsc_query,
+    "webmaster_url_queries": webmaster_url_queries,
     "gsc_archive": gsc_archive,
     "crux_report": crux_report,
     "indexnow_submit": indexnow_submit,
