@@ -473,6 +473,26 @@ def test_lifecycle_transitions_are_revision_safe_and_evidence_bound(tmp_path):
     assert remediation_report(ledger) == remediation_report(ledger)
 
 
+def test_case_reads_paginate_exact_findings_without_changing_coverage_totals(tmp_path):
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[
+            _issue("ISSUE-000001", "CHECK_ONE", target=A),
+            _issue("ISSUE-000002", "CHECK_TWO", target=B),
+        ],
+    )
+    ingest_scan(ledger, scan)
+    first = read_cases(ledger, limit=1, offset=0)
+    second = read_cases(ledger, limit=1, offset=1)
+    assert first["total"] == second["total"] == 2
+    assert first["ledger_revision"] == second["ledger_revision"]
+    assert first["findings"][0]["finding_key"] != second["findings"][0]["finding_key"]
+    assert remediation_summary(ledger)["denominators"]["verified_original_occurrences"] == 2
+    with pytest.raises(LedgerError, match="limit"):
+        read_cases(ledger, limit=0)
+
+
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):
     ledger = _ledger(tmp_path)
     groups_one = [

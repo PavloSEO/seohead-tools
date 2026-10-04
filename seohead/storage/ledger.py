@@ -47,6 +47,8 @@ USER_VERSION = 1
 FORMAT_VERSION = "ledger.v1"
 READ_TIMEOUT_SECONDS = 30
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+DEFAULT_CASE_LIMIT = 100
+MAX_CASE_LIMIT = 1_000
 _REPRESENTATIONS = frozenset(
     {"static", "rendered", "legacy_fragment", "legacy_unknown", "unknown", "scope"}
 )
@@ -1769,7 +1771,7 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
 def remediation_report(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
     """Build deterministic JSON-ready before/after rows without performing I/O or network work."""
     summary = remediation_summary(ledger)
-    cases = read_cases(ledger)
+    cases = read_cases(ledger, limit=None)
     rows = []
     for finding in cases["findings"]:
         for occurrence in finding["occurrences"]:
@@ -1876,6 +1878,8 @@ def read_cases(
     check: str | None = None,
     url: str | None = None,
     finding_key: str | None = None,
+    limit: int | None = DEFAULT_CASE_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Read back exact cases and their per-occurrence history.
 
@@ -1883,9 +1887,14 @@ def read_cases(
     with the audit's own URL policy before matching subjects or affected-URL
     membership, and ``finding_key`` selects one case directly.  The result is
     the ledger population itself -- findings, their occurrences, affected-URL
-    membership, group memberships and ordered observations -- so a second agent
-    can resume without conversation history.
+    membership, group memberships and ordered observations.  Results are
+    paginated by finding to keep an observer responsive; pass ``limit=None``
+    only for a bounded local export such as :func:`remediation_report`.
     """
+    if limit is not None and (type(limit) is not int or not 1 <= limit <= MAX_CASE_LIMIT):
+        raise LedgerError(f"limit must be an integer from 1 to {MAX_CASE_LIMIT} or None")
+    if type(offset) is not int or not 0 <= offset <= 1_000_000:
+        raise LedgerError("offset must be a nonnegative bounded integer")
     own = not isinstance(ledger, sqlite3.Connection)
     con = open_ledger(ledger) if own else ledger
     try:
@@ -1905,11 +1914,21 @@ def read_cases(
             values.extend([canon, canon])
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         findings = []
+        total = con.execute(
+            "SELECT COUNT(*) FROM finding f JOIN check_def c ON c.check_id=f.check_id " + where,
+            values,
+        ).fetchone()[0]
+        page = ""
+        page_values = list(values)
+        if limit is not None:
+            page = " LIMIT ? OFFSET ?"
+            page_values.extend([limit, offset])
         finding_rows = con.execute(
             "SELECT f.*,c.check_key FROM finding f JOIN check_def c ON c.check_id=f.check_id "
             + where
-            + " ORDER BY c.check_key,f.subject_value",
-            values,
+            + " ORDER BY c.check_key,f.subject_value"
+            + page,
+            page_values,
         ).fetchall()
         for finding in finding_rows:
             members = [
@@ -2015,7 +2034,15 @@ def read_cases(
                     "occurrences": occurrences,
                 }
             )
-        return {"ok": True, "findings": findings}
+        revision = con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
+        return {
+            "ok": True,
+            "ledger_revision": int(revision),
+            "total": int(total),
+            "limit": limit,
+            "offset": offset,
+            "findings": findings,
+        }
     finally:
         if own:
             con.close()

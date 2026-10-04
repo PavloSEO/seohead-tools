@@ -214,7 +214,9 @@ and latest decision; it makes no network request or file write.
   including `distinct_affected_urls`.
 - `read_cases(ledger, *, check=None, url=None, finding_key=None) -> dict` —
   findings with occurrences, membership, group history and ordered
-  observations and lifecycle decisions.
+  observations and lifecycle decisions. It returns `total`, `limit`, `offset`
+  and the ledger revision; reads paginate by finding (default 100, maximum
+  1,000) so an observer can request exact cases without hiding the population.
 - `transition_occurrence(ledger, *, occurrence_key, state, actor, reason,
   expected_revision, observation_id=None, decided_at=None) -> dict` — append
   one revision-safe lifecycle decision.
