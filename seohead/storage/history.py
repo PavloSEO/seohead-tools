@@ -215,7 +215,11 @@ def _metadata(path: Path) -> dict:
     try:
         retention = json.loads(row["retention_json"])
         warning = retention["history_warning_bytes"]
-        if type(warning) is not int or warning <= 0:
+        # Zero explicitly disables the aggregate history-size warning.  Point-A
+        # imports use that value because their source did not have a configured
+        # local history threshold; it must not make an otherwise valid retained
+        # scan disappear from history.
+        if type(warning) is not int or warning < 0:
             raise ValueError("invalid history warning size")
         capabilities = json.loads(row["capabilities_json"])
     except (TypeError, ValueError, KeyError) as exc:
@@ -308,9 +312,12 @@ def list_scans(directory: str | Path, *, offset: int = 0, limit: int = 100) -> d
     _pagination(offset, limit)
     items, errors = _catalog(directory)
     history_bytes = sum(item["disk_bytes"] for item in items)
-    warning = min(
-        (item["history_warning_bytes"] for item in items), default=DEFAULT_HISTORY_WARNING_BYTES
-    )
+    # A zero threshold means "disabled", not "warn for every nonempty
+    # directory".  Ignore disabled per-scan policies when selecting a shared
+    # warning threshold so an imported scan does not suppress or force a
+    # warning for native scans that deliberately configured one.
+    thresholds = [item["history_warning_bytes"] for item in items if item["history_warning_bytes"]]
+    warning = min(thresholds) if thresholds else (0 if items else DEFAULT_HISTORY_WARNING_BYTES)
     return {
         "total": len(items),
         "offset": offset,
@@ -319,7 +326,7 @@ def list_scans(directory: str | Path, *, offset: int = 0, limit: int = 100) -> d
         "errors": errors,
         "history_bytes": history_bytes,
         "history_warning_bytes": warning,
-        "history_warning": history_bytes >= warning,
+        "history_warning": warning > 0 and history_bytes >= warning,
     }
 
 
