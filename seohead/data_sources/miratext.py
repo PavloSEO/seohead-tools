@@ -12,6 +12,7 @@ from typing import Any
 from seohead.data_sources.http import open_no_redirect
 
 ENDPOINT = "https://miratext.com/api2/call/article/seoAnalizText"
+SOURCE = "miratext"
 Transport = Callable[[str, bytes], str]
 
 

@@ -64,7 +64,7 @@ def test_dedicated_refs_resolve_to_real_integrations():
     import importlib
 
     dedicated = {ref.name for row in WORKFLOWS for ref in row.providers if ref.kind == "dedicated"}
-    assert dedicated == {"dataforseo", "yandex_cloud", "arsenkin", "indexnow", "topvisor"}
+    assert dedicated == {"dataforseo", "yandex_cloud", "arsenkin", "indexnow", "topvisor", "miratext"}
     for name in dedicated:
         module = importlib.import_module(f"seohead.data_sources.{name}")
         assert getattr(module, "SOURCE", name) == name

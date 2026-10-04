@@ -233,16 +233,16 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     ),
     WorkflowRow(
         workflow="webmaster-evidence",
-        use_case="Yandex and Bing webmaster data: hosts, indexing, diagnostics, search performance, history",
+        use_case="Yandex and Bing webmaster data: hosts, indexing, diagnostics, search performance, history, and Yandex URL queries",
         providers=(_reg("yandex_webmaster"), _reg("bing_webmaster")),
-        surface=("provider-verify", "provider-collect"),
+        surface=("provider-verify", "provider-collect", "webmaster-url-queries"),
         status="supported",
         auth="Yandex: OAuth bearer; Bing: API key",
         cost_quota="Free within each webmaster API quota",
         privacy="restricted",
         limitations=(
-            "Reachable only through the generic provider-verify/provider-collect "
-            "commands — no dedicated CLI command ships for either provider"
+            "Yandex URL-query analysis has a bounded dedicated route; other provider "
+            "operations remain on provider-verify/provider-collect"
         ),
         csv_fallback="yes — URL-keyed exports join via provider-join",
     ),
@@ -334,6 +334,22 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
         csv_fallback="not applicable — Topvisor rows have no provider-join route",
     ),
     WorkflowRow(
+        workflow="content-gap-analysis",
+        use_case="Compare supplied competitor pages or texts and surface author-facing word-density gaps",
+        providers=(_ded("miratext"),),
+        surface=("miratext-analyze",),
+        status="supported",
+        auth="Miratext API key",
+        cost_quota="Free queue by default; paid or keyword search needs explicit confirmation and is journaled with unknown provider units",
+        privacy="restricted — supplied URLs, texts, and result tables stay local",
+        limitations=(
+            "Only explicitly supplied URLs/texts are analysed; the optional provider-built "
+            "keyword competitor set is paid and never starts without confirmation. Final tables "
+            "retain provider-reported units and mark an unknown response shape unavailable"
+        ),
+        csv_fallback="yes — use supplied competitor URLs/texts; author tables are returned as JSON",
+    ),
+    WorkflowRow(
         workflow="url-submission",
         use_case="Notify Bing, Yandex, Naver, and Seznam that URLs changed",
         providers=(_ded("indexnow"),),
@@ -396,7 +412,7 @@ UNSUPPORTED_WORK: tuple[tuple[str, str], ...] = (
         "reach reports or commits",
     ),
     (
-        "dedicated CLI commands for ga4, pagespeed, yandex_webmaster, and bing_webmaster",
+        "dedicated CLI commands for ga4, pagespeed, and bing_webmaster",
         "these providers are reachable only through provider-verify/provider-collect",
     ),
     (
