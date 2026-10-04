@@ -591,9 +591,7 @@ def _watch_dashboard(
         content = root["content"]
     else:
         content = root["body"]
-    if snapshot is None:
-        body = failure
-    elif state.view == "note":
+    if state.view == "note":
         body = _note_lines(state, palette)
     elif state.view == "watch_filter":
         body = [
@@ -601,6 +599,8 @@ def _watch_dashboard(
             Text(""),
             Text(state.watch_query or "Type text, then press Enter"),
         ]
+    elif snapshot is None:
+        body = failure
     elif state.view == "watch_detail":
         body = _watch_detail_lines(project, state, palette)
     else:
