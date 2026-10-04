@@ -10,6 +10,7 @@ import pytest
 from seohead import cli
 from seohead.reports.bi import export_bi
 from seohead.reports.bi_destinations import (
+    BIDestinationCommitUncertain,
     BIDestinationError,
     GoogleBigQueryClient,
     GoogleSheetsClient,
@@ -715,3 +716,188 @@ def test_cli_and_mcp_resolve_the_same_configured_sheets_client_offline(tmp_path,
     )
     assert result["state"] == "committed"
     monkeypatch.setattr(GoogleSheetsClient, "_request", original_request)
+
+
+def _restartable_sheets_fetcher(worksheets):
+    """Synthetic stateful REST seam; no Google request or credential is used."""
+    remote = {
+        "sheets": {
+            item["worksheet_id"]: {
+                "sheetId": item["worksheet_id"],
+                "title": item["worksheet_title"],
+                "gridProperties": {"rowCount": 2, "columnCount": 100},
+            }
+            for item in worksheets.values()
+        },
+        "values": {},
+    }
+
+    def fetch(request):
+        url, body = request["url"], request["body"]
+        if request["method"] == "GET" and "/values/" not in url:
+            return {"sheets": [{"properties": value} for value in remote["sheets"].values()]}
+        if request["method"] == "GET" and "/values/" in url:
+            return {"values": remote["values"].get(url.split("/values/", 1)[1], [])}
+        if url.endswith("/values:batchUpdate"):
+            values = body["data"][0]["values"]
+            remote["values"][body["data"][0]["range"]] = values
+            return {"totalUpdatedRows": len(values)}
+        requests = body["requests"]
+        if requests and "addSheet" in requests[0]:
+            replies = []
+            for index, item in enumerate(requests, start=100):
+                props = item["addSheet"]["properties"]
+                remote["sheets"][index] = {
+                    "sheetId": index,
+                    "title": props["title"],
+                    "gridProperties": props["gridProperties"],
+                }
+                replies.append({"addSheet": {"properties": remote["sheets"][index]}})
+            return {"replies": replies}
+        for item in requests:
+            if "deleteSheet" in item:
+                remote["sheets"].pop(item["deleteSheet"]["sheetId"], None)
+        return {}
+
+    return fetch
+
+
+def test_sheets_restart_reconciles_an_uncertain_stage_range_before_resuming(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    worksheets = _worksheet_mapping(package)
+    fetch = _restartable_sheets_fetcher(worksheets)
+    first = GoogleSheetsClient(
+        "synthetic", "sheet-id", worksheets, token_supplier=lambda _scope: "token", fetcher=fetch
+    )
+    original_write = first.write
+    calls = 0
+
+    def interrupted_write(transaction, dataset, rows):
+        nonlocal calls
+        original_write(transaction, dataset, rows)
+        calls += 1
+        if calls == 2:
+            raise KeyboardInterrupt
+
+    first.write = interrupted_write
+    with pytest.raises(KeyboardInterrupt):
+        apply_with_client(
+            package, target="synthetic", operation="replace", client=first, apply=True
+        )
+    assert list((package / ".seohead-destination-state").glob("*.json"))
+
+    resumed = GoogleSheetsClient(
+        "synthetic", "sheet-id", worksheets, token_supplier=lambda _scope: "token", fetcher=fetch
+    )
+    result = apply_with_client(
+        package,
+        target="synthetic",
+        operation="replace",
+        client=resumed,
+        apply=True,
+        reconcile=True,
+    )
+    assert result["state"] == "committed"
+    assert result["rows"]["pages"] == result["input_rows"]["pages"] == 1
+    assert result["failed_rows"]["pages"] == 0
+
+
+def test_uncertain_write_never_replays_without_explicit_reconciliation(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+
+    class Client:
+        destination = "synthetic"
+
+        def __init__(self):
+            self.calls = 0
+
+        def authorize_target(self, target):
+            return target == "synthetic"
+
+        def begin(self, **_kwargs):
+            return {}
+
+        def write(self, _transaction, _dataset, _rows):
+            self.calls += 1
+            if self.calls == 2:
+                raise BIDestinationCommitUncertain("synthetic write response lost")
+
+        def commit(self, _transaction):
+            pytest.fail("uncertain write must stop before commit")
+
+    client = Client()
+    first = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert first["state"] == "reconciliation_required"
+    assert first["rows"]["pages"] == 0
+    calls = client.calls
+    second = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert second["state"] == "reconciliation_required"
+    assert client.calls == calls
+
+
+def test_failed_write_returns_complete_per_dataset_accounting(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+
+    class Client:
+        destination = "synthetic-failure"
+
+        def __init__(self):
+            self.calls = 0
+            self.aborted = False
+
+        def authorize_target(self, _target):
+            return True
+
+        def begin(self, **_kwargs):
+            return {}
+
+        def write(self, _transaction, _dataset, _rows):
+            self.calls += 1
+            if self.calls == 2:
+                raise BIDestinationError("synthetic rejected bounded row")
+
+        def abort(self, _transaction):
+            self.aborted = True
+
+        def commit(self, _transaction):
+            pytest.fail("failed write must stop before commit")
+
+    client = Client()
+    result = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert result["state"] == "failed" and client.aborted
+    assert result["input_rows"]["cohorts"] == result["failed_rows"]["cohorts"] == 5
+    assert result["rows"]["cohorts"] == 0
+    assert set(result["input_rows"]) == set(result["rows"]) == set(result["failed_rows"])
+
+
+def test_bigquery_duplicate_job_is_reconciled_by_its_deterministic_identity():
+    calls = []
+
+    def fetch(request):
+        calls.append(request)
+        if request["method"] == "POST":
+            return {"error": {"code": 409, "message": "Already Exists"}}
+        assert request["method"] == "GET" and request["url"].endswith("/jobs/known-job")
+        return {"jobReference": {"jobId": "known-job"}, "status": {"state": "DONE"}}
+
+    client = GoogleBigQueryClient(
+        "synthetic",
+        "project-id",
+        "dataset_id",
+        {},
+        cost_authorized=True,
+        token_supplier=lambda _scope: "token",
+        fetcher=fetch,
+    )
+    result = client._job("known-job", {"copy": {}})
+    assert result["status"]["state"] == "DONE"
+    assert [request["method"] for request in calls] == ["POST", "GET"]

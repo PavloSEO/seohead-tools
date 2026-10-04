@@ -5057,6 +5057,7 @@ def bi_destination_apply(
     destination: str,
     operation: str,
     apply: bool = False,
+    reconcile: bool = False,
     *,
     client: Any = None,
 ) -> dict[str, Any]:
@@ -5069,6 +5070,8 @@ def bi_destination_apply(
         resolve_host_client,
     )
 
+    if reconcile and not apply:
+        raise ValueError("reconcile requires apply=true for the reviewed destination target")
     if not apply:
         return {
             "ok": True,
@@ -5084,7 +5087,12 @@ def bi_destination_apply(
         "ok": True,
         "destination": destination,
         **apply_with_client(
-            package, target=target, operation=operation, client=client, apply=apply
+            package,
+            target=target,
+            operation=operation,
+            client=client,
+            apply=apply,
+            reconcile=reconcile,
         ),
     }
 

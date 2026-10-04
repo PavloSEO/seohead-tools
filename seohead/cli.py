@@ -686,6 +686,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "destination",
             "operation",
             "apply",
+            "reconcile",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2189,6 +2190,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--operation", choices=("replace", "append"), default="replace")
         sub.add_argument(
             "--apply", action="store_true", help="request an injected host-authorized write"
+        )
+        sub.add_argument(
+            "--reconcile",
+            action="store_true",
+            help="explicitly read/reconcile a prior uncertain destination request before retrying it",
         )
     if cmd in {"publication-cohorts", "gsc-progress"}:
         _source_flag(sub, "--file", help="versioned offline cohort input JSON")

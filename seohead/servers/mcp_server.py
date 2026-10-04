@@ -2432,6 +2432,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         destination: str,
         operation: str = "replace",
         apply: bool = False,
+        reconcile: bool = False,
     ) -> dict[str, Any]:
         """Request a BI destination write; host authorization is required and credentials are never accepted."""
         return _checked(
@@ -2441,6 +2442,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 destination=destination,
                 operation=operation,
                 apply=apply,
+                reconcile=reconcile,
             )
         )
 

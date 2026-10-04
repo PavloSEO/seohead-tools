@@ -2296,6 +2296,7 @@ Request a BI destination write; host authorization is required and credentials a
 | `destination` | `str` | `required` |
 | `operation` | `str` | `'replace'` |
 | `apply` | `bool` | `False` |
+| `reconcile` | `bool` | `False` |
 
 **Cost** — network: yes · writes files: yes · idempotent: yes · spends money: no
 

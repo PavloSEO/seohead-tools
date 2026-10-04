@@ -774,6 +774,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("local_directory", "package"),
         _form("selector", "target", "destination", "operation"),
         _form("inline_json", "apply", note="Requires true and a host-injected authorized client."),
+        _form(
+            "inline_json",
+            "reconcile",
+            note="Explicitly reconciles a retained uncertain request before any retry; requires apply=true.",
+        ),
         note="Never accepts credentials; a missing host client fails before any destination write.",
     ),
     _command(
