@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
@@ -134,3 +134,20 @@ def status(directory: str) -> dict:
         "policy": doc["policy"],
         "last_run": doc["runs"][-1] if doc["runs"] else None,
     }
+
+
+def schedule(directory: str, *, action: str, expected_revision: int) -> dict:
+    """Record local runner state only; callers schedule no background job here."""
+    root, doc = _load(directory)
+    if doc["revision"] != expected_revision or doc["policy"] is None:
+        raise ValueError("monitor revision conflict or missing policy")
+    if action not in {"start", "cancel", "backoff"}:
+        raise ValueError("schedule action must be start, cancel or backoff")
+    active = doc.get("runner", {}).get("state") == "running"
+    if action == "start" and active:
+        raise ValueError("monitor runner already active; overlapping schedules are refused")
+    state = {"start": "running", "cancel": "cancelled", "backoff": "backoff"}[action]
+    doc["runner"] = {"state": state, "runs_since_full_refresh": len(doc["runs"])}
+    doc["revision"] += 1
+    write_document(root, NAME, doc)
+    return {"ok": True, "revision": doc["revision"], "runner": doc["runner"], "scheduled": False}
