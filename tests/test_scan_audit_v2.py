@@ -380,6 +380,35 @@ def test_audit_v2_saves_and_reopens_populations_above_ten_thousand(tmp_path):
         assert sum(1 for _ in reader.iter_collection("/issues")) == 50001
 
 
+def test_default_task_backlog_streams_audit_v2_findings_without_legacy_materialization(tmp_path):
+    from seohead.sf.tasks import build_tasks_from_audit_v2
+
+    scan = tmp_path / "scan.sqlite"
+    binding = _scan(scan)
+    write_audit_v2(
+        scan,
+        {"run": {"source": "https://example.test/"}, "summary": {}, "issues": []},
+        {
+            "/issues": (
+                {
+                    "check": "TITLE_MISSING",
+                    "severity": "warning",
+                    "source": "fixture",
+                    "target_url": f"https://example.test/{index}",
+                    "occurrences_count": 1,
+                }
+                for index in range(10_000)
+            )
+        },
+        binding,
+    )
+    backlog = build_tasks_from_audit_v2(str(scan))
+    assert backlog["summary"] == {"tasks_total": 1, "by_priority": {"P2": 1}}
+    task = backlog["tasks"][0]
+    assert task["affected_count"] == task["occurrences"] == 10_000
+    assert len(task["urls"]) == 25 and task["urls_truncated"] == 9_975
+
+
 def test_report_refuses_stale_severity_summary_instead_of_claiming_clean(tmp_path):
     scan = tmp_path / "scan.sqlite"
     binding = _scan(scan)

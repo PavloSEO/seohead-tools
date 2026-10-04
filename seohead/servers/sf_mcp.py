@@ -286,10 +286,16 @@ def register(mcp):  # pragma: no cover - needs the SDK
         Returns a compact summary and absolute paths to both backlog files.
         """
         from seohead.sf.config import load_config
-        from seohead.sf.tasks import build_tasks, write_tasks
+        from seohead.sf.tasks import build_tasks, build_tasks_from_audit_v2, write_tasks
+        from seohead.storage.audit_v2 import audit_v2_path
 
         diagnostics: list[dict[str, str]] = []
-        backlog = build_tasks(_load(json_path, diagnostics), load_config(config or "config.json"))
+        resolved_config = load_config(config or "config.json")
+        if audit_v2_path(json_path).exists():
+            diagnostics.append({"code": "audit_v2_stream", "message": "tasks read the audit.v2 findings stream"})
+            backlog = build_tasks_from_audit_v2(json_path, resolved_config)
+        else:
+            backlog = build_tasks(_load(json_path, diagnostics), resolved_config)
         os.makedirs(out, exist_ok=True)
         jp, mp = write_tasks(
             backlog, os.path.join(out, "tasks.json"), os.path.join(out, "tasks.md")
