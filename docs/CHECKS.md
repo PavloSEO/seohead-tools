@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**181 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -314,6 +314,7 @@ python scripts/generate_checks_reference.py
 | `DECLARED_MIME_MISMATCH` | notice | SF-derived | Received Content-Type conflicts with an unambiguous URL filename extension | Confirm the response Content-Type and URL extension describe the intended resource; this is a declaration consistency signal, not full MIME validation. |
 | `URL_SESSION_ID` | warning | SF-derived | Indexable URL contains a recognized session-token parameter | Prevent session identifiers from entering crawlable URLs and consolidate any indexed variants; the finding retains parameter names but redacts their values. |
 | `URL_TRAILING_SLASH_INCONSISTENT` | notice | SF-derived | Comparable trailing-slash URL variants both serve as separate indexable pages | Choose and implement a documented URL policy if both variants are not intentional; redirect or canonical convergence already observed is not reported. |
+| `PLACEHOLDER_MARKER` | warning | SF-derived | Page declaration contains a literal TODO, TBD, or placeholder template marker | Replace the observed marker with reviewed page-specific copy. This check only reports explicit bracketed template tokens, not ordinary wording such as 'coming soon'. |
 
 ## 9.C — objective trust & attribution evidence (issue #823)
 
