@@ -1541,9 +1541,20 @@ def _audit_crawl_result(
                 ctx.add("OUTLINK_TO_LOCALHOST", target_url=item["target_url"], details=item)
             crawl_host = (urlsplit(start_norm).hostname or "") if url else ""
             if crawl_host:
+                # Preserve the established owner for the mixed-state verdict.
+                # The detail helper enriches only destinations this predicate
+                # already proved, rather than becoming an untracked parallel
+                # route that can silently drift from the audit's coverage gate.
+                mixed = (
+                    None
+                    if graph
+                    else set(link_findings.follow_and_nofollow_inlinks(links, crawl_host))
+                )
                 for item in link_findings.follow_and_nofollow_inlink_details(
                     graph.iter_links() if graph else links, crawl_host
                 ):
+                    if mixed is not None and item["target_url"] not in mixed:
+                        continue
                     ctx.add(
                         "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
                     )
