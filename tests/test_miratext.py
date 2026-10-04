@@ -1,8 +1,11 @@
+import asyncio
 import json
 
 import pytest
 
+from seohead import cli
 from seohead.data_sources import miratext
+from seohead.servers import handlers
 
 
 def test_free_request_is_form_encoded_and_resumable_without_key_echo():
@@ -141,3 +144,38 @@ def test_sources_doctor_reports_miratext_without_printing_the_key(monkeypatch, t
     source = handlers.sources_doctor()["sources"]["miratext"]
     assert source["ready"] and source["env"] == "MIRATEXT_API_KEY"
     assert "synthetic-canary" not in json.dumps(source)
+
+
+def test_cli_and_mcp_forward_the_same_miratext_request(monkeypatch):
+    captured = []
+
+    def fake(**kwargs):
+        captured.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setitem(
+        handlers.HANDLERS,
+        "miratext_analyze",
+        fake,
+    )
+    monkeypatch.setattr(handlers, "miratext_analyze", fake)
+    assert cli.main(["miratext-analyze", "--input", '{"urls":["x"],"my":"y"}']) == 0
+    from seohead.servers.mcp_server import build_server
+
+    tool = build_server()._tool_manager.get_tool("seo_miratext_analyze")
+    assert asyncio.run(tool.run({"urls": ["x"], "my": "y"})) == {"ok": True}
+    assert captured == [
+        {"urls": ["x"], "my": "y"},
+        {
+            "urls": ["x"],
+            "texts": None,
+            "my": "y",
+            "hash": None,
+            "check_type": "url",
+            "keywords": None,
+            "paid": False,
+            "confirm_paid": False,
+            "timeout": 120,
+            "top": 100,
+        },
+    ]

@@ -456,6 +456,9 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
+
+The Yandex query-analytics API provides its own rolling retention window. This route preserves
+the provider-returned daily buckets and does not advertise a caller-selected date range.
 | `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
 
 `miratext-analyze` returns a resumable hash while the provider queues work. An accepted result

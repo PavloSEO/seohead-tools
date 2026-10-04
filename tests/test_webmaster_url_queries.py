@@ -1,8 +1,10 @@
-import json
 import io
+import json
 import urllib.error
 
+from seohead import cli
 from seohead.data_sources import yandex_webmaster as wm
+from seohead.servers import handlers
 
 
 def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
@@ -93,3 +95,27 @@ def test_query_route_retries_rate_limits_and_returns_only_provider_error_code():
     result = wm.url_queries("h", token="canary", user_id="7", transport=send)
     assert result == {"ok": False, "state": "failed", "error_code": "HOST_NOT_FOUND"}
     assert calls == 3 and "canary" not in json.dumps(result)
+
+
+def test_cli_url_query_flags_reach_the_shared_handler(monkeypatch):
+    captured = {}
+    monkeypatch.setitem(
+        handlers.HANDLERS,
+        "webmaster_url_queries",
+        lambda **kwargs: captured.update(kwargs) or {"ok": True},
+    )
+    assert (
+        cli.main(
+            [
+                "webmaster-url-queries",
+                "--host-id",
+                "h",
+                "--url",
+                "https://example.test/a",
+                "--max-urls",
+                "2",
+            ]
+        )
+        == 0
+    )
+    assert captured == {"host_id": "h", "url": "https://example.test/a", "max_urls": 2}
