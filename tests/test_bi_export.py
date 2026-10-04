@@ -625,3 +625,10 @@ def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result["xlsx"]["dataset"] == "pages"
     assert workbook.is_file()
+
+
+def test_scan_hash_budget_refuses_before_writing_a_package(tmp_path, monkeypatch):
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    with pytest.raises(BIExportError, match="scan exceeds"):
+        export_bi(scan=scan_path, out_dir=tmp_path / "bounded", max_scan_bytes=1)
+    assert not (tmp_path / "bounded").exists()
