@@ -534,7 +534,7 @@ def test_json_chunks_consume_records_incrementally():
     chunks = export_module._json_chunks(head, [("pages", ("url",), rows())])
     record_chunks = 0
     for chunk in chunks:
-        if b"example.com" in chunk:
+        if chunk.startswith((b"\n{", b",\n{")):
             record_chunks += 1
             if record_chunks == 3:
                 break
