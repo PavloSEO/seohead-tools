@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from seohead.data_sources import miratext
 
 
@@ -54,6 +56,18 @@ def test_paid_and_keywords_are_refused_before_provider_call():
         transport=lambda *_: (_ for _ in ()).throw(AssertionError()),
     )
     assert result["state"] == "confirmation_required"
+
+
+def test_invalid_hash_and_check_type_fail_before_transport():
+    def forbidden(*_args):
+        raise AssertionError("must not call provider")
+
+    with pytest.raises(ValueError):
+        miratext.analyze(hash="bad hash", api_key="canary", transport=forbidden)
+    with pytest.raises(ValueError):
+        miratext.analyze(
+            urls=["x"], my="y", check_type="unknown", api_key="canary", transport=forbidden
+        )
 
 
 def test_transport_failure_redacts_key():

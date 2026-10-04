@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -130,6 +131,14 @@ def analyze(
         }
     if hash is None and not ((urls or texts) and my):
         raise ValueError("pass hash to resume, or URLs/texts and my")
+    if hash is not None and (
+        not isinstance(hash, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", hash)
+    ):
+        raise ValueError("hash must be a 1..128 character provider identifier")
+    if check_type not in {"url", "content"}:
+        raise ValueError("check_type must be url or content")
+    if not all(isinstance(value, str) and value for value in (urls or []) + (texts or [])):
+        raise ValueError("urls and texts must contain non-empty strings")
     if (urls and texts) or (urls and len(urls) > 10) or (texts and len(texts) > 10):
         raise ValueError("pass one of urls or texts with at most 10 items")
     try:
