@@ -485,10 +485,15 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "all_pages", False):
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
-    elif cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
-        if getattr(args, "directory", None):
-            kw["directory"] = args.directory
-    elif cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
+    elif cmd in {
+        "workflow-start",
+        "workflow-checkpoint",
+        "workflow-status",
+        "workflow-execute",
+        "monitor-configure",
+        "monitor-run",
+        "monitor-status",
+    }:
         if getattr(args, "directory", None):
             kw["directory"] = args.directory
     elif cmd in {
