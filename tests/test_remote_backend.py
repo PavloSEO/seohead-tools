@@ -259,6 +259,63 @@ def test_missing_trusted_credential_reference_refuses_before_queueing(monkeypatc
         )
 
 
+def test_trusted_credential_rotation_and_revocation_are_rechecked_before_worker(
+    monkeypatch, tmp_path
+):
+    _network(monkeypatch)
+    reference = "SEOHEAD_REMOTE_ROTATION_TOKEN"
+    monkeypatch.setenv(reference, "Bearer before-rotation")
+    seen = []
+
+    def runner(_url, *, settings, **_kwargs):
+        from seohead.crawl.settings import resolve_credential_headers
+
+        seen.append(
+            resolve_credential_headers(
+                settings["http"]["credential_headers"], "public.example.test"
+            )
+        )
+        return {"audit_available": False, "partial": True}
+
+    limits = RemoteProjectLimits(
+        credential_headers=(
+            {
+                "host": "public.example.test",
+                "headers": {"Authorization": f"env:{reference}"},
+            },
+        )
+    )
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state", {"alpha": limits}, producer_build="a" * 40, runner=runner
+    )
+    request = ScanSubmission(target_url=SITE, options={"max_urls": 1, "max_requests": 20})
+    first = backend.submit(
+        "alpha",
+        "operator-a",
+        "rotated",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    monkeypatch.setenv(reference, "Bearer after-rotation")
+    assert backend.run_one("worker-a").state == "failed"  # fake runner writes no scan
+    assert seen == [{"Authorization": "Bearer after-rotation"}]
+
+    second = backend.submit(
+        "alpha",
+        "operator-a",
+        "revoked",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    monkeypatch.delenv(reference)
+    assert backend.run_one("worker-b").state == "failed"
+    assert seen == [{"Authorization": "Bearer after-rotation"}]
+    assert backend.get_job("alpha", first.job_id).state == "failed"
+    assert backend.get_job("alpha", second.job_id).finish_reason == "worker_failure"
+
+
 def test_trusted_credential_reference_reaches_runtime_without_leaking_provenance(
     monkeypatch, tmp_path
 ):
@@ -682,6 +739,53 @@ def test_claims_enforce_global_and_project_slots(monkeypatch, tmp_path):
     assert backend.recover_expired() == 2
     third = backend._claim("worker-three")
     assert third["job_id"] == jobs[1].job_id
+
+
+def test_remote_browser_jobs_respect_slots_and_are_not_resumed_after_worker_loss(
+    monkeypatch, tmp_path
+):
+    _network(monkeypatch)
+    clock = [1_700_000_000.0]
+    limits = RemoteProjectLimits(
+        max_active_jobs=1,
+        browser_transport={
+            "transport": "remote",
+            "remote_protocol": "playwright",
+            "remote_endpoint_env": "SEOHEAD_REMOTE_BROWSER_ENDPOINT",
+            "remote_playwright_version": "1.57.0",
+        },
+    )
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {"alpha": limits},
+        producer_build="a" * 40,
+        now=lambda: clock[0],
+        lease_seconds=3,
+    )
+    request = ScanSubmission(target_url=SITE, options={"max_urls": 1, "max_requests": 20})
+    first = backend.submit(
+        "alpha",
+        "operator",
+        "remote-first",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    second = backend.submit(
+        "alpha",
+        "operator",
+        "remote-second",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+
+    assert backend._claim("worker-one")["job_id"] == first.job_id
+    assert backend._claim("worker-two") is None
+    clock[0] += 4
+    assert backend.recover_expired() == 1
+    assert backend.get_job("alpha", first.job_id).state == "failed"
+    assert backend._claim("worker-three")["job_id"] == second.job_id
 
 
 def test_heartbeat_renews_lease_and_expiry_fences_stale_worker(monkeypatch, tmp_path):
