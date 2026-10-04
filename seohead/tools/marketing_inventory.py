@@ -228,6 +228,7 @@ def inventory(
         "form_groups": [
             {**group, "pages": sorted(group["pages"])} for group in form_groups.values()
         ],
+        "label_normalization": "lowercase_collapse_whitespace",
         "coverage": {
             "documents_supplied": len(documents),
             "documents_unavailable": unavailable,
