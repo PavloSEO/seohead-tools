@@ -90,6 +90,12 @@ submit.
   both subjects can use the same project. The store is private (`0700`
   directory and `0600` database); it never holds a URL, settings, credentials,
   or report content.
+- **Enrollment is explicit and revocable.** `ProjectAuthorizationStore` is a
+  private subject/project allowlist. An adapter may use it to deny submission,
+  status, cancellation, and delivery until an operator has granted that exact
+  project, and to make a later revocation effective without restarting the
+  adapter. It records identifiers only; it is not an account or credential
+  store.
 - **Profiles are derived from retained evidence.** `ReportProfile` supports
   a full retained JSON/Markdown artifact, or an offline regenerated PDF,
   XLSX, DOCX, CSV, Markdown, or JSON view. A findings-only profile can filter

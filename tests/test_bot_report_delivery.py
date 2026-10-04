@@ -13,6 +13,7 @@ from seohead.bot import (
     DeliveryReceipts,
     DeliveryUnavailable,
     JobOwnershipStore,
+    ProjectAuthorizationStore,
     ReportProfile,
 )
 from seohead.recon import net
@@ -187,4 +188,26 @@ def test_durable_delivery_ownership_rejects_a_foreign_subject(monkeypatch, tmp_p
         ownership=ownership,
     )
     with pytest.raises(PermissionError, match="job is not authorized"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))
+
+
+def test_revoked_subject_cannot_deliver_a_previously_owned_job(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    ownership = JobOwnershipStore(tmp_path / "ownership.sqlite")
+    ownership.record(job_id, "requester", "alpha")
+    authorization = ProjectAuthorizationStore(tmp_path / "grants.sqlite")
+    authorization.grant("requester", "alpha")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: None,
+        subject="requester",
+        ownership=ownership,
+        authorization=authorization,
+    )
+    assert delivery.preview("alpha", job_id, ReportProfile("json")).kind == "audit_json"
+    authorization.revoke("requester", "alpha")
+    with pytest.raises(PermissionError, match="project is not authorized"):
         delivery.preview("alpha", job_id, ReportProfile("json"))

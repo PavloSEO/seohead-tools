@@ -62,6 +62,54 @@ class JobOwnershipStore:
         return row[0] if row is not None else None
 
 
+class ProjectAuthorizationStore:
+    """Private opt-in subject/project allowlist for a service adapter.
+
+    Enrollment is deliberately an adapter or operator action; this class has
+    no account discovery, network calls, or secret handling.  The durable
+    store makes a revocation effective for the next submit, status, or cancel
+    request even when an adapter process is already running.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if self.path.exists() and self.path.stat().st_mode & 0o077:
+            raise ValueError("project authorization store must be private")
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                """CREATE TABLE IF NOT EXISTS project_grants (
+                    subject TEXT NOT NULL, project_id TEXT NOT NULL,
+                    PRIMARY KEY(subject, project_id)
+                )"""
+            )
+        os.chmod(self.path, 0o600)
+
+    def grant(self, subject: str, project_id: str) -> None:
+        if not subject or not project_id:
+            raise ValueError("subject and project_id are required")
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                "INSERT OR IGNORE INTO project_grants(subject,project_id) VALUES(?,?)",
+                (subject, project_id),
+            )
+
+    def revoke(self, subject: str, project_id: str) -> None:
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                "DELETE FROM project_grants WHERE subject=? AND project_id=?",
+                (subject, project_id),
+            )
+
+    def allows(self, subject: str, project_id: str) -> bool:
+        with sqlite3.connect(self.path) as con:
+            row = con.execute(
+                "SELECT 1 FROM project_grants WHERE subject=? AND project_id=?",
+                (subject, project_id),
+            ).fetchone()
+        return row is not None
+
+
 @dataclass
 class AuthorizedJobSubmitter:
     """Map one authorized actor's confirmed specs to the shared job backend."""
@@ -71,6 +119,7 @@ class AuthorizedJobSubmitter:
     projects: Iterable[str]
     idempotency_key: Callable[[], str] = lambda: uuid.uuid4().hex
     ownership: JobOwnershipStore | None = None
+    authorization: ProjectAuthorizationStore | None = None
     _projects: frozenset[str] = field(init=False, repr=False)
     _job_projects: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
@@ -96,7 +145,10 @@ class AuthorizedJobSubmitter:
 
     def submit(self, spec: ScanJobSpec) -> str:
         """Queue the exact previewed spec under the configured actor and project."""
-        if spec.project not in self._projects:
+        if spec.project not in self._projects or (
+            self.authorization is not None
+            and not self.authorization.allows(self.subject, spec.project)
+        ):
             raise PermissionError("project is not authorized for this actor")
         submission = self._submission(spec)
         outcome = self.backend.submit(
@@ -114,10 +166,20 @@ class AuthorizedJobSubmitter:
 
     def _project_for(self, job_id: str) -> str | None:
         if job_id in self._job_projects:
-            return self._job_projects[job_id]
+            project = self._job_projects[job_id]
+            if self.authorization is None or self.authorization.allows(self.subject, project):
+                return project
+            return None
         if self.ownership is not None:
             project = self.ownership.project_for(job_id, self.subject)
-            if project is None or project not in self._projects:
+            if (
+                project is None
+                or project not in self._projects
+                or (
+                    self.authorization is not None
+                    and not self.authorization.allows(self.subject, project)
+                )
+            ):
                 return None
             self._job_projects[job_id] = project
             return project
@@ -125,6 +187,10 @@ class AuthorizedJobSubmitter:
         # should always pass JobOwnershipStore so a restart cannot widen a
         # subject's job visibility to every job in an allowed project.
         for project in self._projects:
+            if self.authorization is not None and not self.authorization.allows(
+                self.subject, project
+            ):
+                continue
             if self.backend.get_job(project, job_id) is not None:
                 self._job_projects[job_id] = project
                 return project

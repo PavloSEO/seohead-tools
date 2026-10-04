@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.bot import POLICY_PRESETS, AuthorizedJobSubmitter, JobOwnershipStore, ScanJobSpec
+from seohead.bot import (
+    POLICY_PRESETS,
+    AuthorizedJobSubmitter,
+    JobOwnershipStore,
+    ProjectAuthorizationStore,
+    ScanJobSpec,
+)
 from seohead.crawl import settings
 from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
 
@@ -73,3 +79,25 @@ def test_durable_ownership_hides_other_subject_jobs_after_restart(tmp_path):
     assert restarted.status(job_id).job_id == job_id
     assert foreign.status(job_id) is None
     assert not foreign.cancel(job_id)
+
+
+def test_project_authorization_requires_opt_in_and_honors_revoke(tmp_path):
+    backend = SQLiteJobBackend(
+        tmp_path / "jobs", {"alpha": RemoteProjectLimits()}, producer_build="a" * 40
+    )
+    authorization = ProjectAuthorizationStore(tmp_path / "grants.sqlite")
+    adapter = AuthorizedJobSubmitter(
+        backend,
+        "subject",
+        {"alpha"},
+        authorization=authorization,
+        idempotency_key=lambda: "authorized-job",
+    )
+    with pytest.raises(PermissionError, match="not authorized"):
+        adapter.submit(_spec())
+    authorization.grant("subject", "alpha")
+    job_id = adapter.submit(_spec())
+    assert adapter.status(job_id).project_id == "alpha"
+    authorization.revoke("subject", "alpha")
+    assert adapter.status(job_id) is None
+    assert not adapter.cancel(job_id)

@@ -16,7 +16,11 @@ from seohead.bot.contract import (
     allowed_actions,
     describe_contract,
 )
-from seohead.bot.job_adapter import AuthorizedJobSubmitter, JobOwnershipStore
+from seohead.bot.job_adapter import (
+    AuthorizedJobSubmitter,
+    JobOwnershipStore,
+    ProjectAuthorizationStore,
+)
 from seohead.bot.report_delivery import (
     AuthorizedReportDelivery,
     DeliveryReceipts,
@@ -44,6 +48,7 @@ __all__ = [
     "Field",
     "JobOwnershipStore",
     "JobSubmitter",
+    "ProjectAuthorizationStore",
     "Reply",
     "ReportProfile",
     "ScanJobSpec",
