@@ -30,6 +30,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,8 @@ from seohead.tools.browser_transport import (
     open_context,
     prepare,
 )
+
+_NAVIGATION_EVENT_CAP = 32
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
 # renders a different DOM at different widths, so comparing two runs requires
@@ -1489,6 +1492,9 @@ def render_document(
             "final_url": None,
             "wait_until": browser_cfg.get("wait_until", "load"),
             "timeout_seconds": nav_timeout,
+            "interaction_policy": "no_clicks",
+            "events": [],
+            "events_omitted": 0,
         },
         "settings": {
             "viewport": viewport,
@@ -1517,6 +1523,48 @@ def render_document(
     if endpoint is not None:
         renderer["transport"] = transport_facts
     browser_limitations: list[str] = []
+    navigation_started = time.monotonic()
+    navigation_events: list[dict[str, Any]] = []
+    navigation_events_omitted = 0
+
+    def _same_document(left: str, right: str) -> bool:
+        a, b = urlparse(left), urlparse(right)
+        return (a.scheme, a.netloc, a.path, a.params, a.query) == (
+            b.scheme,
+            b.netloc,
+            b.path,
+            b.params,
+            b.query,
+        )
+
+    def _on_frame_navigated(frame: Any) -> None:
+        nonlocal navigation_events_omitted
+        # Iframes navigate independently; issue #826 is about the inspected
+        # document's route and must not infer a page redirect from an embed.
+        if frame is not getattr(page, "main_frame", None):
+            return
+        destination = str(getattr(frame, "url", ""))
+        if not destination:
+            return
+        if len(navigation_events) >= _NAVIGATION_EVENT_CAP:
+            navigation_events_omitted += 1
+            return
+        source = navigation_events[-1]["destination"] if navigation_events else target
+        navigation_events.append(
+            {
+                "source": source,
+                "destination": destination,
+                "elapsed_ms": round((time.monotonic() - navigation_started) * 1000),
+                "kind": (
+                    "initial_http_navigation"
+                    if not navigation_events
+                    else "spa_history_change"
+                    if _same_document(source, destination)
+                    else "script_navigation"
+                ),
+                "user_click": False,
+            }
+        )
 
     # There is deliberately no request hook beside _capture_response. Reading the
     # browser's own wire headers upgraded credentials_used the moment any request
@@ -1623,6 +1671,7 @@ def render_document(
                     lambda ws_route: _guard_websocket_route(ws_route, browser_limitations),
                 )
                 page = context.new_page()
+                page.on("framenavigated", _on_frame_navigated)
                 if max_html_bytes is not None:
                     page.on("response", _capture_response)
                 page.on("console", _on_console)
@@ -1709,6 +1758,8 @@ def render_document(
             network_client.close()
 
     renderer["navigation"]["final_url"] = final_url
+    renderer["navigation"]["events"] = navigation_events
+    renderer["navigation"]["events_omitted"] = navigation_events_omitted
     renderer["transforms"]["flatten_shadow_dom_applied"] = shadow_flattened
     renderer["transforms"]["flatten_iframes_applied"] = iframe_flattened
     renderer["console_error_count"] = len(console_errors) + console_errors_omitted
