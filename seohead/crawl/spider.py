@@ -301,7 +301,7 @@ def _write_decision(handle, entry: dict[str, Any]) -> None:
     handle.flush()
 
 
-def _read_links_jsonl(path: str) -> list[LinkEdge]:
+def _iter_links_jsonl(path: str):
     """Reconstruct the link graph recorded before a checkpoint.
 
     Edges are appended to this sidecar as they are found (see ``_write_link``)
@@ -311,14 +311,16 @@ def _read_links_jsonl(path: str) -> list[LinkEdge]:
     save — only ever appending what is new. Unknown keys are dropped rather
     than rejected, so a file written by an older build still resumes.
     """
-    edges = []
     for raw in _jsonl_rows(path):
         fields = {k: v for k, v in raw.items() if k in _LINK_EDGE_FIELDS}
         # rel is a tuple in memory but a list once it has been through JSON.
         if "rel" in fields:
             fields["rel"] = tuple(fields["rel"] or ())
-        edges.append(LinkEdge(**fields))
-    return edges
+        yield LinkEdge(**fields)
+
+
+def _read_links_jsonl(path: str) -> list[LinkEdge]:
+    return list(_iter_links_jsonl(path))
 
 
 def _read_forms_jsonl(path: str) -> list[FormEdge]:
@@ -1518,7 +1520,7 @@ def crawl_site(
 
                 try:
                     result.external_summary = run_external_checks(
-                        result.links,
+                        _iter_links_jsonl(links_path) if spool_evidence else result.links,
                         policy=policy,
                         is_internal=lambda url: rules.is_internal(url, host),
                         emit=emit_check,

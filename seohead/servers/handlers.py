@@ -1325,14 +1325,11 @@ def _audit_crawl_result(
         with AnalysisGraph(stored_scan.con, normalize=norm_url, site_host=_site_host(ctx)) as graph:
             ctx.graph_access = graph
             run_inlinks(ctx)
+            run_eeat(ctx)
         ctx.graph_access = None
     else:
         run_inlinks(ctx)
-    # The same wiring obligation a third time (issue #823): the objective
-    # trust/attribution pass reads the Internal:All-shaped evidence and the
-    # link graph both pipelines above already built, and on an export-shaped
-    # input it reaches its own honest skip branches (no Trust Signals column).
-    run_eeat(ctx)
+        run_eeat(ctx)
     # Same gap, two more modules (issue #165): DOM size, HTML weight, templated
     # titles and the near-duplicate/exact-duplicate heuristic fallback all live in
     # heuristics.py and were never reached from a crawl either. DOM depth/nodes and
@@ -2094,7 +2091,19 @@ def verify_fixes(
             )
         else:
             try:
-                settings = crawl_settings.load(config, overrides=None if config else recorded)
+                replay_overrides = dict(recorded)
+                proxy = replay_overrides.get("http.proxy")
+                if isinstance(proxy, dict):
+                    if proxy != {"mode": "direct", "endpoint": None, "authenticated": False}:
+                        if not config:
+                            raise ValueError(
+                                "baseline records a proxy; provide the original config"
+                            )
+                    else:
+                        replay_overrides["http.proxy"] = ""
+                settings = crawl_settings.load(
+                    config, overrides=None if config else replay_overrides
+                )
                 measured = crawl_settings.manifest(settings)
                 changed = sorted(
                     key
@@ -2108,7 +2117,7 @@ def verify_fixes(
                     collection["reason"] = "recorded crawl policy differs: " + ", ".join(changed)
                 else:
                     mode = settings["rendering"]["mode"]
-                    common = {"config": config, "overrides": None if config else recorded}
+                    common = {"config": config, "overrides": None if config else replay_overrides}
                     if mode == "raw":
                         folder = destination / "recrawl"
                         crawl_site(

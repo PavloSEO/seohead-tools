@@ -128,6 +128,7 @@ def test_run_measured_keeps_stdout_stderr_and_metrics_on_timeout(tmp_path, monke
 
 
 def test_main_writes_metrics_artifact_when_installation_fails(tmp_path, monkeypatch):
+    monkeypatch.delenv("SEOHEAD_CHROME", raising=False)
     candidate = "b" * 40
     base = "a" * 40
     metrics_path = tmp_path / "metrics.json"

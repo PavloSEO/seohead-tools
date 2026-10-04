@@ -36,6 +36,8 @@ CHECKPOINTED = {
 # resume, because they are the two structures large enough that reserialising
 # them on every checkpoint would dominate the cost of taking one.
 SIDECAR = {"pages", "links"}
+# External evidence is opt-in and stored only when external checking is enabled.
+OPTIONAL_SIDECAR = {"external_checks"}
 
 # Rebuilt from the page/link/form sidecars on each spooled invocation and
 # checked against the v5 checkpoint's evidence_counts before new work starts.
@@ -60,6 +62,7 @@ PER_INVOCATION = {
     "limitations",
     "cache_stats",
     "cache_replay",
+    "external_summary",  # recomputed over retained outcomes on each invocation
 }
 
 
@@ -69,7 +72,7 @@ def test_every_spider_result_field_is_classified_for_resume():
     Failing here is the point: the alternative is discovering months later, on a
     real crawl, that a resumed run quietly reports less than an uninterrupted one.
     """
-    known = CHECKPOINTED | SIDECAR | DERIVED_FROM_SIDECAR | PER_INVOCATION
+    known = CHECKPOINTED | SIDECAR | OPTIONAL_SIDECAR | DERIVED_FROM_SIDECAR | PER_INVOCATION
     actual = {f.name for f in dataclasses.fields(SpiderResult)}
     unclassified = actual - known
     assert not unclassified, (

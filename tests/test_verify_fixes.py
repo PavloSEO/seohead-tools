@@ -361,7 +361,12 @@ def test_live_raw_workflow_reuses_recorded_policy_and_only_selected_urls(tmp_pat
         baseline=baseline, finding_ids=["ISSUE-000001"], out_dir=str(tmp_path / "verify")
     )
     assert calls[0]["urls"] == [A] and calls[0]["max_urls"] == 1
-    assert calls[0]["overrides"] == baseline["run"]["crawl_config"]
+    from seohead.crawl import settings as crawl_settings
+
+    assert (
+        crawl_settings.manifest(crawl_settings.load(overrides=calls[0]["overrides"]))
+        == baseline["run"]["crawl_config"]
+    )
     assert result["collection"]["mode"] == "list"
     assert result["findings"][0]["status"] == "resolved"
 

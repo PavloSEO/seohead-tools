@@ -64,12 +64,16 @@ from typing import Any
 #   50 000 URLs x  60 links/page -> 1.33 GiB
 #   50 000 URLs x 150 links/page -> 2.93 GiB
 #
-# so the honest ceiling depends on how densely the site links, which no constant can
-# know. 50 000 is where a full crawl stops being the right instrument anyway; past it
-# the answer is to narrow the scope (scope.include_patterns, scope.exclude_patterns)
-# rather than to raise this. A request above the ceiling is refused, not quietly
-# reduced: a run that fetched 50 000 of the 200 000 URLs asked for is a partial crawl,
-# and the caller has to know that before the audit is believed (#356).
+# Bounded trust signals (#823) add one nullable field. A paired tracemalloc run
+# over 8,000 distinct-URL records on Python 3.13 measured no increment for null,
+# 352 bytes for a measured empty object, and 6,648 bytes for 8 author + 8 date
+# signals with distinct 160-character values. Thus the rich-outline estimate
+# above may approach 12,200 bytes/page with rich attribution markup (about
+# 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
+# allocations and are not a full-run memory guarantee.
+# The current release ceiling remains 50,000 until collector/analyzer capacity
+# is proved together; this is not a permanent product limit. Higher requests
+# are refused instead of silently reducing the requested scope (#356).
 MAX_URLS_CEILING = 50_000
 # Direct NativeScan capacity experiments may record a larger declared population.
 # This is admission for synthetic storage measurement, not a crawler budget:

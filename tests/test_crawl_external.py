@@ -255,7 +255,8 @@ def test_outcomes_persist_to_the_sidecar(tmp_path):
 # ── resume ────────────────────────────────────────────────────────────────────
 
 
-def test_resume_never_rechecks_a_decided_destination(tmp_path):
+@pytest.mark.parametrize("spool", [False, True])
+def test_resume_never_rechecks_a_decided_destination(tmp_path, spool):
     """An interrupted external phase resumes where it stopped: decided
     destinations are not re-requested and their budget spend is not
     reopened."""
@@ -274,6 +275,8 @@ def test_resume_never_rechecks_a_decided_destination(tmp_path):
         links_path=str(links),
         out_path=str(pages),
         external_path=str(checks_file),
+        forms_path=str(tmp_path / "forms.jsonl"),
+        spool_evidence=spool,
     )
     assert first.external_summary["finish_reason"] == "interrupted"
     assert [c.url for c in first.external_checks] == ["https://other.example/x"]
@@ -285,6 +288,8 @@ def test_resume_never_rechecks_a_decided_destination(tmp_path):
         links_path=str(links),
         out_path=str(pages),
         external_path=str(checks_file),
+        forms_path=str(tmp_path / "forms.jsonl"),
+        spool_evidence=spool,
     )
     assert second.resumed is True
     # The decided destination is restored, never re-requested.

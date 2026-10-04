@@ -608,6 +608,8 @@ def _get_pinning_transport_cls() -> type:
                 raise NetworkUnavailable(reason) from None
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
                 if policy is not None:
+                    if isinstance(exc, httpx.TimeoutException):
+                        raise httpx.ConnectTimeout("remote request timed out") from None
                     raise httpx.ConnectError("remote connection failed") from None
                 if getattr(self, "_seohead_proxy_route", None) is None:
                     raise

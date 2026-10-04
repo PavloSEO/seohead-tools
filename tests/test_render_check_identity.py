@@ -176,6 +176,7 @@ def _install_stack(monkeypatch, raw_html, rendered_html, *, goto_error=None, tim
 
 @pytest.fixture
 def fake_stack(monkeypatch):
+    monkeypatch.delenv("SEOHEAD_CHROME", raising=False)
     """A raw fetch and a rendered fetch of two script-free documents -- shaped after #199's
     own offline reproducer, so the harness stands for exactly the case it describes: a
     server-side User-Agent variant with no JavaScript involved anywhere.

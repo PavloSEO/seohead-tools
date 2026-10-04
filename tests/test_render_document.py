@@ -171,6 +171,7 @@ class _FakeEnginePlaywright:
 
 @pytest.fixture
 def fake_stack(monkeypatch):
+    monkeypatch.delenv("SEOHEAD_CHROME", raising=False)
     """Stand in for the real ``playwright`` package via ``sys.modules``.
 
     render_document() does ``from playwright.sync_api import sync_playwright``
@@ -200,6 +201,7 @@ def fake_stack(monkeypatch):
 
 @pytest.fixture
 def fake_engines(monkeypatch):
+    monkeypatch.delenv("SEOHEAD_CHROME", raising=False)
     """The same stub ``playwright``, but with a launcher for every engine.
 
     Each supported engine name must reach its own Playwright browser type --

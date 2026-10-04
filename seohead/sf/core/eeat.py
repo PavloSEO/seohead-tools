@@ -373,6 +373,22 @@ def check_attribution(ctx: AuditContext) -> None:
             )
 
 
+class _StoredInlinks:
+    """Reiterate the existing native graph without building an all-inlinks list."""
+
+    def __init__(self, graph):
+        self.graph = graph
+
+    def __iter__(self):
+        return self.graph.iter_evidence_links()
+
+
+def _inlinks(ctx: AuditContext):
+    if ctx.graph_access is not None:
+        return _StoredInlinks(ctx.graph_access)
+    return _all_inlink_records(ctx)
+
+
 def check_trust_pages(ctx: AuditContext) -> None:
     """MISSING_{ABOUT,CONTACT,PRIVACY,TERMS} -- discovery and index state (#823).
 
@@ -387,7 +403,7 @@ def check_trust_pages(ctx: AuditContext) -> None:
             ctx.skip(check_id, "no pages in scope -- nothing was crawled or exported")
         return
     site_host = _site_host(ctx)
-    inlinks = _all_inlink_records(ctx)
+    inlinks = _inlinks(ctx)
     trust_pages: dict[str, Any] = {}
     for check_id, cfg in _TRUST_PAGES.items():
         candidates: dict[str, dict[str, Any]] = {}
@@ -480,7 +496,7 @@ def check_citations(ctx: AuditContext) -> None:
     external link sits outside the content -- are the only two it reports.
     """
     has_outlinks = _has_column(ctx, "external_outlinks")
-    inlinks = _all_inlink_records(ctx)
+    inlinks = _inlinks(ctx)
     if not has_outlinks and inlinks is None:
         ctx.skip(
             "FEW_CITATIONS",
