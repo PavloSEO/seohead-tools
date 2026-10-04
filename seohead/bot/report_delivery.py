@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from seohead.bot.job_adapter import JobOwnershipStore
 from seohead.job_contracts import (
     ArtifactReference,
     JobBackend,
@@ -163,6 +164,8 @@ class AuthorizedReportDelivery:
     receipts: DeliveryReceipts
     send: Callable[[str, OpenedArtifact, str], None]
     max_file_bytes: int = 50 * 1024 * 1024
+    subject: str | None = None
+    ownership: JobOwnershipStore | None = None
     _projects: frozenset[str] = field(init=False, repr=False)
     _destinations: frozenset[str] = field(init=False, repr=False)
 
@@ -173,10 +176,16 @@ class AuthorizedReportDelivery:
             raise ValueError("delivery requires explicit projects and destinations")
         if type(self.max_file_bytes) is not int or not 1 <= self.max_file_bytes <= 2**31:
             raise ValueError("max_file_bytes must be a positive bounded integer")
+        if (self.subject is None) != (self.ownership is None):
+            raise ValueError("durable delivery ownership requires both subject and ownership store")
 
     def _result(self, project_id: str, job_id: str) -> JobResult:
         if project_id not in self._projects:
             raise PermissionError("project is not authorized for delivery")
+        if self.ownership is not None:
+            assert self.subject is not None
+            if self.ownership.project_for(job_id, self.subject) != project_id:
+                raise PermissionError("job is not authorized for delivery")
         try:
             result = self.backend.get_result(project_id, job_id)
         except JobNotReady:

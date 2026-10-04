@@ -80,6 +80,9 @@ submit.
   injected transport call. That receipt is also passed to the transport as its
   idempotency key. A restarted adapter returns a completed receipt instead of
   sending again; a failed transport remains pending for a deliberate retry.
+  When given the same `JobOwnershipStore` and subject as submission, delivery
+  also rejects jobs owned by a different subject inside an otherwise shared
+  project.
 - **Ownership survives restart.** An adapter that persists
   `JobOwnershipStore` records only `(job_id, subject, project_id)`. On a later
   status or cancellation request, it uses that mapping before asking the

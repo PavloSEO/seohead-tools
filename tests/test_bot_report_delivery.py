@@ -12,6 +12,7 @@ from seohead.bot import (
     AuthorizedReportDelivery,
     DeliveryReceipts,
     DeliveryUnavailable,
+    JobOwnershipStore,
     ReportProfile,
 )
 from seohead.recon import net
@@ -170,3 +171,20 @@ def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_
             b"PK",
         )
     ]
+
+
+def test_durable_delivery_ownership_rejects_a_foreign_subject(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    ownership = JobOwnershipStore(tmp_path / "ownership.sqlite")
+    ownership.record(job_id, "requester-a", "alpha")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: None,
+        subject="requester-b",
+        ownership=ownership,
+    )
+    with pytest.raises(PermissionError, match="job is not authorized"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))
