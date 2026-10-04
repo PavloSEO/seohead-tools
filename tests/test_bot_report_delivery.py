@@ -170,6 +170,23 @@ def test_unavailable_pdf_renderer_never_marks_a_delivery_success(monkeypatch, tm
     assert state == "claimed"
 
 
+def test_partial_retained_result_never_enters_delivery(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    result = backend.get_result("alpha", job_id)
+    artifact = next(item for item in result.artifacts if item.kind == "audit_md")
+    backend.artifact_path("alpha", job_id, artifact.artifact_id).unlink()
+    assert backend.get_result("alpha", job_id).coverage == "partial"
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: pytest.fail("partial work must not reach a transport"),
+    )
+    with pytest.raises(DeliveryUnavailable, match="complete retained audit"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))
+
+
 def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_path):
     backend, job_id = _complete_job(monkeypatch, tmp_path)
     delivered = []
