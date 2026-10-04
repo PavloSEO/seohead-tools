@@ -341,6 +341,20 @@ def resolve_columns(
     return resolved
 
 
+def iter_records_from_df(
+    df: pd.DataFrame, field_map: dict[str, list[str]]
+) -> Iterable[dict[str, Any]]:
+    """Yield normalized records without a whole-frame Python dict list.
+
+    The DataFrame remains the export boundary, but native analysis no longer
+    needs an intermediate ``to_dict('records')`` population before it can
+    construct its audit context.
+    """
+    columns = tuple(df.columns)
+    for values in df.itertuples(index=False, name=None):
+        yield record_from_mapping(dict(zip(columns, values, strict=True)), field_map)
+
+
 def records_from_df(df: pd.DataFrame, field_map: dict[str, list[str]]) -> list[dict[str, Any]]:
     """Vectorized projection of a frame onto canonical records.
 

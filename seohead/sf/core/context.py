@@ -15,7 +15,7 @@ from seohead.graph import GraphAccess
 
 from .loader import LoadedExports
 from .models import Group, Issue, Page, SkippedCheck
-from .normalize import INTERNAL_FIELD_MAP, norm_url, records_from_df
+from .normalize import INTERNAL_FIELD_MAP, iter_records_from_df, norm_url
 from .registry import check_meta
 
 _norm_url = norm_url
@@ -94,7 +94,7 @@ class AuditContext:
     def _build_pages(self) -> None:
         if self.internal_df is None:
             return
-        for rec in records_from_df(self.internal_df, INTERNAL_FIELD_MAP):
+        for rec in iter_records_from_df(self.internal_df, INTERNAL_FIELD_MAP):
             url = rec.get("url")
             if not url:
                 continue

@@ -6,6 +6,7 @@ import pandas as pd
 
 from seohead.sf.core.normalize import (
     INTERNAL_FIELD_MAP,
+    iter_records_from_df,
     norm_url,
     records_from_df,
     to_float,
@@ -67,3 +68,12 @@ def test_records_from_df_does_not_collapse_comma_decimal_text_ratio():
     df = pd.DataFrame({"Address": ["a", "b", "c"], "Text Ratio": ["2,500", "0,000", ""]})
     recs = records_from_df(df, INTERNAL_FIELD_MAP)
     assert [r["text_ratio"] for r in recs] == [2.5, 0.0, None]
+
+
+def test_iter_records_from_df_matches_materialized_projection():
+    df = pd.DataFrame(
+        {"Address": [" https://example.test/ "], "Status Code": [200], "Text Ratio": ["2,500"]}
+    )
+    assert list(iter_records_from_df(df, INTERNAL_FIELD_MAP)) == records_from_df(
+        df, INTERNAL_FIELD_MAP
+    )
