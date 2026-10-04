@@ -1487,6 +1487,75 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """
         return _checked(handlers.project_progress(directory=directory, limit=limit, offset=offset))
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_remediation_summary(ledger: str) -> dict[str, Any]:
+        """Read explicit remediation and recheck coverage from retained local evidence.
+
+        The result keeps verified original cases, resolved, persisting,
+        regressed, false-positive-reviewed and unverifiable states separate.
+        It does not run a crawl or infer that omitted evidence is clean.
+        """
+        return _checked(handlers.remediation_summary(ledger=ledger))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_remediation_cases(
+        ledger: str,
+        check: str | None = None,
+        url: str | None = None,
+        finding_key: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Read a bounded page of exact remediation cases and decision history."""
+        return _checked(
+            handlers.remediation_cases(
+                ledger=ledger,
+                check=check,
+                url=url,
+                finding_key=finding_key,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_transition(
+        ledger: str,
+        occurrence_key: str,
+        state: str,
+        actor: str,
+        reason: str,
+        expected_revision: int,
+        observation_id: int | None = None,
+        decided_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Append one revision-safe, evidence-bound lifecycle decision.
+
+        Measured outcomes require a later retained observation. A user claim,
+        missing source or failed fetch cannot resolve a case.
+        """
+        return _checked(
+            handlers.remediation_transition(
+                ledger=ledger,
+                occurrence_key=occurrence_key,
+                state=state,
+                actor=actor,
+                reason=reason,
+                expected_revision=expected_revision,
+                observation_id=observation_id,
+                decided_at=decided_at,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+        """Render retained before/after remediation evidence without network access.
+
+        With out_dir this creates a new immutable JSON/Markdown review snapshot;
+        without it, it returns the JSON-ready report document only.
+        """
+        return _checked(handlers.remediation_report(ledger=ledger, out_dir=out_dir))
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_facts(
         directory: str,

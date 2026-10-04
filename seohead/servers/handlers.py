@@ -4009,6 +4009,62 @@ def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[s
     return core(directory, limit=limit, offset=offset)
 
 
+def remediation_summary(ledger: str) -> dict[str, Any]:
+    """Read explicit remediation and recheck denominators from a local ledger."""
+    from seohead.storage.ledger import remediation_summary as core
+
+    return core(ledger)
+
+
+def remediation_cases(
+    ledger: str,
+    check: str | None = None,
+    url: str | None = None,
+    finding_key: str | None = None,
+    limit: int | None = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Read paginated ledger cases and immutable observation/decision history."""
+    from seohead.storage.ledger import read_cases
+
+    return read_cases(
+        ledger, check=check, url=url, finding_key=finding_key, limit=limit, offset=offset
+    )
+
+
+def remediation_transition(
+    ledger: str,
+    occurrence_key: str,
+    state: str,
+    actor: str,
+    reason: str,
+    expected_revision: int,
+    observation_id: int | None = None,
+    decided_at: str | None = None,
+) -> dict[str, Any]:
+    """Append one evidence-bound lifecycle decision to a local ledger."""
+    from seohead.storage.ledger import transition_occurrence
+
+    return transition_occurrence(
+        ledger,
+        occurrence_key=occurrence_key,
+        state=state,
+        actor=actor,
+        reason=reason,
+        expected_revision=expected_revision,
+        observation_id=observation_id,
+        decided_at=decided_at,
+    )
+
+
+def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+    """Render retained remediation evidence, optionally to a new local directory."""
+    from seohead.storage.ledger import remediation_report as build
+    from seohead.storage.ledger import write_remediation_report
+
+    return write_remediation_report(ledger, out_dir) if out_dir else build(ledger)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
@@ -4751,6 +4807,10 @@ _RAW_HANDLERS = {
     "project_open": project_open,
     "project_status": project_status,
     "project_progress": project_progress,
+    "remediation_summary": remediation_summary,
+    "remediation_cases": remediation_cases,
+    "remediation_transition": remediation_transition,
+    "remediation_report": remediation_report,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,

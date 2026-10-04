@@ -116,6 +116,10 @@ COMMANDS = (
     "project-open",
     "project-status",
     "project-progress",
+    "remediation-summary",
+    "remediation-cases",
+    "remediation-transition",
+    "remediation-report",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -461,6 +465,32 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "all_pages", False):
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
+    elif cmd in {
+        "remediation-summary",
+        "remediation-cases",
+        "remediation-transition",
+        "remediation-report",
+    }:
+        for name in (
+            "ledger",
+            "check",
+            "url",
+            "finding_key",
+            "occurrence_key",
+            "state",
+            "actor",
+            "reason",
+            "expected_revision",
+            "observation_id",
+            "decided_at",
+            "out_dir",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if cmd == "remediation-cases":
+            kw["limit"] = args.limit
+            kw["offset"] = args.offset
     elif cmd in {
         "project-new",
         "project-open",
@@ -1755,6 +1785,29 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
+    if cmd in {
+        "remediation-summary",
+        "remediation-cases",
+        "remediation-transition",
+        "remediation-report",
+    }:
+        _source_flag(sub, "--ledger", help="validated local ledger.v1 SQLite artifact")
+    if cmd == "remediation-cases":
+        sub.add_argument("--check", help="exact registry check identifier")
+        sub.add_argument("--url", help="exact affected URL")
+        sub.add_argument("--finding-key", dest="finding_key", help="exact finding SHA-256 key")
+        sub.add_argument("--limit", type=int, default=100, help="findings per page (1..1000)")
+        sub.add_argument("--offset", type=int, default=0, help="zero-based finding offset")
+    if cmd == "remediation-transition":
+        sub.add_argument("--occurrence-key", dest="occurrence_key", help="case SHA-256 key")
+        sub.add_argument("--state", help="next lifecycle state")
+        sub.add_argument("--actor", help="decision actor")
+        sub.add_argument("--reason", help="bounded decision rationale")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument("--observation-id", dest="observation_id", type=int)
+        sub.add_argument("--decided-at", dest="decided_at", help="UTC ISO-8601 decision time")
+    if cmd == "remediation-report":
+        sub.add_argument("--out-dir", dest="out_dir", help="new directory for JSON and Markdown")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {
