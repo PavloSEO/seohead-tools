@@ -40,6 +40,11 @@ Cancellation is immediate for queued jobs. A running job switches to
 `cancel_requested`; its progress callback or final publication boundary stops
 the worker and records `cancelled`. Network calls have the native crawl
 timeouts, so cancellation of one in-flight request is not instantaneous.
+An adapter that stops a pinned browser request can raise `RenderCancelled` at
+that request boundary; the renderer aborts the route, closes its isolated
+context and browser, and reports `render_cancelled` rather than falling back
+to a local browser. A remote disconnect or timeout follows the same teardown
+path and stays an unavailable render, never a successful scan.
 The API status and result preserve complete/partial/failed/skipped coverage;
 missing audit or report artifacts cannot be presented as complete.
 
@@ -83,3 +88,8 @@ from this backend and must be demonstrated in the self-hosted service profile.
 or notification adapter. It maps one authorized actor and an explicit project
 set to this same backend, and exposes only submit, status and cancel. It has no
 messaging SDK, account identity, delivery credentials or crawler code.
+`AuthorizedReportDelivery` previews and sends only complete retained JSON or
+Markdown artifacts through an injected authorized transport. Its private
+receipt store makes a completed delivery idempotent across adapter restart;
+failed sends remain pending for an explicit retry and unsupported formats are
+named instead of silently producing a different report.

@@ -259,6 +259,48 @@ def test_missing_trusted_credential_reference_refuses_before_queueing(monkeypatc
         )
 
 
+def test_trusted_credential_reference_reaches_runtime_without_leaking_provenance(
+    monkeypatch, tmp_path
+):
+    requests = _network(monkeypatch)
+    secret = "Bearer synthetic-runtime-secret"
+    monkeypatch.setenv("SEOHEAD_REMOTE_RUNTIME_TOKEN", secret)
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {
+            "alpha": RemoteProjectLimits(
+                credential_headers=(
+                    {
+                        "host": "public.example.test",
+                        "headers": {"Authorization": "env:SEOHEAD_REMOTE_RUNTIME_TOKEN"},
+                    },
+                )
+            )
+        },
+        producer_build="a" * 40,
+    )
+    request = ScanSubmission(target_url=SITE, options={"max_urls": 1, "max_requests": 20})
+    job = backend.submit(
+        "alpha",
+        "operator-a",
+        "synthetic-runtime-reference",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    assert backend.run_one("worker-a").state == "finished"
+    assert any(outbound.headers.get("authorization") == secret for outbound in requests)
+    scan_ref = next(
+        item for item in backend.get_result("alpha", job.job_id).artifacts if item.kind == "scan"
+    )
+    scan_path = backend.artifact_path("alpha", job.job_id, scan_ref.artifact_id)
+    with sqlite3.connect(scan_path) as con:
+        stored = con.execute("SELECT config_json FROM scan WHERE singleton=1").fetchone()[0]
+    assert secret not in stored
+    assert "REDACTED" in stored
+    assert secret not in json.dumps(backend.events("alpha", job.job_id))
+
+
 @pytest.mark.parametrize("kind", ["scan", "audit_json", "audit_md"])
 def test_same_size_artifact_tampering_denies_download_and_complete_coverage(
     monkeypatch, tmp_path, kind

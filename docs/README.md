@@ -12,6 +12,7 @@ CLI and a local MCP server.
 | Installing on a headless Linux VPS over SSH | [LINUX_VPS.md](LINUX_VPS.md) — pinned install, browser dependencies, upgrades, rollback, and measured CI smoke |
 | Looking for a copy-paste command | [USAGE.md](USAGE.md) — runnable examples |
 | Checking Docker or remote-service boundaries | [CONTAINERS.md](CONTAINERS.md) — current CLI image and explicit operator-owned service boundary |
+| Verifying the remote-service operator profile | [DISPOSABLE_SERVICE_PROFILE.md](DISPOSABLE_SERVICE_PROFILE.md) — owned loopback TLS proxy, artifact recovery, and rollback proof |
 | Checking which source inputs a command accepts | [INPUTS.md](INPUTS.md) — generated command-input catalogue |
 | Managing or inspecting saved scans | [STORAGE.md](STORAGE.md) — SQLite import, provenance, retained bodies, snapshots, and reviewed retention |
 | Importing a third-party crawl export | [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md) — versioned CSV manifest, field coverage, and limits |

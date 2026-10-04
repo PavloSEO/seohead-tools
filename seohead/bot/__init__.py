@@ -17,6 +17,12 @@ from seohead.bot.contract import (
     describe_contract,
 )
 from seohead.bot.job_adapter import AuthorizedJobSubmitter
+from seohead.bot.report_delivery import (
+    AuthorizedReportDelivery,
+    DeliveryReceipts,
+    DeliveryUnavailable,
+    ReportProfile,
+)
 from seohead.bot.wizard import (
     POLICY_PRESETS,
     Event,
@@ -31,10 +37,14 @@ __all__ = [
     "POLICY_PRESETS",
     "Action",
     "AuthorizedJobSubmitter",
+    "AuthorizedReportDelivery",
+    "DeliveryReceipts",
+    "DeliveryUnavailable",
     "Event",
     "Field",
     "JobSubmitter",
     "Reply",
+    "ReportProfile",
     "ScanJobSpec",
     "State",
     "WizardSession",

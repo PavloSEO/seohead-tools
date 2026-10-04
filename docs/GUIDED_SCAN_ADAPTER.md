@@ -72,6 +72,11 @@ submit.
   remain `env:` references resolved at request time by
   `settings.resolve_credential_headers`, and the preview shows the manifest
   (which redacts credential values) rather than the raw config.
+- **Delivery stays authorized and idempotent.** `AuthorizedReportDelivery`
+  accepts only an explicit project/destination allowlist, previews the exact
+  retained artifact before sending, and stores a receipt after a successful
+  injected transport call. A restarted adapter returns that receipt instead of
+  sending again; a failed transport remains pending for a deliberate retry.
 
 ## Versioning
 

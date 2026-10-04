@@ -21,3 +21,6 @@ Keep scan artifacts on an explicit service-owned volume when operating the
 queue. Exposure behind a domain, firewall rules, TLS certificates, backup and
 restore are operator actions and require their own disposable-environment
 evidence; this repository does not provide a production deployment command.
+The repository's [disposable service profile](DISPOSABLE_SERVICE_PROFILE.md)
+exercises a loopback TLS reverse proxy, authorization, retained-artifact
+backup/restore, expiry, and release rollback without claiming a public deploy.

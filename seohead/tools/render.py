@@ -192,6 +192,13 @@ _SCRIPT_STYLE_RE = re.compile(
 )
 _TAG_RE = re.compile(r"<[^>]+>")
 _BROWSER_RESPONSE_BYTES = 5 * 1024 * 1024
+_RENDER_CANCELLED = "browser rendering cancelled"
+
+
+class RenderCancelled(RuntimeError):
+    """A caller stopped a render at a pinned request boundary."""
+
+
 MAX_CONSOLE_ERRORS = 100
 MAX_CONSOLE_ERROR_CHARS = 1_000
 _BROWSER_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -364,6 +371,8 @@ def _pinned_browser_route(
                 route.fulfill(
                     status=response.status_code, headers=response_headers, body=bytes(body)
                 )
+        except RenderCancelled:
+            abort(route, _RENDER_CANCELLED)
         except Exception as exc:
             abort(route, f"pinned browser request failed: {_error_summary(exc, policy)}")
 
@@ -1038,6 +1047,14 @@ def render_check(
                 metrics = page.evaluate(_METRICS_JS)
                 computed_backgrounds = page.evaluate(_BACKGROUND_IMAGES_JS)
                 if limitations:
+                    if _RENDER_CANCELLED in limitations:
+                        return {
+                            "ok": False,
+                            "url": target,
+                            "reason": "render_cancelled",
+                            "error": _RENDER_CANCELLED,
+                            **transport_info,
+                        }
                     raise RuntimeError("; ".join(limitations))
             finally:
                 if context is not None:
@@ -1250,6 +1267,13 @@ def rendered_html(
                     page = context.new_page()
                     page.goto(target, wait_until=wait, timeout=timeout * 1000)
                     if limitations:
+                        if _RENDER_CANCELLED in limitations:
+                            return {
+                                "ok": False,
+                                "url": target,
+                                "reason": "render_cancelled",
+                                "error": _RENDER_CANCELLED,
+                            }
                         raise RuntimeError("; ".join(limitations))
                     result = {"ok": True, "url": page.url, "html": page.content()}
                     if endpoint is not None:
@@ -1645,6 +1669,13 @@ def render_document(
                     screenshot_state = "unavailable"
                     screenshot_error = "browser artifact staging directory was not supplied"
                 if browser_limitations:
+                    if _RENDER_CANCELLED in browser_limitations:
+                        return {
+                            "ok": False,
+                            "url": target,
+                            "reason": "render_cancelled",
+                            "error": _RENDER_CANCELLED,
+                        }
                     raise RuntimeError("; ".join(browser_limitations))
             finally:
                 try:
