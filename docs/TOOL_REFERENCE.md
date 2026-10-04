@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**96 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 101 in total.
+**98 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 103 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -828,7 +828,7 @@ How a counter is configured: goals, filters, data operations. Check this BEFORE 
 
 MCP name: `seo_metrika_report`
 
-What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped".
+What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped". A "Query is too complicated" refusal is retried month by month and, when a month still refuses, at a sampled accuracy; "split", "accuracy", "sampled" and "sample_share" in the answer say what was actually used — a null "sampled" means the API did not report it, not "unsampled". Only count metrics additive over disjoint periods (ym:s:visits, ym:s:pageviews) can be merged — unique-visitor, ratio or average metrics fail rather than sum wrong.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -916,11 +916,16 @@ What the paid sources have actually charged: totals by source, by operation and 
 
 MCP name: `seo_sources_doctor`
 
-Which external data sources are ready to use: whether each secret is present, where it is read from, and where the spend journal lives. Call this before planning a paid run — a missing key is cheaper to find now than mid-collection.
+Inspect redacted credential references, readiness and declared provider operations.
 
 Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Configured credentials do not verify account or target permission. This local check makes
+no provider requests; use seo_provider_verify for an explicit bounded read.
 
 ### `wayback-history`
 
@@ -1286,6 +1291,24 @@ Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `provider-readiness`
+
+MCP name: `seo_provider_readiness`
+
+Inspect configured credential sources and declared operation routes offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `provider` | `str | None` | `None` |
+| `operation` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Credential configuration never proves account or target permission. Use
+seo_provider_verify for an explicit bounded read-only access check.
+
 ### `provider-verify`
 
 MCP name: `seo_provider_verify`
@@ -1334,6 +1357,68 @@ Join supplied URL evidence exactly and preserve unmatched populations and techni
 | `adjustments` | `list[dict[str, Any]] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `evidence-normalize`
+
+MCP name: `seo_evidence_normalize`
+
+Normalize a supplied CSV/XLSX/JSON or saved provider envelope, fully offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `file` | `str` | `required` |
+| `mapping` | `Any` | `None` |
+| `sheet` | `str | None` | `None` |
+| `site_origin` | `str | None` | `None` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Every row keeps its declared grain, provenance and availability state: a
+measured zero stays zero while missing, null, blank, suppressed,
+uncollected and failed inputs stay unavailable. Restricted sources
+return counts and redacted provenance; normalized rows live only in an
+explicit private ``out_dir`` artifact. No provider, DNS or page fetch
+ever runs here.
+
+### `evidence-join`
+
+MCP name: `seo_evidence_join`
+
+Join normalized analytics/search evidence to crawl pages, offline only.
+
+| Argument | Type | Default |
+|---|---|---|
+| `evidence` | `Any` | `required` |
+| `audit` | `Any` | `None` |
+| `scan` | `str | None` | `None` |
+| `pages` | `Any` | `None` |
+| `compare` | `Any` | `None` |
+| `mapping` | `Any` | `None` |
+| `compare_mapping` | `Any` | `None` |
+| `policy` | `Any` | `None` |
+| `sheet` | `str | None` | `None` |
+| `compare_sheet` | `str | None` | `None` |
+| `site_origin` | `str | None` | `None` |
+| `compare_site_origin` | `str | None` | `None` |
+| `ignore_query` | `bool` | `False` |
+| `ignore_scheme` | `bool` | `False` |
+| `casefold_path` | `bool` | `False` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Retains matched, crawl-only, external-only and unkeyable populations
+with per-field provenance, and reports key collisions instead of
+multiplying rows. ``compare`` plus a declared ``policy`` yields a pure
+compatible/incompatible/unknown decision across period, timezone,
+identity, attribution, engine and grain; source metrics such as GSC
+clicks and GA4 sessions stay distinct and are never summed. Restricted
+inputs return counts only.
 
 ### `inspect-url`
 

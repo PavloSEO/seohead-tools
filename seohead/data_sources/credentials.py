@@ -69,6 +69,70 @@ def available(path: str, env_var: str) -> bool:
     return True
 
 
+def source_status(path: str, env_var: str) -> dict[str, Any]:
+    """Describe a credential source without returning its value or an absolute path."""
+    accepted = [f"env:{env_var}", f"config:{path}"]
+    from_env = os.environ.get(env_var)
+    if from_env and from_env.strip():
+        return {
+            "state": "configured_unverified",
+            "source_reference": f"env:{env_var}",
+            "accepted_source_references": accepted,
+        }
+
+    candidate = CONFIG_ROOT / path
+    try:
+        info = candidate.stat()
+    except FileNotFoundError:
+        return {
+            "state": "missing",
+            "source_reference": None,
+            "accepted_source_references": accepted,
+        }
+    except OSError:
+        return {
+            "state": "invalid",
+            "source_reference": f"config:{path}",
+            "accepted_source_references": accepted,
+            "reason": "configured credential file is unreadable",
+        }
+    if not candidate.is_file():
+        return {
+            "state": "invalid",
+            "source_reference": f"config:{path}",
+            "accepted_source_references": accepted,
+            "reason": "configured credential path is not a regular file",
+        }
+    if info.st_size > 1024 * 1024:
+        return {
+            "state": "invalid",
+            "source_reference": f"config:{path}",
+            "accepted_source_references": accepted,
+            "reason": "configured credential file exceeds 1 MiB",
+        }
+    try:
+        value = candidate.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return {
+            "state": "invalid",
+            "source_reference": f"config:{path}",
+            "accepted_source_references": accepted,
+            "reason": "configured credential file is unreadable or invalid text",
+        }
+    if not value.strip():
+        return {
+            "state": "invalid",
+            "source_reference": f"config:{path}",
+            "accepted_source_references": accepted,
+            "reason": "configured credential file is empty",
+        }
+    return {
+        "state": "configured_unverified",
+        "source_reference": f"config:{path}",
+        "accepted_source_references": accepted,
+    }
+
+
 # --- provider-specific credentials -----------------------------------------
 
 

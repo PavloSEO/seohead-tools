@@ -906,7 +906,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative
         forms like 30daysAgo. This is the missing half of an audit: a page can be technically
         perfect and get no visits at all. paginate=true walks every page but stops at
-        100 000 rows, and says so via "capped"."""
+        100 000 rows, and says so via "capped". A "Query is too complicated" refusal is
+        retried month by month and, when a month still refuses, at a sampled accuracy;
+        "split", "accuracy", "sampled" and "sample_share" in the answer say what was
+        actually used — a null "sampled" means the API did not report it, not "unsampled".
+        Only count metrics additive over disjoint periods (ym:s:visits, ym:s:pageviews)
+        can be merged — unique-visitor, ratio or average metrics fail rather than sum
+        wrong."""
         return _checked(
             handlers.metrika_report(
                 counter_id=counter_id,
@@ -1000,9 +1006,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_sources_doctor() -> dict[str, Any]:
-        """Which external data sources are ready to use: whether each secret is present,
-        where it is read from, and where the spend journal lives. Call this before planning
-        a paid run — a missing key is cheaper to find now than mid-collection."""
+        """Inspect redacted credential references, readiness and declared provider operations.
+
+        Configured credentials do not verify account or target permission. This local check makes
+        no provider requests; use seo_provider_verify for an explicit bounded read.
+        """
         return _checked(handlers.sources_doctor())
 
     @mcp.tool(annotations=fetch, structured_output=True)
@@ -1320,6 +1328,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """List provider operations, credential components, quota and privacy boundaries."""
         return _checked(handlers.provider_registry())
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_provider_readiness(
+        provider: str | None = None, operation: str | None = None
+    ) -> dict[str, Any]:
+        """Inspect configured credential sources and declared operation routes offline.
+
+        Credential configuration never proves account or target permission. Use
+        seo_provider_verify for an explicit bounded read-only access check.
+        """
+        return _checked(handlers.provider_readiness(provider=provider, operation=operation))
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
         """Explicitly verify bounded read-only account/target access; present credentials are not verification."""
@@ -1353,6 +1372,83 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 evidence_rows,
                 review_external_only=review_external_only,
                 adjustments=adjustments,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_evidence_normalize(
+        file: str,
+        mapping: Any = None,
+        sheet: str | None = None,
+        site_origin: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Normalize a supplied CSV/XLSX/JSON or saved provider envelope, fully offline.
+
+        Every row keeps its declared grain, provenance and availability state: a
+        measured zero stays zero while missing, null, blank, suppressed,
+        uncollected and failed inputs stay unavailable. Restricted sources
+        return counts and redacted provenance; normalized rows live only in an
+        explicit private ``out_dir`` artifact. No provider, DNS or page fetch
+        ever runs here.
+        """
+        return _checked(
+            handlers.evidence_normalize(
+                file=file,
+                mapping=mapping,
+                sheet=sheet,
+                site_origin=site_origin,
+                out_dir=out_dir,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_evidence_join(
+        evidence: Any,
+        audit: Any = None,
+        scan: str | None = None,
+        pages: Any = None,
+        compare: Any = None,
+        mapping: Any = None,
+        compare_mapping: Any = None,
+        policy: Any = None,
+        sheet: str | None = None,
+        compare_sheet: str | None = None,
+        site_origin: str | None = None,
+        compare_site_origin: str | None = None,
+        ignore_query: bool = False,
+        ignore_scheme: bool = False,
+        casefold_path: bool = False,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Join normalized analytics/search evidence to crawl pages, offline only.
+
+        Retains matched, crawl-only, external-only and unkeyable populations
+        with per-field provenance, and reports key collisions instead of
+        multiplying rows. ``compare`` plus a declared ``policy`` yields a pure
+        compatible/incompatible/unknown decision across period, timezone,
+        identity, attribution, engine and grain; source metrics such as GSC
+        clicks and GA4 sessions stay distinct and are never summed. Restricted
+        inputs return counts only.
+        """
+        return _checked(
+            handlers.evidence_join(
+                audit=audit,
+                scan=scan,
+                pages=pages,
+                evidence=evidence,
+                compare=compare,
+                mapping=mapping,
+                compare_mapping=compare_mapping,
+                policy=policy,
+                sheet=sheet,
+                compare_sheet=compare_sheet,
+                site_origin=site_origin,
+                compare_site_origin=compare_site_origin,
+                ignore_query=ignore_query,
+                ignore_scheme=ignore_scheme,
+                casefold_path=casefold_path,
+                out_dir=out_dir,
             )
         )
 

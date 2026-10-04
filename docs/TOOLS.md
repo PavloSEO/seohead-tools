@@ -351,11 +351,25 @@ and spend-journal rules.
 | Command | What it does | Network / writes |
 |---|---|---|
 | `provider-registry` | Lists declared providers and their bounded operations; it does not verify credentials | no |
+| `provider-readiness` | Reports redacted credential-source states, supported operation routes and their shared JSON call-envelope schema, quota/privacy, and whether verification remains necessary. It makes no provider requests | no |
 | `provider-auth` | Manages a private GSC read-only OAuth grant: status, connect from a private grant file, explicit refresh, confirmed local disconnect, or confirmed remote revoke. It never returns OAuth material. | refresh/revoke only when requested |
 | `provider-verify` | Performs one explicit read-only credential and optional target-access check. An authenticated account does not by itself prove access to a requested target. | provider read |
 | `provider-collect` | Performs one declared read-only operation and returns a versioned evidence envelope with complete, partial, failed, or skipped state. An optional restricted artifact directory keeps raw rows locally. | provider read; optional local artifact |
 | `provider-join` | Joins supplied crawl pages and collected evidence rows without changing a frontier. It preserves matched, crawl-only, external-only, and unkeyable populations. | no |
 | `provider-replay` | Replays a private saved provider collection against a saved scan offline, writes a restricted joined artifact, and keeps the crawl frontier unchanged. | local artifact write |
+| `evidence-normalize` | Normalizes a supplied CSV/XLSX/JSON or a saved provider envelope into `seohead.normalized-evidence.v1` against an optional `seohead.evidence-mapping.v1` manifest, offline. Every row keeps its grain, provenance and availability state: a measured `0` stays zero while missing, null, blank, suppressed, uncollected and failed inputs stay unavailable. Restricted sources return counts and redacted provenance. | optional restricted artifact under `--out-dir` |
+| `evidence-join` | Joins normalized evidence to `--pages`, `--scan`, or `--audit` under the strict URL policy (explicit `--ignore-query`/`--ignore-scheme`/`--casefold-path` relaxations), preserving matched, crawl-only, external-only and unkeyable populations plus collision counts. `--compare` with a declared `--policy` yields a pure compatible/incompatible/unknown decision across period, timezone, identity, attribution, engine and grain; source metrics such as GSC clicks and GA4 sessions stay distinct and are never summed. | optional private artifact under `--out-dir` |
+
+`sources-doctor` and `provider-readiness` are local setup checks. They distinguish
+missing, invalid and configured-but-unverified credential sources; references use
+`env:VARIABLE`, `config:relative/path`, or a named local grant, never the value or
+an absolute path. Operation discovery labels a route as `provider-collect`, a
+dedicated command, a separate write, or unsupported. Supported operations expose
+the shared `provider`/`operation`/`request` JSON envelope; provider-specific request
+fields remain validated by that operation adapter. Readiness always reports target
+access as unverified; `provider-verify` is the separate, explicit read that can
+return `verified`, `not_granted`, `insufficient_scope`, or `unsupported`. Supplying
+credentials alone never proves access to a property or site.
 
 Provider evidence can change work order only when its coverage is usable; sampled,
 truncated, unmatched, or privacy-thresholded values remain unavailable for a
@@ -369,11 +383,11 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `keywords-exact` | Exact `!W` frequency (Arsenkin's `overal`/`!WS` selector) — what the Wordstat API, base-only, will not give you | Arsenkin account limits; the charge and `task_id` are journaled at task creation |
 | `serp-fetch` | Yandex SERP for a query or a batch. Async only | metered; synchronous search is intentionally absent; verify current tariff |
 | `spend-report` | What was actually charged: by source, operation and day, from the local journal | free |
-| `sources-doctor` | Which sources have their secret and where it lives | free |
+| `sources-doctor` | Which sources have usable credentials, with redacted source references; configured credentials are not verified access | free |
 | `regions-tree` | The authoritative Yandex region tree via `getRegionsTree` | **free** — the only free Wordstat method |
 | `metrika-counters` | Metrika counters visible to the token — this is where `counter_id` comes from | free |
 | `metrika-setup` | How a counter is configured: goals, filters, data operations | free |
-| `metrika-report` | What visitors actually did: any metrics and dimensions, auto-pagination | free |
+| `metrika-report` | What visitors actually did: any metrics and dimensions, auto-pagination; a `Query is too complicated` refusal is retried in month slices and, if needed, at sampled accuracy — the answer states what was used. Only additive count metrics (`ym:s:visits`, `ym:s:pageviews`) merge; unique-visitor, ratio, or average metrics fail rather than sum wrong | free |
 | `metrika-traffic-pdf` | Static A4 traffic report (HTML + PDF) in a dashboard layout: KPI cards with % change, daily dynamics, 3/6/12-month windows, engines, cities, countries, devices, age, gender, landing pages, phrases, channels, optional Search Console queries. Collection and rendering run separately | free; about 40 read-only Metrika requests; writes only `out_dir`; PDF needs a local Chrome/Edge/Chromium |
 | `google-keywords` | Google: search volume for a keyword list, semantic expansion from a seed phrase, keyword difficulty | DataForSEO price list; RUB 0 in the sandbox |
 | `google-serp` | Google organic results for a query | same |
@@ -385,6 +399,8 @@ priority adjustment. It never changes a technical finding's severity. See the
 
 ```bash
 seohead sources-doctor                                     # what is ready to run
+seohead provider-readiness --input '{"provider":"gsc","operation":"search_analytics"}'
+seohead provider-verify --input '{"provider":"gsc","request":{"site_url":"sc-domain:example.com"}}'
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -529,7 +545,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(96 + 5):
+(98 + 5):
 
 ```bash
 seohead mcp        # stdio

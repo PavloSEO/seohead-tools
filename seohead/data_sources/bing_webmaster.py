@@ -64,8 +64,17 @@ def collect(
     url = f"{HOST}/{_METHODS[operation]}?{urllib.parse.urlencode(params)}"
     try:
         body = json.loads((transport or _default_transport)(url))
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
-        return {"ok": False, "state": "failed", "error": str(exc)}
+    except urllib.error.HTTPError as exc:
+        # The API key is in Bing's query string, which urllib includes in an
+        # HTTPError string. Return status only so a failed call cannot expose it.
+        return {
+            "ok": False,
+            "state": "failed",
+            "status": exc.code,
+            "error": f"Bing Webmaster HTTP {exc.code}",
+        }
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return {"ok": False, "state": "failed", "error": "Bing Webmaster request failed"}
     if not isinstance(body, dict) or "d" not in body:
         return {"ok": False, "state": "failed", "error": "malformed Bing Webmaster JSON response"}
     return {
