@@ -120,3 +120,47 @@ def test_claimed_full_refresh_keeps_its_plan_and_enforces_request_budgets(tmp_pa
     assert retained["run"]["mode"] == "full"
     assert retained["run"]["observations"][0]["cache_state"] == "revalidated"
     assert status(project)["runner"]["state"] == "idle"
+
+
+def test_alert_suppression_window_expires_after_the_declared_number_of_runs(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": False,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 7,
+            "suppression_runs": 1,
+        },
+    )
+    change = {"kind": "canonical_changed", "severity": "warning"}
+    first = run(
+        project,
+        "scan:one",
+        [{"url": "https://example.test/a", "changes": [change]}],
+        configured["revision"],
+    )
+    suppressed = run(
+        project,
+        "scan:two",
+        [{"url": "https://example.test/a", "changes": [change]}],
+        first["revision"],
+    )
+    quiet = run(
+        project,
+        "scan:three",
+        [{"url": "https://example.test/a", "changes": []}],
+        suppressed["revision"],
+    )
+    repeated = run(
+        project,
+        "scan:four",
+        [{"url": "https://example.test/a", "changes": [change]}],
+        quiet["revision"],
+    )
+    assert first["run"]["alerts"]
+    assert suppressed["run"]["alerts"] == []
+    assert repeated["run"]["alerts"]

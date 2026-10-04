@@ -196,10 +196,11 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _prior_alerts(document: dict[str, Any]) -> set[str]:
+def _recent_alerts(document: dict[str, Any], suppression_runs: int) -> set[str]:
+    """Suppress repeats for a bounded number of completed monitor passes only."""
     return {
         _change_key(change)
-        for earlier in document["runs"]
+        for earlier in document["runs"][-suppression_runs:]
         for alert in earlier.get("alerts", [])
         for change in alert.get("changes", [])
     }
@@ -234,7 +235,7 @@ def run(
         raise ValueError(
             "periodic full refresh must retain an observation for every configured URL"
         )
-    previous = _prior_alerts(document)
+    previous = _recent_alerts(document, policy["suppression_runs"])
     alerts: list[dict[str, Any]] = []
     recoveries: list[dict[str, Any]] = []
     partial = False
