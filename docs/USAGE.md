@@ -333,6 +333,8 @@ seohead duplicate-check --input '{"items":[{"id":"a","text":"..."},{"id":"b","te
 seohead duplicate-check --scan saved.sqlite
 seohead boilerplate-report --scan saved.sqlite
 seohead semantic-inputs --scan saved.sqlite
+seohead semantic-similarity --scan saved.sqlite --cache-path semantic-cache.sqlite --input '{"adapter":{"kind":"local","model_id":"caller-model","model_version":"1","settings":{},"data_transfer":"none"},"embeddings":[{"url":"https://example.com/page","vector":[0.1,0.2]}]}'
+seohead meta-description-drafts --scan saved.sqlite --input '{"context":{"language":"en"}}'  # dry-run, no model call
 echo '{"url": "https://example.com"}' | seohead parse          # stdin JSON also works
 ```
 

@@ -2703,6 +2703,117 @@ def semantic_inputs(
     }
 
 
+def semantic_similarity(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    embeddings: list[dict] | None = None,
+    adapter: dict[str, Any] | None = None,
+    cache_path: str | None = None,
+    threshold: float = 0.82,
+    max_candidate_comparisons: int = 250_000,
+) -> dict[str, Any]:
+    """Group supplied embedding evidence; this handler never loads or calls a model."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    if not isinstance(adapter, dict):
+        raise ValueError("adapter declaration is required")
+    if not cache_path:
+        raise ValueError("cache_path is required for local semantic embedding reuse")
+    if not isinstance(embeddings, list):
+        raise ValueError("embeddings[] is required; SEOHEAD does not call a model by default")
+    from seohead.tools import semantic_similarity as core
+    from seohead.tools import text_normalize as norm_core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, "groups": [], **corpus_public(corpus)}
+        documents = corpus["items"]
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        documents = norm_core.prepare_items(items)
+        public = {
+            "normalization": norm_core.normalization_policy(),
+            "coverage": {
+                "state": "complete",
+                "eligible_documents": len(items),
+                "prepared_documents": len(documents),
+                "analyzed_documents": 0,
+                "omitted_documents": 0,
+                "omission_reasons": {},
+            },
+        }
+    vectors = {
+        entry.get("url"): entry.get("vector")
+        for entry in embeddings
+        if isinstance(entry, dict) and isinstance(entry.get("url"), str)
+    }
+    for document in documents:
+        if document.get("url") in vectors:
+            document["embedding"] = vectors[document["url"]]
+    result = core.analyze_semantic_documents(
+        documents,
+        core.DeclaredEmbeddingAdapter(adapter),
+        core.EmbeddingCache(cache_path),
+        threshold=threshold,
+        max_candidate_comparisons=max_candidate_comparisons,
+    )
+    if "coverage" in public:
+        result["source_coverage"] = public["coverage"]
+    if "source" in public:
+        result["source"] = public["source"]
+    if "normalization" in public:
+        result["normalization"] = public["normalization"]
+    return result
+
+
+def meta_description_drafts(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    context: dict[str, Any] | None = None,
+    drafts: list[dict] | None = None,
+    executor: dict[str, Any] | None = None,
+    checkpoint_path: str | None = None,
+    batch_size: int = 20,
+    json_path: str | None = None,
+    csv_path: str | None = None,
+) -> dict[str, Any]:
+    """Prepare or validate resumable, page-grounded supplied drafts without model calls."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    from seohead.tools import meta_description_drafts as core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        plan = core.prepare_draft_plan_from_normalized(corpus["items"], context, batch_size=batch_size)
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        plan = core.prepare_draft_plan(items, context, batch_size=batch_size)
+        public = {}
+    if drafts is None:
+        return {"ok": True, "plan": plan, **public}
+    if not isinstance(executor, dict) or not checkpoint_path:
+        raise ValueError("draft execution requires executor declaration and checkpoint_path")
+    if (json_path is None) != (csv_path is None):
+        raise ValueError("json_path and csv_path must be supplied together")
+    result = core.run_draft_plan(
+        plan,
+        core.DeclaredDraftExecutor(executor, drafts),
+        core.DraftCheckpoint(checkpoint_path),
+    )
+    if json_path and csv_path:
+        core.export_draft_review(result, json_path, csv_path)
+    return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
+
+
 def social_meta_check(
     url: str | None = None, og: dict[str, str] | None = None, twitter: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -4578,6 +4689,8 @@ _RAW_HANDLERS = {
     "markdown_extract": markdown_extract,
     "boilerplate_report": boilerplate_report,
     "semantic_inputs": semantic_inputs,
+    "semantic_similarity": semantic_similarity,
+    "meta_description_drafts": meta_description_drafts,
     "log_scan": log_scan,
     "crawl_diagnose": crawl_diagnose,
     "crawl_diagnose_export": crawl_diagnose_export,

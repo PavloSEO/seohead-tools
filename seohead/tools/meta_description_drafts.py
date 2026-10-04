@@ -77,6 +77,21 @@ class StaticDraftExecutor:
         return [draft for draft in self.drafts if draft.get("url") in expected]
 
 
+@dataclass(frozen=True)
+class DeclaredDraftExecutor:
+    """Replay structured drafts from any declared caller-owned executor kind."""
+
+    declaration: dict[str, Any]
+    drafts: Sequence[dict[str, Any]]
+
+    def describe(self) -> dict[str, Any]:
+        return dict(self.declaration)
+
+    def execute(self, records: Sequence[dict[str, Any]]) -> Sequence[dict[str, Any]]:
+        expected = {record["url"] for record in records}
+        return [draft for draft in self.drafts if draft.get("url") in expected]
+
+
 def _canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -164,6 +179,70 @@ def prepare_draft_plan(
     }
 
 
+def prepare_draft_plan_from_normalized(
+    items: Iterable[dict[str, Any]], context: dict[str, Any] | None = None, *, batch_size: int = 20
+) -> dict[str, Any]:
+    """Plan drafts from #801 normalized retained bodies without re-reading a scan.
+
+    ``scan_corpus(kind="semantic")`` is the one body reader and normalizer.  It
+    supplies private normalized text plus page metadata, while this function
+    adds only draft-specific context and batching.
+    """
+    if not 1 <= batch_size <= MAX_BATCH_SIZE:
+        raise ValueError(f"batch_size must be between 1 and {MAX_BATCH_SIZE}")
+    configured = _context(context)
+    if configured["min_chars"] < 1 or configured["max_chars"] < configured["min_chars"]:
+        raise ValueError("meta description length policy is invalid")
+    pages: list[dict[str, Any]] = []
+    for item in items:
+        url = str(item.get("url") or item.get("id") or "")
+        text = item.get("text")
+        source_hash = item.get("normalized_sha256")
+        if not url or not isinstance(text, str) or not text or not isinstance(source_hash, str):
+            pages.append(
+                {
+                    "url": url,
+                    "state": "unavailable",
+                    "reason": "normalized retained page content is unavailable",
+                }
+            )
+            continue
+        keyword = configured["keywords"].get(url)
+        pages.append(
+            {
+                "url": url,
+                "state": "eligible",
+                "source_reference": {
+                    "normalized_sha256": source_hash,
+                    "body_sha256": item.get("body_sha256"),
+                },
+                "title": str(item.get("title") or ""),
+                "headings": list(item.get("headings") or []),
+                "old_description": str(item.get("old_description") or ""),
+                "content": text[:MAX_CONTENT_CHARS],
+                "content_truncated": len(text) > MAX_CONTENT_CHARS,
+                "language": configured["language"] or item.get("language", {}).get("declared_primary", ""),
+                "language_evidence": item.get("language") or {},
+                "keyword": keyword if isinstance(keyword, str) else "",
+                "keyword_origin": "operator_supplied" if isinstance(keyword, str) and keyword else "unknown",
+            }
+        )
+    eligible = [page for page in pages if page["state"] == "eligible"]
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "context": configured,
+        "pages": pages,
+        "batches": [eligible[index : index + batch_size] for index in range(0, len(eligible), batch_size)],
+        "coverage": {
+            "state": "partial" if len(eligible) != len(pages) else "complete",
+            "eligible": len(eligible),
+            "excluded": len(pages) - len(eligible),
+            "unavailable": sum(page["state"] == "unavailable" for page in pages),
+            "content_representation": "normalized retained scan content",
+        },
+    }
+
+
 def _executor(executor: DraftExecutor) -> dict[str, Any]:
     declared = executor.describe()
     required = {"kind", "contract_version", "model_identity", "data_transfer"}
@@ -241,7 +320,7 @@ def _review_reasons(record: dict[str, Any], page: dict[str, Any], context: dict[
     source = " ".join([page["title"], *page["headings"], page["content"]]).casefold()
     if _SUPERLATIVE_RE.search(text) and not _SUPERLATIVE_RE.search(source):
         reasons.append("marketing_claim_not_observed_in_page_evidence")
-    if page["language"] and page["language_evidence"]["script"] == "cyrillic" and any(
+    if page["language"] and page["language_evidence"].get("script") == "cyrillic" and any(
         "a" <= char.lower() <= "z" for char in text
     ):
         reasons.append("possible_language_mismatch")

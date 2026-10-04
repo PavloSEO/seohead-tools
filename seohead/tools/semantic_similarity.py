@@ -94,6 +94,24 @@ class ProviderEmbeddingAdapter:
         return self.embedder(texts)
 
 
+@dataclass(frozen=True)
+class DeclaredEmbeddingAdapter:
+    """Use vectors supplied by the calling agent without loading or calling a model.
+
+    The declaration is still required for cache invalidation and data-transfer
+    provenance.  ``analyze_semantic_documents`` consumes each document's
+    ``embedding`` field before reaching this method.
+    """
+
+    declaration: dict[str, Any]
+
+    def describe(self) -> dict[str, Any]:
+        return dict(self.declaration)
+
+    def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+        raise ValueError("an embedding is missing from the supplied semantic input")
+
+
 def _canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -101,7 +119,7 @@ def _canonical(value: Any) -> str:
 def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
     """Return the reproducible identity that scopes a cached embedding."""
     declared = adapter.describe()
-    required = ("kind", "model_id", "model_version", "settings")
+    required = ("kind", "model_id", "model_version", "settings", "data_transfer")
     missing = [name for name in required if name not in declared]
     if missing:
         raise ValueError(f"embedding adapter declaration is missing: {', '.join(missing)}")
@@ -109,6 +127,9 @@ def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
         raise ValueError("embedding adapter kind must be local or provider")
     if not isinstance(declared["settings"], dict):
         raise ValueError("embedding adapter settings must be an object")
+    expected_transfer = "none" if declared["kind"] == "local" else "external"
+    if declared["data_transfer"] != expected_transfer:
+        raise ValueError(f"{declared['kind']} adapter must declare data_transfer={expected_transfer!r}")
     if declared["kind"] == "provider" and not declared.get("external_authorized", False):
         raise PermissionError("external semantic provider is not explicitly authorized")
     # Keep cache/report identity reproducible without leaking local model paths,
@@ -264,7 +285,13 @@ def analyze_semantic_documents(
         key = cache_key(source_hash, identity)
         cached = cache.get(key)
         if cached is None:
-            pending.append((document, key))
+            supplied = document.get("embedding")
+            if supplied is not None:
+                validated = _vector(supplied)
+                cache.put(key, source_hash, identity, validated)
+                usable.append((document, validated))
+            else:
+                pending.append((document, key))
         else:
             usable.append((document, cached))
     if pending:

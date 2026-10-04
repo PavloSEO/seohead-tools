@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 115 commands and 120 callable tools,
+The current registry has 117 commands and 122 callable tools,
 with 176 audit checks. These are inventories, not coverage on every input.
 
 ## Offline BI projection
@@ -178,6 +178,8 @@ because the rules could not be read, so the command never claims crawling is all
 | `markdown-extract` | Renders a page as Markdown in two scopes: `content_markdown` (boilerplate stripped, structure kept — worth diffing, scoring, or feeding to a model) and `full_markdown` (header/footer included, for reading — Markdown has already lost the tag structure `boilerplate-report` hashes, so it is not a valid input there) |
 | `boilerplate-report` | Hashes header/nav/footer *markup* per page across a crawled corpus and reports minority template groups (fraction + sample URL), answering whether boilerplate is actually the same everywhere; each page needs the original `html` or a precomputed `hash`, never Markdown. `--scan` streams retained page HTML offline and keeps only each page's digest, so coverage does not depend on total HTML size; reaching the 10,000-document or 16 MiB retained-input bound reports the exact partial coverage — never a clean result. |
 | `semantic-inputs` | Builds the reproducible normalized-input manifest semantic analysis consumes: per document the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy, and language evidence (`<html lang>` plus letter-script shares over the normalized text) — the normalized text itself is never returned. `--scan` streams retained complete bodies offline under the crawl's recorded content-area config with no refetch; a missing or partial body stays an explicit omission, never a clean empty result. `--input '{"items":[{"url":...,"html":...}]}'` normalizes supplied markup under an optional `content_area`. Corpus bounds are the shared 10,000-document and 16 MiB retained-input caps. |
+| `semantic-similarity` | Groups supplied embedding vectors into topical-similarity review candidates over supplied HTML or a retained `scan.v1` corpus. It reuses `semantic-inputs` normalization and records model/version/settings, input coverage and bounded comparisons. SEOHEAD does not load, download or call a model: the calling agent supplies vectors and an explicit local/provider transfer declaration. Cache entries are local SQLite and keyed by source hash plus model configuration. Similarity is never presented as a duplicate or cannibalization conclusion. |
+| `meta-description-drafts` | Prepares a bounded dry-run or validates structured drafts supplied by a calling/delegated agent. It reads only supplied HTML or retained scan content, stores local checkpoints by source/context/executor identity, reports unavailable inputs and review flags, and optionally exports local JSON plus formula-safe CSV. It never calls a model, writes a CMS or promises a search snippet. |
 | `keywords-cluster` | Keyword clustering; the algorithm and parameters come via `--input` |
 | `render-check` | Raw HTML vs the rendered DOM + lab metrics. See the [js-render-check](../.claude/skills/js-render-check/SKILL.md) skill |
 

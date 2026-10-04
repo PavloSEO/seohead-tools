@@ -6,6 +6,7 @@ import hashlib
 import json
 import time
 from collections import Counter
+from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -150,7 +151,8 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
         stop_reason = ""
         cursor = con.execute(
             "SELECT p.document_id,p.representation,p.content_type,p.status_code,p.canonical,p.meta_robots,"
-            "p.x_robots,p.error,u.url,d.body_sha256 AS document_body_sha256,"
+            "p.x_robots,p.error,p.title,p.meta_description,p.h1,p.h1_2,p.h2,p.heading_outline_json,"
+            "u.url,d.body_sha256 AS document_body_sha256,"
             "EXISTS(SELECT 1 FROM context_items c WHERE "
             "c.kind='robots_blocked_url' AND c.item_key='url:'||p.url_id) AS robots_blocked "
             "FROM pages p JOIN urls u USING(url_id) "
@@ -212,6 +214,14 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
                         }
                     )
                 elif kind == "semantic":
+                    headings = [page["h1"], page["h1_2"], page["h2"]]
+                    if page["heading_outline_json"]:
+                        with suppress(TypeError, json.JSONDecodeError):
+                            headings = [
+                                str(item.get("text") or "")
+                                for item in json.loads(page["heading_outline_json"])
+                                if isinstance(item, dict)
+                            ]
                     items.append(
                         {
                             "id": page["url"],
@@ -220,6 +230,9 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
                             "representation": page["representation"],
                             "indexable": _indexable(page, bool(page["robots_blocked"])),
                             "body_sha256": page["document_body_sha256"],
+                            "title": page["title"],
+                            "old_description": page["meta_description"],
+                            "headings": [heading for heading in headings if heading],
                             **{key: prepared[key] for key in prepared if key != "text"},
                         }
                     )

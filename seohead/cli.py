@@ -67,6 +67,8 @@ COMMANDS = (
     "markdown-extract",
     "boilerplate-report",
     "semantic-inputs",
+    "semantic-similarity",
+    "meta-description-drafts",
     "social-meta-check",
     "soft404-check",
     "log-analyze",
@@ -551,9 +553,19 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = getattr(args, name)
         if getattr(args, "provider_join", None):
             kw["provider_joins"] = args.provider_join
-    elif cmd in {"boilerplate-report", "semantic-inputs"}:
+    elif cmd in {"boilerplate-report", "semantic-inputs", "semantic-similarity", "meta-description-drafts"}:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
+        if cmd == "semantic-similarity":
+            for name in ("cache_path", "threshold", "max_candidate_comparisons"):
+                value = getattr(args, name, None)
+                if value is not None:
+                    kw[name] = value
+        if cmd == "meta-description-drafts":
+            for name in ("checkpoint_path", "batch_size", "json_path", "csv_path"):
+                value = getattr(args, name, None)
+                if value is not None:
+                    kw[name] = value
         # items[]/pages[] and content_area are intentionally accepted through --input JSON.
     elif cmd == "log-analyze":
         if args.path:
@@ -1989,6 +2001,19 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
     if cmd == "semantic-inputs":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+    if cmd == "semantic-similarity":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument("--cache-path", help="local SQLite embedding cache (created if absent)")
+        sub.add_argument("--threshold", type=float, help="cosine candidate threshold (default 0.82)")
+        sub.add_argument(
+            "--max-candidate-comparisons", type=int, help="finite pairwise comparison budget"
+        )
+    if cmd == "meta-description-drafts":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument("--checkpoint-path", help="local SQLite draft checkpoint")
+        sub.add_argument("--batch-size", type=int, help="bounded supplied-draft batch size")
+        sub.add_argument("--json-path", help="local JSON review artifact (requires --csv-path)")
+        sub.add_argument("--csv-path", help="local formula-safe CSV review artifact (requires --json-path)")
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")
 

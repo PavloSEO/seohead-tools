@@ -569,6 +569,76 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         reaching a bound reports the exact partial coverage."""
         return _checked(handlers.semantic_inputs(items=items, scan=scan, content_area=content_area))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_semantic_similarity(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        embeddings: list[dict] | None = None,
+        adapter: dict | None = None,
+        cache_path: str = "",
+        threshold: float = 0.82,
+        max_candidate_comparisons: int = 250_000,
+    ) -> dict[str, Any]:
+        """Group topical-similarity candidates from supplied embedding vectors.
+
+        Pass either supplied ``items`` ({url, html}) or a retained scan.v1
+        ``scan``; scan selection and normalization reuse seo_semantic_inputs.
+        ``embeddings`` contains {url, vector} rows and ``adapter`` declares the
+        model/version/settings and transfer policy. SEOHEAD does not download,
+        load or call a model here. A provider declaration requires explicit
+        external_authorized=true even though this route only consumes supplied
+        vectors. cache_path is a local SQLite cache keyed by source hash, model
+        identity and settings. Groups are review candidates, never duplicate or
+        cannibalization conclusions; missing vectors and bounded coverage stay
+        explicit in the response."""
+        return _checked(
+            handlers.semantic_similarity(
+                items=items,
+                scan=scan,
+                embeddings=embeddings,
+                adapter=adapter,
+                cache_path=cache_path or None,
+                threshold=threshold,
+                max_candidate_comparisons=max_candidate_comparisons,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_meta_description_drafts(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        context: dict | None = None,
+        drafts: list[dict] | None = None,
+        executor: dict | None = None,
+        checkpoint_path: str = "",
+        batch_size: int = 20,
+        json_path: str = "",
+        csv_path: str = "",
+    ) -> dict[str, Any]:
+        """Prepare or validate a resumable, page-grounded meta-description batch.
+
+        With no drafts this is a dry-run plan over supplied HTML or a retained
+        scan.v1 corpus. With structured supplied drafts it validates URL/source
+        hashes, Unicode length policy and review flags, then checkpoints only
+        local results. The calling or delegated agent owns generation; this tool
+        has no model key or provider call. executor declares its versioned
+        contract and runtime kind, while checkpoint_path enables resume. Optional
+        json_path and csv_path export a review artifact; neither path writes a
+        CMS or metadata."""
+        return _checked(
+            handlers.meta_description_drafts(
+                items=items,
+                scan=scan,
+                context=context,
+                drafts=drafts,
+                executor=executor,
+                checkpoint_path=checkpoint_path or None,
+                batch_size=batch_size,
+                json_path=json_path or None,
+                csv_path=csv_path or None,
+            )
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
         url: str = "", og: dict | None = None, twitter: dict | None = None
