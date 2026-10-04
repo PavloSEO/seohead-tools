@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**115 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 120 in total.
+**116 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 121 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1114,6 +1114,25 @@ Requires an OAuth2 bearer token for an own, verified property — see seo_source
 and docs/SETUP.md for how to obtain one. A missing token returns an explicit failure
 naming what to configure; it never fabricates a result.
 
+### `gsc-archive`
+
+MCP name: `seo_gsc_archive`
+
+Manage an explicit local GSC SQLite archive. Status is offline and never creates an absent archive. Prepare creates/extends the queue for a verified property and inclusive YYYY-MM-DD dates without calling Google. Run performs at most max_requests API calls (1..1000, default 1), writes checkpoints and obeys quota/retry waits. Backup makes a verified snapshot at a new backup_path. Only prepare creates a database. Search Analytics can omit anonymized/top-limited rows; never sum different datasets.
+
+| Argument | Type | Default |
+|---|---|---|
+| `database` | `str` | `required` |
+| `action` | `Literal['status', 'prepare', 'run', 'backup']` | `'status'` |
+| `site_url` | `str | None` | `None` |
+| `start_date` | `str | None` | `None` |
+| `end_date` | `str | None` | `None` |
+| `max_requests` | `int` | `1` |
+| `pause` | `float` | `1.0` |
+| `backup_path` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
 ### `crux-report`
 
 MCP name: `seo_crux_report`
@@ -1131,7 +1150,7 @@ Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at 
 | `cache_dir` | `str | None` | `None` |
 | `cache_max_age_hours` | `float` | `24` |
 
-**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
 ### `indexnow-submit`
 

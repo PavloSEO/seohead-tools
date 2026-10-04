@@ -11,6 +11,7 @@ from typing import Any
 from seohead.data_sources.http import open_no_redirect
 
 HOST = "https://analyticsdata.googleapis.com/v1beta"
+READONLY_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
 TIMEOUT = 30
 MAX_ROWS = 25_000
 Transport = Callable[[str, dict[str, Any], str], str]
@@ -143,7 +144,22 @@ def landing_pages(
     try:
         bearer = token or ga4_access_token()
     except MissingCredential as exc:
-        return {"ok": False, "state": "not_configured", "verified": False, "error": str(exc)}
+        # Fall back to the same restricted service account as Search Console, scoped to
+        # analytics.readonly; the account must be granted Viewer on the GA4 property.
+        from seohead.data_sources.credentials import gsc_service_account_available
+        from seohead.data_sources.gsc import service_account_access_token
+
+        if not gsc_service_account_available():
+            return {"ok": False, "state": "not_configured", "verified": False, "error": str(exc)}
+        try:
+            bearer = service_account_access_token(READONLY_SCOPE)
+        except MissingCredential as sa_error:
+            return {
+                "ok": False,
+                "state": "not_configured",
+                "verified": False,
+                "error": str(sa_error),
+            }
     metrics = ["sessions", "engagedSessions"]
     if include_conversions:
         metrics.append("keyEvents")
@@ -163,7 +179,8 @@ def landing_pages(
         body = json.loads(raw)
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
         return {"ok": False, "state": "failed", "error": str(exc)}
-    rows = body.get("rows") if isinstance(body, dict) else None
+    # An empty report comes back without "rows": zero rows, not a malformed response.
+    rows = body.get("rows", []) if isinstance(body, dict) else None
     if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
         return {"ok": False, "state": "failed", "error": "malformed GA4 Data API response"}
     sampling = (

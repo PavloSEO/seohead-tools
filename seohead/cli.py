@@ -95,6 +95,7 @@ COMMANDS = (
     "wayback-history",
     "crtsh-subdomains",
     "gsc-query",
+    "gsc-archive",
     "crux-report",
     "indexnow-submit",
     "scan-list",
@@ -323,6 +324,8 @@ def _split_list(val: str | None) -> list[str] | None:
 def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     """Return (handler_name, kwargs) for a command from flags + --input JSON."""
     data = _load_input(getattr(args, "input", None), allow_stdin=not _has_source_flag(args))
+    if cmd == "gsc-archive" and not isinstance(data, dict):
+        raise ValueError("gsc-archive input must be a JSON object")
     handler_name = cmd.replace("-", "_")
     kw: dict[str, Any] = dict(data)  # --input is the base; flags override/augment
 
@@ -753,6 +756,20 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["dimensions"] = _split_list(args.dimensions)
         if getattr(args, "row_limit", None):
             kw["row_limit"] = args.row_limit
+    if cmd == "gsc-archive":
+        for name in (
+            "database",
+            "action",
+            "site_url",
+            "start_date",
+            "end_date",
+            "max_requests",
+            "pause",
+            "backup_path",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     if cmd == "crux-report":
         if getattr(args, "url", None):
             kw["url"] = args.url
@@ -1465,6 +1482,34 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--dimensions", help="comma-separated dimensions, e.g. query,page")
         sub.add_argument("--row-limit", dest="row_limit", type=int, help="rows to return")
         sub.add_argument("--inspection-url", dest="inspection_url", help="URL for mode=inspect_url")
+    if cmd == "gsc-archive":
+        _source_flag(sub, "--database", help="explicit local SQLite archive file")
+        sub.add_argument(
+            "--action",
+            choices=("status", "prepare", "run", "backup"),
+            help="offline status (default), prepare, bounded run, or backup",
+        )
+        sub.add_argument(
+            "--site-url", dest="site_url", help="verified property; required for prepare"
+        )
+        sub.add_argument(
+            "--start-date", dest="start_date", help="inclusive YYYY-MM-DD; required for prepare"
+        )
+        sub.add_argument(
+            "--end-date", dest="end_date", help="inclusive YYYY-MM-DD; required for prepare"
+        )
+        sub.add_argument(
+            "--max-requests",
+            dest="max_requests",
+            type=int,
+            help="API requests per run, 1..1000 (default 1)",
+        )
+        sub.add_argument(
+            "--pause", type=float, help="seconds between API requests, 0..60 (default 1)"
+        )
+        sub.add_argument(
+            "--backup-path", dest="backup_path", help="new snapshot file; required for backup"
+        )
     if cmd == "crux-report":
         _source_flag(sub, "--url", help="page URL to report on")
         _source_flag(sub, "--origin", help="origin to report on, instead of a single URL")

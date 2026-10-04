@@ -324,6 +324,27 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("crtsh-subdomains", "crtsh_subdomains", _form("domain", "domain")),
     _command("gsc-query", "gsc_query", _form("provider_query", "site_url")),
     _command(
+        "gsc-archive",
+        "gsc_archive",
+        _form(
+            "local_file",
+            "database",
+            note="Explicit SQLite archive. Only prepare creates a missing file; status and backup are offline.",
+        ),
+        _form(
+            "inline_json",
+            "database",
+            "action",
+            "site_url",
+            "start_date",
+            "end_date",
+            "max_requests",
+            "pause",
+            "backup_path",
+            note="prepare queues inclusive dates; run makes bounded Google API calls; backup requires a new destination.",
+        ),
+    ),
+    _command(
         "crux-report",
         "crux_report",
         _form("provider_query", "url"),
