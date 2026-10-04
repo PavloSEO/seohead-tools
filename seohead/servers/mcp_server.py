@@ -1466,9 +1466,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.indexnow_submit(urls=urls, host=host, key_location=key_location))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_open(directory: str, expected_site: str | None = None) -> dict[str, Any]:
+    def seo_project_open(
+        directory: str, expected_site: str | None = None, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Open a local project workspace without executing template references."""
-        return _checked(handlers.project_open(directory=directory, expected_site=expected_site))
+        return _checked(with_project_notice(
+            handlers.project_open(directory=directory, expected_site=expected_site), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_new(
@@ -1605,69 +1609,69 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_start(
-        directory: str,
-        scenario_id: str,
-        steps: list[str],
-        expected_revision: int = 0,
-        context: dict[str, Any] | None = None,
+        directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0,
+        context: dict[str, Any] | None = None, consumer: str | None = None,
     ) -> dict[str, Any]:
         """Start a local registered workflow; it performs no scan or provider call."""
-        return _checked(
-            handlers.workflow_start(directory, scenario_id, steps, expected_revision, context)
-        )
+        return _checked(with_project_notice(
+            handlers.workflow_start(directory, scenario_id, steps, expected_revision, context), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_checkpoint(
-        directory: str,
-        run_id: str,
-        step_id: str,
-        state: str,
-        evidence: list[dict] | None = None,
-        expected_revision: int = 0,
-        review: dict[str, Any] | None = None,
-        phase: str | None = None,
+        directory: str, run_id: str, step_id: str, state: str,
+        evidence: list[dict] | None = None, expected_revision: int = 0,
+        review: dict[str, Any] | None = None, phase: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Persist one registered-step result before the next step or agent handoff."""
-        return _checked(
-            handlers.workflow_checkpoint(
-                directory, run_id, step_id, state, evidence, expected_revision, review, phase
-            )
-        )
+        return _checked(with_project_notice(
+            handlers.workflow_checkpoint(directory, run_id, step_id, state, evidence, expected_revision, review, phase),
+            directory, consumer
+        ))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_workflow_status(directory: str) -> dict[str, Any]:
+    def seo_workflow_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Recover the exact next registered step after interruption or handoff."""
-        return _checked(handlers.workflow_status(directory))
+        return _checked(with_project_notice(handlers.workflow_status(directory), directory, consumer))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_execute(
-        directory: str,
-        scenario_id: str,
-        steps: list[str],
-        outcomes: list[dict],
-        context: dict[str, Any] | None = None,
+        directory: str, scenario_id: str, steps: list[str], outcomes: list[dict],
+        context: dict[str, Any] | None = None, consumer: str | None = None,
     ) -> dict[str, Any]:
-        """Run a supplied local synthetic sequence, checkpointing every step."""
-        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes, context))
+        """Checkpoint a supplied local sequence without executing network work."""
+        return _checked(with_project_notice(
+            handlers.workflow_execute(directory, scenario_id, steps, outcomes, context), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
-    def seo_workflow_resume(directory: str, run_id: str, expected_revision: int) -> dict[str, Any]:
+    def seo_workflow_resume(
+        directory: str, run_id: str, expected_revision: int, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Reopen only the interrupted registered step after a second-agent handoff."""
-        return _checked(handlers.workflow_resume(directory, run_id, expected_revision))
+        return _checked(with_project_notice(
+            handlers.workflow_resume(directory, run_id, expected_revision), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_configure(
-        directory: str, policy: dict, expected_revision: int = 0
+        directory: str, policy: dict, expected_revision: int = 0, consumer: str | None = None
     ) -> dict[str, Any]:
         """Configure a disabled local incremental monitor; this starts no schedule or message delivery."""
-        return _checked(handlers.monitor_configure(directory, policy, expected_revision))
+        return _checked(with_project_notice(
+            handlers.monitor_configure(directory, policy, expected_revision), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_run(
-        directory: str, scan_id: str, observations: list[dict], expected_revision: int
+        directory: str, scan_id: str, observations: list[dict], expected_revision: int,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Record one bounded retained-scan diff; quiet runs do not notify anyone."""
-        return _checked(handlers.monitor_run(directory, scan_id, observations, expected_revision))
+        return _checked(with_project_notice(
+            handlers.monitor_run(directory, scan_id, observations, expected_revision), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_schedule(directory: str, action: str, expected_revision: int) -> dict[str, Any]:
@@ -1675,9 +1679,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.monitor_schedule(directory, action, expected_revision))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_monitor_status(directory: str) -> dict[str, Any]:
+    def seo_monitor_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Read local monitor policy and its last retained checkpoint."""
-        return _checked(handlers.monitor_status(directory))
+        return _checked(with_project_notice(handlers.monitor_status(directory), directory, consumer))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_cases(

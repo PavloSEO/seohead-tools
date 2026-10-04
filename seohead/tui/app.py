@@ -180,6 +180,10 @@ def _watch_lines(
                 Text(
                     f"workflow runs {len(snapshot['execution']['runs'])} · next {snapshot['execution']['next_action'] or 'none'}"
                 ),
+                Text(
+                    f"monitor      {'configured' if snapshot['monitor']['policy'] else 'not configured'} · "
+                    f"last run {snapshot['monitor']['last_run']['state'] if snapshot['monitor']['last_run'] else 'none'}"
+                ),
                 Text(""),
                 Text("Use numbered views to inspect evidence rather than an agent claim."),
             )
@@ -244,6 +248,15 @@ def _watch_lines(
                 lines.append(
                     Text(f"  {name}: {step.get('state', 'unknown')} · {step.get('reason', '')}")
                 )
+        monitor = snapshot["monitor"]
+        if monitor["last_run"] is not None:
+            lines.append(
+                Text(
+                    f"  monitor {monitor['last_run']['state']} · "
+                    f"scan {monitor['last_run']['scan_id']} · "
+                    f"observed {len(monitor['last_run']['observed_urls'])} URLs"
+                )
+            )
     else:
         lines.append(Text("project execution log (tail):"))
         lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-12:])
