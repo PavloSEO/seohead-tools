@@ -157,8 +157,23 @@ and this decision makes no backend migration.
 | `scan-fragment-links` | Scan artifact (`input_path`)<br>Selector (`state`)<br>Selector (`representation`) | Optional resolved, missing, or skipped occurrence filter.; Optional static, rendered, or legacy_fragment source filter. |
 | `scan-requeue` | Scan artifact (`input_path`)<br>Selector (`where`)<br>Local file (`backup_path`)<br>Scan artifact (`from_scan`) | Restricted saved URL/page predicate.; Mandatory new verified backup destination.; Optional alternate saved selection source. |
 | `scan-import-urls` | Scan artifact (`input_path`)<br>Local file (`urls_file`)<br>Local file (`backup_path`) | Explicit TXT, CSV, XLSX, or XML URL source.; Mandatory new verified backup destination. |
-| `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal |
-| `sf tasks` | Audit document (`audit_json`)<br>Local configuration (`config`) | — |
-| `sf doctor` | Local configuration (`config`) | — |
-| `sf save-config` | No direct input | — |
+| `marketing-inventory` | Inline JSON (`documents`)<br>Local directory (`out_dir`) | Supplied page records; no fetch occurs.; Optional local inventory output. |
+| `meta-description-drafts` | Inline JSON (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context, drafts, executor`)<br>Local file (`checkpoint_path, json_path, csv_path`) | Supplied page evidence for planning or validation.; Optional retained source scan.; Optional caller-supplied editorial context, drafts, and executor metadata.; Optional local checkpoint and export destinations. |
+| `semantic-similarity` | Inline JSON (`items, embeddings, adapter`)<br>Scan artifact (`scan`)<br>Local file (`cache_path`) | Supplied corpus, optional embeddings, and adapter declaration.; Optional retained source scan.; Optional local similarity cache. |
+| `remediation-summary` | Local file (`ledger`) | — |
+| `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |
+| `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`) | — |
+| `remediation-record-verification` | Local file (`ledger, verification_path`)<br>Selector (`actor, expected_revision`) | — |
+| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`) | Optional local report destination. |
+| `project-observe` | Project directory (`directory`)<br>Selector (`consumer, scan_limit`) | Optional observer identity and bounded scan page. |
+| `project-inbox-submit` | Project directory (`directory`)<br>Inline text (`text`)<br>Inline JSON (`references`)<br>Selector (`kind, author_role, expected_revision`) | Optional validated project references. |
+| `project-inbox-list` | Project directory (`directory`)<br>Selector (`consumer, offset, limit, include_acknowledged`) | — |
+| `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-acknowledge` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
+| `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
+| `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`)<br>Local file (`auth_config`)<br>Inline text (`auth`)<br>Local file (`sf_cli`)<br>Live URL (`sitemap`)<br>Local directory (`out`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal; Optional SF authentication profile.; Optional HTTP Basic credentials; do not persist or log them.; Optional explicit licensed SF CLI path.; Optional explicit sitemap URL for live rechecks.; Local audit and optional task output directory. |
+| `sf tasks` | Audit document (`audit_json`)<br>Local configuration (`config`)<br>Local directory (`out`) | Local task output directory. |
+| `sf doctor` | Local configuration (`config`)<br>Local file (`sf_cli`) | Optional explicit licensed SF CLI path. |
+| `sf save-config` | Local file (`out`) | — |
 | `mcp` | No direct input | Starts the local stdio server; profile and progress-notification behavior are startup options. |

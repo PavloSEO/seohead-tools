@@ -3,7 +3,7 @@
   "source": {
     "project": "example.com",
     "site_name": "example.com",
-    "generated_at": "2026-10-04T16:26:14Z",
+    "generated_at": "2026-10-04T17:04:13Z",
     "health_score": null,
     "crawl_valid": true,
     "crawl_invalid_reason": null,
@@ -104,7 +104,8 @@
     "max_urls_per_task": 25,
     "min_occurrences": 1,
     "include_checks": [],
-    "exclude_checks": []
+    "exclude_checks": [],
+    "assignments": []
   },
   "summary": {
     "tasks_total": 20,
