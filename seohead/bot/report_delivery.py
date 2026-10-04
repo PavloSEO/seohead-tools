@@ -58,20 +58,43 @@ class DeliveryReceipts:
             )
         os.chmod(self.path, 0o600)
 
-    def reserve(self, job_id: str, artifact_id: str, destination: str) -> tuple[str, bool]:
-        with sqlite3.connect(self.path) as con:
+    def reserve(self, job_id: str, artifact_id: str, destination: str) -> tuple[str, str]:
+        """Claim one delivery; a concurrent caller receives ``in_progress``."""
+        with sqlite3.connect(self.path, isolation_level=None) as con:
+            con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT receipt,state FROM deliveries WHERE job_id=? AND artifact_id=? AND destination=?",
                 (job_id, artifact_id, destination),
             ).fetchone()
             if existing is not None:
-                return existing[0], existing[1] == "delivered"
+                if existing[1] == "delivered":
+                    con.commit()
+                    return existing[0], "delivered"
+                if existing[1] == "sending":
+                    con.commit()
+                    return existing[0], "in_progress"
+                con.execute(
+                    "UPDATE deliveries SET state='sending' WHERE job_id=? AND artifact_id=? AND destination=?",
+                    (job_id, artifact_id, destination),
+                )
+                con.commit()
+                return existing[0], "claimed"
             receipt = uuid.uuid4().hex
             con.execute(
                 "INSERT INTO deliveries VALUES(?,?,?,?,?)",
-                (job_id, artifact_id, destination, receipt, "pending"),
+                (job_id, artifact_id, destination, receipt, "sending"),
             )
-            return receipt, False
+            con.commit()
+            return receipt, "claimed"
+
+    def retry(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
+        """Release a failed claim so an explicit later attempt can retry it."""
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                """UPDATE deliveries SET state='pending' WHERE job_id=? AND artifact_id=?
+                   AND destination=? AND receipt=? AND state='sending'""",
+                (job_id, artifact_id, destination, receipt),
+            )
 
     def delivered(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
         with sqlite3.connect(self.path) as con:
@@ -132,15 +155,20 @@ class AuthorizedReportDelivery:
         if destination not in self._destinations:
             raise PermissionError("destination is not authorized for delivery")
         artifact = self.preview(project_id, job_id, profile)
-        receipt, already_delivered = self.receipts.reserve(
-            job_id, artifact.artifact_id, destination
-        )
-        if already_delivered:
+        receipt, state = self.receipts.reserve(job_id, artifact.artifact_id, destination)
+        if state == "delivered":
             return receipt
+        if state == "in_progress":
+            raise DeliveryUnavailable("delivery is already in progress")
         opened = self.backend.open_artifact(project_id, job_id, artifact.artifact_id)
         if opened is None:
+            self.receipts.retry(job_id, artifact.artifact_id, destination, receipt)
             raise DeliveryUnavailable("the retained report artifact is missing or expired")
-        with opened.handle:
-            self.send(destination, opened)
+        try:
+            with opened.handle:
+                self.send(destination, opened)
+        except BaseException:
+            self.receipts.retry(job_id, artifact.artifact_id, destination, receipt)
+            raise
         self.receipts.delivered(job_id, artifact.artifact_id, destination, receipt)
         return receipt

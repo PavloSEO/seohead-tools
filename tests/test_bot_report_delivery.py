@@ -77,6 +77,15 @@ def test_delivery_retries_then_persists_receipt_across_adapter_restart(monkeypat
     assert len(sent) == 1 and sent[0][0] == "requester"
 
 
+def test_receipt_claim_prevents_duplicate_send_until_a_failed_attempt_is_released(tmp_path):
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    first, state = receipts.reserve("job", "artifact", "requester")
+    second, concurrent = receipts.reserve("job", "artifact", "requester")
+    assert state == "claimed" and (second, concurrent) == (first, "in_progress")
+    receipts.retry("job", "artifact", "requester", first)
+    assert receipts.reserve("job", "artifact", "requester") == (first, "claimed")
+
+
 def test_delivery_refuses_foreign_destination_partial_job_and_unknown_profile(
     monkeypatch, tmp_path
 ):
