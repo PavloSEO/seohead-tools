@@ -37,7 +37,7 @@ def test_configured_https_upload_sends_the_bounded_receipt_envelope(monkeypatch)
             "https://delivery.example.test/v1/artifacts",
             CredentialReference("env:SEOHEAD_SYNTHETIC_UPLOAD_TOKEN"),
         ),
-        _transport(lambda request: requests.append(request) or httpx.Response(202)),
+        _transport(lambda request: requests.append(request) or httpx.Response(201)),
     )
     upload.send("requester-42", _opened(), "receipt-42")
     request = requests[0]
@@ -62,12 +62,13 @@ def test_upload_endpoint_refuses_non_service_configuration(url):
         UploadEndpoint(url, CredentialReference("env:SEOHEAD_SYNTHETIC_UPLOAD_TOKEN"))
 
 
-def test_missing_credential_and_rejected_upload_are_honest(monkeypatch):
+@pytest.mark.parametrize("status", [202, 503])
+def test_missing_credential_and_rejected_upload_are_honest(monkeypatch, status):
     endpoint = UploadEndpoint(
         "https://delivery.example.test/v1/artifacts",
         CredentialReference("env:SEOHEAD_SYNTHETIC_UPLOAD_TOKEN"),
     )
-    upload = AuthorizedHTTPUpload(endpoint, _transport(lambda _request: httpx.Response(503)))
+    upload = AuthorizedHTTPUpload(endpoint, _transport(lambda _request: httpx.Response(status)))
     monkeypatch.delenv("SEOHEAD_SYNTHETIC_UPLOAD_TOKEN", raising=False)
     with pytest.raises(UploadUnavailable, match="credential"):
         upload.send("requester-42", _opened(), "receipt-42")

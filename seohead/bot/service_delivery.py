@@ -21,7 +21,10 @@ from seohead.job_contracts import OpenedArtifact
 
 _ENV_REFERENCE = re.compile(r"env:[A-Z_][A-Z0-9_]{0,127}\Z")
 _DESTINATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
-_SUCCESS = frozenset({200, 201, 202, 204})
+# A queued HTTP 202 is not proof that the recipient has the report.  The
+# report-delivery receipt is terminal, so only a synchronous success may mark
+# it delivered; asynchronous platform adapters must retain their own state.
+_SUCCESS = frozenset({200, 201, 204})
 
 
 class UploadUnavailable(RuntimeError):

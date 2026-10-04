@@ -119,6 +119,9 @@ credentials, fragments, arbitrary destination URLs, missing environment
 credentials, changed file sizes, non-success responses, and transport errors
 all fail before a delivery receipt is marked successful. The adapter does not
 implement a bot SDK, account enrolment, public download links, or deployment.
+A `202 Accepted` response is also not terminal delivery evidence and is
+refused: an asynchronous platform adapter must persist and verify its own
+delivery state before it tells this core that the receipt succeeded.
 
 ## Versioning
 
