@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import json
 import socket
+from pathlib import Path
 
 import httpx
 import pytest
 
+import seohead.bot.report_delivery as report_delivery_module
 from seohead.bot import (
     AuthorizedReportDelivery,
+    DeliveryAmbiguous,
     DeliveryReceipts,
     DeliveryUnavailable,
     JobOwnershipStore,
     ProjectAuthorizationStore,
     ReportProfile,
+)
+from seohead.bot.telegram_adapter import (
+    TelegramBotClient,
+    TelegramBotConfig,
+    TelegramDocumentTransport,
 )
 from seohead.recon import net
 from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
@@ -187,6 +195,62 @@ def test_partial_retained_result_never_enters_delivery(monkeypatch, tmp_path):
         delivery.preview("alpha", job_id, ReportProfile("json"))
 
 
+def test_ambiguous_telegram_upload_stays_pending_after_restart(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "synthetic-token")
+    client = TelegramBotClient(
+        TelegramBotConfig("env:SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "https://telegram.example.test"),
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _request: (_ for _ in ()).throw(httpx.ReadTimeout("synthetic timeout"))
+            )
+        ),
+    )
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"telegram:42"},
+        receipts,
+        TelegramDocumentTransport(client).send,
+    )
+    with pytest.raises(DeliveryAmbiguous, match="outcome is unknown"):
+        delivery.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
+    restarted = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"telegram:42"},
+        receipts,
+        TelegramDocumentTransport(client).send,
+    )
+    with pytest.raises(DeliveryUnavailable, match="already in progress"):
+        restarted.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
+
+
+def test_explicit_telegram_denial_releases_a_receipt_for_manual_retry(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "synthetic-token")
+    client = TelegramBotClient(
+        TelegramBotConfig("env:SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "https://telegram.example.test"),
+        httpx.Client(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(400, json={"ok": False}))
+        ),
+    )
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"telegram:42"},
+        receipts,
+        TelegramDocumentTransport(client).send,
+    )
+    with pytest.raises(DeliveryUnavailable, match="rejected"):
+        delivery.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
+    artifact = delivery.preview("alpha", job_id, ReportProfile("json"))
+    _receipt, state = receipts.reserve(job_id, artifact.artifact_id, "telegram:42")
+    assert state == "claimed"
+
+
 def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_path):
     backend, job_id = _complete_job(monkeypatch, tmp_path)
     delivered = []
@@ -199,6 +263,16 @@ def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_
             (opened.filename, opened.media_type, opened.handle.read(2))
         ),
     )
+    original_directory = report_delivery_module.tempfile.TemporaryDirectory
+    created = []
+
+    def tracked_directory(*args, **kwargs):
+        kwargs["dir"] = tmp_path
+        directory = original_directory(*args, **kwargs)
+        created.append(Path(directory.name))
+        return directory
+
+    monkeypatch.setattr(report_delivery_module.tempfile, "TemporaryDirectory", tracked_directory)
     delivery.deliver("alpha", job_id, "requester", ReportProfile("xlsx", findings_only=True))
     assert delivered == [
         (
@@ -207,6 +281,7 @@ def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_
             b"PK",
         )
     ]
+    assert created and all(not path.exists() for path in created)
 
 
 def test_durable_delivery_ownership_rejects_a_foreign_subject(monkeypatch, tmp_path):

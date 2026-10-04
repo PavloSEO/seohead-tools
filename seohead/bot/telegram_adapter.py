@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from seohead.bot.contract import Action
-from seohead.bot.report_delivery import DeliveryUnavailable
+from seohead.bot.report_delivery import DeliveryAmbiguous, DeliveryUnavailable
 from seohead.bot.wizard import Event, Reply, WizardSession
 from seohead.job_contracts import OpenedArtifact
 
@@ -32,6 +32,10 @@ _DESTINATION = re.compile(r"telegram:-?[1-9][0-9]{0,18}\Z")
 
 class TelegramUnavailable(RuntimeError):
     """The configured Bot API transport cannot safely complete an operation."""
+
+
+class TelegramAmbiguous(TelegramUnavailable):
+    """A request timed out or disconnected after it might have reached Telegram."""
 
 
 @dataclass(frozen=True)
@@ -126,6 +130,8 @@ class TelegramBotClient:
                 files=files,
                 timeout=self.timeout_seconds,
             )
+        except httpx.TransportError as exc:
+            raise TelegramAmbiguous("Telegram Bot API delivery outcome is unknown") from exc
         except httpx.HTTPError as exc:
             raise TelegramUnavailable("configured Telegram Bot API is unavailable") from exc
         try:
@@ -269,6 +275,8 @@ class TelegramDocumentTransport:
                 },
                 files={"document": (opened.filename, opened.handle, opened.media_type)},
             )
+        except TelegramAmbiguous as exc:
+            raise DeliveryAmbiguous(str(exc)) from exc
         except TelegramUnavailable as exc:
             raise DeliveryUnavailable(str(exc)) from exc
         result = body["result"]

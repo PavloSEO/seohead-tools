@@ -32,6 +32,15 @@ class DeliveryUnavailable(ValueError):
     """A request cannot safely be delivered and must not claim success."""
 
 
+class DeliveryAmbiguous(DeliveryUnavailable):
+    """A transport may have accepted bytes but did not confirm delivery.
+
+    Unlike an explicit rejection, this must retain the durable ``sending``
+    claim. Retrying automatically after a process restart could send a second
+    document to the recipient.
+    """
+
+
 @dataclass(frozen=True)
 class ReportProfile:
     """A supported retained-report view; formatting never refetches the site."""
@@ -336,6 +345,8 @@ class AuthorizedReportDelivery:
             )
             with self._opened_for_profile(project_id, job_id, source, profile) as opened:
                 self.send(destination, opened, receipt)
+        except DeliveryAmbiguous:
+            raise
         except BaseException:
             self.receipts.retry(job_id, artifact.artifact_id, destination, receipt)
             raise

@@ -8,7 +8,7 @@ contract, so ``CONTRACT_VERSION`` must be bumped in the same change — that
 is what lets a persisted session or a second adapter refuse a conversation
 it does not understand instead of misrouting it.
 
-Flow (see docs/TELEGRAM_BOT.md for the full narrative):
+Flow (see docs/GUIDED_SCAN_ADAPTER.md for adapter bindings):
 
     awaiting_site -> awaiting_project -> awaiting_policy -> awaiting_report
         -> preview -> confirming -> running -> done
