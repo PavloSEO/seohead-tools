@@ -5,7 +5,7 @@
 Please do not open a public issue for a suspected vulnerability. Use GitHub private vulnerability
 reporting:
 
-<https://github.com/PavloSEO/seotools/security/advisories/new>
+<https://github.com/PavloSEO/seohead-tools/security/advisories/new>
 
 Include the affected command or MCP tool, version, minimal reproduction, expected impact, and any
 safe mitigation you have already tested. Do not include real credentials or client crawl data.

@@ -26,7 +26,8 @@ handlers call directly, bypassing the registry dispatch
 (``keywords-expand``/``keywords-seasonality``/``regions-tree``/``serp-fetch``
 reach ``seohead.data_sources.yandex_cloud``, ``keywords-exact`` reaches
 ``seohead.data_sources.arsenkin``, ``indexnow-submit`` reaches
-``seohead.data_sources.indexnow``, and ``google-keywords``/``google-serp``
+``seohead.data_sources.indexnow``, ``topvisor-read`` reaches
+``seohead.data_sources.topvisor``, and ``google-keywords``/``google-serp``
 reach ``seohead.data_sources.dataforseo`` — none of which is the
 ``dataforseo_backlinks`` registry entry); ``local`` references are in-process
 tools with no provider transport at all; ``declared`` references name a
@@ -315,6 +316,23 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
         csv_fallback="a supplied donor-page list is the input to backlinks-check; no provider CSV join",
     ),
     WorkflowRow(
+        workflow="rank-tracking",
+        use_case="Read existing Topvisor projects, keywords, competitors, recorded position history and summaries",
+        providers=(_ded("topvisor"),),
+        surface=("topvisor-read",),
+        status="supported",
+        auth="API token + user ID from the central credential files",
+        cost_quota="Reads within the existing Topvisor account; paid position-check launches are structurally unreachable",
+        privacy="restricted",
+        limitations=(
+            "One bounded page per call — the continuation signal is the provider's "
+            'nextOffset, not len(result) == limit; a "--" position is unavailable, '
+            "not rank 0; only fixed get endpoints are wired, so add/edit/del and "
+            "paid checker launches cannot be reached"
+        ),
+        csv_fallback="not applicable — Topvisor rows have no provider-join route",
+    ),
+    WorkflowRow(
         workflow="url-submission",
         use_case="Notify Bing, Yandex, Naver, and Seznam that URLs changed",
         providers=(_ded("indexnow"),),
@@ -387,6 +405,11 @@ UNSUPPORTED_WORK: tuple[tuple[str, str], ...] = (
     (
         "competitor backlink discovery beyond backlinks_summary",
         "out of declared scope; backlinks-check covers a caller-supplied donor list only",
+    ),
+    (
+        "Topvisor mutations and paid position-check launches",
+        "topvisor-read wires only fixed read-only get endpoints; add/edit/del and "
+        "the paid checker stay unreachable by design",
     ),
 )
 

@@ -30,7 +30,7 @@ RUN python -m pip install --upgrade pip && \
 
 FROM python:3.12-slim AS runtime
 
-LABEL org.opencontainers.image.source="https://github.com/PavloSEO/seotools" \
+LABEL org.opencontainers.image.source="https://github.com/PavloSEO/seohead-tools" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.title="SEOHEAD Tools"
 

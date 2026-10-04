@@ -16,6 +16,36 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+## Topvisor
+
+`topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
+competitors, keyword groups, keywords, position history or summaries. Pass an
+`operation` and a `params` object through the ordinary JSON input. Credentials are
+`~/.config/topvisor/access_token` and `~/.config/topvisor/user_id`, with environment
+overrides `TOPVISOR_TOKEN` and `TOPVISOR_USER_ID`. No project-local credential copies
+are needed. This tool never launches checks or modifies provider records.
+
+Paginate explicitly using `limit` and `offset`; a single page is not a complete
+inventory. The continuation signal is the provider's `nextOffset` key — present on
+every non-final page, absent on the last — not `len(result) == limit`. `total` and
+`limitedBy` pass through when Topvisor sends them, separately from the echoed
+request `limit`/`offset`. `projects`, `competitors`, `groups` and `keywords`
+return arrays; `history` and `summary` return objects — history rows live at
+`result.keywords`, and `summary` covers the two requested dates rather than a
+page of rows.
+
+Field semantics worth keeping straight: a `position` inside
+`result.keywords[N].positionsData[date:projectId:regionIndex]` is an ordinal
+rank; Topvisor's `"--"` marker means the query had no position inside the
+checked depth — an unavailable value, never rank 0 or 100 — and a requested
+date with no `positionsData` entry is a missing observation, not zero
+movement. `result.headers.dates` lists the dates actually included in a
+history report; `existsDates` can name checks outside the requested interval.
+`topsByDepth` is a percent of queries in Top N; `visitors`, `dynamics` and
+`tops` are counts; `avgs` is an average rank. History needs `regions_indexes` —
+the project region *index* from `projects` with `show_searchers_and_regions:2`,
+not the geographic region `key`; `summary` takes the singular `region_index`.
+
 ## Project workspace
 
 | Command | What it does | Network |
@@ -185,6 +215,34 @@ configured per-pattern sample before deciding which evidence is worth fuller
 collection. `full` requests the fuller policy deliberately. Both remain bounded
 by render URL/time settings, and a route or corpus relation stays unknown when
 one representation was not completely captured.
+
+The browser transport defaults to a local sandboxed Chromium launch. An operator
+can instead connect to an already running Playwright browser server by setting
+`rendering.browser.transport=remote`, `remote_endpoint_env` to the **name** of an
+environment variable containing its WebSocket endpoint, and
+`remote_playwright_version` to the server's declared version. The Python client
+and server must share a Playwright major/minor version; the Playwright connection
+also performs its protocol handshake. Only the Playwright protocol is supported;
+CDP is refused. A remote connection error never starts a local browser. The tool
+neither launches nor provisions a remote service. The endpoint value, including
+any query token, is never recorded in a scan or returned in an error.
+
+Remote browser requests still pass through the existing pinned HTTP route;
+page WebSockets are blocked and service workers disabled. An unsupported route
+capability fails before a page opens. Use `wss://` for a non-loopback endpoint;
+plain `ws://` is accepted only on loopback. The operator is responsible for
+trusting and securing the server because rendered page data travels over this
+connection. Closing the connected Browser releases its contexts and disconnects
+the client; it does not stop the operator's browser server. See the
+[Playwright BrowserType.connect contract](https://playwright.dev/python/docs/api/class-browsertype#connect).
+
+```bash
+# The value stays in the environment, not in CLI arguments or saved crawl config.
+export SEOHEAD_REMOTE_BROWSER_WS='wss://browser.example.test/playwright'
+seohead render-check --url https://example.test/ --browser-transport remote \
+  --remote-endpoint-env SEOHEAD_REMOTE_BROWSER_WS --remote-playwright-version 1.55.0
+# For crawl-site, set the same fields under rendering.browser in its JSON config.
+```
 
 Render elapsed time is saved in the scan context across resume cycles. If a
 previous process died while an active finite render phase was running, the next
@@ -462,7 +520,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(95 + 5):
+(96 + 5):
 
 ```bash
 seohead mcp        # stdio

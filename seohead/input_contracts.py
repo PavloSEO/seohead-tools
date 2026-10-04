@@ -187,7 +187,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("soft404-check", "soft404_check", _form("live_url", "url")),
     _command("log-analyze", "log_analyze", _form("local_log", "path")),
     _command("regions-check", "regions_check", _form("live_url", "url")),
-    _command("render-check", "render_check", _form("live_url", "url")),
+    _command(
+        "render-check",
+        "render_check",
+        _form("live_url", "url"),
+        _form(
+            "inline_json",
+            "transport_config",
+            note="Optional local/remote Playwright transport selection; endpoint is named by environment variable.",
+        ),
+    ),
     _command("site-audit", "site_audit", _form("live_url", "url"), _form("url_list", "urls")),
     _command(
         "report-build",
@@ -214,6 +223,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("sources-doctor", "sources_doctor", _form("local_config")),
     _command("regions-tree", "regions_tree", _form("local_config")),
+    _command(
+        "topvisor-read",
+        "topvisor_read",
+        _form(
+            "inline_json",
+            "operation",
+            "params",
+            note="One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations.",
+        ),
+    ),
     _command("metrika-counters", "metrika_counters", _form("local_config")),
     _command("metrika-setup", "metrika_setup", _form("provider_query", "counter_id")),
     _command("metrika-report", "metrika_report", _form("provider_query", "counter_id")),

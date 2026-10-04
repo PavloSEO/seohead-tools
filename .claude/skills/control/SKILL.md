@@ -52,7 +52,7 @@ Frog export" → `sf-analyzer`. Do not run the whole loop to answer one question
 
 ## Preconditions
 
-- [ ] The venv exists: `~/Projects/seohead-seotools-public-full/.venv/bin/seohead --version`
+- [ ] `seohead --version` runs from the active project environment.
 - [ ] A scratch directory outside the repository for artifacts
 - [ ] A crawl rate decided — see [rate-and-load](subskills/rate-and-load.md) **before** the
       first request, not after the host starts refusing
