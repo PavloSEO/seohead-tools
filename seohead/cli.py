@@ -121,6 +121,13 @@ COMMANDS = (
     "remediation-transition",
     "remediation-record-verification",
     "remediation-report",
+
+    "project-inbox-submit",
+    "project-inbox-list",
+    "project-inbox-read",
+    "project-inbox-acknowledge",
+    "project-inbox-goal",
+    "project-inbox-unread",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -530,6 +537,24 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["approve_large_crawl"] = True
         if getattr(args, "producer_build", None):
             kw["producer_build"] = args.producer_build
+    elif cmd.startswith("project-inbox-"):
+        for name in (
+            "directory", "text", "kind", "consumer", "entry_id", "state", "author_role",
+            "expected_revision",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "references", None):
+            kw["references"] = _split_list(args.references)
+        if getattr(args, "entry_ids", None):
+            kw["entry_ids"] = _split_list(args.entry_ids)
+        if getattr(args, "offset", None) is not None:
+            kw["offset"] = args.offset
+        if getattr(args, "limit", None) is not None:
+            kw["limit"] = args.limit
+        if getattr(args, "unacknowledged_only", False):
+            kw["include_acknowledged"] = False
     elif cmd in {"skill-show", "scenario-show"}:
         if getattr(args, "name", None) or getattr(args, "playbook_name", None):
             kw["name"] = getattr(args, "name", None) or args.playbook_name
@@ -1786,6 +1811,28 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--label", help="human project label")
     if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd.startswith("project-inbox-"):
+        _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd == "project-inbox-submit":
+        _source_flag(sub, "--text", help="specialist note or proposed goal text")
+        sub.add_argument("--kind", choices=("note", "proposed_goal"), default="note")
+        sub.add_argument("--references", help="comma-separated goal/task/scan/finding/section references")
+        sub.add_argument("--author-role", choices=("specialist", "agent"), default="specialist")
+        sub.add_argument("--expected-revision", type=int)
+    if cmd in {"project-inbox-list", "project-inbox-unread"}:
+        sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")
+        sub.add_argument("--limit", type=int, default=20 if cmd.endswith("list") else 10)
+    if cmd == "project-inbox-list":
+        sub.add_argument("--offset", type=int, default=0)
+        sub.add_argument("--unacknowledged-only", action="store_true")
+    if cmd in {"project-inbox-read", "project-inbox-acknowledge"}:
+        sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")
+        sub.add_argument("--entry-ids", required=True, help="comma-separated inbox entry ids")
+        sub.add_argument("--expected-revision", type=int)
+    if cmd == "project-inbox-goal":
+        sub.add_argument("--entry-id", required=True)
+        sub.add_argument("--state", required=True, choices=("accepted", "completed"))
+        sub.add_argument("--expected-revision", type=int)
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
@@ -2139,6 +2186,12 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         "status",
         "progress",
+        "inbox-submit",
+        "inbox-list",
+        "inbox-read",
+        "inbox-acknowledge",
+        "inbox-goal",
+        "inbox-unread",
         "facts",
         "checklist-init",
         "checklist-update",
@@ -2179,6 +2232,13 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.add_argument(
         "--no-progress", action="store_true", help="disable optional MCP progress notifications"
     )
+    tui = subs.add_parser(
+        "tui", help="interactive terminal shell (needs the optional 'tui' extra)"
+    )
+    tui.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
+    watch = subs.add_parser("watch", help="observe a local project beside an AI chat")
+    watch.add_argument("--project", required=True, help="validated local project workspace")
+    watch.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
     return p
 
 
@@ -2215,6 +2275,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile == "full" and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
+    if cmd in {"tui", "watch"}:
+        try:
+            from seohead.tui.app import run as tui_run
+        except ImportError:
+            print(
+                "seohead tui needs the optional 'tui' extra: "
+                "pip install 'seohead-seotools[tui]'",
+                file=sys.stderr,
+            )
+            return 1
+        return tui_run(no_color=args.no_color, project=getattr(args, "project", None))
     from seohead.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))

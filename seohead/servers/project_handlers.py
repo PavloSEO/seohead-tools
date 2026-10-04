@@ -40,6 +40,64 @@ def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[s
     return _project_progress(directory, limit=limit, offset=offset)
 
 
+def project_inbox_submit(
+    directory: str,
+    text: str,
+    kind: str = "note",
+    references: list[str] | None = None,
+    author_role: str = "specialist",
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
+    from seohead.projects.inbox import submit
+
+    return submit(
+        directory, text=text, kind=kind, references=references, author_role=author_role,
+        expected_revision=expected_revision,
+    )
+
+
+def project_inbox_list(
+    directory: str, consumer: str, offset: int = 0, limit: int = 20,
+    include_acknowledged: bool = True,
+) -> dict[str, Any]:
+    from seohead.projects.inbox import list_entries
+
+    return list_entries(
+        directory, consumer=consumer, offset=offset, limit=limit,
+        include_acknowledged=include_acknowledged,
+    )
+
+
+def project_inbox_read(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.projects.inbox import mark_read
+
+    return mark_read(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+
+
+def project_inbox_acknowledge(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.projects.inbox import acknowledge
+
+    return acknowledge(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+
+
+def project_inbox_goal(
+    directory: str, entry_id: str, state: str, expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.projects.inbox import set_goal_state
+
+    return set_goal_state(directory, entry_id=entry_id, state=state, expected_revision=expected_revision)
+
+
+def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
+    from seohead.projects.inbox import unread_summary
+
+    return unread_summary(directory, consumer=consumer, limit=limit)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,

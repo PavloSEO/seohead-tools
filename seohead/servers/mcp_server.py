@@ -1472,12 +1472,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_status(directory: str) -> dict[str, Any]:
-        """Show project scan history and named pending checklist/preparation states."""
-        return _checked(handlers.project_status(directory=directory))
+    def seo_project_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
+        """Show project scan history and named pending checklist/preparation states.
+
+        A stable consumer optionally receives a bounded inbox notice.  Reading a
+        status never marks notes read or acknowledged.
+        """
+        result = handlers.project_status(directory=directory)
+        if consumer is not None:
+            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return _checked(result)
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    def seo_project_progress(
+        directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Show a compact, paginated project checklist view and its next actions.
 
         The page contains at most 100 checklist items. Audit-task completion is a
@@ -1485,7 +1494,70 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         the shared coverage axis has a measured, nonzero denominator. It is
         explicitly task completion, not a site-health or remediation percentage.
         """
-        return _checked(handlers.project_progress(directory=directory, limit=limit, offset=offset))
+        result = handlers.project_progress(directory=directory, limit=limit, offset=offset)
+        if consumer is not None:
+            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return _checked(result)
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_submit(
+        directory: str,
+        text: str,
+        kind: Literal["note", "proposed_goal"] = "note",
+        references: list[str] | None = None,
+        author_role: Literal["specialist", "agent"] = "specialist",
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Persist a specialist note or proposed goal without starting any work."""
+        return _checked(
+            handlers.project_inbox_submit(
+                directory, text, kind, references, author_role, expected_revision
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_inbox_list(
+        directory: str,
+        consumer: str,
+        offset: int = 0,
+        limit: int = 20,
+        include_acknowledged: bool = True,
+    ) -> dict[str, Any]:
+        """List a bounded project inbox page without consuming any entries."""
+        return _checked(
+            handlers.project_inbox_list(directory, consumer, offset, limit, include_acknowledged)
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_read(
+        directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        """Record an agent's explicit inspection; acknowledgment remains separate."""
+        return _checked(handlers.project_inbox_read(directory, consumer, entry_ids, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_acknowledge(
+        directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        """Explicitly acknowledge entries.  This never accepts or completes a goal."""
+        return _checked(
+            handlers.project_inbox_acknowledge(directory, consumer, entry_ids, expected_revision)
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_goal(
+        directory: str,
+        entry_id: str,
+        state: Literal["accepted", "completed"],
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Explicitly accept or complete a stored proposed goal; no executor is launched."""
+        return _checked(handlers.project_inbox_goal(directory, entry_id, state, expected_revision))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
+        """Return a bounded unread reference summary without changing delivery state."""
+        return _checked(handlers.project_inbox_unread(directory, consumer, limit))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_summary(ledger: str) -> dict[str, Any]:

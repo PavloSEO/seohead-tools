@@ -4097,6 +4097,66 @@ def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any
 
     return write_remediation_report(ledger, out_dir) if out_dir else build(ledger)
 
+def project_inbox_submit(
+    directory: str, text: str, kind: str = "note", references: list[str] | None = None,
+    author_role: str = "specialist", expected_revision: int | None = None,
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_submit as core
+
+    return core(
+        directory,
+        text=text,
+        kind=kind,
+        references=references,
+        author_role=author_role,
+        expected_revision=expected_revision,
+    )
+
+
+def project_inbox_list(
+    directory: str, consumer: str, offset: int = 0, limit: int = 20,
+    include_acknowledged: bool = True,
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_list as core
+
+    return core(
+        directory,
+        consumer=consumer,
+        offset=offset,
+        limit=limit,
+        include_acknowledged=include_acknowledged,
+    )
+
+
+def project_inbox_read(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_read as core
+
+    return core(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+
+
+def project_inbox_acknowledge(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_acknowledge as core
+
+    return core(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+
+
+def project_inbox_goal(
+    directory: str, entry_id: str, state: str, expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_goal as core
+
+    return core(directory, entry_id=entry_id, state=state, expected_revision=expected_revision)
+
+
+def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_unread as core
+
+    return core(directory, consumer=consumer, limit=limit)
+
 
 def project_facts(
     directory: str,
@@ -4861,6 +4921,13 @@ _RAW_HANDLERS = {
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,
     "remediation_report": remediation_report,
+
+    "project_inbox_submit": project_inbox_submit,
+    "project_inbox_list": project_inbox_list,
+    "project_inbox_read": project_inbox_read,
+    "project_inbox_acknowledge": project_inbox_acknowledge,
+    "project_inbox_goal": project_inbox_goal,
+    "project_inbox_unread": project_inbox_unread,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,
