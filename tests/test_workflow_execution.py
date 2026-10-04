@@ -33,6 +33,16 @@ def test_registered_steps_checkpoint_and_resume(tmp_path):
     assert done["run"]["state"] == "completed"
 
 
+def test_execution_status_is_readable_before_checklist_initialization(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    before = (project / "project.json").read_bytes()
+    result = status(project)
+    assert result["runs"] == []
+    assert result["next_action"] is None
+    assert (project / "project.json").read_bytes() == before
+
+
 def test_local_executor_records_each_registered_outcome(tmp_path):
     project = tmp_path / "project"
     create_project(project, "https://example.test/")

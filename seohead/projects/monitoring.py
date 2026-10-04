@@ -382,6 +382,44 @@ def schedule(directory: str | Path, *, action: str, expected_revision: int) -> d
     }
 
 
+def deliver(
+    directory: str | Path,
+    *,
+    scan_id: str,
+    destination: str,
+    service: Any,
+    expected_revision: int,
+) -> dict[str, Any]:
+    """Explicitly hand one retained complete run to an injected authorized service.
+
+    This function cannot construct a destination, load credentials, or activate a
+    schedule.  ``service`` is a caller-owned :class:`MonitorServiceDelivery`.
+    """
+    root, document = _load(directory)
+    if document["revision"] != expected_revision:
+        raise ValueError("monitor revision conflict")
+    if getattr(service, "project_uuid", None) != document["project_uuid"]:
+        raise PermissionError("monitor service is not authorized for this project")
+    if document["runner"].get("state") in {"cancelled", "backoff"}:
+        raise ValueError("cancelled or backed-off monitor work is not deliverable")
+    run = next(
+        (item for item in reversed(document["runs"]) if item.get("scan_id") == scan_id), None
+    )
+    if run is None:
+        raise ValueError("retained monitor scan_id is unknown")
+    result = service.deliver(run, destination)
+    # Evidence stays immutable; this small receipt projection only records that
+    # a caller-owned authorized destination accepted the already-retained event.
+    newly_sent = [receipt for receipt in result["receipts"] if receipt["state"] == "sent"]
+    if newly_sent:
+        run.setdefault("delivery", []).extend(
+            {"destination": destination, **receipt} for receipt in newly_sent
+        )
+        document["revision"] += 1
+        write_document(root, NAME, document)
+    return {"ok": True, "revision": document["revision"], **result}
+
+
 def status(directory: str | Path) -> dict[str, Any]:
     _, document = _load(directory)
     return {

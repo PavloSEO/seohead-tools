@@ -1905,7 +1905,9 @@ def extract_duplicate_ids(soup: BeautifulSoup) -> list[DuplicateId]:
     receives and therefore do not contribute to the count.
     """
     counts: dict[str, int] = {}
-    for tag in soup.find_all(attrs={"id": True}):
+    for tag in soup.descendants:
+        if not isinstance(tag, Tag) or "id" not in tag.attrs:
+            continue
         if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
             continue
         value = tag.get("id")
@@ -1913,9 +1915,13 @@ def extract_duplicate_ids(soup: BeautifulSoup) -> list[DuplicateId]:
             continue
         value = value[:_DUPLICATE_ID_CHARS]
         counts[value] = counts.get(value, 0) + 1
-    return [{"id": value, "count": count} for value, count in counts.items() if count > 1][
-        :_DUPLICATE_ID_CAP
-    ]
+    duplicate_ids: list[DuplicateId] = []
+    for value, count in counts.items():
+        if count > 1:
+            duplicate_ids.append({"id": value, "count": count})
+            if len(duplicate_ids) == _DUPLICATE_ID_CAP:
+                break
+    return duplicate_ids
 
 
 def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None) -> ParsedPage:

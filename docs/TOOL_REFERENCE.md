@@ -2261,7 +2261,7 @@ Request a BI destination write; host authorization is required and credentials a
 | `operation` | `str` | `'replace'` |
 | `apply` | `bool` | `False` |
 
-**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: yes · writes files: yes · idempotent: yes · spends money: no
 
 ### `inspect-url`
 

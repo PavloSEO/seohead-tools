@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import json
+import re
+
 import pytest
 
+from seohead import cli
 from seohead.reports.bi import export_bi
 from seohead.reports.bi_destinations import (
     BIDestinationError,
+    GoogleBigQueryClient,
+    GoogleSheetsClient,
     apply_with_client,
     bigquery_plan,
     filter_package,
+    register_host_client,
+    resolve_host_client,
     sheets_plan,
 )
 from seohead.servers import handlers
@@ -86,10 +94,13 @@ def test_filtered_bi_export_is_exact_and_partitioned(tmp_path):
     assert (tmp_path / "filtered" / "manifest.json").is_file()
 
 
-def test_shared_handler_requires_injected_authorized_client(tmp_path):
+def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path, monkeypatch):
     package = tmp_path / "package"
     export_bi(audit=_audit(), out_dir=package)
-    with pytest.raises(ValueError, match="injected authorized client"):
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(json.dumps({"sheets": {"targets": {"synthetic": {"enabled": True}}}}))
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    with pytest.raises(ValueError, match="authorized client"):
         handlers.bi_destination_apply(
             package=str(package),
             target="synthetic",
@@ -120,3 +131,397 @@ def test_shared_handler_requires_injected_authorized_client(tmp_path):
         client=Client(),
     )
     assert result["destination"] == "sheets" and result["rows"]["pages"] == 1
+
+    register_host_client("sheets", "synthetic", Client())
+    hosted = handlers.bi_destination_apply(
+        package=str(package),
+        target="synthetic",
+        destination="sheets",
+        operation="replace",
+        apply=True,
+    )
+    assert hosted["rows"]["pages"] == 1
+
+
+def test_destination_preview_shows_the_target_and_operation_without_a_write(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    result = handlers.bi_destination_apply(
+        package=str(package),
+        target="reporting",
+        destination="sheets",
+        operation="replace",
+    )
+    assert result["state"] == "ready_to_apply"
+    assert result["target"] == "reporting" and result["operation"] == "replace"
+    assert result["datasets"]["pages"]["rows"] == 1
+
+
+def _worksheet_mapping(package):
+    manifest = json.loads((package / "manifest.json").read_text())
+    return {
+        name: {"worksheet_id": index + 2, "worksheet_title": name}
+        for index, name in enumerate(manifest["datasets"])
+    }
+
+
+def _table_mapping(package):
+    manifest = json.loads((package / "manifest.json").read_text())
+    return {name: {"table_id": f"seohead_{name}_v1"} for name in manifest["datasets"]}
+
+
+def test_google_sheets_replace_uses_one_atomic_swap_and_preserves_target_sheet_ids(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    requests = []
+    staged_values = {}
+    worksheets = _worksheet_mapping(package)
+
+    def fetch(request):
+        requests.append(request)
+        if request["method"] == "GET":
+            if "/values/" not in request["url"]:
+                return {
+                    "sheets": [
+                        {
+                            "properties": {
+                                "sheetId": item["worksheet_id"],
+                                "title": item["worksheet_title"],
+                                "gridProperties": {"rowCount": 1, "columnCount": 1},
+                            }
+                        }
+                        for item in worksheets.values()
+                    ]
+                }
+            title = request["url"].split("/values/'", 1)[1].split("'!", 1)[0]
+            return {"values": staged_values[title]}
+        if (
+            request["url"].endswith(":batchUpdate")
+            and "requests" in request["body"]
+            and "addSheet" in request["body"]["requests"][0]
+        ):
+            adds = request["body"]["requests"]
+            return {
+                "replies": [
+                    {
+                        "addSheet": {
+                            "properties": {
+                                "sheetId": 77 + index,
+                                "title": item["addSheet"]["properties"]["title"],
+                            }
+                        }
+                    }
+                    for index, item in enumerate(adds)
+                ]
+            }
+        if request["url"].endswith("/values:batchUpdate"):
+            item = request["body"]["data"][0]
+            title = item["range"].split("'", 2)[1]
+            staged_values[title] = item["values"]
+            return {"totalUpdatedRows": len(staged_values[title])}
+        return {}
+
+    client = GoogleSheetsClient(
+        "synthetic",
+        "sheet-id",
+        worksheets,
+        token_supplier=lambda scope: "token",
+        fetcher=fetch,
+    )
+    result = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert result["state"] == "committed"
+    assert result["row_conservation"] == "verified"
+    commit = requests[-1]["body"]["requests"]
+    assert all(
+        "updateCells" in request or "copyPaste" in request or "deleteSheet" in request
+        for request in commit
+    )
+    assert {
+        request["copyPaste"]["destination"]["sheetId"]
+        for request in commit
+        if "copyPaste" in request
+    } == {item["worksheet_id"] for item in worksheets.values()}
+    assert any(
+        request["updateCells"].get("fields") == "userEnteredValue"
+        for request in commit
+        if "updateCells" in request
+    )
+    assert requests[1]["authorization"] == "Bearer token"
+
+
+def test_google_sheets_rejects_partial_mapping_before_creating_a_stage(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    called = []
+    client = GoogleSheetsClient(
+        "synthetic",
+        "sheet-id",
+        {"pages": {"worksheet_id": 2, "worksheet_title": "pages"}},
+        token_supplier=lambda scope: "token",
+        fetcher=lambda request: called.append(request) or {},
+    )
+    with pytest.raises(BIDestinationError, match="exactly once"):
+        apply_with_client(
+            package, target="synthetic", operation="replace", client=client, apply=True
+        )
+    assert called == []
+
+
+def test_google_bigquery_stages_chunks_and_publishes_each_table_with_mocked_rest(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    requests = []
+    expected = {
+        name: item["row_count"]
+        for name, item in json.loads((package / "manifest.json").read_text())["datasets"].items()
+    }
+    job_rows = {}
+
+    def fetch(request):
+        requests.append(request)
+        if request["method"] == "POST" and "upload/bigquery" in request["url"]:
+            job_id = re.search(rb'"jobId":"([^"]+)"', request["body"]).group(1).decode()
+            media = request["body"].split(b"Content-Type: application/octet-stream\r\n\r\n", 1)[1]
+            media = media.rsplit(b"\r\n--", 1)[0]
+            job_rows[job_id] = media.count(b"\n")
+            return {"jobReference": {"jobId": job_id}}
+        if request["method"] == "POST" and request["url"].endswith("/jobs"):
+            return {"jobReference": {"jobId": request["body"]["jobReference"]["jobId"]}}
+        if request["method"] == "GET" and "/jobs/" in request["url"]:
+            job_id = request["url"].split("/jobs/", 1)[1].split("?", 1)[0]
+            return {
+                "status": {"state": "DONE"},
+                "statistics": {"load": {"outputRows": str(job_rows.get(job_id, 0))}},
+            }
+        if (
+            request["method"] == "GET"
+            and "/datasets/dataset_id" in request["url"]
+            and "/tables/" not in request["url"]
+        ):
+            return {"datasetReference": {"datasetId": "dataset_id"}}
+        if request["method"] == "GET" and "/tables/" in request["url"]:
+            stage = request["url"].rsplit("/", 1)[1]
+            name = re.match(r"_seohead_stage_(.+)_[0-9a-f]{16}$", stage).group(1)
+            return {"numRows": str(expected[name])}
+        if request["method"] == "DELETE":
+            return {}
+        raise AssertionError(request)
+
+    client = GoogleBigQueryClient(
+        "synthetic",
+        "project-id",
+        "dataset_id",
+        _table_mapping(package),
+        location="EU",
+        cost_authorized=True,
+        token_supplier=lambda scope: "token",
+        fetcher=fetch,
+    )
+    result = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert result["publication"] == "atomic_per_bigquery_table_not_across_datasets"
+    uploads = [request for request in requests if "upload/bigquery" in request["url"]]
+    assert uploads and all(isinstance(request["body"], bytes) for request in uploads)
+    copies = [
+        request
+        for request in requests
+        if request["method"] == "POST" and request["url"].endswith("/jobs")
+    ]
+    assert copies and all(
+        request["body"]["configuration"]["copy"]["writeDisposition"] == "WRITE_TRUNCATE"
+        for request in copies
+    )
+
+
+def test_fresh_host_resolution_creates_google_clients_without_registration(tmp_path, monkeypatch):
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "sheets": {
+                    "targets": {
+                        "reporting": {
+                            "enabled": True,
+                            "kind": "google_sheets_service_account",
+                            "spreadsheet_id": "spreadsheet-id",
+                            "worksheets": {},
+                        }
+                    }
+                },
+                "bigquery": {
+                    "targets": {
+                        "warehouse": {
+                            "enabled": True,
+                            "kind": "google_bigquery_service_account",
+                            "project_id": "project-id",
+                            "dataset_id": "dataset_id",
+                            "tables": {},
+                            "cost_authorized": True,
+                        }
+                    }
+                },
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    assert isinstance(resolve_host_client("sheets", "reporting"), GoogleSheetsClient)
+    assert isinstance(resolve_host_client("bigquery", "warehouse"), GoogleBigQueryClient)
+
+
+def test_bigquery_cost_denial_calls_neither_auth_nor_transport(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    calls = []
+    client = GoogleBigQueryClient(
+        "warehouse",
+        "project-id",
+        "dataset_id",
+        _table_mapping(package),
+        token_supplier=lambda scope: calls.append(("auth", scope)) or "token",
+        fetcher=lambda request: calls.append(("transport", request)) or {},
+    )
+    with pytest.raises(BIDestinationError, match="cost_authorized"):
+        apply_with_client(
+            package, target="warehouse", operation="replace", client=client, apply=True
+        )
+    assert calls == []
+
+
+def test_host_bigquery_apply_rejects_missing_cost_authorization_before_auth(tmp_path, monkeypatch):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "bigquery": {
+                    "targets": {
+                        "warehouse": {
+                            "enabled": True,
+                            "kind": "google_bigquery_service_account",
+                            "project_id": "project-id",
+                            "dataset_id": "dataset_id",
+                            "tables": _table_mapping(package),
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    auth_calls = []
+    monkeypatch.setattr(
+        "seohead.data_sources.gsc.service_account_access_token",
+        lambda *_args: auth_calls.append(True) or pytest.fail("auth must not run"),
+    )
+    with pytest.raises(ValueError, match="cost_authorized"):
+        handlers.bi_destination_apply(
+            package=str(package),
+            target="warehouse",
+            destination="bigquery",
+            operation="replace",
+            apply=True,
+        )
+    assert auth_calls == []
+
+
+def test_cli_and_mcp_resolve_the_same_configured_sheets_client_offline(tmp_path, monkeypatch):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "sheets": {
+                    "targets": {
+                        "reporting": {
+                            "enabled": True,
+                            "kind": "google_sheets_service_account",
+                            "spreadsheet_id": "spreadsheet-id",
+                            "worksheets": _worksheet_mapping(package),
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+
+    worksheets = _worksheet_mapping(package)
+
+    def request(self, method, url, body=None, *, headers=None):
+        if method == "GET":
+            if "/values/" not in url:
+                return {
+                    "sheets": [
+                        {
+                            "properties": {
+                                "sheetId": item["worksheet_id"],
+                                "title": item["worksheet_title"],
+                                "gridProperties": {"rowCount": 1, "columnCount": 1},
+                            }
+                        }
+                        for item in worksheets.values()
+                    ]
+                }
+            return {"values": body or [["placeholder"]]}
+        if "addSheet" in str(body):
+            return {
+                "replies": [
+                    {
+                        "addSheet": {
+                            "properties": {
+                                "sheetId": 100 + index,
+                                "title": item["addSheet"]["properties"]["title"],
+                            }
+                        }
+                    }
+                    for index, item in enumerate(body["requests"])
+                ]
+            }
+        if url.endswith("/values:batchUpdate"):
+            # The next GET only needs a complete exact range in this transport
+            # seam; this patch avoids authentication and all external traffic.
+            request.last_values = body["data"][0]["values"]
+            return {"totalUpdatedRows": len(body["data"][0]["values"])}
+        return {}
+
+    original_request = GoogleSheetsClient._request
+
+    def request_with_readback(self, method, url, body=None, *, headers=None, **_kwargs):
+        if method == "GET" and "/values/" in url:
+            return {"values": request.last_values}
+        return request(self, method, url, body, headers=headers)
+
+    request.last_values = []
+    monkeypatch.setattr(GoogleSheetsClient, "_request", request_with_readback)
+    assert (
+        cli.main(
+            [
+                "bi-destination-apply",
+                "--package",
+                str(package),
+                "--target",
+                "reporting",
+                "--destination",
+                "sheets",
+                "--apply",
+            ]
+        )
+        == 0
+    )
+    from seohead.servers.mcp_server import build_server
+
+    tool = build_server()._tool_manager.get_tool("seo_bi_destination_apply")
+    result = tool.fn(
+        package=str(package),
+        target="reporting",
+        destination="sheets",
+        operation="replace",
+        apply=True,
+    )
+    assert result["state"] == "committed"
+    monkeypatch.setattr(GoogleSheetsClient, "_request", original_request)
