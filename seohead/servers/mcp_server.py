@@ -1605,10 +1605,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_start(
-        directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+        directory: str,
+        scenario_id: str,
+        steps: list[str],
+        expected_revision: int = 0,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Start a local registered workflow; it performs no scan or provider call."""
-        return _checked(handlers.workflow_start(directory, scenario_id, steps, expected_revision))
+        return _checked(
+            handlers.workflow_start(directory, scenario_id, steps, expected_revision, context)
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_checkpoint(
@@ -1618,11 +1624,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         state: str,
         evidence: list[dict] | None = None,
         expected_revision: int = 0,
+        review: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist one registered-step result before the next step or agent handoff."""
         return _checked(
             handlers.workflow_checkpoint(
-                directory, run_id, step_id, state, evidence, expected_revision
+                directory, run_id, step_id, state, evidence, expected_revision, review
             )
         )
 
@@ -1633,10 +1640,19 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_execute(
-        directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+        directory: str,
+        scenario_id: str,
+        steps: list[str],
+        outcomes: list[dict],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run a supplied local synthetic sequence, checkpointing every step."""
-        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes))
+        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes, context))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_resume(directory: str, run_id: str, expected_revision: int) -> dict[str, Any]:
+        """Reopen only the interrupted registered step after a second-agent handoff."""
+        return _checked(handlers.workflow_resume(directory, run_id, expected_revision))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_configure(
@@ -1651,6 +1667,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     ) -> dict[str, Any]:
         """Record one bounded retained-scan diff; quiet runs do not notify anyone."""
         return _checked(handlers.monitor_run(directory, scan_id, observations, expected_revision))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_schedule(directory: str, action: str, expected_revision: int) -> dict[str, Any]:
+        """Claim or recover a local run; no timer, crawl, or delivery starts here."""
+        return _checked(handlers.monitor_schedule(directory, action, expected_revision))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_monitor_status(directory: str) -> dict[str, Any]:

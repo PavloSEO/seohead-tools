@@ -1,7 +1,8 @@
-"""Durable registered-step checkpoints for interruption-safe local workflows."""
+"""Durable, registered workflow checkpoints for interruption-safe local work."""
 
 from __future__ import annotations
 
+import copy
 import uuid
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from .workspace import _load as _load_workspace
 
 FORMAT = "seohead.workflow-execution.v1"
 NAME = "execution.json"
+_TERMINAL = {"completed", "cancelled"}
+_STEP_STATES = {"succeeded", "failed", "unavailable", "skipped", "interrupted"}
 
 
 def _text(value: Any, name: str, maximum: int = 512) -> str:
@@ -20,8 +23,8 @@ def _text(value: Any, name: str, maximum: int = 512) -> str:
     return value.strip()
 
 
-def _load(directory: str | Path) -> tuple[Path, dict, dict]:
-    root, project = _load_project(directory)
+def _load(directory: str | Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    root, project = _load_workspace(directory)
     document = read_document(root, NAME)
     if document is None:
         document = {
@@ -32,24 +35,118 @@ def _load(directory: str | Path) -> tuple[Path, dict, dict]:
         }
     if document.get("format") != FORMAT or document.get("project_uuid") != project["project_uuid"]:
         raise ValueError("execution checkpoint belongs to another project or format")
+    if not isinstance(document.get("runs"), list) or len(document["runs"]) > 10_000:
+        raise ValueError("execution checkpoint has invalid run history")
     return root, project, document
 
 
-def _load_project(directory: str | Path):
-    return _load_workspace(directory)
-
-
-def _save(root: Path, document: dict, expected_revision: int) -> None:
+def _save(root: Path, document: dict[str, Any], expected_revision: int) -> None:
     if document["revision"] != expected_revision:
         raise ValueError("execution revision conflict")
     document["revision"] += 1
-    write_document(root, NAME, document, expected_revision=None)
+    write_document(root, NAME, document)
+
+
+def _catalogue_hash(item_id: str) -> str | None:
+    from .catalogue import load_catalogue
+
+    entry = load_catalogue().get(item_id)
+    return entry.get("definition_hash") if entry else None
+
+
+def _context(value: Any, project: dict[str, Any]) -> dict[str, Any]:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict) or set(value) - {"prompt_reference", "competitors", "phase"}:
+        raise ValueError("workflow context has unsupported fields")
+    competitors = value.get("competitors", [])
+    if (
+        not isinstance(competitors, list)
+        or len(competitors) > 20
+        or len(set(competitors)) != len(competitors)
+        or any(
+            not isinstance(url, str) or not url.startswith(("http://", "https://"))
+            for url in competitors
+        )
+    ):
+        raise ValueError("workflow competitors must be a unique bounded HTTP(S) list")
+    result = {"own_site": project["site"]["target"], "competitors": competitors}
+    for key, maximum in (("prompt_reference", 512), ("phase", 128)):
+        if key in value:
+            result[key] = _text(value[key], key, maximum)
+    return result
+
+
+def _evidence(records: list[dict] | None) -> list[dict]:
+    records = records or []
+    if not isinstance(records, list) or len(records) > 20:
+        raise ValueError("evidence must be a list of at most 20 records")
+    result = []
+    for record in records:
+        if not isinstance(record, dict) or set(record) != {"reference", "sha256"}:
+            raise ValueError("evidence records require reference and sha256")
+        reference = _text(record["reference"], "evidence reference")
+        digest = record["sha256"]
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest)
+        ):
+            raise ValueError("evidence sha256 must be a lowercase 64-character digest")
+        result.append({"reference": reference, "sha256": digest})
+    return result
+
+
+def _review(value: Any, execution_kind: str, state: str) -> dict[str, str] | None:
+    if state != "succeeded" or execution_kind == "automatic":
+        return None
+    if not isinstance(value, dict) or set(value) != {"actor", "state", "reason"}:
+        raise ValueError("manual and deliverable steps require an explicit approved review")
+    if value["state"] != "approved":
+        raise ValueError("manual and deliverable steps require an approved review")
+    return {
+        "actor": _text(value["actor"], "review actor", 128),
+        "state": "approved",
+        "reason": _text(value["reason"], "review reason", 512),
+    }
+
+
+def _rows(root: Path) -> dict[str, dict[str, Any]]:
+    return {row["id"]: row for row in coverage_status(root)["items"]}
+
+
+def _public_run(run: dict[str, Any], rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    item = copy.deepcopy(run)
+    stale: list[dict[str, str]] = []
+    scenario_hash = _catalogue_hash(item["scenario"]["id"])
+    if scenario_hash != item["scenario"].get("definition_hash"):
+        stale.append(
+            {"id": item["scenario"]["id"], "reason": "scenario or skill definition changed"}
+        )
+    for step in item["steps"]:
+        row = rows.get(step["id"])
+        if row is None:
+            stale.append({"id": step["id"], "reason": "registered checklist step was removed"})
+        elif row["stale"]:
+            stale.append({"id": step["id"], "reason": row["reason"]})
+        elif _catalogue_hash(step["id"]) != step.get("definition_hash"):
+            stale.append({"id": step["id"], "reason": "registered step definition changed"})
+    item["stale_dependencies"] = stale
+    item["next_action"] = next(
+        (step["id"] for step in item["steps"] if step["state"] == "pending"), None
+    )
+    return item
 
 
 def start(
-    directory: str | Path, *, scenario_id: str, steps: list[str], expected_revision: int = 0
-) -> dict:
-    root, _, document = _load(directory)
+    directory: str | Path,
+    *,
+    scenario_id: str,
+    steps: list[str],
+    expected_revision: int = 0,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    root, project, document = _load(directory)
     if document["revision"] != expected_revision:
         raise ValueError("execution revision conflict")
     scenario_id = _text(scenario_id, "scenario_id")
@@ -60,18 +157,38 @@ def start(
         or len(set(steps)) != len(steps)
     ):
         raise ValueError("steps must be a unique nonempty list of at most 200 checklist ids")
-    items = {row["id"] for row in coverage_status(root)["items"]}
-    if any(step not in items for step in steps):
+    rows = _rows(root)
+    scenario = rows.get(scenario_id)
+    if scenario is None or scenario["kind"] not in {"scenario", "skill"}:
+        raise ValueError("scenario_id must be a registered project scenario or skill")
+    if any(step not in rows for step in steps):
         raise ValueError("every workflow step must be an existing checklist identity")
     run = {
         "id": f"run:{uuid.uuid4()}",
-        "scenario_id": scenario_id,
-        "steps": [{"id": step, "state": "pending", "evidence": []} for step in steps],
+        "attempt": 1
+        + sum(existing["scenario"]["id"] == scenario_id for existing in document["runs"]),
+        "scenario": {"id": scenario_id, "definition_hash": _catalogue_hash(scenario_id)},
+        "context": _context(context, project),
+        "steps": [
+            {
+                "id": step,
+                "definition_hash": _catalogue_hash(step),
+                "execution_kind": rows[step]["execution_kind"],
+                "state": "pending",
+                "evidence": [],
+            }
+            for step in steps
+        ],
         "state": "running",
     }
     document["runs"].append(run)
     _save(root, document, expected_revision)
-    return {"ok": True, "revision": document["revision"], "run": run, "next_action": steps[0]}
+    return {
+        "ok": True,
+        "revision": document["revision"],
+        "run": _public_run(run, rows),
+        "next_action": steps[0],
+    }
 
 
 def checkpoint(
@@ -82,12 +199,13 @@ def checkpoint(
     state: str,
     evidence: list[dict] | None = None,
     expected_revision: int,
-) -> dict:
+    review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     root, _, document = _load(directory)
     if document["revision"] != expected_revision:
         raise ValueError("execution revision conflict")
-    if state not in {"succeeded", "failed", "unavailable", "skipped"}:
-        raise ValueError("checkpoint state must be succeeded, failed, unavailable or skipped")
+    if state not in _STEP_STATES:
+        raise ValueError("checkpoint state is invalid")
     run = next((item for item in document["runs"] if item["id"] == run_id), None)
     if run is None or run["state"] != "running":
         raise ValueError("workflow run is not running")
@@ -96,49 +214,88 @@ def checkpoint(
         raise ValueError("workflow step is not pending")
     if any(item["state"] == "pending" for item in run["steps"][: run["steps"].index(step)]):
         raise ValueError("workflow steps must be checkpointed in registered order")
-    records = evidence or []
-    if not isinstance(records, list) or len(records) > 20:
-        raise ValueError("evidence must be a list of at most 20 records")
-    for record in records:
-        if not isinstance(record, dict) or set(record) != {"reference", "sha256"}:
-            raise ValueError("evidence records require reference and sha256")
-        _text(record["reference"], "evidence reference")
-        if not isinstance(record["sha256"], str) or len(record["sha256"]) != 64:
-            raise ValueError("evidence sha256 must be a 64-character digest")
-    step.update(state=state, evidence=records)
-    if state != "succeeded":
-        run["state"] = state
-    elif all(item["state"] == "succeeded" for item in run["steps"]):
+    rows = _rows(root)
+    current = rows.get(step_id)
+    if state == "succeeded" and (current is None or current["stale"] or current["blocked_by"]):
+        raise ValueError(
+            "stale or blocked dependencies must be reconciled before a successful checkpoint"
+        )
+    step.update(state=state, evidence=_evidence(evidence))
+    approved = _review(review, step["execution_kind"], state)
+    if approved:
+        step["review"] = approved
+    if state == "succeeded" and all(item["state"] == "succeeded" for item in run["steps"]):
         run["state"] = "completed"
+    elif state != "succeeded":
+        run["state"] = "interrupted" if state == "interrupted" else "blocked"
     _save(root, document, expected_revision)
-    pending = next((item["id"] for item in run["steps"] if item["state"] == "pending"), None)
-    return {"ok": True, "revision": document["revision"], "run": run, "next_action": pending}
+    public = _public_run(run, rows)
+    return {
+        "ok": True,
+        "revision": document["revision"],
+        "run": public,
+        "next_action": public["next_action"],
+    }
 
 
-def status(directory: str | Path) -> dict:
-    _, _, document = _load(directory)
-    active = next((run for run in reversed(document["runs"]) if run["state"] == "running"), None)
-    next_action = (
-        next((item["id"] for item in active["steps"] if item["state"] == "pending"), None)
-        if active
-        else None
+def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dict[str, Any]:
+    """Deliberately reopen the first non-successful step after a handoff or interruption."""
+    root, _, document = _load(directory)
+    if document["revision"] != expected_revision:
+        raise ValueError("execution revision conflict")
+    run = next((item for item in document["runs"] if item["id"] == run_id), None)
+    if run is None or run["state"] not in {"blocked", "interrupted"}:
+        raise ValueError("workflow run is not resumable")
+    rows = _rows(root)
+    public = _public_run(run, rows)
+    if public["stale_dependencies"]:
+        raise ValueError("reconcile stale dependencies before resuming workflow")
+    retry = next((step for step in run["steps"] if step["state"] != "succeeded"), None)
+    if retry is None:
+        raise ValueError("completed workflow run cannot be resumed")
+    retry.update(state="pending", evidence=[])
+    retry.pop("review", None)
+    run["state"] = "running"
+    _save(root, document, expected_revision)
+    return {
+        "ok": True,
+        "revision": document["revision"],
+        "run": _public_run(run, rows),
+        "next_action": retry["id"],
+    }
+
+
+def status(directory: str | Path) -> dict[str, Any]:
+    root, _, document = _load(directory)
+    rows = _rows(root)
+    runs = [_public_run(run, rows) for run in document["runs"]]
+    active = next((run for run in reversed(runs) if run["state"] == "running"), None)
+    resumable = next(
+        (run for run in reversed(runs) if run["state"] in {"blocked", "interrupted"}), None
     )
     return {
         "ok": True,
         "revision": document["revision"],
-        "runs": document["runs"],
-        "next_action": next_action,
+        "runs": runs,
+        "next_action": active["next_action"] if active else None,
+        "resumable_run": resumable["id"] if resumable else None,
     }
 
 
 def execute(
-    directory: str | Path, *, scenario_id: str, steps: list[str], outcomes: list[dict]
-) -> dict:
-    """Checkpoint a supplied local registered-step sequence without any network work."""
+    directory: str | Path,
+    *,
+    scenario_id: str,
+    steps: list[str],
+    outcomes: list[dict],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Checkpoint supplied local outcomes; this helper executes no commands or network work."""
     started = start(
         directory,
         scenario_id=scenario_id,
         steps=steps,
+        context=context,
         expected_revision=status(directory)["revision"],
     )
     run, revision = started["run"], started["revision"]
@@ -151,6 +308,7 @@ def execute(
             step_id=outcome.get("id"),
             state=outcome.get("state"),
             evidence=outcome.get("evidence"),
+            review=outcome.get("review"),
             expected_revision=revision,
         )
         revision = result["revision"]

@@ -4087,12 +4087,20 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
 
 
 def workflow_start(
-    directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+    directory: str,
+    scenario_id: str,
+    steps: list[str],
+    expected_revision: int = 0,
+    context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from seohead.projects.execution import start
 
     return start(
-        directory, scenario_id=scenario_id, steps=steps, expected_revision=expected_revision
+        directory,
+        scenario_id=scenario_id,
+        steps=steps,
+        expected_revision=expected_revision,
+        context=context,
     )
 
 
@@ -4103,6 +4111,7 @@ def workflow_checkpoint(
     state: str,
     evidence: list[dict] | None = None,
     expected_revision: int = 0,
+    review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from seohead.projects.execution import checkpoint
 
@@ -4113,6 +4122,7 @@ def workflow_checkpoint(
         state=state,
         evidence=evidence,
         expected_revision=expected_revision,
+        review=review,
     )
 
 
@@ -4123,11 +4133,23 @@ def workflow_status(directory: str) -> dict[str, Any]:
 
 
 def workflow_execute(
-    directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+    directory: str,
+    scenario_id: str,
+    steps: list[str],
+    outcomes: list[dict],
+    context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from seohead.projects.execution import execute
 
-    return execute(directory, scenario_id=scenario_id, steps=steps, outcomes=outcomes)
+    return execute(
+        directory, scenario_id=scenario_id, steps=steps, outcomes=outcomes, context=context
+    )
+
+
+def workflow_resume(directory: str, run_id: str, expected_revision: int) -> dict[str, Any]:
+    from seohead.projects.execution import resume
+
+    return resume(directory, run_id=run_id, expected_revision=expected_revision)
 
 
 def monitor_configure(directory: str, policy: dict, expected_revision: int = 0) -> dict[str, Any]:
@@ -4148,6 +4170,13 @@ def monitor_status(directory: str) -> dict[str, Any]:
     from seohead.projects.monitoring import status
 
     return status(directory)
+
+
+def monitor_schedule(directory: str, action: str, expected_revision: int) -> dict[str, Any]:
+    """Record a local monitor runner claim without starting a background service."""
+    from seohead.projects.monitoring import schedule
+
+    return schedule(directory, action=action, expected_revision=expected_revision)
 
 
 def remediation_cases(
@@ -5120,9 +5149,11 @@ _RAW_HANDLERS = {
     "workflow_checkpoint": workflow_checkpoint,
     "workflow_status": workflow_status,
     "workflow_execute": workflow_execute,
+    "workflow_resume": workflow_resume,
     "monitor_configure": monitor_configure,
     "monitor_run": monitor_run,
     "monitor_status": monitor_status,
+    "monitor_schedule": monitor_schedule,
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,

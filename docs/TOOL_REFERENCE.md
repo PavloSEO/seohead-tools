@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**145 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 150 in total.
+**147 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 152 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1484,6 +1484,7 @@ Start a local registered workflow; it performs no scan or provider call.
 | `scenario_id` | `str` | `required` |
 | `steps` | `list[str]` | `required` |
 | `expected_revision` | `int` | `0` |
+| `context` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1501,6 +1502,7 @@ Persist one registered-step result before the next step or agent handoff.
 | `state` | `str` | `required` |
 | `evidence` | `list[dict] | None` | `None` |
 | `expected_revision` | `int` | `0` |
+| `review` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1528,6 +1530,21 @@ Run a supplied local synthetic sequence, checkpointing every step.
 | `scenario_id` | `str` | `required` |
 | `steps` | `list[str]` | `required` |
 | `outcomes` | `list[dict]` | `required` |
+| `context` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `workflow-resume`
+
+MCP name: `seo_workflow_resume`
+
+Reopen only the interrupted registered step after a second-agent handoff.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `run_id` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1556,6 +1573,20 @@ Record one bounded retained-scan diff; quiet runs do not notify anyone.
 | `directory` | `str` | `required` |
 | `scan_id` | `str` | `required` |
 | `observations` | `list[dict]` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-schedule`
+
+MCP name: `seo_monitor_schedule`
+
+Claim or recover a local run; no timer, crawl, or delivery starts here.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `action` | `str` | `required` |
 | `expected_revision` | `int` | `required` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
