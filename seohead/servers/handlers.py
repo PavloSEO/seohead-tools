@@ -1741,7 +1741,7 @@ def _audit_crawl_result(
         # The lazy page/group factories retain the disk-backed context until
         # the writer has consumed every collection.
         for rows in collections.values():
-            setattr(rows, "_context_owner", ctx)
+            rows._context_owner = ctx
         return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
     audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator

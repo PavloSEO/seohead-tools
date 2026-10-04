@@ -79,6 +79,26 @@ def test_audit_v2_reopens_ordered_collections_and_complete_document(tmp_path):
         assert json.loads(encoded) == document
 
 
+def test_audit_v2_fsync_opens_completed_companion_read_write(tmp_path, monkeypatch):
+    """Windows raises EBADF when fsync receives a read-only CRT file handle."""
+    scan = tmp_path / "scan.sqlite"
+    binding = _scan(scan)
+    import builtins
+
+    import seohead.storage.audit_v2 as audit_v2
+
+    modes: list[str] = []
+    original_open = builtins.open
+
+    def recording_open(*args, **kwargs):
+        modes.append(kwargs.get("mode", args[1] if len(args) > 1 else "r"))
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(audit_v2, "open", recording_open, raising=False)
+    write_audit_v2(scan, {"issues": []}, {"/issues": []}, binding)
+    assert "r+b" in modes
+
+
 def test_native_scan_saves_audit_result_collections_without_legacy_document(tmp_path):
     scan_path = tmp_path / "native.sqlite"
     result = AuditResult(

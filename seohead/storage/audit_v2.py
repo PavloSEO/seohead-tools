@@ -273,7 +273,10 @@ def write_audit_v2(
             raise
         finally:
             con.close()
-        with open(temporary, "rb") as stream:
+        # Windows rejects fsync on a read-only CRT handle (EBADF).  Open the
+        # completed SQLite companion read/write, matching NativeScan's durable
+        # publication helper, before atomically replacing the prior companion.
+        with open(temporary, "r+b") as stream:
             os.fsync(stream.fileno())
         os.replace(temporary, companion)
         temporary = None
