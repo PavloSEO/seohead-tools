@@ -114,14 +114,18 @@ def _producer_provenance(producer_build: str | None) -> tuple[str, str, dict[str
     )
 
 
-def _rebuild_page_result(scan) -> Any:
-    """Materialize admitted pages and run context; the graph stays in SQLite."""
+def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
+    """Restore run context with either admitted rows or a SQLite page view."""
     from seohead.crawl.collect import PageRecord
     from seohead.crawl.spider import SpiderResult
     from seohead.storage.exports import _page_rows
 
     result = SpiderResult()
-    result.pages = [PageRecord(**page) for page in _page_rows(scan.con)]
+    result.pages = (
+        _StoredPages(scan.con)
+        if page_view
+        else [PageRecord(**page) for page in _page_rows(scan.con)]
+    )
     context = [
         (row["kind"], json.loads(row["payload_json"]))
         for row in scan.con.execute(
@@ -486,7 +490,10 @@ def crawl_site_scan(
             scan.note_audit_unavailable(reason)
             finalized = scan.finish_capture(reason=run.finish_reason)
             return _response(run, audit_available=False, audit_reason=reason, finalized=finalized)
-        result = _rebuild_page_result(scan)
+        # The audit consumes the retained scan. Keep its first input layer on
+        # disk instead of rebuilding a PageRecord list only for build_evidence
+        # to immediately project it into the analyzer frame.
+        result = _rebuild_page_result(scan, page_view=True)
         result.start_page_evidence = dict(run.start_page_gate)
         result.resumed = getattr(run, "resumed", False)
         result.finish_reason = run.finish_reason
