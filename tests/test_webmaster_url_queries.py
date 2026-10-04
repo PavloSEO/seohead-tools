@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import urllib.error
@@ -120,11 +121,30 @@ def test_cli_url_query_flags_reach_the_shared_handler(monkeypatch):
                 "https://example.test/a",
                 "--max-urls",
                 "2",
+                "--start-date",
+                "2026-10-01",
+                "--end-date",
+                "2026-10-03",
             ]
         )
         == 0
     )
-    assert captured == {"host_id": "h", "url": "https://example.test/a", "max_urls": 2}
+    assert captured == {"host_id": "h", "url": "https://example.test/a", "max_urls": 2, "start_date": "2026-10-01", "end_date": "2026-10-03"}
+
+
+def test_mcp_date_options_forward_to_the_same_handler(monkeypatch):
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(handlers, "webmaster_url_queries", fake)
+    from seohead.servers.mcp_server import build_server
+
+    tool = build_server()._tool_manager.get_tool("seo_webmaster_url_queries")
+    assert asyncio.run(tool.run({"host_id": "h", "start_date": "2026-10-01", "end_date": "2026-10-03"})) == {"ok": True}
+    assert captured["start_date"] == "2026-10-01" and captured["end_date"] == "2026-10-03"
 
 
 def test_local_date_filter_marks_unobserved_days_without_zero_filling():
