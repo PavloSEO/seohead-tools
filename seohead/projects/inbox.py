@@ -163,6 +163,12 @@ def _write(root: Path, document: dict[str, Any]) -> None:
         Path(stage).unlink(missing_ok=True)
 
 
+def _read_document(directory: str | Path) -> tuple[Path, dict[str, Any]]:
+    """Load a validated inbox without creating a writer lock or sidecar."""
+    root, project = _load(directory)
+    return root, _document(root, project)
+
+
 @contextmanager
 def _transaction(
     directory: str | Path, expected_revision: int | None = None
@@ -245,25 +251,24 @@ def list_entries(
         or not 1 <= limit <= MAX_PAGE
     ):
         raise ValueError("offset must be nonnegative and limit must be from 1 to 100")
-    with _transaction(directory) as (_, document):
-        entries = [
-            entry
-            for entry in document["entries"]
-            if include_acknowledged
-            or not entry["delivery"].get(consumer, {}).get("acknowledged_at")
-        ]
-        page = entries[offset : offset + limit]
-        return {
-            "ok": True,
-            "revision": document["revision"],
-            "entries": [_public(item, consumer) for item in page],
-            "pagination": {
-                "offset": offset,
-                "limit": limit,
-                "total": len(entries),
-                "next_offset": offset + len(page) if offset + len(page) < len(entries) else None,
-            },
-        }
+    _, document = _read_document(directory)
+    entries = [
+        entry
+        for entry in document["entries"]
+        if include_acknowledged or not entry["delivery"].get(consumer, {}).get("acknowledged_at")
+    ]
+    page = entries[offset : offset + limit]
+    return {
+        "ok": True,
+        "revision": document["revision"],
+        "entries": [_public(item, consumer) for item in page],
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "total": len(entries),
+            "next_offset": offset + len(page) if offset + len(page) < len(entries) else None,
+        },
+    }
 
 
 def mark_read(
@@ -362,20 +367,20 @@ def unread_summary(directory: str | Path, *, consumer: str, limit: int = 10) -> 
     consumer = _consumer(consumer)
     if type(limit) is not int or not 1 <= limit <= MAX_PAGE:
         raise ValueError("limit must be from 1 to 100")
-    with _transaction(directory) as (_, document):
-        unread = [
-            entry
-            for entry in document["entries"]
-            if not entry["delivery"].get(consumer, {}).get("acknowledged_at")
-        ]
-        return {
-            "count": len(unread),
-            "entries": [
-                {"id": entry["id"], "kind": entry["kind"], "references": entry["references"]}
-                for entry in unread[:limit]
-            ],
-            "truncated": len(unread) > limit,
-        }
+    _, document = _read_document(directory)
+    unread = [
+        entry
+        for entry in document["entries"]
+        if not entry["delivery"].get(consumer, {}).get("acknowledged_at")
+    ]
+    return {
+        "count": len(unread),
+        "entries": [
+            {"id": entry["id"], "kind": entry["kind"], "references": entry["references"]}
+            for entry in unread[:limit]
+        ],
+        "truncated": len(unread) > limit,
+    }
 
 
 def fingerprint(directory: str | Path) -> str:

@@ -29,6 +29,14 @@ def _project(tmp_path):
     return root
 
 
+def _files(root):
+    return {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
 def _separate_writer(directory: str) -> None:
     submit(directory, text="Written by a separate collector", references=["scan:synthetic-process"])
 
@@ -96,6 +104,7 @@ def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tm
     with ThreadPoolExecutor(max_workers=4) as executor:
         ids = list(executor.map(write, range(8)))
 
+    assert (root / ".inbox.lock").is_file()
     listed = list_entries(root, consumer="agent/session-a", limit=20)
     assert {entry["id"] for entry in listed["entries"]} == set(ids)
     assert listed["pagination"]["total"] == 8
@@ -103,6 +112,18 @@ def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tm
     again = fingerprint(root)
     unread_summary(root, consumer="agent/session-a")
     assert fingerprint(root) == again
+
+
+def test_inbox_reads_and_observer_snapshot_leave_a_new_project_byte_identical(tmp_path):
+    root = _project(tmp_path)
+    before = _files(root)
+
+    assert list_entries(root, consumer="agent/session-a")["entries"] == []
+    assert unread_summary(root, consumer="agent/session-a")["count"] == 0
+    assert observe(root, consumer="agent/session-a")["inbox_unread"]["count"] == 0
+
+    assert _files(root) == before
+    assert not (root / ".inbox.lock").exists()
 
 
 def test_separate_process_handoff_survives_writer_exit(tmp_path):
