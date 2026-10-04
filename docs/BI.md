@@ -116,6 +116,12 @@ bounded before transport; a too-wide row fails during preflight rather than cons
 request. A selected projection uses the matching dataset mapping from a normal complete target
 configuration; unrelated configured datasets are not sent.
 
+For a local spreadsheet review, apply `filter_package` with its closed equality predicates and
+declared column subset, then pass that selected package to `export_bi_xlsx`. It reads CSV
+partitions with `openpyxl` write-only worksheets, repeats the verified header on each numbered
+sheet, and splits before Excel's 1,048,576-row limit. The XLSX result reports exact source rows
+and sheet count; it does not aggregate or infer values.
+
 ## Publication cohorts
 
 `publication-cohorts` consumes `seohead.publication-cohort-input.v1` and

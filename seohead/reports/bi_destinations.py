@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ _GOOGLE_RETRIES = 3
 _GOOGLE_CHUNK_ROWS = 1_000
 _GOOGLE_REQUEST_BYTES = 4 * 1024 * 1024
 _GOOGLE_CHUNK_SOURCE_BYTES = _GOOGLE_REQUEST_BYTES // 2
+EXCEL_MAX_ROWS = 1_048_576
 
 
 class BIDestinationError(ValueError):
@@ -1376,3 +1378,90 @@ def filter_package(
         )
         os.replace(stage, destination)
     return {"ok": True, "output_directory": str(destination), **result}
+
+
+def export_bi_xlsx(
+    package: str | Path,
+    *,
+    dataset: str,
+    out: str | Path,
+    max_rows_per_sheet: int = EXCEL_MAX_ROWS - 1,
+) -> dict[str, Any]:
+    """Write one verified BI dataset to split, write-only Excel worksheets.
+
+    Use :func:`filter_package` first for a closed selected view.  Each output
+    worksheet repeats the exact CSV header; no aggregation, sampling or type
+    inference occurs while converting the partition stream.
+    """
+    if type(max_rows_per_sheet) is not int or not 1 <= max_rows_per_sheet < EXCEL_MAX_ROWS:
+        raise BIDestinationError(f"max_rows_per_sheet must be 1..{EXCEL_MAX_ROWS - 1}")
+    root, manifest = _manifest(package)
+    datasets = _verify_partitions(root, manifest)
+    if dataset not in datasets:
+        raise BIDestinationError("dataset is not declared by the BI package")
+    destination = Path(out).absolute()
+    if destination.suffix.casefold() != ".xlsx":
+        raise BIDestinationError("out must end in .xlsx")
+    if destination.is_symlink() or os.path.lexists(destination) or not destination.parent.is_dir():
+        raise BIDestinationError(
+            "out must be a new XLSX file under an existing non-symlink directory"
+        )
+    if destination.parent.is_symlink():
+        raise BIDestinationError("out parent must not be a symlink")
+    try:
+        from openpyxl import Workbook
+    except ImportError as exc:
+        raise BIDestinationError("BI XLSX export requires the reports extra (openpyxl)") from exc
+    sheet_count = rows_written = rows_in_sheet = 0
+    workbook = Workbook(write_only=True)
+    sheet = None
+    header: list[str] | None = None
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=".seohead-bi-xlsx-", suffix=".tmp", dir=destination.parent, delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+        for part in manifest["datasets"][dataset]["partitions"]:
+            with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
+                reader = csv.reader(stream)
+                current_header = next(reader)
+                if header is None:
+                    header = current_header
+                elif current_header != header:
+                    raise BIDestinationError("dataset partition headers disagree")
+                for row in reader:
+                    if sheet is None or rows_in_sheet >= max_rows_per_sheet:
+                        sheet_count += 1
+                        sheet = workbook.create_sheet(f"{dataset}-{sheet_count:04d}")
+                        sheet.append(header)
+                        rows_in_sheet = 0
+                    sheet.append(row)
+                    rows_in_sheet += 1
+                    rows_written += 1
+        if header is None:
+            raise BIDestinationError("dataset has no CSV header")
+        if rows_written != datasets[dataset]["rows"]:
+            raise BIDestinationError("BI XLSX row conservation failed")
+        if sheet is None:
+            sheet_count = 1
+            sheet = workbook.create_sheet(f"{dataset}-{sheet_count:04d}")
+            sheet.append(header)
+        workbook.save(temporary)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, destination)
+        temporary = None
+    finally:
+        workbook.close()
+        if temporary is not None:
+            with suppress(FileNotFoundError):
+                temporary.unlink()
+    return {
+        "format": "seohead.bi-xlsx.v1",
+        "dataset": dataset,
+        "rows": rows_written,
+        "worksheets": sheet_count,
+        "max_rows_per_sheet": max_rows_per_sheet,
+        "output": str(destination),
+        "source_schema_version": manifest["schema_version"],
+    }
