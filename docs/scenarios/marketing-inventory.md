@@ -10,6 +10,11 @@ site, submit a form, or inspect an iframe document. Each result row comes from
 one matched DOM element, so a missing `href` stays null on that element rather
 than shifting a later destination onto it.
 
+## Covers
+
+This is an operating scenario for supplied marketing markup. It does not add a
+technical finding to the crawl-audit issue catalogue.
+
 ## Input
 
 Prepare a bounded JSON document list. `document_ref` may name a retained scan
@@ -66,6 +71,12 @@ tool is `seo_marketing_inventory` with the same JSON input.
   `data-form-id` by default) or explicit URL parameter names.
 - `coverage.documents_unavailable[]` names input bodies that were not eligible.
   A partial or unavailable body prevents a complete-site claim.
+
+## What it cannot answer
+
+It cannot show whether a CTA converts, whether an iframe's embedded form works,
+or whether an unprovided page uses the same component. A shared label or target
+is a review candidate, not proof of a shared implementation or campaign intent.
 
 ## Boundaries
 
