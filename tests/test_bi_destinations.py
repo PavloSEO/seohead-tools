@@ -144,19 +144,29 @@ def test_google_sheets_client_uses_raw_append_with_mocked_auth_and_http():
 
     def fetch(request):
         requests.append(request)
+        if request["url"].endswith(":batchUpdate") and "addSheet" in request["body"]["requests"][0]:
+            return {
+                "replies": [
+                    {
+                        "addSheet": {
+                            "properties": {"sheetId": 77, "title": "__seohead_stage_seohead.bi.v1"}
+                        }
+                    }
+                ]
+            }
         return {"updates": {"updatedRows": 1}}
 
     client = GoogleSheetsAppendClient(
-        "synthetic", "sheet-id", token_supplier=lambda scope: "token", fetcher=fetch
+        "synthetic", "sheet-id", 2, "pages", token_supplier=lambda scope: "token", fetcher=fetch
     )
     transaction = client.begin(
-        target="synthetic", operation="append", schema_version="seohead.bi.v1"
+        target="synthetic", operation="replace", schema_version="seohead.bi.v1"
     )
     client.write(transaction, "pages", [["url"]])
     client.write(transaction, "pages", [["https://example.test/"]])
-    assert requests[0]["url"].endswith(
-        "pages!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+    assert requests[1]["url"].endswith(
+        "__seohead_stage_seohead.bi.v1!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
     )
-    assert requests[0]["authorization"] == "Bearer token"
-    with pytest.raises(BIDestinationError, match="rollback transaction"):
-        client.begin(target="synthetic", operation="replace", schema_version="seohead.bi.v1")
+    assert requests[1]["authorization"] == "Bearer token"
+    client.commit(transaction)
+    assert any("deleteSheet" in str(request["body"]) for request in requests)

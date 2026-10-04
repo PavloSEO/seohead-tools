@@ -34,10 +34,19 @@ def register_host_client(destination: str, target: str, client: Any) -> None:
 
 
 class GoogleSheetsAppendClient:
-    """Host-owned append-only Sheets REST client; replace is refused safely."""
+    """Host-owned staging-sheet REST client; commit swaps sheets atomically."""
 
-    def __init__(self, target: str, spreadsheet_id: str, token_supplier=None, fetcher=None) -> None:
+    def __init__(
+        self,
+        target: str,
+        spreadsheet_id: str,
+        worksheet_id: int,
+        worksheet_title: str,
+        token_supplier=None,
+        fetcher=None,
+    ) -> None:
         self.target, self.spreadsheet_id = target, spreadsheet_id
+        self.worksheet_id, self.worksheet_title = worksheet_id, worksheet_title
         self.token_supplier, self.fetcher = token_supplier, fetcher
         self.headers: dict[str, list[str]] = {}
 
@@ -45,11 +54,26 @@ class GoogleSheetsAppendClient:
         return target == self.target
 
     def begin(self, *, target: str, operation: str, schema_version: str):
-        if operation != "append":
-            raise BIDestinationError(
-                "Google Sheets replace is unavailable without a rollback transaction"
-            )
-        return {"target": target, "schema_version": schema_version}
+        if operation != "replace":
+            raise BIDestinationError("Google Sheets client supports transactional replace only")
+        response = self._post(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}:batchUpdate",
+            {
+                "requests": [
+                    {"addSheet": {"properties": {"title": f"__seohead_stage_{schema_version}"}}}
+                ]
+            },
+        )
+        try:
+            stage = response["replies"][0]["addSheet"]["properties"]
+            return {
+                "target": target,
+                "schema_version": schema_version,
+                "stage_id": stage["sheetId"],
+                "stage_title": stage["title"],
+            }
+        except (KeyError, IndexError, TypeError) as exc:
+            raise BIDestinationError("Google Sheets staging response is invalid") from exc
 
     def write(self, transaction, dataset: str, rows: list[list[str]]) -> None:
         if len(rows) == 1 and dataset not in self.headers:
@@ -58,7 +82,12 @@ class GoogleSheetsAppendClient:
         if dataset not in self.headers:
             raise BIDestinationError("Sheets rows arrived before their header")
         body = {"majorDimension": "ROWS", "values": rows}
-        url = f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/{dataset}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/{transaction['stage_title']}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+        response = self._post(url, body)
+        if "updates" not in response:
+            raise BIDestinationError("Google Sheets append returned an invalid response")
+
+    def _post(self, url, body):
         if self.token_supplier is None:
             from seohead.data_sources.gsc import service_account_access_token
 
@@ -80,14 +109,34 @@ class GoogleSheetsAppendClient:
             )
             with urllib.request.urlopen(raw, timeout=30) as stream:
                 response = json.loads(stream.read().decode())
-        if not isinstance(response, dict) or "updates" not in response:
-            raise BIDestinationError("Google Sheets append returned an invalid response")
+        if not isinstance(response, dict):
+            raise BIDestinationError("Google Sheets response is invalid")
+        return response
 
     def commit(self, transaction) -> None:
-        return None
+        self._post(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}:batchUpdate",
+            {
+                "requests": [
+                    {"deleteSheet": {"sheetId": self.worksheet_id}},
+                    {
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": transaction["stage_id"],
+                                "title": self.worksheet_title,
+                            },
+                            "fields": "title",
+                        }
+                    },
+                ]
+            },
+        )
 
     def abort(self, transaction) -> None:
-        return None
+        self._post(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}:batchUpdate",
+            {"requests": [{"deleteSheet": {"sheetId": transaction["stage_id"]}}]},
+        )
 
 
 def resolve_host_client(destination: str, target: str) -> Any:
@@ -116,8 +165,14 @@ def resolve_host_client(destination: str, target: str) -> Any:
     target_config = allowed[target]
     if destination == "sheets" and target_config.get("kind") == "google_sheets_service_account":
         spreadsheet_id = target_config.get("spreadsheet_id")
-        if isinstance(spreadsheet_id, str) and spreadsheet_id:
-            return GoogleSheetsAppendClient(target, spreadsheet_id)
+        worksheet_id = target_config.get("worksheet_id")
+        worksheet_title = target_config.get("worksheet_title")
+        if (
+            isinstance(spreadsheet_id, str)
+            and isinstance(worksheet_id, int)
+            and isinstance(worksheet_title, str)
+        ):
+            return GoogleSheetsAppendClient(target, spreadsheet_id, worksheet_id, worksheet_title)
     raise BIDestinationError("host has no authorized client for the allowlisted target")
 
 
