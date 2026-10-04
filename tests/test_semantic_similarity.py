@@ -140,3 +140,12 @@ def test_cache_handles_concurrent_local_writers(tmp_path):
 
     with sqlite3.connect(cache_path) as con:
         assert con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0] == 8
+
+
+def test_cache_entry_quota_evicts_oldest_vectors(tmp_path):
+    cache = EmbeddingCache(tmp_path / "bounded.sqlite", max_entries=1)
+    cache.put("a" * 64, "a" * 64, {"model": "fixture"}, [1.0])
+    cache.put("b" * 64, "b" * 64, {"model": "fixture"}, [2.0])
+
+    assert cache.get("a" * 64) is None
+    assert cache.get("b" * 64) == [2.0]

@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence, Sized
 from dataclasses import dataclass
@@ -177,16 +178,25 @@ class EmbeddingCache:
             raise ValueError("max_entries must be positive")
         self.path = str(path)
         self.max_entries = max_entries
-        with self._connect() as con:
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
-                "cache_key TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, identity_json TEXT NOT NULL, "
-                "vector_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-            )
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                with self._connect() as con:
+                    con.execute("PRAGMA journal_mode=WAL")
+                    con.execute(
+                        "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
+                        "cache_key TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, identity_json TEXT NOT NULL, "
+                        "vector_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+                    )
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
     def _connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.path, timeout=5)
-        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA busy_timeout=5000")
         return con
 
     def get(self, key: str) -> list[float] | None:
