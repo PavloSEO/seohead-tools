@@ -1295,7 +1295,7 @@ def _audit_crawl_result(
     exports.missing = list(evidence["missing"])
 
     audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
-    ctx = AuditContext(exports, audit_config)
+    ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
@@ -1707,6 +1707,9 @@ def _audit_crawl_result(
         ).fetchone()[0]
         audit = attach_contract(audit, scan_uuid=scan_identity, con=stored_scan.con)
         audit = attach_saved_corpus(audit, stored_scan.con, derived=saved_corpus)
+    # ``to_json`` above has copied the report payload. The native page store is
+    # no longer needed and must not leave its temporary SQLite file behind.
+    ctx.close()
 
     tasks_written: dict[str, str] = {}
     if out_dir:

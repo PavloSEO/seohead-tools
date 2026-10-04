@@ -90,12 +90,12 @@ class Page:
             "indexability": self.indexability,
             "indexability_status": self.indexability_status,
             "content_type": self.content_type,
-            "metrics": self.metrics,
-            "issues": self.issues,
-            "issue_ids": self.issue_ids,
+            "metrics": dict(self.metrics),
+            "issues": list(self.issues),
+            "issue_ids": list(self.issue_ids),
         }
         if self.suppressed_issue_ids:
-            out["suppressed_issue_ids"] = self.suppressed_issue_ids
+            out["suppressed_issue_ids"] = list(self.suppressed_issue_ids)
         return out
 
 
