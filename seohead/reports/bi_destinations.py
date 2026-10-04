@@ -484,6 +484,14 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         for name, table in mapping.items():
             if not isinstance(table.get("table_id"), str) or not table["table_id"]:
                 raise BIDestinationError(f"BigQuery table mapping for {name!r} is invalid")
+        dataset_metadata = self._request(
+            "GET", self._url(f"datasets/{self.dataset_id}"), retryable=True
+        )
+        reference = dataset_metadata.get("datasetReference")
+        if not isinstance(reference, dict) or reference.get("datasetId") != self.dataset_id:
+            raise BIDestinationError(
+                "BigQuery target dataset permission check did not confirm the target"
+            )
         token = package_sha256[:16]
         return {
             "target": target,
@@ -604,8 +612,8 @@ class GoogleBigQueryClient(_GoogleRESTClient):
                     "writeDisposition": disposition,
                     "createDisposition": "CREATE_IF_NEEDED",
                     "schema": {"fields": fields},
-                    "labels": {"seohead": "bi", "dataset": dataset[:63]},
-                }
+                },
+                "labels": {"seohead": "bi", "dataset": dataset[:63]},
             },
             media=ndjson,
         )
@@ -651,8 +659,8 @@ class GoogleBigQueryClient(_GoogleRESTClient):
                             "writeDisposition": "WRITE_TRUNCATE",
                             "createDisposition": "CREATE_IF_NEEDED",
                             "schema": {"fields": fields},
-                            "labels": {"seohead": "bi", "dataset": name[:63]},
-                        }
+                        },
+                        "labels": {"seohead": "bi", "dataset": name[:63]},
                     },
                     media=b"",
                 )

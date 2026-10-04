@@ -295,6 +295,12 @@ def test_google_bigquery_stages_chunks_and_publishes_each_table_with_mocked_rest
                 "status": {"state": "DONE"},
                 "statistics": {"load": {"outputRows": str(job_rows.get(job_id, 0))}},
             }
+        if (
+            request["method"] == "GET"
+            and "/datasets/dataset_id" in request["url"]
+            and "/tables/" not in request["url"]
+        ):
+            return {"datasetReference": {"datasetId": "dataset_id"}}
         if request["method"] == "GET" and "/tables/" in request["url"]:
             stage = request["url"].rsplit("/", 1)[1]
             name = re.match(r"_seohead_stage_(.+)_[0-9a-f]{16}$", stage).group(1)

@@ -89,8 +89,9 @@ refused because the API has no local idempotency ledger for an exact package rep
 
 Each configured BigQuery target has `kind: google_bigquery_service_account`, a fixed
 `project_id`, `dataset_id`, optional `location`, and an exact `tables` mapping. It uploads
-bounded newline-JSON chunks to deterministic staging tables through REST load jobs, waits for
-each job and reconciles `outputRows`, then checks staging `numRows`. Publication is a BigQuery
+bounded newline-JSON chunks to deterministic staging tables through REST load jobs after confirming
+the configured dataset is accessible, waits for each job and reconciles `outputRows`, then checks
+staging `numRows`. Publication is a BigQuery
 copy job with `WRITE_TRUNCATE` for replace or `WRITE_APPEND` for append. A finished job is atomic
 for one destination table, but a multi-dataset package is **not** one cross-table transaction;
 the result says so explicitly. BigQuery needs a billing-enabled project and writes/storage/query
