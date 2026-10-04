@@ -134,6 +134,7 @@ DEFAULTS: dict[str, Any] = {
     # discovery, while analysis rules classify already collected evidence.
     "analysis": {
         "segments": [],
+        "canonical_policy": {"pagination": [], "filters": []},
         # Post-analysis URL-pattern suppressions. These never affect scope or
         # collection; the effective ordered policy is stored with the scan.
         "finding_exclusions": [],
@@ -427,6 +428,8 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "scope.segments_only",
         "analysis.segments",
         "analysis.finding_exclusions",
+        "analysis.canonical_policy.pagination",
+        "analysis.canonical_policy.filters",
         # Seeding from the sitemap changes which URLs are fetched at all.
         "sitemaps.auto_discover",
         "discovery.hyperlinks.store",
@@ -623,6 +626,16 @@ DESCRIPTIONS: dict[str, str] = {
         "Post-crawl finding suppressions only; never narrows URLs fetched. Ordered rules use "
         "Python regex search on a finding's target_url, optional exact check IDs, and a required "
         "reason. First matching rule wins."
+    ),
+    "analysis.canonical_policy.pagination": (
+        "Ordered URL-regex policies for paginated pages: [{'pattern': ..., 'policy': "
+        "'self|first_page|landing', 'target': absolute URL}]. Non-self policies require an "
+        "explicit target; the first matching rule wins. Empty means unmeasured, not a finding."
+    ),
+    "analysis.canonical_policy.filters": (
+        "Ordered URL-regex policies for configured filter pages: [{'pattern': ..., 'policy': "
+        "'self|landing', 'target': absolute URL}]. Landing policies require an explicit target; "
+        "the first matching rule wins. Empty means unmeasured, not a finding."
     ),
     "sitemaps.auto_discover": (
         "Seed the crawl from the sitemap declared in robots.txt when no explicit "
@@ -1110,6 +1123,14 @@ def validate(config: dict[str, Any]) -> None:
         validate_rules(config["analysis"]["finding_exclusions"])
     except ValueError as exc:
         raise ConfigError(f"analysis.finding_exclusions: {exc}") from exc
+    from seohead.canonical_policy import validate_canonical_policy
+
+    try:
+        validate_canonical_policy(
+            config["analysis"]["canonical_policy"], path="analysis.canonical_policy"
+        )
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
     _validate_http_headers(config["http"])
     _validate_credential_headers(config["http"])
     route = resolve_proxy(config)
