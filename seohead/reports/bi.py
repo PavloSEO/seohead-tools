@@ -18,7 +18,7 @@ import re
 import sqlite3
 import tempfile
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -699,9 +699,24 @@ class _ProviderInput:
     join: dict[str, Any] | None
     compatibility: dict[str, Any] | None
     normalized: dict[str, Any] | None
+    store: Any = None
     error_state: str | None = None
     error_reason: str | None = None
     reported_rows: int | None = None
+
+
+@dataclass(frozen=True)
+class _ObservationStream:
+    """Re-iterable, counted observations without a provider-row list."""
+
+    factory: Callable[[], Iterator[dict[str, Any]]]
+    count: int
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        return self.factory()
+
+    def __len__(self) -> int:
+        return self.count
 
 
 def _state_value(
@@ -1046,6 +1061,42 @@ def _scan_source(
         if audit_reader is None
         else None
     )
+    audit_overlay_path: Path | None = None
+    audit_overlay_temp: tempfile.TemporaryDirectory[str] | None = None
+    if audit_reader is not None and "/pages" in audit_reader.collections:
+        # audit.v2 preserves its own collection order, which is not a contract
+        # with the retained crawl's page ordinal.  A disk-backed URL index keeps
+        # the projection re-iterable at one million pages without either a
+        # positional zip or a million-entry Python dictionary.
+        audit_overlay_temp = tempfile.TemporaryDirectory(prefix=".seohead-bi-audit-pages-")
+        audit_overlay_path = Path(audit_overlay_temp.name) / "pages.sqlite"
+        overlay_con = sqlite3.connect(audit_overlay_path)
+        try:
+            overlay_con.execute(
+                "CREATE TABLE overlays (url TEXT PRIMARY KEY, indexability_json TEXT, "
+                "indexability_status_json TEXT)"
+            )
+            batch: list[tuple[str, str, str]] = []
+            for overlay in audit_reader.iter_collection("/pages"):
+                if not isinstance(overlay, dict) or not isinstance(overlay.get("url"), str):
+                    raise BIExportError("saved audit page lacks a URL for streaming projection")
+                batch.append(
+                    (
+                        overlay["url"],
+                        _canonical_json(overlay.get("indexability")),
+                        _canonical_json(overlay.get("indexability_status")),
+                    )
+                )
+                if len(batch) >= 10_000:
+                    overlay_con.executemany("INSERT INTO overlays VALUES (?,?,?)", batch)
+                    batch.clear()
+            if batch:
+                overlay_con.executemany("INSERT INTO overlays VALUES (?,?,?)", batch)
+            overlay_con.commit()
+        except sqlite3.IntegrityError as exc:
+            raise BIExportError("saved audit has duplicate URL overlays") from exc
+        finally:
+            overlay_con.close()
     if finding_count > MAX_FINDINGS:
         raise BIExportError(f"scan findings exceed the {MAX_FINDINGS}-row source bound")
     link_count = int(con.execute("SELECT COUNT(*) FROM links").fetchone()[0])
@@ -1139,34 +1190,41 @@ def _scan_source(
             yield dict(record)
 
     def pages_factory() -> Iterator[dict[str, Any]]:
-        overlays = (
-            iter(audit_reader.iter_collection("/pages"))
-            if audit_reader is not None and "/pages" in audit_reader.collections
-            else None
+        overlay_con = (
+            sqlite3.connect(audit_overlay_path) if audit_overlay_path is not None else None
         )
-        for record in con.execute(
-            "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
-        ):
-            page = dict(record)
-            overlay = (
-                next(overlays, None)
-                if overlays is not None
-                else (audit_pages or {}).get(page["url"])
-            )
-            if overlay is not None:
-                if not isinstance(overlay, dict) or overlay.get("url") != page["url"]:
-                    raise BIExportError(
-                        "saved audit page order does not match retained scan pages for streaming projection"
-                    )
-                page["_bi_audit_page"] = {
-                    "indexability": overlay.get("indexability"),
-                    "indexability_status": overlay.get("indexability_status"),
-                }
-            yield page
-        if overlays is not None and next(overlays, None) is not None:
-            raise BIExportError(
-                "saved audit has more page rows than the retained scan for streaming projection"
-            )
+        try:
+            for record in con.execute(
+                "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
+            ):
+                page = dict(record)
+                if overlay_con is not None:
+                    overlay = overlay_con.execute(
+                        "SELECT indexability_json,indexability_status_json FROM overlays WHERE url=?",
+                        (page["url"],),
+                    ).fetchone()
+                    if overlay is not None:
+                        page["_bi_audit_page"] = {
+                            "indexability": json.loads(overlay[0]),
+                            "indexability_status": json.loads(overlay[1]),
+                        }
+                elif audit_pages is not None:
+                    overlay = audit_pages.get(page["url"])
+                    if overlay is not None:
+                        page["_bi_audit_page"] = {
+                            "indexability": overlay.get("indexability"),
+                            "indexability_status": overlay.get("indexability_status"),
+                        }
+                yield page
+        finally:
+            if overlay_con is not None:
+                overlay_con.close()
+
+    def close() -> None:
+        if audit_reader is not None:
+            audit_reader.close()
+        if audit_overlay_temp is not None:
+            audit_overlay_temp.cleanup()
 
     return _RunInput(
         run_id=str(scan["scan_uuid"]),
@@ -1186,7 +1244,7 @@ def _scan_source(
         links_source_reason=links_reason,
         coverage_rows=coverage_rows,
         link_count=link_count if links_state in {"complete", "partial"} else None,
-        close=audit_reader.close if audit_reader is not None else None,
+        close=close if audit_reader is not None or audit_overlay_temp is not None else None,
     )
 
 
@@ -1702,6 +1760,26 @@ def _group_map(groups: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 
 def _provider_file(path_value: str | os.PathLike[str]) -> _ProviderInput:
+    path = Path(path_value)
+    from seohead.data_sources.evidence_join_store import is_store, open_store
+
+    if is_store(path):
+        store = open_store(path)
+        metadata = store.metadata
+        source_id = metadata.get("content_sha256")
+        if not isinstance(source_id, str) or not re.fullmatch(r"[0-9a-f]{64}", source_id):
+            raise BIExportError("evidence join store has no content hash")
+        sha256, byte_count = _sha256_path(path, MAX_SCAN_BYTES, "provider join store")
+        return _ProviderInput(
+            source_id=source_id,
+            name=path.name,
+            sha256=sha256,
+            byte_count=byte_count,
+            join=metadata,
+            compatibility=None,
+            normalized=None,
+            store=store,
+        )
     document, raw = _read_json_path(path_value, "provider join", MAX_PROVIDER_JOIN_BYTES)
     return _provider_document(document, raw, Path(path_value).name)
 
@@ -1846,6 +1924,37 @@ def _validate_join(join: dict[str, Any]) -> None:
         raise BIExportError("provider join page populations do not conserve crawl pages")
 
 
+def _validate_store_join(join: dict[str, Any]) -> None:
+    """Validate the typed header of a cursor-backed evidence join."""
+    if join.get("format") != "seohead.evidence-join-sqlite.v1":
+        raise BIExportError("unsupported cursor-backed evidence join format")
+    evidence = join.get("evidence")
+    summary = join.get("summary")
+    if not isinstance(evidence, dict) or not isinstance(summary, dict):
+        raise BIExportError("evidence join store lacks provenance or summary")
+    metrics, dimensions = evidence.get("metrics"), join.get("dimension_names")
+    if (
+        not isinstance(metrics, list)
+        or not metrics
+        or any(not isinstance(item, dict) for item in metrics)
+    ):
+        raise BIExportError("evidence join store does not declare typed numeric metrics")
+    if not isinstance(dimensions, list) or any(
+        not isinstance(name, str) or not name for name in dimensions
+    ):
+        raise BIExportError("evidence join store dimensions are invalid")
+    if len(metrics) > 64 or len(dimensions) > 64:
+        raise BIExportError("evidence join store exceeds metric/dimension field bounds")
+    names = [item.get("name") for item in metrics]
+    if len(set(names)) != len(names) or any(
+        not isinstance(name, str) or not name for name in names
+    ):
+        raise BIExportError("evidence join store metric names are invalid")
+    for item in metrics:
+        if item.get("type", "number") != "number":
+            raise BIExportError(f"provider metric {item.get('name')!r} is not numeric")
+
+
 def _join_from_provider(provider: _ProviderInput, run: _RunInput) -> dict[str, Any] | None:
     if provider.join is not None:
         join = provider.join
@@ -1915,7 +2024,101 @@ def _row_id(row: dict[str, Any]) -> tuple[int, str]:
 
 def _provider_observations(
     provider: _ProviderInput, join: dict[str, Any]
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[Iterable[dict[str, Any]], dict[str, Any]]:
+    if provider.store is not None:
+        _validate_store_join(join)
+        evidence = join["evidence"]
+        metrics = evidence["metrics"]
+        dimensions = join["dimension_names"]
+        summary = join["summary"]
+        expected_rows = summary["rows"]
+
+        def stream() -> Iterator[dict[str, Any]]:
+            rows_seen = 0
+            for item in provider.store.iter_observations():
+                row = item["row"]
+                if not isinstance(row, dict):
+                    raise BIExportError("evidence join store has a non-object normalized row")
+                identity = _row_id(row)
+                if identity != item["identity"]:
+                    raise BIExportError("evidence join store row identity disagrees with its key")
+                dimensions_row = row.get("dimensions") or {}
+                if not isinstance(dimensions_row, dict):
+                    raise BIExportError("normalized provider dimensions must be an object")
+                if set(dimensions_row) - set(dimensions):
+                    raise BIExportError("evidence join store row has an undeclared dimension")
+                row_metrics = row.get("metrics")
+                if not isinstance(row_metrics, dict) or set(row_metrics) != {
+                    metric["name"] for metric in metrics
+                }:
+                    raise BIExportError(
+                        "provider row metric names differ from the declared source metrics"
+                    )
+                url = row.get("url") or {}
+                if not isinstance(url, dict):
+                    raise BIExportError("normalized provider URL provenance must be an object")
+                population = item["population"]
+                if population not in {"matched", "external_only", "unkeyable_rows"}:
+                    raise BIExportError("evidence join store has an invalid evidence population")
+                matched_count = item["matched_page_count"]
+                if type(matched_count) is not int or matched_count < 0:
+                    raise BIExportError("evidence join store has an invalid matched-page count")
+                if (population == "matched") != bool(matched_count):
+                    raise BIExportError("evidence join store population disagrees with match edges")
+                rows_seen += 1
+                for metric in metrics:
+                    name = metric["name"]
+                    entry = row_metrics[name]
+                    if not isinstance(entry, dict) or entry.get("state") not in {
+                        "measured",
+                        "unavailable",
+                    }:
+                        raise BIExportError(
+                            f"provider metric {name!r} has an invalid availability state"
+                        )
+                    value = entry.get("value")
+                    if entry["state"] == "measured":
+                        if (
+                            isinstance(value, bool)
+                            or not isinstance(value, (int, float))
+                            or not math.isfinite(value)
+                        ):
+                            raise BIExportError(
+                                f"measured provider metric {name!r} must be a finite number"
+                            )
+                    elif value is not None:
+                        raise BIExportError(
+                            f"unavailable provider metric {name!r} must have a null value"
+                        )
+                    yield {
+                        "identity": identity,
+                        "row": row,
+                        "metric": metric,
+                        "entry": entry,
+                        "dimensions": dimensions_row,
+                        "population": "unkeyable" if population == "unkeyable_rows" else population,
+                        "matched_urls": (),
+                        "matched_page_count": matched_count,
+                        "matched_url_provenance": {
+                            "state": "cursor_backed",
+                            "format": join["format"],
+                            "row_index": identity[0],
+                            "natural_key_sha256": identity[1],
+                        },
+                        "url": url,
+                    }
+            if rows_seen != expected_rows:
+                raise BIExportError("evidence join store rows disagree with its summary")
+
+        info = {
+            "dimensions": dimensions,
+            "metric_specs": metrics,
+            "summary": summary,
+            "crawl": join.get("crawl") or {},
+            "evidence": evidence,
+            "compatibility": provider.compatibility,
+        }
+        return _ObservationStream(stream, expected_rows * len(metrics)), info
     evidence = join["evidence"]
     metrics = evidence["metrics"]
     declared_dimensions = evidence["dimensions"]
@@ -2146,8 +2349,8 @@ def _metric_rows(
                 "natural_key_sha256": natural_hash,
                 "ambiguous_source_row": bool(row.get("ambiguous")),
                 "population_state": obs["population"],
-                "matched_page_count": len(obs["matched_urls"]),
-                "matched_page_urls_json": obs["matched_urls"],
+                "matched_page_count": obs.get("matched_page_count", len(obs["matched_urls"])),
+                "matched_page_urls_json": obs.get("matched_url_provenance", obs["matched_urls"]),
                 "dimensions_state_json": {
                     name: {
                         "state": "unavailable" if value is None else "measured",
@@ -2834,13 +3037,18 @@ def _write_package(
 ) -> dict[str, Any]:
     provider_joins: list[dict[str, Any] | None] = []
     dimension_names: set[str] = set()
-    provider_observations: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]] = []
+    provider_observations: list[
+        tuple[_ProviderInput, Iterable[dict[str, Any]], dict[str, Any]]
+    ] = []
     for provider in providers:
         join = _join_from_provider(provider, run)
         provider.join = join
         provider_joins.append(join)
         if join is not None:
-            _validate_join(join)
+            if provider.store is not None:
+                _validate_store_join(join)
+            else:
+                _validate_join(join)
             observations, info = _provider_observations(provider, join)
             dimension_names.update(info["dimensions"])
             provider_observations.append((provider, observations, info))
