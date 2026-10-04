@@ -507,7 +507,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["out"] = args.out
         if getattr(args, "project", None):
             kw["project"] = args.project
-        kw["lang"] = getattr(args, "lang", "en")
+        lang = getattr(args, "lang", "en")
+        if getattr(args, "format", None) == "pdf" or lang != "en":
+            kw["lang"] = lang
     elif cmd == "log-scan":
         if getattr(args, "run", None):
             kw["run"] = args.run

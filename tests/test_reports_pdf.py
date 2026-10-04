@@ -55,6 +55,8 @@ def test_write_pdf_report_validates_before_atomic_replace_and_cleans_html(tmp_pa
     target = tmp_path / "audit.pdf"
     target.write_bytes(b"previous complete report")
     seen = {}
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
 
     def render_html(_model, *, lang):
         seen["lang"] = lang
@@ -104,6 +106,8 @@ def test_write_pdf_report_validates_before_atomic_replace_and_cleans_html(tmp_pa
 def test_failed_validation_preserves_existing_pdf_and_removes_temp_files(tmp_path, monkeypatch):
     target = tmp_path / "audit.pdf"
     target.write_bytes(b"previous complete report")
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
     monkeypatch.setattr(
         "seohead.reports.audit_pdf.render_audit_pdf_html",
         lambda model, *, lang: "<html></html>",
@@ -134,6 +138,8 @@ def test_failed_validation_preserves_existing_pdf_and_removes_temp_files(tmp_pat
 def test_missing_browser_is_a_skipped_result_and_does_not_replace_target(tmp_path, monkeypatch):
     target = tmp_path / "audit.pdf"
     target.write_bytes(b"previous complete report")
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace())
     monkeypatch.setattr(
         "seohead.reports.audit_pdf.render_audit_pdf_html",
         lambda model, *, lang: "<html></html>",

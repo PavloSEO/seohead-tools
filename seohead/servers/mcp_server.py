@@ -649,9 +649,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         schema is refused with ok: false naming the mismatch, never rendered as an empty report.
         Pass project to include validated checklist coverage, reasons, scope and measurements in a
         human report; the original JSON audit remains unchanged. This never makes a network request."""
-        return _checked(
-            handlers.report_build(audit=audit, fmt=fmt, out=out, project=project, lang=lang)
-        )
+        arguments = {"audit": audit, "fmt": fmt, "out": out, "project": project}
+        if (fmt or "").lower().lstrip(".") == "pdf" or lang != "en":
+            arguments["lang"] = lang
+        return _checked(handlers.report_build(**arguments))
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_facts_export(sites: list[dict[str, Any]]) -> dict[str, Any]:
