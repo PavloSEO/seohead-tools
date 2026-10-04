@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from seohead.reports.bi import BI_SCHEMA_VERSION, MANIFEST_FORMAT
 SHEETS_MAX_CELLS = 10_000_000
 HOST_CONFIG_ENV = "SEOHEAD_BI_DESTINATIONS_FILE"
 _HOST_CLIENTS: dict[tuple[str, str], Any] = {}
+SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
 
 class BIDestinationError(ValueError):
@@ -29,6 +31,63 @@ class BIDestinationError(ValueError):
 def register_host_client(destination: str, target: str, client: Any) -> None:
     """Register a host-owned, already-authorized client outside CLI/MCP JSON."""
     _HOST_CLIENTS[(destination, target)] = client
+
+
+class GoogleSheetsAppendClient:
+    """Host-owned append-only Sheets REST client; replace is refused safely."""
+
+    def __init__(self, target: str, spreadsheet_id: str, token_supplier=None, fetcher=None) -> None:
+        self.target, self.spreadsheet_id = target, spreadsheet_id
+        self.token_supplier, self.fetcher = token_supplier, fetcher
+        self.headers: dict[str, list[str]] = {}
+
+    def authorize_target(self, target: str) -> bool:
+        return target == self.target
+
+    def begin(self, *, target: str, operation: str, schema_version: str):
+        if operation != "append":
+            raise BIDestinationError(
+                "Google Sheets replace is unavailable without a rollback transaction"
+            )
+        return {"target": target, "schema_version": schema_version}
+
+    def write(self, transaction, dataset: str, rows: list[list[str]]) -> None:
+        if len(rows) == 1 and dataset not in self.headers:
+            self.headers[dataset] = rows[0]
+            return
+        if dataset not in self.headers:
+            raise BIDestinationError("Sheets rows arrived before their header")
+        body = {"majorDimension": "ROWS", "values": rows}
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/{dataset}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+        if self.token_supplier is None:
+            from seohead.data_sources.gsc import service_account_access_token
+
+            token = service_account_access_token(SHEETS_SCOPE)
+        else:
+            token = self.token_supplier(SHEETS_SCOPE)
+        request = {"url": url, "body": body, "authorization": f"Bearer {token}"}
+        if self.fetcher is not None:
+            response = self.fetcher(request)
+        else:
+            raw = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode(),
+                method="POST",
+                headers={
+                    "Authorization": request["authorization"],
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(raw, timeout=30) as stream:
+                response = json.loads(stream.read().decode())
+        if not isinstance(response, dict) or "updates" not in response:
+            raise BIDestinationError("Google Sheets append returned an invalid response")
+
+    def commit(self, transaction) -> None:
+        return None
+
+    def abort(self, transaction) -> None:
+        return None
 
 
 def resolve_host_client(destination: str, target: str) -> Any:
@@ -51,12 +110,15 @@ def resolve_host_client(destination: str, target: str) -> Any:
         or not allowed[target].get("enabled")
     ):
         raise BIDestinationError("destination target is not host-allowlisted")
-    try:
-        return _HOST_CLIENTS[(destination, target)]
-    except KeyError as exc:
-        raise BIDestinationError(
-            "host has no authorized client for the allowlisted target"
-        ) from exc
+    registered = _HOST_CLIENTS.get((destination, target))
+    if registered is not None:
+        return registered
+    target_config = allowed[target]
+    if destination == "sheets" and target_config.get("kind") == "google_sheets_service_account":
+        spreadsheet_id = target_config.get("spreadsheet_id")
+        if isinstance(spreadsheet_id, str) and spreadsheet_id:
+            return GoogleSheetsAppendClient(target, spreadsheet_id)
+    raise BIDestinationError("host has no authorized client for the allowlisted target")
 
 
 def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:

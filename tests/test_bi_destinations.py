@@ -7,6 +7,7 @@ import pytest
 from seohead.reports.bi import export_bi
 from seohead.reports.bi_destinations import (
     BIDestinationError,
+    GoogleSheetsAppendClient,
     apply_with_client,
     bigquery_plan,
     filter_package,
@@ -136,3 +137,26 @@ def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path
         apply=True,
     )
     assert hosted["rows"]["pages"] == 1
+
+
+def test_google_sheets_client_uses_raw_append_with_mocked_auth_and_http():
+    requests = []
+
+    def fetch(request):
+        requests.append(request)
+        return {"updates": {"updatedRows": 1}}
+
+    client = GoogleSheetsAppendClient(
+        "synthetic", "sheet-id", token_supplier=lambda scope: "token", fetcher=fetch
+    )
+    transaction = client.begin(
+        target="synthetic", operation="append", schema_version="seohead.bi.v1"
+    )
+    client.write(transaction, "pages", [["url"]])
+    client.write(transaction, "pages", [["https://example.test/"]])
+    assert requests[0]["url"].endswith(
+        "pages!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+    )
+    assert requests[0]["authorization"] == "Bearer token"
+    with pytest.raises(BIDestinationError, match="rollback transaction"):
+        client.begin(target="synthetic", operation="replace", schema_version="seohead.bi.v1")
