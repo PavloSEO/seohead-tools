@@ -103,7 +103,7 @@ _LATE_PAGE_FIELDS = {
 # is refused. A page whose body was never parsed has no trust-signal evidence
 # (issue #823), which is exactly the recorded fact; it must therefore feed
 # neither the required-field check below nor _legacy_fields_missing.
-_OPTIONAL_PAGE_RECORD_FIELDS = frozenset({"trust_signals"})
+_OPTIONAL_PAGE_RECORD_FIELDS = frozenset({"trust_signals", "duplicate_ids"})
 _PAGE_NONNEGATIVE_INTS = {
     "ajax_scheme_outlinks",
     "body_count",
@@ -229,6 +229,20 @@ def _trust_signals(value: Any) -> None:
         type(marker) is not str for marker in value["article"]
     ):
         raise ScanError("trust_signals.article must be a list of marker strings")
+
+
+def _duplicate_ids(value: Any) -> None:
+    """Validate bounded, parser-observed repeated DOM ids (#828)."""
+    if not isinstance(value, list) or len(value) > 20 or any(
+        not isinstance(item, dict)
+        or set(item) != {"id", "count"}
+        or not isinstance(item["id"], str)
+        or len(item["id"]) > 256
+        or type(item["count"]) is not int
+        or item["count"] < 2
+        for item in value
+    ):
+        raise ScanError("duplicate_ids must be a bounded list of id/count observations")
 
 
 def _hreflang(value: Any) -> None:
@@ -486,6 +500,7 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
             "heading_outline_json",
             "link_placement_json",
             "trust_signals_json",
+            "duplicate_ids_json",
             "canonical_chain_json",
         }
     ) | {
@@ -495,6 +510,7 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
         "heading_outline",
         "link_placement",
         "trust_signals",
+        "duplicate_ids",
         "canonical_chain",
     }
     for ordinal, record in enumerate(_jsonl(source / "pages.jsonl", limitations, inputs)):
@@ -527,6 +543,10 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
         if signals is not None:
             _trust_signals(signals)
         row["trust_signals_json"] = None if signals is None else _dump(signals)
+        duplicate_ids = row.pop("duplicate_ids", None)
+        if duplicate_ids is not None:
+            _duplicate_ids(duplicate_ids)
+        row["duplicate_ids_json"] = None if duplicate_ids is None else _dump(duplicate_ids)
         canonical_chain = row.pop("canonical_chain", None)
         if canonical_chain is not None and (
             not isinstance(canonical_chain, list)

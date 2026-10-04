@@ -29,6 +29,7 @@ from seohead.sf.core.context import AuditContext
 from seohead.sf.core.eeat import run_eeat
 from seohead.sf.core.loader import LoadedExports
 from seohead.storage import ScanError, import_run, open_scan
+from seohead.storage.exports import export_run
 from seohead.tools.parser import extract_trust_signals, parse_html
 from tests.test_scan_artifact import BUILD
 from tests.test_scan_artifact import legacy_run as legacy_run
@@ -650,6 +651,18 @@ def test_a_present_null_is_stored_as_unmeasured_not_as_empty_signals(legacy_run,
         )
     finally:
         con.close()
+
+
+def test_duplicate_ids_survive_legacy_import_and_export(legacy_run, tmp_path):
+    value = [{"id": "menu-item", "count": 2}]
+    pages = legacy_run / "pages.jsonl"
+    rows = [json.loads(line) for line in pages.read_text().splitlines()]
+    rows[0]["duplicate_ids"] = value
+    pages.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    scan = import_run(legacy_run, tmp_path / "scan.sqlite", producer_build=BUILD)
+    export_run(scan, tmp_path / "export")
+    exported = json.loads((tmp_path / "export" / "pages.jsonl").read_text().splitlines()[0])
+    assert exported["duplicate_ids"] == value
 
 
 @pytest.mark.parametrize(

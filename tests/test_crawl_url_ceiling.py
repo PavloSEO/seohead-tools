@@ -41,8 +41,10 @@ from seohead.crawl.spider import LinkEdge
 # 63 -> 64 for bounded trust signals (#823), measured over 8,000 distinct URLs
 # on Python 3.13: null adds no allocation, an empty measured object adds 352 bytes,
 # and 8 author + 8 date signals with distinct 160-character values add 6,648 bytes.
-# These are allocation estimates, not a complete crawler capacity measurement.
-FIELD_COUNTS_THE_CEILING_WAS_COMPUTED_AGAINST = {LinkEdge: 8, PageRecord: 64}
+# 64 -> 65 for duplicate IDs (#828), measured over 8,000 distinct URLs: None
+# adds no allocation, while the bounded 20 id/count objects add 4,977 bytes per
+# populated record. These are allocation estimates, not a complete crawler capacity measurement.
+FIELD_COUNTS_THE_CEILING_WAS_COMPUTED_AGAINST = {LinkEdge: 8, PageRecord: 65}
 
 
 def test_both_crawlers_read_the_same_ceiling() -> None:

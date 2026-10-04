@@ -95,6 +95,8 @@ def _page_rows(con, *, url: str | None = None) -> Iterable[dict[str, Any]]:
                     page["link_placement"] = json.loads(value)
             elif name == "trust_signals_json":
                 page["trust_signals"] = json.loads(value) if value is not None else None
+            elif name == "duplicate_ids_json":
+                page["duplicate_ids"] = json.loads(value) if value is not None else None
             elif name == "canonical_chain_json":
                 if value is not None:
                     page["canonical_chain"] = json.loads(value)

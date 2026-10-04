@@ -379,3 +379,14 @@ def test_duplicate_ids_and_declared_mime_are_observed_without_html_validation_cl
             {"declared_content_type": "text/html", "extension_content_type": "application/pdf"},
         )
     ]
+
+
+def test_clean_ids_and_matching_mime_stay_silent():
+    mapping = {
+        "https://example.com/clean.html": _FakeResponse(
+            _CLEAN_PAGE, {"content-type": "text/html"}
+        )
+    }
+    fired = _fired(_run_crawl(mapping))
+    assert "DUPLICATE_ID" not in fired
+    assert "DECLARED_MIME_MISMATCH" not in fired
