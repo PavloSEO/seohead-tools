@@ -148,16 +148,19 @@ DEFAULTS: dict[str, Any] = {
     },
     "discovery": {
         # Each link type is a pair: store it in the report, and/or request it. Only the pairs
-        # that actually change an outcome are here. discovery.canonicals.* and
-        # discovery.external.crawl were removed in the #91 pass: chasing canonicals as a
-        # discovery source and crawling a second host are capabilities the spider does not
-        # have, and a setting that names behaviour nothing implements is worse than no setting
-        # — it reads as a supported option in --config-help and in the run manifest.
+        # that actually change an outcome are here. discovery.canonicals.* was removed in the
+        # #91 pass: chasing canonicals as a discovery source is a capability the spider does
+        # not have, and a setting that names behaviour nothing implements is worse than no
+        # setting — it reads as a supported option in --config-help and in the run manifest.
         "hyperlinks": {"store": True, "crawl": True},
         "redirects": {"crawl": True},
         # A redirect has no LinkEdge of its own to withhold, so there is no redirects.store to
         # honour: the redirect target is recorded on the page record either way.
-        "external": {"store": True},
+        # discovery.external.crawl is the real, bounded version of the option #91 removed:
+        # the check exists (seohead/crawl/external.py), runs after the internal frontier
+        # closes, and is confined by the external_checks.* budgets below rather than becoming
+        # the unrestricted second-origin crawl that made the old name a lie.
+        "external": {"store": True, "crawl": False},
         "follow_nofollow": False,
         # List mode only (no ``url``, only ``urls``): a redirect is recorded as
         # given -- the hop is never followed as a new page -- but a migration
@@ -177,6 +180,29 @@ DEFAULTS: dict[str, Any] = {
         "max_url_length": 2000,
         "max_crawl_seconds": 0,  # 0 = no wall-clock limit
         "max_requests": 20_000,  # 0 = no total HTTP-attempt limit
+    },
+    # Budgets for the opt-in external-destination check (discovery.external.crawl).
+    # They are a separate budget from limits.*: external requests go to origins
+    # that did not ask for them, so they must not share — or silently consume —
+    # the internal frontier's allowances. All values are read only when
+    # discovery.external.crawl is true; with it off they are inert.
+    "external_checks": {
+        # Distinct external destinations the check may fetch at most, recorded
+        # seeds plus any same-host continuations admitted under max_depth.
+        "max_targets": 100,
+        # Distinct external origins the check may contact at most — redirect
+        # hops count, since a redirect is just a request to another origin.
+        "max_hosts": 20,
+        # HTTP attempts the check may spend; 0 = no phase-specific cap (the
+        # internal limits.max_requests is a separate budget it never touches).
+        "max_requests": 0,
+        # 0 = check recorded destinations only. >0 also follows that many hops
+        # of *same-host* links on external pages that answered — never an
+        # off-host link, so never unrestricted traversal.
+        "max_depth": 0,
+        # Redirect hops followed per destination before the chain is recorded
+        # unresolved; hard ceiling is MAX_REDIRECT_CHAIN_HOPS (10).
+        "max_redirects": 5,
     },
     "http": {
         "timeout_seconds": 15.0,
@@ -436,6 +462,16 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "discovery.hyperlinks.crawl",
         "discovery.redirects.crawl",
         "discovery.external.store",
+        # Whether external destinations are checked at all, and the bounds the
+        # check runs under, decide which external answers a run holds -- a
+        # smaller host or target budget produces more "skipped" records, which
+        # is a different result, not a different cost.
+        "discovery.external.crawl",
+        "external_checks.max_targets",
+        "external_checks.max_hosts",
+        "external_checks.max_requests",
+        "external_checks.max_depth",
+        "external_checks.max_redirects",
         "discovery.follow_nofollow",
         "discovery.resolve_redirect_destination",
         "discovery.resolve_canonical_destination",
@@ -645,6 +681,12 @@ DESCRIPTIONS: dict[str, str] = {
     "discovery.hyperlinks.crawl": "Request discovered hyperlinks (fetch them).",
     "discovery.redirects.crawl": "Request discovered redirect targets (fetch them).",
     "discovery.external.store": "Keep discovered external links in the report.",
+    "discovery.external.crawl": (
+        "After the internal frontier closes, check each recorded external destination once "
+        "— opt-in, bounded by external_checks.*, never recursive. Requires "
+        "discovery.external.store and a site crawl (--url); refused on the native SQLite "
+        "route and in list mode."
+    ),
     "discovery.follow_nofollow": "Follow links marked rel=nofollow instead of skipping them.",
     "discovery.resolve_redirect_destination": (
         "List mode only: follow a fetched redirect past its first hop to where it actually "
@@ -667,6 +709,27 @@ DESCRIPTIONS: dict[str, str] = {
     "limits.max_requests": (
         "Total HTTP attempts for the crawl, including bootstrap, redirects and retries; 0 means "
         "no total-attempt limit."
+    ),
+    "external_checks.max_targets": (
+        "Distinct external destinations the opt-in check may fetch at most — recorded "
+        "outlinks plus same-host continuations admitted under max_depth. Destinations "
+        "past the budget are recorded as skipped, not silently dropped."
+    ),
+    "external_checks.max_hosts": (
+        "Distinct external origins the opt-in check may contact at most; redirect hops "
+        "count toward it, since a redirect is a request to another origin."
+    ),
+    "external_checks.max_requests": (
+        "HTTP attempts the external check may spend, including redirect hops and retries; "
+        "0 means no phase-specific cap. Separate from limits.max_requests."
+    ),
+    "external_checks.max_depth": (
+        "Hops of same-host links followed on external pages that answered; 0 checks "
+        "recorded destinations only. Off-host links are never followed."
+    ),
+    "external_checks.max_redirects": (
+        "Redirect hops followed per external destination before the chain is recorded "
+        "unresolved; hard ceiling is 10."
     ),
     "http.timeout_seconds": "Per-request timeout in seconds.",
     "http.user_agent": "Request User-Agent string; empty uses the toolkit's identifiable default.",
@@ -1096,6 +1159,26 @@ def validate(config: dict[str, Any]) -> None:
         raise ConfigError("speed.min_delay_seconds cannot be negative")
     if config["speed"]["concurrency"] < 1:
         raise ConfigError("speed.concurrency must be at least 1")
+
+    external = config["discovery"]["external"]
+    if type(external["store"]) is not bool or type(external["crawl"]) is not bool:
+        raise ConfigError("discovery.external.store and discovery.external.crawl must be boolean")
+    if external["crawl"] and not external["store"]:
+        raise ConfigError(
+            "discovery.external.crawl requires discovery.external.store: destinations "
+            "are checked from the recorded edges, and store=False keeps no edges"
+        )
+    for name in ("max_targets", "max_hosts", "max_requests", "max_depth", "max_redirects"):
+        value = config["external_checks"][name]
+        if type(value) is not int or value < 0:
+            raise ConfigError(f"external_checks.{name} must be a nonnegative integer")
+    # The chain-walk ceiling lives in seohead/crawl/collect.py
+    # (MAX_REDIRECT_CHAIN_HOPS); settings cannot import collect without a
+    # circular dependency, so the literal is mirrored here.
+    if config["external_checks"]["max_redirects"] > 10:
+        raise ConfigError(
+            "external_checks.max_redirects cannot exceed 10 (the redirect-chain ceiling)"
+        )
 
     # A crawl with no budget at all runs forever on an infinite URL space.
     if (

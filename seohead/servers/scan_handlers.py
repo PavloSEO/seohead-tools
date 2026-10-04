@@ -375,6 +375,17 @@ def crawl_site_scan(
         raise ValueError("url is required for a SQLite scan crawl")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
+    if settings.get("discovery", {}).get("external", {}).get("crawl"):
+        # External-destination checking is wired into the legacy directory
+        # route first (#746); the native scan collector has no external
+        # subsystem yet, so an artifact cannot honour the option. Refusing
+        # here too covers callers that bypass handlers.crawl_site's own
+        # guard — an artifact written under a silently-dropped option would
+        # claim coverage it never produced.
+        raise ValueError(
+            "discovery.external.crawl is unavailable for native SQLite capture; "
+            "pass --out-dir for the legacy directory route"
+        )
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
     sitemap_seed = {
         "sitemap_url": sitemap,

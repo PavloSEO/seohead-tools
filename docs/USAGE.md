@@ -93,7 +93,16 @@ URL and that configuration back from the artifact, and refuses by name when the
 file was written by another build or for another start URL. Use `--out-dir DIR` for
 the explicit legacy directory route (`pages.jsonl` and `audit.json`); it does not
 silently become a native scan. List inputs and cache `live`/`replay` also require
-that legacy route while native scan support is added deliberately. Its default body policy is
+that legacy route while native scan support is added deliberately. So does
+`discovery.external.crawl`, the opt-in bounded check of recorded outlink
+destinations: it runs a second phase after the internal frontier closes under
+its own `external_checks.*` target/host/request/depth/redirect budgets, writes
+one outcome per destination to `external_checks.jsonl`, and resumes without
+reopening spent budgets — see
+[scenarios/external-links.md](scenarios/external-links.md). A `--scan-out` or
+list-mode run with the option set refuses by name rather than silently
+dropping it. The native
+scan's default body policy is
 `storage.body_mode=captured_entity_bytes`, which retains bounded captured HTTP
 entity bytes and separately captured DOM when available; `off` retains metadata
 only. Native capture requires raw rendering, cache off, and credential-free
