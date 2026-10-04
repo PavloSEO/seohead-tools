@@ -382,12 +382,12 @@ def test_schema_maps_all_current_page_and_link_fields():
     mapped = {
         "url": "url_id",
         "redirect_chain": "redirect_chain_json",
-            "hreflang": "hreflang_json",
-            "heading_outline": "heading_outline_json",
-            "link_placement": "link_placement_json",
-            "canonical_chain": "canonical_chain_json",
-            "trust_signals": "trust_signals_json",
-            "duplicate_ids": "duplicate_ids_json",
+        "hreflang": "hreflang_json",
+        "heading_outline": "heading_outline_json",
+        "link_placement": "link_placement_json",
+        "canonical_chain": "canonical_chain_json",
+        "trust_signals": "trust_signals_json",
+        "duplicate_ids": "duplicate_ids_json",
     }
     assert {mapped.get(field.name, field.name) for field in fields(PageRecord)} == page_columns - {
         "page_ordinal",

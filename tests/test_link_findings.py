@@ -70,7 +70,13 @@ def test_http_internal_anchor_on_https_page_requires_raw_href_and_no_safe_redire
 def test_http_link_check_has_positive_and_negative_observed_edge_evidence():
     check_id = "HTTP_LINK_ON_HTTPS"
     risky = http_links_on_https_pages(
-        [edge("https://example.com/source", "http://example.com/t", raw_href="http://example.com/t")],
+        [
+            edge(
+                "https://example.com/source",
+                "http://example.com/t",
+                raw_href="http://example.com/t",
+            )
+        ],
         "example.com",
         set(),
     )

@@ -233,14 +233,18 @@ def _trust_signals(value: Any) -> None:
 
 def _duplicate_ids(value: Any) -> None:
     """Validate bounded, parser-observed repeated DOM ids (#828)."""
-    if not isinstance(value, list) or len(value) > 20 or any(
-        not isinstance(item, dict)
-        or set(item) != {"id", "count"}
-        or not isinstance(item["id"], str)
-        or len(item["id"]) > 256
-        or type(item["count"]) is not int
-        or item["count"] < 2
-        for item in value
+    if (
+        not isinstance(value, list)
+        or len(value) > 20
+        or any(
+            not isinstance(item, dict)
+            or set(item) != {"id", "count"}
+            or not isinstance(item["id"], str)
+            or len(item["id"]) > 256
+            or type(item["count"]) is not int
+            or item["count"] < 2
+            for item in value
+        )
     ):
         raise ScanError("duplicate_ids must be a bounded list of id/count observations")
 
