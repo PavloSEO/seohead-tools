@@ -2090,6 +2090,20 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
+        """Preflight a complete local BI package for Sheets without Google access or writes."""
+        return _checked(handlers.bi_sheets_plan(package=package, max_cells=max_cells))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_bi_bigquery_plan(
+        package: str, dataset: str, operation: str = "replace"
+    ) -> dict[str, Any]:
+        """Describe an optional BigQuery load offline; it never selects a project or writes data."""
+        return _checked(
+            handlers.bi_bigquery_plan(package=package, dataset=dataset, operation=operation)
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
         """Inspect one URL with bounded metadata/header/robots/redirect/structured/render steps."""

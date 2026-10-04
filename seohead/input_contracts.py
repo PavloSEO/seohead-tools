@@ -590,6 +590,22 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
     ),
     _command(
+        "bi-sheets-plan",
+        "bi_sheets_plan",
+        _form("local_directory", "package"),
+        _form(
+            "inline_json", "max_cells", note="Optional declared capacity, never an API quota check."
+        ),
+        note="Offline package/checksum/capacity preflight; no Google authentication or write.",
+    ),
+    _command(
+        "bi-bigquery-plan",
+        "bi_bigquery_plan",
+        _form("local_directory", "package"),
+        _form("selector", "dataset", "operation"),
+        note="Offline optional-load plan; no project selection, billing, authentication, or write.",
+    ),
+    _command(
         "inspect-url",
         "inspect_url",
         _form("live_url", "url"),

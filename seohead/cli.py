@@ -154,6 +154,8 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "bi-sheets-plan",
+    "bi-bigquery-plan",
     "inspect-url",
     "audit-workflow",
     "tool-catalog",
@@ -620,6 +622,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = getattr(args, name)
         if getattr(args, "provider_join", None):
             kw["provider_joins"] = args.provider_join
+    elif cmd in {"bi-sheets-plan", "bi-bigquery-plan"}:
+        for name in ("package", "max_cells", "dataset", "operation"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
     elif cmd in {"boilerplate-report", "semantic-inputs", "semantic-similarity", "meta-description-drafts"}:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
@@ -2013,6 +2019,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             choices=("clicks", "impressions"),
             help="explicit Search Console axis for complete compatible GA sessions quadrants",
         )
+    if cmd == "bi-sheets-plan":
+        _source_flag(sub, "--package", help="complete local BI package directory")
+        sub.add_argument(
+            "--max-cells", type=int, help="declared Sheets cell capacity (maximum 10000000)"
+        )
+    if cmd == "bi-bigquery-plan":
+        _source_flag(sub, "--package", help="complete local BI package directory")
+        sub.add_argument(
+            "--dataset", required=True, help="planned BigQuery dataset name; no cloud write occurs"
+        )
+        sub.add_argument("--operation", choices=("replace", "append"), default="replace")
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":

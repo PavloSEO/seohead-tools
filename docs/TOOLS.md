@@ -26,6 +26,9 @@ from saved local scan/audit and supplied provider evidence. See [BI.md](BI.md) f
 source/output limits, null states and the explicit audit.v2 compatibility bound.
 It makes no provider requests or remote writes.
 
+`bi-sheets-plan` and `bi-bigquery-plan` verify a complete local package and emit only an
+offline preflight. They never authenticate, select a cloud target, activate billing, or write.
+
 ## Topvisor
 
 `topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,

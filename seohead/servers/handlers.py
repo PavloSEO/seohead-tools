@@ -4666,6 +4666,20 @@ def bi_export(
     }
 
 
+def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
+    """Preflight a complete BI package for Sheets without credentials or writes."""
+    from seohead.reports.bi_destinations import sheets_plan
+
+    return {"ok": True, **sheets_plan(package, max_cells=max_cells)}
+
+
+def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> dict[str, Any]:
+    """Describe a BigQuery load without a project, credentials, billing, or writes."""
+    from seohead.reports.bi_destinations import bigquery_plan
+
+    return {"ok": True, **bigquery_plan(package, dataset=dataset, operation=operation)}
+
+
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
     """Run a closed, bounded single-URL investigation using the existing shared tools."""
     chosen = checks if checks is not None else ["metadata", "headers", "robots"]
@@ -4967,6 +4981,8 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "bi_sheets_plan": bi_sheets_plan,
+    "bi_bigquery_plan": bi_bigquery_plan,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server
