@@ -6,7 +6,7 @@ import hashlib
 from collections import Counter
 from typing import Any
 
-from .context import AuditContext
+from .context import AuditContext, _DiskIssueResults, _DiskIssues, _SuppressedIssueView
 from .models import AuditResult, Issue, SkippedCheck
 
 
@@ -277,7 +277,12 @@ def aggregate(
         validate_rules,
     )
 
-    issues = _dedupe(ctx.issues)
+    disk_issues = isinstance(ctx.issues, _DiskIssues)
+    # A native retained scan writes findings to SQLite while checks run.  Keep
+    # that property through final aggregation: sorting, de-duplication and
+    # suppression must not recreate a complete Python finding list at the
+    # last step before audit.v2 writes it back to disk.
+    issues = ctx.issues.iter_deduped_sorted() if disk_issues else _dedupe(ctx.issues)
 
     # Partial-crawl status must be known before issues are finalized: an
     # "unlinked"/"orphan" finding computed on a truncated crawl is unproven,
@@ -288,8 +293,12 @@ def aggregate(
     # up front.
     urls_crawled = len(ctx.pages)
     n_pages = len(ctx.html_pages())
+    if disk_issues:
+        no_response = ctx.issues.has_check("NO_RESPONSE")
+    else:
+        no_response = bool(Counter(i.check for i in issues).get("NO_RESPONSE"))
     crawl_valid, invalid_reason = _crawl_validity(
-        n_pages, dict(Counter(i.check for i in issues)), urls_crawled
+        n_pages, {"NO_RESPONSE": 1} if no_response else {}, urls_crawled
     )
     urls_in_sitemap = int((sitemap_summary or {}).get("urls_in_sitemap") or 0)
     sitemap_partial = bool(
@@ -301,57 +310,94 @@ def aggregate(
     # say when there is no sitemap.
     crawl_partial = bool(run.get("crawl_partial")) or sitemap_partial
     if crawl_partial:
-        issues = _withhold_unlinked_findings(ctx, issues)
-        issues = _withhold_graph_wide_findings(ctx, issues)
-        issues = _withhold_canonical_homepage_group(ctx, issues)
-        issues = _withhold_depth_findings(ctx, issues)
+        if disk_issues:
+            for check_id in sorted(UNLINKED_FINDING_CHECKS | GRAPH_WIDE_FINDING_CHECKS):
+                if ctx.issues.has_check(check_id):
+                    ctx.retract(
+                        check_id,
+                        "crawl is partial: an 'unlinked' finding cannot be proven when the "
+                        "crawl did not reach every URL"
+                        if check_id in UNLINKED_FINDING_CHECKS
+                        else "crawl is partial: a whole-graph finding cannot be proven when the "
+                        "crawl did not reach every URL",
+                    )
+            ctx.retract("CANONICAL_HOMEPAGE_GROUP", "crawl is partial: a site-wide canonical pattern cannot be established from an incomplete page population")
+            for check_id in sorted(DEPTH_FINDING_CHECKS):
+                ctx.retract(check_id, PARTIAL_DEPTH_REASON)
+            issues = ctx.issues.iter_deduped_sorted()
+        else:
+            issues = _withhold_unlinked_findings(ctx, issues)
+            issues = _withhold_graph_wide_findings(ctx, issues)
+            issues = _withhold_canonical_homepage_group(ctx, issues)
+            issues = _withhold_depth_findings(ctx, issues)
 
     # assign ordered ids + fingerprints (sorted for determinism)
-    sev_rank = {"critical": 0, "warning": 1, "notice": 2}
-    issues.sort(key=lambda i: (sev_rank.get(i.severity, 3), i.check, str(i.target_url)))
-    for n, issue in enumerate(issues, start=1):
-        issue.id = f"ISSUE-{n:06d}"
-        issue.fingerprint = _fingerprint(issue)
-
     # Check coverage and crawl validity describe what the analyzer measured.
     # URL exclusions only change the derived finding view, score and tasks;
     # retain every issue payload with the matching rule so suppression cannot
     # turn a measured problem into a silent/clean check.
     policy = validate_rules(ctx.config.get("finding_exclusions", []), known_checks=CHECKS)
     compiled_policy = compile_rules(policy)
-    active_issues: list[Issue] = []
-    suppressed_issues: list[dict[str, Any]] = []
+    active_issues: Any = []
+    suppressed_issues: Any = []
     suppressed_by_rule: Counter[str] = Counter()
     suppressed_occurrences_by_rule: Counter[str] = Counter()
-    for issue in issues:
+    by_severity: Counter[str] = Counter()
+    by_check: Counter[str] = Counter()
+    fired_ids: set[str] = set()
+    total_issues = 0
+    results: _DiskIssueResults | None = None
+    if disk_issues:
+        results = _DiskIssueResults()
+        ctx._disk_final_issues = results
+        active_issues = results
+        suppressed_issues = _SuppressedIssueView(results)
+    else:
+        sev_rank = {"critical": 0, "warning": 1, "notice": 2}
+        issues.sort(key=lambda i: (sev_rank.get(i.severity, 3), i.check, str(i.target_url)))
+
+    for n, issue in enumerate(issues, start=1):
+        issue.id = f"ISSUE-{n:06d}"
+        issue.fingerprint = _fingerprint(issue)
+        total_issues += 1
+        fired_ids.add(issue.check)
         rule = matching_rule(issue.check, issue.target_url, compiled_policy)
         if rule is None:
-            active_issues.append(issue)
+            if results is not None:
+                results.append_active(issue)
+                results.remember_implausible_targets(
+                    issue, issue.check in IMAGE_TARGETED_CHECKS
+                )
+            else:
+                active_issues.append(issue)
+            by_severity[issue.severity] += 1
+            by_check[issue.check] += 1
+            # Back-link rows during the stream.  A page store only writes the
+            # one page touched by this finding, rather than retaining a final
+            # issue list solely for a later backlink pass.
+            page = ctx.page_by_url.get(issue.target_url) if issue.target_url else None
+            if page is not None:
+                if issue.check not in page.issues:
+                    page.issues.append(issue.check)
+                page.issue_ids.append(issue.id)
             continue
-        suppressed_issues.append(annotate_suppressed_finding(issue.to_json(), rule))
+        suppressed = annotate_suppressed_finding(issue.to_json(), rule)
+        if results is not None:
+            results.append_suppressed(suppressed)
+        else:
+            suppressed_issues.append(suppressed)
         suppressed_by_rule[rule["id"]] += 1
         suppressed_occurrences_by_rule[rule["id"]] += issue.occurrences_count
-    if policy:
-        run["finding_exclusion_policy"] = policy
-
-    # back-link issues onto pages
-    for issue in active_issues:
         page = ctx.page_by_url.get(issue.target_url) if issue.target_url else None
         if page is not None:
-            if issue.check not in page.issues:
-                page.issues.append(issue.check)
-            page.issue_ids.append(issue.id)
-    for issue in suppressed_issues:
-        page = ctx.page_by_url.get(issue.get("target_url")) if issue.get("target_url") else None
-        if page is not None:
-            page.suppressed_issue_ids.append(str(issue["id"]))
+            page.suppressed_issue_ids.append(str(issue.id))
+    if policy:
+        run["finding_exclusion_policy"] = policy
 
     # strip private record from page metrics before serialization
     for page in ctx.pages:
         page.metrics.pop("_record", None)
 
-    by_severity = Counter(i.severity for i in active_issues)
-    by_check = Counter(i.check for i in active_issues)
     weights = ctx.config.get("scoring", {}).get("weights", {})
     summary_totals = {
         "urls_crawled": len(ctx.pages),
@@ -372,7 +418,7 @@ def aggregate(
         ),
     }
     if policy:
-        summary_totals["findings_total"] = len(issues)
+        summary_totals["findings_total"] = total_issues
         summary_totals["suppressed_findings"] = len(suppressed_issues)
         summary_totals["suppressed_occurrences"] = sum(suppressed_occurrences_by_rule.values())
 
@@ -388,12 +434,33 @@ def aggregate(
         # Empty is the ordinary case, and an empty list is still reported so
         # "nothing looked suspicious" is visible rather than inferred from a
         # missing key.
-        "implausible_checks": _implausible_checks(active_issues, n_pages),
+        "implausible_checks": (
+            sorted(
+                [
+                    {"check": check_id, "pages": pages, "share": round(pages / n_pages, 3)}
+                    for check_id, pages in results.implausible_counts()
+                    if n_pages > 0 and pages / n_pages > IMPLAUSIBLE_SHARE
+                ],
+                key=lambda row: (-row["share"], row["check"]),
+            )
+            if results is not None
+            else _implausible_checks(active_issues, n_pages)
+        ),
         "health_score": _health_score(by_severity, n_pages, weights),
     }
     if policy:
-        suppressed_by_check = Counter(str(item["check"]) for item in suppressed_issues)
-        suppressed_by_severity = Counter(str(item["severity"]) for item in suppressed_issues)
+        if results is not None:
+            suppressed_by_check = Counter(
+                row[0]
+                for row in results.con.execute("SELECT check_id FROM suppressed")
+            )
+            suppressed_by_severity = Counter(
+                row[0]
+                for row in results.con.execute("SELECT severity FROM suppressed")
+            )
+        else:
+            suppressed_by_check = Counter(str(item["check"]) for item in suppressed_issues)
+            suppressed_by_severity = Counter(str(item["severity"]) for item in suppressed_issues)
         summary["finding_exclusions"] = {
             "rules_configured": len(policy),
             "suppressed_total": len(suppressed_issues),
@@ -444,7 +511,6 @@ def aggregate(
     # evidence, another didn't) counts only as fired, computed once instead of
     # twice as aggregate.py used to (checks_skipped counted the raw declaration,
     # the returned list subtracted fired — the two could disagree).
-    fired_ids = {i.check for i in issues}
     # An operator's own config switch must never read as a clean/silent result
     # (issue #177): `enabled()` is config-only, so this is knowable independent
     # of whether any code path actually evaluated the check.

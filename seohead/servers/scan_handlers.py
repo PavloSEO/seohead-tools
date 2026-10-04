@@ -584,6 +584,7 @@ def crawl_site_scan(
                     stored_sitemap=reconciliation,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
+                    streaming=True,
                 )
 
             if settings.get("rendering", {}).get("mode", "raw") != "raw":

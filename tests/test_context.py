@@ -6,6 +6,7 @@ import csv
 from pathlib import Path
 
 from seohead.sf.config import load_config
+from seohead.sf.core.aggregate import aggregate
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import load_exports
 
@@ -89,3 +90,35 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
     assert not store_path.exists()
     assert not issues_path.exists()
     assert not groups_path.exists()
+
+
+def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_writes(tmp_path):
+    """The final sort/suppression stage must not reassemble native findings in RAM."""
+    p = tmp_path / "internal_all.csv"
+    with open(p, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Address", "Content Type", "Status Code", "Status", "Indexability"])
+        writer.writerows(
+            [
+                [f"https://example.com/{index}", "text/html", "200", "OK", "Indexable"]
+                for index in range(1000)
+            ]
+        )
+    ctx = AuditContext(load_exports(str(tmp_path)), load_config(None), disk_backed_pages=True)
+    final_path = None
+    try:
+        for page in ctx.pages:
+            ctx.add("TITLE_MISSING", target_url=page.url)
+        result = aggregate(ctx, {"input_mode": "crawl", "crawl_partial": False}, {}, {})
+        assert not isinstance(result.issues, list)
+        assert len(result.issues) == 1000
+        assert [issue.id for issue in result.issues][:2] == ["ISSUE-000001", "ISSUE-000002"]
+        assert list(result.audit_v2_parts()[1]["/issues"]) == list(
+            result.audit_v2_parts()[1]["/issues"]
+        )
+        assert ctx.page_by_url["https://example.com/0"].issue_ids == ["ISSUE-000001"]
+        final_path = Path(ctx._disk_final_issues.path)
+        assert final_path.exists()
+    finally:
+        ctx.close()
+    assert final_path is not None and not final_path.exists()
