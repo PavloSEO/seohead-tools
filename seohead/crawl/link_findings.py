@@ -162,9 +162,7 @@ def follow_and_nofollow_inlink_details(
     for edge in links:
         if (urlsplit(edge.destination).hostname or "").lower() != host:
             continue
-        item = grouped.setdefault(
-            edge.destination, {"sources": set(), "follow": 0, "nofollow": 0}
-        )
+        item = grouped.setdefault(edge.destination, {"sources": set(), "follow": 0, "nofollow": 0})
         item["sources"].add(edge.source)
         item["nofollow" if edge.nofollow else "follow"] += 1
     return [

@@ -20,7 +20,12 @@ _COLUMNS = [
 
 
 def _row(
-    url: str, *, status: int = 200, canonical: str = "", redirect: str = "", title: str = "A useful title for the page"
+    url: str,
+    *,
+    status: int = 200,
+    canonical: str = "",
+    redirect: str = "",
+    title: str = "A useful title for the page",
 ) -> list[str]:
     return [
         url,

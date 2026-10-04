@@ -406,6 +406,32 @@ def test_navigation_honours_the_configured_wait_until(fake_stack):
     assert fake_stack["page"].goto_calls[0]["wait_until"] == "networkidle"
 
 
+def test_navigation_events_distinguish_initial_spa_and_script_routes(fake_stack):
+    page = fake_stack["page"]
+
+    class Frame:
+        url = ""
+
+    frame = Frame()
+    page.main_frame = frame
+
+    def goto(url, **_kwargs):
+        handler = page.handlers["framenavigated"]
+        for destination in (url, url + "#pricing", "https://example.com/checkout"):
+            frame.url = destination
+            handler(frame)
+
+    page.goto = goto
+    result = render_document("https://example.com/", _rendering_config())
+    events = result["renderer"]["navigation"]["events"]
+    assert [event["kind"] for event in events] == [
+        "initial_http_navigation",
+        "spa_history_change",
+        "script_navigation",
+    ]
+    assert all(event["user_click"] is False for event in events)
+
+
 def test_script_timeout_is_a_wait_after_navigation(fake_stack):
     render_document("https://example.com/", _rendering_config(script_timeout_seconds=5))
     assert fake_stack["page"].wait_calls == [5000]

@@ -91,6 +91,11 @@ class _Client:
         return _Stream()
 
 
+class _CertificateFailureClient:
+    def stream(self, *_args, **_kwargs):
+        raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] synthetic")
+
+
 def test_pinned_fulfiller_uses_decoded_bytes_and_never_continues(monkeypatch):
     route = _Route()
     client = _Client()
@@ -229,7 +234,9 @@ def test_pinned_fulfiller_uses_empty_cors_sentinel_for_an_unapproved_cross_origi
     client.close()
 
 
-def test_pinned_fulfiller_fails_closed_for_private_url_method_and_cookie_response(monkeypatch):
+def test_pinned_fulfiller_fails_closed_for_private_url_unsupported_method_and_cookie_response(
+    monkeypatch,
+):
     client = _Client()
     handler, limitations = render._pinned_browser_route(client)
     private = _Route(_Request("http://169.254.169.254/"))
@@ -239,11 +246,41 @@ def test_pinned_fulfiller_fails_closed_for_private_url_method_and_cookie_respons
     handler(private)
     assert private.aborted == ["blockedbyclient"]
 
-    method = _Route(_Request(method="POST"))
+    method = _Route(_Request(method="PATCH"))
     handler(method)
     assert method.aborted == ["blockedbyclient"]
     assert any("private" in item for item in limitations)
-    assert any("POST" in item for item in limitations)
+    assert any("PATCH" in item for item in limitations)
+
+
+def test_pinned_fulfiller_replays_a_browser_post_body(monkeypatch):
+    route = _Route(_Request(method="POST"))
+    route.request.post_data_buffer = b'{"event":"synthetic"}'
+    client = _Client()
+    monkeypatch.setattr(render, "validate_url", lambda url: url)
+    handler, limitations = render._pinned_browser_route(client)
+
+    handler(route)
+
+    assert not route.aborted
+    assert len(route.fulfilled) == 1
+    assert client.calls[0][0] == "POST"
+    assert client.calls[0][2]["content"] == b'{"event":"synthetic"}'
+    assert limitations == []
+
+
+def test_pinned_fulfiller_names_a_missing_ca_without_transport_detail(monkeypatch):
+    route = _Route()
+    monkeypatch.setattr(render, "validate_url", lambda url: url)
+    handler, limitations = render._pinned_browser_route(_CertificateFailureClient())
+
+    handler(route)
+
+    assert route.aborted == ["blockedbyclient"]
+    assert limitations == [
+        "pinned browser request failed: TLS certificate verification failed; trust the "
+        "intercepting CA in the platform store or set SSL_CERT_FILE/SSL_CERT_DIR"
+    ]
 
 
 def test_websocket_routes_are_closed_without_connecting():

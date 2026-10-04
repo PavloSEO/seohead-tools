@@ -132,9 +132,11 @@ COMMANDS = (
     "workflow-checkpoint",
     "workflow-status",
     "workflow-execute",
+    "workflow-resume",
     "monitor-configure",
     "monitor-run",
     "monitor-status",
+    "monitor-schedule",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -491,9 +493,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "workflow-checkpoint",
         "workflow-status",
         "workflow-execute",
+        "workflow-resume",
         "monitor-configure",
         "monitor-run",
         "monitor-status",
+        "monitor-schedule",
     }:
         if getattr(args, "directory", None):
             kw["directory"] = args.directory
@@ -1907,9 +1911,15 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--entry-id", required=True)
         sub.add_argument("--state", required=True, choices=("accepted", "completed"))
         sub.add_argument("--expected-revision", type=int)
-    if cmd in {"workflow-start", "workflow-checkpoint", "workflow-status", "workflow-execute"}:
+    if cmd in {
+        "workflow-start",
+        "workflow-checkpoint",
+        "workflow-status",
+        "workflow-execute",
+        "workflow-resume",
+    }:
         _source_flag(sub, "--directory", help="project directory")
-    if cmd in {"monitor-configure", "monitor-run", "monitor-status"}:
+    if cmd in {"monitor-configure", "monitor-run", "monitor-status", "monitor-schedule"}:
         _source_flag(sub, "--directory", help="project directory")
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")

@@ -217,7 +217,9 @@ class _DiskIssues:
             "target_url TEXT, target_sort TEXT NOT NULL, severity_rank INTEGER NOT NULL, "
             "value_json TEXT NOT NULL)"
         )
-        self.con.execute("CREATE INDEX issues_order ON issues(severity_rank, check_id, target_sort, ordinal)")
+        self.con.execute(
+            "CREATE INDEX issues_order ON issues(severity_rank, check_id, target_sort, ordinal)"
+        )
         self._next_ordinal = 0
 
     def append(self, issue: Issue) -> None:
@@ -246,9 +248,12 @@ class _DiskIssues:
         self.con.execute("DELETE FROM issues WHERE check_id=?", (check_id,))
 
     def has_check(self, check_id: str) -> bool:
-        return self.con.execute(
-            "SELECT 1 FROM issues WHERE check_id=? LIMIT 1", (check_id,)
-        ).fetchone() is not None
+        return (
+            self.con.execute(
+                "SELECT 1 FROM issues WHERE check_id=? LIMIT 1", (check_id,)
+            ).fetchone()
+            is not None
+        )
 
     def iter_deduped_sorted(self) -> Iterator[Issue]:
         """Yield the legacy de-duplication result without a complete list.
@@ -261,8 +266,7 @@ class _DiskIssues:
         current: Issue | None = None
         current_key: tuple[str, str | None] | None = None
         for row in self.con.execute(
-            "SELECT value_json FROM issues "
-            "ORDER BY severity_rank, check_id, target_sort, ordinal"
+            "SELECT value_json FROM issues ORDER BY severity_rank, check_id, target_sort, ordinal"
         ):
             issue = Issue(**json.loads(row[0]))
             key = (issue.check, issue.target_url)
@@ -294,7 +298,9 @@ class _DiskIssueResults:
     """Final active and suppressed findings, retained as re-iterable SQLite rows."""
 
     def __init__(self) -> None:
-        descriptor, name = tempfile.mkstemp(prefix="seohead-audit-final-findings-", suffix=".sqlite")
+        descriptor, name = tempfile.mkstemp(
+            prefix="seohead-audit-final-findings-", suffix=".sqlite"
+        )
         os.close(descriptor)
         self.path, self.closed = name, False
         self.con = sqlite3.connect(name)
@@ -395,7 +401,9 @@ class _DiskIssueResults:
                     (start, stop),
                 )
             ]
-        row = self.con.execute("SELECT value_json FROM suppressed WHERE ordinal=?", (index,)).fetchone()
+        row = self.con.execute(
+            "SELECT value_json FROM suppressed WHERE ordinal=?", (index,)
+        ).fetchone()
         if row is None:
             raise IndexError(index)
         return json.loads(row[0])

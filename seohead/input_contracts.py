@@ -792,6 +792,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "workflow_execute",
         _form("project_directory", "directory", required_with=("scenario_id", "steps", "outcomes")),
     ),
+    _command(
+        "workflow-resume",
+        "workflow_resume",
+        _form("project_directory", "directory", required_with=("run_id", "expected_revision")),
+    ),
     _command("monitor-status", "monitor_status", _form("project_directory", "directory")),
     _command(
         "monitor-configure",
@@ -807,6 +812,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             required_with=("scan_id", "observations", "expected_revision"),
         ),
         note="Records supplied retained-scan differences only; it starts no schedule or delivery.",
+    ),
+    _command(
+        "monitor-schedule",
+        "monitor_schedule",
+        _form(
+            "project_directory",
+            "directory",
+            required_with=("action", "expected_revision"),
+            note="Claims, cancels, backs off, or recovers a local bounded pass; it starts no timer.",
+        ),
     ),
     _command(
         "tool-catalog",

@@ -104,6 +104,25 @@ submit.
   never presented as an unrun audit. Render failures and delivery-size limits
   are actionable failures, not successful delivery receipts.
 
+## Optional configured HTTP handoff
+
+`seohead.bot.service_delivery` is a narrow adapter for a service-owned upload
+endpoint. It does not start a listener or discover recipients. An operator
+constructs `UploadEndpoint` with an absolute HTTPS URL and a
+`CredentialReference("env:NAME")`, then supplies `AuthorizedHTTPUpload.send`
+as the `send` callback to `AuthorizedReportDelivery`. The transport sends a
+single multipart envelope containing the opaque approved destination, report
+metadata, artifact bytes, and the receipt in `Idempotency-Key`.
+
+The endpoint is configuration, not a wizard answer. HTTP URLs, embedded URL
+credentials, fragments, arbitrary destination URLs, missing environment
+credentials, changed file sizes, non-success responses, and transport errors
+all fail before a delivery receipt is marked successful. The adapter does not
+implement a bot SDK, account enrolment, public download links, or deployment.
+A `202 Accepted` response is also not terminal delivery evidence and is
+refused: an asynchronous platform adapter must persist and verify its own
+delivery state before it tells this core that the receipt succeeded.
+
 ## Versioning
 
 `CONTRACT_VERSION` identifies the shape of a persisted conversation. Bump it

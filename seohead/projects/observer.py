@@ -44,7 +44,14 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
                 finding_items.append(
                     {
                         key: issue.get(key)
-                        for key in ("id", "check", "severity", "target_url", "message", "fingerprint")
+                        for key in (
+                            "id",
+                            "check",
+                            "severity",
+                            "target_url",
+                            "message",
+                            "fingerprint",
+                        )
                     }
                 )
         with open_scan(path, require_audit=False) as con:
@@ -77,8 +84,10 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     status = project_status(root)
     progress = project_progress(root, limit=100)
     from .execution import status as execution_status
+    from .monitoring import status as monitor_status
 
     execution = execution_status(root)
+    monitor = monitor_status(root)
     preparation = status["preparation"]
     checks = status["checklist"].get("items", [])
     methods = [
@@ -95,14 +104,13 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         if item["kind"] in {"scenario", "skill"}
     ]
     scans = status["scans"]
-    scan_rows = [
-        {**row, "evidence": _scan_evidence(row)} for row in scans["items"][:scan_limit]
-    ]
+    scan_rows = [{**row, "evidence": _scan_evidence(row)} for row in scans["items"][:scan_limit]]
     snapshot: dict[str, Any] = {
         "ok": True,
         "project": status["project"],
         "progress": progress,
         "execution": execution,
+        "monitor": monitor,
         "methods": methods,
         "preparation": {
             "state": preparation["state"],

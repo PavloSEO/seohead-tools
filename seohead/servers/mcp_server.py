@@ -11,7 +11,9 @@ Requires the optional ``mcp`` dependency: ``pip install "seohead-seotools[mcp]"`
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any, Literal
 
 from seohead import runlog
@@ -84,10 +86,30 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 
+    host_consumer = os.environ.get("SEOHEAD_MCP_CONSUMER_ID")
+    host_projects = {
+        str(Path(item).resolve())
+        for item in os.environ.get("SEOHEAD_MCP_PROJECT_ALLOWLIST", "").split(os.pathsep)
+        if item
+    }
+
+    def bound_consumer(directory: str, consumer: str | None) -> str | None:
+        """Use only an explicit caller or this stdio process's scoped owner.
+
+        A process binding is opt-in and applies only to the configured project
+        allowlist.  It never guesses a peer agent's identity.
+        """
+        if consumer is not None:
+            return consumer
+        if not host_consumer or not host_projects:
+            return None
+        return host_consumer if str(Path(directory).resolve()) in host_projects else None
+
     def with_project_notice(
         result: dict[str, Any], directory: str, consumer: str | None
     ) -> dict[str, Any]:
         """Attach a scoped notice without letting an unrelated project leak in."""
+        consumer = bound_consumer(directory, consumer)
         if consumer is None:
             return result
         result = dict(result)
@@ -1466,9 +1488,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.indexnow_submit(urls=urls, host=host, key_location=key_location))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_open(directory: str, expected_site: str | None = None) -> dict[str, Any]:
+    def seo_project_open(
+        directory: str, expected_site: str | None = None, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Open a local project workspace without executing template references."""
-        return _checked(handlers.project_open(directory=directory, expected_site=expected_site))
+        return _checked(
+            with_project_notice(
+                handlers.project_open(directory=directory, expected_site=expected_site),
+                directory,
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_new(
@@ -1499,6 +1529,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         status never marks notes read or acknowledged.
         """
         kwargs = {"directory": directory}
+        consumer = bound_consumer(directory, consumer)
         if consumer is not None:
             kwargs["consumer"] = consumer
         return _checked(handlers.project_status(**kwargs))
@@ -1515,6 +1546,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         explicitly task completion, not a site-health or remediation percentage.
         """
         kwargs = {"directory": directory, "limit": limit, "offset": offset}
+        consumer = bound_consumer(directory, consumer)
         if consumer is not None:
             kwargs["consumer"] = consumer
         return _checked(handlers.project_progress(**kwargs))
@@ -1605,10 +1637,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_start(
-        directory: str, scenario_id: str, steps: list[str], expected_revision: int = 0
+        directory: str,
+        scenario_id: str,
+        steps: list[str],
+        expected_revision: int = 0,
+        context: dict[str, Any] | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Start a local registered workflow; it performs no scan or provider call."""
-        return _checked(handlers.workflow_start(directory, scenario_id, steps, expected_revision))
+        return _checked(
+            with_project_notice(
+                handlers.workflow_start(directory, scenario_id, steps, expected_revision, context),
+                directory,
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_checkpoint(
@@ -1618,44 +1661,104 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         state: str,
         evidence: list[dict] | None = None,
         expected_revision: int = 0,
+        review: dict[str, Any] | None = None,
+        phase: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Persist one registered-step result before the next step or agent handoff."""
         return _checked(
-            handlers.workflow_checkpoint(
-                directory, run_id, step_id, state, evidence, expected_revision
+            with_project_notice(
+                handlers.workflow_checkpoint(
+                    directory, run_id, step_id, state, evidence, expected_revision, review, phase
+                ),
+                directory,
+                consumer,
             )
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_workflow_status(directory: str) -> dict[str, Any]:
+    def seo_workflow_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Recover the exact next registered step after interruption or handoff."""
-        return _checked(handlers.workflow_status(directory))
+        return _checked(
+            with_project_notice(handlers.workflow_status(directory), directory, consumer)
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_execute(
-        directory: str, scenario_id: str, steps: list[str], outcomes: list[dict]
+        directory: str,
+        scenario_id: str,
+        steps: list[str],
+        outcomes: list[dict],
+        context: dict[str, Any] | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
-        """Run a supplied local synthetic sequence, checkpointing every step."""
-        return _checked(handlers.workflow_execute(directory, scenario_id, steps, outcomes))
+        """Checkpoint a supplied local sequence without executing network work."""
+        return _checked(
+            with_project_notice(
+                handlers.workflow_execute(directory, scenario_id, steps, outcomes, context),
+                directory,
+                consumer,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_workflow_resume(
+        directory: str, run_id: str, expected_revision: int, consumer: str | None = None
+    ) -> dict[str, Any]:
+        """Reopen only the interrupted registered step after a second-agent handoff."""
+        return _checked(
+            with_project_notice(
+                handlers.workflow_resume(directory, run_id, expected_revision), directory, consumer
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_configure(
-        directory: str, policy: dict, expected_revision: int = 0
+        directory: str, policy: dict, expected_revision: int = 0, consumer: str | None = None
     ) -> dict[str, Any]:
         """Configure a disabled local incremental monitor; this starts no schedule or message delivery."""
-        return _checked(handlers.monitor_configure(directory, policy, expected_revision))
+        return _checked(
+            with_project_notice(
+                handlers.monitor_configure(directory, policy, expected_revision),
+                directory,
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_monitor_run(
-        directory: str, scan_id: str, observations: list[dict], expected_revision: int
+        directory: str,
+        scan_id: str,
+        observations: list[dict],
+        expected_revision: int,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Record one bounded retained-scan diff; quiet runs do not notify anyone."""
-        return _checked(handlers.monitor_run(directory, scan_id, observations, expected_revision))
+        return _checked(
+            with_project_notice(
+                handlers.monitor_run(directory, scan_id, observations, expected_revision),
+                directory,
+                consumer,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_schedule(
+        directory: str, action: str, expected_revision: int, consumer: str | None = None
+    ) -> dict[str, Any]:
+        """Claim or recover a local run; no timer, crawl, or delivery starts here."""
+        return _checked(
+            with_project_notice(
+                handlers.monitor_schedule(directory, action, expected_revision), directory, consumer
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_monitor_status(directory: str) -> dict[str, Any]:
+    def seo_monitor_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Read local monitor policy and its last retained checkpoint."""
-        return _checked(handlers.monitor_status(directory))
+        return _checked(
+            with_project_notice(handlers.monitor_status(directory), directory, consumer)
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_cases(
@@ -1767,6 +1870,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         template: dict | None = None,
         expected_revision: int | None = None,
         plan: dict | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Initialize or reconcile a local checklist without executing a check, skill, or scenario.
 
@@ -1791,17 +1895,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         revision for a later conditional write. This never makes a network request.
         """
         return _checked(
-            handlers.project_checklist_init(
-                directory=directory,
-                template=template,
-                expected_revision=expected_revision,
-                plan=plan,
+            with_project_notice(
+                handlers.project_checklist_init(
+                    directory=directory,
+                    template=template,
+                    expected_revision=expected_revision,
+                    plan=plan,
+                ),
+                directory,
+                consumer,
             )
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_update(
-        directory: str, item: dict, expected_revision: int
+        directory: str, item: dict, expected_revision: int, consumer: str | None = None
     ) -> dict[str, Any]:
         """Add or update one local checklist definition without executing it.
 
@@ -1810,8 +1918,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         network request.
         """
         return _checked(
-            handlers.project_checklist_update(
-                directory=directory, item=item, expected_revision=expected_revision
+            with_project_notice(
+                handlers.project_checklist_update(
+                    directory=directory, item=item, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
             )
         )
 
@@ -1846,18 +1958,28 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_view_list(directory: str) -> dict[str, Any]:
+    def seo_project_view_list(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """List saved declarative finding views and the current project view-config revision."""
-        return _checked(handlers.project_view_list(directory=directory))
+        return _checked(
+            with_project_notice(
+                handlers.project_view_list(directory=directory), directory, consumer
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_view_show(directory: str, name: str) -> dict[str, Any]:
+    def seo_project_view_show(
+        directory: str, name: str, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Read one saved finding view with its stable identity, schema version and revision."""
-        return _checked(handlers.project_view_show(directory=directory, name=name))
+        return _checked(
+            with_project_notice(
+                handlers.project_view_show(directory=directory, name=name), directory, consumer
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_view_save(
-        directory: str, view: dict[str, Any], expected_revision: int
+        directory: str, view: dict[str, Any], expected_revision: int, consumer: str | None = None
     ) -> dict[str, Any]:
         """Create or revise a bounded declarative finding view using an expected config revision.
 
@@ -1865,14 +1987,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         use registered fields only; no SQL, code, or regular expressions are accepted. This
         changes project view configuration only; it does not edit scans or affect scores/tasks."""
         return _checked(
-            handlers.project_view_save(
-                directory=directory, view=view, expected_revision=expected_revision
+            with_project_notice(
+                handlers.project_view_save(
+                    directory=directory, view=view, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
             )
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_findings_view(
-        directory: str, name: str, audit: dict | str, offset: int = 0
+        directory: str, name: str, audit: dict | str, offset: int = 0, consumer: str | None = None
     ) -> dict[str, Any]:
         """Apply one saved view to an audit object, JSON file, or validated scan.v1 SQLite artifact.
 
@@ -1880,7 +2006,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         truncation, source identity, and view/config revisions. Filtering never suppresses
         findings or changes audit coverage/scoring; no crawl or provider call occurs."""
         return _checked(
-            handlers.findings_view(directory=directory, name=name, audit=audit, offset=offset)
+            with_project_notice(
+                handlers.findings_view(directory=directory, name=name, audit=audit, offset=offset),
+                directory,
+                consumer,
+            )
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
@@ -1889,6 +2019,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         policy: dict | None = None,
         apply: bool = False,
         expected_revision: int | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Preview stack-aware project priorities from saved facts without network requests.
 
@@ -1898,8 +2029,15 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         not executable code; omitted policy uses the packaged defaults.
         """
         return _checked(
-            handlers.project_priorities(
-                directory=directory, policy=policy, apply=apply, expected_revision=expected_revision
+            with_project_notice(
+                handlers.project_priorities(
+                    directory=directory,
+                    policy=policy,
+                    apply=apply,
+                    expected_revision=expected_revision,
+                ),
+                directory,
+                consumer,
             )
         )
 
@@ -1909,11 +2047,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         policy: dict | None = None,
         apply: bool = False,
         expected_revision: int | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Read or explicitly update operator crawl defaults and project admission thresholds."""
         return _checked(
-            handlers.project_policy(
-                directory, policy=policy, apply=apply, expected_revision=expected_revision
+            with_project_notice(
+                handlers.project_policy(
+                    directory, policy=policy, apply=apply, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
             )
         )
 
@@ -1954,17 +2097,22 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         competitors: list | None = None,
         approve_large_crawl: bool = False,
         producer_build: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Create and prepare a new bounded project; failures leave inspectable pending work."""
         return _checked(
-            handlers.project_start(
+            with_project_notice(
+                handlers.project_start(
+                    directory,
+                    target,
+                    facts=facts,
+                    template=template,
+                    competitors=competitors,
+                    approve_large_crawl=approve_large_crawl,
+                    producer_build=producer_build,
+                ),
                 directory,
-                target,
-                facts=facts,
-                template=template,
-                competitors=competitors,
-                approve_large_crawl=approve_large_crawl,
-                producer_build=producer_build,
+                consumer,
             )
         )
 

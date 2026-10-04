@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 145 commands and 150 callable tools,
+The current registry has 147 commands and 152 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -35,25 +35,25 @@ and inputs remain in the nearby route sections and generated tool reference.
 `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
 `llms-txt-check` · `log-analyze` · `log-scan` · `markdown-extract` · `marketing-inventory` ·
 `meta-description-drafts` · `metrika-counters` · `metrika-report` · `metrika-setup` · `metrika-traffic-pdf` ·
-`miratext-analyze` · `mirror-check` · `monitor-configure` · `monitor-run` · `monitor-status` · `parse` ·
-`project-checklist-init` · `project-checklist-record` · `project-checklist-update` · `project-facts` ·
-`project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` · `project-inbox-read` ·
-`project-inbox-submit` · `project-inbox-unread` · `project-new` · `project-observe` · `project-open` ·
-`project-policy` · `project-prepare` · `project-priorities` · `project-progress` · `project-start` ·
-`project-status` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
-`provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
-`provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
-`regions-tree` · `remediation-cases` · `remediation-record-verification` · `remediation-report` ·
-`remediation-summary` · `remediation-transition` · `render-check` · `report-build` · `robots-check` ·
-`scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` ·
-`scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-pin` · `scan-prune` ·
-`scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scenario-show`
-· `schema-build` · `schema-check` · `security-check` · `segment-diff` · `semantic-inputs` ·
-`semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` · `skill-show` ·
-`social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status` ·
-`sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
-`wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-start` ·
-`workflow-status`
+`miratext-analyze` · `mirror-check` · `monitor-configure` · `monitor-run` · `monitor-schedule` ·
+`monitor-status` · `parse` · `project-checklist-init` · `project-checklist-record` ·
+`project-checklist-update` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` ·
+`project-inbox-list` · `project-inbox-read` · `project-inbox-submit` · `project-inbox-unread` · `project-new`
+· `project-observe` · `project-open` · `project-policy` · `project-prepare` · `project-priorities` ·
+`project-progress` · `project-start` · `project-status` · `project-view-list` · `project-view-save` ·
+`project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` ·
+`provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` ·
+`redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` ·
+`remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` ·
+`render-check` · `report-build` · `robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` ·
+`scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` ·
+`scan-list` · `scan-pin` · `scan-prune` · `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` ·
+`scan-snapshot` · `scan-status` · `scenario-show` · `schema-build` · `schema-check` · `security-check` ·
+`segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` ·
+`skill-list` · `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` ·
+`sources-status` · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` ·
+`verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` ·
+`workflow-resume` · `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
 ## Offline BI projection
 
@@ -693,7 +693,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(145 + 5):
+(147 + 5):
 
 ```bash
 seohead mcp        # stdio

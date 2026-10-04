@@ -321,7 +321,10 @@ def aggregate(
                         else "crawl is partial: a whole-graph finding cannot be proven when the "
                         "crawl did not reach every URL",
                     )
-            ctx.retract("CANONICAL_HOMEPAGE_GROUP", "crawl is partial: a site-wide canonical pattern cannot be established from an incomplete page population")
+            ctx.retract(
+                "CANONICAL_HOMEPAGE_GROUP",
+                "crawl is partial: a site-wide canonical pattern cannot be established from an incomplete page population",
+            )
             for check_id in sorted(DEPTH_FINDING_CHECKS):
                 ctx.retract(check_id, PARTIAL_DEPTH_REASON)
             issues = ctx.issues.iter_deduped_sorted()
@@ -365,9 +368,7 @@ def aggregate(
         if rule is None:
             if results is not None:
                 results.append_active(issue)
-                results.remember_implausible_targets(
-                    issue, issue.check in IMAGE_TARGETED_CHECKS
-                )
+                results.remember_implausible_targets(issue, issue.check in IMAGE_TARGETED_CHECKS)
             else:
                 active_issues.append(issue)
             by_severity[issue.severity] += 1
@@ -451,12 +452,10 @@ def aggregate(
     if policy:
         if results is not None:
             suppressed_by_check = Counter(
-                row[0]
-                for row in results.con.execute("SELECT check_id FROM suppressed")
+                row[0] for row in results.con.execute("SELECT check_id FROM suppressed")
             )
             suppressed_by_severity = Counter(
-                row[0]
-                for row in results.con.execute("SELECT severity FROM suppressed")
+                row[0] for row in results.con.execute("SELECT severity FROM suppressed")
             )
         else:
             suppressed_by_check = Counter(str(item["check"]) for item in suppressed_issues)

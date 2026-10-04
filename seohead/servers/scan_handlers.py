@@ -380,10 +380,13 @@ def crawl_site_scan(
         raise ValueError("url is required for a SQLite scan crawl")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
-    if (
-        settings["discovery"]["external"]["crawl"]
-        and settings["storage"]["format_version"] != "scan.v2"
-    ):
+    discovery = settings.get("discovery", {})
+    external = discovery.get("external", {}) if isinstance(discovery, dict) else {}
+    # Bridge callers from before discovery.external existed still inject the
+    # small settings subset their audit needs.  The effective default is off;
+    # only a validated modern config may opt into the separate external phase.
+    external_crawl = bool(external.get("crawl", False)) if isinstance(external, dict) else False
+    if external_crawl and settings["storage"]["format_version"] != "scan.v2":
         settings = copy.deepcopy(settings)
         settings["storage"]["format_version"] = "scan.v2"
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
@@ -421,7 +424,7 @@ def crawl_site_scan(
         proxy_route=proxy_route,
     )
     external_summary = None
-    if settings["discovery"]["external"]["crawl"]:
+    if external_crawl:
         from time import monotonic
         from urllib.parse import urlsplit
 

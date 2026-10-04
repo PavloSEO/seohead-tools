@@ -30,6 +30,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,8 @@ from seohead.tools.browser_transport import (
     open_context,
     prepare,
 )
+
+_NAVIGATION_EVENT_CAP = 32
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
 # renders a different DOM at different widths, so comparing two runs requires
@@ -201,7 +204,7 @@ class RenderCancelled(RuntimeError):
 
 MAX_CONSOLE_ERRORS = 100
 MAX_CONSOLE_ERROR_CHARS = 1_000
-_BROWSER_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_BROWSER_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "POST"})
 _BLOCKED_WEBSOCKET_LIMITATION = "browser WebSocket requests are unsupported by pinned rendering"
 _HOP_BY_HOP_HEADERS = frozenset(
     {
@@ -317,7 +320,10 @@ def _pinned_browser_route(
             cookies = getattr(client, "cookies", None)
             if cookies is not None:
                 cookies.clear()
-            with client.stream(method, url, headers=headers, content=None) as response:
+            body = request.post_data_buffer if method == "POST" else None
+            if body is not None and not isinstance(body, bytes):
+                raise TypeError("browser POST body is unavailable")
+            with client.stream(method, url, headers=headers, content=body) as response:
                 response_headers: dict[str, str] = {}
                 response_header_names: dict[str, str] = {}
                 cookie_headers: list[str] = []
@@ -374,7 +380,7 @@ def _pinned_browser_route(
         except RenderCancelled:
             abort(route, _RENDER_CANCELLED)
         except Exception as exc:
-            abort(route, f"pinned browser request failed: {_error_summary(exc, policy)}")
+            abort(route, f"pinned browser request failed: {_network_error_summary(exc, policy)}")
 
     return handler, limitations
 
@@ -424,6 +430,19 @@ def _error_summary(exc: Exception, policy: Any = None) -> str:
             return exc.code
         return "remote browser request failed"
     return f"{type(exc).__name__}: {exc}"
+
+
+_TLS_VERIFICATION_FAILURE = (
+    "TLS certificate verification failed; trust the intercepting CA in the platform store "
+    "or set SSL_CERT_FILE/SSL_CERT_DIR"
+)
+
+
+def _network_error_summary(exc: Exception, policy: Any = None) -> str:
+    """Name certificate failures without exposing transport detail or credentials."""
+    if "certificate_verify_failed" in str(exc).lower():
+        return _TLS_VERIFICATION_FAILURE
+    return _error_summary(exc, policy)
 
 
 def _staged_screenshot_path(artifacts_dir: str, url: str) -> str:
@@ -960,7 +979,7 @@ def render_check(
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Raw HTML fetch failed: {_error_summary(exc)}",
+            "error": f"Raw HTML fetch failed: {_network_error_summary(exc)}",
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
@@ -1489,6 +1508,9 @@ def render_document(
             "final_url": None,
             "wait_until": browser_cfg.get("wait_until", "load"),
             "timeout_seconds": nav_timeout,
+            "interaction_policy": "no_clicks",
+            "events": [],
+            "events_omitted": 0,
         },
         "settings": {
             "viewport": viewport,
@@ -1517,6 +1539,48 @@ def render_document(
     if endpoint is not None:
         renderer["transport"] = transport_facts
     browser_limitations: list[str] = []
+    navigation_started = time.monotonic()
+    navigation_events: list[dict[str, Any]] = []
+    navigation_events_omitted = 0
+
+    def _same_document(left: str, right: str) -> bool:
+        a, b = urlparse(left), urlparse(right)
+        return (a.scheme, a.netloc, a.path, a.params, a.query) == (
+            b.scheme,
+            b.netloc,
+            b.path,
+            b.params,
+            b.query,
+        )
+
+    def _on_frame_navigated(frame: Any) -> None:
+        nonlocal navigation_events_omitted
+        # Iframes navigate independently; issue #826 is about the inspected
+        # document's route and must not infer a page redirect from an embed.
+        if frame is not getattr(page, "main_frame", None):
+            return
+        destination = str(getattr(frame, "url", ""))
+        if not destination:
+            return
+        if len(navigation_events) >= _NAVIGATION_EVENT_CAP:
+            navigation_events_omitted += 1
+            return
+        source = navigation_events[-1]["destination"] if navigation_events else target
+        navigation_events.append(
+            {
+                "source": source,
+                "destination": destination,
+                "elapsed_ms": round((time.monotonic() - navigation_started) * 1000),
+                "kind": (
+                    "initial_http_navigation"
+                    if not navigation_events
+                    else "spa_history_change"
+                    if _same_document(source, destination)
+                    else "script_navigation"
+                ),
+                "user_click": False,
+            }
+        )
 
     # There is deliberately no request hook beside _capture_response. Reading the
     # browser's own wire headers upgraded credentials_used the moment any request
@@ -1623,6 +1687,7 @@ def render_document(
                     lambda ws_route: _guard_websocket_route(ws_route, browser_limitations),
                 )
                 page = context.new_page()
+                page.on("framenavigated", _on_frame_navigated)
                 if max_html_bytes is not None:
                     page.on("response", _capture_response)
                 page.on("console", _on_console)
@@ -1709,6 +1774,8 @@ def render_document(
             network_client.close()
 
     renderer["navigation"]["final_url"] = final_url
+    renderer["navigation"]["events"] = navigation_events
+    renderer["navigation"]["events_omitted"] = navigation_events_omitted
     renderer["transforms"]["flatten_shadow_dom_applied"] = shadow_flattened
     renderer["transforms"]["flatten_iframes_applied"] = iframe_flattened
     renderer["console_error_count"] = len(console_errors) + console_errors_omitted

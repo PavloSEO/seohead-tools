@@ -149,9 +149,11 @@ and this decision makes no backend migration.
 | `workflow-start` | Project directory (`directory`); requires `scenario_id, steps` | — |
 | `workflow-checkpoint` | Project directory (`directory`); requires `run_id, step_id, state, expected_revision` | — |
 | `workflow-execute` | Project directory (`directory`); requires `scenario_id, steps, outcomes` | — |
+| `workflow-resume` | Project directory (`directory`); requires `run_id, expected_revision` | — |
 | `monitor-status` | Project directory (`directory`) | — |
 | `monitor-configure` | Project directory (`directory`); requires `policy` | — |
 | `monitor-run` | Project directory (`directory`); requires `scan_id, observations, expected_revision` | Records supplied retained-scan differences only; it starts no schedule or delivery. |
+| `monitor-schedule` | Project directory (`directory`); requires `action, expected_revision` | Claims, cancels, backs off, or recovers a local bounded pass; it starts no timer. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |
 | `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required. |

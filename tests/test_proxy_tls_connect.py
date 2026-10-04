@@ -54,15 +54,13 @@ def _certificate(tmp_path):
     )
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     server_context.load_cert_chain(str(cert_path), str(key_path))
-    client_context = ssl.create_default_context()
-    client_context.load_verify_locations(cadata=cert_pem.decode())
-    return server_context, client_context
+    return server_context, cert_path
 
 
 def test_successful_connect_keeps_vetted_ip_but_uses_origin_sni_and_verification(
     monkeypatch, tmp_path
 ):
-    server_context, client_context = _certificate(tmp_path)
+    server_context, cert_path = _certificate(tmp_path)
     observed = {"connect": [], "sni": [], "host": []}
     server_context.set_servername_callback(
         lambda _socket, name, _context: observed["sni"].append(name)
@@ -125,9 +123,9 @@ def test_successful_connect_keeps_vetted_ip_but_uses_origin_sni_and_verification
             route = net.resolve_proxy_route(
                 f"http://127.0.0.1:{proxy.server_address[1]}", allow_private=True
             )
-            client, http2 = net.http_client(
-                5.0, verify=client_context, **net.crawl_transport_options(route)
-            )
+            monkeypatch.setenv("SSL_CERT_FILE", str(cert_path))
+            options = net.crawl_transport_options(route)
+            client, http2 = net.http_client(5.0, **options)
             try:
                 assert http2 is False  # avoid cross-host tunnel reuse on one pinned IP
                 assert client.get("https://example.test/").text == "ok"
