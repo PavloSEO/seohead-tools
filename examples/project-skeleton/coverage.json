@@ -7805,7 +7805,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "a0d7cc97af00a3bb73497afb80e695599529cb64891924364fc58f3f0765ea64",
+        "source_hash": "eb8963db369f345624edd8378e991ca7cd6cfc019669d8f1c269076f1cb66206",
         "title": "Scenario 31 \u2014 Hreflang return links: whether the other side of the pair agrees"
       },
       "definitions": [
@@ -7825,7 +7825,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "a0d7cc97af00a3bb73497afb80e695599529cb64891924364fc58f3f0765ea64",
+            "source_hash": "eb8963db369f345624edd8378e991ca7cd6cfc019669d8f1c269076f1cb66206",
             "title": "Scenario 31 \u2014 Hreflang return links: whether the other side of the pair agrees"
           },
           "observed_at": "2026-09-09T00:00:00Z"
