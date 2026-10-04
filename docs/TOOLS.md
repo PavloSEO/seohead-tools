@@ -16,9 +16,44 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 137 commands and 142 callable tools,
-with 181 audit checks. These are inventories, not coverage on every input.
+The current registry has 144 commands and 149 callable tools,
+with 182 audit checks. These are inventories, not coverage on every input.
 
+<!-- generated-command-inventory:start -->
+## Generated command inventory
+
+The command names below are generated from the shared CLI/MCP registry; detailed behavior
+and inputs remain in the nearby route sections and generated tool reference.
+
+`ai-bots-check` · `asset-weight-check` · `audit-workflow` · `backlinks-check` · `bi-bigquery-plan` ·
+`bi-export` · `bi-sheets-plan` · `boilerplate-report` · `cdn-check` · `citability-check` · `compare-crawls` ·
+`crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export` · `crawl-enrich` · `crawl-import` ·
+`crawl-site` · `crtsh-subdomains` · `crux-report` · `domain-profile` · `duplicate-check` · `evidence-join` ·
+`evidence-normalize` · `facts-export` · `findings-view` · `google-keywords` · `google-serp` · `gsc-archive` ·
+`gsc-progress` · `gsc-query` · `headers-check` · `hreflang-check` · `images-download` · `images-optimize` ·
+`indexnow-submit` · `inspect-url` · `keywords-cluster` · `keywords-exact` · `keywords-expand` ·
+`keywords-seasonality` · `links-check` · `llms-txt-check` · `log-analyze` · `log-scan` · `markdown-extract` ·
+`marketing-inventory` · `meta-description-drafts` · `metrika-counters` · `metrika-report` · `metrika-setup` ·
+`metrika-traffic-pdf` · `miratext-analyze` · `mirror-check` · `monitor-configure` · `monitor-run` ·
+`monitor-status` · `parse` · `project-checklist-init` · `project-checklist-record` ·
+`project-checklist-update` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` ·
+`project-inbox-list` · `project-inbox-read` · `project-inbox-submit` · `project-inbox-unread` · `project-new`
+· `project-observe` · `project-open` · `project-policy` · `project-prepare` · `project-priorities` ·
+`project-progress` · `project-start` · `project-status` · `project-view-list` · `project-view-save` ·
+`project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` ·
+`provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` ·
+`redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` ·
+`remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` ·
+`render-check` · `report-build` · `robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` ·
+`scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` ·
+`scan-list` · `scan-pin` · `scan-prune` · `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` ·
+`scan-snapshot` · `scan-status` · `scenario-show` · `schema-build` · `schema-check` · `security-check` ·
+`segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` ·
+`skill-list` · `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` ·
+`sources-status` · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` ·
+`verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` ·
+`workflow-start` · `workflow-status`
+<!-- generated-command-inventory:end -->
 ## Offline BI projection
 
 `bi-export` writes typed, bounded CSV partitions and a provenance/coverage manifest
@@ -623,7 +658,7 @@ assignment or by the audit's already validated segment rules. It records
 assignment provenance and keeps candidate, declared, confirmed, and unassigned
 states separate; it does not infer a shared implementation from repeated findings.
 
-**181 checks**: 12 critical, 83 warnings, 86 notices. Sources: SF exports,
+**182 checks**: 12 critical, 84 warnings, 86 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -657,7 +692,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(137 + 5):
+(144 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -665,7 +700,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 181 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 182 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another
