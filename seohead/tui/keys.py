@@ -39,6 +39,8 @@ _SEQUENCES = {
     "OB": "down",
     "OH": "home",
     "OF": "end",
+    "[200~": "paste_start",
+    "[201~": "paste_end",
 }
 
 #: How long to wait for the rest of an escape sequence before deciding the
@@ -70,7 +72,7 @@ def _read_available(fd: int, budget: float) -> str:
         ready, _, _ = select.select([fd], [], [], budget)
         if not ready:
             return chunk
-        data = os.read(fd, 8).decode("utf-8", errors="replace")
+        data = os.read(fd, 1).decode("utf-8", errors="replace")
         if not data:
             return chunk
         chunk += data

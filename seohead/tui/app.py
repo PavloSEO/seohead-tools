@@ -482,7 +482,42 @@ def _watch_detail_lines(project: str, state: ShellState, palette: theme.Palette)
 def _note_lines(state: ShellState, palette: theme.Palette) -> list[Text]:
     title = "new proposed goal" if state.note_kind == "proposed_goal" else "new project note"
     label = Text(title, style=palette.title) if palette.color else Text(title.upper())
-    return [label, Text(""), Text(state.note_text or "(type or dictate text, then press enter)")]
+    return [
+        label,
+        Text(f"{len(state.note_text):,}/{state.note_limit:,} characters"),
+        Text(state.note_error, style="#fbbf24" if palette.color else ""),
+        Text(state.note_text or "(type or dictate text, then press enter)"),
+    ]
+
+
+def _save_note(project: str, state: ShellState) -> str:
+    """Keep a draft visible when a local save is refused or fails."""
+    from seohead.projects.inbox import submit
+
+    references = [f"section:{state.watch_section}"]
+    if state.watch_selected_scan_uuid:
+        references.append(f"scan:{state.watch_selected_scan_uuid}")
+        if state.watch_detail_ordinal is not None:
+            references.append(
+                f"finding:{state.watch_selected_scan_uuid}/{state.watch_detail_ordinal}"
+            )
+    try:
+        submit(
+            project,
+            text=state.note_text,
+            kind=state.note_kind,
+            author_role="specialist",
+            references=references,
+        )
+    except (OSError, ValueError) as exc:
+        state.note_error = f"Could not save: {exc}"
+        state.view = "note"
+        state.note_ready = False
+        return state.note_error
+    state.note_text = ""
+    state.note_error = ""
+    state.note_ready = False
+    return f"{state.note_kind.replace('_', ' ')} saved locally; waiting for a bound agent"
 
 
 class _DashboardLayout(Layout):
@@ -801,9 +836,7 @@ def _watch_dashboard(
     footer = Text()
     if state.view == "note":
         footer.append("Type or dictate text   Enter Save   Esc Cancel\n", style=accent)
-        footer.append(
-            "Saved notes reach the agent on its next project-bound tool call", style=muted
-        )
+        footer.append("Saved locally; unread notice requires a project-bound agent", style=muted)
     elif state.view == "watch_filter":
         footer.append("Type filter   Enter Apply   Esc Cancel", style=accent)
     elif state.view == "watch_detail":
@@ -910,6 +943,10 @@ def run(
         )
         return 1
     state = ShellState(commands=command_rows(commands), view="watch" if project else "palette")
+    if project:
+        from seohead.projects.inbox import MAX_TEXT
+
+        state.note_limit = MAX_TEXT
     fd = stdin.fileno()
     message: str | None = None
     refresh = _ObserverRefresh(project) if project else None
@@ -923,6 +960,8 @@ def run(
                 vertical_overflow="crop",
             ) as live,
         ):
+            console.file.write("\x1b[?2004h")
+            console.file.flush()
             while not state.quit_requested:
                 live.update(
                     Panel(
@@ -943,19 +982,12 @@ def run(
                 )
                 state.handle_key(keys.read_key(fd, timeout=1.0 if project else None))
                 if project and state.note_ready:
-                    from seohead.projects.inbox import submit
-
-                    submit(
-                        project,
-                        text=state.note_text,
-                        kind=state.note_kind,
-                        author_role="specialist",
-                    )
-                    message = f"{state.note_kind.replace('_', ' ')} saved to the project inbox"
-                    state.note_text = ""
-                    state.note_ready = False
+                    message = _save_note(project, state)
     except KeyboardInterrupt:
         pass
+    finally:
+        console.file.write("\x1b[?2004l")
+        console.file.flush()
     return 0
 
 

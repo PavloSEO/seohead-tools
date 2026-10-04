@@ -72,6 +72,65 @@ def test_raw_key_reader_keeps_one_utf8_character_intact():
         os.close(writer)
 
 
+def test_bracketed_paste_preserves_multiline_text_until_explicit_save():
+    reader, writer = os.pipe()
+    try:
+        os.write(writer, b"\x1b[200~first\nsecond\x1b[201~\r")
+        state = ShellState(commands=[], view="note")
+        while True:
+            key = read_key(reader)
+            state.handle_key(key)
+            if key == "paste_end":
+                break
+        assert state.note_text == "first\nsecond"
+        assert state.view == "note" and not state.note_ready
+        state.handle_key(read_key(reader))
+        assert state.note_ready
+    finally:
+        os.close(reader)
+        os.close(writer)
+
+
+def test_overlong_note_and_save_failure_preserve_the_draft(tmp_path, monkeypatch):
+    from seohead.tui.app import _save_note
+
+    state = ShellState(commands=[], view="note", note_text="x" * 8001)
+    state.handle_key("enter")
+    assert state.view == "note" and not state.note_ready
+    assert "shorten" in state.note_error
+    state.note_text = "Do not lose this question"
+    state.note_ready = True
+
+    def refused(*args, **kwargs):
+        raise OSError("write refused")
+
+    monkeypatch.setattr("seohead.projects.inbox.submit", refused)
+    assert "write refused" in _save_note(str(tmp_path), state)
+    assert state.note_text == "Do not lose this question"
+    assert state.view == "note" and not state.note_ready
+
+
+def test_saved_note_is_linked_to_selected_finding(tmp_path):
+    from seohead.projects.inbox import list_entries
+    from seohead.tui.app import _save_note
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    state = ShellState(
+        commands=[],
+        view="watch",
+        note_text="Please recheck this finding",
+        watch_section="findings",
+        watch_selected_scan_uuid="scan-001",
+        watch_detail_ordinal=7,
+        note_ready=True,
+    )
+    _save_note(str(root), state)
+    entry = list_entries(root, consumer="proof")["entries"][0]
+    assert entry["references"] == ["section:findings", "scan:scan-001", "finding:scan-001/7"]
+    assert state.note_text == "" and not state.note_ready
+
+
 def test_raw_input_preserves_terminal_newline_output_and_restores_attributes():
     master, slave = pty.openpty()
     try:

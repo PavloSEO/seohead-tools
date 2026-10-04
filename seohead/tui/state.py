@@ -43,6 +43,9 @@ class ShellState:
     note_text: str = ""
     note_ready: bool = False
     note_kind: str = "note"
+    note_error: str = ""
+    note_limit: int = 8000
+    paste_active: bool = False
     watch_section: str = "overview"
     watch_index: int = 0
     watch_offset: int = 0
@@ -114,16 +117,36 @@ class ShellState:
         if key == "timeout":
             return
         if self.view == "note":
-            if key == "escape":
+            if key == "paste_start":
+                self.paste_active = True
+            elif key == "paste_end":
+                self.paste_active = False
+            elif key == "enter" and self.paste_active:
+                if len(self.note_text) <= self.note_limit:
+                    self.note_text += "\n"
+            elif key == "escape":
                 self.note_text = ""
+                self.note_error = ""
+                self.paste_active = False
                 self.view = "watch"
             elif key == "backspace":
                 self.note_text = self.note_text[:-1]
+                self.note_error = ""
             elif key == "enter" and self.note_text.strip():
-                self.note_ready = True
-                self.view = "watch"
+                if len(self.note_text) > self.note_limit:
+                    self.note_error = (
+                        f"Draft exceeds {self.note_limit:,} characters; shorten it before saving."
+                    )
+                else:
+                    self.note_ready = True
+                    self.view = "watch"
             elif key.startswith("char:") and key[5:].isprintable():
-                self.note_text += key[5:]
+                if len(self.note_text) <= self.note_limit:
+                    self.note_text += key[5:]
+                else:
+                    self.note_error = (
+                        f"Draft limit is {self.note_limit:,}; extra input was not added."
+                    )
             return
         if self.view == "watch_filter":
             if key == "escape":
@@ -151,10 +174,12 @@ class ShellState:
         if self.view == "watch":
             if key == "char:n":
                 self.note_text = ""
+                self.note_error = ""
                 self.note_kind = "note"
                 self.view = "note"
             elif key == "char:g":
                 self.note_text = ""
+                self.note_error = ""
                 self.note_kind = "proposed_goal"
                 self.view = "note"
             elif key in {
