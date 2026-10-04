@@ -25,6 +25,19 @@ class _Rows(Iterable[Any]):
         return self.factory()
 
 
+def _set_collection(document: dict[str, Any], pointer: str, rows: Iterable[Any]) -> None:
+    """Restore one audit.v2 collection into its compatibility JSON location."""
+    current: Any = document
+    parts = [part.replace("~1", "/").replace("~0", "~") for part in pointer[1:].split("/")]
+    for part in parts[:-1]:
+        current = current[int(part)] if isinstance(current, list) else current[part]
+    key = parts[-1]
+    if isinstance(current, list):
+        current[int(key)] = list(rows)
+    else:
+        current[key] = list(rows)
+
+
 @dataclass
 class Link:
     """A single link instance, as found in a ``*:Inlinks`` bulk export.
@@ -203,6 +216,9 @@ class AuditResult:
         run = dict(self.run)
         run["checks_skipped"] = [s.to_json() for s in self.skipped]
         run["checks_disabled"] = [d.to_json() for d in self.disabled]
+        summary = dict(self.summary)
+        if isinstance(summary.get("sitemap"), dict):
+            summary["sitemap"] = dict(summary["sitemap"])
         header = {
             "schema_version": "2.0",
             "tool": {
@@ -211,7 +227,7 @@ class AuditResult:
                 "generated_by": "SEOHead",
             },
             "run": run,
-            "summary": self.summary,
+            "summary": summary,
             "issues": [],
             "pages": [],
             "groups": [],
@@ -224,11 +240,23 @@ class AuditResult:
         if self.suppressed_issues:
             header["suppressed_issues"] = []
             collections["/suppressed_issues"] = _Rows(lambda: iter(self.suppressed_issues))
+        # Sitemap reconciliation can name every affected URL.  Leaving those
+        # arrays in the header reintroduced the legacy 64 MiB bottleneck even
+        # when pages and findings themselves streamed.  They are ordered
+        # audit.v2 collections; ``to_json`` below restores the compatibility
+        # document for bounded callers.
+        sitemap = header["summary"].get("sitemap")
+        if isinstance(sitemap, dict):
+            for name, values in tuple(sitemap.items()):
+                if isinstance(values, list):
+                    pointer = "/summary/sitemap/" + name.replace("~", "~0").replace("/", "~1")
+                    sitemap[name] = []
+                    collections[pointer] = _Rows(lambda values=values: iter(values))
         return header, collections
 
     def to_json(self) -> dict[str, Any]:
         header, collections = self.audit_v2_parts()
         document = dict(header)
         for pointer, rows in collections.items():
-            document[pointer[1:]] = list(rows)
+            _set_collection(document, pointer, rows)
         return document
