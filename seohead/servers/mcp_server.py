@@ -2360,7 +2360,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             handlers.bi_bigquery_plan(package=package, dataset=dataset, operation=operation)
         )
 
-    @mcp.tool(annotations=fetch, structured_output=True)
+    @mcp.tool(annotations=submit, structured_output=True)
     def seo_bi_destination_apply(
         package: str,
         target: str,
