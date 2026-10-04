@@ -204,7 +204,7 @@ class RenderCancelled(RuntimeError):
 
 MAX_CONSOLE_ERRORS = 100
 MAX_CONSOLE_ERROR_CHARS = 1_000
-_BROWSER_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_BROWSER_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "POST"})
 _BLOCKED_WEBSOCKET_LIMITATION = "browser WebSocket requests are unsupported by pinned rendering"
 _HOP_BY_HOP_HEADERS = frozenset(
     {
@@ -320,7 +320,10 @@ def _pinned_browser_route(
             cookies = getattr(client, "cookies", None)
             if cookies is not None:
                 cookies.clear()
-            with client.stream(method, url, headers=headers, content=None) as response:
+            body = request.post_data_buffer if method == "POST" else None
+            if body is not None and not isinstance(body, bytes):
+                raise TypeError("browser POST body is unavailable")
+            with client.stream(method, url, headers=headers, content=body) as response:
                 response_headers: dict[str, str] = {}
                 response_header_names: dict[str, str] = {}
                 cookie_headers: list[str] = []
@@ -377,7 +380,7 @@ def _pinned_browser_route(
         except RenderCancelled:
             abort(route, _RENDER_CANCELLED)
         except Exception as exc:
-            abort(route, f"pinned browser request failed: {_error_summary(exc, policy)}")
+            abort(route, f"pinned browser request failed: {_network_error_summary(exc, policy)}")
 
     return handler, limitations
 
@@ -427,6 +430,19 @@ def _error_summary(exc: Exception, policy: Any = None) -> str:
             return exc.code
         return "remote browser request failed"
     return f"{type(exc).__name__}: {exc}"
+
+
+_TLS_VERIFICATION_FAILURE = (
+    "TLS certificate verification failed; trust the intercepting CA in the platform store "
+    "or set SSL_CERT_FILE/SSL_CERT_DIR"
+)
+
+
+def _network_error_summary(exc: Exception, policy: Any = None) -> str:
+    """Name certificate failures without exposing transport detail or credentials."""
+    if "certificate_verify_failed" in str(exc).lower():
+        return _TLS_VERIFICATION_FAILURE
+    return _error_summary(exc, policy)
 
 
 def _staged_screenshot_path(artifacts_dir: str, url: str) -> str:
@@ -963,7 +979,7 @@ def render_check(
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Raw HTML fetch failed: {_error_summary(exc)}",
+            "error": f"Raw HTML fetch failed: {_network_error_summary(exc)}",
             "url": target,
             "viewport": viewport,
             "viewport_size": size,

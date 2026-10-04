@@ -177,14 +177,23 @@ def resolve_proxy_route(value: str, *, allow_private: bool = False) -> ProxyRout
 
 
 def crawl_transport_options(proxy_route: ProxyRoute | None = None) -> dict[str, Any]:
-    """Ignore ambient proxy variables while retaining an explicitly chosen CA bundle."""
+    """Ignore ambient proxies while using system trust plus an explicit CA, if any.
+
+    ``httpx.HTTPTransport`` otherwise constructs its own certifi-backed context.
+    That bypasses the Windows certificate store used by a TLS-inspecting
+    corporate proxy. Building the standard-library context explicitly keeps
+    hostname verification and platform roots. An explicit CA augments those
+    roots instead of replacing them.
+    """
+    import ssl
+
     options: dict[str, Any] = {"trust_env": False}
     cafile = os.environ.get("SSL_CERT_FILE")
     capath = os.environ.get("SSL_CERT_DIR")
+    context = ssl.create_default_context()
     if cafile or capath:
-        import ssl
-
-        options["verify"] = ssl.create_default_context(cafile=cafile, capath=capath)
+        context.load_verify_locations(cafile=cafile, capath=capath)
+    options["verify"] = context
     if proxy_route is not None:
         options["proxy_route"] = proxy_route
     return options

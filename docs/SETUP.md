@@ -350,14 +350,17 @@ private target URLs. The crawler validates and pins both the proxy socket and ea
 before connecting. A proxy's onward behavior cannot be attested after the request reaches it.
 Proxy failures never switch to direct egress. The manifest records the safe proxy endpoint and
 whether authentication was configured, never its value. Proxied crawls require `cache.mode=off`
-and cannot resume from saved legacy or SQLite frontiers; start a new output instead. CA bundles
-may be selected with `SSL_CERT_FILE` or `SSL_CERT_DIR`, while TLS verification remains enabled.
+and cannot resume from saved legacy or SQLite frontiers; start a new output instead. The pinned
+HTTP route uses the platform trust store, including Windows system certificates; `SSL_CERT_FILE`
+or `SSL_CERT_DIR` appends an explicit corporate CA while TLS verification remains enabled. For an
+environment managed by uv, run `uv run --system-certs seohead render-check ...` when its Python
+trust configuration has not already been prepared. Browser POST subrequests use that same pinned
+route; unsupported methods and WebSockets are recorded as unavailable without direct browser egress.
 Proxied HTTPS uses a fresh verified CONNECT tunnel for each request, with the origin hostname
 kept for SNI and certificate validation even though CONNECT names its vetted IP; HTTP/2 and
 keepalive reuse are disabled on this route to avoid mixing hostnames on one IP.
 The same policy is reachable with `--set http.proxy=env:SEOHEAD_CRAWL_PROXY` or the MCP
-`seo_crawl_site` overrides. Browser subrequests remain on the pinned HTTP route; unsupported
-methods and WebSockets retain their existing unavailable behavior.
+`seo_crawl_site` overrides.
 
 `crawl-site --help` only shows the handful of settings used directly on the command line
 (`--url`, `--max-urls`, `--out-dir`, `--scan-out`, `--config`, `--robots`, `--sitemap`); everything else — the

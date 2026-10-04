@@ -270,10 +270,20 @@ def test_crawl_policy_ignores_ambient_proxies_but_retains_explicit_ca(monkeypatc
     options = net.crawl_transport_options()
     assert options["trust_env"] is False
     assert "proxy_route" not in options
-    with patch("ssl.create_default_context", return_value="verifying-context") as context:
+
+    class Context:
+        def __init__(self):
+            self.locations = []
+
+        def load_verify_locations(self, *, cafile=None, capath=None):
+            self.locations.append((cafile, capath))
+
+    context_value = Context()
+    with patch("ssl.create_default_context", return_value=context_value) as context:
         monkeypatch.setenv("SSL_CERT_FILE", "/synthetic/ca.pem")
-        assert net.crawl_transport_options()["verify"] == "verifying-context"
-        context.assert_called_once_with(cafile="/synthetic/ca.pem", capath=None)
+        assert net.crawl_transport_options()["verify"] is context_value
+        context.assert_called_once_with()
+        assert context_value.locations == [("/synthetic/ca.pem", None)]
 
 
 def test_cli_and_mcp_reach_the_same_proxy_setting(monkeypatch):
