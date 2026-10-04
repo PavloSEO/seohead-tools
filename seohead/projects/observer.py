@@ -80,6 +80,194 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
         return {"state": "unavailable", "reason": str(exc)}
 
 
+def _relative_artifact(root: Path, path: str) -> str | None:
+    """Return a project-relative retained-artifact reference, never a host path."""
+    try:
+        return Path(path).resolve().relative_to(root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _site_scans(root: Path, scans: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    """Bound one site's retained scans and keep their evidence tied to an artifact."""
+    items = []
+    for row in scans["items"][:limit]:
+        artifact = _relative_artifact(root, row["path"])
+        item = {key: value for key, value in row.items() if key != "path"}
+        if artifact is None:
+            item["artifact"] = {
+                "state": "unavailable",
+                "reason": "retained scan path is outside the project workspace",
+            }
+            item["evidence"] = item["artifact"]
+        else:
+            item["artifact"] = {"state": "available", "path": artifact}
+            item["evidence"] = _scan_evidence(row)
+        items.append(item)
+    return {
+        "total": scans["total"],
+        "shown": len(items),
+        "has_more": scans.get("has_more", False) or scans["total"] > len(items),
+        "errors": scans["errors"],
+        "items": items,
+    }
+
+
+def _method_coverage(checklist: dict[str, Any]) -> dict[str, Any]:
+    """Summarise expected and recorded scenario/skill work without a false percentage."""
+    state = checklist.get("state")
+    if state != "initialized":
+        return {
+            "state": state or "unavailable",
+            "reason": checklist.get("reason") or "method coverage is unavailable",
+            "kinds": {},
+        }
+    kinds: dict[str, dict[str, Any]] = {}
+    for kind in ("scenario", "skill"):
+        rows = [item for item in checklist.get("items", []) if item.get("kind") == kind]
+        states: dict[str, int] = {}
+        for row in rows:
+            value = row.get("state")
+            if isinstance(value, str):
+                states[value] = states.get(value, 0) + 1
+        kinds[kind] = {
+            "expected": len(rows),
+            "completed": sum(1 for row in rows if row.get("complete") is True),
+            "states": states,
+        }
+    return {"state": "available", "reason": None, "kinds": kinds}
+
+
+def _coverage_summary(checklist: dict[str, Any]) -> dict[str, Any]:
+    """Expose a bounded coverage projection, preserving unknown and partial states."""
+    axes = {}
+    for name, axis in (checklist.get("coverage") or {}).items():
+        if not isinstance(axis, dict):
+            continue
+        axes[name] = {
+            key: axis.get(key)
+            for key in (
+                "state",
+                "reason",
+                "numerator",
+                "denominator",
+                "measured_urls",
+                "unfinished",
+                "unverified_measurements",
+                "population_kind",
+                "population_name",
+            )
+            if key in axis
+        }
+    return {
+        "state": checklist.get("state") or "unavailable",
+        "reason": checklist.get("reason"),
+        "complete": checklist.get("complete"),
+        "counts": checklist.get("counts"),
+        "axes": axes,
+    }
+
+
+def _site_projection(
+    root: Path,
+    project: dict[str, Any],
+    checklist: dict[str, Any],
+    scans: dict[str, Any],
+    *,
+    role: str,
+    source: str | None = None,
+    observed_at: str | None = None,
+    candidate_state: str | None = None,
+    directory: str = ".",
+    scan_limit: int,
+) -> dict[str, Any]:
+    """Build one read-only own-site or competitor observation row."""
+    return {
+        "role": role,
+        "project_uuid": project["project_uuid"],
+        "directory": directory,
+        "site": project["site"],
+        "candidate": {
+            "state": candidate_state,
+            "source": source,
+            "observed_at": observed_at,
+        }
+        if role == "competitor"
+        else None,
+        "coverage": _coverage_summary(checklist),
+        "methods": _method_coverage(checklist),
+        "scans": _site_scans(root, scans, limit=scan_limit),
+    }
+
+
+def _competitor_sites(root: Path, preparation: dict[str, Any], *, scan_limit: int) -> list[dict]:
+    """Read declared competitor workspaces only; absent or damaged work stays explicit."""
+    from seohead.storage.history import list_scans
+
+    from .coverage import coverage_status
+
+    sites = []
+    for candidate in preparation.get("competitors", []):
+        directory = candidate.get("directory")
+        try:
+            if not isinstance(directory, str):
+                raise ValueError("competitor workspace reference is unavailable")
+            child = root / directory
+            child_root, child_project = _load(child)
+            if child_project["project_uuid"] != candidate.get("project_uuid"):
+                raise ValueError("competitor project identity mismatch")
+            if child_project["site"]["target"] != candidate.get("url"):
+                raise ValueError("competitor site identity mismatch")
+            sites.append(
+                _site_projection(
+                    child_root,
+                    child_project,
+                    coverage_status(child_root),
+                    list_scans(child_root / "scans"),
+                    role="competitor",
+                    source=candidate.get("source"),
+                    observed_at=candidate.get("observed_at"),
+                    candidate_state=candidate.get("state"),
+                    directory=directory,
+                    scan_limit=scan_limit,
+                )
+            )
+        except (OSError, ValueError) as exc:
+            sites.append(
+                {
+                    "role": "competitor",
+                    "project_uuid": candidate.get("project_uuid"),
+                    "directory": directory,
+                    "site": {"target": candidate.get("url"), "host": None, "label": None},
+                    "candidate": {
+                        "state": candidate.get("state"),
+                        "source": candidate.get("source"),
+                        "observed_at": candidate.get("observed_at"),
+                    },
+                    "coverage": {
+                        "state": "unavailable",
+                        "reason": str(exc),
+                        "complete": None,
+                        "counts": None,
+                        "axes": {},
+                    },
+                    "methods": {
+                        "state": "unavailable",
+                        "reason": str(exc),
+                        "kinds": {},
+                    },
+                    "scans": {
+                        "total": None,
+                        "shown": 0,
+                        "has_more": False,
+                        "errors": [],
+                        "items": [],
+                    },
+                }
+            )
+    return sites
+
+
 def _scan_row(directory: str | Path, scan_uuid: str | None) -> dict[str, Any]:
     """Resolve one retained scan through the project history, never a caller path."""
     status = project_status(directory)
@@ -249,25 +437,51 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     """Return a bounded observer snapshot without changing project evidence."""
     if type(scan_limit) is not int or not 1 <= scan_limit <= 100:
         raise ValueError("scan_limit must be from 1 to 100")
-    root, _ = _load(directory)
+    root, project = _load(directory)
     status = project_status(root)
     progress = project_progress(root, limit=100)
+    from .coverage import coverage_status
     from .execution import status as execution_status
     from .monitoring import status as monitor_status
+    from .runtime import project_policy
 
     execution = execution_status(root)
     monitor = monitor_status(root)
     preparation = status["preparation"]
+    sites = [
+        _site_projection(
+            root,
+            project,
+            coverage_status(root),
+            status["scans"],
+            role="primary",
+            scan_limit=scan_limit,
+        )
+    ]
+    sites.extend(_competitor_sites(root, preparation, scan_limit=scan_limit))
+    site_identities = {
+        item["project_uuid"]: {"role": item["role"], "target": item["site"]["target"]}
+        for item in sites
+        if isinstance(item.get("project_uuid"), str)
+    }
     checks = status["checklist"].get("items", [])
     methods = [
         {
             "id": item["id"],
+            "item_id": item.get("item_id", item["id"]),
             "title": item["title"],
             "kind": item["kind"],
             "state": item["state"],
             "attempt_status": item["attempt_status"],
             "stale": item["stale"],
             "reason": item["reason"],
+            "site": site_identities.get(
+                item.get("project_uuid", project["project_uuid"]),
+                {
+                    "role": "unknown",
+                    "target": item.get("scope", {}).get("site"),
+                },
+            ),
         }
         for item in checks
         if item["kind"] in {"scenario", "skill"}
@@ -280,6 +494,12 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         "progress": progress,
         "execution": execution,
         "monitor": monitor,
+        "policy": project_policy(str(root)),
+        "sites": {
+            "total": len(sites),
+            "scan_limit_per_site": scan_limit,
+            "items": sites,
+        },
         "methods": methods,
         "preparation": {
             "state": preparation["state"],

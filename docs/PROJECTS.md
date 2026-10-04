@@ -99,6 +99,16 @@ Selecting a retained scan changes only the observer's local selection; it does
 not resume, cancel, or rerun work. Saved-view and review readiness screens do
 not export or publish a report.
 
+The shared `project-observe` CLI/MCP snapshot also has a bounded `sites` page:
+one primary site plus every declared competitor. Each row retains its site identity,
+candidate provenance and state, scenario/skill and checklist coverage, and up to the
+requested per-site retained scans with project-relative artifact references and
+evidence state. A configured candidate remains `candidate; audit not run` until it
+has its own retained scan. The snapshot's read-only `policy` shows the selected
+quick-crawl and approval budgets, while project template/profile references identify
+the saved setup. Unknown or unavailable coverage remains named as such; it is never
+reported as a completed audit.
+
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
 They accept ordinary terminal text, including OS dictation committed as text; no
 speech-recognition integration is involved. These are the only writes from the
