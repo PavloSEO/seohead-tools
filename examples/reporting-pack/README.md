@@ -4,6 +4,7 @@ This is an original field-and-layout blueprint for the external Looker Studio co
 `seohead.bi-manifest.v1` package. It contains no customer URL, credential, Google resource or
 claim that a Looker report exists. `looker-studio-blueprint.json` is machine-reviewable: it lists
 every page, dataset, field, calculated field and filter rule that a native report must implement.
+`FIELD_GUIDE.md` records the published grain, keys and report-facing fields for each worksheet.
 
 ## Local review
 
