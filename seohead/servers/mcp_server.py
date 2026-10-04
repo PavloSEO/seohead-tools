@@ -2077,6 +2077,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_marketing_inventory(
+        documents: list[dict[str, Any]],
+        cta_selector: str | None = None,
+        form_selector: str | None = None,
+        id_attributes: list[str] | None = None,
+        id_parameters: list[str] | None = None,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Inventory supplied CTA/form DOM occurrences without fetching or submitting forms."""
+        return _checked(handlers.marketing_inventory(
+            documents=documents, cta_selector=cta_selector, form_selector=form_selector,
+            id_attributes=id_attributes, id_parameters=id_parameters, out_dir=out_dir,
+        ))
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_fragment_links(
         input_path: str,

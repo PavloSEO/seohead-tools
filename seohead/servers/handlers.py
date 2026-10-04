@@ -4721,6 +4721,21 @@ def scan_extract(
     return core(input_path, rules, url=url, representation=representation, limit=limit)
 
 
+def marketing_inventory(
+    documents: list[dict[str, Any]],
+    cta_selector: str | None = None,
+    form_selector: str | None = None,
+    id_attributes: list[str] | None = None,
+    id_parameters: list[str] | None = None,
+    out_dir: str | None = None,
+) -> dict[str, Any]:
+    """Correlate CTA/form fields per supplied HTML element without network access."""
+    from seohead.tools.marketing_inventory import inventory
+
+    return inventory(documents, cta_selector=cta_selector, form_selector=form_selector,
+                     id_attributes=id_attributes, id_parameters=id_parameters, out_dir=out_dir)
+
+
 def scan_fragment_links(
     input_path: str,
     offset: int = 0,
@@ -4828,6 +4843,7 @@ _RAW_HANDLERS = {
     "scan_rendered_routes": scan_rendered_routes,
     "scan_evidence": scan_evidence,
     "scan_extract": scan_extract,
+    "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,
     "scan_import_urls": scan_import_urls,

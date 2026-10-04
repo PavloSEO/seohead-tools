@@ -151,6 +151,7 @@ COMMANDS = (
     "tool-catalog",
     "scan-evidence",
     "scan-extract",
+    "marketing-inventory",
     "scan-fragment-links",
     "scan-requeue",
     "scan-import-urls",
