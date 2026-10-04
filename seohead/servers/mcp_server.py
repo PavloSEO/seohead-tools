@@ -1920,6 +1920,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         policy: dict | None = None,
         apply: bool = False,
         expected_revision: int | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Preview stack-aware project priorities from saved facts without network requests.
 
@@ -1928,11 +1929,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Read-only status and reports never upgrade coverage schemas. A custom policy is data,
         not executable code; omitted policy uses the packaged defaults.
         """
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_priorities(
                 directory=directory, policy=policy, apply=apply, expected_revision=expected_revision
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_policy(
@@ -1940,13 +1941,14 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         policy: dict | None = None,
         apply: bool = False,
         expected_revision: int | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Read or explicitly update operator crawl defaults and project admission thresholds."""
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_policy(
                 directory, policy=policy, apply=apply, expected_revision=expected_revision
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_prepare(
@@ -1985,9 +1987,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         competitors: list | None = None,
         approve_large_crawl: bool = False,
         producer_build: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Create and prepare a new bounded project; failures leave inspectable pending work."""
-        return _checked(
+        return _checked(with_project_notice(
             handlers.project_start(
                 directory,
                 target,
@@ -1996,8 +1999,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 competitors=competitors,
                 approve_large_crawl=approve_large_crawl,
                 producer_build=producer_build,
-            )
-        )
+            ), directory, consumer
+        ))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_skill_list() -> dict[str, Any]:
