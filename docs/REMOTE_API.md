@@ -5,7 +5,9 @@ The `remote` extra defines a versioned, authenticated ASGI adapter for self-host
 listener or public account. The local `seohead` CLI and stdio MCP remain available without the
 extra. [The optional SQLite job backend](REMOTE_JOBS.md) supplies the durable queue, worker and
 artifact lifecycle; [the target policy](REMOTE_TARGET_SAFETY.md) protects submission and worker
-egress. Deployment remains #787. No production service is started by installation alone.
+egress. No production service is started by installation alone. The required bind,
+proxy, TLS, secret-reference, supervision, backup, rollback and expiry boundary
+is in [SELF_HOSTED_SERVICE_PROFILE.md](SELF_HOSTED_SERVICE_PROFILE.md).
 
 Install the adapter only where needed with `python -m pip install '.[remote]'`. Importing the
 contract models does not require that extra; calling `create_app` without FastAPI installed gives
