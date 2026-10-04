@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 from rich.console import Console
 
 from seohead import cli
 from seohead.tui import theme
 from seohead.tui.app import MIN_HEIGHT, MIN_WIDTH, build_frame
+from seohead.tui.keys import read_key
 from seohead.tui.state import ShellState
 
 
@@ -38,3 +41,13 @@ def test_tui_is_an_optional_command_with_a_plain_mode_flag():
     watch = cli.build_parser().parse_args(["watch", "--project", "synthetic", "--no-color"])
     assert watch.command == "watch" and watch.project == "synthetic"
     assert theme.color_enabled(no_color_flag=True, stdout_is_tty=True) is False
+
+
+def test_raw_key_reader_keeps_one_utf8_character_intact():
+    reader, writer = os.pipe()
+    try:
+        os.write(writer, "П".encode())
+        assert read_key(reader) == "char:П"
+    finally:
+        os.close(reader)
+        os.close(writer)

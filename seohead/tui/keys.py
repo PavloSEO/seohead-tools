@@ -82,11 +82,21 @@ def read_key(fd: int, timeout: float | None = None) -> str:
         ready, _, _ = select.select([fd], [], [], timeout)
         if not ready:
             return "timeout"
-    first = os.read(fd, 1).decode("utf-8", errors="replace")
-    if not first:
+    first_byte = os.read(fd, 1)
+    if not first_byte:
         return "ctrl_d"
-    if first != "\x1b":
+    if first_byte != b"\x1b":
+        leading = first_byte[0]
+        width = 1 if leading < 0x80 else 2 if leading < 0xE0 else 3 if leading < 0xF0 else 4
+        data = first_byte
+        while len(data) < width:
+            following = os.read(fd, width - len(data))
+            if not following:
+                return "char:\ufffd"
+            data += following
+        first = data.decode("utf-8", errors="replace")
         return _SPECIAL.get(first, f"char:{first}")
+    first = "\x1b"
     tail = _read_available(fd, ESCAPE_WINDOW_SECONDS)
     if not tail:
         return "escape"
