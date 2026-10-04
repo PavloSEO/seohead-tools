@@ -315,6 +315,7 @@ def test_google_bigquery_stages_chunks_and_publishes_each_table_with_mocked_rest
         "dataset_id",
         _table_mapping(package),
         location="EU",
+        cost_authorized=True,
         token_supplier=lambda scope: "token",
         fetcher=fetch,
     )
@@ -358,6 +359,7 @@ def test_fresh_host_resolution_creates_google_clients_without_registration(tmp_p
                             "project_id": "project-id",
                             "dataset_id": "dataset_id",
                             "tables": {},
+                            "cost_authorized": True,
                         }
                     }
                 },
@@ -367,6 +369,63 @@ def test_fresh_host_resolution_creates_google_clients_without_registration(tmp_p
     monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
     assert isinstance(resolve_host_client("sheets", "reporting"), GoogleSheetsClient)
     assert isinstance(resolve_host_client("bigquery", "warehouse"), GoogleBigQueryClient)
+
+
+def test_bigquery_cost_denial_calls_neither_auth_nor_transport(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    calls = []
+    client = GoogleBigQueryClient(
+        "warehouse",
+        "project-id",
+        "dataset_id",
+        _table_mapping(package),
+        token_supplier=lambda scope: calls.append(("auth", scope)) or "token",
+        fetcher=lambda request: calls.append(("transport", request)) or {},
+    )
+    with pytest.raises(BIDestinationError, match="cost_authorized"):
+        apply_with_client(
+            package, target="warehouse", operation="replace", client=client, apply=True
+        )
+    assert calls == []
+
+
+def test_host_bigquery_apply_rejects_missing_cost_authorization_before_auth(tmp_path, monkeypatch):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "bigquery": {
+                    "targets": {
+                        "warehouse": {
+                            "enabled": True,
+                            "kind": "google_bigquery_service_account",
+                            "project_id": "project-id",
+                            "dataset_id": "dataset_id",
+                            "tables": _table_mapping(package),
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    auth_calls = []
+    monkeypatch.setattr(
+        "seohead.data_sources.gsc.service_account_access_token",
+        lambda *_args: auth_calls.append(True) or pytest.fail("auth must not run"),
+    )
+    with pytest.raises(ValueError, match="cost_authorized"):
+        handlers.bi_destination_apply(
+            package=str(package),
+            target="warehouse",
+            destination="bigquery",
+            operation="replace",
+            apply=True,
+        )
+    assert auth_calls == []
 
 
 def test_cli_and_mcp_resolve_the_same_configured_sheets_client_offline(tmp_path, monkeypatch):

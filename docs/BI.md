@@ -96,6 +96,9 @@ copy job with `WRITE_TRUNCATE` for replace or `WRITE_APPEND` for append. A finis
 for one destination table, but a multi-dataset package is **not** one cross-table transaction;
 the result says so explicitly. BigQuery needs a billing-enabled project and writes/storage/query
 usage can cost money. No cloud validation, provisioning or billing action is part of this tool.
+Its host configuration must also set `cost_authorized: true` for that exact project/dataset.
+This is deliberately separate from the enabled target and the per-call `--apply`; without it,
+the tool refuses before obtaining a token, checking the dataset or creating a staging table.
 
 Both transports use the existing local service-account helper with the narrow Sheets or BigQuery
 scope. The preflight commands remain fully offline. Keep the local package and its manifest: it

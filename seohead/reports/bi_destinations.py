@@ -445,6 +445,7 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         tables: dict[str, dict[str, Any]],
         *,
         location: str | None = None,
+        cost_authorized: bool = False,
         token_supplier=None,
         fetcher=None,
     ) -> None:
@@ -454,6 +455,7 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         self.dataset_id = dataset_id
         self.tables = tables
         self.location = location
+        self.cost_authorized = cost_authorized
 
     def authorize_target(self, target: str) -> bool:
         return target == self.target
@@ -478,6 +480,10 @@ class GoogleBigQueryClient(_GoogleRESTClient):
     ) -> dict[str, Any]:
         if operation not in {"replace", "append"}:
             raise BIDestinationError("BigQuery operation must be replace or append")
+        if self.cost_authorized is not True:
+            raise BIDestinationError(
+                "BigQuery apply requires a host-owned cost_authorized=true for this project and dataset"
+            )
         mapping = _require_dataset_mapping(
             self.tables, datasets, label="BigQuery table", id_name="table_id"
         )
@@ -755,7 +761,18 @@ def resolve_host_client(destination: str, target: str) -> Any:
             and isinstance(tables, dict)
             and (location is None or isinstance(location, str))
         ):
-            return GoogleBigQueryClient(target, project_id, dataset_id, tables, location=location)
+            if target_config.get("cost_authorized") is not True:
+                raise BIDestinationError(
+                    "BigQuery target is missing host-owned cost_authorized=true"
+                )
+            return GoogleBigQueryClient(
+                target,
+                project_id,
+                dataset_id,
+                tables,
+                location=location,
+                cost_authorized=True,
+            )
     raise BIDestinationError("host has no authorized client for the allowlisted target")
 
 
