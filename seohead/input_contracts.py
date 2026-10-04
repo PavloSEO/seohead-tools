@@ -766,6 +766,42 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("live_url", "target", note="Required only for action=start."),
         _form("audit_document", "audit", note="Required only for action=report."),
     ),
+    _command("workflow-status", "workflow_status", _form("project_directory", "directory")),
+    _command(
+        "workflow-start",
+        "workflow_start",
+        _form("project_directory", "directory", required_with=("scenario_id", "steps")),
+    ),
+    _command(
+        "workflow-checkpoint",
+        "workflow_checkpoint",
+        _form(
+            "project_directory",
+            "directory",
+            required_with=("run_id", "step_id", "state", "expected_revision"),
+        ),
+    ),
+    _command(
+        "workflow-execute",
+        "workflow_execute",
+        _form("project_directory", "directory", required_with=("scenario_id", "steps", "outcomes")),
+    ),
+    _command("monitor-status", "monitor_status", _form("project_directory", "directory")),
+    _command(
+        "monitor-configure",
+        "monitor_configure",
+        _form("project_directory", "directory", required_with=("policy",)),
+    ),
+    _command(
+        "monitor-run",
+        "monitor_run",
+        _form(
+            "project_directory",
+            "directory",
+            required_with=("scan_id", "observations", "expected_revision"),
+        ),
+        note="Records supplied retained-scan differences only; it starts no schedule or delivery.",
+    ),
     _command(
         "tool-catalog",
         "tool_catalog",
