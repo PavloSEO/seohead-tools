@@ -61,7 +61,10 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
         elif start_gate is None:
             reason = "reanalysis unavailable: start-page raw evidence is not_in_corpus"
         else:
-            result = _rebuild_page_result(scan)
+            # Reanalysis has already persisted its reparsed rows. Re-open them
+            # as a SQLite view for audit assembly instead of duplicating every
+            # PageRecord in memory before the analyzer projects its input.
+            result = _rebuild_page_result(scan, page_view=True)
             provenance = json.loads(
                 scan.con.execute(
                     "SELECT payload_json FROM context_items WHERE kind='reanalysis_provenance' AND item_key='run'"

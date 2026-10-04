@@ -105,7 +105,7 @@ def bridge(monkeypatch):
         monkeypatch.setattr(
             scan_handlers,
             "_rebuild_page_result",
-            lambda _scan: SimpleNamespace(
+            lambda _scan, **_kwargs: SimpleNamespace(
                 partial=False,
                 stopped_reason="",
                 robots_blocked=[],
