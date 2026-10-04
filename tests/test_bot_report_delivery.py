@@ -101,6 +101,8 @@ def test_delivery_refuses_foreign_destination_partial_job_and_unknown_profile(
         delivery.deliver("alpha", job_id, "other", ReportProfile("json"))
     with pytest.raises(DeliveryUnavailable, match="unavailable"):
         delivery.preview("alpha", job_id, ReportProfile("pdf"))
+    with pytest.raises(DeliveryUnavailable, match="findings-only"):
+        delivery.preview("alpha", job_id, ReportProfile("json", findings_only=True))
     queued = ScanSubmission(target_url="https://public.example.test/", options={"max_urls": 1})
     pending = backend.submit(
         "alpha",

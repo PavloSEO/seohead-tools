@@ -32,6 +32,10 @@ class ReportProfile:
     findings_only: bool = False
 
     def artifact_kind(self) -> str:
+        if self.findings_only:
+            raise DeliveryUnavailable(
+                "findings-only delivery is unavailable from the retained remote artifact"
+            )
         try:
             return _PROFILE_KINDS[self.format]
         except KeyError:
