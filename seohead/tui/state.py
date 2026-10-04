@@ -50,6 +50,7 @@ class ShellState:
     watch_sort: str = "severity"
     watch_descending: bool = False
     watch_detail_ordinal: int | None = None
+    watch_detail_offset: int = 0
     watch_detail_kind: str = "finding"
     watch_selected_scan_uuid: str | None = None
     watch_view_name: str | None = None
@@ -137,6 +138,12 @@ class ShellState:
                 self.watch_query += key[5:]
             return
         if self.view == "watch_detail":
+            if key in {"down", "page_down"}:
+                self.watch_detail_offset += 1 if key == "down" else 10
+            elif key in {"up", "page_up"}:
+                self.watch_detail_offset = max(
+                    0, self.watch_detail_offset - (1 if key == "up" else 10)
+                )
             if key in {"escape", "enter", "ctrl_c"}:
                 self.view = "watch"
                 self.quit_requested = key == "ctrl_c"
@@ -200,6 +207,7 @@ class ShellState:
                 self.watch_offset = 0
                 self.watch_index = 0
             elif key == "enter" and self.watch_section in {"findings", "scans", "views"}:
+                self.watch_detail_offset = 0
                 self.watch_detail_kind = {
                     "findings": "finding",
                     "scans": "scan",

@@ -12,18 +12,23 @@ Rendering uses ``rich`` (optional ``tui`` extra); keyboard input is stdlib
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Sequence
+from queue import Empty, SimpleQueue
+from threading import Thread
 from typing import TextIO
 
-from rich.console import Console, Group
+from rich.console import Console, ConsoleOptions, Group, RenderResult
+from rich.layout import Layout
 from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from seohead import __version__
 from seohead.tui import keys, theme
-from seohead.tui.state import GROUP_COMMANDS, ShellState
+from seohead.tui.state import GROUP_COMMANDS, WATCH_SECTIONS, ShellState
 
 #: Below this size the palette cannot keep a usable list plus footer, so the
 #: shell renders a compact notice instead of a clipped half-frame.
@@ -173,10 +178,18 @@ def _watch_snapshot(project: str) -> tuple[dict | None, list[Text]]:
 
 
 def _watch_lines(
-    project: str, state: ShellState, palette: theme.Palette, message: str | None
+    project: str,
+    state: ShellState,
+    palette: theme.Palette,
+    message: str | None,
+    *,
+    snapshot: dict | None = None,
 ) -> list[Text]:
     """Browsable retained project evidence; it never starts, cancels or resumes work."""
-    snapshot, failure = _watch_snapshot(project)
+    if snapshot is None:
+        snapshot, failure = _watch_snapshot(project)
+    else:
+        failure = []
     if snapshot is None:
         return failure
     site = snapshot["project"]["site"]
@@ -467,6 +480,330 @@ def _note_lines(state: ShellState, palette: theme.Palette) -> list[Text]:
     return [label, Text(""), Text(state.note_text or "(type or dictate text, then press enter)")]
 
 
+class _DashboardLayout(Layout):
+    """Use the requested viewport even when rendering a saved preview."""
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        yield from super().__rich_console__(console, options.update(height=self.size))
+
+
+class _ObserverRefresh:
+    """One background reader keeps retained-evidence I/O off the input loop."""
+
+    def __init__(self, project: str):
+        self.project = project
+        self.result: tuple[dict | None, list[Text]] = (
+            None,
+            [Text("Loading retained project evidence…")],
+        )
+        self.queue: SimpleQueue = SimpleQueue()
+        self.worker: Thread | None = None
+        self.next_refresh = 0.0
+
+    def poll(self) -> tuple[dict | None, list[Text]]:
+        try:
+            self.result = self.queue.get_nowait()
+            self.next_refresh = time.monotonic() + 2.0
+        except Empty:
+            pass
+        if (
+            self.worker is None or not self.worker.is_alive()
+        ) and time.monotonic() >= self.next_refresh:
+            self.worker = Thread(target=self._read, daemon=True)
+            self.worker.start()
+        return self.result
+
+    def _read(self) -> None:
+        self.queue.put(_watch_snapshot(self.project))
+
+
+def _meter(label: str, done: int | None, total: int | None, palette: theme.Palette) -> Text:
+    """A denominator-backed gauge; unknown coverage never becomes zero or complete."""
+    text = Text(label + "\n", style=palette.muted if palette.color else "")
+    if done is None or not total:
+        text.append("Not measured", style="#fbbf24" if palette.color else "")
+        return text
+    fraction = min(1.0, max(0.0, done / total))
+    filled = round(20 * fraction)
+    text.append("█" * filled, style=palette.accent if palette.color else "")
+    text.append("░" * (20 - filled), style=palette.muted if palette.color else "")
+    text.append(f"  {done:,} / {total:,}  {fraction:.0%}")
+    return text
+
+
+def _watch_dashboard(
+    state: ShellState,
+    project: str,
+    palette: theme.Palette,
+    width: int,
+    height: int,
+    message: str | None,
+    snapshot_override: tuple[dict | None, list[Text]] | None = None,
+) -> Layout:
+    """Responsive terminal workspace composed from retained evidence only."""
+    snapshot, failure = (
+        snapshot_override if snapshot_override is not None else _watch_snapshot(project)
+    )
+    accent = palette.accent if palette.color else ""
+    muted = palette.muted if palette.color else ""
+    border = "#475569" if palette.color else "none"
+    root = _DashboardLayout(size=height)
+    root.split_column(
+        Layout(name="header", size=3), Layout(name="body"), Layout(name="footer", size=3)
+    )
+    site = snapshot["project"]["site"] if snapshot else {}
+    header = Table.grid(expand=True)
+    header.add_column(ratio=1)
+    header.add_column(justify="right")
+    header.add_row(
+        Text("SEOHEAD  /  PROJECT OBSERVER", style=accent),
+        Text(
+            "NOTE DRAFT  ·  LOCAL" if state.view == "note" else "READ ONLY  ·  LOCAL", style=muted
+        ),
+    )
+    header.add_row(
+        Text(site.get("label") or site.get("host") or "Project", style="bold"),
+        Text(f"{width + 4} x {height + 2}", style=muted),
+    )
+    root["header"].update(header)
+    sidebar = width >= 96 and height >= 20
+    if sidebar:
+        root["body"].split_row(Layout(name="nav", size=23), Layout(name="content"))
+        nav = [Text("WORKSPACE", style=muted), Text("")]
+        for index, section in enumerate(WATCH_SECTIONS, 1):
+            selected = section == state.watch_section
+            nav.append(
+                Text(
+                    f" {'>' if selected else ' '} {index}  {section.title()}",
+                    style=palette.highlight if selected and palette.color else "",
+                )
+            )
+        nav.extend(
+            [
+                Text(""),
+                Text("n  Add note", style=accent),
+                Text("g  Propose goal", style=accent),
+                Text(""),
+                Text("Evidence stays local", style=muted),
+            ]
+        )
+        root["nav"].update(Panel(Group(*nav), border_style=border, padding=(1, 1)))
+        content = root["content"]
+    else:
+        content = root["body"]
+    if snapshot is None:
+        body = failure
+    elif state.view == "note":
+        body = _note_lines(state, palette)
+    elif state.view == "watch_filter":
+        body = [
+            Text("Filter findings", style=accent),
+            Text(""),
+            Text(state.watch_query or "Type text, then press Enter"),
+        ]
+    elif state.view == "watch_detail":
+        body = _watch_detail_lines(project, state, palette)
+    else:
+        body = _watch_lines(project, state, palette, message, snapshot=snapshot)
+    available = max(1, height - 10)
+    if state.view == "watch_detail":
+        state.watch_detail_offset = min(state.watch_detail_offset, max(0, len(body) - available))
+        body = body[state.watch_detail_offset :]
+    # Scroll selected rows into the viewport while retaining their context.
+    if state.view == "watch" and state.watch_section not in {"overview", "log"}:
+        first = max(0, state.watch_index - max(1, available - 6) + 1)
+        body = body[:4] + body[4 + first :]
+    for line in body:
+        line.no_wrap = state.view != "note"
+        line.overflow = "fold" if state.view == "note" else "ellipsis"
+    title = "Compose note" if state.view == "note" else state.watch_section.title()
+    if snapshot and state.view == "watch" and state.watch_section == "overview" and height >= 24:
+        scans = snapshot["scans"]["items"]
+        latest = scans[0] if scans else {}
+        evidence = latest.get("evidence", {})
+        counts = evidence.get("frontier", {}).get("counts", {})
+        findings = evidence.get("findings", {}).get("total")
+        cards = Table.grid(expand=True, padding=(0, 1))
+        for _ in range(3):
+            cards.add_column(ratio=1)
+        cards.add_row(
+            *[
+                Panel(Text(f"{value}\n{label}", style=accent), border_style=border)
+                for value, label in [
+                    (str(counts.get("done", "—")), "URLs retained"),
+                    (str(findings) if findings is not None else "—", "Findings"),
+                    (str(snapshot["scans"]["total"]), "Saved scans"),
+                ]
+            ]
+        )
+        content.split_column(
+            Layout(name="metrics", size=4),
+            Layout(name="crawl", size=8),
+            Layout(name="evidence"),
+        )
+        content["metrics"].update(cards)
+        scan_state = (
+            "PARTIAL" if latest.get("crawl_partial") else latest.get("lifecycle", "NOT RUN").upper()
+        )
+        discovered = sum(counts.get(key, 0) for key in ("done", "queued", "inflight"))
+        sitemap = evidence.get("sitemaps", {}).get("fetch_summaries", {})
+        crawl = Group(
+            Text(
+                f"{scan_state}  ·  {latest.get('source_kind', 'collector unknown')}  ·  {latest.get('finish_reason') or 'no finish recorded'}",
+                style=accent,
+            ),
+            _meter(
+                "Discovered URL coverage · scope can grow", counts.get("done"), discovered, palette
+            ),
+            Text(
+                f"Queue {counts.get('queued', 'unknown')}  ·  In flight {counts.get('inflight', 'unknown')}  ·  Excluded {counts.get('excluded', 'unknown')}"
+            ),
+            Text(
+                "Sitemap: " + (str(sitemap) if sitemap else "NOT MEASURED"),
+                style="#fbbf24" if palette.color and not sitemap else "",
+            ),
+        )
+        content["crawl"].update(
+            Panel(
+                crawl,
+                title="Spider & collection",
+                title_align="left",
+                border_style=border,
+                padding=(0, 1),
+            )
+        )
+        primary = next(
+            (
+                item
+                for item in snapshot.get("sites", {}).get("items", [])
+                if item["role"] == "primary"
+            ),
+            {},
+        )
+        method_counts = primary.get("methods", {}).get("kinds", {})
+        checklist = [Text("WORK COVERAGE", style=accent), Text("")]
+        for kind, label in [("scenario", "Scenarios"), ("skill", "Skills")]:
+            record = method_counts.get(kind, {})
+            checklist.extend(
+                [_meter(label, record.get("completed"), record.get("expected"), palette), Text("")]
+            )
+        items = snapshot["progress"]["items"]
+        checklist.append(Text("RECENT CHECKLIST", style=muted))
+        for item in items[:8]:
+            marker = "+" if item["state"] == "completed" else "-"
+            checklist.append(
+                Text(
+                    f"{marker} [{item['state']}] {item['title']}", overflow="ellipsis", no_wrap=True
+                )
+            )
+        if not items:
+            checklist.append(Text("No checklist evidence recorded", style=muted))
+        findings_lines = [Text("FINDINGS BY SEVERITY", style=accent), Text("")]
+        severity = evidence.get("findings", {}).get("by_severity", {})
+        peak = max(severity.values(), default=1) or 1
+        for name in ("critical", "warning", "notice"):
+            value = severity.get(name)
+            color = (
+                {"critical": "#fb7185", "warning": "#fbbf24", "notice": "#67e8f9"}[name]
+                if palette.color
+                else ""
+            )
+            findings_lines.append(
+                Text(
+                    f"{name:9} {str(value) if value is not None else '—':>5}  "
+                    + "━" * round(15 * (value or 0) / peak),
+                    style=color,
+                )
+            )
+        findings_lines.extend([Text(""), Text("PROJECT NOTES", style=accent)])
+        entries = snapshot["inbox"].get("entries", [])
+        findings_lines.extend(
+            Text(item.get("text", ""), no_wrap=True, overflow="ellipsis") for item in entries[-3:]
+        )
+        if not entries:
+            findings_lines.append(Text("n  Write or dictate a note", style=muted))
+        findings_lines.extend([Text(""), Text("COMPETITORS", style=accent)])
+        competitors = [
+            item
+            for item in snapshot.get("sites", {}).get("items", [])
+            if item["role"] == "competitor"
+        ]
+        for item in competitors[:5]:
+            findings_lines.append(
+                Text(
+                    f"{item['site']['host'] or item['site']['target']} · scans {item['scans']['total']}",
+                    no_wrap=True,
+                    overflow="ellipsis",
+                )
+            )
+        if not competitors:
+            findings_lines.append(Text("No competitors configured", style=muted))
+        if width >= 130:
+            content["evidence"].split_row(Layout(name="checklist"), Layout(name="insights"))
+            content["checklist"].update(
+                Panel(
+                    Group(*checklist),
+                    title="Scenarios & skills",
+                    title_align="left",
+                    border_style=border,
+                )
+            )
+            content["insights"].update(
+                Panel(
+                    Group(*findings_lines),
+                    title="Findings & notes",
+                    title_align="left",
+                    border_style=border,
+                )
+            )
+        else:
+            content["evidence"].update(
+                Panel(
+                    Group(*checklist),
+                    title="Scenarios & skills",
+                    title_align="left",
+                    border_style=border,
+                )
+            )
+    else:
+        content.update(
+            Panel(
+                Group(*body[:available]),
+                title=title,
+                title_align="left",
+                border_style=border,
+                padding=(1, 1),
+            )
+        )
+    footer = Text()
+    if state.view == "note":
+        footer.append("Type or dictate text   Enter Save   Esc Cancel\n", style=accent)
+        footer.append(
+            "Saved notes reach the agent on its next project-bound tool call", style=muted
+        )
+    elif state.view == "watch_filter":
+        footer.append("Type filter   Enter Apply   Esc Cancel", style=accent)
+    elif state.view == "watch_detail":
+        footer.append("↑ ↓ Scroll evidence   PgUp/PgDn Scroll page   Enter/Esc Back", style=accent)
+    elif not sidebar:
+        footer.append(
+            "1 Overview  2 Tasks  3 Methods  4 Scans  5 Findings  6 Views  7 Activity  8 Log\n",
+            style=muted,
+        )
+    elif state.watch_section == "findings":
+        footer.append(
+            "↑ ↓ Browse   Enter Evidence   PgUp/PgDn Page   f Filter   s Sort\n", style=muted
+        )
+    else:
+        footer.append("↑ ↓ Browse   Enter Evidence   1-8 Switch section\n", style=muted)
+    if state.view == "watch":
+        footer.append("n Note   g Goal   Esc Back   q Quit", style=accent)
+    footer.no_wrap = True
+    footer.overflow = "ellipsis"
+    root["footer"].update(footer)
+    return root
+
+
 def build_frame(
     state: ShellState,
     *,
@@ -475,6 +812,7 @@ def build_frame(
     palette: theme.Palette,
     project: str | None = None,
     message: str | None = None,
+    snapshot_override: tuple[dict | None, list[Text]] | None = None,
 ) -> Group:
     """One screen of the shell as a rich renderable (also used by tests)."""
     header = _header_text(palette)
@@ -485,6 +823,10 @@ def build_frame(
             "resize the window or press q / ctrl-c to leave"
         )
         return Group(header, Text(""), notice, Text(""), status)
+    if project is not None and state.view in {"watch", "watch_detail", "watch_filter", "note"}:
+        return Group(
+            _watch_dashboard(state, project, palette, width, height, message, snapshot_override)
+        )
     footer = list(status.wrap(Console(width=width), width))
     body_rows = max(1, height - 4 - len(footer))
     if state.view == "detail":
@@ -547,6 +889,7 @@ def run(
     state = ShellState(commands=command_rows(commands), view="watch" if project else "palette")
     fd = stdin.fileno()
     message: str | None = None
+    refresh = _ObserverRefresh(project) if project else None
     try:
         with (
             keys.raw_mode(fd),
@@ -567,6 +910,7 @@ def run(
                             palette=palette,
                             project=project,
                             message=message,
+                            snapshot_override=refresh.poll() if refresh else None,
                         ),
                         border_style="cyan" if palette.color else "none",
                         padding=(0, 1),
