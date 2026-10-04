@@ -417,9 +417,21 @@ def test_navigation_events_distinguish_initial_spa_and_script_routes(fake_stack)
 
     def goto(url, **_kwargs):
         handler = page.handlers["framenavigated"]
-        for destination in (url, url + "#pricing", "https://example.com/checkout"):
+        for destination in (url, url + "#pricing"):
             frame.url = destination
             handler(frame)
+        request = type(
+            "Request",
+            (),
+            {
+                "url": "https://example.com/checkout",
+                "frame": frame,
+                "is_navigation_request": lambda self: True,
+            },
+        )()
+        page.handlers["request"](request)
+        frame.url = "https://example.com/checkout"
+        handler(frame)
 
     page.goto = goto
     result = render_document("https://example.com/", _rendering_config())
