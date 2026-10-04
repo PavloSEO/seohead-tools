@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from xml.etree import ElementTree
 
 from seohead.reports.bi import DATASET_SPECS
 
@@ -24,3 +25,9 @@ def test_looker_blueprint_uses_only_published_bi_datasets_and_fields():
     for control in blueprint["global_controls"]:
         datasets = control.get("datasets") or [control["dataset"]]
         assert all(control["field"] in fields[dataset] for dataset in datasets)
+
+
+def test_reporting_pack_preview_is_valid_svg():
+    path = Path("examples/reporting-pack/layout-preview.svg")
+    assert ElementTree.parse(path).getroot().tag.endswith("svg")
+    assert "SEOHEAD Evidence Reporting Pack" in path.read_text(encoding="utf-8")
