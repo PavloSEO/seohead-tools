@@ -148,8 +148,10 @@ def _page_outcomes(path: Path, *, require_audit: bool = True) -> list[tuple]:
 
 
 def _audit_outcomes(path: Path) -> tuple[object, object]:
+    from seohead.storage import read_audit
+
+    document = read_audit(path)
     with open_scan(path) as con:
-        document = json.loads(con.execute("SELECT document_json FROM audit").fetchone()[0])
         assert_saved_contract(document, con)
     semantic = semantic_audit(document)
     return semantic["pages"], semantic["issues"]
@@ -212,8 +214,10 @@ def test_reanalysis_derives_a_valid_audited_scan_without_network_and_can_chain(
     assert first_scan["parent_scan_uuid"] == source_scan["scan_uuid"]
     assert first_scan["scan_uuid"] != source_scan["scan_uuid"]
     assert first_scan["writer_revision"] == "b" * 40
-    with sqlite3.connect(first) as con:
-        audit_revision = con.execute("SELECT evidence_revision FROM audit").fetchone()[0]
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    with AuditV2Reader(first) as audit:
+        audit_revision = audit.binding["evidence_revision"]
     assert first_scan["evidence_revision"] == audit_revision
     assert _page_outcomes(first) == source_pages
     assert _audit_outcomes(first) == source_audit

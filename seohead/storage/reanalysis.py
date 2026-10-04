@@ -194,6 +194,11 @@ def derived_scan(
     target = Path(out).absolute()
     if os.path.lexists(target):
         raise ScanError(f"derived reanalysis output already exists: {target}")
+    from .audit_v2 import audit_v2_path
+
+    target_audit = audit_v2_path(target)
+    if os.path.lexists(target_audit):
+        raise ScanError(f"derived reanalysis audit output already exists: {target_audit}")
     target.parent.mkdir(parents=True, exist_ok=True)
     source = open_scan(source_path, require_audit=False)
     fd, name = tempfile.mkstemp(prefix=".reanalysis-", suffix=".sqlite", dir=target.parent)
@@ -232,9 +237,16 @@ def derived_scan(
         writer.close()
         writer = None
         _fsync_file(temporary)
+        temporary_audit = audit_v2_path(temporary)
+        if temporary_audit.exists():
+            _fsync_file(temporary_audit)
         os.link(temporary, target, follow_symlinks=False)
+        if temporary_audit.exists():
+            os.link(temporary_audit, target_audit, follow_symlinks=False)
         _fsync_directory(target.parent)
         temporary.unlink()
+        if temporary_audit.exists():
+            temporary_audit.unlink()
     except BaseException:
         raise
     finally:
@@ -245,6 +257,8 @@ def derived_scan(
         source.close()
         with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
+        with contextlib.suppress(FileNotFoundError):
+            audit_v2_path(temporary).unlink()
         for suffix in ("-wal", "-shm", ".writer.lock"):
             with contextlib.suppress(FileNotFoundError):
                 temporary.with_name(temporary.name + suffix).unlink()
