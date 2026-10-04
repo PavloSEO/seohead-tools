@@ -709,6 +709,30 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
     ),
     _command(
+        "publication-cohorts",
+        "publication_cohorts",
+        _form("inline_json", "document", note="seohead.publication-cohort-input.v1 document."),
+        _form("local_file", "file", note="Alternative versioned offline cohort input JSON."),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Required new local package directory; existing output is refused.",
+        ),
+        note="Reads saved normalized evidence only; no provider calls or causal inference.",
+    ),
+    _command(
+        "gsc-progress",
+        "gsc_progress",
+        _form("inline_json", "document", note="seohead.gsc-progress-input.v1 document."),
+        _form("local_file", "file", note="Alternative versioned offline GSC input JSON."),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Required new local package directory; existing output is refused.",
+        ),
+        note="Reads saved normalized GSC evidence only; no provider calls or rank-placement claims.",
+    ),
+    _command(
         "bi-sheets-plan",
         "bi_sheets_plan",
         _form("local_directory", "package"),

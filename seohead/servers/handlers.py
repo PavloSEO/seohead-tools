@@ -4796,6 +4796,24 @@ def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
     return {"ok": True, **sheets_plan(package, max_cells=max_cells)}
 
 
+def publication_cohorts(
+    document: Any = None, file: str | None = None, out_dir: str | None = None
+) -> dict[str, Any]:
+    """Write an offline publication-cohort package from saved normalized evidence."""
+    from seohead.reports.cohorts import publication_cohorts as core
+
+    return {"ok": True, **core(document=document, file=file, out_dir=out_dir)}
+
+
+def gsc_progress(
+    document: Any = None, file: str | None = None, out_dir: str | None = None
+) -> dict[str, Any]:
+    """Write an offline branded/non-branded GSC progress package."""
+    from seohead.reports.cohorts import gsc_progress as core
+
+    return {"ok": True, **core(document=document, file=file, out_dir=out_dir)}
+
+
 def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> dict[str, Any]:
     """Describe a BigQuery load without a project, credentials, billing, or writes."""
     from seohead.reports.bi_destinations import bigquery_plan
@@ -5116,6 +5134,8 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "publication_cohorts": publication_cohorts,
+    "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,
     "bi_bigquery_plan": bi_bigquery_plan,
 }

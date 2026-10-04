@@ -160,6 +160,8 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "publication-cohorts",
+    "gsc-progress",
     "bi-sheets-plan",
     "bi-bigquery-plan",
     "inspect-url",
@@ -642,6 +644,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["provider_joins"] = args.provider_join
     elif cmd in {"bi-sheets-plan", "bi-bigquery-plan"}:
         for name in ("package", "max_cells", "dataset", "operation"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd in {"publication-cohorts", "gsc-progress"}:
+        for name in ("file", "out_dir"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd in {
@@ -2070,6 +2076,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--dataset", required=True, help="planned BigQuery dataset name; no cloud write occurs"
         )
         sub.add_argument("--operation", choices=("replace", "append"), default="replace")
+    if cmd in {"publication-cohorts", "gsc-progress"}:
+        _source_flag(sub, "--file", help="versioned offline cohort input JSON")
+        _source_flag(
+            sub, "--out-dir", help="new local cohort package directory (never overwritten)"
+        )
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":

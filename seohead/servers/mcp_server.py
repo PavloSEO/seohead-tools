@@ -2180,6 +2180,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Preflight a complete local BI package for Sheets without Google access or writes."""
         return _checked(handlers.bi_sheets_plan(package=package, max_cells=max_cells))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_publication_cohorts(
+        out_dir: str, document: dict[str, Any] | None = None, file: str | None = None
+    ) -> dict[str, Any]:
+        """Project saved publication metadata and normalized provider evidence locally.
+
+        Publication, modification and first-observed dates stay distinct. GSC
+        and analytics observations stay separately labelled; this makes no
+        causal traffic claim and never calls a provider.
+        """
+        return _checked(handlers.publication_cohorts(document=document, file=file, out_dir=out_dir))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_gsc_progress(
+        out_dir: str, document: dict[str, Any] | None = None, file: str | None = None
+    ) -> dict[str, Any]:
+        """Project saved GSC query evidence into branded/non-branded summaries.
+
+        Matching is supplied by versioned aliases. Missing query rows remain
+        unknown, and average-position values are never rank-placement claims.
+        """
+        return _checked(handlers.gsc_progress(document=document, file=file, out_dir=out_dir))
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_bi_bigquery_plan(
         package: str, dataset: str, operation: str = "replace"

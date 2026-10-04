@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 135 commands and 140 callable tools,
+The current registry has 137 commands and 142 callable tools,
 with 181 audit checks. These are inventories, not coverage on every input.
 
 ## Offline BI projection
@@ -28,6 +28,11 @@ It makes no provider requests or remote writes.
 
 `bi-sheets-plan` and `bi-bigquery-plan` verify a complete local package and emit only an
 offline preflight. They never authenticate, select a cloud target, activate billing, or write.
+
+`publication-cohorts` and `gsc-progress` write separate offline cohort packages
+from saved normalized evidence. They do not collect providers, infer missing
+rows as zero, blend analytics with GSC, or make causal/rank-placement claims.
+Their explicit input contracts and CSV/JSON manifests are in [BI.md](BI.md).
 
 ## Topvisor
 
@@ -649,7 +654,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(135 + 5):
+(137 + 5):
 
 ```bash
 seohead mcp        # stdio
