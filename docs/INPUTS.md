@@ -144,6 +144,13 @@ and this decision makes no backend migration.
 | `bi-bigquery-plan` | Local directory (`package`)<br>Selector (`dataset, operation`) | Offline optional-load plan; no project selection, billing, authentication, or write. |
 | `inspect-url` | Live URL (`url`)<br>Inline JSON (`checks`) | Optional bounded selection of closed investigation checks. |
 | `audit-workflow` | Project directory (`directory`)<br>Selector (`action`)<br>Live URL (`target`)<br>Audit document (`audit`) | status, start, prepare, or report.; Required only for action=start.; Required only for action=report. |
+| `workflow-status` | Project directory (`directory`) | — |
+| `workflow-start` | Project directory (`directory`); requires `scenario_id, steps` | — |
+| `workflow-checkpoint` | Project directory (`directory`); requires `run_id, step_id, state, expected_revision` | — |
+| `workflow-execute` | Project directory (`directory`); requires `scenario_id, steps, outcomes` | — |
+| `monitor-status` | Project directory (`directory`) | — |
+| `monitor-configure` | Project directory (`directory`); requires `policy` | — |
+| `monitor-run` | Project directory (`directory`); requires `scan_id, observations, expected_revision` | Records supplied retained-scan differences only; it starts no schedule or delivery. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |
 | `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required. |

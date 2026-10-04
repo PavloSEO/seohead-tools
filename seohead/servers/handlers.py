@@ -1544,7 +1544,9 @@ def _audit_crawl_result(
                 for item in link_findings.follow_and_nofollow_inlink_details(
                     graph.iter_links() if graph else links, crawl_host
                 ):
-                    ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item)
+                    ctx.add(
+                        "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
+                    )
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
