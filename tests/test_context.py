@@ -100,7 +100,9 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
 
 
 @pytest.mark.parametrize("count", (1_000, 50_000))
-def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_writes(tmp_path, count):
+def test_disk_backed_aggregate_keeps_final_findings_reiterable_until_audit_v2_writes(
+    tmp_path, count
+):
     """The final sort/suppression stage must not reassemble native findings in RAM."""
     p = tmp_path / "internal_all.csv"
     with open(p, "w", encoding="utf-8-sig", newline="") as f:

@@ -31,7 +31,9 @@ def project_open(directory: str, expected_site: str | None = None) -> dict[str, 
     return open_project(directory, expected_site=expected_site)
 
 
-def _with_inbox_notice(result: dict[str, Any], directory: str, consumer: str | None) -> dict[str, Any]:
+def _with_inbox_notice(
+    result: dict[str, Any], directory: str, consumer: str | None
+) -> dict[str, Any]:
     """Add only this project's unread summary without consuming it."""
     if consumer is None:
         return result
@@ -48,7 +50,9 @@ def project_progress(
     directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
 ) -> dict[str, Any]:
     """Return a bounded project progress page without running or changing work."""
-    return _with_inbox_notice(_project_progress(directory, limit=limit, offset=offset), directory, consumer)
+    return _with_inbox_notice(
+        _project_progress(directory, limit=limit, offset=offset), directory, consumer
+    )
 
 
 def project_inbox_submit(

@@ -389,7 +389,10 @@ def _run_tasks(args) -> int:
 
     try:
         if audit_v2_path(args.audit_json).exists():
-            audit, diagnostics = None, [{"code": "audit_v2_stream", "message": "tasks read the audit.v2 findings stream"}]
+            audit, diagnostics = (
+                None,
+                [{"code": "audit_v2_stream", "message": "tasks read the audit.v2 findings stream"}],
+            )
         else:
             audit, diagnostics = resolve_audit_input(args.audit_json)
     except (OSError, ValueError) as err:
@@ -398,7 +401,11 @@ def _run_tasks(args) -> int:
     for notice in diagnostics:
         print(f"[{notice['code']}] {notice['message']}", file=sys.stderr)
     cfg = load_config(args.config)
-    backlog = build_tasks_from_audit_v2(args.audit_json, cfg) if audit is None else build_tasks(audit, cfg)
+    backlog = (
+        build_tasks_from_audit_v2(args.audit_json, cfg)
+        if audit is None
+        else build_tasks(audit, cfg)
+    )
     os.makedirs(args.out, exist_ok=True)
     jp, mp = write_tasks(
         backlog, os.path.join(args.out, "tasks.json"), os.path.join(args.out, "tasks.md")
