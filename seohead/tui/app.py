@@ -689,7 +689,7 @@ def _watch_dashboard(
             )
         items = snapshot["progress"]["items"]
         checklist.append(Text("RECENT CHECKLIST", style=muted))
-        for item in items[:8]:
+        for item in items[: max(3, height - 26)]:
             marker = "+" if item["state"] == "completed" else "-"
             checklist.append(
                 Text(
@@ -702,7 +702,7 @@ def _watch_dashboard(
         severity = evidence.get("findings", {}).get("by_severity", {})
         peak = max(severity.values(), default=1) or 1
         for name in ("critical", "warning", "notice"):
-            value = severity.get(name)
+            value = severity.get(name, 0) if findings is not None else None
             color = (
                 {"critical": "#fb7185", "warning": "#fbbf24", "notice": "#67e8f9"}[name]
                 if palette.color
@@ -738,6 +738,24 @@ def _watch_dashboard(
             )
         if not competitors:
             findings_lines.append(Text("No competitors configured", style=muted))
+        if height >= 38:
+            findings_lines.extend(
+                [
+                    Text(""),
+                    Text("WORKFLOW", style=accent),
+                    Text(
+                        f"Next: {snapshot['execution']['next_action'] or 'no active workflow'}",
+                        no_wrap=True,
+                        overflow="ellipsis",
+                    ),
+                    Text(""),
+                    Text("PROJECT LOG", style=accent),
+                ]
+            )
+            log_lines = snapshot["log"]["text"].splitlines()[-max(3, height - 35) :]
+            findings_lines.extend(
+                Text(line, no_wrap=True, overflow="ellipsis") for line in log_lines
+            )
         if width >= 130:
             content["evidence"].split_row(Layout(name="checklist"), Layout(name="insights"))
             content["checklist"].update(
