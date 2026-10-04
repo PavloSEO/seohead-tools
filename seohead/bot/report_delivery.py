@@ -119,7 +119,7 @@ class AuthorizedReportDelivery:
     projects: Iterable[str]
     allowed_destinations: Iterable[str]
     receipts: DeliveryReceipts
-    send: Callable[[str, OpenedArtifact], None]
+    send: Callable[[str, OpenedArtifact, str], None]
     _projects: frozenset[str] = field(init=False, repr=False)
     _destinations: frozenset[str] = field(init=False, repr=False)
 
@@ -170,7 +170,7 @@ class AuthorizedReportDelivery:
             raise DeliveryUnavailable("the retained report artifact is missing or expired")
         try:
             with opened.handle:
-                self.send(destination, opened)
+                self.send(destination, opened, receipt)
         except BaseException:
             self.receipts.retry(job_id, artifact.artifact_id, destination, receipt)
             raise

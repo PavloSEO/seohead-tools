@@ -91,5 +91,6 @@ messaging SDK, account identity, delivery credentials or crawler code.
 `AuthorizedReportDelivery` previews and sends only complete retained JSON or
 Markdown artifacts through an injected authorized transport. Its private
 receipt store makes a completed delivery idempotent across adapter restart;
-failed sends remain pending for an explicit retry and unsupported formats are
-named instead of silently producing a different report.
+the adapter passes that receipt to the transport as its idempotency key. Failed
+sends remain pending for an explicit retry and unsupported formats are named
+instead of silently producing a different report.

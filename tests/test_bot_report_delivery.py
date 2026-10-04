@@ -61,20 +61,20 @@ def test_delivery_retries_then_persists_receipt_across_adapter_restart(monkeypat
     sent = []
     attempts = [0]
 
-    def flaky(destination, opened):
+    def flaky(destination, opened, receipt):
         attempts[0] += 1
         if attempts[0] == 1:
             raise RuntimeError("synthetic transport interrupted")
-        sent.append((destination, opened.handle.read(16)))
+        sent.append((destination, receipt, opened.handle.read(16)))
 
     receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
     delivery = AuthorizedReportDelivery(backend, {"alpha"}, {"requester"}, receipts, flaky)
     with pytest.raises(RuntimeError, match="interrupted"):
         delivery.deliver("alpha", job_id, "requester", ReportProfile("json"))
-    receipt = delivery.deliver("alpha", job_id, "requester", ReportProfile("json"))
     restarted = AuthorizedReportDelivery(backend, {"alpha"}, {"requester"}, receipts, flaky)
+    receipt = restarted.deliver("alpha", job_id, "requester", ReportProfile("json"))
     assert restarted.deliver("alpha", job_id, "requester", ReportProfile("json")) == receipt
-    assert len(sent) == 1 and sent[0][0] == "requester"
+    assert len(sent) == 1 and sent[0][:2] == ("requester", receipt)
 
 
 def test_receipt_claim_prevents_duplicate_send_until_a_failed_attempt_is_released(tmp_path):

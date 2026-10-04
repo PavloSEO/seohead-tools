@@ -75,7 +75,8 @@ submit.
 - **Delivery stays authorized and idempotent.** `AuthorizedReportDelivery`
   accepts only an explicit project/destination allowlist, previews the exact
   retained artifact before sending, and stores a receipt after a successful
-  injected transport call. A restarted adapter returns that receipt instead of
+  injected transport call. That receipt is also passed to the transport as its
+  idempotency key. A restarted adapter returns a completed receipt instead of
   sending again; a failed transport remains pending for a deliberate retry.
 
 ## Versioning
