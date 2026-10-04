@@ -1190,6 +1190,8 @@ Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
 | `url_contains` | `str | None` | `None` |
 | `max_urls` | `int` | `100` |
 | `max_queries_per_url` | `int` | `500` |
+| `start_date` | `str | None` | `None` |
+| `end_date` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 

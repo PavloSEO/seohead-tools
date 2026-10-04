@@ -13,8 +13,24 @@ ROW = re.compile(r"^\| (\d+\.\d+) \| (.*?) \|.*?\| (.*?) \| (.*?) \|$")
 
 # Rows whose older map wording predates a concrete registry outcome.
 REGISTRY_ROWS = {
-    "2.1", "2.2", "2.3", "2.4", "2.5", "6.3", "6.4", "8.2", "8.4", "10.2", "10.4",
-    "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7",
+    "2.1",
+    "2.2",
+    "2.3",
+    "2.4",
+    "2.5",
+    "6.3",
+    "6.4",
+    "8.2",
+    "8.4",
+    "10.2",
+    "10.4",
+    "11.1",
+    "11.2",
+    "11.3",
+    "11.4",
+    "11.5",
+    "11.6",
+    "11.7",
 }
 PARTIAL_ROWS = {"1.1", "1.4", "1.5", "2.6"}
 OUT_OF_SCOPE_ROWS = {"3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.8", "3.9"}
@@ -35,7 +51,11 @@ def status(row_id: str, mode: str) -> str:
         return "covered_registry_or_tool"
     if row_id in PARTIAL_ROWS or "partial" in lowered:
         return "partial"
-    if row_id in OUT_OF_SCOPE_ROWS or "out of scope" in lowered or "consciously excluded" in lowered:
+    if (
+        row_id in OUT_OF_SCOPE_ROWS
+        or "out of scope" in lowered
+        or "consciously excluded" in lowered
+    ):
         return "out_of_scope"
     return "missing"
 
@@ -49,7 +69,9 @@ def render() -> str:
         "Generated from `docs/COVERAGE_GAPS.md` by `scripts/generate_coverage_gap_reconciliation.py`.",
         "A row is covered only when the map names a shipped check/tool or this reconciliation carries a reviewed registry override; partial and out-of-scope are not readiness claims.",
         "",
-        f"**{len(entries)} rows:** " + ", ".join(f"{key}={counts[key]}" for key in sorted(counts)) + ".",
+        f"**{len(entries)} rows:** "
+        + ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+        + ".",
         "",
         "| Row | Name | Reconciled state |",
         "|---|---|---|",
