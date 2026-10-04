@@ -319,6 +319,10 @@
         "reason": "export inlinks_3xx not available"
       },
       {
+        "id": "HREFLANG_NOINDEX_TARGET",
+        "reason": "no all_hreflang declaration export"
+      },
+      {
         "id": "HREFLANG_INVALID_CODE",
         "reason": "no all_hreflang export (export Bulk Export -> Links -> All Hreflang)"
       },

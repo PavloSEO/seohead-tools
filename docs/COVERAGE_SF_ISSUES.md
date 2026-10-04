@@ -15,7 +15,7 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 125 | a registry check finds it |
+| check | 126 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 8 | we should find it and do not |
@@ -210,7 +210,7 @@ having, because the alternative is an absence nobody has noticed.
 | Missing Return Links | check | `HREFLANG_MISSING_RETURN_LINK` |  |
 | Inconsistent Language & Region Confirmation Links | check | `HREFLANG_INCONSISTENT_CONFIRMATION` |  |
 | Non-Canonical Return Links | check | `HREFLANG_NOT_CANONICAL` |  |
-| Noindex Returns Links | gap | — | the indexability of an hreflang target is not cross-checked |
+| Noindex Returns Links | check | `HREFLANG_NOINDEX_TARGET` |  |
 | Incorrect Language & Region Codes | check | `HREFLANG_INVALID_CODE` |  |
 | Multiple Entries | check | `HREFLANG_MULTIPLE_ENTRIES` |  |
 | Not Using Canonical | check | `HREFLANG_NOT_CANONICAL` |  |

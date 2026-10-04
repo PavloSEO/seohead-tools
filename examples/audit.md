@@ -259,6 +259,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | External link points to a 4xx or 5xx URL | export inlinks_5xx not available |
 | Internal link points to a redirect (3xx) | export inlinks_3xx not available |
 | External link points to a redirect (3xx) | export inlinks_3xx not available |
+| Hreflang alternate points to an observed noindex page | no all_hreflang declaration export |
 | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
 | The same hreflang value is declared more than once on the page | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
 | Page declares hreflang alternates but does not reference itself | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |

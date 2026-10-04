@@ -558,7 +558,11 @@ def attach_contract(
 
 
 def attach_saved_corpus(
-    document: Mapping[str, Any], con: Any, *, duplicate_threshold: float = 0.92
+    document: Mapping[str, Any],
+    con: Any,
+    *,
+    duplicate_threshold: float = 0.92,
+    derived: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Attach already-stored corpus derivations at the audit boundary.
 
@@ -575,7 +579,11 @@ def attach_saved_corpus(
     summary = projected.get("summary") if isinstance(projected.get("summary"), dict) else {}
     if not isinstance(projected.get("summary"), dict):
         projected["summary"] = summary
-    derived = derive(con, duplicate_threshold=duplicate_threshold)
+    derived = (
+        dict(derived)
+        if derived is not None
+        else derive(con, duplicate_threshold=duplicate_threshold)
+    )
     if derived.get("schema_version") != SAVED_CORPUS_VERSION:
         raise ValueError("saved corpus derivation has an unsupported schema version")
     summary["saved_corpus_derivations"] = derived
