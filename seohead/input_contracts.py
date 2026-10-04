@@ -472,9 +472,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("project_directory", "directory"),
         _form("selector", "consumer", "limit"),
     ),
-    _command(
-        "remediation-summary", "remediation_summary", _form("local_file", "ledger")
-    ),
+    _command("remediation-summary", "remediation_summary", _form("local_file", "ledger")),
     _command(
         "remediation-cases",
         "remediation_cases",
@@ -747,6 +745,14 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("local_directory", "package"),
         _form("selector", "dataset", "operation"),
         note="Offline optional-load plan; no project selection, billing, authentication, or write.",
+    ),
+    _command(
+        "bi-destination-apply",
+        "bi_destination_apply",
+        _form("local_directory", "package"),
+        _form("selector", "target", "destination", "operation"),
+        _form("inline_json", "apply", note="Requires true and a host-injected authorized client."),
+        note="Never accepts credentials; a missing host client fails before any destination write.",
     ),
     _command(
         "inspect-url",

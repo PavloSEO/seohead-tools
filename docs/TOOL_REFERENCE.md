@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**144 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 149 in total.
+**145 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 150 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2195,6 +2195,22 @@ Describe an optional BigQuery load offline; it never selects a project or writes
 | `operation` | `str` | `'replace'` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `bi-destination-apply`
+
+MCP name: `seo_bi_destination_apply`
+
+Request a BI destination write; host authorization is required and credentials are never accepted.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `target` | `str` | `required` |
+| `destination` | `str` | `required` |
+| `operation` | `str` | `'replace'` |
+| `apply` | `bool` | `False` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
 ### `inspect-url`
 

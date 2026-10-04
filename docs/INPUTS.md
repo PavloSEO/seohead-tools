@@ -142,6 +142,7 @@ and this decision makes no backend migration.
 | `gsc-progress` | Inline JSON (`document`)<br>Local file (`file`)<br>Local directory (`out_dir`) | Reads saved normalized GSC evidence only; no provider calls or rank-placement claims.; seohead.gsc-progress-input.v1 document.; Alternative versioned offline GSC input JSON.; Required new local package directory; existing output is refused. |
 | `bi-sheets-plan` | Local directory (`package`)<br>Inline JSON (`max_cells`) | Offline package/checksum/capacity preflight; no Google authentication or write.; Optional declared capacity, never an API quota check. |
 | `bi-bigquery-plan` | Local directory (`package`)<br>Selector (`dataset, operation`) | Offline optional-load plan; no project selection, billing, authentication, or write. |
+| `bi-destination-apply` | Local directory (`package`)<br>Selector (`target, destination, operation`)<br>Inline JSON (`apply`) | Never accepts credentials; a missing host client fails before any destination write.; Requires true and a host-injected authorized client. |
 | `inspect-url` | Live URL (`url`)<br>Inline JSON (`checks`) | Optional bounded selection of closed investigation checks. |
 | `audit-workflow` | Project directory (`directory`)<br>Selector (`action`)<br>Live URL (`target`)<br>Audit document (`audit`) | status, start, prepare, or report.; Required only for action=start.; Required only for action=report. |
 | `workflow-status` | Project directory (`directory`) | — |
