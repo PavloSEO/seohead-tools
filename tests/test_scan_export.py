@@ -400,7 +400,7 @@ def test_xlsx_bounded_workbook_and_formula_neutralization(tmp_path):
     result = export_scan_data(_document(), str(out), fmt="xlsx")
     assert result["ok"], result
     workbook = load_workbook(out, read_only=True)
-    assert set(workbook.sheetnames) == {"Summary", "Pages", "Findings"}
+    assert set(workbook.sheetnames) == {"Summary", "Partitions", "Pages", "Findings"}
     findings = list(workbook["Findings"].iter_rows(values_only=True))
     assert list(findings[0]) == list(export_module.FINDING_FIELDS)
     hint = findings[1][list(export_module.FINDING_FIELDS).index("fix_hint")]
@@ -448,14 +448,18 @@ def test_tabular_null_empty_formula_and_escape_values_are_distinct(tmp_path):
     assert all(not value.startswith("=") for value in expected)
 
 
-def test_xlsx_row_limit_fails_before_writing(artifact, tmp_path, monkeypatch):
+def test_xlsx_row_limit_splits_into_numbered_sheets(artifact, tmp_path, monkeypatch):
+    from openpyxl import load_workbook
+
     monkeypatch.setattr(export_module, "EXCEL_MAX_ROWS", 3)
     out = tmp_path / "e.xlsx"
     result = export_scan_data(str(artifact), str(out), fmt="xlsx")
-    assert result["ok"] is False
-    assert "row limit" in result["error"]
-    assert not out.exists()
-    assert not list(tmp_path.glob(".*.tmp"))
+    assert result["ok"] is True
+    workbook = load_workbook(out, read_only=True)
+    assert "Links 2" in workbook.sheetnames
+    rows = list(workbook["Partitions"].iter_rows(values_only=True))
+    assert rows[0] == ("record_type", "sheet", "first_record", "last_record", "rows")
+    assert sum(row[-1] for row in rows[1:] if row[0] == "links") == 3
 
 
 def test_xlsx_cell_text_limit_fails_cleanly(tmp_path):
