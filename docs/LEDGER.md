@@ -19,7 +19,7 @@ population until an explicit later lane classifies it.
 | Format | `ledger.v1` |
 | SQLite signature | `SQLite format 3\000` |
 | `application_id` | `1397051212` (`SEOL`; scans use `SEOH`) |
-| `user_version` | `2` |
+| `user_version` | `3` |
 
 A reader must require all three identifiers. `open_ledger` returns a validated
 connection or refuses; it never auto-repairs, never opens a foreign file, and
@@ -162,8 +162,11 @@ binding and writer. An explicit write open runs the 0→1 migration, which
 materializes the full schema plus the header and primary site row from that
 marker. `create_ledger` itself always writes a complete validated
 `ledger.v1`. Version 2 adds immutable `verification_artifact` and
-`verification_result` bindings. A write open migrates v1 to v2 atomically;
-readers of an older artifact still refuse rather than changing it.
+`verification_result` bindings; version 3 records whether group membership
+was fully retained. A write open migrates an older ledger atomically; readers
+of an older artifact still refuse rather than changing it. A migrated v2
+`scan.v2` source is conservatively marked `unavailable` for group scope,
+because v2 did not persist enough information to reconstruct omitted members.
 
 `ledger.ledger_revision` counts committed write transactions that changed
 ledger content (reserved for optimistic concurrency in #789). It is
@@ -200,11 +203,14 @@ verification artifact remain separate workflow work: an omission from a later
 partial scan still has no lifecycle effect.
 
 `remediation_summary` exposes distinct original-case, remediation and recheck
-denominators. `resolved_percent` keeps unverifiable cases in its denominator;
-`rechecked_percent` counts only retained resolved/persisting/regressed evidence,
-so failed or partial work cannot improve a percentage. It also partitions the
-full original population by retained recheck task id; unassigned cases remain
-visible rather than disappearing from a denominator. `remediation_report`
+denominators. `represented_resolved_percent` keeps unverifiable represented
+cases in its denominator; `represented_rechecked_percent` counts only retained
+resolved/persisting/regressed evidence. If group membership is truncated or
+unavailable, `scope.state` is `partial` or `unknown` and the ambiguous
+full-scope `resolved_percent`/`rechecked_percent` are withheld. It also
+partitions the full represented population by retained recheck task id;
+unassigned cases remain visible rather than disappearing from a denominator.
+`remediation_report`
 returns one deterministic, paginated JSON-ready case page with the baseline,
 later observations and latest decision while its summary still covers the full
 ledger. `write_remediation_report` writes a new, never-overwritten

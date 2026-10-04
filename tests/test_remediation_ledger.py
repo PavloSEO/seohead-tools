@@ -544,6 +544,67 @@ def test_remediation_coverage_keeps_the_full_original_population_in_every_ratio(
     assert len(report["cases"]) == 1
 
 
+def test_truncated_group_membership_withholds_full_scope_remediation_percentages(tmp_path):
+    """Twenty-five represented members cannot stand in for a million-member group."""
+    ledger = _ledger(tmp_path)
+    members = [f"https://example.test/member-{index}" for index in range(25)]
+    scan = _scan(
+        tmp_path / "group.sqlite",
+        issues=[
+            _issue(
+                "ISSUE-000001",
+                "TITLE_MISSING",
+                target=A,
+                count=1_000_000,
+                group_id="TITLE-GROUP",
+                locations=[
+                    {"source_url": url, "link_path": f"//main/a[{index + 1}]"}
+                    for index, url in enumerate(members)
+                ],
+            )
+        ],
+        page_urls=[A, *members],
+        groups=[
+            {
+                "group_id": "TITLE-GROUP",
+                "check": "TITLE_MISSING",
+                "count": 1_000_000,
+                "urls": members,
+            }
+        ],
+    )
+    ingest_scan(ledger, scan)
+    con = open_ledger(ledger, write=True)
+    try:
+        rows = con.execute("SELECT occurrence_id,finding_id FROM occurrence").fetchall()
+        con.execute("BEGIN IMMEDIATE")
+        con.executemany(
+            "UPDATE occurrence SET current_state='resolved' WHERE occurrence_id=?",
+            [(row["occurrence_id"],) for row in rows],
+        )
+        con.executemany(
+            "UPDATE finding SET current_state='resolved' WHERE finding_id=?",
+            [(row["finding_id"],) for row in rows],
+        )
+        con.execute("UPDATE ledger SET ledger_revision=ledger_revision+1 WHERE singleton=1")
+        con.commit()
+    finally:
+        con.close()
+    summary = remediation_summary(ledger)
+    represented = len(rows)
+    assert summary["scope"]["state"] == "partial"
+    assert summary["scope"]["represented_occurrences"] == represented
+    assert summary["scope"]["known_unrepresented_members"] == 1_000_000 - represented
+    assert summary["represented_resolved_percent"] == 100.0
+    assert summary["resolved_percent"] is None
+    task = summary["tasks"]["unassigned"]
+    assert task["status"] == "scope_incomplete"
+    assert task["scope_state"] == "partial"
+    assert task["represented_resolved_percent"] == 100.0
+    assert task["resolved_percent"] is None
+    assert remediation_report(ledger)["summary"]["scope"]["state"] == "partial"
+
+
 def test_remediation_report_writes_deterministic_review_files_without_mutating_ledger(tmp_path):
     ledger = _ledger(tmp_path)
     scan = _scan(
@@ -911,7 +972,7 @@ def test_scan_without_audit_is_refused(tmp_path):
 def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
     ledger = _ledger(tmp_path)
     con = sqlite3.connect(ledger)
-    con.execute("PRAGMA user_version=3")
+    con.execute("PRAGMA user_version=4")
     con.commit()
     con.close()
     digest = _file_sha(ledger)
@@ -940,7 +1001,7 @@ def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_p
     assert _file_sha(path) == original
     upgraded = open_ledger(path, write=True)
     try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 3
         assert upgraded.execute("SELECT format_version FROM ledger").fetchone()[0] == "ledger.v1"
         assert upgraded.execute("SELECT COUNT(*) FROM verification_artifact").fetchone()[0] == 0
     finally:
@@ -1011,7 +1072,7 @@ def test_audit_v2_ingest_streams_large_issue_population_without_legacy_materiali
     result = ingest_scan(ledger, scan_path)
     assert result["recorded"]["findings"] == 10_001
     assert result["recorded"]["occurrences"] == 10_001
-    assert result["recorded"]["group_memberships_state"] == "partial"
+    assert result["recorded"]["group_memberships_state"] == "complete"
     assert ledger_summary(ledger)["counts"]["occurrence"] == 10_001
 
     occurrence = next(
