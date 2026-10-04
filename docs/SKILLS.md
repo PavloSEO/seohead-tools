@@ -106,7 +106,7 @@ Then by the layer of the task.
 | **analytics-console-review** | A user-authorized signed-in console or aggregate export is available, but no provider API is configured | Host browser or user export; optional `sources-doctor`, `metrika-report`, and page/SF checks |
 
 ## Tools without a skill of their own
-62 of the 97 commands are not named in any skill's own body (a mention inside
+63 of the 98 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing inside
 a workflow's write-up, or not yet needed by one at all — and have no skill of their own,
 deliberately: a skill per single command is noise. `tests/test_docs_drift.py` recomputes this
@@ -126,7 +126,7 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` · `b
 · `scan-import-urls` · `scan-inspect` · `scan-list` · `scan-pin` · `scan-prune`
 · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `segment-diff`
 · `serp-fetch` · `soft404-check` · `spend-report` · `tool-catalog` · `topvisor-read`
-· `wayback-history`
+· `verify-fixes` · `wayback-history`
 
 Two of them are candidates for a skill if the work becomes regular:
 `log-analyze` (log parsing is its own genre with its own method) and
