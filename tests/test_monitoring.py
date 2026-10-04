@@ -86,6 +86,7 @@ def test_full_refresh_keeps_unavailable_evidence_without_inventing_resolutions(t
     assert retained["run"]["state"] == "partial"
     assert retained["run"]["recoveries"] == []
     assert retained["run"]["baseline"]["scan_id"] == "scan:full"
+    assert retained["due"]["mode"] == "full"
 
 
 def test_claimed_full_refresh_keeps_its_plan_and_enforces_request_budgets(tmp_path):

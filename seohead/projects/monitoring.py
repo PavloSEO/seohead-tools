@@ -321,9 +321,13 @@ def run(
     document["runs"].append(retained)
     document["runner"] = {
         "state": "idle",
-        "runs_since_full_refresh": 0
-        if full
-        else document["runner"].get("runs_since_full_refresh", 0) + 1,
+        "runs_since_full_refresh": (
+            0
+            if full
+            else policy["full_refresh_every"]
+            if due.get("mode") == "full"
+            else document["runner"].get("runs_since_full_refresh", 0) + 1
+        ),
         "last_finished_at": retained["recorded_at"],
     }
     document["revision"] += 1
