@@ -158,7 +158,9 @@ class _DiskPages:
             "UPDATE pages SET state_json=? WHERE url=?",
             (json.dumps(state, ensure_ascii=False), url),
         )
-        self.con.commit()
+        # The audit is one process-local transaction. Readers use this same
+        # connection, so they see updates immediately; committing every metric
+        # mutation would turn a large audit into thousands of fsyncs.
 
     def get(self, url: str) -> Page | None:
         row = self.con.execute(
