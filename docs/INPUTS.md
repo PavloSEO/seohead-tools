@@ -109,6 +109,7 @@ and this decision makes no backend migration.
 | `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
 | `project-inbox-acknowledge` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |
 | `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
+| `project-inbox-triage` | Project directory (`directory`)<br>Inline JSON (`entry_id, outcome, actor, expected_revision`) | Explicit controller outcome for a specialist note; it never reads, acknowledges, or executes the note. |
 | `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
 | `remediation-summary` | Local file (`ledger`) | — |
 | `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |

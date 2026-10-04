@@ -37,12 +37,14 @@ def test_full_audit_v1_is_a_catalogued_versioned_workflow_with_honest_gates():
         "log-scan",
         "report-build",
         "project-prepare",
-        "no shipped applicability and",
+        "Register controller work",
+        "project-inbox-triage",
+        "current incomplete custom task IDs",
         "unavailable evidence",
     ):
         assert required in prompt["content"]
     assert "full-registry is complete" not in prompt["content"]
-    assert "checklist-completion percentages" in prompt["content"]
+    assert "audit-task progress" in prompt["content"]
 
     scenario = playbook_show("full-audit", "scenario")
     assert scenario["id"] == SCENARIO_ID

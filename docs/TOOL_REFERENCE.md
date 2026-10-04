@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**148 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 153 in total.
+**149 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 154 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1442,6 +1442,28 @@ Explicitly accept or complete a stored proposed goal; no executor is launched.
 | `expected_revision` | `int | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-inbox-triage`
+
+MCP name: `seo_project_inbox_triage`
+
+Append an explicit task, goal, competitor, blocked, or rejected note outcome.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `entry_id` | `str` | `required` |
+| `outcome` | `dict[str, Any]` | `required` |
+| `actor` | `str` | `required` |
+| `expected_revision` | `int | None` | `None` |
+| `consumer` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+This records no automated interpretation, does not read or acknowledge the
+note, and never launches a scan or a provider operation.
 
 ### `project-inbox-unread`
 

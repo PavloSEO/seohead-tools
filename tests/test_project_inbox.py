@@ -8,6 +8,7 @@ from multiprocessing import get_context
 
 import pytest
 
+from seohead.projects.coverage import coverage_status, initialize_coverage, update_item
 from seohead.projects.inbox import (
     acknowledge,
     fingerprint,
@@ -15,6 +16,7 @@ from seohead.projects.inbox import (
     mark_read,
     set_goal_state,
     submit,
+    triage,
     unread_summary,
 )
 from seohead.projects.observer import finding_detail, findings_page, observe
@@ -90,6 +92,73 @@ def test_note_read_ack_and_goal_transitions_are_explicit_and_durable(tmp_path):
     )
     with pytest.raises(ValueError, match="proposed goal"):
         set_goal_state(root, entry_id=note["id"], state="accepted")
+
+
+def test_specialist_note_triage_links_existing_tasks_goals_and_competitor_suggestions(tmp_path):
+    root = _project(tmp_path)
+    initialized = initialize_coverage(root)
+    task_id = "custom:review-competitor"
+    update_item(
+        root,
+        {"id": task_id, "title": "Review named competitor"},
+        initialized["revision"],
+    )
+    task_note = submit(root, text="Please compare the named competitor")["entry"]
+    task = triage(
+        root,
+        entry_id=task_note["id"],
+        outcome={
+            "kind": "task",
+            "reason": "The controller created a scoped review task before work.",
+            "task_ids": [task_id],
+        },
+        actor="agent/controller",
+    )["entry"]
+    assert task["triage"][-1]["task_ids"] == [task_id]
+    assert unread_summary(root, consumer="agent/controller")["count"] == 1
+
+    goal = submit(root, text="Decide the next audit scope", kind="proposed_goal")["entry"]
+    goal_note = submit(root, text="Turn this into a proposed audit goal")["entry"]
+    linked_goal = triage(
+        root,
+        entry_id=goal_note["id"],
+        outcome={
+            "kind": "goal",
+            "reason": "The specialist must still explicitly accept the proposed goal.",
+            "goal_id": goal["id"],
+        },
+        actor="agent/controller",
+    )["entry"]
+    assert linked_goal["triage"][-1]["goal_id"] == goal["id"]
+    assert linked_goal["triage"][-1]["kind"] == "goal"
+
+    competitor_note = submit(root, text="Consider this competitor")["entry"]
+    candidate = triage(
+        root,
+        entry_id=competitor_note["id"],
+        outcome={
+            "kind": "competitor",
+            "reason": "Candidate retained for later explicit project preparation.",
+            "competitors": ["https://competitor.test/"],
+        },
+        actor="agent/controller",
+    )["entry"]
+    assert candidate["triage"][-1]["competitors"] == ["https://competitor.test/"]
+    assert coverage_status(root)["state"] == "initialized"
+
+
+@pytest.mark.parametrize("kind", ["blocked", "rejected"])
+def test_specialist_note_triage_requires_explicit_nonexecution_reason(tmp_path, kind):
+    root = _project(tmp_path)
+    note = submit(root, text="A question requiring a decision")["entry"]
+    result = triage(
+        root,
+        entry_id=note["id"],
+        outcome={"kind": kind, "reason": "Synthetic missing evidence."},
+        actor="agent/controller",
+    )
+    assert result["entry"]["triage"][-1]["kind"] == kind
+    assert result["entry"]["triage"][-1]["reason"] == "Synthetic missing evidence."
 
 
 def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tmp_path):

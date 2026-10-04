@@ -4570,6 +4570,24 @@ def project_inbox_goal(
     return core(directory, entry_id=entry_id, state=state, expected_revision=expected_revision)
 
 
+def project_inbox_triage(
+    directory: str,
+    entry_id: str,
+    outcome: dict[str, Any],
+    actor: str,
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_triage as core
+
+    return core(
+        directory,
+        entry_id=entry_id,
+        outcome=outcome,
+        actor=actor,
+        expected_revision=expected_revision,
+    )
+
+
 def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_inbox_unread as core
 
@@ -5506,6 +5524,7 @@ _RAW_HANDLERS = {
     "project_inbox_read": project_inbox_read,
     "project_inbox_acknowledge": project_inbox_acknowledge,
     "project_inbox_goal": project_inbox_goal,
+    "project_inbox_triage": project_inbox_triage,
     "project_inbox_unread": project_inbox_unread,
     "project_observe": project_observe,
     "project_facts": project_facts,

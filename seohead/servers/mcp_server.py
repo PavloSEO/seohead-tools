@@ -1634,6 +1634,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Explicitly accept or complete a stored proposed goal; no executor is launched."""
         return _checked(handlers.project_inbox_goal(directory, entry_id, state, expected_revision))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_triage(
+        directory: str,
+        entry_id: str,
+        outcome: dict[str, Any],
+        actor: str,
+        expected_revision: int | None = None,
+        consumer: str | None = None,
+    ) -> dict[str, Any]:
+        """Append an explicit task, goal, competitor, blocked, or rejected note outcome.
+
+        This records no automated interpretation, does not read or acknowledge the
+        note, and never launches a scan or a provider operation.
+        """
+        return _checked(
+            with_project_notice(
+                handlers.project_inbox_triage(
+                    directory=directory,
+                    entry_id=entry_id,
+                    outcome=outcome,
+                    actor=actor,
+                    expected_revision=expected_revision,
+                ),
+                directory,
+                consumer,
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
         """Return a bounded unread reference summary without changing delivery state."""

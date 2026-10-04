@@ -82,6 +82,31 @@ For MCP work, the matching read-only snapshot is `seo_project_observe`; use it o
 specialist has chosen observation. The configured consumer identity can surface an unread inbox
 summary on the next project-bound MCP call, but it does not inject a chat message or start work.
 
+## Register controller work before collection
+
+When an existing project workspace is in scope, the controller must leave a durable work trail
+before it runs a collector, method skill, or long analysis. This is an agent responsibility, not a
+human control panel.
+
+1. On the next scoped MCP call, inspect the bounded unread summary only when the local stdio
+   process has both `SEOHEAD_MCP_CONSUMER_ID` and a matching
+   `SEOHEAD_MCP_PROJECT_ALLOWLIST`. The notice is a prompt to inspect; it never reads or
+   acknowledges a note.
+2. Read a specialist note explicitly and record one explicit triage receipt through
+   `project-inbox-triage`: link it to current `custom:` checklist task IDs, a stored proposed
+   goal, retained competitor candidates, or a concrete blocked/rejected reason. Do not infer an
+   action by regex, execute note text, accept a goal, or acknowledge a note as a side effect.
+3. Create or update the linked `custom:` checklist task with `project-checklist-update`, then
+   record `running` through `project-checklist-record` before work starts. Completion needs the
+   normal evidence and review rules; a controller claim is not evidence.
+4. Accept a proposed goal separately when authorized. `workflow-start` requires that accepted
+   goal, the registered prompt, and one or more current incomplete `custom:` task IDs in its
+   context. It refuses an unbound run.
+
+Competitor triage only retains a candidate suggestion. It does not run `project-prepare`, create a
+competitor crawl, or establish competitiveness. Those are later explicit operations with their own
+scope and budget decisions.
+
 ## The loop
 
 The versioned execution contract for this sequence is `workflow/full-audit-v1` (v1.0.0). Retrieve

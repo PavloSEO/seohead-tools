@@ -467,6 +467,19 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "entry_id", "state", "expected_revision"),
     ),
     _command(
+        "project-inbox-triage",
+        "project_inbox_triage",
+        _form("project_directory", "directory"),
+        _form(
+            "inline_json",
+            "entry_id",
+            "outcome",
+            "actor",
+            "expected_revision",
+            note="Explicit controller outcome for a specialist note; it never reads, acknowledges, or executes the note.",
+        ),
+    ),
+    _command(
         "project-inbox-unread",
         "project_inbox_unread",
         _form("project_directory", "directory"),

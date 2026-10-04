@@ -153,6 +153,15 @@ accepted. Agents receive a bounded unread summary only when their MCP process
 has an explicit consumer identity and a matching project allowlist; see
 [MCP_PROFILES.md](MCP_PROFILES.md) for the local stdio boundary.
 
+An agent controller records a processed specialist note with `project-inbox-triage`.
+The receipt names current `custom:` checklist tasks, a stored proposed goal, retained
+competitor candidates, or a specific blocked/rejected reason. It never parses note text
+into commands, accepts a goal, acknowledges a note, starts a crawl, or treats a candidate
+as a completed competitor audit. Before an execution workflow starts, its controller must
+create or update a current incomplete custom task and pass that task, its separately
+accepted goal, and the registered prompt through the workflow context. Record in-progress
+and completed task states only through the existing evidence and review contracts.
+
 ## Recording stack facts
 
 Facts entered at creation are not the only way in. `project-facts` records them
