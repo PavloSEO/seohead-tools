@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from datetime import date, timedelta
 from typing import Any
 
 from seohead.data_sources.http import open_no_redirect
@@ -239,6 +240,8 @@ def url_queries(
     user_id: str | None = None,
     max_urls: int = 100,
     max_queries_per_url: int = QUERY_ANALYTICS_PAGE,
+    start_date: str | None = None,
+    end_date: str | None = None,
     token: str | None = None,
     transport: Transport | None = None,
 ) -> dict[str, Any]:
@@ -258,6 +261,25 @@ def url_queries(
         raise ValueError("host_id, one optional URL filter, and max_urls in 1..50000 are required")
     if type(max_queries_per_url) is not int or not 1 <= max_queries_per_url <= MAX_ROWS:
         raise ValueError("max_queries_per_url must be in 1..50000")
+    if bool(start_date) != bool(end_date):
+        raise ValueError("pass both start_date and end_date")
+    requested_days: list[str] | None = None
+    if start_date and end_date:
+        try:
+            start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        except ValueError as exc:
+            raise ValueError("start_date and end_date must be ISO dates") from exc
+        if start > end:
+            raise ValueError("start_date must not be after end_date")
+        if end < date.today() - timedelta(days=14):
+            return {
+                "ok": False,
+                "state": "unavailable",
+                "reason": "requested_date_outside_provider_rolling_window",
+            }
+        requested_days = [
+            (start + timedelta(days=offset)).isoformat() for offset in range((end - start).days + 1)
+        ]
     try:
         bearer = token or yandex_webmaster_token()
     except MissingCredential as exc:
@@ -328,10 +350,23 @@ def url_queries(
                 if not isinstance(query, str) or not isinstance(statistics, list):
                     raise ValueError("malformed Yandex Webmaster query result")
                 daily = _daily_statistics(statistics)
+                if requested_days is not None:
+                    daily = [entry for entry in daily if entry["date"] in requested_days]
                 if daily:
                     rows.append(
                         {"url": page, "query": query, "daily": daily, "truncated": query_truncated}
                     )
+        observed_days = sorted({entry["date"] for row in rows for entry in row["daily"]})
+        coverage = (
+            {
+                "requested_days": requested_days,
+                "observed_days": observed_days,
+                "unobserved_days": sorted(set(requested_days) - set(observed_days)),
+                "state": "partial_or_unknown",
+            }
+            if requested_days is not None
+            else None
+        )
         return {
             "ok": True,
             "state": "partial"
@@ -342,6 +377,7 @@ def url_queries(
             "returned_urls": len(urls),
             "returned_queries": len(rows),
             "truncated": urls_truncated or any(row["truncated"] for row in rows),
+            "coverage": coverage,
             "scope": "Yandex Webmaster query analytics; provider retention and metric attribution apply",
         }
     except urllib.error.HTTPError as exc:

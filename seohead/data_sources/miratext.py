@@ -19,6 +19,10 @@ MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 Transport = Callable[[str, bytes], str]
 
 
+class ResponseTooLarge(ValueError):
+    """The provider returned more than the documented bounded response budget."""
+
+
 def _table(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list) and all(isinstance(row, dict) for row in value):
         return value
@@ -96,7 +100,7 @@ def _transport(key: str) -> Transport:
         with open_no_redirect(request, timeout=30) as response:
             body = response.read(MAX_RESPONSE_BYTES + 1)
         if len(body) > MAX_RESPONSE_BYTES:
-            raise ValueError("Miratext response exceeds 20 MiB")
+            raise ResponseTooLarge("Miratext response exceeds 20 MiB")
         return body.decode("utf-8")
 
     return send
@@ -169,6 +173,8 @@ def analyze(
     def request(payload: str) -> dict[str, Any] | None:
         try:
             response = json.loads((transport or _transport(key))(payload, b""))
+        except ResponseTooLarge:
+            raise
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
             return None
         return (
@@ -177,7 +183,10 @@ def analyze(
             else None
         )
 
-    body = request(encoded)
+    try:
+        body = request(encoded)
+    except ResponseTooLarge:
+        return {"ok": False, "state": "unavailable", "reason": "response_too_large"}
     if body is None:
         return {"ok": False, "state": "failed", "error": "Miratext request failed"}
     if body["result"] != "ok":

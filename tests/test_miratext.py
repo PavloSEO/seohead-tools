@@ -93,6 +93,23 @@ def test_transport_failure_redacts_key():
     assert result["ok"] is False and "canary" not in json.dumps(result)
 
 
+def test_oversized_live_response_is_an_explicit_unavailable_state(monkeypatch):
+    class Response:
+        def read(self, limit):
+            return b"x" * limit
+
+    class Context:
+        def __enter__(self):
+            return Response()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(miratext, "open_no_redirect", lambda *_args, **_kwargs: Context())
+    result = miratext.analyze(urls=["x"], my="y", api_key="canary")
+    assert result == {"ok": False, "state": "unavailable", "reason": "response_too_large"}
+
+
 def test_accepted_result_reduces_keyword_and_density_tables():
     result = miratext.analyze(
         hash="job-1",

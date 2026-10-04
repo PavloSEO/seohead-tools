@@ -119,3 +119,41 @@ def test_cli_url_query_flags_reach_the_shared_handler(monkeypatch):
         == 0
     )
     assert captured == {"host_id": "h", "url": "https://example.test/a", "max_urls": 2}
+
+
+def test_local_date_filter_marks_unobserved_days_without_zero_filling():
+    def send(_method, _url, payload, _token):
+        if payload["text_indicator"] == "URL":
+            return json.dumps(
+                {
+                    "text_indicator_to_statistics": [
+                        {"text_indicator": {"value": "https://example.test/a"}}
+                    ]
+                }
+            )
+        return json.dumps(
+            {
+                "text_indicator_to_statistics": [
+                    {
+                        "text_indicator": {"value": "pump"},
+                        "statistics": [{"date": "2026-10-02", "field": "IMPRESSIONS", "value": 1}],
+                    }
+                ]
+            }
+        )
+
+    result = wm.url_queries(
+        "h",
+        url="https://example.test/a",
+        start_date="2026-10-01",
+        end_date="2026-10-03",
+        token="t",
+        user_id="7",
+        transport=send,
+    )
+    assert result["coverage"] == {
+        "requested_days": ["2026-10-01", "2026-10-02", "2026-10-03"],
+        "observed_days": ["2026-10-02"],
+        "unobserved_days": ["2026-10-01", "2026-10-03"],
+        "state": "partial_or_unknown",
+    }

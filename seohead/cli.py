@@ -893,7 +893,15 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "row_limit", None):
             kw["row_limit"] = args.row_limit
     if cmd == "webmaster-url-queries":
-        for name in ("host_id", "url", "url_contains", "max_urls", "max_queries_per_url"):
+        for name in (
+            "host_id",
+            "url",
+            "url_contains",
+            "max_urls",
+            "max_queries_per_url",
+            "start_date",
+            "end_date",
+        ):
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
@@ -1358,6 +1366,8 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             type=int,
             help="query cap per URL, 1..500",
         )
+        sub.add_argument("--start-date", dest="start_date", help="local ISO date filter")
+        sub.add_argument("--end-date", dest="end_date", help="local ISO date filter")
     if cmd in {
         "scan-evidence",
         "scan-extract",
