@@ -1,4 +1,6 @@
 import json
+import io
+import urllib.error
 
 from seohead.data_sources import yandex_webmaster as wm
 
@@ -74,3 +76,20 @@ def test_url_queries_paginate_with_explicit_cap():
 
     result = wm.url_queries("h", max_urls=2, token="t", user_id="7", transport=send)
     assert result["returned_urls"] == 2 and result["state"] == "complete"
+
+
+def test_query_route_retries_rate_limits_and_returns_only_provider_error_code():
+    calls = 0
+
+    def send(_method, _url, _payload, _token):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise urllib.error.HTTPError("https://api.test", 429, "rate", {}, io.BytesIO(b"{}"))
+        raise urllib.error.HTTPError(
+            "https://api.test", 403, "denied", {}, io.BytesIO(b'{"error_code":"HOST_NOT_FOUND"}')
+        )
+
+    result = wm.url_queries("h", token="canary", user_id="7", transport=send)
+    assert result == {"ok": False, "state": "failed", "error_code": "HOST_NOT_FOUND"}
+    assert calls == 3 and "canary" not in json.dumps(result)

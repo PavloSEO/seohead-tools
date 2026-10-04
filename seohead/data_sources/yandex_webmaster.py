@@ -287,7 +287,13 @@ def url_queries(
                     "text_indicator": indicator,
                     "filters": {"text_filters": filters},
                 }
-                parsed = json.loads(send("POST", endpoint, body, bearer))
+                for attempt in range(3):
+                    try:
+                        parsed = json.loads(send("POST", endpoint, body, bearer))
+                        break
+                    except urllib.error.HTTPError as exc:
+                        if attempt == 2 or (exc.code != 429 and not 500 <= exc.code <= 599):
+                            raise
                 chunk = (
                     parsed.get("text_indicator_to_statistics") if isinstance(parsed, dict) else None
                 )
@@ -338,5 +344,14 @@ def url_queries(
             "truncated": urls_truncated or any(row["truncated"] for row in rows),
             "scope": "Yandex Webmaster query analytics; provider retention and metric attribution apply",
         }
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError):
+    except urllib.error.HTTPError as exc:
+        error_code = f"HTTP_{exc.code}"
+        try:
+            payload = json.loads(exc.read().decode("utf-8", "replace"))
+            if isinstance(payload, dict) and isinstance(payload.get("error_code"), str):
+                error_code = payload["error_code"]
+        except (OSError, ValueError):
+            pass
+        return {"ok": False, "state": "failed", "error_code": error_code}
+    except (urllib.error.URLError, TimeoutError, ValueError, KeyError):
         return {"ok": False, "state": "failed", "error": "Yandex Webmaster query analytics failed"}
