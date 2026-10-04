@@ -11,6 +11,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import suppress
 from typing import Any
@@ -84,6 +85,12 @@ class _DiskPages:
         self.closed = False
         self.con = sqlite3.connect(name)
         self.con.row_factory = sqlite3.Row
+        # Rules repeatedly resolve the same normalized nodes while walking a
+        # graph.  Keep a bounded working set: it removes JSON decoding from
+        # hot repeated lookups without turning a million-page artifact back
+        # into a million-page Python population.
+        self._cache: OrderedDict[str, Page] = OrderedDict()
+        self._cache_limit = 4096
         self.con.execute(
             "CREATE TABLE pages (ordinal INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, "
             "norm TEXT NOT NULL, status_code INTEGER, state_json TEXT NOT NULL)"
@@ -122,6 +129,7 @@ class _DiskPages:
         if self.closed:
             return
         self.closed = True
+        self._cache.clear()
         self.con.close()
         with suppress(FileNotFoundError):
             os.unlink(self.path)
@@ -163,13 +171,17 @@ class _DiskPages:
         # mutation would turn a large audit into thousands of fsyncs.
 
     def get(self, url: str) -> Page | None:
+        cached = self._cache.get(url)
+        if cached is not None:
+            self._cache.move_to_end(url)
+            return cached
         row = self.con.execute(
             "SELECT url,status_code,state_json FROM pages WHERE url=?", (url,)
         ).fetchone()
         if row is None:
             return None
         state = json.loads(row["state_json"])
-        return Page(
+        page = Page(
             url=row["url"],
             status_code=row["status_code"],
             status=state["status"],
@@ -190,6 +202,11 @@ class _DiskPages:
                 lambda value: self._write(row["url"], "suppressed_issue_ids", value),
             ),
         )
+        self._cache[url] = page
+        self._cache.move_to_end(url)
+        if len(self._cache) > self._cache_limit:
+            self._cache.popitem(last=False)
+        return page
 
     def by_norm(self, norm: str) -> list[Page]:
         return [
@@ -200,8 +217,15 @@ class _DiskPages:
         ]
 
     def representative(self, norm: str) -> Page | None:
-        pages = self.by_norm(norm)
-        return _representative(pages) if pages else None
+        # Most normalized keys resolve to one row.  Let SQLite choose the
+        # existing 2xx preference instead of decoding every sibling merely to
+        # discard it, which is decisive for graph-wide rules.
+        row = self.con.execute(
+            "SELECT url FROM pages WHERE norm=? "
+            "ORDER BY CASE WHEN status_code BETWEEN 200 AND 299 THEN 0 ELSE 1 END, ordinal LIMIT 1",
+            (norm,),
+        ).fetchone()
+        return self.get(row["url"]) if row is not None else None
 
 
 class _DiskIssues:
