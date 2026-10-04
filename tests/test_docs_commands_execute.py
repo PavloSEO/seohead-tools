@@ -73,6 +73,13 @@ NEEDS_LIVE_INFRASTRUCTURE = {
 }
 
 
+def _needs_interactive_terminal(argv: list[str]) -> bool:
+    """Interactive shell examples are parser-checked; PTY coverage lives with the shell."""
+    from seohead.cli import INTERACTIVE_COMMANDS
+
+    return bool(argv) and argv[0] in INTERACTIVE_COMMANDS
+
+
 # `sf` subcommands that inspect the local Screaming Frog installation itself rather than an
 # export: they pass on a developer machine that has SF and fail on a runner that does not,
 # which is the difference between an environment and a broken command.
@@ -434,6 +441,7 @@ def test_documented_command_executes_or_at_least_still_parses(
         spellings.add(f"{argv[0]}-{argv[1]}")
     if (
         spellings & NEEDS_LIVE_INFRASTRUCTURE
+        or _needs_interactive_terminal(argv)
         or _is_licensed_sf_mode(argv)
         or _needs_pdf_runtime(argv)
     ):

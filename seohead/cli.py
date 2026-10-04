@@ -178,6 +178,17 @@ COMMANDS = (
     "scan-import-urls",
 )
 
+# These are real top-level CLI entry points but deliberately do not belong in
+# ``COMMANDS``: that registry is the one-to-one shared core handler/MCP surface.
+# The terminal shell has neither a generic handler nor an MCP equivalent.
+INTERACTIVE_COMMANDS = ("tui", "watch")
+
+# Public-doc checks need to distinguish an actual CLI entry point from an
+# unknown spelling without pretending every entry point is an MCP tool.  The
+# namespace entries own subcommand parsers; ``mcp`` and the interactive shell
+# own process/session behavior rather than a shared handler.
+DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
+
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
     "crawl-site",
@@ -2405,7 +2416,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile == "full" and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
-    if cmd in {"tui", "watch"}:
+    if cmd in INTERACTIVE_COMMANDS:
         try:
             from seohead.tui.app import run as tui_run
         except ImportError:
