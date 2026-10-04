@@ -158,8 +158,9 @@ def test_note_draft_is_visible_before_background_evidence_finishes():
             snapshot_override=(None, []),
         )
     )
-    assert "Typed draft remains visible" in console.export_text()
-    assert "Enter Save" in console.export_text()
+    rendered = console.export_text()
+    assert "Typed draft remains visible" in rendered
+    assert "Enter Save" in rendered
 
 
 def test_dashboard_is_bounded_in_fullscreen_compact_and_each_section(tmp_path):
