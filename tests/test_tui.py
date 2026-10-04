@@ -13,7 +13,14 @@ from rich.console import Console
 from seohead import cli
 from seohead.projects.workspace import create_project
 from seohead.tui import theme
-from seohead.tui.app import MIN_HEIGHT, MIN_WIDTH, _meter, _ObserverRefresh, build_frame
+from seohead.tui.app import (
+    MIN_HEIGHT,
+    MIN_WIDTH,
+    _meter,
+    _ObserverRefresh,
+    _watch_lines,
+    build_frame,
+)
 from seohead.tui.keys import raw_mode, read_key
 from seohead.tui.state import ShellState
 from tests.test_scan_history import _finished
@@ -161,6 +168,52 @@ def test_note_draft_is_visible_before_background_evidence_finishes():
     rendered = console.export_text()
     assert "Typed draft remains visible" in rendered
     assert "Enter Save" in rendered
+
+
+def test_task_page_keys_read_the_next_durable_checklist_page(tmp_path):
+    from seohead.projects.coverage import initialize_coverage
+    from seohead.projects.observer import observe
+    from seohead.projects.progress import project_progress
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    initialize_coverage(root)
+    state = ShellState(commands=[], view="watch", watch_section="tasks")
+    palette = theme.resolve_palette(color=False)
+    snapshot = observe(root)
+    first = _watch_lines(str(root), state, palette, None, snapshot=snapshot)
+    state.handle_key("page_down")
+    second = _watch_lines(str(root), state, palette, None, snapshot=snapshot)
+    expected = project_progress(root, limit=50, offset=50)
+    assert expected["items"][0]["id"] in second[4].plain
+    assert first[4].plain != second[4].plain
+    assert "page offset 50" in second[3].plain
+
+
+def test_imported_scan_unknown_frontier_does_not_crash_dashboard(tmp_path, monkeypatch):
+    from seohead.projects.observer import observe
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    _finished(root / "scans" / "fixture.sqlite")
+    snapshot = observe(root)
+    snapshot["scans"]["items"][0]["evidence"]["frontier"] = {
+        "state": "unavailable",
+        "counts": None,
+        "reason": "imported input has no frontier",
+    }
+    monkeypatch.setattr("seohead.tui.app._watch_snapshot", lambda _: (snapshot, []))
+    console = Console(width=120, height=30, record=True)
+    console.print(
+        build_frame(
+            ShellState(commands=[], view="watch"),
+            width=120,
+            height=30,
+            palette=theme.resolve_palette(color=False),
+            project=str(root),
+        )
+    )
+    assert "Not measured" in console.export_text()
 
 
 def test_dashboard_is_bounded_in_fullscreen_compact_and_each_section(tmp_path):

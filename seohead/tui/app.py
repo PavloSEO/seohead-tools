@@ -234,12 +234,17 @@ def _watch_lines(
             ]
         )
     elif section == "tasks":
+        from seohead.projects.progress import project_progress
+
+        progress = project_progress(project, limit=50, offset=state.watch_offset)
         entries = [
             f"[{item['state']}] {item['id']} · {item['title']} · {item['attempt_status']}"
             for item in progress["items"]
         ]
         lines.append(
-            Text("checklist (completion, partial, skipped and unavailable remain distinct):")
+            Text(
+                f"checklist · page offset {state.watch_offset} · {progress['pagination']['total']} declared items:"
+            )
         )
         lines.extend(_select(entries, state.watch_index, palette))
         if state.watch_index >= len(entries):
@@ -621,7 +626,7 @@ def _watch_dashboard(
         scans = snapshot["scans"]["items"]
         latest = scans[0] if scans else {}
         evidence = latest.get("evidence", {})
-        counts = evidence.get("frontier", {}).get("counts", {})
+        counts = evidence.get("frontier", {}).get("counts") or {}
         findings = evidence.get("findings", {}).get("total")
         cards = Table.grid(expand=True, padding=(0, 1))
         for _ in range(3):
@@ -688,7 +693,7 @@ def _watch_dashboard(
                 [_meter(label, record.get("completed"), record.get("expected"), palette), Text("")]
             )
         items = snapshot["progress"]["items"]
-        checklist.append(Text("RECENT CHECKLIST", style=muted))
+        checklist.append(Text("CHECKLIST PREVIEW", style=muted))
         for item in items[: max(3, height - 26)]:
             marker = "+" if item["state"] == "completed" else "-"
             checklist.append(
