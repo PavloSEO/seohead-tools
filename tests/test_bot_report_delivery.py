@@ -152,6 +152,24 @@ def test_profile_receipts_are_distinct_and_size_limit_is_honest(monkeypatch, tmp
     assert full.artifact_id != filtered.artifact_id
 
 
+def test_unavailable_pdf_renderer_never_marks_a_delivery_success(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    delivery = AuthorizedReportDelivery(
+        backend, {"alpha"}, {"requester"}, receipts, lambda *_: None
+    )
+    profile = ReportProfile("pdf")
+    monkeypatch.setattr(
+        "seohead.reports.build_report",
+        lambda *_args, **_kwargs: {"ok": False, "error": "synthetic PDF renderer unavailable"},
+    )
+    with pytest.raises(DeliveryUnavailable, match="renderer unavailable"):
+        delivery.deliver("alpha", job_id, "requester", profile)
+    artifact = delivery.preview("alpha", job_id, profile)
+    _receipt, state = receipts.reserve(job_id, artifact.artifact_id, "requester")
+    assert state == "claimed"
+
+
 def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_path):
     backend, job_id = _complete_job(monkeypatch, tmp_path)
     delivered = []
