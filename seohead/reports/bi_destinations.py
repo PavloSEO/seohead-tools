@@ -18,10 +18,45 @@ from typing import Any
 from seohead.reports.bi import BI_SCHEMA_VERSION, MANIFEST_FORMAT
 
 SHEETS_MAX_CELLS = 10_000_000
+HOST_CONFIG_ENV = "SEOHEAD_BI_DESTINATIONS_FILE"
+_HOST_CLIENTS: dict[tuple[str, str], Any] = {}
 
 
 class BIDestinationError(ValueError):
     """A local BI package cannot safely feed an optional destination."""
+
+
+def register_host_client(destination: str, target: str, client: Any) -> None:
+    """Register a host-owned, already-authorized client outside CLI/MCP JSON."""
+    _HOST_CLIENTS[(destination, target)] = client
+
+
+def resolve_host_client(destination: str, target: str) -> Any:
+    """Resolve an exact allowlisted host target without reading credentials from input."""
+    from seohead.data_sources.credentials import CONFIG_ROOT
+
+    path = Path(os.environ.get(HOST_CONFIG_ENV, CONFIG_ROOT / "bi-destinations.json"))
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise BIDestinationError("BI destination host configuration is unavailable") from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BIDestinationError("BI destination host configuration is invalid") from exc
+    allowed = (
+        ((config.get(destination) or {}).get("targets") or {}) if isinstance(config, dict) else {}
+    )
+    if (
+        target not in allowed
+        or not isinstance(allowed[target], dict)
+        or not allowed[target].get("enabled")
+    ):
+        raise BIDestinationError("destination target is not host-allowlisted")
+    try:
+        return _HOST_CLIENTS[(destination, target)]
+    except KeyError as exc:
+        raise BIDestinationError(
+            "host has no authorized client for the allowlisted target"
+        ) from exc
 
 
 def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:

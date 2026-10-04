@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from seohead.reports.bi import export_bi
@@ -8,6 +10,7 @@ from seohead.reports.bi_destinations import (
     apply_with_client,
     bigquery_plan,
     filter_package,
+    register_host_client,
     sheets_plan,
 )
 from seohead.servers import handlers
@@ -86,10 +89,13 @@ def test_filtered_bi_export_is_exact_and_partitioned(tmp_path):
     assert (tmp_path / "filtered" / "manifest.json").is_file()
 
 
-def test_shared_handler_requires_injected_authorized_client(tmp_path):
+def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path, monkeypatch):
     package = tmp_path / "package"
     export_bi(audit=_audit(), out_dir=package)
-    with pytest.raises(ValueError, match="injected authorized client"):
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(json.dumps({"sheets": {"targets": {"synthetic": {"enabled": True}}}}))
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    with pytest.raises(ValueError, match="authorized client"):
         handlers.bi_destination_apply(
             package=str(package),
             target="synthetic",
@@ -120,3 +126,13 @@ def test_shared_handler_requires_injected_authorized_client(tmp_path):
         client=Client(),
     )
     assert result["destination"] == "sheets" and result["rows"]["pages"] == 1
+
+    register_host_client("sheets", "synthetic", Client())
+    hosted = handlers.bi_destination_apply(
+        package=str(package),
+        target="synthetic",
+        destination="sheets",
+        operation="replace",
+        apply=True,
+    )
+    assert hosted["rows"]["pages"] == 1
