@@ -302,6 +302,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("project-open", "project_open", _form("project_directory", "directory")),
     _command("project-status", "project_status", _form("project_directory", "directory")),
     _command(
+        "project-progress",
+        "project_progress",
+        _form("project_directory", "directory"),
+        _form("inline_json", "limit", "offset", note="Optional bounded progress pagination."),
+    ),
+    _command(
         "project-facts",
         "project_facts",
         _form("project_directory", "directory"),

@@ -90,6 +90,7 @@ and this decision makes no backend migration.
 | `project-new` | Project directory (`directory`)<br>Live URL (`target`) | — |
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
+| `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
 | `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |
