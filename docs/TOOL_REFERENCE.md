@@ -1478,6 +1478,47 @@ Read a bounded, paginated table view from one saved scan.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `scan-link-inspect`
+
+MCP name: `seo_scan_link_inspect`
+
+Inspect saved shortest paths, reverse inlinks, or per-link DOM context offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `view` | `str` | `'path'` |
+| `seed` | `str | None` | `None` |
+| `target` | `str | None` | `None` |
+| `representation` | `str` | `'all'` |
+| `cursor` | `str | None` | `None` |
+| `link_id` | `int | None` | `None` |
+| `document_id` | `int | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
+| `max_bytes` | `int` | `1048576` |
+| `max_body_bytes` | `int` | `5 * 1024 * 1024` |
+| `max_nodes` | `int` | `10000` |
+| `max_edges` | `int` | `200000` |
+| `max_depth` | `int` | `20` |
+| `timeout_seconds` | `float` | `15.0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Path hops and inlinks cite exact link IDs and scan identity; absence in a
+partial graph is never a confirmed orphan. Inlinks use a cursor bound to
+scan/revision/target/representation. Context requires link_id or
+document_id, and missing retained bodies return unavailable evidence.
+No network request or scan mutation occurs. Path defaults to 10,000
+visited nodes, 200,000 examined edges, 20 hops and 15 seconds (hard
+maxima 100,000/2,000,000/100/30). Inlinks page at most 500 rows; context
+pages at most 500 rows and one document, with an 8 MiB body hard cap.
+max_bytes bounds serialized item output (4 KiB..8 MiB); an over-budget
+full response returns a named limit result. Invalid scans and URLs are
+error results, not empty or clean graph evidence.
+
 ### `scan-status`
 
 MCP name: `seo_scan_status`

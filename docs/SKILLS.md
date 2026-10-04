@@ -116,7 +116,7 @@ Commands without their own skill: `asset-weight-check` · `audit-workflow` · `b
 `provider-collect` · `provider-join` · `provider-registry` · `provider-replay` ·
 `provider-verify` · `redirects-check` · `redirects-generate` · `regions-tree` ·
 `scan-body-diff` · `scan-evidence` · `scan-extract` · `scan-import-urls` · `scan-inspect` ·
-`scan-list` · `scan-pin` · `scan-prune` · `scan-reanalyze` · `scan-rendered-routes` ·
+`scan-link-inspect` · `scan-list` · `scan-pin` · `scan-prune` · `scan-reanalyze` · `scan-rendered-routes` ·
 `scan-requeue` · `scan-snapshot` · `scan-status` · `scenario-show` · `segment-diff` ·
 `serp-fetch` · `skill-list` · `skill-show` · `soft404-check` · `spend-report` · `tool-catalog`
 · `topvisor-read` · `wayback-history`
