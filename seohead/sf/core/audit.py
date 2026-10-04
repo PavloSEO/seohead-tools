@@ -89,6 +89,7 @@ def run_audit(
     live_recheck: bool | None = None,
     output_dir: str | None = None,
     log: Callable[[str], None] = print,
+    on_started: Callable[[int], None] | None = None,
 ) -> AuditResult:
     cfg = config if config is not None else load_config(config_path)
     # Apply targeted CLI overrides, such as an SF authentication profile.
@@ -135,6 +136,7 @@ def run_audit(
             cli_override=sf_cli,
             log=log,
             run_info=sf_run_info,
+            on_started=on_started,
         )
         if sf_version is None:
             sf_version = (sf_run_info.get("sf_capability") or {}).get("version")

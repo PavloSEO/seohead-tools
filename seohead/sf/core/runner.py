@@ -499,7 +499,7 @@ def _terminate_tree(proc: subprocess.Popen) -> str:
 
 
 def _run_watched(
-    cmd: list[str], timeout: float, output_folder: str, log
+    cmd: list[str], timeout: float, output_folder: str, log, on_started=None
 ) -> subprocess.CompletedProcess:
     """Run the CLI to completion or to the deadline, reporting that it is alive.
 
@@ -516,6 +516,9 @@ def _run_watched(
         start_new_session=os.name != "nt",
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
+    if on_started is not None:
+        with contextlib.suppress(OSError, ValueError):
+            on_started(proc.pid)
     with _live_lock:
         _live_processes.add(proc)
     try:
@@ -610,6 +613,7 @@ def run_sf(
     cli_override: str | None = None,
     log=print,
     run_info: dict[str, Any] | None = None,
+    on_started=None,
 ) -> str:
     """Run SF headless and return the folder containing the fresh exports.
 
@@ -666,7 +670,8 @@ def run_sf(
     timeout = minutes * 60
 
     try:
-        proc = _run_watched(cmd, timeout, output_folder, log)
+        watched_kwargs = {"on_started": on_started} if on_started is not None else {}
+        proc = _run_watched(cmd, timeout, output_folder, log, **watched_kwargs)
     except subprocess.TimeoutExpired as err:
         budget = f"{url_count} URLs at {rate}/s" if url_count and rate else "the crawl"
         raise RuntimeError(

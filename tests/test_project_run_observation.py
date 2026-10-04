@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
 from multiprocessing import get_context
 from pathlib import Path
@@ -181,3 +183,32 @@ def test_project_bound_sf_exports_records_analysis_without_invented_counters(tmp
         "rate_per_second": None,
     }
     assert [event["phase"] for event in run["events"]] == ["admission", "analysis", "finalizing"]
+
+
+def test_actual_collector_child_is_distinct_from_its_live_controller(tmp_path):
+    root = _project(tmp_path)
+    run = run_observation.start(
+        root,
+        kind="screaming_frog",
+        mode="sf_live",
+        max_urls=0,
+        config_fingerprint="synthetic",
+        artifact=root / "reports" / "sf",
+        counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
+    )
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(2)"])
+    try:
+        run_observation.collector_started(root, run["id"], child.pid)
+        active = run_observation.status(root)["items"][0]
+        assert active["controller"]["pid"] == os.getpid()
+        assert active["collector_runtime"]["pid"] == child.pid
+        assert active["controller"]["pid"] != active["collector_runtime"]["pid"]
+        assert active["collector_runtime"]["state"] == "live"
+        assert active["collector_runtime"]["observed_at"]
+    finally:
+        child.terminate()
+        child.wait(timeout=10)
+
+    finished_child = run_observation.status(root)["items"][0]
+    assert finished_child["state"] == "running"
+    assert finished_child["collector_runtime"]["state"] == "abandoned"

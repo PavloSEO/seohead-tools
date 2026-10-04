@@ -493,6 +493,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.verbose and not args.quiet:  # progress only when asked
             print(msg, file=sys.stderr)
 
+    def collector_started(pid: int) -> None:
+        if observed is None:
+            return
+        from seohead.projects.run_observation import collector_started as record_collector
+
+        try:
+            record_collector(observed[0], observed[1], pid)
+        except (OSError, ValueError):
+            return
+
     if input_mode in ("crawl", "crawl-list") and not args.quiet:
         # Mode B already has the exports; only a fresh crawl can still be fixed.
         for warning in preflight_warnings(
@@ -544,6 +554,7 @@ def main(argv: list[str] | None = None) -> int:
             from seohead.terminal_progress import elapsed_progress, show_banner
 
             licensed_run = input_mode in {"crawl", "crawl-list", "load-crawl"}
+            observer_kwargs = {"on_started": collector_started} if observed is not None else {}
             if licensed_run:
                 show_banner(
                     "Screaming Frog run started; elapsed time only because SF exposes no crawl percentage.",
@@ -564,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:
                     output_dir=os.path.join(args.out, "exports"),
                     url_rewrite=(auth_proxy.base_url, auth_proxy.origin) if auth_proxy else None,
                     log=log,
+                    **observer_kwargs,
                 )
         finally:
             # Bound to the crawl attempt, not the happy path: a failure here must

@@ -138,8 +138,10 @@ URL budget, the current measured frontier counters when the collector exposes
 them, its retained request/time budgets and configured request-rate ceiling,
 the measured recent request rate when available, phase events, a
 project-relative artifact reference, and whether the
-launching local PID is live, abandoned, unknown, or retained after a terminal
-outcome. A crawler's discovered frontier and configured URL budget are separate
+launching controller and, for a live Screaming Frog run, its spawned collector
+PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
+The observer records a process-start identity where the OS exposes one, so a
+reused PID is never presented as the original collector. A crawler's discovered frontier and configured URL budget are separate
 values; neither is presented as a site-total percentage. Screaming Frog exposes
 no reliable live URL counter, so its counter fields stay unavailable while its
 collection/analysis phases remain observable. The observer only reads these

@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import math
 import os
+import subprocess
 import time
 import uuid
 from collections import deque
@@ -67,6 +68,37 @@ def _empty(project_uuid: str) -> dict[str, Any]:
     return {"format": FORMAT, "revision": 0, "project_uuid": project_uuid, "runs": []}
 
 
+def _process_identity(pid: int) -> str | None:
+    """Return a platform process-start identity when the host exposes one."""
+    if os.name == "nt":
+        return None
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=1,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    value = result.stdout.strip() if result.returncode == 0 else ""
+    return value or None
+
+
+def _normalize(document: dict[str, Any]) -> None:
+    """Read old live-run records without making an observer write a migration."""
+    for run in document.get("runs", []) if isinstance(document.get("runs"), list) else []:
+        if not isinstance(run, dict):
+            continue
+        if "controller_pid" not in run and "pid" in run:
+            run["controller_pid"] = run["pid"]
+            run["controller_start_identity"] = None
+            run["collector_pid"] = None
+            run["collector_start_identity"] = None
+            run["collector_started_at"] = None
+
+
 def _validate(document: dict[str, Any], project_uuid: str) -> None:
     if (
         set(document) != {"format", "revision", "project_uuid", "runs"}
@@ -86,6 +118,11 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             "started_at",
             "finished_at",
             "pid",
+            "controller_pid",
+            "controller_start_identity",
+            "collector_pid",
+            "collector_start_identity",
+            "collector_started_at",
             "collector",
             "artifact",
             "counters",
@@ -98,6 +135,24 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             raise ValueError("run observation has an unsupported kind or state")
         if type(run["pid"]) is not int or run["pid"] <= 0:
             raise ValueError("run observation has an invalid PID")
+        if run["controller_pid"] != run["pid"]:
+            raise ValueError("run observation controller PID disagrees with its compatibility PID")
+        if run["controller_start_identity"] is not None and not isinstance(
+            run["controller_start_identity"], str
+        ):
+            raise ValueError("run observation controller identity is invalid")
+        if run["collector_pid"] is not None and (
+            type(run["collector_pid"]) is not int or run["collector_pid"] <= 0
+        ):
+            raise ValueError("run observation collector PID is invalid")
+        if run["collector_start_identity"] is not None and not isinstance(
+            run["collector_start_identity"], str
+        ):
+            raise ValueError("run observation collector identity is invalid")
+        if run["collector_started_at"] is not None and not isinstance(
+            run["collector_started_at"], str
+        ):
+            raise ValueError("run observation collector start time is invalid")
         if not isinstance(run["collector"], dict) or set(run["collector"]) != {
             "mode",
             "max_urls",
@@ -150,6 +205,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
 def _load(directory: str | Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     root, project = _load_workspace(directory)
     document = read_document(root, NAME) or _empty(project["project_uuid"])
+    _normalize(document)
     _validate(document, project["project_uuid"])
     return root, project, document
 
@@ -214,6 +270,11 @@ def start(
         "started_at": _now(),
         "finished_at": None,
         "pid": os.getpid(),
+        "controller_pid": os.getpid(),
+        "controller_start_identity": _process_identity(os.getpid()),
+        "collector_pid": None,
+        "collector_start_identity": None,
+        "collector_started_at": None,
         "collector": {
             "mode": mode,
             "max_urls": max_urls,
@@ -247,6 +308,21 @@ def phase(directory: str | Path, run_id: str, name: str, *, code: str = "entered
     if run["state"] != "running":
         return
     _event(run, name, code)
+    _save(root, document)
+
+
+def collector_started(directory: str | Path, run_id: str, pid: int) -> None:
+    """Bind an SF child PID after spawn; it is distinct from the controller PID."""
+    root, _project, document = _load(directory)
+    run = _find(document, run_id)
+    if run["state"] != "running":
+        return
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("collector PID must be a positive integer")
+    run["collector_pid"] = pid
+    run["collector_start_identity"] = _process_identity(pid)
+    run["collector_started_at"] = _now()
+    _event(run, "collection", "collector_started")
     _save(root, document)
 
 
@@ -310,15 +386,22 @@ def finish(
     _save(root, document)
 
 
-def _pid_state(run: dict[str, Any]) -> str:
-    if run["state"] != "running":
+def _runtime_state(pid: int | None, identity: str | None, *, running: bool) -> str:
+    if not running:
         return "retained"
+    if pid is None:
+        return "unavailable"
     try:
-        os.kill(run["pid"], 0)
+        os.kill(pid, 0)
     except ProcessLookupError:
         return "abandoned"
     except PermissionError:
         return "unknown"
+    current = _process_identity(pid)
+    if identity is None or current is None:
+        return "unknown"
+    if current != identity:
+        return "stale"
     return "live"
 
 
@@ -330,7 +413,28 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
     rows = []
     for run in reversed(document["runs"][-limit:]):
         row = copy.deepcopy(run)
-        row["pid_state"] = _pid_state(run)
+        observed_at = _now()
+        running = run["state"] == "running"
+        controller_state = _runtime_state(
+            run["controller_pid"], run["controller_start_identity"], running=running
+        )
+        collector_state = _runtime_state(
+            run["collector_pid"], run["collector_start_identity"], running=running
+        )
+        row["pid_state"] = controller_state
+        row["controller"] = {
+            "pid": run["controller_pid"],
+            "start_identity": run["controller_start_identity"],
+            "state": controller_state,
+            "observed_at": observed_at,
+        }
+        row["collector_runtime"] = {
+            "pid": run["collector_pid"],
+            "start_identity": run["collector_start_identity"],
+            "started_at": run["collector_started_at"],
+            "state": collector_state,
+            "observed_at": observed_at,
+        }
         rows.append(row)
     return {
         "ok": True,

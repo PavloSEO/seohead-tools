@@ -129,7 +129,18 @@ def _do_run(
         elif message.startswith("[runner]"):
             record_phase("collection")
 
+    def collector_started(pid: int) -> None:
+        if observed is None:
+            return
+        from seohead.projects.run_observation import collector_started as record_collector
+
+        try:
+            record_collector(observed[0], observed[1], pid)
+        except (OSError, ValueError):
+            return
+
     try:
+        observer_kwargs = {"on_started": collector_started} if observed is not None else {}
         if mode == "parse-exports":
             result = run_audit(
                 input_mode=mode,
@@ -138,6 +149,7 @@ def _do_run(
                 config_path=config or "config.json",
                 sitemap_url=sitemap,
                 log=log,
+                **observer_kwargs,
             )
         else:
             result = run_audit(
@@ -148,6 +160,7 @@ def _do_run(
                 sitemap_url=sitemap,
                 output_dir=os.path.join(out, "exports"),
                 log=log,
+                **observer_kwargs,
             )
         os.makedirs(out, exist_ok=True)
         json_path = write_json(result, os.path.join(out, "audit.json"))
