@@ -19,7 +19,7 @@ from seohead.tools.hreflang import code_error
 from seohead.tools.parser import robots_directives
 
 from .context import AuditContext
-from .crawl_path import bfs_tree_from_seed, route_from_parents, shortest_paths_from_seed
+from .crawl_path import bfs_tree_from_seed, route_from_parents
 from .internal_linking import summarize_depth, summarize_positions, unmeasured
 from .link_score import (
     DEFAULT_DAMPING,
@@ -1095,8 +1095,13 @@ def check_discovery_path(ctx: AuditContext) -> None:
         ctx.skip("DEEP_DISCOVERY_PATH", "no page at Crawl Depth 0 to use as the seed")
         return
 
-    paths = shortest_paths_from_seed(edges, norm_url(seed.url))
-    _emit_discovery_paths(ctx, paths.get)
+    depths, parents = bfs_tree_from_seed(edges, norm_url(seed.url))
+    _emit_discovery_paths(
+        ctx,
+        lambda key: route_from_parents(parents, key),
+        depths,
+        norm_url(seed.url),
+    )
 
 
 # How many repeated (destination, anchor) pairs one DUPLICATE_INTERNAL_LINK finding
