@@ -25,6 +25,7 @@ Identity rules (docs/LEDGER.md):
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -1792,6 +1793,103 @@ def remediation_report(ledger: str | Path | sqlite3.Connection) -> dict[str, Any
                 }
             )
     return {"schema_version": "remediation-report.v1", "summary": summary, "cases": rows}
+
+
+def remediation_markdown(document: dict[str, Any]) -> str:
+    """Render the retained remediation state without calculating or fetching evidence."""
+    if document.get("schema_version") != "remediation-report.v1":
+        raise LedgerError("unsupported remediation report document")
+    summary = document.get("summary")
+    cases = document.get("cases")
+    if not isinstance(summary, dict) or not isinstance(cases, list):
+        raise LedgerError("invalid remediation report document")
+    counts = summary.get("counts") or {}
+    lines = [
+        "# Remediation evidence report",
+        "",
+        f"Ledger revision: {summary.get('ledger_revision')}",
+        "",
+        "| State | Check | Subject | Evidence |",
+        "|---|---|---|---|",
+    ]
+    for case in cases:
+        if not isinstance(case, dict):
+            raise LedgerError("invalid remediation report case")
+        decision = case.get("decision") or {}
+        evidence = (
+            f"decision {decision.get('decision_id')} / observation {decision.get('observation_id')}"
+            if decision
+            else "no lifecycle decision"
+        )
+        cells = [
+            str(case.get("state") or ""),
+            str(case.get("check") or ""),
+            str(case.get("subject") or ""),
+            evidence,
+        ]
+        lines.append(
+            "| " + " | ".join(cell.replace("|", "\\|").replace("\n", " ") for cell in cells) + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "Counts: "
+            + ", ".join(f"{state}={counts.get(state, 0)}" for state in sorted(_LIFECYCLE_STATES)),
+            "",
+            "Resolved percentage: "
+            + (
+                f"{summary['resolved_percent']}%"
+                if summary.get("resolved_percent") is not None
+                else "unavailable"
+            ),
+            "Rechecked percentage: "
+            + (
+                f"{summary['rechecked_percent']}%"
+                if summary.get("rechecked_percent") is not None
+                else "unavailable"
+            ),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def write_remediation_report(
+    ledger: str | Path | sqlite3.Connection, out_dir: str | Path
+) -> dict[str, Any]:
+    """Write one new JSON/Markdown report directory from existing ledger evidence.
+
+    The function never overwrites a report or mutates the ledger.  A caller can
+    retain this directory alongside the ledger as an exact review snapshot.
+    """
+    destination = Path(out_dir).absolute()
+    if destination.exists():
+        raise FileExistsError(f"remediation report output already exists: {destination}")
+    destination.mkdir(parents=True)
+    document = remediation_report(ledger)
+
+    def write_new(path: Path, content: str) -> None:
+        fd, temporary = tempfile.mkstemp(prefix=".remediation-", dir=destination)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.link(temporary, path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temporary)
+
+    json_path = destination / "remediation.json"
+    markdown_path = destination / "remediation.md"
+    write_new(json_path, json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    write_new(markdown_path, remediation_markdown(document))
+    return {
+        "ok": True,
+        "report": str(markdown_path),
+        "data": str(json_path),
+        "summary": document["summary"],
+    }
 
 
 def ledger_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:

@@ -30,6 +30,7 @@ from seohead.storage.ledger import (
     remediation_report,
     remediation_summary,
     transition_occurrence,
+    write_remediation_report,
 )
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _metadata, _runtime
@@ -491,6 +492,25 @@ def test_case_reads_paginate_exact_findings_without_changing_coverage_totals(tmp
     assert remediation_summary(ledger)["denominators"]["verified_original_occurrences"] == 2
     with pytest.raises(LedgerError, match="limit"):
         read_cases(ledger, limit=0)
+
+
+def test_remediation_report_writes_deterministic_review_files_without_mutating_ledger(tmp_path):
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)],
+    )
+    ingest_scan(ledger, scan)
+    before = ledger.read_bytes()
+    result = write_remediation_report(ledger, tmp_path / "report")
+    data = Path(result["data"])
+    report = Path(result["report"])
+    assert data.is_file() and report.is_file()
+    assert json.loads(data.read_text(encoding="utf-8"))["schema_version"] == "remediation-report.v1"
+    assert "# Remediation evidence report" in report.read_text(encoding="utf-8")
+    assert ledger.read_bytes() == before
+    with pytest.raises(FileExistsError):
+        write_remediation_report(ledger, tmp_path / "report")
 
 
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):

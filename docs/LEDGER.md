@@ -198,7 +198,9 @@ denominators. `resolved_percent` keeps unverifiable cases in its denominator;
 `rechecked_percent` counts only retained resolved/persisting/regressed evidence,
 so failed or partial work cannot improve a percentage. `remediation_report`
 returns deterministic JSON-ready rows with the baseline, later observations
-and latest decision; it makes no network request or file write.
+and latest decision. `write_remediation_report` writes a new, never-overwritten
+JSON/Markdown review directory from that data; neither path makes a network
+request or mutates the ledger.
 
 ## Core API
 
@@ -222,6 +224,8 @@ and latest decision; it makes no network request or file write.
   one revision-safe lifecycle decision.
 - `remediation_summary(ledger) -> dict` and `remediation_report(ledger) -> dict`
   — explicit coverage totals and deterministic before/after data without I/O.
+- `write_remediation_report(ledger, out_dir) -> dict` — create one immutable
+  JSON/Markdown review snapshot from already retained evidence.
 - `note_source_missing(ledger, source_scan_id, *, reason)` — mark a bound
   artifact missing without losing its digests.
 - `register_site(con, *, project_uuid, target, role)` — register an
