@@ -38,6 +38,7 @@ from seohead.crawl.collect import (
     _write,
     fetch_one,
 )
+from seohead.crawl.external import ExternalCheck, ExternalPolicy, run_external_checks
 from seohead.crawl.settings import (
     DEFAULT_SEGMENT,
     checked_url_budget,
@@ -149,6 +150,16 @@ class SpiderResult(CrawlResult):
     # has no render to fall back on. Empty when the start page was not
     # (re-)fetched in this call, e.g. a resumed run that starts past depth 0.
     start_page_evidence: dict[str, Any] = field(default_factory=dict)
+    # Opt-in bounded check of recorded external destinations (see
+    # seohead.crawl.external — enabled by discovery.external.crawl). Empty
+    # unless that option ran: an absent check is itself a fact the summary
+    # below records, so "not checked" never masquerades as "checked clean".
+    external_checks: list[ExternalCheck] = field(default_factory=list)
+    # The external phase's own coverage statement — policy used, per-outcome
+    # counts, why it stopped — kept apart from the internal frontier's
+    # finish_reason/partial because internal completeness and external-check
+    # coverage are different measurements (#746).
+    external_summary: dict[str, Any] = field(default_factory=dict)
 
 
 def _canonical_key(url: str) -> str:
@@ -305,6 +316,31 @@ def _read_links_jsonl(path: str) -> list[LinkEdge]:
                 fields["rel"] = tuple(fields["rel"] or ())
             edges.append(LinkEdge(**fields))
     return edges
+
+
+def _read_external_jsonl(path: str) -> list[ExternalCheck]:
+    """Reconstruct the external-destination outcomes a prior run recorded.
+
+    Same append-only sidecar contract as ``links.jsonl``: a truncated final
+    line must not discard the rest, and a missing file just means the earlier
+    run stopped before its first check.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except FileNotFoundError:
+        return []
+    records = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except ValueError:
+            continue  # a truncated final line must not discard the rest
+        if isinstance(raw, dict):
+            records.append(ExternalCheck.from_dict(raw))
+    return records
 
 
 def form_edges(parsed: dict[str, Any] | None, source_url: str) -> tuple[list[FormEdge], int]:
@@ -646,6 +682,9 @@ def crawl_site(
     store_external_links: bool = True,
     crawl_redirects: bool = True,
     capture_link_attributes: bool = False,
+    crawl_external_links: bool = False,
+    external_policy: dict[str, Any] | None = None,
+    external_path: str | None = None,
     dispatch_gate: DispatchGate | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> SpiderResult:
@@ -718,6 +757,18 @@ def crawl_site(
     protocol-relative-link detection — the two findings that need them — report nothing
     rather than a false clean result. ``nofollow`` is unaffected either way: it is derived
     from rel at parse time regardless of this setting.
+    ``crawl_external_links`` opts into the bounded post-crawl check of recorded
+    external destinations (``seohead.crawl.external``): once the internal
+    frontier closes, each distinct off-host edge target is fetched once inside
+    ``external_policy``'s own target/host/request/depth/redirect budgets —
+    never recursed into an unrestricted crawl. ``external_path`` is the
+    append-only sidecar (``external_checks.jsonl``) each decided outcome is
+    written to, read back on resume the same way ``links_path`` rebuilds
+    ``result.links`` — resumed runs never re-request a destination already
+    decided, and the requests and hosts already spent count against the
+    budgets rather than reopening them. The phase needs recorded edges, so it
+    only has destinations to check when ``store_external_links`` kept them
+    (``settings.validate`` refuses ``crawl`` without ``store``).
     ``progress``, when given, is called with ``(fetched, queued)`` -- pages
     already recorded, and URLs discovered but not yet fetched -- once before the
     first request and again after every page (after every batch, when
@@ -872,6 +923,16 @@ def crawl_site(
                 result.links.extend(_read_links_jsonl(links_path))
             mode = "a" if loaded_state else "w"
             links_handle = stack.enter_context(open(links_path, mode, encoding="utf-8"))
+
+        external_handle = None
+        if external_path:
+            if loaded_state:
+                # Same move as links above: prior check outcomes live in the
+                # sidecar, not the checkpoint — and they are also the "done"
+                # set the resumed external phase must not re-request.
+                result.external_checks.extend(_read_external_jsonl(external_path))
+            mode = "a" if loaded_state else "w"
+            external_handle = stack.enter_context(open(external_path, mode, encoding="utf-8"))
 
         # Appended across a resume like links_handle above — a decision recorded
         # before a checkpoint is still a decision this run made — but never read
@@ -1287,8 +1348,103 @@ def crawl_site(
                     # frontier that never existed.
                     report_progress()
 
+        # Bounded check of recorded external destinations (#746). It runs only
+        # after the internal frontier has said its piece — a partially walked
+        # site still yields its recorded destinations for checking — and its
+        # own coverage is kept in external_summary rather than folded into
+        # finish_reason, because internal completeness and external-check
+        # coverage are different measurements.
+        external_finished = True
+        if crawl_external_links:
+            if result.finish_reason == "interrupted":
+                # A KeyboardInterrupt means stop now, not start a second phase;
+                # the destinations recorded so far are checked by the resumed
+                # run once the frontier actually closes.
+                result.external_summary = {
+                    "enabled": True,
+                    "ran": False,
+                    "reason": (
+                        "internal crawl interrupted; recorded destinations are "
+                        "checked once the internal frontier completes"
+                    ),
+                    "robots_policy": "not_evaluated",
+                }
+                external_finished = False
+            else:
+                policy = ExternalPolicy.from_config(external_policy)
+                # A gate of its own: the external phase is sequential, paced by
+                # the same delay policy, and spends a request budget the
+                # internal frontier never touches (external_checks.max_requests).
+                external_gate = DispatchGate(
+                    Throttle(
+                        min_delay=min_delay,
+                        max_delay=max_delay_seconds,
+                        max_concurrency=1,
+                        adaptive=adaptive,
+                    ),
+                    sleeper,
+                    clock=clock,
+                    max_requests=policy.max_requests,
+                )
+
+                def external_excluded(url: str) -> bool:
+                    # The same never-fetch rule the internal scope applies: an
+                    # operator-excluded host stays unfetched no matter what
+                    # links to it.
+                    h = (urlsplit(url).hostname or "").lower()
+                    return any(h == bad or h.endswith("." + bad) for bad in rules.exclude_hosts)
+
+                def emit_check(check: ExternalCheck) -> None:
+                    result.external_checks.append(check)
+                    _write(external_handle, check)
+
+                try:
+                    result.external_summary = run_external_checks(
+                        result.links,
+                        policy=policy,
+                        is_internal=lambda url: rules.is_internal(url, host),
+                        emit=emit_check,
+                        excluded_host=external_excluded,
+                        done=result.external_checks,
+                        client=client,
+                        fetcher=fetcher,
+                        headers_for_url=_extra_headers_for,
+                        user_agent=user_agent,
+                        max_response_bytes=max_response_bytes,
+                        retry_on_timeout=retry_on_timeout,
+                        parse_options=parse_options,
+                        dispatch_gate=external_gate,
+                        time_exhausted=lambda: bool(
+                            max_seconds and (clock() - crawl_started) >= max_seconds
+                        ),
+                    )
+                except KeyboardInterrupt:
+                    result.external_summary = {
+                        "enabled": True,
+                        "ran": True,
+                        "policy": policy.as_dict(),
+                        "robots_policy": "not_evaluated",
+                        "finish_reason": "interrupted",
+                        "internal_finish_reason": result.finish_reason,
+                    }
+                    external_finished = False
+                    result.partial = True
+                    result.stopped_reason = (
+                        f"{result.stopped_reason}; external checks interrupted"
+                        if result.stopped_reason
+                        else "external checks interrupted"
+                    )
+                else:
+                    # The internal frontier's own verdict travels inside the
+                    # external summary, so one object tells both halves of the
+                    # coverage story without conflating them.
+                    result.external_summary["internal_finish_reason"] = result.finish_reason
+                    external_finished = result.external_summary["finish_reason"] == "finished"
+                    if not external_finished:
+                        result.partial = True
+
         if state_path:
-            if result.finish_reason == "finished":
+            if result.finish_reason == "finished" and external_finished:
                 # Nothing left to resume: a later call with the same path
                 # should crawl fresh, not "resume" into an empty frontier.
                 crawl_state.clear(state_path)

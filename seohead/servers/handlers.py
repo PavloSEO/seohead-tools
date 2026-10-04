@@ -715,6 +715,23 @@ def crawl_site(
             f"cache.mode={settings['cache']['mode']!r} is unavailable for native SQLite capture; "
             "pass --out-dir for the legacy directory route"
         )
+    if scan_out and settings["discovery"]["external"]["crawl"]:
+        # External-destination checking is wired into the legacy directory
+        # route first (#746) — the same staged direction cache live/replay
+        # took. Refusing by name is better than silently dropping an option
+        # the operator asked for.
+        raise ValueError(
+            "discovery.external.crawl is unavailable for native SQLite capture; "
+            "pass --out-dir for the legacy directory route"
+        )
+    if not url and settings["discovery"]["external"]["crawl"]:
+        # The phase checks the edges a site crawl recorded; list mode keeps no
+        # link edges, so the option can never take effect there — refuse by
+        # name rather than silently dropping it (#746).
+        raise ValueError(
+            "discovery.external.crawl requires a site crawl (--url): "
+            "list mode keeps no external edges to check"
+        )
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -782,6 +799,10 @@ def crawl_site(
         if out_dir and settings["output"]["write_decisions_jsonl"]
         else None
     )
+    # Tied to out_dir like links_path above: the external check's append-only
+    # record of per-destination outcomes — and what a resumed run reads back
+    # as its "already decided" set (#746).
+    external_checks_path = os.path.join(out_dir, "external_checks.jsonl") if out_dir else None
     max_seconds = settings["limits"]["max_crawl_seconds"]
     # One cache per run, shared by every worker thread a concurrent crawl starts — see
     # seohead.crawl.cache for the freshness policy and seohead.crawl.settings for cache.mode /
@@ -845,16 +866,28 @@ def crawl_site(
             store_external_links=settings["discovery"]["external"]["store"],
             crawl_redirects=settings["discovery"]["redirects"]["crawl"],
             capture_link_attributes=settings["link_attributes"]["capture"],
+            crawl_external_links=settings["discovery"]["external"]["crawl"],
+            external_policy=settings["external_checks"],
+            external_path=(
+                external_checks_path if settings["discovery"]["external"]["crawl"] else None
+            ),
             dispatch_gate=dispatch_gate,
             progress=progress,
         )
         # Nothing left to resume into, so the private sidecar (used only when the
         # human-readable export was off) would otherwise linger as a hidden, ever
         # more stale copy of pages.jsonl's data next to a finished run's output.
+        # "Finished" covers the external phase too: a run whose checks stopped on
+        # a budget still has work the next resume owes the sidecar (#746).
+        external_done = (
+            not settings["discovery"]["external"]["crawl"]
+            or result.external_summary.get("finish_reason") == "finished"
+        )
         if (
             pages_resume_path
             and pages_resume_path != pages_export_path
             and result.finish_reason == "finished"
+            and external_done
         ):
             with contextlib.suppress(FileNotFoundError):
                 os.remove(pages_resume_path)
@@ -876,6 +909,11 @@ def crawl_site(
             "sitemap_urls": sitemap_seed["sitemap_urls"],
             "sitemap_seeded": len(result.seed_urls),
         }
+        if result.external_summary:
+            # The external phase's own coverage statement: policy used,
+            # per-outcome counts and why it stopped — kept distinct from the
+            # internal frontier's finish_reason above (#746).
+            discovery["external_checks"] = result.external_summary
         if settings["scope"]["segments_only"]:
             # #358's acceptance criterion: a crawl scoped to a segment must say so
             # in its own run output, not leave it to be inferred from which URLs
@@ -1396,6 +1434,14 @@ def _audit_crawl_result(
             # only a sentence when something went wrong.
             "crawl_finish_reason": result.finish_reason,
             "crawl_resumed": result.resumed,
+            # The opt-in external-destination phase's own coverage statement
+            # (#746): policy used, per-outcome counts and its finish reason —
+            # null when the phase was off, so an audit reader can always tell
+            # "not checked" apart from "checked and clean".
+            # getattr rather than a plain attribute: list mode hands this a
+            # collect_urls CrawlResult, which has no external phase at all —
+            # None is the honest value there, not an AttributeError.
+            "external_checks": getattr(result, "external_summary", None) or None,
             # Resolved values of every setting that can change what was found.
             # Without these two reports on the same site are not comparable.
             "crawl_config": crawl_config.manifest(settings),

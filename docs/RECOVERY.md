@@ -24,8 +24,14 @@ There are two, one per output mode, and they resume differently:
 Every crawl with an output directory writes `crawl_state.json` there as it runs — the frontier
 still queued, the URLs already seen, the exclusion tally, the query-variant budget, and a
 fingerprint of the settings that were in effect. It is plain JSON, written atomically, and it is
-the only thing a resume reads. Losing it, or running without `--out-dir` at all, means the next
+what gates the resume decision. Losing it, or running without `--out-dir` at all, means the next
 run has nothing to resume from and starts fresh — there is no other recovery path.
+
+Once a checkpoint matches, the sidecar files rebuild what the run had accumulated: `pages.jsonl`
+restores fetched pages, `links.jsonl` the recorded link edges, and — when
+`discovery.external.crawl` is on — `external_checks.jsonl` the already-decided destination
+outcomes, whose spent request/host budgets count against the resumed phase rather than
+reopening.
 
 ## The one requirement: an identical invocation
 

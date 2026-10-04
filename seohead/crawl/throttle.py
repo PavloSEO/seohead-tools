@@ -83,6 +83,11 @@ class DispatchGate:
         with self._lock:
             return self._requests_used
 
+    @property
+    def max_requests(self) -> int:
+        """The configured total-attempt budget; 0 means uncapped."""
+        return self._max_requests
+
     def restore_requests_used(self, value: int) -> None:
         if (
             type(value) is not int
