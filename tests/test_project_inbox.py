@@ -157,5 +157,6 @@ def test_observer_reads_retained_frontier_findings_and_sitemap_without_mutation(
     assert evidence["state"] == "available"
     assert evidence["frontier"]["state"] == "available"
     assert evidence["findings"]["total"] >= 0
+    assert len(evidence["findings"]["items"]) <= 20
     assert "fetch_summaries" in evidence["sitemaps"]
     assert scan.read_bytes() == before

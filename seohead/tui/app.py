@@ -226,6 +226,15 @@ def _watch_lines(
                         f"sitemaps {evidence['sitemaps']['fetch_summaries']}"
                     )
                 )
+                for finding in evidence["findings"]["items"][:3]:
+                    lines.append(
+                        Text(
+                            f"      {finding['severity']} {finding['check']} · "
+                            f"{finding['target_url'] or finding['id']}"
+                        )
+                    )
+                if evidence["findings"]["truncated"]:
+                    lines.append(Text("      additional findings retained in the scan artifact"))
             else:
                 lines.append(Text(f"    evidence unavailable: {evidence['reason']}"))
         if not snapshot["scans"]["items"]:

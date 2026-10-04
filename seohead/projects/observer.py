@@ -35,10 +35,18 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
         status = scan_status(path)
         audit = read_audit(path)
         by_severity: dict[str, int] = {}
+        finding_items = []
         for issue in audit.get("issues", []):
             severity = issue.get("severity") if isinstance(issue, dict) else None
             if isinstance(severity, str):
                 by_severity[severity] = by_severity.get(severity, 0) + 1
+            if isinstance(issue, dict) and len(finding_items) < 20:
+                finding_items.append(
+                    {
+                        key: issue.get(key)
+                        for key in ("id", "check", "severity", "target_url", "message", "fingerprint")
+                    }
+                )
         with open_scan(path, require_audit=False) as con:
             sitemap_rows = con.execute(
                 "SELECT completeness,COUNT(*) FROM context_items "
@@ -48,7 +56,12 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
             "state": "available",
             "frontier": status["frontier"],
             "committed_page_outcomes": status["committed_page_outcomes"],
-            "findings": {"total": sum(by_severity.values()), "by_severity": by_severity},
+            "findings": {
+                "total": sum(by_severity.values()),
+                "by_severity": by_severity,
+                "items": finding_items,
+                "truncated": len(audit.get("issues", [])) > len(finding_items),
+            },
             "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
             "skipped_checks": audit.get("run", {}).get("checks_skipped", []),
         }
