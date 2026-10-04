@@ -604,6 +604,12 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
+`tasks_pipeline.group_by` accepts `check`, `issue`, or `check_assignment`.
+The last mode groups a check only by an operator-declared template/component URL
+assignment or by the audit's already validated segment rules. It records
+assignment provenance and keeps candidate, declared, confirmed, and unassigned
+states separate; it does not infer a shared implementation from repeated findings.
+
 **181 checks**: 12 critical, 83 warnings, 86 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 

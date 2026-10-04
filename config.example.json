@@ -152,7 +152,8 @@
     "max_urls_per_task": 25,
     "min_occurrences": 1,
     "include_checks": [],
-    "exclude_checks": []
+    "exclude_checks": [],
+    "assignments": []
   },
   "checks": {},
   "severity_overrides": {},

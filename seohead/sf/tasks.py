@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 from ..reports.client_findings import reproduction
 from ..reports.facts import crawl_domain
@@ -19,6 +20,8 @@ from .core.registry import check_meta
 
 _PRIORITY_ORDER = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
 LINK_CHECKS = {"BROKEN_INTERNAL_LINK", "LINK_TO_5XX", "INTERNAL_LINK_TO_REDIRECT"}
+_ASSIGNMENT_KINDS = {"template", "component"}
+_ASSIGNMENT_STATES = {"declared", "confirmed"}
 
 
 def _pipeline_cfg(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -98,6 +101,149 @@ def _evidence_references(
     return rows[:cap], max(0, len(rows) - cap)
 
 
+def _unassigned_assignment(reason: str) -> dict[str, Any]:
+    return {
+        "id": "unassigned",
+        "name": "Unassigned",
+        "kind": "unknown",
+        "state": "unassigned",
+        "rationale": reason,
+        "provenance": {"kind": "unassigned", "reason": reason},
+    }
+
+
+def _declared_assignments(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Read the closed URL assignment list without inventing a rule language."""
+    raw = cfg.get("assignments", [])
+    if not isinstance(raw, list):
+        raise ValueError("tasks_pipeline.assignments must be a list")
+    result: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError("each task assignment must be an object")
+        name = item.get("name")
+        kind = item.get("kind")
+        rationale = item.get("rationale")
+        urls = item.get("urls")
+        state = item.get("state", "declared")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("task assignment name must be a non-empty string")
+        if kind not in _ASSIGNMENT_KINDS:
+            raise ValueError("task assignment kind must be template or component")
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise ValueError("task assignment rationale must be a non-empty string")
+        if state not in _ASSIGNMENT_STATES:
+            raise ValueError("task assignment state must be declared or confirmed")
+        if state == "confirmed" and not all(
+            isinstance(item.get(key), str) and item[key].strip()
+            for key in ("confirmed_by", "confirmation")
+        ):
+            raise ValueError("a confirmed task assignment needs confirmed_by and confirmation")
+        if (
+            not isinstance(urls, list)
+            or not urls
+            or any(not isinstance(url, str) or not url for url in urls)
+        ):
+            raise ValueError("task assignment urls must be a non-empty list of URLs")
+        assignment = {
+            "id": f"operator:{kind}:{name}",
+            "name": name,
+            "kind": kind,
+            "state": state,
+            "rationale": rationale,
+            "provenance": {
+                "kind": "operator_assignment",
+                "source": "tasks_pipeline.assignments",
+                "index": index,
+            },
+        }
+        if state == "confirmed":
+            assignment["confirmed_by"] = item["confirmed_by"]
+            assignment["confirmation"] = item["confirmation"]
+        for url in urls:
+            if url in result:
+                raise ValueError(f"task assignment URL appears more than once: {url}")
+            result[url] = assignment
+    return result
+
+
+def _audit_segment_definitions(audit: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reuse the crawl's validated segment format; never evaluate caller code."""
+    config = (audit.get("run") or {}).get("crawl_config") or {}
+    if not isinstance(config, dict):
+        return []
+    analysis = config.get("analysis.segments") or []
+    if isinstance(analysis, list) and analysis:
+        return analysis
+    scope = config.get("scope.segments") or []
+    if not isinstance(scope, list):
+        return []
+    definitions = []
+    for item in scope:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            return []
+        rules = []
+        if item.get("prefix"):
+            rules.append({"op": "prefix", "field": "path", "value": item["prefix"]})
+        if item.get("host"):
+            rules.append({"op": "eq", "field": "host", "value": item["host"]})
+        if item.get("pattern"):
+            rules.append({"op": "regex", "field": "url", "value": item["pattern"]})
+        if not rules:
+            return []
+        definitions.append({"name": item["name"], "rules": rules})
+    return definitions
+
+
+def _segment_assignments(audit: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    definitions = _audit_segment_definitions(audit)
+    if not definitions:
+        return {}
+    from .core.segments import SCHEMA_VERSION, UNSEGMENTED, assign_segments
+
+    pages = []
+    for page in audit.get("pages") or []:
+        if not isinstance(page, dict) or not isinstance(page.get("url"), str) or not page["url"]:
+            continue
+        parts = urlsplit(page["url"])
+        pages.append({**page, "path": parts.path, "host": (parts.hostname or "").lower()})
+    assignment = assign_segments(pages, definitions)["primary"]
+    partial = bool((audit.get("run") or {}).get("crawl_partial"))
+    result: dict[str, dict[str, Any]] = {}
+    targets = {
+        issue.get("target_url")
+        for issue in audit.get("issues") or []
+        if isinstance(issue, dict)
+        and isinstance(issue.get("target_url"), str)
+        and issue["target_url"]
+    }
+    for target in targets:
+        name = assignment.get(target)
+        # A target absent from a complete retained page set is unassigned. For a
+        # partial or page-less audit, reuse the same validated rules only to make
+        # a candidate grouping, never a claimed template match.
+        if name is None and (not pages or partial):
+            parts = urlsplit(target)
+            name = assign_segments(
+                [{"url": target, "path": parts.path, "host": (parts.hostname or "").lower()}],
+                definitions,
+            )["primary"].get(target)
+        if name not in (None, UNSEGMENTED):
+            result[target] = {
+                "id": f"segment:{name}",
+                "name": name,
+                "kind": "segment",
+                "state": "candidate",
+                "rationale": "Matched the audit's validated segment rule; shared implementation remains unconfirmed.",
+                "provenance": {
+                    "kind": "audit_segment_rules",
+                    "schema_version": SCHEMA_VERSION,
+                    "rules": next(item["rules"] for item in definitions if item["name"] == name),
+                },
+            }
+    return result
+
+
 def build_tasks(audit: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a task backlog from an ``audit.json`` dict (``AuditResult.to_json()``)."""
     cfg = _pipeline_cfg(config)
@@ -127,11 +273,25 @@ def build_tasks(audit: dict[str, Any], config: dict[str, Any] | None = None) -> 
         and i["check"] not in exclude
     ]
 
-    tasks: list[dict[str, Any]] = (
-        _group_by_check(issues, prio, effort, cap, loc_cap, min_occ)
-        if group_by == "check"
-        else _per_issue(issues, prio, effort, cap, loc_cap, min_occ)
-    )
+    grouping: dict[str, Any] | None = None
+    if group_by == "check":
+        tasks = _group_by_check(issues, prio, effort, cap, loc_cap, min_occ)
+    elif group_by == "issue":
+        tasks = _per_issue(issues, prio, effort, cap, loc_cap, min_occ)
+    elif group_by == "check_assignment":
+        declared = _declared_assignments(cfg)
+        assignments = declared or _segment_assignments(audit)
+        source = "operator_assignments" if declared else "audit_segments" if assignments else "none"
+        tasks = _group_by_check_assignment(issues, assignments, prio, effort, cap, loc_cap, min_occ)
+        grouping = {
+            "mode": source,
+            "assignment_count": len({row["id"] for row in assignments.values()}),
+            "unassigned_findings": sum(
+                1 for issue in issues if issue.get("target_url") not in assignments
+            ),
+        }
+    else:
+        raise ValueError("tasks_pipeline.group_by must be check, issue, or check_assignment")
     tasks.sort(key=lambda t: (_PRIORITY_ORDER.get(t["priority"], 9), -t["affected_count"]))
 
     by_priority: dict[str, int] = {}
@@ -163,13 +323,16 @@ def build_tasks(audit: dict[str, Any], config: dict[str, Any] | None = None) -> 
     }
     if summary.get("finding_exclusions") is not None:
         source["finding_exclusions"] = summary["finding_exclusions"]
-    return {
+    output = {
         "schema_version": "1.0",
         "source": source,
         "pipeline": cfg,
         "summary": {"tasks_total": len(tasks), "by_priority": by_priority},
         "tasks": tasks,
     }
+    if grouping is not None:
+        output["grouping"] = grouping
+    return output
 
 
 def _group_by_check(issues, prio, effort, cap, loc_cap, min_occ) -> list[dict[str, Any]]:
@@ -179,47 +342,98 @@ def _group_by_check(issues, prio, effort, cap, loc_cap, min_occ) -> list[dict[st
 
     tasks: list[dict[str, Any]] = []
     for check, group in groups.items():
-        urls = [i["target_url"] for i in group if i.get("target_url")]
-        unique_urls = list(dict.fromkeys(urls))  # stable de-dupe
-        occurrences = sum(i.get("occurrences_count", 1) for i in group)
-        # Threshold on the summed occurrence count, not the number of issue
-        # records: one BROKEN_INTERNAL_LINK record can itself represent many
-        # link occurrences (#224), so counting records undercounts and drops
-        # findings min_occurrences was meant to keep.
-        if occurrences < min_occ:
-            continue
-        meta = check_meta(check)
-        severity = group[0]["severity"]
-        page_count_label = "page" if len(unique_urls) == 1 else "pages"
-        task = {
-            "id": _task_id(check, "all"),
-            "check": check,
-            "priority": prio.get(severity, "P3"),
-            "severity": severity,
-            "effort": effort.get(severity, "medium"),
-            "title": (
-                f"{meta['message']} — {len(unique_urls)} {page_count_label}"
-                if unique_urls
-                else meta["message"]
-            ),
-            "fix_hint": meta.get("fix"),
-            "source": group[0].get("source"),
-            "affected_count": len(unique_urls) or len(group),
-            "occurrences": occurrences,
-            "urls": unique_urls[:cap],
-            "urls_truncated": max(0, len(unique_urls) - cap),
-            "reproductions": _reproductions(group, cap),
-        }
-        evidence, evidence_truncated = _evidence_references(group, cap)
-        task["evidence_references"] = evidence
-        task["evidence_references_truncated"] = evidence_truncated
-        if check in LINK_CHECKS:
-            links, total, truncated = _link_evidence(group, loc_cap)
-            task["broken_links"] = links
-            task["broken_links_total"] = total
-            task["broken_links_truncated"] = truncated
-        tasks.append(task)
+        task = _group_task(check, group, prio, effort, cap, loc_cap, min_occ, key="all")
+        if task is not None:
+            tasks.append(task)
     return tasks
+
+
+def _group_by_check_assignment(
+    issues, assignments, prio, effort, cap, loc_cap, min_occ
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], tuple[dict[str, Any], list[dict[str, Any]]]] = {}
+    for issue in issues:
+        assignment = assignments.get(issue.get("target_url")) or _unassigned_assignment(
+            "No declared template/component assignment or validated segment matched this finding."
+        )
+        key = (issue["check"], assignment["id"])
+        if key not in groups:
+            groups[key] = (assignment, [])
+        groups[key][1].append(issue)
+    tasks = []
+    for (check, assignment_id), (assignment, group) in groups.items():
+        task = _group_task(
+            check,
+            group,
+            prio,
+            effort,
+            cap,
+            loc_cap,
+            min_occ,
+            key=assignment_id,
+            assignment=assignment,
+        )
+        if task is not None:
+            tasks.append(task)
+    return tasks
+
+
+def _group_task(check, group, prio, effort, cap, loc_cap, min_occ, *, key, assignment=None):
+    urls = [i["target_url"] for i in group if i.get("target_url")]
+    unique_urls = list(dict.fromkeys(urls))
+    occurrences = sum(i.get("occurrences_count", 1) for i in group)
+    if occurrences < min_occ:
+        return None
+    meta = check_meta(check)
+    severity = group[0]["severity"]
+    page_count_label = "page" if len(unique_urls) == 1 else "pages"
+    title = (
+        f"{meta['message']} — {len(unique_urls)} {page_count_label}"
+        if unique_urls
+        else meta["message"]
+    )
+    if assignment is not None:
+        title = f"{meta['message']} — {assignment['name']} — {len(unique_urls)} {page_count_label}"
+    task = {
+        "id": _task_id(check, key),
+        "check": check,
+        "priority": prio.get(severity, "P3"),
+        "severity": severity,
+        "effort": effort.get(severity, "medium"),
+        "title": title,
+        "fix_hint": meta.get("fix"),
+        "source": group[0].get("source"),
+        "affected_count": len(unique_urls) or len(group),
+        "occurrences": occurrences,
+        "urls": unique_urls[:cap],
+        "urls_truncated": max(0, len(unique_urls) - cap),
+        "reproductions": _reproductions(group, cap),
+    }
+    evidence, evidence_truncated = _evidence_references(group, cap)
+    task["evidence_references"] = evidence
+    task["evidence_references_truncated"] = evidence_truncated
+    if assignment is not None:
+        task["assignment"] = assignment
+        task["membership"] = {
+            "findings_total": len(group),
+            "affected_urls_total": len(unique_urls),
+            "urls_returned": len(task["urls"]),
+            "urls_truncated": task["urls_truncated"],
+            "retrieval": "Filter the source audit by this task's check and assignment provenance; URL caps do not change the source findings.",
+        }
+        task["verification_scope"] = {
+            "state": assignment["state"],
+            "affected_urls_total": len(unique_urls),
+            "representative_urls": task["urls"],
+            "representative_urls_truncated": task["urls_truncated"],
+            "guidance": "Inspect a representative page, then verify every affected URL after a change; assignment alone does not prove a shared cause.",
+        }
+    if check in LINK_CHECKS:
+        links, total, truncated = _link_evidence(group, loc_cap)
+        task["broken_links"] = links
+        task["broken_links_total"] = total
+        task["broken_links_truncated"] = truncated
+    return task
 
 
 def _per_issue(issues, prio, effort, cap, loc_cap, min_occ) -> list[dict[str, Any]]:
@@ -362,6 +576,18 @@ def render_tasks_md(backlog: dict[str, Any]) -> str:
         lines.append("")
         for t in by_prio[prio]:
             lines.append(f"- [ ] **{_esc(t['title'])}** · {t['severity']} · effort: {t['effort']}")
+            assignment = t.get("assignment")
+            if assignment:
+                lines.append(
+                    "    - Assignment: "
+                    f"{_esc(assignment['name'])} ({_esc(assignment['kind'])}, "
+                    f"{_esc(assignment['state'])}) — {_esc(assignment['rationale'])}"
+                )
+                scope = t["verification_scope"]
+                lines.append(
+                    "    - Verification scope: inspect a representative, then verify "
+                    f"all {scope['affected_urls_total']} affected URL(s); assignment does not prove one shared fix."
+                )
             if t.get("fix_hint"):
                 lines.append(f"    - _How to fix:_ {_esc(t['fix_hint'])}")
             reproductions = t.get("reproductions") or []

@@ -436,3 +436,131 @@ def test_heading_falls_back_to_neutral_word_when_nothing_names_the_site():
     md = render_tasks_md(build_tasks(audit))
     assert "# Audit Tasks — site" in md
     assert "None" not in md
+
+
+def test_check_assignment_groups_template_work_without_losing_counts_or_caps():
+    """#878: one repeated H1 defect is a candidate work item, not 35 tickets."""
+    article_urls = [f"https://example.test/articles/{index}" for index in range(35)]
+    product_urls = [f"https://example.test/products/{index}" for index in range(2)]
+    issues = [
+        {
+            "id": f"ISSUE-ARTICLE-{index}",
+            "check": "H1_MISSING",
+            "severity": "warning",
+            "target_url": url,
+            "occurrences_count": 1,
+            "source": "synthetic audit",
+        }
+        for index, url in enumerate(article_urls)
+    ]
+    issues.extend(
+        {
+            "id": f"ISSUE-PRODUCT-{index}",
+            "check": "H1_MISSING",
+            "severity": "warning",
+            "target_url": url,
+            "occurrences_count": 1,
+            "source": "synthetic audit",
+        }
+        for index, url in enumerate(product_urls)
+    )
+    # Two retained records for one unassigned page are still two occurrences.
+    issues.extend(
+        {
+            "id": f"ISSUE-UNKNOWN-{index}",
+            "check": "H1_MISSING",
+            "severity": "warning",
+            "target_url": "https://example.test/contact",
+            "occurrences_count": 2,
+            "source": "synthetic audit",
+        }
+        for index in range(2)
+    )
+    audit = {
+        "run": {"crawl_partial": True, "crawl_finish_reason": "url_limit"},
+        "summary": {"health_score": 70, "health_score_scope": "Synthetic partial scope"},
+        "issues": issues,
+    }
+    config = {
+        "tasks_pipeline": {
+            "group_by": "check_assignment",
+            "max_urls_per_task": 3,
+            "assignments": [
+                {
+                    "name": "Article template",
+                    "kind": "template",
+                    "urls": article_urls,
+                    "rationale": "Operator mapped the article render path.",
+                },
+                {
+                    "name": "Product template",
+                    "kind": "template",
+                    "urls": product_urls,
+                    "rationale": "Operator mapped the product render path.",
+                    "state": "confirmed",
+                    "confirmed_by": "Lead developer",
+                    "confirmation": "The same H1 component is rendered on these pages.",
+                },
+            ],
+        }
+    }
+
+    backlog = build_tasks(audit, config)
+    assert backlog["source"]["crawl_partial"] is True
+    assert backlog["grouping"] == {
+        "mode": "operator_assignments",
+        "assignment_count": 2,
+        "unassigned_findings": 2,
+    }
+    assert len(backlog["tasks"]) == 3
+    article = next(
+        task for task in backlog["tasks"] if task["assignment"]["name"] == "Article template"
+    )
+    product = next(
+        task for task in backlog["tasks"] if task["assignment"]["name"] == "Product template"
+    )
+    unknown = next(task for task in backlog["tasks"] if task["assignment"]["state"] == "unassigned")
+    assert article["affected_count"] == article["membership"]["affected_urls_total"] == 35
+    assert article["occurrences"] == 35
+    assert len(article["urls"]) == 3 and article["urls_truncated"] == 32
+    assert article["assignment"]["state"] == "declared"
+    assert article["assignment"]["provenance"]["kind"] == "operator_assignment"
+    assert product["affected_count"] == 2 and product["assignment"]["state"] == "confirmed"
+    assert unknown["affected_count"] == 1 and unknown["occurrences"] == 4
+    assert unknown["membership"]["findings_total"] == 2
+    assert "Partial crawl" in render_tasks_md(backlog)
+    assert "Article template (template, declared)" in render_tasks_md(backlog)
+
+
+def test_check_assignment_uses_validated_segments_as_candidates_not_confirmed_templates():
+    audit = {
+        "run": {
+            "crawl_config": {"scope.segments": [{"name": "blog", "prefix": "/blog/"}]},
+        },
+        "summary": {"health_score": 80},
+        "pages": [{"url": "https://example.test/blog/one"}],
+        "issues": [
+            {
+                "check": "H1_MISSING",
+                "severity": "warning",
+                "target_url": "https://example.test/blog/one",
+                "occurrences_count": 1,
+            },
+            {
+                "check": "H1_MISSING",
+                "severity": "warning",
+                "target_url": "https://example.test/other",
+                "occurrences_count": 1,
+            },
+        ],
+    }
+
+    backlog = build_tasks(audit, {"tasks_pipeline": {"group_by": "check_assignment"}})
+    candidate = next(task for task in backlog["tasks"] if task["assignment"]["name"] == "blog")
+    unknown = next(task for task in backlog["tasks"] if task["assignment"]["state"] == "unassigned")
+    assert candidate["assignment"]["state"] == "candidate"
+    assert candidate["assignment"]["provenance"]["kind"] == "audit_segment_rules"
+    assert candidate["assignment"]["provenance"]["rules"] == [
+        {"op": "prefix", "field": "path", "value": "/blog/"}
+    ]
+    assert unknown["affected_count"] == 1

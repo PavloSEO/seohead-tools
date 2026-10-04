@@ -280,8 +280,10 @@ def register(mcp):  # pragma: no cover - needs the SDK
         """Build tasks.json and tasks.md from audit.json or a scan.v1 SQLite artifact.
 
         Priority, severity inclusion, grouping, effort estimates, and URL caps
-        come from the configured ``tasks_pipeline``. Returns a compact summary
-        and absolute paths to both backlog files.
+        come from the configured ``tasks_pipeline``. ``check_assignment`` uses
+        only declared template/component URLs or validated audit segments and
+        preserves grouping provenance and candidate/declared/confirmed state.
+        Returns a compact summary and absolute paths to both backlog files.
         """
         from seohead.sf.config import load_config
         from seohead.sf.tasks import build_tasks, write_tasks
