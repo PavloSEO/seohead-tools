@@ -61,6 +61,21 @@ def test_paid_and_keywords_are_refused_before_provider_call():
     assert result["state"] == "confirmation_required"
 
 
+def test_confirmed_paid_task_receipt_is_written_immediately(monkeypatch, tmp_path):
+    journal = tmp_path / "spend.jsonl"
+    monkeypatch.setenv("SEOHEAD_SPEND_LOG", str(journal))
+    result = miratext.analyze(
+        urls=["x"],
+        my="y",
+        paid=True,
+        confirm_paid=True,
+        api_key="canary",
+        transport=lambda *_: json.dumps({"result": "ok", "hash": "job-1", "status": "draft"}),
+    )
+    assert result["spend"]["extra"] == {"cost_unknown": True}
+    assert json.loads(journal.read_text())["source"] == "miratext"
+
+
 def test_invalid_hash_and_check_type_fail_before_transport():
     def forbidden(*_args):
         raise AssertionError("must not call provider")
