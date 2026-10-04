@@ -16,6 +16,11 @@ operator-supplied original report ID, one explicit source alias for every BI dat
 a Sheets worksheet mapping or a BigQuery table mapping. It does not contact Google, create a
 report, alter a data source, or prove the supplied ID is available to the eventual viewer.
 
+[`linking-api-source-aliases.json`](linking-api-source-aliases.json) reserves the six exact
+Google Sheets aliases that the eventual original template must contain. It is an operator build
+sheet, not a report ID, data-source configuration, or copyable link. The template cannot be
+described as ready until the alias view of the native report confirms that mapping.
+
 ```python
 from seohead.reports.looker_link import build_looker_copy_link, load_blueprint
 
