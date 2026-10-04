@@ -1,13 +1,15 @@
 # Skill map
 
-24 skills in `.claude/skills/`, in two tiers.
+25 skills in `.claude/skills/`, organized as method skills, an entry controller, and one versioned
+full-audit contract.
 
 **Method skills** — 23 of them. Each covers one thing well: when to apply it, in what
 order, how to read the result, and where the boundary is beyond which the tool starts to lie.
 
 **The controller** — `control/`, which decides *which* method skill to run on a site nobody has
-looked at yet, and whether to believe the answer. It routes rather than restating, and it is
-the only skill that carries its own sub-skills and a reference archive:
+looked at yet, and whether to believe the answer. The versioned contract — `full-audit-v1/`
+(`workflow/full-audit-v1`) — fixes the reusable audit sequence without adding checks. Both route
+rather than restating methods; `control/` also carries its own sub-skills and reference archive:
 
 ```
 .claude/skills/control/
@@ -22,6 +24,10 @@ the only skill that carries its own sub-skills and a reference archive:
   reference/limits.md          what this toolkit cannot answer at all
 ```
 
+Retrieve the full-audit contract with `seohead skill-show --name workflow/full-audit-v1` or
+`seo_skill_show(name="workflow/full-audit-v1")` over MCP. The v1 identifier stays addressable;
+an incompatible workflow gets a new versioned ID.
+
 Each sub-skill is loadable on its own: a reader who needs only the rate lesson should not have
 to read the deliverables section. The reference archive matters as much as the sub-skills —
 every defect found on a live site so far was recognisable by a pattern, and writing those down
@@ -32,8 +38,9 @@ is what lets the next run catch one in minutes instead of an afternoon.
 ```
 given a domain, what to do?
    └─ control ────────── the entry point for any unscoped audit request: scope,
-        │                 crawl, scan, read the audit honestly, verify live,
-        │                 produce the deliverable
+        │                 and route to the versioned full-audit-v1 contract
+        ├─ full-audit-v1 ─ run one budgeted collection, reuse evidence, verify,
+        │                    and report actual coverage and unavailable work
         ├─ seo-deep-audit ─ delegate here for the crawl step instead of native
         │                    crawl-site only when SF (licensed CLI or exports)
         │                    is available and full-registry depth is wanted
@@ -48,6 +55,7 @@ Then by the layer of the task.
 | Skill | When |
 |---|---|
 | **control** | The single entry point for an unscoped "audit this site" request, or when you are about to write a one-off script to check pages. The whole loop: scope, crawl, `log-scan` the run, read `audit.json`'s honesty fields before its findings, verify criticals live, build the deliverable. Routes to the method skills below rather than restating them; carries its own sub-skills and reference archive. Written against a 4 260-URL run over three live sites |
+| **full-audit-v1** | Versioned, addressable execution contract used by `control`: scope and budget gates, evidence reuse, existing collector/method routes, verification, honest coverage and report completion. Adds no checks of its own |
 | **seo-deep-audit** | Not a second unscoped-audit entry point — `control` delegates its crawl step here when a licensed SF CLI or supplied exports are available and full-registry depth is wanted, and it is also fine to call directly once that decision is already made (SF/exports named or already in hand) |
 | **audit-roadmap** | Unfamiliar domain: 5 minutes of recon to decide what to collect next |
 | **sf-boundaries** | The fork "does Screaming Frog cover this, or does it need an agent?" — a router |
@@ -57,7 +65,7 @@ Then by the layer of the task.
 | Skill | When | Tool |
 |---|---|---|
 | **sf-analyzer** | There is a crawl or exports — produce a machine-readable audit | `sf run` |
-| **sf-config** | Configure SF once to maximize applicable coverage from the 162-check registry | — |
+| **sf-config** | Configure SF once to maximize applicable coverage from the 176-check registry | — |
 | **sf-report** | Turn the export into a human-readable report | `sf run --out` |
 | **sf-tasks** | Build a prioritized backlog from `audit.json` | `sf tasks` |
 
@@ -99,37 +107,12 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-65 of the 95 commands are not named in any skill's own body (a mention inside
-another tool's Markdown table above does not count) — used inline as plumbing
-inside a workflow's write-up, or not yet needed by one at all — and have no
-skill of their own, deliberately: a skill per single command is noise.
-`tests/test_docs_drift.py` recomputes this list by scanning every skill file
-for each command name, so it cannot silently rot the way this line once did.
+80 of the 115 commands are not named in any skill's own body.
+They are reusable plumbing rather than separate method skills. This inventory is
+checked against the skill sources by `tests/test_docs_drift.py`.
 
-Commands without their own skill: `asset-weight-check` · `audit-workflow` ·
-`boilerplate-report` · `crawl-describe-settings` · `crawl-enrich` · `crawl-import` ·
-`crtsh-subdomains` · `crux-report` · `facts-export` · `google-keywords` ·
-`google-serp` · `gsc-query` · `hreflang-check` · `images-download` ·
-`images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` ·
-`keywords-exact` · `keywords-expand` · `keywords-seasonality` · `log-analyze` ·
-`mirror-check` · `project-checklist-init` · `project-checklist-record` ·
-`project-checklist-update` · `project-facts` · `project-new` · `project-open` ·
-`project-policy` · `project-prepare` · `project-priorities` · `project-start` ·
-`project-status` ·
-`provider-auth` · `provider-collect` · `provider-join` · `provider-registry` ·
-`provider-replay` · `provider-verify` · `redirects-check` · `redirects-generate` ·
-`regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-extract` ·
-`scan-import-urls` · `scan-inspect` · `scan-list` · `scan-pin` · `scan-prune` ·
-`scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` ·
-`scan-status` · `scenario-show` · `segment-diff` · `serp-fetch` · `skill-list` ·
-`skill-show` · `soft404-check` · `spend-report` · `tool-catalog` ·
-`topvisor-read` · `wayback-history`
-
-Two of them are candidates for a skill if the work becomes regular:
-`log-analyze` (log parsing is its own genre with its own method) and
-`redirects-generate` (site migrations).
-
-`topvisor-read` reads existing Topvisor data using central credential files.
+Commands without their own skill:
+`asset-weight-check` · `audit-workflow` · `bi-export` · `boilerplate-report` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export` · `crawl-enrich` · `crawl-import` · `crtsh-subdomains` · `crux-report` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` · `google-keywords` · `google-serp` · `gsc-query` · `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `log-analyze` · `mirror-check` · `project-checklist-init` · `project-checklist-record` · `project-checklist-update` · `project-facts` · `project-new` · `project-open` · `project-policy` · `project-priorities` · `project-progress` · `project-start` · `project-status` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` · `provider-verify` · `redirects-check` · `redirects-generate` · `regions-tree` · `scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-pin` · `scan-prune` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `segment-diff` · `semantic-inputs` · `serp-fetch` · `soft404-check` · `sources-export` · `sources-status` · `sources-sync` · `spend-report` · `tool-catalog` · `topvisor-read` · `verify-fixes` · `wayback-history`
 
 ## Skill rules
 

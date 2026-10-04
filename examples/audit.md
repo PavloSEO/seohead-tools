@@ -1,23 +1,23 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-09-26T20:19:36Z
+- **Generated:** 2026-10-04T09:08:17Z
 
 ## Health summary
 
-> **No health score.** only 70 of 162 checks could run (43% coverage); too little evidence to score.
+> **No health score.** only 77 of 176 checks could run (44% coverage); too little evidence to score.
 
-_70 of 162 checks could run; the score is not comparable to a run with full evidence_
+_77 of 176 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **16 fired**, 92 skipped, 54 silent, 0 disabled (of 162 total)
+- Checks: **20 fired**, 99 skipped, 57 silent, 0 disabled (of 176 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
-- Total issues: **21**
+- Total issues: **25**
 
 | Severity | Count |
 |---|---:|
 | 🔴 Critical | 3 |
 | 🟡 Warning | 10 |
-| ⚪ Notice | 8 |
+| ⚪ Notice | 12 |
 
 **Most frequent issues:**
 
@@ -137,7 +137,7 @@ Each check below describes more than half the crawled pages. That can be true --
 
 > _How to fix:_ Give each page a unique title element.
 
-## ⚪ Notice (8)
+## ⚪ Notice (12)
 
 ### Meta description falls below the configured length threshold (1)
 
@@ -173,6 +173,38 @@ Each check below describes more than half the crawled pages. That can be true --
 
 > _How to fix:_ Increase the proportion of meaningful visible content or reduce unnecessary markup.
 
+### No indexable About page was found in the crawl's scope (1)
+
+| URL | Details |
+|---|---|
+|  | State: not_discovered, Crawl pages: 6, Vocabulary: whole path segments and anchor texts from a fixed EN/RU list, Indexability:  |
+
+> _How to fix:_ If an About page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+
+### No indexable Contact page was found in the crawl's scope (1)
+
+| URL | Details |
+|---|---|
+|  | State: not_discovered, Crawl pages: 6, Vocabulary: whole path segments and anchor texts from a fixed EN/RU list, Indexability:  |
+
+> _How to fix:_ If a Contact page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+
+### No indexable privacy policy page was found in the crawl's scope (1)
+
+| URL | Details |
+|---|---|
+|  | State: not_discovered, Crawl pages: 6, Vocabulary: whole path segments and anchor texts from a fixed EN/RU list, Indexability:  |
+
+> _How to fix:_ If a privacy policy exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+
+### No indexable terms-of-use page was found in the crawl's scope (1)
+
+| URL | Details |
+|---|---|
+|  | State: not_discovered, Crawl pages: 6, Vocabulary: whole path segments and anchor texts from a fixed EN/RU list, Indexability:  |
+
+> _How to fix:_ If a terms page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+
 ### Title falls below the configured length threshold (2)
 
 | URL | Details |
@@ -204,6 +236,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | Sitemap URL returns a 4xx or 5xx response | missing export: sitemap_non_200 |
 | Sitemap URL returns a 3xx response | missing export: sitemap_redirects |
 | Sitemap contains a non-indexable URL | missing export: sitemap_non_indexable |
+| Link fragment identifies no element on the destination page | export input retains no HTML/DOM bodies; fragment targets are measured only from a native retained scan |
 | More than one <meta name="description"> element is present | no meta description count evidence (native crawl only) |
 | Page has an H1 but no H2 headings | requirements.require_h2 is false; the check was not evaluated |
 | The H1 has no text of its own; its only content is an image's alt attribute | no H1 alt-text evidence (native crawl only) |
@@ -213,6 +246,8 @@ Each check below describes more than half the crawled pages. That can be true --
 | A heading on the page is, or contains, a link to somewhere else | no link-placement evidence (native crawl only) |
 | An image link carries no anchor text and no alt text, so nothing says where it goes | no link-placement evidence (native crawl only) |
 | Obsolete meta keywords element is present | no Meta Keywords 1 column in Internal:All |
+| Paginated URL canonical does not match the configured project policy | no pagination canonical policy configured |
+| Filtered URL canonical does not match the configured project policy | no filters canonical policy configured |
 | The page's content sits inside an iframe and is not attributed to this URL | no iframe inventory in this evidence |
 | Structured data validation errors | no Structured Data validation columns in Internal:All |
 | A JSON-LD block is present but did not parse as valid JSON | no JSON-LD found/parsed block counts (native crawl only) |
@@ -256,6 +291,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | External link points to a 4xx or 5xx URL | export inlinks_5xx not available |
 | Internal link points to a redirect (3xx) | export inlinks_3xx not available |
 | External link points to a redirect (3xx) | export inlinks_3xx not available |
+| Hreflang alternate points to an observed noindex page | no all_hreflang declaration export |
 | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
 | The same hreflang value is declared more than once on the page | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
 | Page declares hreflang alternates but does not reference itself | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
@@ -272,6 +308,9 @@ Each check below describes more than half the crawled pages. That can be true --
 | A rel="next"/rel="prev" URL is not also linked from the same page with an anchor | no all_inlinks export (needed for every rel="next"/rel="prev" declaration and the anchors beside them) |
 | The page is more clicks from the crawl's start URL than the configured floor | no all_inlinks export (needed for the complete internal edge list) |
 | The page repeats the same link -- same destination, same anchor text -- more than once | no all_inlinks export (needed for the complete internal edge list) |
+| Content-shaped page declares no author or byline markup | no Trust Signals column (native crawl or a same-named custom extraction) -- no author markup evidence at all |
+| Content-shaped page declares no publication or update date | no Trust Signals column and no Last Modified column -- no date evidence at all |
+| Content-shaped page has no observable outbound reference in its body content | no External Outlinks column and no all_inlinks export -- nothing to count outbound citations from |
 | DOM nesting is too deep | no stored HTML (input.html_store_dir not set) |
 | DOM contains too many nodes | no stored HTML (input.html_store_dir not set) |
 | Exact duplicate content (identical hash) | SF native Hash column already covers this |

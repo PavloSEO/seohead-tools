@@ -50,6 +50,7 @@ from seohead.storage import (
     _objects,
     _runtime,
     _schema,
+    _trust_signals,
     _url,
     _validate_scalar_storage,
 )
@@ -61,6 +62,16 @@ from seohead.storage.credential_context import (
 from seohead.storage.retention import policy_for_config, validate_policy
 
 _RUNTIME_KEYS = ("python", "sqlite", "httpx", "lxml", "beautifulsoup4")
+_OPTIONAL_BROWSER_SETTINGS = (
+    "transport",
+    "remote_protocol",
+    "remote_endpoint_env",
+    "remote_playwright_version",
+    "engine",
+    "viewport_width",
+    "viewport_height",
+    "page_concurrency",
+)
 _BODY_TABLES = ("bodies", "responses", "documents", "resource_refs")
 _NATIVE_CONTEXT = {"native_commit", "robots_blocked_url"}
 _LINK_KEYS = {
@@ -83,6 +94,7 @@ _PAGE_JSON_SOURCES = {
     "hreflang_json": "hreflang",
     "heading_outline_json": "heading_outline",
     "link_placement_json": "link_placement",
+    "trust_signals_json": "trust_signals",
     "canonical_chain_json": "canonical_chain",
 }
 
@@ -95,6 +107,9 @@ _OPTIONAL_PAGE_SOURCES = {
     "canonical_outside_head",
     "directives_outside_head",
     "hreflang_outside_head",
+    # A page whose body was never parsed records no signals (issue #823) --
+    # NULL is its recorded state, not a missing required value.
+    "trust_signals",
 }
 MAX_EDGES_PER_PAGE = 20_000
 MAX_PAGE_COMMIT_ITEMS = 20_000
@@ -147,23 +162,25 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             expected["resources"].pop("graph")
         if "storage" in config and "format_version" not in config["storage"]:
             expected["storage"].pop("format_version")
+        if "storage" in config and "capacity_profile" not in config["storage"]:
+            expected["storage"].pop("capacity_profile")
         if "rendering" in config and "rendered_links" not in config["rendering"]:
             expected["rendering"].pop("rendered_links")
         elif "rendering" in config and "crawl" not in config["rendering"]["rendered_links"]:
             expected["rendering"]["rendered_links"].pop("crawl")
         if "rendering" in config and "browser" in config["rendering"]:
-            for name in (
-                "transport",
-                "remote_protocol",
-                "remote_endpoint_env",
-                "remote_playwright_version",
-            ):
+            for name in _OPTIONAL_BROWSER_SETTINGS:
                 if name not in config["rendering"]["browser"]:
                     expected["rendering"]["browser"].pop(name)
         if "limits" in config and "max_requests" not in config["limits"]:
             expected["limits"].pop("max_requests")
         if "evidence" in config and "retain_no_store_acknowledged" not in config["evidence"]:
             expected["evidence"].pop("retain_no_store_acknowledged")
+        if "analysis" in config and "finding_exclusions" not in config["analysis"]:
+            expected["analysis"].pop("finding_exclusions")
+        for key in ("proxy", "proxy_allow_private", "proxy_identity", "proxy_authenticated"):
+            if key not in config.get("http", {}):
+                expected["http"].pop(key)
     require_fields(config, expected)
     validation_config = copy.deepcopy(config)
     if recorded:
@@ -173,17 +190,13 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
             "graph", copy.deepcopy(DEFAULTS["resources"]["graph"])
         )
         validation_config["storage"].setdefault("format_version", "scan.v1")
+        validation_config["storage"].setdefault("capacity_profile", "stable")
         validation_config.setdefault("rendering", {})
         validation_config["rendering"].setdefault(
             "rendered_links", copy.deepcopy(DEFAULTS["rendering"]["rendered_links"])
         )
         validation_config["rendering"]["rendered_links"].setdefault("crawl", False)
-        for name in (
-            "transport",
-            "remote_protocol",
-            "remote_endpoint_env",
-            "remote_playwright_version",
-        ):
+        for name in _OPTIONAL_BROWSER_SETTINGS:
             validation_config["rendering"]["browser"].setdefault(
                 name, DEFAULTS["rendering"]["browser"][name]
             )
@@ -191,6 +204,12 @@ def _native_config(value: Any, *, recorded: bool = False) -> dict[str, Any]:
         validation_config["limits"].setdefault("max_requests", 0)
         validation_config.setdefault("evidence", {})
         validation_config["evidence"].setdefault("retain_no_store_acknowledged", False)
+        validation_config.setdefault("analysis", {})
+        validation_config["analysis"].setdefault("finding_exclusions", [])
+        validation_config.setdefault("http", {})
+        validation_config["http"].update(
+            proxy="", proxy_allow_private=False, proxy_identity="", proxy_authenticated=False
+        )
     try:
         validate_crawl_config(
             validate_recorded_credentials(validation_config) if recorded else value
@@ -220,6 +239,12 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
     ):
         expected["storage"].pop("format_version")
     if (
+        "storage" in recorded
+        and "capacity_profile" not in recorded["storage"]
+        and expected["storage"].get("capacity_profile") == "stable"
+    ):
+        expected["storage"].pop("capacity_profile")
+    if (
         "rendering" in recorded
         and "rendered_links" not in recorded["rendering"]
         and expected["rendering"].get("rendered_links") == DEFAULTS["rendering"]["rendered_links"]
@@ -232,12 +257,7 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
     ):
         expected["rendering"]["rendered_links"].pop("crawl")
     if "rendering" in recorded and "browser" in recorded["rendering"]:
-        for name in (
-            "transport",
-            "remote_protocol",
-            "remote_endpoint_env",
-            "remote_playwright_version",
-        ):
+        for name in _OPTIONAL_BROWSER_SETTINGS:
             if (
                 name not in recorded["rendering"]["browser"]
                 and expected["rendering"]["browser"].get(name)
@@ -256,6 +276,18 @@ def _resume_fingerprint(expected_config: Any, recorded_config: Any) -> str:
         and expected["evidence"].get("retain_no_store_acknowledged") is False
     ):
         expected["evidence"].pop("retain_no_store_acknowledged")
+    if (
+        "analysis" in recorded
+        and "finding_exclusions" not in recorded["analysis"]
+        and expected["analysis"].get("finding_exclusions") == []
+    ):
+        expected["analysis"].pop("finding_exclusions")
+    for key in ("proxy", "proxy_allow_private", "proxy_identity", "proxy_authenticated"):
+        if (
+            key not in recorded.get("http", {})
+            and expected.get("http", {}).get(key) == DEFAULTS["http"][key]
+        ):
+            expected["http"].pop(key)
     return crawl_config_fingerprint(expected)
 
 
@@ -518,6 +550,7 @@ class NativeScan:
         self._lock_fd = lock_fd
         self.failpoint: Callable[[str], None] | None = None
         self._event_sink = None
+        self._sparse_summary: tuple[dict[str, Any], dict[str, str]] | None = None
         if self.con.execute("PRAGMA user_version").fetchone()[0] == 2:
             from seohead.crawl.events import MAX_EVENTS, EventSink
             from seohead.storage.events import append, ensure_schema
@@ -1235,18 +1268,28 @@ class NativeScan:
                 raise ScanError("native scan page is missing a current PageRecord evidence field")
             if page["content_frames_same_origin"] > page["content_frames"] or page[
                 "body_unavailable"
-            ] not in (None, "", "oversized"):
+            ] not in {
+                None,
+                "",
+                "oversized",
+                "excluded_by_media_type",
+                "not_included_by_media_type",
+                "media_type_unavailable",
+            }:
                 raise ScanError("native scan page scalar/body marker is invalid")
             try:
                 alternates = json.loads(page["hreflang_json"] or "[]")
                 outline = json.loads(page["heading_outline_json"] or "[]")
                 placement = json.loads(page["link_placement_json"] or "null")
+                signals = json.loads(page["trust_signals_json"] or "null")
                 chain = json.loads(page["redirect_chain_json"])
             except (TypeError, ValueError) as exc:
                 raise ScanError("native scan page JSON is invalid") from exc
             _heading_outline(outline)
             if placement is not None:
                 _link_placement(placement)
+            if signals is not None:
+                _trust_signals(signals)
             if (
                 not isinstance(alternates, list)
                 or any(
@@ -1484,13 +1527,33 @@ class NativeScan:
         from .corpus import corpus_summary
 
         row = self.con.execute(
-            "SELECT capabilities_json,retention_json,source_kind FROM scan"
+            "SELECT capabilities_json,retention_json,source_kind,config_json FROM scan"
         ).fetchone()
         capabilities = json.loads(row[0])
-        summary = corpus_summary(self.con, json.loads(row[1]))
+        policy = json.loads(row[1])
+        config = json.loads(row[3])
+        sparse = (
+            row[2] == "native"
+            and policy["body_mode"] == "off"
+            and not config.get("resources", {}).get("fetch", False)
+            and not self.con.execute(
+                "SELECT EXISTS(SELECT 1 FROM responses) OR EXISTS(SELECT 1 FROM documents) "
+                "OR EXISTS(SELECT 1 FROM bodies) OR EXISTS(SELECT 1 FROM resource_refs)"
+            ).fetchone()[0]
+        )
+        if sparse and self._sparse_summary is not None:
+            summary, reanalysis = self._sparse_summary
+        else:
+            summary = corpus_summary(self.con, policy)
+            reanalysis = _reanalysis_capability(self.con) if row[2] == "native" else None
+            if sparse:
+                # Coverage is invariant while these evidence tables stay empty.
+                # The first full calculation uses the existing contract; later
+                # commits reuse it only after checking the invariant in SQL.
+                self._sparse_summary = (summary, reanalysis)
         capabilities.update(summary["capabilities"])
-        if row[2] == "native":
-            capabilities["offline_reanalysis"] = _reanalysis_capability(self.con)
+        if reanalysis is not None:
+            capabilities["offline_reanalysis"] = reanalysis
         self.con.execute(
             "UPDATE scan SET capabilities_json=?,corpus_partial=? WHERE singleton=1",
             (_dump(capabilities), int(summary["corpus_partial"])),
@@ -1911,7 +1974,13 @@ class NativeScan:
                 raise ScanError(f"pages.{name}: expected a nonnegative integer")
         if record.get("content_frames_same_origin", 0) > record.get("content_frames", 0):
             raise ScanError("pages.content_frames_same_origin exceeds content_frames")
-        if record.get("body_unavailable") not in {"", "oversized"}:
+        if record.get("body_unavailable") not in {
+            "",
+            "oversized",
+            "excluded_by_media_type",
+            "not_included_by_media_type",
+            "media_type_unavailable",
+        }:
             raise ScanError("pages.body_unavailable has an unknown marker")
         page_ordinal = self.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
         if self.con.execute("PRAGMA user_version").fetchone()[0] == 2:
@@ -1948,6 +2017,8 @@ class NativeScan:
                     _heading_outline(value)
                 if name == "link_placement_json" and value is not None:
                     _link_placement(value)
+                if name == "trust_signals_json" and value is not None:
+                    _trust_signals(value)
                 if name in {"redirect_chain_json", "canonical_chain_json"} and (
                     not isinstance(value, list)
                     or any(not isinstance(item, dict) for item in value or [])

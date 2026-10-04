@@ -33,16 +33,17 @@ class _Response:
         self.headers = {"content-type": content_type}
 
 
-def _settings(*, body_mode: str = "captured_entity_bytes") -> dict:
-    return load(
-        overrides={
-            "speed.min_delay_seconds": 0,
-            "limits.max_urls": 1,
-            "limits.max_depth": 1,
-            "resources.fetch": False,
-            "storage.body_mode": body_mode,
-        }
-    )
+def _settings(*, body_mode: str = "captured_entity_bytes", finding_exclusions=None) -> dict:
+    overrides = {
+        "speed.min_delay_seconds": 0,
+        "limits.max_urls": 1,
+        "limits.max_depth": 1,
+        "resources.fetch": False,
+        "storage.body_mode": body_mode,
+    }
+    if finding_exclusions is not None:
+        overrides["analysis.finding_exclusions"] = finding_exclusions
+    return load(overrides=overrides)
 
 
 def _runtime_versions() -> dict[str, str]:
@@ -63,24 +64,41 @@ def _fetcher(url: str) -> _Response:
     return _Response(MIT_SYNTHETIC_HTML, "text/html; charset=utf-8")
 
 
-def _source(path: Path, *, body_mode: str = "captured_entity_bytes") -> dict:
-    settings = _settings(body_mode=body_mode)
+def _missing_title_fetcher(url: str) -> _Response:
+    if url.endswith("/robots.txt"):
+        return _Response(b"User-agent: SEOHEAD-Tools\nAllow: /\n", "text/plain")
+    return _Response(
+        b"<!doctype html><html><head></head><body><a href='/'>home</a></body></html>", "text/html"
+    )
+
+
+def _source(
+    path: Path,
+    *,
+    body_mode: str = "captured_entity_bytes",
+    finding_exclusions=None,
+    fetcher=_fetcher,
+    start_url: str = "https://example.test/",
+) -> dict:
+    settings = _settings(body_mode=body_mode, finding_exclusions=finding_exclusions)
     crawl_to_scan(
-        "https://example.test/",
+        start_url,
         scan_out=str(path),
         settings=settings,
         producer_version=__version__,
         producer_revision="a" * 40,
         runtime_versions=_runtime_versions(),
-        fetcher=_fetcher,
+        fetcher=fetcher,
         sleeper=lambda _seconds: None,
     )
     if body_mode == "captured_entity_bytes":
-        _save_native_audit(path, settings)
+        _save_native_audit(path, settings, start_url=start_url)
     return settings
 
 
-def _save_native_audit(path: Path, settings: dict) -> None:
+def _save_native_audit(
+    path: Path, settings: dict, *, start_url: str = "https://example.test/"
+) -> None:
     """Use the normal native audit pipeline once, over the retained source scan."""
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.crawl.sqlite_adapter import retained_start_gate
@@ -91,11 +109,11 @@ def _save_native_audit(path: Path, settings: dict) -> None:
     with NativeScan.open(path) as scan:
         result = _rebuild_page_result(scan)
         result.start_page_evidence = retained_start_gate(scan, settings)
-        with prepare_sitemap_reconciliation(scan.con, start_url="https://example.test/") as sitemap:
+        with prepare_sitemap_reconciliation(scan.con, start_url=start_url) as sitemap:
             _unused, audit = _audit_crawl_result(
                 result,
                 settings=settings,
-                url="https://example.test/",
+                url=start_url,
                 sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
                 discovery={
                     "mode": "spider",
@@ -209,6 +227,46 @@ def test_reanalysis_derives_a_valid_audited_scan_without_network_and_can_chain(
     assert second_scan["scan_uuid"] != first_scan["scan_uuid"]
     assert _page_outcomes(second) == _page_outcomes(first)
     assert _audit_outcomes(second) == _audit_outcomes(first)
+    assert attempts == {}
+
+
+def test_reanalysis_reuses_saved_finding_exclusions_without_network(tmp_path, monkeypatch):
+    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.storage import read_audit
+
+    source = tmp_path / "source-with-policy.sqlite"
+    derived = tmp_path / "derived-with-policy.sqlite"
+    policy = [
+        {
+            "id": "legacy-title",
+            "pattern": "/",
+            "checks": ["TITLE_MISSING"],
+            "reason": "This fixture is intentionally missing its title.",
+        }
+    ]
+    settings = _source(source, finding_exclusions=policy, fetcher=_missing_title_fetcher)
+    source_audit = read_audit(source)
+    assert (
+        source_audit["run"]["finding_exclusion_policy"]
+        == settings["analysis"]["finding_exclusions"]
+    )
+    assert len(source_audit["suppressed_issues"]) == 1
+    assert source_audit["suppressed_issues"][0]["check"] == "TITLE_MISSING"
+    assert source_audit["summary"]["finding_exclusions"]["suppressed_total"] == 1
+
+    attempts = _forbid_network(monkeypatch, [])
+    reanalyze_scan(str(source), str(derived), producer_build="b" * 40)
+
+    derived_audit = read_audit(derived)
+    assert (
+        derived_audit["run"]["finding_exclusion_policy"]
+        == source_audit["run"]["finding_exclusion_policy"]
+    )
+    assert derived_audit["suppressed_issues"] == source_audit["suppressed_issues"]
+    assert (
+        derived_audit["summary"]["finding_exclusions"]
+        == source_audit["summary"]["finding_exclusions"]
+    )
     assert attempts == {}
 
 

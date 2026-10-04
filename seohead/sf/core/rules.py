@@ -13,6 +13,7 @@ import urllib.parse
 from collections import OrderedDict, defaultdict
 from typing import Any
 
+from seohead.canonical_policy import matching_canonical_rule
 from seohead.tools.parser import robots_directives, uses_ajax_crawling_scheme
 
 from .context import AuditContext
@@ -57,32 +58,227 @@ def _rec(page: Page) -> dict[str, Any]:
 
 
 def _body_unavailable(rec: dict[str, Any]) -> bool:
-    """Whether this row's HTML body was too large to parse (#243).
+    """Whether this row's HTML body was not parsed or retained.
 
     A blank title/description/h1/canonical on such a row means "never measured",
     not "observed absent" -- the same distinction ``_has_column`` draws for a
-    column missing from the whole export, but here it is one row at a time.
+    column missing from the whole export, but here it is one row at a time. The
+    marker covers both the existing size limit and an explicit crawl media-type
+    filter.
     """
     return bool(rec.get("body_unavailable"))
 
 
-def _skip_for_body_unavailable(ctx: AuditContext, check_id: str, pages: list[Page]) -> None:
-    """Name, once, why some pages contribute no finding to ``check_id``.
-
-    ``ctx.add`` already retracts a check-id's skip the moment that check fires for
-    real evidence elsewhere (see ``AuditContext.add``), so on a crawl where the
-    check also finds a genuinely missing value on another page this reason is
-    superseded by that finding rather than sitting beside it -- the check plainly
-    did run. Only when every candidate page for this check turns out to be
-    unavailable does the reason stand as the audit's account of why it is silent.
-    """
-    count = sum(1 for p in pages if _body_unavailable(_rec(p)))
-    if count:
-        ctx.skip(
-            check_id,
+def _body_unavailable_reason(pages: list[Page]) -> str | None:
+    reasons: dict[str, int] = {}
+    for page in pages:
+        reason = str(_rec(page).get("body_unavailable") or "")
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    count = sum(reasons.values())
+    if set(reasons) == {"oversized"}:
+        return (
             f"{count} page(s) with an oversized, unparsed HTML body "
-            "-- this metadata was never measured",
+            "-- this metadata was never measured"
         )
+    elif count:
+        labels = {
+            "excluded_by_media_type": "excluded by media type",
+            "not_included_by_media_type": "not included by media type",
+            "media_type_unavailable": "missing or malformed Content-Type",
+            "oversized": "oversized HTML body",
+        }
+        summary = ", ".join(
+            f"{labels.get(reason, reason)}: {amount}" for reason, amount in sorted(reasons.items())
+        )
+        return f"{count} page(s) were not parsed ({summary}); this metadata was never measured"
+    return None
+
+
+def _skip_for_body_unavailable(ctx: AuditContext, check_id: str, pages: list[Page]) -> None:
+    """Name why unparsed HTML cannot contribute a verdict to ``check_id``."""
+    reason = _body_unavailable_reason(pages)
+    if reason:
+        ctx.skip(check_id, reason)
+
+
+# A blank parser-derived column is not a negative result when HTML was not
+# parsed. Keep this inventory next to the shared unavailable-body policy so
+# new on-page rules can be checked against it during review. Checks that also
+# have evidence elsewhere retain their normal verdict: AuditContext.add
+# retracts a check's skip when that check actually fires.
+_BODY_DERIVED_INDEXABLE_CHECKS = (
+    "NON_INDEXABLE_LINKED",
+    "TITLE_MISSING",
+    "TITLE_TOO_LONG",
+    "TITLE_TOO_SHORT",
+    "TITLE_EQUALS_H1",
+    "TITLE_DUPLICATE",
+    "DESC_MULTIPLE",
+    "DESC_MISSING",
+    "DESC_TOO_LONG",
+    "DESC_TOO_SHORT",
+    "DESC_DUPLICATE",
+    "H1_MISSING",
+    "H1_MULTIPLE",
+    "H1_TOO_LONG",
+    "H1_DUPLICATE",
+    "H1_ALT_TEXT_ONLY",
+    "H2_MISSING",
+    "H2_TOO_LONG",
+    "H2_DUPLICATE",
+    "TITLE_OUTSIDE_HEAD",
+    "DESC_OUTSIDE_HEAD",
+    "CANONICAL_MISSING",
+    "HEADING_BEFORE_H1",
+    "HEADING_IN_PAGE_CHROME",
+    "HEADING_SKIP",
+    "LINK_INSIDE_HEADING",
+    "IMAGE_LINK_WITHOUT_TEXT",
+    "NO_INTERNAL_OUTLINKS",
+    "HIGH_OUTLINKS",
+    "HIGH_EXTERNAL_OUTLINKS",
+    "URL_HAS_PARAMS",
+    "CONTENT_IN_IFRAME",
+    "THIN_CONTENT",
+    "LOW_TEXT_RATIO",
+    "HTML_BLOAT",
+    "TITLE_TEMPLATED",
+    "NEAR_DUPLICATE",
+    "OG_MISSING",
+)
+
+_BODY_DERIVED_HTML_CHECKS = (
+    "CANONICALISED",
+    "CANONICAL_NON_INDEXABLE",
+    "CANONICAL_RELATIVE",
+    "CANONICAL_FRAGMENT",
+    "CANONICAL_CHAIN",
+    "CANONICAL_TO_REDIRECT",
+    "UNLINKED_CANONICAL",
+    "DIRECTIVES_OUTSIDE_HEAD",
+    "NOINDEX",
+    "NOFOLLOW_PAGE",
+    "NOARCHIVE",
+    "NOSNIPPET",
+    "NOIMAGEINDEX",
+    "NOTRANSLATE",
+    "UNAVAILABLE_AFTER",
+    "HREFLANG_OUTSIDE_HEAD",
+    "META_REFRESH_REDIRECT",
+    "CANONICAL_OUTSIDE_HEAD",
+    "STRUCTURED_DATA_PARSE_ERROR",
+    "LOREM_IPSUM_PLACEHOLDER",
+    "UNSUPPORTED_PLUGIN",
+    "IMG_MISSING_ALT_ATTRIBUTE",
+    "IMG_ALT_TOO_LONG",
+    "AJAX_CRAWLING_SCHEME_URL",
+    "AJAX_CRAWLING_SCHEME_META_FRAGMENT",
+    "HREFLANG_BROKEN_TARGET",
+    "HREFLANG_INVALID_CODE",
+    "HREFLANG_MULTIPLE_ENTRIES",
+    "HREFLANG_MISSING_SELF_REFERENCE",
+    "HREFLANG_MISSING_XDEFAULT",
+    "HREFLANG_NOT_CANONICAL",
+    "HREFLANG_MISSING_RETURN_LINK",
+    "BROKEN_INTERNAL_LINK",
+    "LINK_TO_5XX",
+    "INTERNAL_LINK_TO_REDIRECT",
+    "BROKEN_EXTERNAL_LINK",
+    "EXTERNAL_LINK_TO_REDIRECT",
+    "GENERIC_ANCHOR_TEXT",
+    "LOW_LINK_SCORE",
+    "ONLY_NOFOLLOW_INLINKS",
+    "ONLY_NONINDEXABLE_SOURCE_INLINKS",
+    "DEEP_DISCOVERY_PATH",
+    "DEEP_CLICK_DEPTH",
+    "DUPLICATE_INTERNAL_LINK",
+    "INSECURE_SUBRESOURCE",
+    "PAGINATION_MULTIPLE",
+    "PAGINATION_URL_NOT_IN_ANCHOR",
+    "PAGINATION_SEQUENCE_ERROR",
+    "PAGINATION_LOOP",
+    "UNLINKED_PAGINATION_SERIES",
+    "PAGINATION_NONINDEXABLE",
+    "MISSING_DOCTYPE",
+    "VIEWPORT_MISSING",
+    "HEAD_MISSING",
+    "HEAD_MULTIPLE",
+    "BODY_MISSING",
+    "BODY_MULTIPLE",
+    "INVALID_HEAD_ELEMENT",
+    "HEAD_NOT_FIRST",
+)
+
+
+def _declare_unparsed_body_skips(ctx: AuditContext) -> None:
+    populations = (
+        (_BODY_DERIVED_INDEXABLE_CHECKS, ctx.indexable_html_pages()),
+        (_BODY_DERIVED_HTML_CHECKS, ctx.html_pages()),
+    )
+    for check_ids, pages in populations:
+        unparsed = [page for page in pages if _body_unavailable(_rec(page))]
+        reason = _body_unavailable_reason(unparsed)
+        if reason:
+            for check_id in check_ids:
+                if not ctx.enabled(check_id):
+                    continue
+                if check_id == "H2_MISSING" and not ctx.requirements.get("require_h2", False):
+                    continue
+                if check_id == "CANONICAL_MISSING" and not ctx.requirements.get(
+                    "require_canonical", True
+                ):
+                    continue
+                ctx.skip(check_id, reason)
+    charset_pages = [
+        page
+        for page in ctx.html_pages()
+        if not (page.content_type and _CHARSET_IN_HEADER_RE.search(page.content_type))
+    ]
+    charset_reason = _body_unavailable_reason(
+        [page for page in charset_pages if _body_unavailable(_rec(page))]
+    )
+    if charset_reason and ctx.enabled("MISSING_CHARSET"):
+        ctx.skip("MISSING_CHARSET", charset_reason)
+
+
+def _canonical_policy_target_is_fetched(ctx: AuditContext, url: str) -> bool:
+    """Whether this exact policy URL has a response row in Internal:All.
+
+    The general URL index folds trailing slashes for link matching. A declared
+    policy target is stricter: a slashless redirect does not prove that its
+    distinct slash target was fetched. Rows without a status are placeholders,
+    not target-access evidence.
+    """
+    try:
+        target = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    target_path = target.path or "/"
+    target_identity = (
+        target.scheme.lower(),
+        target.netloc.lower(),
+        target_path,
+        target.query,
+        target.fragment,
+    )
+    for page in ctx.pages_by_norm.get(norm_url(url), []):
+        if page.status_code is None:
+            continue
+        try:
+            candidate = urllib.parse.urlsplit(page.url)
+        except ValueError:
+            continue
+        candidate_identity = (
+            candidate.scheme.lower(),
+            candidate.netloc.lower(),
+            candidate.path or "/",
+            candidate.query,
+            candidate.fragment,
+        )
+        if candidate_identity == target_identity:
+            return True
+    return False
 
 
 def _has_column(ctx: AuditContext, field: str) -> bool:
@@ -601,11 +797,37 @@ def check_canonical_directives(ctx: AuditContext) -> None:
             # (issue #95). "The canonical points at something non-indexable" is only true
             # when no page under the key is indexable.
             targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
-            if targets and not any(t.is_indexable for t in targets):
+            target_codes = [t.status_code for t in targets]
+            target_is_redirect = any(
+                code is not None and 300 <= int(code) <= 399 for code in target_codes
+            )
+            target_is_http_error = bool(target_codes) and all(
+                code is not None and 400 <= int(code) <= 599 for code in target_codes
+            )
+            if (
+                targets
+                and not any(t.is_indexable for t in targets)
+                and (
+                    any(code is not None and 200 <= int(code) <= 299 for code in target_codes)
+                    or (not target_is_redirect and not target_is_http_error)
+                )
+            ):
                 ctx.add(
                     "CANONICAL_NON_INDEXABLE",
                     target_url=page.url,
-                    details={"canonical": canonical},
+                    details={
+                        "canonical": canonical,
+                        "canonical_target_evidence": [
+                            {
+                                "url": target.url,
+                                "status_code": target.status_code,
+                                "indexability": target.indexability,
+                                "indexability_status": target.indexability_status,
+                            }
+                            for target in targets[:20]
+                        ],
+                        "canonical_target_evidence_omitted": max(0, len(targets) - 20),
+                    },
                 )
         robots = robots_directives(rec.get("meta_robots"), rec.get("x_robots"))
         if "noindex" in robots:
@@ -624,6 +846,86 @@ def check_canonical_directives(ctx: AuditContext) -> None:
             )
     if not has_meta_keywords:
         ctx.skip("META_KEYWORDS_PRESENT", "no Meta Keywords 1 column in Internal:All")
+
+
+def check_canonical_policy(ctx: AuditContext) -> None:
+    """Compare configured pagination/filter canonicals with fetched URL evidence.
+
+    An empty policy is explicitly unmeasured. If any matched source's declared
+    or expected target is absent from Internal:All, withhold that category's
+    findings: an unfetched target cannot establish the policy relationship.
+    """
+    policy = ctx.config.get("canonical_policy", {})
+    for category, check_id in (
+        ("pagination", "PAGINATION_CANONICAL_POLICY"),
+        ("filters", "FILTER_CANONICAL_POLICY"),
+    ):
+        if not ctx.enabled(check_id):
+            continue
+        rules = policy.get(category, [])
+        if not rules:
+            ctx.skip(check_id, f"no {category} canonical policy configured")
+            continue
+        if not _has_column(ctx, "canonical"):
+            ctx.skip(check_id, "no Canonical column in Internal:All")
+            continue
+
+        candidates: list[tuple[Page, dict[str, Any], str, str | None]] = []
+        unavailable: list[tuple[str, str]] = []
+        for page in ctx.html_pages():
+            rule = matching_canonical_rule(policy, category, page.url)
+            if rule is None:
+                continue
+            if _body_unavailable(_rec(page)):
+                unavailable.append((page.url, "source HTML body unavailable"))
+                continue
+            expected = page.url if rule["policy"] == "self" else rule["target"]
+            canonical = _rec(page).get("canonical") or None
+            if not _canonical_policy_target_is_fetched(ctx, expected):
+                unavailable.append(
+                    (page.url, f"expected target absent from crawl evidence: {expected}")
+                )
+                continue
+            if canonical and not _canonical_policy_target_is_fetched(ctx, canonical):
+                unavailable.append(
+                    (page.url, f"declared canonical absent from crawl evidence: {canonical}")
+                )
+                continue
+            candidates.append((page, rule, expected, canonical))
+
+        if not candidates and not unavailable:
+            ctx.skip(check_id, f"no crawled URLs matched the configured {category} patterns")
+            continue
+        if unavailable:
+            examples = "; ".join(f"{source}: {reason}" for source, reason in unavailable[:3])
+            ctx.skip(
+                check_id,
+                f"canonical policy evidence unavailable for {len(unavailable)} "
+                f"matched URL(s); examples: {examples}",
+            )
+            continue
+
+        for page, rule, expected, canonical in candidates:
+            if canonical and norm_url(canonical) == norm_url(expected):
+                continue
+            ctx.add(
+                check_id,
+                target_url=page.url,
+                details={
+                    "canonical_policy": {
+                        "source_url": page.url,
+                        "declared_canonical_url": canonical,
+                        "expected_canonical_url": expected,
+                        "policy": rule["policy"],
+                        "matched_pattern": rule["pattern"],
+                    }
+                },
+                evidence={
+                    "frame": "Internal:All",
+                    "canonical_column": "Canonical Link Element 1",
+                    "expected_target_in_crawl": True,
+                },
+            )
 
 
 # --------------------------------------------------------------------------
@@ -647,6 +949,8 @@ def check_content(ctx: AuditContext) -> None:
     has_text_ratio = False
     for page in ctx.indexable_html_pages():
         rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
         wc = rec.get("word_count")
         if wc is not None and wc < t["thin_content_words"]:
             # A page can be below the threshold for two different reasons, and
@@ -717,7 +1021,12 @@ def check_url_and_perf(ctx: AuditContext) -> None:
                 target_url=url,
                 details={"length": len(url), "max_chars": t["url_max_chars"]},
             )
-        if "?" in url and page.is_indexable and not rec.get("canonical"):
+        if (
+            "?" in url
+            and page.is_indexable
+            and not rec.get("canonical")
+            and not _body_unavailable(rec)
+        ):
             ctx.add("URL_HAS_PARAMS", target_url=url)
         if NON_ASCII.search(path):
             ctx.add("URL_NON_ASCII", target_url=url)
@@ -1129,6 +1438,270 @@ def check_canonical_to_redirect(ctx: AuditContext) -> None:
         )
 
 
+def check_canonical_target_error(ctx: AuditContext) -> None:
+    """CANONICAL_TARGET_ERROR — a fetched canonical target answers 4xx or 5xx.
+
+    This is the status-specific sibling of CANONICAL_NON_INDEXABLE and
+    CANONICAL_TO_REDIRECT. It reuses Internal:All's canonical and response-code
+    graph, and only makes an error claim when every row under the normalized
+    target key has a known 4xx/5xx status. An absent target or a row with no
+    status is unavailable evidence, not a broken destination. A 2xx variant
+    clears the claim; 3xx remains CANONICAL_TO_REDIRECT.
+    """
+    if not _has_column(ctx, "canonical"):
+        ctx.skip("CANONICAL_TARGET_ERROR", "no Canonical column in Internal:All")
+        return
+    if not _has_column(ctx, "status_code"):
+        ctx.skip("CANONICAL_TARGET_ERROR", "no Status Code column in Internal:All")
+        return
+
+    has_any_canonical = any(_rec(page).get("canonical") for page in ctx.html_pages())
+    if not has_any_canonical:
+        ctx.skip("CANONICAL_TARGET_ERROR", "no canonical values in Internal:All")
+        return
+
+    issues: list[tuple[Page, str, list[Page]]] = []
+    unavailable_count = 0
+    for page in ctx.html_pages():
+        canonical = _rec(page).get("canonical")
+        if not canonical or norm_url(canonical) == norm_url(page.url):
+            continue
+        targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+        if not targets:
+            unavailable_count += 1
+            continue
+        codes = [target.status_code for target in targets]
+        if any(code is None for code in codes):
+            unavailable_count += 1
+            continue
+        if any(200 <= int(code) <= 299 for code in codes):
+            continue
+        if any(300 <= int(code) <= 399 for code in codes):
+            continue  # reported by CANONICAL_TO_REDIRECT
+        if all(400 <= int(code) <= 599 for code in codes):
+            issues.append((page, canonical, targets))
+        else:
+            unavailable_count += 1
+
+    if unavailable_count and not issues:
+        ctx.skip(
+            "CANONICAL_TARGET_ERROR",
+            f"{unavailable_count} canonical target(s) were not captured with classifiable response status",
+        )
+        return
+
+    for page, canonical, targets in issues:
+        codes = sorted(
+            {int(target.status_code) for target in targets if target.status_code is not None}
+        )
+        ctx.add(
+            "CANONICAL_TARGET_ERROR",
+            target_url=page.url,
+            status_code=codes[0] if len(codes) == 1 else None,
+            details={
+                "source_url": page.url,
+                "source_status_code": page.status_code,
+                "source_indexability": page.indexability,
+                "canonical_target_url": canonical,
+                "canonical_target_responses": [
+                    {
+                        "url": target.url,
+                        "status_code": target.status_code,
+                        "indexability": target.indexability,
+                        "indexability_status": target.indexability_status,
+                    }
+                    for target in targets[:20]
+                ],
+                "canonical_target_responses_omitted": max(0, len(targets) - 20),
+                "status_coverage": "partial" if unavailable_count else "complete",
+                "unclassified_target_count": unavailable_count,
+            },
+        )
+
+
+_PAGINATION_PATH_RE = re.compile(r"(?:^|/)(?:page|paged)[/-]\d+(?:/|$)", re.IGNORECASE)
+
+
+def _homepage_url(url: str) -> bool:
+    """Whether a canonical names an HTTP(S) origin root without query/fragment."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        return (
+            parsed.scheme.lower() in {"http", "https"}
+            and bool(parsed.hostname)
+            and parsed.path in {"", "/"}
+            and not parsed.query
+            and not parsed.fragment
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
+def _same_home_origin(source: str, target: str) -> bool:
+    """Keep protocol/host aliases and cross-host language canonicals out of the group."""
+    try:
+        source_parts = urllib.parse.urlsplit(source)
+        target_parts = urllib.parse.urlsplit(target)
+        source_port = source_parts.port or {"http": 80, "https": 443}.get(
+            source_parts.scheme.lower()
+        )
+        target_port = target_parts.port or {"http": 80, "https": 443}.get(
+            target_parts.scheme.lower()
+        )
+        return (
+            source_parts.scheme.lower() == target_parts.scheme.lower()
+            and (source_parts.hostname or "").lower() == (target_parts.hostname or "").lower()
+            and source_port == target_port
+        )
+    except ValueError:
+        return False
+
+
+def check_canonical_homepage_group(ctx: AuditContext) -> None:
+    """Find only strongly evidenced groups of distinct pages canonicalized home.
+
+    A group needs at least three fetched, indexable pages across two top-level
+    path sections, each with a distinct non-empty title and H1 that differ from
+    the fetched homepage. Query URLs and recognizable page-number paths are
+    excluded. If response, indexability, title, H1, or homepage evidence is
+    missing, the check says why instead of presenting a site-wide pattern.
+    """
+    fields = ("canonical", "status_code", "indexability", "title", "h1")
+    missing = [field for field in fields if not _has_column(ctx, field)]
+    if missing:
+        ctx.skip(
+            "CANONICAL_HOMEPAGE_GROUP",
+            "missing supporting Internal:All columns: " + ", ".join(missing),
+        )
+        return
+
+    pages = ctx.html_pages()
+    if not any(_rec(page).get("canonical") for page in ctx.indexable_html_pages()):
+        ctx.skip("CANONICAL_HOMEPAGE_GROUP", "no canonical values in fetched indexable HTML")
+        return
+
+    configured_policy = ctx.config.get("canonical_policy")
+    matching_canonical_rule = None
+    if isinstance(configured_policy, dict) and any(
+        configured_policy.get(key) for key in ("pagination", "filters")
+    ):
+        try:
+            from seohead.canonical_policy import matching_canonical_rule
+        except ImportError:
+            ctx.skip(
+                "CANONICAL_HOMEPAGE_GROUP",
+                "canonical_policy is configured but its shared matcher is unavailable",
+            )
+            return
+
+    grouped: dict[str, list[tuple[Page, str]]] = defaultdict(list)
+    unavailable_home_targets = 0
+    unavailable_sources = 0
+    for page in pages:
+        canonical = _rec(page).get("canonical")
+        if (
+            not canonical
+            or not _homepage_url(canonical)
+            or not _same_home_origin(page.url, canonical)
+        ):
+            continue
+        source_parts = urllib.parse.urlsplit(page.url)
+        if source_parts.path in {"", "/"} or source_parts.query or source_parts.fragment:
+            continue  # self/home and query-based filter/pagination URLs are expected exceptions
+        if _PAGINATION_PATH_RE.search(source_parts.path):
+            continue
+        if matching_canonical_rule and any(
+            matching_canonical_rule(configured_policy, category, page.url)
+            for category in ("pagination", "filters")
+        ):
+            continue  # #727 owns configured pagination/filter URLs
+        if not page.indexability or not page.indexability.strip():
+            unavailable_sources += 1
+            continue
+        if not page.is_indexable:
+            continue
+        section = next((part for part in source_parts.path.split("/") if part), "")
+        if not section:
+            continue
+        title = str(_rec(page).get("title") or "").strip()
+        h1 = str(_rec(page).get("h1") or "").strip()
+        if not title or not h1 or _body_unavailable(_rec(page)):
+            unavailable_sources += 1
+            continue
+        home_key = norm_url(canonical)
+        home_rows = ctx.pages_by_norm.get(home_key) or []
+        home = next((target for target in home_rows if target.is_2xx and target.is_indexable), None)
+        if home is None:
+            if not home_rows or any(
+                target.status_code is None
+                or (
+                    target.is_2xx
+                    and (target.indexability is None or not target.indexability.strip())
+                )
+                for target in home_rows
+            ):
+                unavailable_home_targets += 1
+            continue
+        home_record = _rec(home)
+        home_title = str(home_record.get("title") or "").strip().casefold()
+        home_h1 = str(home_record.get("h1") or "").strip().casefold()
+        if not home_title or not home_h1 or _body_unavailable(home_record):
+            unavailable_home_targets += 1
+            continue
+        if title.casefold() == home_title or h1.casefold() == home_h1:
+            continue
+        grouped[home_key].append((page, section))
+
+    found = False
+    for home_key, candidates in sorted(grouped.items()):
+        by_url = {page.url: (page, section) for page, section in candidates}
+        candidates = [by_url[url] for url in sorted(by_url)]
+        titles = {str(_rec(page).get("title") or "").strip().casefold() for page, _ in candidates}
+        headings = {str(_rec(page).get("h1") or "").strip().casefold() for page, _ in candidates}
+        sections = {section.casefold() for _, section in candidates}
+        if len(candidates) < 3 or len(sections) < 2 or len(titles) < 3 or len(headings) < 3:
+            continue
+        home_rows = ctx.pages_by_norm.get(home_key) or []
+        home = next(target for target in home_rows if target.is_2xx and target.is_indexable)
+        for page, section in candidates:
+            ctx.add(
+                "CANONICAL_HOMEPAGE_GROUP",
+                target_url=page.url,
+                status_code=page.status_code,
+                locations=[{"source_url": page.url, "canonical_target_url": home.url}],
+                details={
+                    "canonical_target_url": home.url,
+                    "canonical_target_status_code": home.status_code,
+                    "canonical_target_indexability": home.indexability,
+                    "source_path_section": section,
+                    "source_title": _rec(page).get("title"),
+                    "source_h1": _rec(page).get("h1"),
+                    "source_count": len(candidates),
+                    "source_sections": sorted(sections),
+                    "source_titles_distinct": len(titles),
+                    "source_h1_distinct": len(headings),
+                    "minimum_sources": 3,
+                    "minimum_sections": 2,
+                    "evidence_rule": (
+                        "fetched indexable sources have distinct non-empty titles and H1s, "
+                        "span multiple top-level path sections, and exclude query/pagination URLs"
+                    ),
+                    "unavailable_home_target_count": unavailable_home_targets,
+                    "unavailable_source_evidence_count": unavailable_sources,
+                },
+            )
+        found = True
+
+    if (unavailable_home_targets or unavailable_sources) and not found:
+        ctx.skip(
+            "CANONICAL_HOMEPAGE_GROUP",
+            f"{unavailable_home_targets} homepage target(s) and "
+            f"{unavailable_sources} source page(s) lack complete evidence",
+        )
+
+
 def check_unlinked_canonical(ctx: AuditContext) -> None:
     """UNLINKED_CANONICAL — a canonical target no hyperlink ever points to.
 
@@ -1537,6 +2110,8 @@ def check_links_extra(ctx: AuditContext) -> None:
     t = ctx.thresholds
     for page in ctx.indexable_html_pages():
         rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
         # The Outlinks column counts internal links only; External Outlinks is
         # a separate count, not a subset. Subtracting one from the other made
         # any page with more external than internal links read as having no
@@ -1635,7 +2210,7 @@ def check_charset(ctx: AuditContext) -> None:
     for page in pages:
         header_charset = bool(page.content_type and _CHARSET_IN_HEADER_RE.search(page.content_type))
         meta_charset = bool(_rec(page).get("meta_charset"))
-        if not header_charset and not meta_charset:
+        if not header_charset and not meta_charset and not _body_unavailable(_rec(page)):
             ctx.add(
                 "MISSING_CHARSET", target_url=page.url, details={"content_type": page.content_type}
             )
@@ -1654,6 +2229,8 @@ def check_doctype(ctx: AuditContext) -> None:
         )
         return
     for page in pages:
+        if _body_unavailable(_rec(page)):
+            continue
         raw = _rec(page).get("doctype")
         if not raw:
             ctx.add("MISSING_DOCTYPE", target_url=page.url, details={"reason": "no doctype"})
@@ -1679,6 +2256,8 @@ def check_viewport(ctx: AuditContext) -> None:
         )
         return
     for page in pages:
+        if _body_unavailable(_rec(page)):
+            continue
         content = _rec(page).get("viewport")
         if not content:
             ctx.add(
@@ -1820,6 +2399,8 @@ def check_document_skeleton(ctx: AuditContext) -> None:
         return
     for page in ctx.html_pages():
         rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
         head_count = rec.get("head_count") or 0
         body_count = rec.get("body_count") or 0
         if head_count == 0:
@@ -1854,6 +2435,8 @@ def check_native_page_evidence(ctx: AuditContext) -> None:
     has_images = _has_column(ctx, "images_total")
     for page in ctx.html_pages():
         rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
         if has_lorem:
             occurrences = rec.get("lorem_ipsum_count") or 0
             if occurrences > 0:
@@ -1959,6 +2542,8 @@ def check_og(ctx: AuditContext) -> None:
         return
     for page in pages:
         rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
         if rec.get("og_title"):
             continue
         missing = [
@@ -2094,6 +2679,7 @@ ALL_CHECKS = [
     check_heading_outline,
     check_link_placement,
     check_canonical_directives,
+    check_canonical_policy,
     check_content,
     check_url_and_perf,
     check_schema,
@@ -2105,6 +2691,8 @@ ALL_CHECKS = [
     check_canonical_extra,
     check_canonical_chain,
     check_canonical_to_redirect,
+    check_canonical_target_error,
+    check_canonical_homepage_group,
     check_unlinked_canonical,
     check_pagination,
     check_pagination_series,
@@ -2130,5 +2718,6 @@ def run_rules(ctx: AuditContext) -> None:
     if ctx.internal_df is None:
         ctx.skip("INTERNAL_ALL", "Internal:All export not loaded")
         return
+    _declare_unparsed_body_skips(ctx)
     for check in ALL_CHECKS:
         check(ctx)

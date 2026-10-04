@@ -29,7 +29,10 @@ and this decision makes no backend migration.
 | `crawl-describe-settings` | No direct input | — |
 | `scan-reanalyze` | Scan artifact (`scan`) | — |
 | `log-scan` | Local directory (`run`) | — |
+| `crawl-diagnose` | Scan artifact (`scan`)<br>Local directory (`run`) | Choose one retained source; diagnosis is offline and read-only. |
+| `crawl-diagnose-export` | Scan artifact (`scan`); requires `export`<br>Local directory (`run`); requires `export`<br>Local file (`export`) | Choose one retained source and a new redacted export destination; refuses overwrite. |
 | `compare-crawls` | Audit document (`before, after`) | Each path may be audit JSON or scan.v1. |
+| `verify-fixes` | Audit document (`baseline`); requires `out_dir`<br>Audit document (`after`); requires `baseline, out_dir`<br>Selector (`finding_ids`); requires `baseline, out_dir`<br>Local file (`view`); requires `baseline, out_dir`<br>URL list (`urls`); requires `baseline, out_dir`<br>Local file (`urls_file`); requires `baseline, out_dir`<br>Local configuration (`config`) | Offline verification without recrawling.; Saved verification_view.v1 selection.; Required when the baseline redacted credentials. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
 | `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |
 | `segment-diff` | Audit document (`audit`) | — |
@@ -58,13 +61,14 @@ and this decision makes no backend migration.
 | `citability-check` | Live URL (`url`)<br>Inline text (`text`) | — |
 | `markdown-extract` | Live URL (`url`)<br>Inline HTML (`html`) | — |
 | `boilerplate-report` | Inline corpus (`pages`)<br>Scan artifact (`scan`) | — |
+| `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
 | `regions-check` | Live URL (`url`) | — |
 | `render-check` | Live URL (`url`)<br>Inline JSON (`transport_config`) | Optional local/remote Playwright transport selection; endpoint is named by environment variable. |
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
-| `report-build` | Audit document (`audit`)<br>Project directory (`project`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage in human reports; JSON audit is unchanged. |
+| `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset. |
 | `facts-export` | Inline JSON (`sites`) | — |
 | `keywords-expand` | Provider query (`phrase`) | — |
 | `keywords-seasonality` | Provider query (`phrase`) | — |
@@ -72,6 +76,9 @@ and this decision makes no backend migration.
 | `serp-fetch` | Provider query (`query`)<br>Provider query (`queries`) | — |
 | `spend-report` | Local log | Configured local spend log. |
 | `sources-doctor` | Local configuration | — |
+| `sources-sync` | Provider query (`source, resource`)<br>Local file (`db`)<br>Project directory (`project`) | Explicit provider read and local SQLite write; records requested coverage and replaces eligible days atomically. |
+| `sources-status` | Local file (`db`)<br>Project directory (`project`) | — |
+| `sources-export` | Local file (`db`)<br>Project directory (`project`) | — |
 | `regions-tree` | Local configuration | — |
 | `topvisor-read` | Inline JSON (`operation, params`) | One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations. |
 | `metrika-counters` | Local configuration | — |
@@ -89,10 +96,15 @@ and this decision makes no backend migration.
 | `project-new` | Project directory (`directory`)<br>Live URL (`target`) | — |
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
+| `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
-| `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`) | Optional reusable data-only checklist template. |
+| `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |
-| `project-checklist-record` | Project directory (`directory`)<br>Selector (`item_id`)<br>Inline JSON (`record`) | Requires expected_revision; records supplied evidence only. |
+| `project-checklist-record` | Project directory (`directory`)<br>Selector (`item_id`)<br>Inline JSON (`record`) | Requires expected_revision; records supplied evidence only; not_applicable needs reason, reviewer and an evidence basis. |
+| `project-view-list` | Project directory (`directory`) | — |
+| `project-view-show` | Project directory (`directory`)<br>Selector (`name`) | — |
+| `project-view-save` | Project directory (`directory`)<br>Inline JSON (`view`)<br>Selector (`expected_revision`) | Required; use 0 for the first saved view. |
+| `findings-view` | Project directory (`directory`)<br>Selector (`name`)<br>Audit document (`audit`)<br>Selector (`offset`) | Audit JSON, inline audit object, or retained scan.v1.; Optional stable finding-view page offset. |
 | `project-priorities` | Project directory (`directory`)<br>Inline JSON (`policy`) | Optional data-only priority policy; preview by default. Apply requires expected_revision. |
 | `project-policy` | Project directory (`directory`)<br>Inline JSON (`policy`) | Optional data-only policy; preview by default. Apply requires expected_revision. |
 | `project-prepare` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`competitors`) | Optional data-only project template.; Optional bounded competitor inputs. |
@@ -101,21 +113,28 @@ and this decision makes no backend migration.
 | `skill-show` | Selector (`name`) | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
+| `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |
 | `provider-verify` | Provider identifier (`provider`)<br>Inline JSON (`request`) | Optional read-only target-access request. |
 | `provider-collect` | Provider identifier (`provider`)<br>Selector (`operation`)<br>Inline JSON (`request`)<br>Local directory (`artifact_dir`) | Optional restricted raw-evidence location. |
 | `provider-join` | Inline JSON (`crawl_pages`)<br>Inline JSON (`evidence_rows`)<br>Inline JSON (`adjustments`) | Optional evidence-backed priority adjustments. |
+| `evidence-normalize` | Local file (`file`)<br>Inline JSON (`mapping`)<br>Local directory (`out_dir`) | Supplied CSV/XLSX/JSON rows or a saved provider-evidence envelope; fully offline.; Optional seohead.evidence-mapping.v1 manifest, inline or file path.; Optional restricted normalized artifact directory. |
+| `evidence-join` | Scan artifact (`scan`)<br>Audit document (`audit`)<br>Inline JSON (`pages`)<br>Local file (`evidence, compare`)<br>Inline JSON (`mapping, compare_mapping, policy`)<br>Local directory (`out_dir`) | Alternative crawl side; offline scan read like provider-replay.; Alternative crawl side.; Alternative crawl side, page objects.; CSV/XLSX/JSON or saved provider envelope; inline JSON also accepted.; Mapping manifests and the declared comparison policy, inline or file path.; Optional private join/compatibility artifact directory. |
+| `bi-export` | Scan artifact (`scan`)<br>Audit document (`audit`)<br>Local file (`provider_joins`)<br>Local directory (`out_dir`)<br>Inline JSON (`max_rows_per_file, max_bytes_per_file, max_output_bytes`) | Reads saved artifacts only; no provider calls, crawl, or remote writes.; Alternative validated scan.v1 source.; Alternative supported audit JSON source.; Optional saved issue #781 evidence-join/normalized-evidence JSON files; repeatable.; Required new local package directory; existing output is refused.; Optional positive partition and total-output bounds; exceeding a hard limit fails without publishing a package. |
 | `inspect-url` | Live URL (`url`)<br>Inline JSON (`checks`) | Optional bounded selection of closed investigation checks. |
 | `audit-workflow` | Project directory (`directory`)<br>Selector (`action`)<br>Live URL (`target`)<br>Audit document (`audit`) | status, start, prepare, or report.; Required only for action=start.; Required only for action=report. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |
+| `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required. |
 | `scan-status` | Scan artifact (`scan`) | — |
 | `scan-rendered-routes` | Scan artifact (`scan`) | — |
 | `scan-snapshot` | Scan artifact (`scan`) | — |
+| `scan-export` | Scan artifact (`input_path`)<br>Selector (`records, fields`) | Also accepts an SF Analyzer audit.json document; links are unavailable there.; Optional record-type and field projection validated before any file is written. |
 | `scan-pin` | Scan artifact (`scan`) | — |
 | `scan-prune` | Local directory (`directory`)<br>Local file (`plan`)<br>Project directory (`project`) | Defaults the directory to project scans/; apply remains explicit. |
 | `scan-body-diff` | Scan artifact (`left, right`)<br>Selector (`url`) | Selects the logical URL within both scans. |
 | `scan-evidence` | Scan artifact (`input_path`)<br>Selector (`section`) | capabilities, corpus, structured, routes, resources, or timeline. |
 | `scan-extract` | Scan artifact (`input_path`)<br>Inline JSON (`rules`)<br>Selector (`url`) | Closed declarative rules over retained complete bodies.; Optional exact logical URL. |
+| `scan-fragment-links` | Scan artifact (`input_path`)<br>Selector (`state`)<br>Selector (`representation`) | Optional resolved, missing, or skipped occurrence filter.; Optional static, rendered, or legacy_fragment source filter. |
 | `scan-requeue` | Scan artifact (`input_path`)<br>Selector (`where`)<br>Local file (`backup_path`)<br>Scan artifact (`from_scan`) | Restricted saved URL/page predicate.; Mandatory new verified backup destination.; Optional alternate saved selection source. |
 | `scan-import-urls` | Scan artifact (`input_path`)<br>Local file (`urls_file`)<br>Local file (`backup_path`) | Explicit TXT, CSV, XLSX, or XML URL source.; Mandatory new verified backup destination. |
 | `sf run` | Live URL (`crawl`)<br>Local file (`load_crawl`)<br>Local file (`crawl_list`)<br>Local directory (`exports_dir`)<br>Local configuration (`config`) | Saved .seospider crawl; requires licensed SF CLI; URL-list file for licensed SF live traversal |

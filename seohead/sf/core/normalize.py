@@ -60,6 +60,9 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     # Native-crawl only (#634): where this page's own anchors sit -- the ones
     # inside a heading, and the image links that name nothing.
     "link_placement": ["Link Placement"],
+    # Native-crawl only (#823): the page's authorship/date/article-scope markup
+    # signals -- a {author, dates, article} object, not a cell an export holds.
+    "trust_signals": ["Trust Signals"],
     "h2_2": ["H2-2"],
     "meta_robots": ["Meta Robots 1"],
     "x_robots": ["X-Robots-Tag 1"],

@@ -16,6 +16,7 @@ from typing import Any
 
 from seohead.graph import InlinkCompositionRow
 from seohead.tools.hreflang import code_error
+from seohead.tools.parser import robots_directives
 
 from .context import AuditContext
 from .crawl_path import bfs_tree_from_seed, route_from_parents, shortest_paths_from_seed
@@ -295,6 +296,48 @@ def check_hreflang_targets(ctx: AuditContext) -> None:
     classified and are skipped silently. If the export is absent the check
     skips honestly rather than emit a dead zero.
     """
+    native = ctx.native_hreflang
+    if native is not None and native["declarations"]:
+        by_source: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+        unmeasured = 0
+        for item in native["declarations"]:
+            if (
+                item["source_representation_state"] != "active"
+                or item["declaration_state"] != "declared"
+            ):
+                continue
+            target = item["target_observation"]
+            if target["state"] != "observed" or type(target.get("status_code")) is not int:
+                unmeasured += 1
+                continue
+            code = target["status_code"]
+            redirect = target["redirect_url"]
+            if 300 <= code < 400 or code >= 400 or redirect:
+                by_source.setdefault(item["source_url"], []).append(
+                    {
+                        "hreflang": item["lang"],
+                        "target_url": item["target"],
+                        "target_identity": item["target_identity"],
+                        "status_code": code,
+                        "redirect_url": redirect,
+                        "source_declaration_id": item["source_declaration_id"],
+                        "label_context": item["label_context"],
+                    }
+                )
+        for source, targets in by_source.items():
+            ctx.add(
+                "HREFLANG_BROKEN_TARGET",
+                target_url=source,
+                occurrences_count=len(targets),
+                details={"broken_targets": targets},
+            )
+        if not by_source and (unmeasured or native["coverage"]["state"] != "complete"):
+            ctx.skip(
+                "HREFLANG_BROKEN_TARGET",
+                "one or more hreflang targets or the retained population were unmeasured",
+            )
+        return
+
     df = ctx.exports.get("all_hreflang")
     if df is None or df.empty:
         ctx.skip(
@@ -498,6 +541,48 @@ def check_hreflang_reciprocity(ctx: AuditContext) -> None:
     on hand once B itself has been crawled — provable only once the crawl of
     both sides is complete (issue #15, item 6).
     """
+    native = ctx.native_hreflang
+    if native is not None and native["declarations"]:
+        missing_by_target: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+        for item in native["declarations"]:
+            if (
+                item["source_representation_state"] != "active"
+                or item["declaration_state"] != "declared"
+                or item["source_identity"] == item["target_identity"]
+                or item["reciprocity"]["state"] != "missing"
+            ):
+                continue
+            missing_by_target.setdefault(item["target_identity"], []).append(item)
+        for target_identity, entries in missing_by_target.items():
+            target = ctx.page_by_norm.get(target_identity)
+            ctx.add(
+                "HREFLANG_MISSING_RETURN_LINK",
+                target_url=target.url if target else entries[0]["target"],
+                occurrences_count=len(entries),
+                details={
+                    "expected_return_to": sorted({item["source_url"] for item in entries}),
+                    "relations": [
+                        {
+                            "source_url": item["source_url"],
+                            "source_identity": item["source_identity"],
+                            "target": item["target"],
+                            "target_identity": item["target_identity"],
+                            "hreflang": item["lang"],
+                            "source_declaration_id": item["source_declaration_id"],
+                            "label_context": item["label_context"],
+                        }
+                        for item in entries
+                    ],
+                },
+            )
+        if not missing_by_target and native["coverage"]["state"] != "complete":
+            ctx.skip(
+                "HREFLANG_MISSING_RETURN_LINK",
+                "retained hreflang relationship coverage is incomplete: "
+                + native["coverage"]["reason"],
+            )
+        return
+
     df = ctx.exports.get("all_hreflang")
     if df is None or df.empty:
         ctx.skip(
@@ -517,6 +602,7 @@ def check_hreflang_reciprocity(ctx: AuditContext) -> None:
         edges.add((src_norm, dest_norm))
 
     missing_by_target: OrderedDict[str, list[str]] = OrderedDict()
+    unmeasured = 0
     for src_norm, dest_norm in sorted(edges):
         if (dest_norm, src_norm) in edges:
             continue  # B already names A back
@@ -525,7 +611,11 @@ def check_hreflang_reciprocity(ctx: AuditContext) -> None:
         # the hreflang edge set above, so which variant is the representative is moot.
         target = ctx.page_by_norm.get(dest_norm)
         if target is None:
+            unmeasured += 1
             continue  # external / not crawled — cannot fault it for not reciprocating
+        if not target.is_2xx or not target.is_html or _rec(target).get("body_unavailable"):
+            unmeasured += 1
+            continue  # no complete target declaration observation
         missing_by_target.setdefault(dest_norm, []).append(src_norm)
 
     for dest_norm, source_norms in missing_by_target.items():
@@ -539,6 +629,82 @@ def check_hreflang_reciprocity(ctx: AuditContext) -> None:
             occurrences_count=len(expected_from),
             details={"expected_return_to": expected_from},
             evidence={"export": ctx.exports.files.get("all_hreflang")},
+        )
+    if not missing_by_target and unmeasured:
+        ctx.skip(
+            "HREFLANG_MISSING_RETURN_LINK",
+            "one or more hreflang targets lack a complete crawled HTML observation",
+        )
+
+
+def check_hreflang_noindex_targets(ctx: AuditContext) -> None:
+    """Flag observed noindex alternates; unknown targets stay unmeasured."""
+    native = ctx.native_hreflang
+    by_source: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    unmeasured = 0
+    if native is not None and native["declarations"]:
+        for item in native["declarations"]:
+            if (
+                item["source_representation_state"] != "active"
+                or item["declaration_state"] != "declared"
+            ):
+                continue
+            target = item["target_observation"]
+            if target["state"] != "observed":
+                unmeasured += 1
+                continue
+            indexability = target["indexability"]
+            if indexability["state"] == "unmeasured":
+                unmeasured += 1
+            elif indexability["reason"] == "noindex directive":
+                by_source.setdefault(item["source_url"], []).append(
+                    {
+                        "hreflang": item["lang"],
+                        "target": item["target"],
+                        "target_identity": item["target_identity"],
+                        "source_declaration_id": item["source_declaration_id"],
+                        "label_context": item["label_context"],
+                    }
+                )
+    else:
+        df = ctx.exports.get("all_hreflang")
+        if df is None or df.empty:
+            ctx.skip("HREFLANG_NOINDEX_TARGET", "no all_hreflang declaration export")
+            return
+        for rec in records_from_df(df, HREFLANG_FIELD_MAP):
+            source, destination = rec.get("source_url"), rec.get("destination_url")
+            if not source or not destination:
+                continue
+            target = ctx.page_by_norm.get(norm_url(destination))
+            if target is None:
+                unmeasured += 1
+                continue
+            observed = _rec(target)
+            reason = str(observed.get("indexability_status") or "").strip().lower()
+            directives = robots_directives(observed.get("meta_robots"), observed.get("x_robots"))
+            if reason.startswith("noindex") or reason == "none" or "noindex" in directives:
+                by_source.setdefault(source, []).append(
+                    {
+                        "hreflang": rec.get("hreflang"),
+                        "target": destination,
+                        "target_identity": norm_url(destination),
+                    }
+                )
+            elif str(observed.get("indexability") or "").strip().lower() != "indexable":
+                unmeasured += 1
+    for source, entries in by_source.items():
+        ctx.add(
+            "HREFLANG_NOINDEX_TARGET",
+            target_url=source,
+            occurrences_count=len(entries),
+            details={"noindex_targets": entries},
+        )
+    if not by_source and (
+        unmeasured or (native is not None and native["coverage"]["state"] != "complete")
+    ):
+        ctx.skip(
+            "HREFLANG_NOINDEX_TARGET",
+            "one or more hreflang targets or the retained population were unmeasured",
         )
 
 
@@ -1446,6 +1612,7 @@ def run_inlinks(ctx: AuditContext) -> None:
         _process_export(ctx, key, internal_check, external_check, site_host)
     check_anchor_text(ctx)
     check_hreflang_targets(ctx)
+    check_hreflang_noindex_targets(ctx)
     check_hreflang_quality(ctx)
     check_hreflang_reciprocity(ctx)
     check_hreflang_confirmation_consistency(ctx)

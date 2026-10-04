@@ -12,6 +12,8 @@ import math
 import os
 from typing import Any
 
+from seohead.sf.export_manifest import profile_exports
+
 # The only severities the schema and the scoring weights know about (issue
 # #211): anything else silently drops out of by_severity and the weighted
 # penalty, which inflates the health score exactly when a check is supposed
@@ -45,38 +47,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # How many URLs the run will request, when the caller knows better than
         # the sitemap does. 0 means "work it out".
         "expected_urls": 0,
+        # Explicitly opt in to a polite SF request rate. This is applied to a
+        # derived .seospiderconfig; the user's saved base config is untouched.
+        "max_urls_per_second": None,
     },
     "profile": "full",  # lite | full | custom
-    "exports": {
-        "tabs": [
-            "Internal:All",
-            "Response Codes:Client Error (4xx)",
-            "Response Codes:Server Error (5xx)",
-            "Response Codes:Redirection (3xx)",
-            "Sitemaps:URLs In Sitemap",
-            "Sitemaps:URLs Not In Sitemap",
-            "Sitemaps:Orphan URLs",
-            "Sitemaps:Non-Indexable URLs In Sitemap",
-            "Page Titles:Multiple",
-            # Unlocked by audit.seospiderconfig modules; empty (skipped) without it.
-            "Structured Data:Validation Errors",
-            "Structured Data:Validation Warnings",
-            "Security:Mixed Content",
-            "Images:Missing Alt Text",
-            "Images:Missing Size Attributes",
-        ],
-        "bulk": [
-            "Response Codes:Client Error (4xx) Inlinks",
-            "Response Codes:Server Error (5xx) Inlinks",
-            "Response Codes:Redirection (3xx) Inlinks",
-        ],
-        # Crawl Overview is deliberately not requested: SF writes it as a
-        # two-column metadata header followed by a five-column table in the
-        # same CSV, a shape no consumer parses (#286), so registering it only
-        # produced a false "read error" for a file that was written correctly.
-        "reports": ["Redirects:Redirect Chains"],
-        "fetch_all_inlinks": False,
-    },
+    "exports": profile_exports(),
     "input": {"mode": "auto", "exports_dir": "exports", "html_store_dir": None},
     "filters": {
         "content_type_include": ["text/html"],
@@ -138,6 +114,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "require_structured_data": False,
         "require_og": False,
     },
+    # Empty by default: pagination/filter canonicals are site policy, not a
+    # universal rule. The first matching URL regex in each list wins.
+    "canonical_policy": {"pagination": [], "filters": []},
     "live_recheck": {
         "enabled": False,
         "use": "auto",  # auto | advertools | stdlib
@@ -157,6 +136,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "checks": {},  # per-check overrides: {"CHECK_ID": {"enabled": false, "severity": "notice"}}
     "severity_overrides": {},  # {"CHECK_ID": "notice"}
+    # URL-pattern exceptions affect audit presentation/scoring only. They never
+    # alter what the collector requests; native crawl settings carry the same
+    # ordered rule shape under analysis.finding_exclusions.
+    "finding_exclusions": [],
     "scoring": {"weights": {"critical": 5, "warning": 2, "notice": 0.5}},
     "output": {
         "json_path": "audit.json",
@@ -174,12 +157,12 @@ LITE_EXPORTS = {
         "Response Codes:Client Error (4xx)",
         "Response Codes:Server Error (5xx)",
         "Response Codes:Redirection (3xx)",
-        "Sitemaps:URLs In Sitemap",
+        "Sitemaps:URLs in Sitemap",
     ],
     "bulk": [
-        "Response Codes:Client Error (4xx) Inlinks",
-        "Response Codes:Server Error (5xx) Inlinks",
-        "Response Codes:Redirection (3xx) Inlinks",
+        "Response Codes:Internal & External:Client Error (4xx) Inlinks",
+        "Response Codes:Internal & External:Server Error (5xx) Inlinks",
+        "Response Codes:Internal & External:Redirection (3xx) Inlinks",
     ],
     # See the comment on the full profile's "reports" default: Crawl Overview
     # is not requested because nothing parses its two-section CSV yet (#286).
@@ -238,6 +221,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
     in the number (issue #211) and the report still validates against
     nothing.
     """
+    from seohead.canonical_policy import validate_canonical_policy
     from seohead.sf.core.registry import CHECKS
 
     errors: list[str] = []
@@ -264,11 +248,23 @@ def validate_config(cfg: dict[str, Any]) -> None:
                 f"checks[{check_id!r}].enabled is {check_cfg['enabled']!r}; must be true or false"
             )
 
+    from seohead.tools.finding_exclusions import validate_rules
+
+    try:
+        validate_rules(cfg.get("finding_exclusions", []), known_checks=CHECKS)
+    except ValueError as exc:
+        errors.append(str(exc))
+
     for severity, weight in cfg.get("scoring", {}).get("weights", {}).items():
         if isinstance(weight, bool) or not isinstance(weight, (int, float)):
             errors.append(f"scoring.weights[{severity!r}] is {weight!r}; must be a number")
         elif not math.isfinite(weight) or weight < 0:
             errors.append(f"scoring.weights[{severity!r}] is {weight!r}; must be finite and >= 0")
+
+    try:
+        validate_canonical_policy(cfg.get("canonical_policy", {}))
+    except ValueError as exc:
+        errors.append(str(exc))
 
     if errors:
         raise ConfigError("; ".join(errors))

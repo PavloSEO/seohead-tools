@@ -64,13 +64,21 @@ from typing import Any
 #   50 000 URLs x  60 links/page -> 1.33 GiB
 #   50 000 URLs x 150 links/page -> 2.93 GiB
 #
-# so the honest ceiling depends on how densely the site links, which no constant can
-# know. 50 000 is where a full crawl stops being the right instrument anyway; past it
-# the answer is to narrow the scope (scope.include_patterns, scope.exclude_patterns)
-# rather than to raise this. A request above the ceiling is refused, not quietly
-# reduced: a run that fetched 50 000 of the 200 000 URLs asked for is a partial crawl,
-# and the caller has to know that before the audit is believed (#356).
+# Bounded trust signals (#823) add one nullable field. A paired tracemalloc run
+# over 8,000 distinct-URL records on Python 3.13 measured no increment for null,
+# 352 bytes for a measured empty object, and 6,648 bytes for 8 author + 8 date
+# signals with distinct 160-character values. Thus the rich-outline estimate
+# above may approach 12,200 bytes/page with rich attribution markup (about
+# 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
+# allocations and are not a full-run memory guarantee.
+# The current release ceiling remains 50,000 until collector/analyzer capacity
+# is proved together; this is not a permanent product limit. Higher requests
+# are refused instead of silently reducing the requested scope (#356).
 MAX_URLS_CEILING = 50_000
+# Direct NativeScan capacity experiments may record a larger declared population.
+# This is admission for synthetic storage measurement, not a crawler budget:
+# checked_url_budget() continues to refuse every real collector above 50,000.
+MAX_EXPERIMENTAL_URLS = 1_000_000
 
 
 def checked_url_budget(max_urls: int) -> int:
@@ -101,6 +109,16 @@ DEFAULTS: dict[str, Any] = {
         # would report an empty site rather than a configuration mistake.
         "include_patterns": [],
         "exclude_patterns": [],
+        # Filename suffixes are checked against the final component of the URL
+        # path (not its query or fragment) after the ordinary host/regex/segment
+        # scope. A nonempty include list narrows discovered routes; extensionless
+        # routes are rejected with not_included_by_extension.
+        "include_extensions": [],
+        "exclude_extensions": [],
+        # Response media types are checked only after an admitted URL is fetched.
+        # Exact types and type wildcards (for example image/*) are supported.
+        "include_media_types": [],
+        "exclude_media_types": [],
         # Never fetched regardless of what links to them.
         "exclude_hosts": [],
         # Ordered, first-match-wins named segments -- a multilingual or multi-regional
@@ -118,7 +136,13 @@ DEFAULTS: dict[str, Any] = {
     },
     # Post-crawl grouping is distinct from scope.segments: scope controls
     # discovery, while analysis rules classify already collected evidence.
-    "analysis": {"segments": []},
+    "analysis": {
+        "segments": [],
+        "canonical_policy": {"pagination": [], "filters": []},
+        # Post-analysis URL-pattern suppressions. These never affect scope or
+        # collection; the effective ordered policy is stored with the scan.
+        "finding_exclusions": [],
+    },
     "sitemaps": {
         # Seed the crawl from the sitemap declared in robots.txt (the
         # ``Sitemap:`` directive) when no explicit sitemap URL is given.
@@ -128,16 +152,19 @@ DEFAULTS: dict[str, Any] = {
     },
     "discovery": {
         # Each link type is a pair: store it in the report, and/or request it. Only the pairs
-        # that actually change an outcome are here. discovery.canonicals.* and
-        # discovery.external.crawl were removed in the #91 pass: chasing canonicals as a
-        # discovery source and crawling a second host are capabilities the spider does not
-        # have, and a setting that names behaviour nothing implements is worse than no setting
-        # — it reads as a supported option in --config-help and in the run manifest.
+        # that actually change an outcome are here. discovery.canonicals.* was removed in the
+        # #91 pass: chasing canonicals as a discovery source is a capability the spider does
+        # not have, and a setting that names behaviour nothing implements is worse than no
+        # setting — it reads as a supported option in --config-help and in the run manifest.
         "hyperlinks": {"store": True, "crawl": True},
         "redirects": {"crawl": True},
         # A redirect has no LinkEdge of its own to withhold, so there is no redirects.store to
         # honour: the redirect target is recorded on the page record either way.
-        "external": {"store": True},
+        # discovery.external.crawl is the real, bounded version of the option #91 removed:
+        # the check exists (seohead/crawl/external.py), runs after the internal frontier
+        # closes, and is confined by the external_checks.* budgets below rather than becoming
+        # the unrestricted second-origin crawl that made the old name a lie.
+        "external": {"store": True, "crawl": False},
         "follow_nofollow": False,
         # List mode only (no ``url``, only ``urls``): a redirect is recorded as
         # given -- the hop is never followed as a new page -- but a migration
@@ -158,11 +185,41 @@ DEFAULTS: dict[str, Any] = {
         "max_crawl_seconds": 0,  # 0 = no wall-clock limit
         "max_requests": 20_000,  # 0 = no total HTTP-attempt limit
     },
+    # Budgets for the opt-in external-destination check (discovery.external.crawl).
+    # They are a separate budget from limits.*: external requests go to origins
+    # that did not ask for them, so they must not share — or silently consume —
+    # the internal frontier's allowances. All values are read only when
+    # discovery.external.crawl is true; with it off they are inert.
+    "external_checks": {
+        # Distinct external destinations the check may fetch at most, recorded
+        # seeds plus any same-host continuations admitted under max_depth.
+        "max_targets": 100,
+        # Distinct external origins the check may contact at most — redirect
+        # hops count, since a redirect is just a request to another origin.
+        "max_hosts": 20,
+        # HTTP attempts the check may spend; 0 = no phase-specific cap (the
+        # internal limits.max_requests is a separate budget it never touches).
+        "max_requests": 0,
+        # 0 = check recorded destinations only. >0 also follows that many hops
+        # of *same-host* links on external pages that answered — never an
+        # off-host link, so never unrestricted traversal.
+        "max_depth": 0,
+        # Redirect hops followed per destination before the chain is recorded
+        # unresolved; hard ceiling is MAX_REDIRECT_CHAIN_HOPS (10).
+        "max_redirects": 5,
+    },
     "http": {
         "timeout_seconds": 15.0,
         "user_agent": "",  # empty = the toolkit's identifiable default
         "headers": {},
         "retry_on_timeout": 0,
+        # Empty is direct. Credentials may appear only in an env:VARIABLE URL.
+        "proxy": "",
+        "proxy_allow_private": False,
+        # Safe route facts are frozen when load() resolves the proxy. They keep
+        # stored scan fingerprints inspectable after the environment changes.
+        "proxy_identity": "",
+        "proxy_authenticated": False,
         # Each entry is {"host": "...", "headers": {"Authorization": "env:VAR"}}.
         # Bound to one host and resolved from the environment — never a bare
         # value in the file — so a credential cannot leak into a config export
@@ -270,6 +327,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "storage": {
         "format_version": "scan.v1",
+        "capacity_profile": "stable",
         "body_mode": "captured_entity_bytes",
         "max_body_bytes": 5 * 1024 * 1024,
         "max_body_store_bytes": 10 * 1024 * 1024 * 1024,
@@ -309,6 +367,11 @@ DEFAULTS: dict[str, Any] = {
             "crawl": False,
         },
         "browser": {
+            # Which headless engine Playwright launches. "chromium" keeps the
+            # historical behaviour; each supported name reaches its matching
+            # launcher -- an unknown name fails validation and no engine is
+            # ever silently substituted.
+            "engine": "chromium",  # chromium | firefox | webkit
             "transport": "local",  # local | remote; remote never launches a browser
             "remote_protocol": "playwright",
             "remote_endpoint_env": "",  # env variable name, not a stored endpoint/token
@@ -324,6 +387,14 @@ DEFAULTS: dict[str, Any] = {
             # seohead.tools.render.VIEWPORT_PRESETS) so two runs are only
             # ever comparable by name, never by an arbitrary pixel value.
             "viewport": "desktop",  # desktop | mobile
+            # Optional exact viewport size in CSS pixels. Both must be set
+            # together (>0) to take effect; the pair overrides the named
+            # preset's dimensions while the preset still carries the profile
+            # (e.g. which user-agent shape the mobile profile implies). The
+            # effective dimensions are recorded in renderer provenance, so
+            # custom sizes stay comparable across runs too.
+            "viewport_width": 0,
+            "viewport_height": 0,
             # Grow the viewport to the rendered page's own height so lazily
             # loaded listings are captured, capped by
             # resize_to_content_max_height_px so a page that grows without
@@ -345,6 +416,12 @@ DEFAULTS: dict[str, Any] = {
             # site (analytics, chat, ads keep connections open), turning a
             # useful render into a timeout -- see render.render_check.
             "wait_until": "load",  # load | domcontentloaded | networkidle
+            # Maximum browser pages/contexts rendered at once during JS
+            # escalation. 1 keeps the historical sequential behaviour. This is
+            # a rendering bound only -- each slot holds a live browser context
+            # plus its pinned network client -- and is unrelated to the HTTP
+            # crawl's own fetch concurrency.
+            "page_concurrency": 1,
             # Off by default, and refused without an explicit directory
             # (see validate() below): attaching a real browser profile
             # crawls the site as whoever's cookies that profile carries.
@@ -368,6 +445,10 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "scope.internal",
         "scope.include_patterns",
         "scope.exclude_patterns",
+        "scope.include_extensions",
+        "scope.exclude_extensions",
+        "scope.include_media_types",
+        "scope.exclude_media_types",
         "scope.exclude_hosts",
         # A host-matching segment widens which hosts count as internal, and
         # segments_only narrows the frontier to named segments -- both change what
@@ -376,12 +457,25 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "scope.segments",
         "scope.segments_only",
         "analysis.segments",
+        "analysis.finding_exclusions",
+        "analysis.canonical_policy.pagination",
+        "analysis.canonical_policy.filters",
         # Seeding from the sitemap changes which URLs are fetched at all.
         "sitemaps.auto_discover",
         "discovery.hyperlinks.store",
         "discovery.hyperlinks.crawl",
         "discovery.redirects.crawl",
         "discovery.external.store",
+        # Whether external destinations are checked at all, and the bounds the
+        # check runs under, decide which external answers a run holds -- a
+        # smaller host or target budget produces more "skipped" records, which
+        # is a different result, not a different cost.
+        "discovery.external.crawl",
+        "external_checks.max_targets",
+        "external_checks.max_hosts",
+        "external_checks.max_requests",
+        "external_checks.max_depth",
+        "external_checks.max_redirects",
         "discovery.follow_nofollow",
         "discovery.resolve_redirect_destination",
         "discovery.resolve_canonical_destination",
@@ -400,6 +494,10 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "http.user_agent",
         "http.headers",
         "http.retry_on_timeout",
+        "http.proxy",
+        "http.proxy_allow_private",
+        "http.proxy_identity",
+        "http.proxy_authenticated",
         # Which host gets sent extra access changes what the crawl can reach.
         "http.credential_headers",
         "http.credentials_acknowledged",
@@ -426,6 +524,7 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "cache.invalidate",
         "storage.body_mode",
         "storage.format_version",
+        "storage.capacity_profile",
         "resources.fetch",
         "resources.max_requests",
         "resources.max_response_bytes",
@@ -467,6 +566,12 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "rendering.browser.mobile_emulation",
         "rendering.browser.touch_emulation",
         "rendering.browser.wait_until",
+        "rendering.browser.engine",
+        "rendering.browser.viewport_width",
+        "rendering.browser.viewport_height",
+        # More parallel pages change wall-clock only, not the DOM -- but the
+        # bound is recorded so a run's render budget spend stays attributable.
+        "rendering.browser.page_concurrency",
         "rendering.browser.transport",
         "rendering.browser.remote_protocol",
         "rendering.browser.remote_endpoint_env",
@@ -505,6 +610,11 @@ DESCRIPTIONS: dict[str, str] = {
     "resources.graph.max_nesting": "scan.v2 only: CSS import/url nesting depth.",
     "storage.body_mode": "SQLite only: captured_entity_bytes retains fetched HTML/DOM; off retains metadata only.",
     "storage.format_version": "Explicit scan storage format: scan.v1 (default) or scan.v2 for optional graph/event extensions.",
+    "storage.capacity_profile": (
+        "'stable' (default) admits at most 50,000 URLs. 'experimental_synthetic' permits "
+        "direct NativeScan storage profiles up to 1,000,000 declared URLs; every live crawler "
+        "still refuses above 50,000 and this setting does not certify capacity."
+    ),
     "storage.max_body_bytes": "SQLite only: maximum decoded bytes retained for one complete body.",
     "storage.max_body_store_bytes": "SQLite only: total unique encoded body bytes retained per scan.",
     "storage.min_free_bytes": "SQLite only: filesystem reserve; low space interrupts collection with a checkpoint.",
@@ -517,6 +627,24 @@ DESCRIPTIONS: dict[str, str] = {
     ),
     "scope.include_patterns": "Regexes; a discovered link must match at least one to be followed.",
     "scope.exclude_patterns": "Regexes; a discovered link matching any of these is not followed.",
+    "scope.include_extensions": (
+        "Optional filename suffix allowlist for discovered routes (for example ['html', 'pdf']); "
+        "matches the final URL-path suffix, without query or fragment. If set, extensionless "
+        "routes are not included. Exclusions take precedence."
+    ),
+    "scope.exclude_extensions": (
+        "Filename suffix denylist for discovered routes; matches the final URL-path suffix, "
+        "without query or fragment. Exclusions take precedence over the extension allowlist."
+    ),
+    "scope.include_media_types": (
+        "Optional response Content-Type allowlist checked after fetch and before parsing or body "
+        "retention; supports exact types and type wildcards such as image/*. A missing or "
+        "malformed type is recorded as unavailable when this list is set."
+    ),
+    "scope.exclude_media_types": (
+        "Response Content-Type denylist checked after fetch and before parsing or body retention; "
+        "supports exact types and type wildcards such as image/*. Exclusions take precedence."
+    ),
     "scope.exclude_hosts": "Hosts never fetched regardless of what links to them.",
     "scope.segments": (
         "Ordered, first-match-wins named segments for a multilingual or multi-regional "
@@ -534,6 +662,21 @@ DESCRIPTIONS: dict[str, str] = {
         "Post-crawl segment rules: [{'name': ..., 'rules': [{'op': 'eq|prefix|contains|regex|in|segment', "
         "'field': ..., 'value': ...}]}]. Rules may use page fields or another segment."
     ),
+    "analysis.finding_exclusions": (
+        "Post-crawl finding suppressions only; never narrows URLs fetched. Ordered rules use "
+        "Python regex search on a finding's target_url, optional exact check IDs, and a required "
+        "reason. First matching rule wins."
+    ),
+    "analysis.canonical_policy.pagination": (
+        "Ordered URL-regex policies for paginated pages: [{'pattern': ..., 'policy': "
+        "'self|first_page|landing', 'target': absolute URL}]. Non-self policies require an "
+        "explicit target; the first matching rule wins. Empty means unmeasured, not a finding."
+    ),
+    "analysis.canonical_policy.filters": (
+        "Ordered URL-regex policies for configured filter pages: [{'pattern': ..., 'policy': "
+        "'self|landing', 'target': absolute URL}]. Landing policies require an explicit target; "
+        "the first matching rule wins. Empty means unmeasured, not a finding."
+    ),
     "sitemaps.auto_discover": (
         "Seed the crawl from the sitemap declared in robots.txt when no explicit "
         "sitemap URL is given."
@@ -542,6 +685,12 @@ DESCRIPTIONS: dict[str, str] = {
     "discovery.hyperlinks.crawl": "Request discovered hyperlinks (fetch them).",
     "discovery.redirects.crawl": "Request discovered redirect targets (fetch them).",
     "discovery.external.store": "Keep discovered external links in the report.",
+    "discovery.external.crawl": (
+        "After the internal frontier closes, check each recorded external destination once "
+        "— opt-in, bounded by external_checks.*, never recursive. Requires "
+        "discovery.external.store and a site crawl (--url); refused on the native SQLite "
+        "route and in list mode."
+    ),
     "discovery.follow_nofollow": "Follow links marked rel=nofollow instead of skipping them.",
     "discovery.resolve_redirect_destination": (
         "List mode only: follow a fetched redirect past its first hop to where it actually "
@@ -565,12 +714,43 @@ DESCRIPTIONS: dict[str, str] = {
         "Total HTTP attempts for the crawl, including bootstrap, redirects and retries; 0 means "
         "no total-attempt limit."
     ),
+    "external_checks.max_targets": (
+        "Distinct external destinations the opt-in check may fetch at most — recorded "
+        "outlinks plus same-host continuations admitted under max_depth. Destinations "
+        "past the budget are recorded as skipped, not silently dropped."
+    ),
+    "external_checks.max_hosts": (
+        "Distinct external origins the opt-in check may contact at most; redirect hops "
+        "count toward it, since a redirect is a request to another origin."
+    ),
+    "external_checks.max_requests": (
+        "HTTP attempts the external check may spend, including redirect hops and retries; "
+        "0 means no phase-specific cap. Separate from limits.max_requests."
+    ),
+    "external_checks.max_depth": (
+        "Hops of same-host links followed on external pages that answered; 0 checks "
+        "recorded destinations only. Off-host links are never followed."
+    ),
+    "external_checks.max_redirects": (
+        "Redirect hops followed per external destination before the chain is recorded "
+        "unresolved; hard ceiling is 10."
+    ),
     "http.timeout_seconds": "Per-request timeout in seconds.",
     "http.user_agent": "Request User-Agent string; empty uses the toolkit's identifiable default.",
     "http.headers": (
         "Extra request headers to send with every fetch. With --set, pass a JSON object."
     ),
     "http.retry_on_timeout": "Number of retries after a request times out.",
+    "http.proxy": (
+        "Explicit http:// forward proxy with host and port, or env:VARIABLE containing its URL "
+        "and optional username/password. No ambient proxy variables are used by a native crawl."
+    ),
+    "http.proxy_allow_private": (
+        "Explicitly allow only the configured proxy endpoint to resolve privately; target URL "
+        "private-network guards remain unchanged."
+    ),
+    "http.proxy_identity": "Resolved nonsecret proxy endpoint; managed by the crawler, not user input.",
+    "http.proxy_authenticated": "Whether the resolved proxy used authentication; managed by the crawler.",
     "http.credential_headers": (
         "Host-bound extra headers for authenticated crawling: "
         "[{'host': ..., 'headers': {name: 'env:VAR_NAME'}}]."
@@ -653,7 +833,20 @@ DESCRIPTIONS: dict[str, str] = {
         "How long JavaScript may keep running after the page and its subresources have "
         "loaded, before the DOM is captured."
     ),
+    "rendering.browser.engine": (
+        "Headless engine Playwright launches: 'chromium', 'firefox' or 'webkit'. An "
+        "unsupported name fails validation; an uninstalled browser binary reports a "
+        "distinct install hint. Firefox cannot emulate a mobile viewport (is_mobile)."
+    ),
     "rendering.browser.viewport": "Viewport preset used for rendering: 'desktop' or 'mobile'.",
+    "rendering.browser.viewport_width": (
+        "Custom viewport width in CSS pixels (0 = unset). Must be set together with "
+        "viewport_height; the pair overrides the named preset's dimensions."
+    ),
+    "rendering.browser.viewport_height": (
+        "Custom viewport height in CSS pixels (0 = unset). Must be set together with "
+        "viewport_width; the pair overrides the named preset's dimensions."
+    ),
     "rendering.browser.transport": "Launch a local browser (default) or connect to an explicitly supplied remote Playwright server.",
     "rendering.browser.remote_protocol": "Remote browser protocol; only Playwright is supported, not CDP.",
     "rendering.browser.remote_endpoint_env": "Name of an environment variable containing the remote ws/wss endpoint; never store the endpoint in a scan.",
@@ -678,6 +871,10 @@ DESCRIPTIONS: dict[str, str] = {
     "rendering.browser.wait_until": (
         "Page-load strategy before script_timeout_seconds starts counting down: 'load', "
         "'domcontentloaded', or 'networkidle'."
+    ),
+    "rendering.browser.page_concurrency": (
+        "Maximum browser pages/contexts rendered at once during JS escalation; 1 keeps "
+        "sequential behaviour. A rendering bound, not HTTP crawl concurrency."
     ),
     "rendering.browser.persistent_profile": (
         "Unavailable with the pinned renderer: requested persistent profiles return an "
@@ -711,6 +908,20 @@ CACHE_MODES = ("live", "off", "replay")
 RENDER_MODES = ("raw", "legacy_fragment", "js")
 RENDER_VIEWPORTS = ("desktop", "mobile")
 RENDER_WAIT_UNTIL = ("load", "domcontentloaded", "networkidle")
+# Headless engines Playwright can launch through the pinned renderer in
+# seohead/tools/render.py; keep in step with that module's BROWSER_ENGINES.
+RENDER_ENGINES = ("chromium", "firefox", "webkit")
+# Engines Playwright can emulate a mobile viewport (is_mobile) on -- it
+# documents the option as unsupported on Firefox. Touch input (has_touch) is
+# a general context option every engine accepts, so touch_emulation alone is
+# not gated by this set.
+RENDER_MOBILE_EMULATION_ENGINES = frozenset({"chromium", "webkit"})
+# Upper bound for a custom viewport dimension; matches the largest canvas
+# real devices report and keeps absurd values from reaching the browser.
+MAX_VIEWPORT_DIMENSION_PX = 16384
+# Upper bound for simultaneous render pages/contexts; each holds a live
+# browser context plus its network client, so this stays deliberately low.
+MAX_RENDER_PAGE_CONCURRENCY = 16
 
 # A reference to an environment variable, never an inline secret. This is the
 # only value shape a credential header may carry in a config file.
@@ -796,6 +1007,8 @@ def parse_setting_assignment(text: str) -> tuple[str, Any]:
     path, sep, raw = text.partition("=")
     path = path.strip()
     if not sep or not path:
+        if "proxy" in text.lower():
+            raise ConfigError("--set expects PATH=VALUE for http.proxy")
         raise ConfigError(f"--set expects PATH=VALUE, got {text!r}")
     known = _flatten(DEFAULTS)
     if path not in known:
@@ -805,6 +1018,8 @@ def parse_setting_assignment(text: str) -> tuple[str, Any]:
     try:
         return path, _coerce(path, raw)
     except ValueError as exc:
+        if path == "http.proxy":
+            raise ConfigError("http.proxy value is invalid") from None
         raise ConfigError(f"{path}={raw!r} is not valid: {exc}") from exc
 
 
@@ -885,6 +1100,11 @@ def validate(config: dict[str, Any]) -> None:
         storage = config["storage"]
         if storage["format_version"] not in {"scan.v1", "scan.v2"}:
             raise ConfigError("storage.format_version must be scan.v1 or scan.v2")
+        if type(storage["capacity_profile"]) is not str or storage["capacity_profile"] not in {
+            "stable",
+            "experimental_synthetic",
+        }:
+            raise ConfigError("storage.capacity_profile must be stable or experimental_synthetic")
         if storage["body_mode"] not in {"off", "captured_entity_bytes"}:
             raise ConfigError("storage.body_mode must be off or captured_entity_bytes")
         for name in (
@@ -909,15 +1129,25 @@ def validate(config: dict[str, Any]) -> None:
             except re.error as exc:
                 raise ConfigError(f"scope.{key}: {pattern!r} is not a valid regex: {exc}") from exc
 
+    _validate_file_type_filters(config["scope"])
+
     limits = config["limits"]
-    if limits["max_urls"] < 1:
-        raise ConfigError("limits.max_urls must be at least 1")
-    if limits["max_urls"] > MAX_URLS_CEILING:
+    if type(limits["max_urls"]) is not int or limits["max_urls"] < 1:
+        raise ConfigError("limits.max_urls must be a positive integer")
+    if (
+        limits["max_urls"] > MAX_URLS_CEILING
+        and config["storage"]["capacity_profile"] != "experimental_synthetic"
+    ):
         raise ConfigError(
             f"limits.max_urls is {limits['max_urls']:,}, above this crawler's ceiling of "
             f"{MAX_URLS_CEILING:,}. A larger number would have been silently reduced to the "
             f"ceiling and the crawl reported as complete; crawl a narrower scope "
             f"(scope.include_patterns / scope.exclude_patterns) instead."
+        )
+    if limits["max_urls"] > MAX_EXPERIMENTAL_URLS:
+        raise ConfigError(
+            f"limits.max_urls is above the experimental synthetic ceiling of "
+            f"{MAX_EXPERIMENTAL_URLS:,}; no larger artifact is admitted"
         )
     if limits["max_depth"] < 0:
         raise ConfigError("limits.max_depth cannot be negative")
@@ -933,6 +1163,26 @@ def validate(config: dict[str, Any]) -> None:
         raise ConfigError("speed.min_delay_seconds cannot be negative")
     if config["speed"]["concurrency"] < 1:
         raise ConfigError("speed.concurrency must be at least 1")
+
+    external = config["discovery"]["external"]
+    if type(external["store"]) is not bool or type(external["crawl"]) is not bool:
+        raise ConfigError("discovery.external.store and discovery.external.crawl must be boolean")
+    if external["crawl"] and not external["store"]:
+        raise ConfigError(
+            "discovery.external.crawl requires discovery.external.store: destinations "
+            "are checked from the recorded edges, and store=False keeps no edges"
+        )
+    for name in ("max_targets", "max_hosts", "max_requests", "max_depth", "max_redirects"):
+        value = config["external_checks"][name]
+        if type(value) is not int or value < 0:
+            raise ConfigError(f"external_checks.{name} must be a nonnegative integer")
+    # The chain-walk ceiling lives in seohead/crawl/collect.py
+    # (MAX_REDIRECT_CHAIN_HOPS); settings cannot import collect without a
+    # circular dependency, so the literal is mirrored here.
+    if config["external_checks"]["max_redirects"] > 10:
+        raise ConfigError(
+            "external_checks.max_redirects cannot exceed 10 (the redirect-chain ceiling)"
+        )
 
     # A crawl with no budget at all runs forever on an infinite URL space.
     if (
@@ -954,9 +1204,51 @@ def validate(config: dict[str, Any]) -> None:
     _validate_segments(config["scope"])
     if not isinstance(config["analysis"]["segments"], list):
         raise ConfigError("analysis.segments must be a list")
+    from seohead.tools.finding_exclusions import validate_rules
+
+    try:
+        validate_rules(config["analysis"]["finding_exclusions"])
+    except ValueError as exc:
+        raise ConfigError(f"analysis.finding_exclusions: {exc}") from exc
+    from seohead.canonical_policy import validate_canonical_policy
+
+    try:
+        validate_canonical_policy(
+            config["analysis"]["canonical_policy"], path="analysis.canonical_policy"
+        )
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
     _validate_http_headers(config["http"])
     _validate_credential_headers(config["http"])
+    route = resolve_proxy(config)
+    identity = config["http"]["proxy_identity"]
+    authenticated = config["http"]["proxy_authenticated"]
+    if not isinstance(identity, str) or type(authenticated) is not bool:
+        raise ConfigError("http.proxy route facts are invalid")
+    if identity and (route is None or identity != route.identity):
+        raise ConfigError("http.proxy_identity differs from the configured proxy")
+    if identity and authenticated is not route.authenticated:
+        raise ConfigError("http.proxy_authenticated differs from the configured proxy")
+    if not identity and authenticated:
+        raise ConfigError("http.proxy_authenticated is managed by the crawler")
+    if config["http"]["proxy"] and config["cache"]["mode"] != "off":
+        raise ConfigError(
+            "http.proxy requires cache.mode=off to avoid mixing direct and proxy evidence"
+        )
     _validate_rendering(config["rendering"])
+
+
+def resolve_proxy(config: dict[str, Any]):
+    """Resolve an explicit proxy reference without storing its credentials in settings."""
+    from seohead.recon.net import resolve_proxy_route
+
+    allow_private = config["http"]["proxy_allow_private"]
+    if type(allow_private) is not bool:
+        raise ConfigError("http.proxy_allow_private must be true or false")
+    try:
+        return resolve_proxy_route(config["http"]["proxy"], allow_private=allow_private)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from None
 
 
 def _validate_segments(scope: dict[str, Any]) -> None:
@@ -1014,6 +1306,54 @@ def _validate_segments(scope: dict[str, Any]) -> None:
         )
 
 
+def _validate_file_type_filters(scope: dict[str, Any]) -> None:
+    """Validate the URL-suffix and response-media filters as separate contracts."""
+    extension_pattern = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
+    media_token = r"[A-Za-z0-9!#$%&'+\-.^_`|~]+"
+    media_pattern = re.compile(rf"{media_token}/(?:{media_token}|\*)\Z")
+
+    for name in ("include_extensions", "exclude_extensions"):
+        setting = f"scope.{name}"
+        values = scope[name]
+        if type(values) is not list:
+            raise ConfigError(f"{setting} must be a list of filename extensions")
+        seen: set[str] = set()
+        for value in values:
+            if type(value) is not str:
+                raise ConfigError(f"{setting} entries must be strings, got {value!r}")
+            extension = value[1:] if value.startswith(".") else value
+            if not extension_pattern.fullmatch(extension):
+                raise ConfigError(
+                    f"{setting} entry {value!r} must be one filename suffix "
+                    "(letters, digits, underscore or hyphen; optional leading dot)"
+                )
+            normalized = extension.lower()
+            if normalized in seen:
+                raise ConfigError(
+                    f"{setting} contains duplicate suffix {normalized!r} after normalization"
+                )
+            seen.add(normalized)
+
+    for name in ("include_media_types", "exclude_media_types"):
+        setting = f"scope.{name}"
+        values = scope[name]
+        if type(values) is not list:
+            raise ConfigError(f"{setting} must be a list of media types")
+        seen: set[str] = set()
+        for value in values:
+            if type(value) is not str or not media_pattern.fullmatch(value):
+                raise ConfigError(
+                    f"{setting} entry {value!r} must be an exact type or type wildcard "
+                    "such as text/html or image/*"
+                )
+            normalized = value.lower()
+            if normalized in seen:
+                raise ConfigError(
+                    f"{setting} contains duplicate media type {normalized!r} after normalization"
+                )
+            seen.add(normalized)
+
+
 def _validate_rendering(rendering: dict[str, Any]) -> None:
     if rendering["mode"] not in RENDER_MODES:
         raise ConfigError(
@@ -1045,6 +1385,39 @@ def _validate_rendering(rendering: dict[str, Any]) -> None:
         raise ConfigError(
             f"rendering.browser.viewport must be one of {RENDER_VIEWPORTS}, "
             f"got {browser['viewport']!r}"
+        )
+    if browser["engine"] not in RENDER_ENGINES:
+        raise ConfigError(
+            f"rendering.browser.engine must be one of {RENDER_ENGINES}, got {browser['engine']!r}"
+        )
+    # Only mobile viewport emulation is gated: Playwright documents is_mobile
+    # as unsupported on Firefox, while has_touch is a general context option
+    # every engine accepts.
+    if browser["engine"] not in RENDER_MOBILE_EMULATION_ENGINES and browser["mobile_emulation"]:
+        raise ConfigError(
+            f"rendering.browser.engine={browser['engine']!r} cannot emulate a "
+            "mobile viewport (Playwright does not implement is_mobile for it); "
+            "unset mobile_emulation or pick another engine"
+        )
+    for name in ("viewport_width", "viewport_height"):
+        value = browser[name]
+        if type(value) is not int or value < 0 or value > MAX_VIEWPORT_DIMENSION_PX:
+            raise ConfigError(
+                f"rendering.browser.{name} must be an integer between 0 and "
+                f"{MAX_VIEWPORT_DIMENSION_PX}, got {value!r}"
+            )
+    if (browser["viewport_width"] > 0) != (browser["viewport_height"] > 0):
+        raise ConfigError(
+            "rendering.browser.viewport_width and "
+            "rendering.browser.viewport_height must be set together "
+            "(both >0 or both 0)"
+        )
+    if type(browser["page_concurrency"]) is not int or not (
+        1 <= browser["page_concurrency"] <= MAX_RENDER_PAGE_CONCURRENCY
+    ):
+        raise ConfigError(
+            f"rendering.browser.page_concurrency must be an integer between 1 "
+            f"and {MAX_RENDER_PAGE_CONCURRENCY}, got {browser['page_concurrency']!r}"
         )
     if browser["wait_until"] not in RENDER_WAIT_UNTIL:
         raise ConfigError(
@@ -1188,7 +1561,18 @@ def load(
             p for p in DESTRUCTIVE_PATH_PATTERNS if p not in existing
         ]
 
+    from seohead.tools.finding_exclusions import validate_rules
+
+    try:
+        config["analysis"]["finding_exclusions"] = validate_rules(
+            config["analysis"]["finding_exclusions"]
+        )
+    except ValueError as exc:
+        raise ConfigError(f"analysis.finding_exclusions: {exc}") from exc
     validate(config)
+    route = resolve_proxy(config)
+    config["http"]["proxy_identity"] = route.identity if route else ""
+    config["http"]["proxy_authenticated"] = route.authenticated if route else False
     return config
 
 
@@ -1221,6 +1605,18 @@ def manifest(config: dict[str, Any]) -> dict[str, Any]:
             value = redact_sensitive_headers(value)
         elif path == "http.credential_headers":
             value = _redact_credential_headers(value)
+        elif path == "http.proxy":
+            identity = config["http"].get("proxy_identity", "")
+            authenticated = config["http"].get("proxy_authenticated", False)
+            if not identity and value:
+                route = resolve_proxy(config)
+                identity = route.identity if route else ""
+                authenticated = route.authenticated if route else False
+            value = {
+                "mode": "proxy" if identity else "direct",
+                "endpoint": identity or None,
+                "authenticated": authenticated,
+            }
         out[path] = value
     return out
 

@@ -69,6 +69,8 @@ def test_original_bytes_fields_occurrences_and_producer_survive(legacy_run, arti
             )
             stored_chain = page.pop("canonical_chain_json")
             page["canonical_chain"] = [] if stored_chain is None else json.loads(stored_chain)
+            stored_signals = page.pop("trust_signals_json")
+            page["trust_signals"] = None if stored_signals is None else json.loads(stored_signals)
             for key in page:
                 if key == "head_not_first" or key.endswith("_outside_head"):
                     page[key] = None if page[key] is None else bool(page[key])
@@ -375,6 +377,7 @@ def test_schema_maps_all_current_page_and_link_fields():
         "heading_outline": "heading_outline_json",
         "link_placement": "link_placement_json",
         "canonical_chain": "canonical_chain_json",
+        "trust_signals": "trust_signals_json",
     }
     assert {mapped.get(field.name, field.name) for field in fields(PageRecord)} == page_columns - {
         "page_ordinal",
@@ -382,7 +385,7 @@ def test_schema_maps_all_current_page_and_link_fields():
     }
     page_record_fields = {field.name for field in fields(PageRecord)}
     assert set(_LATE_PAGE_FIELDS) <= page_record_fields
-    assert len(page_record_fields - set(_LATE_PAGE_FIELDS)) == 43
+    assert len(page_record_fields - set(_LATE_PAGE_FIELDS)) == 44
     assert {
         name
         for name, annotation in get_type_hints(PageRecord).items()

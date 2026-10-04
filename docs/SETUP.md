@@ -1,7 +1,8 @@
 # Setup from zero
 
-Everything below was verified on macOS (darwin, arm64) with the repo's own
-venv; the same steps work on Linux. Windows paths for the SF CLI are
+The general venv workflow below is verified on macOS (darwin, arm64). For a
+versioned headless install, upgrade, and rollback over SSH on Ubuntu Server,
+follow [Linux VPS over SSH](LINUX_VPS.md). Windows paths for the SF CLI are
 supported by `config.json` search paths.
 
 ## Requirements
@@ -9,8 +10,9 @@ supported by `config.json` search paths.
 - **Python 3.10+** (`requires-python` in `pyproject.toml`).
 - pip, git. That is all — every other dependency is a Python package.
 - Optional, improves results if present on the system:
-  - **Screaming Frog SEO Spider CLI** — for audit mode A (the toolkit
-    drives the crawler itself). Without it, mode B works from ready exports.
+  - **Screaming Frog SEO Spider CLI** — required only for live audit mode A
+    and requires a separately installed, active licence. Mode B analyzes
+    supplied CSV/XLSX exports offline without an SF installation or licence.
   - **system `whois`** — fallback for ccTLDs without RDAP. Without RDAP and
     without `whois`, domain registration data is honestly reported as
     `source: none`.
@@ -18,8 +20,8 @@ supported by `config.json` search paths.
 ## Install
 
 ```bash
-git clone https://github.com/PavloSEO/seotools.git
-cd seotools
+git clone https://github.com/PavloSEO/seohead-tools.git
+cd seohead-tools
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -27,6 +29,9 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"            # everything incl. reports, render, tests
 python -m playwright install chromium  # browser for render-check (~150 MB)
 ```
+
+The repository is named `seohead-tools`; the Python distribution remains
+`seohead-seotools` and the installed command remains `seohead` for compatibility.
 
 The optional remote Playwright transport needs the Python `render` extra, but
 does not need a locally installed browser binary. It connects only to a browser
@@ -46,6 +51,7 @@ works, and the affected tool answers `{"ok": false, "error": ...,
 |---|---|---|
 | base (always) | `httpx`, `beautifulsoup4`, `lxml`, `defusedxml`, `pandas`, `h2`, `pydantic`, `jsonschema`, `openpyxl`, `Pillow` | nothing, this is the minimum |
 | `reports` | `python-docx` (+ openpyxl already in base) | `docx` output of `report-build` (xlsx/csv/md/json stay) |
+| `pdf` | `pypdf` | Validate generated PDF signature, pages, extracted text, source counts and declared size limits |
 | `render` | `playwright` | `render-check`, `regions-check --render` |
 | `sitemap` | `advertools`, `python-dateutil` | deep parsing of very large sitemaps |
 | `mcp` | `mcp` | the MCP server (the CLI stays) |
@@ -151,6 +157,17 @@ seohead sf save-config                # copy the latest SF crawl config to audit
 seohead sf save-config --out base.seospiderconfig --force
 ```
 
+To limit a new crawl, set a speed in Screaming Frog before saving the config:
+open **Config → Speed**, choose a modest value such as 1–2 URLs/s, then use
+**Config → File → Config → Save As**. `seohead sf save-config` copies the latest
+SF crawl config; it does not choose or add a rate. Point `sf_cli.seospiderconfig`
+at the saved file and set `sf_cli.max_urls_per_second` (or pass
+`--max-urls-per-second 1.5`). The runner writes and reads back a derived config,
+leaving the saved base untouched. If the requested limit cannot be applied, it
+fails before SF starts. `sf doctor` reports the saved rate when it can read it,
+otherwise it marks the rate unknown; a missing config is not treated as an
+unlimited rate that was measured.
+
 `sf run` prints a `[preflight]` line before a fresh crawl for every check that
 the configuration in force cannot satisfy, so the config can be fixed first.
 Mode B (`--exports-dir`) already has the exports and is not affected.
@@ -189,7 +206,45 @@ never installs `pyarrow` regardless of the pandas pin. Pinning `pandas<3` would 
 remove it and was not made; if `sitemap`'s ~46 MB `pyarrow` weight needs trimming later, the fix is
 in `advertools`'s own dependency tree, tracked separately from this issue.
 
+## Targeted fix verification
+
+For a focused recheck, select baseline finding IDs or affected URLs and write a new
+verification directory:
+
+```bash
+seohead verify-fixes --baseline before.sqlite --finding-ids ISSUE-000001,ISSUE-000002 --out-dir ./verify-2026-10-03
+# Compare already collected evidence without making requests:
+seohead verify-fixes --baseline before.sqlite --after after.sqlite --finding-ids ISSUE-000003 --out-dir ./verify-offline
+```
+
+`--view` accepts a JSON file such as
+`{"schema_version":"verification_view.v1","finding_ids":["ISSUE-000001"]}`;
+`--urls-file` accepts the same TXT/CSV/XLSX/XML inputs as crawl list mode. The
+command creates `verification.json` and `verification.md` without overwriting an
+existing directory. It retains the baseline audit hash, observation time, exact
+before/after page and finding evidence, and the recrawl audit files. Raw pages
+use the existing list collector; a baseline with JavaScript rendering uses one
+bounded URL crawl per selected page. Missing, skipped, partial or changed-policy
+evidence is `not_verifiable`, never a fix; whole-site graph checks cannot be
+cleared by this URL subset. A baseline that redacts authentication settings
+needs the original local `--config` to reproduce its policy. No credential
+value is copied into the verification report.
+
+Each selected baseline finding gets one verdict: **resolved** when its check
+ran clean on the same measured page representation; **persisting** when the
+same finding and evidence remain; **changed** when its evidence or HTTP
+response changed without proving the old condition clear; **not_verifiable**
+when the page was not fetched, the check was skipped, the source/configuration
+changed, or the finding needs a whole-site population. A partial targeted run
+may still verify a page it did measure, while every unvisited page stays
+`not_verifiable`.
+With offline `--after`, both audits must record a scan UUID and a timezone-aware
+`run.generated_at`. The after scan must have a different UUID and a later time;
+otherwise the verification artifact explicitly says `not_verifiable`. This
+prevents a replayed scan or an older saved audit from appearing to prove a fix.
+
 ## Comparing two crawls
+
 
 ```bash
 seohead compare-crawls --before old-audit.json --after new-audit.json
@@ -230,12 +285,79 @@ seohead crawl-site --url https://example.com/ --config crawl.json
 }
 ```
 
+### Site-specific canonical policy
+
+Pagination and filter canonicals are checked only when a project supplies patterns and an
+expected policy. There is no default rule that paginated or filtered URLs must self-canonicalize
+or point to another page. For a native crawl, add `analysis.canonical_policy` to `crawl.json`:
+
+```json
+{
+  "analysis": {
+    "canonical_policy": {
+      "pagination": [
+        {"pattern": "/catalog/page/[2-9][0-9]*/?$", "policy": "self"},
+        {
+          "pattern": "/archive/page/[2-9][0-9]*/?$",
+          "policy": "first_page",
+          "target": "https://shop.example.test/archive/"
+        }
+      ],
+      "filters": [
+        {
+          "pattern": "[?&]color=",
+          "policy": "landing",
+          "target": "https://shop.example.test/catalog/"
+        }
+      ]
+    }
+  }
+}
+```
+
+Patterns are regular expressions searched against each absolute source URL. Rules are ordered and
+the first match wins. Pagination policies accept `self`, `first_page`, or `landing`; filter
+policies accept `self` or `landing`. Non-self policies require an explicit absolute target URL.
+The expected target must appear in the crawl evidence; when a canonical is declared, its target
+must also appear. Otherwise the corresponding check is reported as skipped. The same
+`canonical_policy` object can be placed at the top level of the SF `config.json` used with
+`sf run --exports-dir`. The checks compare URL
+policy only; destination status and site-wide homepage groups are covered separately by #824.
+
 Resolution order is defaults, then the file, then environment variables, then explicit command-line
 arguments — the most local statement of intent wins.
 
 Use `http.headers` only for non-credential request headers such as `Accept-Language`. Authentication
 headers, cookies, API keys, and tokens are refused there: put them in host-bound
 `http.credential_headers` as `env:VARIABLE` references and set `http.credentials_acknowledged=true`.
+
+For a native crawl through an HTTP forward proxy, set `http.proxy` explicitly. The default is
+direct and ignores ambient `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. An anonymous
+endpoint may be written as `http://proxy.example.test:3128`; credentials must come through an
+environment reference to the complete URL:
+
+```json
+{"http": {"proxy": "env:SEOHEAD_CRAWL_PROXY"}}
+```
+
+For example, `SEOHEAD_CRAWL_PROXY` may contain an `http://` URL with a percent-encoded username
+and password (`@` as `%40`, `:` in a password as `%3A`; colons in usernames are refused).
+It is read at crawl start, never stored in the scan or manifest. Only `http://`
+forward proxies with an explicit port are supported for HTTP targets and HTTPS CONNECT targets;
+HTTPS proxy endpoints, SOCKS, PAC, bypass lists and browser-native proxy fallback are rejected.
+`http.proxy_allow_private=true` authorizes a private **proxy socket** only; it never authorizes
+private target URLs. The crawler validates and pins both the proxy socket and each target/redirect
+before connecting. A proxy's onward behavior cannot be attested after the request reaches it.
+Proxy failures never switch to direct egress. The manifest records the safe proxy endpoint and
+whether authentication was configured, never its value. Proxied crawls require `cache.mode=off`
+and cannot resume from saved legacy or SQLite frontiers; start a new output instead. CA bundles
+may be selected with `SSL_CERT_FILE` or `SSL_CERT_DIR`, while TLS verification remains enabled.
+Proxied HTTPS uses a fresh verified CONNECT tunnel for each request, with the origin hostname
+kept for SNI and certificate validation even though CONNECT names its vetted IP; HTTP/2 and
+keepalive reuse are disabled on this route to avoid mixing hostnames on one IP.
+The same policy is reachable with `--set http.proxy=env:SEOHEAD_CRAWL_PROXY` or the MCP
+`seo_crawl_site` overrides. Browser subrequests remain on the pinned HTTP route; unsupported
+methods and WebSockets retain their existing unavailable behavior.
 
 `crawl-site --help` only shows the handful of settings used directly on the command line
 (`--url`, `--max-urls`, `--out-dir`, `--scan-out`, `--config`, `--robots`, `--sitemap`); everything else — the
@@ -286,10 +408,29 @@ The shared request budget covers robots, sitemap discovery and audit rechecks, p
 retries, redirects, captured resources, and browser HTTP routes. Robots directives can raise
 the configured delay floor, never lower it.
 
-Rendering launches Chromium with its sandbox enabled and refuses root execution. HTTP routes,
-including popup requests, are fulfilled through the same validated, pinned HTTP transport;
-Chromium does not continue those requests through its own DNS resolver. Browser cookies and
-cross-origin restrictions are preserved. Service workers are blocked.
+Rendering launches a headless browser — Chromium with its sandbox enabled — and refuses
+root execution. `rendering.browser.engine` selects which Playwright engine runs: `chromium`
+(the default), `firefox` or `webkit`. An unknown name is a config error before any browser starts, and a
+missing browser binary fails with an actionable `playwright install <engine>` hint rather
+than silently substituting another engine. Firefox cannot emulate a mobile viewport
+(`is_mobile` is unsupported there), so `rendering.browser.mobile_emulation` is refused for
+it; `rendering.browser.touch_emulation` (`has_touch`) is a general context option every
+engine accepts. HTTP routes, including popup requests, are fulfilled through the same
+validated, pinned HTTP transport; the browser does not continue those requests through its
+own DNS resolver. Browser cookies and cross-origin restrictions are preserved. Service
+workers are blocked.
+
+`rendering.browser.viewport` selects the `desktop` (1366×768) or `mobile` (390×844) preset;
+`rendering.browser.viewport_width` and `rendering.browser.viewport_height` override the
+preset's dimensions with an exact pixel pair. The pair is all-or-nothing, bounded to
+1 through 16384, and does not imply mobile or touch emulation — those remain explicit flags.
+`rendering.browser.page_concurrency` bounds how many browser fetches a rendering escalation
+runs at once, probes included, independently of `speed.concurrency` (which keeps governing
+HTTP request politeness). The default of 1 is the sequential behaviour older runs had.
+Probes and full renders in one run always share the same engine, viewport and emulation, and
+the effective values are recorded in the run manifest/fingerprint and in each rendered
+document's renderer provenance — including attempts that failed, which record what was
+requested rather than inventing a successful render.
 
 The renderer supports GET, HEAD, and OPTIONS, with a 5 MiB limit on each response's encoded
 HTTP body. A blocked WebSocket, unsupported method, refused destination, or exceeded response
@@ -396,8 +537,9 @@ The image is a multi-stage build on `python:3.12-slim`, runs as non-root user `s
 
 ## What is intentionally absent
 
-- **No GUI, no web service, no HTTP API.** The two interfaces are the CLI and the local stdio MCP
-  server. Reports are files.
+- **Local installation remains CLI and stdio MCP.** The optional authenticated
+  [remote API](REMOTE_API.md) and [durable job backend](REMOTE_JOBS.md) require
+  explicit service construction and start no listener on installation. Reports are files.
 - **No push deploy.** `git push` deploys nothing — there are no deploy
   workflows, hooks or scripts in this repo.
 

@@ -29,11 +29,11 @@ def _implementation_identity(kind: str) -> dict[str, Any]:
     """Name the current byte-to-input implementation, separately from the capture writer."""
     root = Path(__file__).resolve().parents[1]
     names = ["storage/corpus_inputs.py", "storage/bodies.py", "crawl/evidence.py"]
-    names += (
-        ["tools/duplicate.py", "tools/markdown_extract.py", "tools/content_area.py"]
-        if kind == "duplicate"
-        else ["tools/boilerplate_report.py"]
-    )
+    names += {
+        "duplicate": ["tools/duplicate.py", "tools/markdown_extract.py", "tools/content_area.py"],
+        "boilerplate": ["tools/boilerplate_report.py"],
+        "semantic": ["tools/content_area.py", "tools/text_normalize.py"],
+    }[kind]
     digest = hashlib.sha256()
     for name in names:
         digest.update(name.encode())
@@ -111,7 +111,7 @@ def _read_interrupted(exc: BaseException) -> bool:
 
 def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
     """Return private analyzer input plus public provenance; raw bodies never leave this module."""
-    if kind not in {"duplicate", "boilerplate"}:
+    if kind not in {"duplicate", "boilerplate", "semantic"}:
         raise ValueError("unsupported scan corpus kind")
     if not isinstance(scan, str) or not scan:
         raise ValueError("scan must name a scan.v1 SQLite artifact")
@@ -142,6 +142,7 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
 
         from seohead.tools.boilerplate_report import boilerplate_hash
         from seohead.tools.markdown_extract import extract_markdown
+        from seohead.tools.text_normalize import normalization_policy, normalize_document
 
         items: list[dict[str, Any]] = []
         input_bytes = 0
@@ -149,9 +150,11 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
         stop_reason = ""
         cursor = con.execute(
             "SELECT p.document_id,p.representation,p.content_type,p.status_code,p.canonical,p.meta_robots,"
-            "p.x_robots,p.error,u.url,EXISTS(SELECT 1 FROM context_items c WHERE "
+            "p.x_robots,p.error,u.url,d.body_sha256 AS document_body_sha256,"
+            "EXISTS(SELECT 1 FROM context_items c WHERE "
             "c.kind='robots_blocked_url' AND c.item_key='url:'||p.url_id) AS robots_blocked "
-            "FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
+            "FROM pages p JOIN urls u USING(url_id) "
+            "LEFT JOIN documents d ON d.document_id=p.document_id ORDER BY p.page_ordinal"
         )
         try:
             for row in cursor:
@@ -180,6 +183,17 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
                         measured_empty += 1
                     # The retained analyzer input is the extracted Markdown.
                     size = len(value.encode("utf-8"))
+                elif kind == "semantic":
+                    # The retained analyzer input is normalized content-area
+                    # text with its own provenance: the verified body hash is
+                    # the corpus's evidence identity, the input hash is the
+                    # exact decoded string the normalizer consumed, and the
+                    # normalized hash is its output (issue #801).
+                    prepared = normalize_document(html, config.get("content_area"))
+                    value = prepared["text"]
+                    if not value:
+                        measured_empty += 1
+                    size = len(value.encode("utf-8"))
                 else:
                     # Only the boilerplate digest is retained, so coverage must
                     # not depend on the corpus's raw HTML size (issue #710).
@@ -197,6 +211,18 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
                             "indexable": _indexable(page, bool(page["robots_blocked"])),
                         }
                     )
+                elif kind == "semantic":
+                    items.append(
+                        {
+                            "id": page["url"],
+                            "url": page["url"],
+                            "text": value,
+                            "representation": page["representation"],
+                            "indexable": _indexable(page, bool(page["robots_blocked"])),
+                            "body_sha256": page["document_body_sha256"],
+                            **{key: prepared[key] for key in prepared if key != "text"},
+                        }
+                    )
                 else:
                     items.append({"url": page["url"], "hash": value})
         except sqlite3.OperationalError as exc:
@@ -210,7 +236,7 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
             if remaining > 0:
                 omitted[stop_reason] += remaining
             partial_reasons.append(stop_reason)
-        return {
+        corpus = {
             "items": items,
             "source": _source(header, kind=kind, representations=representations),
             "coverage": _coverage(
@@ -221,6 +247,11 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
                 measured_empty=measured_empty,
             ),
         }
+        if kind == "semantic":
+            # The normalization record travels with the public manifest so an
+            # output hash can be reproduced or rejected rather than trusted.
+            corpus["normalization"] = normalization_policy(config.get("content_area"))
+        return corpus
     finally:
         con.close()
 
@@ -234,4 +265,7 @@ def corpus_public(
     if unavailable:
         coverage["state"] = "unavailable"
         coverage["reason"] = "; ".join(part for part in (unavailable, coverage["reason"]) if part)
-    return {"source": corpus["source"], "coverage": coverage}
+    result = {"source": corpus["source"], "coverage": coverage}
+    if "normalization" in corpus:
+        result["normalization"] = corpus["normalization"]
+    return result

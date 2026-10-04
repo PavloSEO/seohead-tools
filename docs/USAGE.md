@@ -13,10 +13,41 @@ seohead site-audit --url https://example.com --limit 50 --report xlsx --out audi
 
 # re-render an existing audit document into other formats
 seohead report-build --audit audit.json --format docx --out client.docx
+seohead report-build --audit audit.json --format pdf --lang ru --out client.pdf
 ```
 
 `--limit` caps the pages parsed (default 25); URLs come from the sitemap
-unless `--urls` is given. Any format: `xlsx`, `docx`, `csv`, `md`, `json`.
+unless `--urls` is given. Formats are `xlsx`, `docx`, `csv`, `md`, `json`, and
+`pdf`. PDF output is offline, accepts `--lang en|ru`, and needs the optional
+`seohead-seotools[pdf]` extra plus a local Chrome, Edge, or Chromium executable.
+
+Field Core Web Vitals require an explicit CrUX record. `crux-report --url` measures
+one URL; `--origin` is a separate aggregate over the origin, never a substitute
+for missing URL data. Use `--form-factor PHONE` or `DESKTOP` for a device class;
+without it CrUX aggregates all form factors. A bounded URL sample accepts
+`--urls`, `--max-samples` (1–25) and optional `--cache-dir` with
+`--cache-max-age-hours`. Provider responses and CLI saved-evidence inputs are
+capped at 2 MiB; private cache entries are capped at 64 KiB. An oversized or
+corrupt cache is reported unavailable without an implicit Google retry. Saved
+samples with missing or repeated URL records are rejected before audit collection.
+These are Google API reads, subject to its quota.
+
+CrUX p75 uses the [official field thresholds](https://web.dev/articles/defining-core-web-vitals-thresholds):
+LCP 2500/4000 ms, INP 200/500 ms and CLS 0.1/0.25. Missing metrics, an
+ineligible record and provider failures are unavailable, never passing.
+PSI/Lighthouse lab measurements remain separate.
+
+The sequence is `crux-report --url <page> --form-factor PHONE`, save its JSON
+output locally, then pass that file to `site-audit --url <origin>
+--crux-evidence <file> --report md --out <report.md>`. Requesting CrUX is an
+explicit provider read; rendering the saved evidence is offline.
+
+`site-audit --crux-evidence` consumes saved CrUX JSON or a restricted
+`provider-collect` artifact locally; it does not query Google. The audit JSON
+retains field scope, period, policy and partialness, and report evidence coverage
+shows available as well as unavailable metrics. Supplying origin data labels an
+origin aggregate; it never makes each audited URL pass. Keep provider artifacts
+and client URLs outside the public repository.
 
 ## Native SQLite crawl (default for a URL crawl)
 
@@ -31,7 +62,30 @@ seohead report-build --audit native.sqlite --format md --out native-report.md --
 
 # if the crawl was interrupted, continue it from the artifact -- no other flag
 seohead crawl-site --resume native.sqlite
+
+# Explain a one-page or interrupted crawl from saved evidence; no new requests.
+seohead crawl-diagnose --scan native.sqlite
+seohead crawl-diagnose --run ./run --max-decisions 10
+
+# Optional redacted copy for sharing: creates a new file, never overwrites.
+seohead crawl-diagnose-export --scan native.sqlite --export diagnostic-redacted.json
 ```
+
+Save a reusable finding view and apply it to a retained scan and report:
+
+```bash
+seohead project view-save --directory ./example-project --expected-revision 0 \
+  --input '{"view":{"name":"critical-pages","filters":{"severity":["critical"]},"sort":{"field":"url","direction":"asc"},"columns":["severity","check","url","text"],"page_size":100}}'
+seohead findings-view --directory ./example-project --name critical-pages \
+  --audit ./example-project/scans/current.sqlite --offset 0
+seohead report-build --audit ./example-project/scans/current.sqlite --project ./example-project \
+  --view critical-pages --format md --out ./example-project/reports/critical-pages.md
+```
+
+`project view-list` reports the config revision; each `view-save` needs that revision, with `0`
+used for the first save. Applying a view returns explicit source/match/page counts, missing-field
+counts and the next offset. A report identifies the selected view and page; its audit totals and
+evidence coverage remain source-wide.
 
 SQLite mode keeps queue, evidence and runtime in one transactional scan and resumes
 an interrupted file under the same build/configuration: `--resume` reads the start
@@ -39,13 +93,34 @@ URL and that configuration back from the artifact, and refuses by name when the
 file was written by another build or for another start URL. Use `--out-dir DIR` for
 the explicit legacy directory route (`pages.jsonl` and `audit.json`); it does not
 silently become a native scan. List inputs and cache `live`/`replay` also require
-that legacy route while native scan support is added deliberately. Its default body policy is
+that legacy route while native scan support is added deliberately. So does
+`discovery.external.crawl`, the opt-in bounded check of recorded outlink
+destinations: it runs a second phase after the internal frontier closes under
+its own `external_checks.*` target/host/request/depth/redirect budgets, writes
+one outcome per destination to `external_checks.jsonl`, and resumes without
+reopening spent budgets — see
+[scenarios/external-links.md](scenarios/external-links.md). A `--scan-out` or
+list-mode run with the option set refuses by name rather than silently
+dropping it. The native
+scan's default body policy is
 `storage.body_mode=captured_entity_bytes`, which retains bounded captured HTTP
 entity bytes and separately captured DOM when available; `off` retains metadata
 only. Native capture requires raw rendering, cache off, and credential-free
 configuration. Audit creation has an explicit compatibility guard;
 check `audit_available` before requesting a report. See [STORAGE.md](STORAGE.md)
 for limits, provenance, interrupted-file handling and missing evidence.
+
+The legacy `--out-dir` collector writes page, link and form evidence incrementally
+instead of retaining a second full page/link list for collection and resume. Its
+current JSON audit bridge is limited to 10,000 pages, 20,000 forms and 1,500,000
+links. Beyond a bound, the command returns `audit_available: false` with exact
+counts and a reason while keeping the JSONL evidence. A prior `audit.json` or
+tasks file in that directory is renamed to a hidden `.stale-*` copy so it
+cannot be mistaken for the new run's report. The large-audit representation is
+tracked in #816; these collection bounds do not raise the 50,000-URL crawl cap.
+Native JS escalation reads page records from SQLite without first building a
+full PageRecord list; its later saved audit still follows the audit bridge's
+declared limits until #816 supplies a large-audit representation.
 
 ## Saved scan artifact
 
@@ -101,7 +176,7 @@ seohead project checklist-record \
   --directory ./example-project \
   --item-id skill:workflow/control \
   --expected-revision 1 \
-  --input '{"record":{"status":"not_applicable","reason":"The work is a scoped follow-up, not an unscoped audit","reviewer":"Specialist"}}'
+  --input '{"record":{"status":"not_applicable","reason":"The work is a scoped follow-up, not an unscoped audit","reviewer":"Specialist","evidence":"Agreed scope memo 2026-10-01"}}'
 ```
 
 `project-checklist-update` and `project-checklist-record` receive their structured
@@ -146,6 +221,10 @@ seohead scan-prune --directory . > plan.json
 
 # compare retained, compatible evidence only; no network request and no SEO score
 seohead scan-body-diff --left before.sqlite --right after.sqlite --url https://example.com/ --text
+
+# broken bookmarks: resolve every retained link fragment against the retained
+# destination document; missing or incomplete bodies stay named skips, never findings
+seohead scan-fragment-links --scan native.sqlite --state missing --limit 50
 ```
 
 `scan snapshot` assigns a directory output a no-clobber
@@ -157,7 +236,9 @@ same host/configuration. It never automatically selects `crawl_partial` or
 every candidate and its current retention rank before deleting anything.
 
 Each flat form also has a nested `scan` equivalent: `scan list`, `scan inspect`,
-`scan status`, `scan snapshot`, `scan pin`, `scan prune`, and `scan body-diff`.
+`scan status`, `scan snapshot`, `scan pin`, `scan prune`, `scan body-diff`,
+`scan evidence`, `scan extract`, `scan fragment-links`, `scan requeue`, and
+`scan import-urls`.
 
 `scan pin` takes the artifact's writer lock and uses SQLite DELETE journal mode.
 It changes only the pin bit: the SQLite file hash changes, while the saved audit,
@@ -180,6 +261,31 @@ Useful `sf run` flags: `--profile lite|full|custom`, `--config config.json`,
 `--sitemap <url>`, `--auth USER:PASS` / `--auth-config` for protected
 staging, `--sf-cli <path>`, `--max-urls-per-second N` (polite crawling),
 `--live-recheck` (network re-check of sitemap URLs — off by default).
+
+Mode A's `full` profile checks the installed Screaming Frog CLI's export help before
+starting, then requires every supported requested file in that run's fresh export
+directory before audit rules run. A missing, unreadable, or unsupported export fails
+the run; it cannot be supplied by an older output folder. JavaScript, Canonicals, H1,
+and structured-data validation tabs are retained as raw evidence. Sitemap redirect and
+4xx/5xx evidence is derived from `Sitemaps:URLs in Sitemap` only when every row has a
+valid `Status Code`. `lite` and explicitly selected `custom` exports remain smaller.
+Mode B (`--exports-dir`) continues to analyze a supplied subset and reports skipped
+checks.
+
+For a polite fresh crawl, save a reusable SF config after choosing a speed in the GUI:
+
+```bash
+# In Screaming Frog: Config → Speed, set 1–2 URLs/s, then Config → File → Config → Save As.
+seohead sf save-config --out audit.seospiderconfig
+seohead sf run --crawl https://example.com --max-urls-per-second 1.5 --out report
+```
+
+Alternatively set `sf_cli.seospiderconfig` and `sf_cli.max_urls_per_second` in
+`config.json`. A requested limit is written to a derived config and read back before
+the crawl; the saved base file is unchanged. If no readable base config exists, the
+run stops before Screaming Frog starts. `sf doctor` reports the saved rate or says it
+is unknown; it does not infer a rate from a missing file. Loading a saved crawl has no
+new crawl-rate limit to apply.
 
 Prefer an SF-owned `--auth-config` profile where possible. A literal `--auth USER:PASS` value can
 be exposed by shell history or process inspection, so use it only in an isolated transient
@@ -226,6 +332,7 @@ onto the handler's arguments. Frequent parameters are duplicated as flags:
 seohead duplicate-check --input '{"items":[{"id":"a","text":"..."},{"id":"b","text":"..."}],"threshold":0.9}'
 seohead duplicate-check --scan saved.sqlite
 seohead boilerplate-report --scan saved.sqlite
+seohead semantic-inputs --scan saved.sqlite
 echo '{"url": "https://example.com"}' | seohead parse          # stdin JSON also works
 ```
 
@@ -249,7 +356,9 @@ exit code.
 Check readiness first, then work; check what was charged afterwards:
 
 ```bash
-seohead sources-doctor                                  # which secrets are present
+seohead sources-doctor                                  # redacted credential sources and readiness
+seohead provider-readiness --input '{"provider":"gsc","operation":"search_analytics"}'
+seohead provider-verify --input '{"provider":"gsc","request":{"site_url":"sc-domain:example.com"}}'
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -262,12 +371,19 @@ seohead metrika-traffic-pdf --counter 12345678 --date1 2026-09-01 --date2 2026-0
 seohead spend-report --since 2026-08-01
 ```
 
+`provider-readiness` is offline: it reports declared operation routes, credential
+source references, and whether a separate permission check is still needed. Its
+`input_schema` describes the shared JSON call envelope; the existing provider
+adapter validates the operation-specific fields. Only an explicit
+`provider-verify` call contacts a supported provider, and a configured secret alone
+never means the selected property or site is accessible.
+
 Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 95 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 115 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

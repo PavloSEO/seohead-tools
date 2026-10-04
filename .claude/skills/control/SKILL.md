@@ -52,13 +52,18 @@ Frog export" → `sf-analyzer`. Do not run the whole loop to answer one question
 
 ## Preconditions
 
-- [ ] The venv exists: `~/Projects/seohead-seotools-public-full/.venv/bin/seohead --version`
+- [ ] `seohead --version` runs from the active project environment.
 - [ ] A scratch directory outside the repository for artifacts
 - [ ] A crawl rate decided — see [rate-and-load](subskills/rate-and-load.md) **before** the
       first request, not after the host starts refusing
 - [ ] Permission, if this is somebody else's site
 
 ## The loop
+
+The versioned execution contract for this sequence is `workflow/full-audit-v1` (v1.0.0). Retrieve
+it with `seohead skill-show --name workflow/full-audit-v1` or MCP `seo_skill_show` using the same
+catalogue ID. Follow that contract for evidence reuse, scope/budget gates, verification, and report
+completion; the steps below remain the entry router and decision aid.
 
 **1. Scope it.** Size, stack, what can be skipped, what will be needed.
 → [scoping](subskills/scoping.md), and the `audit-roadmap` skill for a written plan.
@@ -97,7 +102,7 @@ template first; do not pay for the whole site to learn what one page would have 
 **6. Verify every serious finding live.** → [verifying](subskills/verifying.md)
 
 **7. Produce the thing that was actually asked for.**
-→ [deliverables](subskills/deliverables.md), and `docs/scenarios/` for 59 chains end to end.
+→ [deliverables](subskills/deliverables.md), and `docs/scenarios/` for 60 workflows end to end.
 
 ## Decision points
 

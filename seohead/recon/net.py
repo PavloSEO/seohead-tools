@@ -28,12 +28,20 @@ import re
 import shutil
 import socket
 import subprocess
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
+
+from seohead.recon.remote_policy import RemoteTargetError, current_remote_policy
 
 UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 PRIVATE_NETWORK_ENV = "SEOHEAD_ALLOW_PRIVATE_NETWORKS"
 PRIVATE_HOST_ALLOWLIST_ENV = "SEOHEAD_ALLOW_PRIVATE_HOSTS"
+_PROXY_ENV_REF = re.compile(r"^env:([A-Za-z_][A-Za-z0-9_]*)$")
+_PROXY_TLS_IDENTITY: ContextVar[tuple[str, str] | None] = ContextVar(
+    "seohead_proxy_tls_identity", default=None
+)
 
 DOH_ENDPOINTS = (
     "https://cloudflare-dns.com/dns-query",
@@ -49,6 +57,137 @@ _DOMAIN_RE = re.compile(
 
 class NetworkUnavailable(RuntimeError):
     """Raised internally when the base HTTP client is unavailable."""
+
+
+@dataclass(frozen=True)
+class ProxyRoute:
+    """One vetted proxy socket and a shareable identity without credentials."""
+
+    proxy: Any = field(repr=False)
+    identity: str
+    authenticated: bool
+
+
+class _ProxyTLSStream:
+    """Keep CONNECT's vetted IP while verifying TLS against the original host."""
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._stream.read(max_bytes, timeout=timeout)
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._stream.write(buffer, timeout=timeout)
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._stream.get_extra_info(info)
+
+    def start_tls(self, ssl_context: Any, server_hostname: str | None = None, timeout=None):
+        identity = _PROXY_TLS_IDENTITY.get()
+        if identity is None or server_hostname != identity[0]:
+            raise NetworkUnavailable("proxied TLS identity is unavailable")
+        return self._stream.start_tls(
+            ssl_context=ssl_context, server_hostname=identity[1], timeout=timeout
+        )
+
+
+class _ProxyTLSBackend:
+    """Wrap only an explicit HTTP proxy's tunnel stream; leave direct clients alone."""
+
+    def __init__(self, backend: Any) -> None:
+        self._backend = backend
+
+    def connect_tcp(self, *args: Any, **kwargs: Any) -> _ProxyTLSStream:
+        return _ProxyTLSStream(self._backend.connect_tcp(*args, **kwargs))
+
+    def connect_unix_socket(self, *args: Any, **kwargs: Any):
+        return self._backend.connect_unix_socket(*args, **kwargs)
+
+    def sleep(self, seconds: float) -> None:
+        self._backend.sleep(seconds)
+
+
+def resolve_proxy_route(value: str, *, allow_private: bool = False) -> ProxyRoute | None:
+    """Resolve and pin an explicitly configured HTTP forward proxy.
+
+    The proxy's private-address opt-in is independent of the target allowlist.
+    Target URLs are still validated and pinned by ``_PinningTransport``.
+    """
+    if value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError("http.proxy must be a URL or env:VARIABLE reference")
+    reference = _PROXY_ENV_REF.fullmatch(value)
+    from_env = reference is not None
+    if value.startswith("env:") and not from_env:
+        raise ValueError("http.proxy needs a valid env:VARIABLE reference")
+    raw = os.environ.get(reference.group(1), "") if reference else value
+    if not raw:
+        raise ValueError("http.proxy environment reference is missing or empty")
+    if any(ord(char) < 33 or ord(char) == 127 for char in raw):
+        raise ValueError("http.proxy URL contains whitespace or control characters")
+    try:
+        parts = urlsplit(raw)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        raise ValueError("http.proxy URL is malformed") from None
+    if parts.scheme != "http":
+        raise ValueError("http.proxy supports only an http:// forward proxy")
+    if not host or port is None or not 1 <= port <= 65535:
+        raise ValueError("http.proxy requires a host and explicit port")
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise ValueError("http.proxy URL cannot have a path, query, or fragment")
+    if parts.username is not None or parts.password is not None:
+        if not from_env:
+            raise ValueError("http.proxy inline authentication is forbidden; use env:VARIABLE")
+        if not parts.username or not parts.password:
+            raise ValueError("http.proxy authentication needs both username and password")
+        if re.search(r"%(?![0-9A-Fa-f]{2})", parts.username + parts.password):
+            raise ValueError("http.proxy authentication has invalid percent encoding")
+        auth = (unquote(parts.username), unquote(parts.password))
+        if any(ord(char) < 33 or ord(char) == 127 for item in auth for char in item):
+            raise ValueError("http.proxy authentication contains control characters")
+        if ":" in auth[0]:
+            raise ValueError("http.proxy username cannot contain a colon")
+    else:
+        auth = None
+    try:
+        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise ValueError("http.proxy host could not be resolved safely") from None
+    if not records:
+        raise ValueError("http.proxy host could not be resolved safely")
+    if not allow_private and any(not _is_public_address(item[4][0]) for item in records):
+        raise ValueError(
+            "http.proxy resolves to a private address; set http.proxy_allow_private=true"
+        )
+    address = records[0][4][0].split("%", 1)[0]
+    literal = f"[{address}]" if ":" in address else address
+    import httpx
+
+    proxy = httpx.Proxy(f"http://{literal}:{port}", auth=auth)
+    return ProxyRoute(
+        proxy=proxy, identity=f"http://{host.lower()}:{port}", authenticated=bool(auth)
+    )
+
+
+def crawl_transport_options(proxy_route: ProxyRoute | None = None) -> dict[str, Any]:
+    """Ignore ambient proxy variables while retaining an explicitly chosen CA bundle."""
+    options: dict[str, Any] = {"trust_env": False}
+    cafile = os.environ.get("SSL_CERT_FILE")
+    capath = os.environ.get("SSL_CERT_DIR")
+    if cafile or capath:
+        import ssl
+
+        options["verify"] = ssl.create_default_context(cafile=cafile, capath=capath)
+    if proxy_route is not None:
+        options["proxy_route"] = proxy_route
+    return options
 
 
 def private_networks_enabled() -> bool:
@@ -74,8 +213,22 @@ def allowed_private_hosts() -> frozenset[str]:
     return frozenset(host.strip().rstrip(".").lower() for host in raw.split(",") if host.strip())
 
 
-def _private_target_allowed(host: str) -> bool:
+def _remote_policy(policy: Any = None) -> Any:
+    if policy is not None:
+        return policy
+    return current_remote_policy()
+
+
+def client_network_policy(client: Any) -> Any:
+    """Return a policy retained by a guarded client across worker threads."""
+    return getattr(getattr(client, "_transport", None), "_seohead_remote_policy", None)
+
+
+def _private_target_allowed(host: str, policy: Any = None) -> bool:
     """Whether ``host`` may resolve to a private or otherwise non-public address."""
+    policy = _remote_policy(policy)
+    if policy is not None:
+        return policy.allows_private_host(host)
     return private_networks_enabled() or (host or "").rstrip(".").lower() in allowed_private_hosts()
 
 
@@ -122,7 +275,7 @@ def _is_public_address(value: str) -> bool:
     return address.is_global
 
 
-def pinned_target(url: str) -> tuple[str, dict[str, str], dict[str, str]]:
+def pinned_target(url: str, *, policy: Any = None) -> tuple[str, dict[str, str], dict[str, str]]:
     """Rewrite a URL to connect to a vetted address, keeping the hostname.
 
     ``validate_url`` resolved DNS and then threw the answer away, so the HTTP
@@ -143,13 +296,14 @@ def pinned_target(url: str) -> tuple[str, dict[str, str], dict[str, str]]:
     through rather than pinning it a second time, which would re-resolve the
     literal address as if it were a hostname and lose the real one.
     """
+    policy = _remote_policy(policy)
     parts = urlsplit(url)
     host = parts.hostname
     if not host:
-        raise ValueError(f"no host to pin in {url!r}")
+        raise ValueError("no host to pin" if policy is not None else f"no host to pin in {url!r}")
     port = parts.port or (443 if parts.scheme == "https" else 80)
 
-    address = resolve_socket_addresses(host, port)[0][3][0].split("%", 1)[0]
+    address = resolve_socket_addresses(host, port, policy=policy)[0][3][0].split("%", 1)[0]
     literal = f"[{address}]" if ":" in address else address
     netloc = f"{literal}:{parts.port}" if parts.port else literal
     pinned = urlunsplit((parts.scheme, netloc, parts.path or "/", parts.query, ""))
@@ -158,16 +312,35 @@ def pinned_target(url: str) -> tuple[str, dict[str, str], dict[str, str]]:
     return pinned, {"Host": authority}, {"sni_hostname": host}
 
 
-def resolve_socket_addresses(host: str, port: int) -> list[tuple[int, int, int, Any]]:
+def resolve_socket_addresses(
+    host: str, port: int, *, policy: Any = None
+) -> list[tuple[int, int, int, Any]]:
     """Resolve once and return vetted socket addresses for a direct connection."""
+    policy = _remote_policy(policy)
     try:
         records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
+        if policy is not None:
+            raise ValueError("hostname could not be resolved safely") from None
         raise ValueError(f"hostname could not be resolved safely: {host}") from exc
     if not records:
-        raise ValueError(f"hostname could not be resolved safely: {host}")
-    if not _private_target_allowed(host) and any(
-        not _is_public_address(record[4][0]) for record in records
+        raise ValueError(
+            "hostname could not be resolved safely"
+            if policy is not None
+            else f"hostname could not be resolved safely: {host}"
+        )
+    if policy is not None and len({_is_public_address(record[4][0]) for record in records}) > 1:
+        raise ValueError("mixed public and private DNS answers blocked")
+    if policy is not None and any(
+        not _is_public_address(record[4][0])
+        and not policy.allows_private_address(host, record[4][0])
+        for record in records
+    ):
+        raise ValueError("private or non-public network target blocked")
+    if (
+        policy is None
+        and not _private_target_allowed(host)
+        and any(not _is_public_address(record[4][0]) for record in records)
     ):
         raise ValueError(
             f"private or non-public network target blocked; set {PRIVATE_NETWORK_ENV}=1 "
@@ -185,7 +358,7 @@ def resolve_socket_addresses(host: str, port: int) -> list[tuple[int, int, int, 
     return unique
 
 
-def validate_url(url: str) -> str:
+def validate_url(url: str, *, policy: Any = None) -> str:
     """Validate an HTTP(S) URL and block private networks by default.
 
     Embedded credentials are rejected because they are easily copied into logs and
@@ -193,10 +366,13 @@ def validate_url(url: str) -> str:
     must be globally routable. This is a guardrail, not a network sandbox; callers
     handling hostile DNS should additionally isolate the process or container.
     """
+    policy = _remote_policy(policy)
     value = str(url or "").strip()
     try:
         parsed = urlsplit(value)
     except ValueError as exc:
+        if policy is not None:
+            raise ValueError("invalid URL") from None
         raise ValueError(f"invalid URL: {exc}") from exc
     if parsed.scheme.lower() not in {"http", "https"}:
         raise ValueError("only http:// and https:// URLs are supported")
@@ -205,11 +381,15 @@ def validate_url(url: str) -> str:
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("embedded URL credentials are not supported")
 
-    if private_networks_enabled():
+    if policy is None and private_networks_enabled():
         return value
 
     host = parsed.hostname.rstrip(".").lower()
-    if (host == "localhost" or host.endswith(".localhost")) and host not in allowed_private_hosts():
+    if (host == "localhost" or host.endswith(".localhost")) and not _private_target_allowed(
+        host, policy
+    ):
+        if policy is not None:
+            raise ValueError("private-network target blocked")
         raise ValueError(
             f"private-network target blocked; set {PRIVATE_NETWORK_ENV}=1 to authorize "
             f"every private target, or add {host!r} to {PRIVATE_HOST_ALLOWLIST_ENV} to "
@@ -219,6 +399,7 @@ def validate_url(url: str) -> str:
     resolve_socket_addresses(
         host,
         parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
+        policy=policy,
     )
     return value
 
@@ -242,11 +423,15 @@ class BlockedRedirectError(ValueError):
         self.location = location
 
 
-def _guard_request(request: Any) -> None:
-    validate_url(str(request.url))
+def _guard_request(request: Any, policy: Any = None) -> None:
+    if policy is not None and "sni_hostname" in request.extensions:
+        # The caller already pinned this URL; the transport validates the
+        # literal against the named host without a second DNS lookup.
+        return
+    validate_url(str(request.url), policy=policy)
 
 
-def _guard_redirect(response: Any) -> None:
+def _guard_redirect(response: Any, policy: Any = None) -> None:
     if not getattr(response, "is_redirect", False):
         return
     location = response.headers.get("location")
@@ -254,14 +439,16 @@ def _guard_redirect(response: Any) -> None:
         return
     target = urljoin(str(response.request.url), location)
     try:
-        validate_url(target)
+        validate_url(target, policy=policy)
     except ValueError as exc:
         raise BlockedRedirectError(
-            str(exc), status_code=response.status_code, location=target
+            str(exc),
+            status_code=response.status_code,
+            location="" if policy is not None else target,
         ) from exc
 
 
-def network_event_hooks() -> dict[str, list[Any]]:
+def network_event_hooks(policy: Any = None) -> dict[str, list[Any]]:
     """Return httpx hooks that validate every request and redirect.
 
     This is a second, independent check ahead of the transport's own pinning
@@ -272,7 +459,12 @@ def network_event_hooks() -> dict[str, list[Any]]:
     ``_PinningTransport.handle_request``, which connects to the address it
     just resolved rather than to a second, later resolution of the hostname.
     """
-    return {"request": [_guard_request], "response": [_guard_redirect]}
+    if policy is None:
+        return {"request": [_guard_request], "response": [_guard_redirect]}
+    return {
+        "request": [lambda request: _guard_request(request, policy)],
+        "response": [lambda response: _guard_redirect(response, policy)],
+    }
 
 
 # Transport-construction kwargs a caller may forward through http_client() —
@@ -333,8 +525,53 @@ def _get_pinning_transport_cls() -> type:
         """
 
         def handle_request(self, request: httpx.Request) -> httpx.Response:
+            policy = getattr(self, "_seohead_remote_policy", None)
+            if policy is not None:
+                parsed_request = urlsplit(str(request.url))
+                if (
+                    request.url.scheme not in {"http", "https"}
+                    or parsed_request.username is not None
+                    or parsed_request.password is not None
+                ):
+                    raise RemoteTargetError("unsafe_target", "invalid remote request")
+                # A caller may have pre-pinned the target before reaching this
+                # transport. Recheck the literal against this job's policy even
+                # when that caller ran in a different thread/context.
+                original_host = request.extensions.get("sni_hostname")
+                if "sni_hostname" in request.extensions and not original_host:
+                    raise RemoteTargetError("unsafe_target", "invalid pinned target")
+                expected_host = str(original_host or request.url.host)
+                try:
+                    authority = urlsplit("//" + request.headers.get("host", ""))
+                    host_matches = (
+                        authority.hostname is not None
+                        and authority.hostname.rstrip(".").lower()
+                        == expected_host.rstrip(".").lower()
+                        and (authority.port is None or authority.port == request.url.port)
+                        and authority.username is None
+                        and authority.password is None
+                        and not authority.path
+                        and not authority.query
+                        and not authority.fragment
+                    )
+                except ValueError:
+                    host_matches = False
+                if not host_matches:
+                    raise RemoteTargetError("unsafe_target", "request host does not match target")
+                if original_host:
+                    literal = request.url.host
+                    try:
+                        ipaddress.ip_address(literal)
+                    except ValueError:
+                        raise RemoteTargetError("unsafe_target", "invalid pinned address") from None
+                    if not _is_public_address(literal) and not policy.allows_private_address(
+                        str(original_host), literal
+                    ):
+                        raise RemoteTargetError("unsafe_target", "private target blocked")
             if "sni_hostname" not in request.extensions:
-                pinned_url, _headers, pin_extensions = pinned_target(str(request.url))
+                pinned_url, _headers, pin_extensions = pinned_target(
+                    str(request.url), policy=policy
+                )
                 # Headers (including Host) are left untouched: httpx already
                 # set them from the real hostname when it built this request,
                 # and that is exactly what a pinned connection must keep.
@@ -345,10 +582,86 @@ def _get_pinning_transport_cls() -> type:
                     stream=request.stream,
                     extensions={**request.extensions, **pin_extensions},
                 )
-            return super().handle_request(request)
+            if policy is not None:
+                policy.reserve_request(
+                    str(request.url), original_host=request.extensions.get("sni_hostname")
+                )
+            proxy_route = getattr(self, "_seohead_proxy_route", None)
+            tls_token = None
+            if proxy_route is not None and request.url.scheme == "https":
+                original_host = request.extensions.get("sni_hostname")
+                if not isinstance(original_host, str):
+                    raise NetworkUnavailable("proxied TLS identity is unavailable")
+                tls_token = _PROXY_TLS_IDENTITY.set((request.url.host, original_host))
+            try:
+                response = super().handle_request(request)
+            except httpx.ProxyError as exc:
+                if policy is not None:
+                    raise httpx.ConnectError("remote connection failed") from None
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                reason = (
+                    "proxy authentication failed (HTTP 407)"
+                    if "407" in str(exc)
+                    else "proxy CONNECT failed"
+                )
+                raise NetworkUnavailable(reason) from None
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                if policy is not None:
+                    if isinstance(exc, httpx.TimeoutException):
+                        raise httpx.ConnectTimeout("remote request timed out") from None
+                    raise httpx.ConnectError("remote connection failed") from None
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                reason = (
+                    "proxied origin TLS verification failed"
+                    if "CERTIFICATE_VERIFY_FAILED" in str(exc)
+                    else "proxy connection failed"
+                )
+                raise NetworkUnavailable(reason) from None
+            except httpx.TimeoutException:
+                if policy is not None:
+                    raise httpx.ReadTimeout("remote request timed out") from None
+                if proxy_route is not None:
+                    raise NetworkUnavailable("proxied request failed") from None
+                raise
+            except httpx.RequestError:
+                if policy is not None:
+                    raise httpx.ConnectError("remote connection failed") from None
+                if getattr(self, "_seohead_proxy_route", None) is None:
+                    raise
+                raise NetworkUnavailable("proxied request failed") from None
+            except Exception:
+                if policy is not None:
+                    raise RemoteTargetError("transport_failure", "remote request failed") from None
+                raise
+            finally:
+                if tls_token is not None:
+                    _PROXY_TLS_IDENTITY.reset(tls_token)
+            if (
+                getattr(self, "_seohead_proxy_route", None) is not None
+                and response.status_code == 407
+            ):
+                response.close()
+                raise NetworkUnavailable("proxy authentication failed (HTTP 407)")
+            return response
 
     _pinning_transport_cls = _PinningTransport
     return _pinning_transport_cls
+
+
+def _install_proxy_tls_backend(transport: Any) -> None:
+    """Fail closed if the installed HTTPX/httpcore proxy path cannot preserve SNI."""
+    import httpcore
+
+    pool = getattr(transport, "_pool", None)
+    backend = getattr(pool, "_network_backend", None)
+    if not isinstance(pool, httpcore.HTTPProxy) or backend is None:
+        transport.close()
+        raise NetworkUnavailable(
+            "installed HTTP proxy transport cannot preserve origin TLS identity"
+        )
+    pool._network_backend = _ProxyTLSBackend(backend)
 
 
 def http_client(timeout: float, **kwargs: Any):
@@ -366,6 +679,8 @@ def http_client(timeout: float, **kwargs: Any):
     except ImportError as exc:  # pragma: no cover - a base dependency
         raise NetworkUnavailable("httpx is required") from exc
 
+    if "proxy" in kwargs:
+        raise TypeError("http_client() requires a vetted proxy_route, not a raw proxy")
     reserved = kwargs.keys() & {"transport", "http2"}
     if reserved:
         raise TypeError(
@@ -374,13 +689,33 @@ def http_client(timeout: float, **kwargs: Any):
             "overridable by callers"
         )
 
+    policy = _remote_policy()
+    if policy is not None:
+        if kwargs.get("proxy") is not None or kwargs.get("proxy_route") is not None:
+            raise RemoteTargetError("unsupported_proxy", "remote proxy routing is unsupported")
+        # Ambient proxy variables are not a service tenant's authorization.
+        kwargs["trust_env"] = False
+    proxy_route = kwargs.pop("proxy_route", None)
+    if proxy_route is not None:
+        if not isinstance(proxy_route, ProxyRoute):
+            raise TypeError("proxy_route must be a vetted ProxyRoute")
+        kwargs["proxy"] = proxy_route.proxy
+        kwargs["trust_env"] = False
+        # Pooling by the rewritten IP could reuse one TLS tunnel for a different
+        # hostname on the same address. Force a fresh verified tunnel per request.
+        prior_limits = kwargs.get("limits")
+        kwargs["limits"] = httpx.Limits(
+            max_connections=prior_limits.max_connections if prior_limits else 100,
+            max_keepalive_connections=0,
+        )
+
     supplied_hooks = kwargs.pop("event_hooks", None) or {}
-    hooks = network_event_hooks()
+    hooks = network_event_hooks(policy)
     for phase, values in supplied_hooks.items():
         hooks.setdefault(phase, []).extend(values)
 
     transport_kwargs = {k: kwargs[k] for k in _TRANSPORT_KWARGS if k in kwargs}
-    client_kwargs = {k: v for k, v in kwargs.items() if k not in _TRANSPORT_ONLY_KWARGS}
+    client_kwargs = {k: v for k, v in kwargs.items() if k not in (*_TRANSPORT_ONLY_KWARGS, "proxy")}
     PinningTransport = _get_pinning_transport_cls()
 
     options = {
@@ -390,11 +725,20 @@ def http_client(timeout: float, **kwargs: Any):
         "event_hooks": hooks,
         **client_kwargs,
     }
+    if proxy_route is not None:
+        transport = PinningTransport(http2=False, **transport_kwargs)
+        transport._seohead_proxy_route = proxy_route
+        _install_proxy_tls_backend(transport)
+        return httpx.Client(transport=transport, **options), False
     try:
         transport = PinningTransport(http2=True, **transport_kwargs)
+        transport._seohead_remote_policy = policy
+        transport._seohead_proxy_route = proxy_route
         return httpx.Client(http2=True, transport=transport, **options), True
     except ImportError:
         transport = PinningTransport(http2=False, **transport_kwargs)
+        transport._seohead_remote_policy = policy
+        transport._seohead_proxy_route = proxy_route
         return httpx.Client(transport=transport, **options), False
 
 

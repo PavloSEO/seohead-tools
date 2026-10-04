@@ -172,6 +172,12 @@ def _row(
         # column, so both placement checks skip there by name. None means link
         # parsing never ran, which the checks read as unmeasured.
         "Link Placement": record.link_placement,
+        # Native-crawl only (#823): the page's authorship/date/article-scope
+        # markup signals, carried as the parsed object for the same reason the
+        # placement above is -- an export has no such column, so the eeat.py
+        # checks skip there by name. None means the body was never parsed,
+        # which the checks read as unmeasured, not as "no signals".
+        "Trust Signals": record.trust_signals,
         "Canonical Link Element 1": record.canonical,
         "Meta Robots 1": record.meta_robots,
         "X-Robots-Tag 1": record.x_robots,

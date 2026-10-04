@@ -16,6 +16,16 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+The current registry has 115 commands and 120 callable tools,
+with 176 audit checks. These are inventories, not coverage on every input.
+
+## Offline BI projection
+
+`bi-export` writes typed, bounded CSV partitions and a provenance/coverage manifest
+from saved local scan/audit and supplied provider evidence. See [BI.md](BI.md) for
+source/output limits, null states and the explicit audit.v2 compatibility bound.
+It makes no provider requests or remote writes.
+
 ## Topvisor
 
 `topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
@@ -53,10 +63,14 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-new` | Create a portable local project with site facts and custom template/profile references; does not execute a checklist | no |
 | `project-open` | Validate and open a saved project without rewriting it | no |
 | `project-status` | Show scan history and explicit pending checklist/preparation states | no |
+| `project-progress` | Show a compact, bounded page of checklist states and next actions; any percentage is explicitly labelled audit-task completion and requires an agreed scope | no |
 | `project-facts` | Preview or record the project's stack facts; `--detect` fetches the target once after robots.txt, and an unavailable or ambiguous detection leaves the fact absent with its reason | only with `--detect` |
-| `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue and an optional data-only template; does not execute items | no |
+| `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue, an optional data-only template, and an optional agreed scope `plan` that fixes the URL-population and task denominators; does not execute items | no |
 | `project-checklist-update` | Add or edit one checklist definition with an expected revision; does not execute it | no |
 | `project-checklist-record` | Validate and record supplied evidence for one item with an expected revision; does not execute it | no |
+| `project-view-list` / `project-view-show` | List saved finding views or retrieve one with stable identity and schema/config revisions | no |
+| `project-view-save` | Create or revise a closed declarative finding view using an expected config revision | writes project view configuration |
+| `findings-view` | Apply a saved view to audit JSON or a validated scan.v1 artifact; return a bounded stable page with explicit counts | no |
 | `project-priorities` | Preview saved-fact work order; an explicit expected-revision apply preserves operator decisions and never changes technical severity | no |
 | `project-policy` | Preview or explicitly save the bounded crawl/admission policy; applying it requires the current policy revision | no |
 | `project-prepare` | Runs the declared bounded preparation path: checklist initialization, a policy-bounded crawl, supplied competitor workspace setup, and an inspectable initial plan | yes |
@@ -65,6 +79,7 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 The nested aliases are `seohead project new`, `seohead project open`,
 `seohead project status`, `seohead project facts`, `seohead project checklist-init`,
 `seohead project checklist-update`, `seohead project checklist-record`,
+`seohead project view-list`, `seohead project view-show`, `seohead project view-save`,
 `seohead project priorities`, `seohead project policy`, `seohead project prepare`,
 and `seohead project start`.
 See [PROJECTS.md](PROJECTS.md) for the format, custom references and shared
@@ -75,6 +90,15 @@ its own. Competitors must be supplied and the preparation state keeps every
 not-run or partial step. Use `project-policy` first when its default 50-page,
 150-request, 60-second preparation crawl is not the intended scope; a larger
 requested budget needs `approve_large_crawl=true`.
+
+Saved finding views use closed severity/check/URL/segment filters, registered sort fields,
+selected columns and a bounded page size. The same read-only view is available through
+`findings-view`, `seo_findings_view`, and `report-build --project DIR --view NAME [--offset N]`.
+Results expose source identity, view/config revisions, source/matched/returned counts,
+missing-field counts, and `has_more`/`next_offset`. Missing filter fields stay unmatched and are
+counted; missing projected values remain `null`. These views do not suppress findings, modify
+evidence, or alter scoring, tasks or coverage. Segment selections reuse declarations in the audit;
+missing definitions are explicitly unavailable. The view schema itself does not accept regexes.
 
 ## Guided workflow and catalogue tools
 
@@ -153,6 +177,7 @@ because the rules could not be read, so the command never claims crawling is all
 | `duplicate-check` | Near-duplicates via simhash + LSH: finds almost-identical texts in a large set without comparing all pairs; exact duplicates (by content hash) are reported separately and excluded from near-duplicate clusters. `--all-pages` also compares non-indexable items (default: indexable only). `--scan` streams retained page bodies offline with explicit coverage: the corpus is capped at 10,000 analyzed documents and 16 MiB of retained input (extracted Markdown, not raw HTML), the analysis at 1,000,000 shingles and 250,000 candidate comparisons; reaching a corpus bound reports the exact partial coverage, an exhausted analysis budget is unavailable — never a clean result. |
 | `markdown-extract` | Renders a page as Markdown in two scopes: `content_markdown` (boilerplate stripped, structure kept — worth diffing, scoring, or feeding to a model) and `full_markdown` (header/footer included, for reading — Markdown has already lost the tag structure `boilerplate-report` hashes, so it is not a valid input there) |
 | `boilerplate-report` | Hashes header/nav/footer *markup* per page across a crawled corpus and reports minority template groups (fraction + sample URL), answering whether boilerplate is actually the same everywhere; each page needs the original `html` or a precomputed `hash`, never Markdown. `--scan` streams retained page HTML offline and keeps only each page's digest, so coverage does not depend on total HTML size; reaching the 10,000-document or 16 MiB retained-input bound reports the exact partial coverage — never a clean result. |
+| `semantic-inputs` | Builds the reproducible normalized-input manifest semantic analysis consumes: per document the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy, and language evidence (`<html lang>` plus letter-script shares over the normalized text) — the normalized text itself is never returned. `--scan` streams retained complete bodies offline under the crawl's recorded content-area config with no refetch; a missing or partial body stays an explicit omission, never a clean empty result. `--input '{"items":[{"url":...,"html":...}]}'` normalizes supplied markup under an optional `content_area`. Corpus bounds are the shared 10,000-document and 16 MiB retained-input caps. |
 | `keywords-cluster` | Keyword clustering; the algorithm and parameters come via `--input` |
 | `render-check` | Raw HTML vs the rendered DOM + lab metrics. See the [js-render-check](../.claude/skills/js-render-check/SKILL.md) skill |
 
@@ -172,7 +197,7 @@ because the rules could not be read, so the command never claims crawling is all
 | Command | What it does |
 |---|---|
 | `site-audit` | Runs a bounded live pass: 10 site-level tools once and 3 page-level tools per selected URL (from the sitemap by default; 25 pages by default). Returns one `seohead.site-audit/1` document. It is not a full crawl or an exhaustive run of the catalog; site-level failures remain in `summary.tools_failed`, while page-level failures remain in that page's issues |
-| `report-build` | Document -> file: `xlsx`, `docx`, `csv`, `md`, `json`; optional `--project` includes validated checklist coverage in human reports while preserving the original JSON audit |
+| `report-build` | Document -> file: `xlsx`, `docx`, `csv`, `md`, `json`; optional `--project --view` applies a saved finding view to a bounded report page while preserving source-wide totals |
 | `scan-reanalyze` | Reparse retained HTML/DOM and run existing checks offline into a new SQLite artifact, preserving source evidence and provenance |
 | `facts-export` | Zero-network comparison: reads crawl/site audits you already produced for several domains and returns one `facts.v1` document — measured/absent/partial/unavailable/not_requested facts per site, never a score, rank, or ratio |
 
@@ -180,10 +205,13 @@ because the rules could not be read, so the command never claims crawling is all
 seohead site-audit --url https://example.com --limit 50 --report xlsx --out audit.xlsx
 seohead report-build --audit audit.json --format docx --out client.docx
 seohead report-build --audit audit.json --format docx --out client.docx --project ./example-project
+seohead report-build --audit audit.json --format pdf --lang ru --out client.pdf
 seohead facts-export --input '{"sites": [{"label": "site-a.test", "crawl_audit": {"schema_version": "2.0", "run": {"source": "https://site-a.test/"}, "summary": {"totals": {"urls_crawled": 10}}, "issues": [], "pages": [], "groups": []}}]}'
 ```
 
 The document contract and skeletons to fill in — [`examples/reports/`](../examples/reports/README.md).
+PDF output uses the self-contained bilingual layout and local Chromium renderer; install
+`seohead-seotools[pdf]` and Chrome, Edge, or Chromium. Rendering makes no network requests.
 
 The finding level (`critical`/`warning`/`notice`) is assigned by **aggregator
 rules**, not measured by a tool; the document says so itself in
@@ -202,12 +230,21 @@ details (adaptive back-off, which checks come back `skipped` and why) and
 
 | Command | What it does | Side effects |
 |---|---|---|
-| `crawl-site` | Follows links from a start URL on the same host, respects `robots.txt`, and audits the result. A URL crawl writes one collision-safe native SQLite artifact under `./scans/` by default; `--out-dir` is the explicit legacy directory route. Not full Screaming Frog parity — checks needing evidence a native crawl cannot produce (redirect chains, near-duplicates, readability, ...) come back `skipped`, never a false clean | writes a native scan, or legacy files under explicit `--out-dir` |
+| `crawl-site` | Follows links from a start URL on the same host, respects `robots.txt`, and audits the result. `scope.include_extensions` / `scope.exclude_extensions` filter discovered URL-path suffixes before requests; `scope.include_media_types` / `scope.exclude_media_types` filter response bodies after `Content-Type` arrives while retaining response and link evidence. A URL crawl writes one collision-safe native SQLite artifact under `./scans/` by default; `--out-dir` is the explicit legacy directory route. Not full Screaming Frog parity — checks needing evidence a native crawl cannot produce (redirect chains, near-duplicates, readability, ...) come back `skipped`, never a false clean | writes a native scan, or legacy files under explicit `--out-dir` |
+| `crawl-diagnose` | Explains low progress from a retained native SQLite scan (`--scan`) or legacy run (`--run`): frontier, decisions, robots/scope/depth/budgets, content types, rendering eligibility and recorded failures. Shows exact bounded decision samples and explicit next steps; the total number of site URLs stays unknown. No crawl or network request. | reads files |
+| `crawl-diagnose-export` | Explicitly writes a redacted JSON copy of the same offline diagnosis with `--export PATH`; unknown freeform labels and scan identity are removed, and existing files are never overwritten. | creates one file |
 | `compare-crawls` | Diffs two audit documents into `entered` / `left` / `appeared` / `disappeared` findings, so a fix is distinguished from a page that simply dropped out of the crawl. Refuses known-different effective crawl settings unless the operator explicitly passes `--force`. | — |
+| `verify-fixes` | Rechecks selected baseline finding IDs, URLs, or a saved `verification_view.v1` selection. Reuses recorded HTTP/robots/render policy and classifies resolved, persisting, changed, and not-verifiable findings from the affected pages only; whole-site and unmeasured checks cannot become fixed. `--after` uses an existing audit offline. | fetches selected URLs unless `--after` is given; creates a new immutable JSON/Markdown verification under `--out-dir` |
 | `crawl-enrich` | Joins an existing audit or scan to a local URL-keyed traffic/search CSV. It keeps matched, crawl-only, external-only, and unkeyable rows distinct; a completed crawl can export reliable same-origin external-only URLs for list mode. | optionally writes a URL-list file under `--out-urls` |
 | `crawl-import` | Reads a local manifest-mapped CSV crawl bundle and returns `third_party_crawl.v1` with foreign source identity, pages/links/statuses/redirects, exact field coverage, duplicate counts and input hashes. This is not a native scan or SF audit. | reads the manifest and listed CSV files |
 | `segment-diff` | Answers "which pages exist in one segment and not in another" from one crawl, using the site's own hreflang declarations as the authority. Mirrored paths are a fallback only where the site's declared pairs prove it mirrors them; a partially crawled target segment yields no absences at all, because a page nobody fetched is not a page that is missing. Reads a native crawl whose config declared `scope.segments`, not an SF export | — |
 | `crawl-describe-settings` | Lists every `crawl-site` config setting — dotted path, type, default, description, and whether it is results-affecting — generated from `seohead/crawl/settings.py`. Same source as `crawl-site --config-help`, reachable over MCP for an agent with no filesystem access | — |
+
+Native `crawl-site` can use an explicit `http.proxy` policy from JSON config, CLI `--set`, or
+MCP overrides. It supports one HTTP forward proxy for HTTP and HTTPS CONNECT, with credentials
+only through an `env:VARIABLE` URL reference. Proxy and target addresses are separately vetted;
+ambient proxy variables are ignored. Proxied runs require cache off and a fresh output artifact.
+See [SETUP.md](SETUP.md#crawler-configuration) for the supported transport and limits.
 
 `rendering.mode=raw` remains static-only. When a fuller representation is
 enabled, `rendering.escalation.policy=sampled` is the default: it uses the
@@ -251,7 +288,10 @@ claiming the original time bound still applies.
 
 ```bash
 seohead crawl-site --url https://example.com/ --max-urls 200
+seohead crawl-diagnose --scan ./scans/audit.sqlite
+seohead crawl-diagnose-export --run ./run --max-decisions 10 --export ./diagnostic-redacted.json
 seohead compare-crawls --before old-audit.json --after new-audit.json
+seohead verify-fixes --baseline old-audit.json --finding-ids ISSUE-000001 --out-dir ./verification-1
 seohead crawl-import --manifest third_party_crawl/full/manifest.json
 seohead segment-diff --audit ./multilingual/audit.json --source en --target pl
 seohead crawl-describe-settings
@@ -273,16 +313,27 @@ without deleting its scan. The exact arguments and defaults are in the generated
 |---|---|---|
 | `scan-list` | Validates and lists metadata for `*.sqlite` files in one existing directory without reading retained body BLOBs. It stops at 10,000 files and 64 MiB of metadata, and reports unreadable candidates under `errors` rather than treating them as scans. | — |
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
+| `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, or one retained document's per-link placement/heading context. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
 | `scan-snapshot` | Makes a validated, portable single-file SQLite copy. `--out` may name a new file or an existing directory; a directory receives a UTC timestamp, host, and short scan UUID filename. Existing destinations are never overwritten. | writes a new file |
+| `scan-export` | Exports retained scan data under the versioned `scan_export.v1` contract as CSV, XLSX, JSON, or XML. Accepts a `scan.v1` artifact or an SF Analyzer `audit.json`; validates `--records`/`--fields` before writing; XML uses the documented `scan-export` root element and namespace. | writes new files |
 | `scan-pin` | Explicitly pins a scan, or unpins it with `--unpin`, so retention will not select it. | changes scan metadata |
 | `scan-prune` | Produces a retention plan by default. Deletion needs `--apply` and the exact reviewed plan. | deletes only with `--apply` |
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
 | `scan-evidence` | Reads one bounded saved-evidence section: capabilities, corpus, structured data, rendered routes, resources, or timeline. It never fetches or replays a scan. | — |
 | `scan-extract` | Applies closed declarative extraction rules to retained complete bodies only. It is offline, body-retention limited, and does not persist the ad-hoc result. | — |
+| `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
 | `scan-requeue` | Requeues a restricted saved URL/page selection only after creating a mandatory verified backup. | writes artifact and backup |
 | `scan-import-urls` | Imports an explicit local URL list into a saved scan only after creating a mandatory verified backup. | writes artifact and backup |
+
+For a saved route, use `scan-link-inspect --scan FILE --view path --seed URL --target URL`.
+For reverse links use `--view inlinks --target URL`, then pass `next_cursor`
+back as `--cursor`; the cursor is tied to the scan revision, target and
+representation. For a particular occurrence use `--view context --link-id ID`,
+or paginate one source document with `--document-id ID --offset N --limit N`.
+Missing body/DOM context and incomplete graph coverage remain explicit in the
+JSON result.
 
 ```bash
 # metadata-only directory view; no retained body BLOBs are read
@@ -297,6 +348,11 @@ seohead scan-status --scan native.sqlite
 # no-clobber snapshot: either a new filename or an existing directory
 seohead scan-snapshot --scan native.sqlite --out snapshot.sqlite
 seohead scan-snapshot --scan native.sqlite --out .
+
+# versioned scan_export.v1 data export; field selection is validated upfront
+seohead scan-export --scan native.sqlite --out export.json --format json
+seohead scan-export --scan native.sqlite --out export.xml --format xml
+seohead scan-export --scan audit.json --out export.csv --format csv --records pages,findings --fields pages=url,status_code
 
 # pin before retaining a comparison baseline; use --unpin to reverse only the pin
 seohead scan-pin --scan native.sqlite
@@ -323,7 +379,7 @@ accepted `--plan` JSON file; a changed directory, identity, metadata, or rank
 invalidates it. After reviewing `plan.json`, run `seohead scan-prune --directory .
 --plan plan.json --apply` to perform that exact deletion plan. The flat commands
 also have the nested `scan list`, `scan inspect`, `scan status`, `scan snapshot`,
-`scan pin`, `scan prune`, and `scan body-diff` forms.
+`scan pin`, `scan prune`, `scan body-diff`, and `scan link-inspect` forms.
 
 Pinning acquires the writer lock and writes the artifact in SQLite DELETE journal
 mode. It changes only the `pinned` field, so the SQLite container hash changes,
@@ -342,11 +398,25 @@ and spend-journal rules.
 | Command | What it does | Network / writes |
 |---|---|---|
 | `provider-registry` | Lists declared providers and their bounded operations; it does not verify credentials | no |
+| `provider-readiness` | Reports redacted credential-source states, supported operation routes and their shared JSON call-envelope schema, quota/privacy, and whether verification remains necessary. It makes no provider requests | no |
 | `provider-auth` | Manages a private GSC read-only OAuth grant: status, connect from a private grant file, explicit refresh, confirmed local disconnect, or confirmed remote revoke. It never returns OAuth material. | refresh/revoke only when requested |
 | `provider-verify` | Performs one explicit read-only credential and optional target-access check. An authenticated account does not by itself prove access to a requested target. | provider read |
 | `provider-collect` | Performs one declared read-only operation and returns a versioned evidence envelope with complete, partial, failed, or skipped state. An optional restricted artifact directory keeps raw rows locally. | provider read; optional local artifact |
 | `provider-join` | Joins supplied crawl pages and collected evidence rows without changing a frontier. It preserves matched, crawl-only, external-only, and unkeyable populations. | no |
 | `provider-replay` | Replays a private saved provider collection against a saved scan offline, writes a restricted joined artifact, and keeps the crawl frontier unchanged. | local artifact write |
+| `evidence-normalize` | Normalizes a supplied CSV/XLSX/JSON or a saved provider envelope into `seohead.normalized-evidence.v1` against an optional `seohead.evidence-mapping.v1` manifest, offline. Every row keeps its grain, provenance and availability state: a measured `0` stays zero while missing, null, blank, suppressed, uncollected and failed inputs stay unavailable. Restricted sources return counts and redacted provenance. | optional restricted artifact under `--out-dir` |
+| `evidence-join` | Joins normalized evidence to `--pages`, `--scan`, or `--audit` under the strict URL policy (explicit `--ignore-query`/`--ignore-scheme`/`--casefold-path` relaxations), preserving matched, crawl-only, external-only and unkeyable populations plus collision counts. `--compare` with a declared `--policy` yields a pure compatible/incompatible/unknown decision across period, timezone, identity, attribution, engine and grain; source metrics such as GSC clicks and GA4 sessions stay distinct and are never summed. | optional private artifact under `--out-dir` |
+
+`sources-doctor` and `provider-readiness` are local setup checks. They distinguish
+missing, invalid and configured-but-unverified credential sources; references use
+`env:VARIABLE`, `config:relative/path`, or a named local grant, never the value or
+an absolute path. Operation discovery labels a route as `provider-collect`, a
+dedicated command, a separate write, or unsupported. Supported operations expose
+the shared `provider`/`operation`/`request` JSON envelope; provider-specific request
+fields remain validated by that operation adapter. Readiness always reports target
+access as unverified; `provider-verify` is the separate, explicit read that can
+return `verified`, `not_granted`, `insufficient_scope`, or `unsupported`. Supplying
+credentials alone never proves access to a property or site.
 
 Provider evidence can change work order only when its coverage is usable; sampled,
 truncated, unmatched, or privacy-thresholded values remain unavailable for a
@@ -360,22 +430,45 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `keywords-exact` | Exact `!W` frequency (Arsenkin's `overal`/`!WS` selector) — what the Wordstat API, base-only, will not give you | Arsenkin account limits; the charge and `task_id` are journaled at task creation |
 | `serp-fetch` | Yandex SERP for a query or a batch. Async only | metered; synchronous search is intentionally absent; verify current tariff |
 | `spend-report` | What was actually charged: by source, operation and day, from the local journal | free |
-| `sources-doctor` | Which sources have their secret and where it lives | free |
+| `sources-doctor` | Which sources have usable credentials, with redacted source references; configured credentials are not verified access | free |
+| `sources-sync` | Fetch bounded missing or explicitly forced provider days into a local versioned SQLite history. Records complete, empty, partial, failed, and lagged days without storing tokens | Provider read subject to GSC, GA4, Metrika, or Webmaster quotas; writes local SQLite |
+| `sources-status` | Read requested-day coverage, resource identity, lag policy, and non-additive metric metadata from local history | Offline read only |
+| `sources-export` | Read ordered provider rows as bounded JSON or a new private CSV; does not recompute totals across grains | Offline; optional local CSV write |
 | `regions-tree` | The authoritative Yandex region tree via `getRegionsTree` | **free** — the only free Wordstat method |
 | `metrika-counters` | Metrika counters visible to the token — this is where `counter_id` comes from | free |
 | `metrika-setup` | How a counter is configured: goals, filters, data operations | free |
-| `metrika-report` | What visitors actually did: any metrics and dimensions, auto-pagination | free |
+| `metrika-report` | What visitors actually did: any metrics and dimensions, auto-pagination; a `Query is too complicated` refusal is retried in month slices and, if needed, at sampled accuracy — the answer states what was used. Only additive count metrics (`ym:s:visits`, `ym:s:pageviews`) merge; unique-visitor, ratio, or average metrics fail rather than sum wrong | free |
 | `metrika-traffic-pdf` | Static A4 traffic report (HTML + PDF) in a dashboard layout: KPI cards with % change, daily dynamics, 3/6/12-month windows, engines, cities, countries, devices, age, gender, landing pages, phrases, channels, optional Search Console queries. Collection and rendering run separately | free; about 40 read-only Metrika requests; writes only `out_dir`; PDF needs a local Chrome/Edge/Chromium |
 | `google-keywords` | Google: search volume for a keyword list, semantic expansion from a seed phrase, keyword difficulty | DataForSEO price list; RUB 0 in the sandbox |
 | `google-serp` | Google organic results for a query | same |
 | `wayback-history` | Every Internet Archive snapshot of a URL: when it changed, what status it returned, what MIME type it was | free, no key |
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
-| `crux-report` | Core Web Vitals as real Chrome users measured them, at origin or URL level | free; needs a Google Cloud API key |
+| `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
 | `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
+
+Provider history uses one `sources.sqlite` per project (`--project`) or an explicit `--db`.
+`sources-sync` is an explicit provider request. It fetches missing days, records every requested
+day, and replaces each successfully fetched day in one SQLite transaction. Complete zero-row
+days differ from sampled, thresholded, truncated or capped partial results, failures and days
+held back by provider lag. A failed or partial
+forced retry never erases a previously complete day. GSC history here is the bounded web
+date/query/page grain; the separate #718 archive's additional datasets and resumable quota
+checkpoints are not part of this command. No independent GSC archive is created by these tools.
+
+`sources-status` reads the local file without provider calls or schema writes. `sources-export`
+orders by resource, date and dimensions and limits both JSON and CSV to at most 100,000 rows.
+Exports retain nulls for absent metrics and identify non-additive measures such as users, rates,
+CTR and average position. They do not calculate totals or blend incompatible grains. GSC dates
+use Pacific time; other property/counter timezones are not known locally, so their lag cutoff
+conservatively holds back an extra UTC day. SQLite files and CSV exports are created with private
+owner-only permissions. These rows can contain search queries and URLs; keep them out of public
+reports and Git.
 
 ```bash
 seohead sources-doctor                                     # what is ready to run
+seohead provider-readiness --input '{"provider":"gsc","operation":"search_analytics"}'
+seohead provider-verify --input '{"provider":"gsc","request":{"site_url":"sc-domain:example.com"}}'
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -486,7 +579,7 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
-**162 checks**: 12 critical, 75 warnings, 75 notices. Sources: SF exports,
+**176 checks**: 12 critical, 81 warnings, 83 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -520,7 +613,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(95 + 5):
+(115 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -528,7 +621,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 162 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 176 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another

@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from seohead import __version__
@@ -151,6 +152,29 @@ def _rebuild_page_result(scan) -> Any:
     return result
 
 
+class _StoredPages:
+    """Re-iterable page view for rendering without a full PageRecord list."""
+
+    def __init__(self, con):
+        self.con = con
+
+    def __len__(self):
+        return self.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+
+    def __iter__(self):
+        from seohead.crawl.collect import PageRecord
+        from seohead.storage.exports import _page_rows
+
+        return (PageRecord(**row) for row in _page_rows(self.con))
+
+    def get(self, url: str):
+        from seohead.crawl.collect import PageRecord
+        from seohead.storage.exports import _page_rows
+
+        row = next(iter(_page_rows(self.con, url=url)), None)
+        return PageRecord(**row) if row is not None else None
+
+
 def _response(run, *, audit_available: bool, audit_reason: str, finalized: bool) -> dict[str, Any]:
     response = {
         "scan": run.path,
@@ -254,6 +278,11 @@ def resume_inputs(scan_path: str) -> dict[str, Any]:
             f"(finish reason: {header['finish_reason']}); there is nothing left to resume"
         )
     settings = json.loads(header["config_json"])
+    if settings.get("http", {}).get("proxy"):
+        raise ValueError(
+            "proxied scans cannot be resumed from redacted route settings; start a new scan "
+            "with the original proxy configuration"
+        )
     if "max_requests" not in settings.get("limits", {}):
         # Pre-budget artifacts made no total-attempt promise. Keep that recorded
         # semantics on resume instead of silently applying a later default.
@@ -333,6 +362,7 @@ def crawl_site_scan(
     sitemap: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Collect a native scan, then audit its SQL graph with finite page/output bounds.
 
@@ -345,6 +375,17 @@ def crawl_site_scan(
         raise ValueError("url is required for a SQLite scan crawl")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
+    if settings.get("discovery", {}).get("external", {}).get("crawl"):
+        # External-destination checking is wired into the legacy directory
+        # route first (#746); the native scan collector has no external
+        # subsystem yet, so an artifact cannot honour the option. Refusing
+        # here too covers callers that bypass handlers.crawl_site's own
+        # guard — an artifact written under a silently-dropped option would
+        # claim coverage it never produced.
+        raise ValueError(
+            "discovery.external.crawl is unavailable for native SQLite capture; "
+            "pass --out-dir for the legacy directory route"
+        )
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
     sitemap_seed = {
         "sitemap_url": sitemap,
@@ -361,6 +402,7 @@ def crawl_site_scan(
             settings=settings,
             result=sitemap_seed,
             request_gate=request_gate,
+            proxy_route=proxy_route,
         )
 
     from seohead.crawl.sqlite_adapter import crawl_to_scan
@@ -376,6 +418,7 @@ def crawl_site_scan(
         initial_sitemaps=initial_sitemaps(sitemap),
         seed_loader=seed_loader,
         progress=progress,
+        proxy_route=proxy_route,
     )
     if (
         settings.get("rendering", {}).get("rendered_links", {}).get("crawl", False)
@@ -389,7 +432,7 @@ def crawl_site_scan(
         render_cycles = 0
         while True:
             with NativeScan.open(run.path) as rendered_scan:
-                rendered_result = _rebuild_page_result(rendered_scan)
+                rendered_result = SimpleNamespace(pages=_StoredPages(rendered_scan.con), links=[])
                 run_render_escalation(
                     rendered_scan,
                     rendered_result,
@@ -397,6 +440,7 @@ def crawl_site_scan(
                     request_gate=run.dispatch_gate.wait_turn
                     if run.dispatch_gate is not None
                     else None,
+                    proxy_route=proxy_route,
                 )
                 queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
             if not queued_before or run.partial:
@@ -410,6 +454,7 @@ def crawl_site_scan(
                 producer_revision=producer_revision,
                 runtime_versions=runtime_versions,
                 progress=progress,
+                proxy_route=proxy_route,
             )
             render_cycles += 1
             run = replace(run, start_page_gate=initial_start_page_gate)
@@ -484,6 +529,7 @@ def crawl_site_scan(
                     stored_scan=scan,
                     stored_sitemap=reconciliation,
                     dispatch_gate=run.dispatch_gate,
+                    proxy_route=proxy_route,
                 )
 
             if settings.get("rendering", {}).get("mode", "raw") != "raw":

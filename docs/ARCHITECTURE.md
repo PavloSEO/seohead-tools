@@ -3,6 +3,12 @@
 One package `seohead/`, two faces (CLI and MCP), three core layers plus two
 service layers. Everything else follows from that.
 
+The optional remote service in epic #754 is a separate delivery adapter.
+`recon/remote_policy.py` supplies its project-bound target and egress guard;
+`remote_api/backend.py` supplies its durable queue and worker. Neither starts
+a listener or alters local CLI/MCP defaults. See [remote target safety](REMOTE_TARGET_SAFETY.md)
+and [durable jobs](REMOTE_JOBS.md) for their binding contracts.
+
 ## Package layout
 
 ```
@@ -12,7 +18,7 @@ seohead/
   sf/                 CRAWL AUDIT (Screaming Frog)
     cli.py            own argument parser: run | tasks | doctor
     config.py         config.json loading (thresholds, severity overrides)
-    core/             loader -> context -> rules (registry, 162 checks)
+    core/             loader -> context -> rules (registry, 176 checks)
                       -> inlinks -> heuristics -> sitemap -> aggregate;
                       auth_proxy for protected staging sites,
                       runner for SF CLI mode A
@@ -42,6 +48,11 @@ seohead/
                       the audit tools onto the same MCP server
   skills/             content skills shipped as package-data
   data/               packaged JSON data (e.g. the Schema.org vocabulary)
+  bot/                the versioned guided-scan conversation contract and
+                      wizard (docs/TELEGRAM_BOT.md) — an offline core-side
+                      contract for the approved bot roadmap, not a third
+                      interface; adapters bind it and submit through the
+                      JobSubmitter protocol into the shared handlers
 ```
 
 ## The main invariant
@@ -144,8 +155,9 @@ numpy scalars and no `inf`/`NaN`.
 `sf/schema/audit.schema.json` and the test
 `test_reporters.py::test_json_validates_against_schema`.
 
-**Exactly two interfaces: CLI and MCP.** A GUI, desktop app, or hosted HTTP service is outside the
-project boundary.
+**CLI and local MCP stay independent of the optional remote contract.** The authenticated HTTP
+adapter needs an injected durable backend and egress policy; it starts no service by itself. A
+GUI, desktop app, hosted account, and public MCP endpoint are outside the current boundary.
 Report files (xlsx/docx) are output, not an interface.
 
 **MIT project code with compatible dependencies.** Prefer permissive dependencies and review any

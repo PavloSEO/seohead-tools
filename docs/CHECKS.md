@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**162 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**176 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -75,6 +75,8 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `CANONICAL_MISSING` | warning | SF-derived | Indexable page has no canonical URL | Add a valid <link rel="canonical"> element. |
 | `CANONICALISED` | notice | SF-derived | Canonical points to a different URL | Confirm that cross-canonicalization is intentional and that the target is the preferred version. |
+| `PAGINATION_CANONICAL_POLICY` | warning | SF-derived | Paginated URL canonical does not match the configured project policy | Review the canonical against the configured pagination policy; the expected target is included in the evidence. |
+| `FILTER_CANONICAL_POLICY` | warning | SF-derived | Filtered URL canonical does not match the configured project policy | Review the canonical against the configured filter policy; the expected target is included in the evidence. |
 | `CANONICAL_NON_INDEXABLE` | warning | SF-derived | Canonical points to a non-indexable URL | Point the canonical to an indexable preferred version. |
 | `NOINDEX` | notice | SF:Directives:Noindex | Page contains a noindex directive | Confirm that exclusion from indexing is intentional. |
 | `NOFOLLOW_PAGE` | notice | SF:Directives:Nofollow | Page-level nofollow directive is present | Confirm the directive is intentional and review its effect on crawling and internal link equity. |
@@ -197,8 +199,11 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `CANONICAL_CHAIN` | warning | SF-derived | Canonical chain: the target canonicalizes to another URL (two or more steps) | Point the canonical directly to the final canonical URL in one step and break any canonical loops. |
 | `CANONICAL_TO_REDIRECT` | warning | SF-derived | Canonical points to a redirecting URL (3xx) | Point the canonical to the final 200-status URL; otherwise search engines must resolve conflicting canonical signals. |
+| `CANONICAL_TARGET_ERROR` | warning | SF-derived | Canonical points to a URL returning 4xx or 5xx | Point the canonical to a fetched, successful URL; restore the target or redirect it to the intended canonical page. |
+| `CANONICAL_HOMEPAGE_GROUP` | warning | SF-derived | Distinct indexable pages in multiple sections canonicalize to the homepage | Review each listed page's canonical. Use a self-canonical for distinct indexable content, or configure an explicit pagination/filter policy when a landing canonical is intentional. |
 | `UNLINKED_CANONICAL` | warning | SF-derived | Canonical target has no hyperlink pointing to it anywhere in the crawl | Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional. |
 | `HREFLANG_BROKEN_TARGET` | warning | inlinks:All Hreflang | Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx) | Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling. |
+| `HREFLANG_NOINDEX_TARGET` | warning | crawl:hreflang graph / SF:All Hreflang + Internal:All | Hreflang alternate points to an observed noindex page | Use an indexable alternate URL or remove the noindex directive if that page should appear in search. |
 | `HREFLANG_INVALID_CODE` | warning | inlinks:All Hreflang | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | Use a valid language code, optionally followed by a valid region (e.g. en-GB, not en-UK). |
 | `HREFLANG_MULTIPLE_ENTRIES` | warning | inlinks:All Hreflang | The same hreflang value is declared more than once on the page | Declare each language/region combination exactly once; conflicting duplicates make the annotation ambiguous. |
 | `HREFLANG_MISSING_SELF_REFERENCE` | warning | inlinks:All Hreflang | Page declares hreflang alternates but does not reference itself | Every page in an hreflang set must include a self-referencing annotation for its own URL and language. |
@@ -303,3 +308,17 @@ python scripts/generate_checks_reference.py
 | `FOLLOW_AND_NOFOLLOW_INLINKS` | notice | crawl:link_findings | The page receives both a followed and a nofollow internal link | Decide deliberately whether the page should be crawl-priority or not, and make every internal link to it agree. |
 | `FORM_URL_INSECURE` | critical | crawl:link_findings | A form submits to an http:// action, so its data leaves the browser unencrypted regardless of the page's own scheme | Point the form's action at an https:// URL. |
 | `FORM_ON_HTTP_URL` | critical | crawl:link_findings | A form with a password field is served from a plain-HTTP page, so the credentials themselves travel unencrypted before the action URL is even reached | Serve the page itself over HTTPS; an HTTPS form action does not protect input typed on an HTTP page. |
+| `BROKEN_BOOKMARK` | warning | crawl:fragment_links | Link fragment identifies no element on the destination page | Point the href at an element id or <a name> that exists in the destination document, or add the missing target; a different query string is a different document. |
+
+## 9.C — objective trust & attribution evidence (issue #823)
+
+| Check id | Severity | Evidence | Fires on | Fix |
+|---|---|---|---|---|
+| `NO_AUTHOR_BYLINE` | notice | crawl:trust_signals | Content-shaped page declares no author or byline markup | If the page's authorship should be attributable, declare it with a machine-readable carrier: meta author, rel=author, itemprop=author, or a JSON-LD author property. |
+| `NO_CONTENT_DATES` | notice | crawl:trust_signals | Content-shaped page declares no publication or update date | If the page should be dated, declare it machine-readably: article:published_time or datePublished markup, a <time datetime> element, or a Last-Modified response header. |
+| `MISSING_ABOUT_PAGE` | notice | SF-derived | No indexable About page was found in the crawl's scope | If an About page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all. |
+| `MISSING_CONTACT_PAGE` | notice | SF-derived | No indexable Contact page was found in the crawl's scope | If a Contact page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all. |
+| `MISSING_PRIVACY_POLICY` | notice | SF-derived | No indexable privacy policy page was found in the crawl's scope | If a privacy policy exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all. |
+| `MISSING_TERMS_PAGE` | notice | SF-derived | No indexable terms-of-use page was found in the crawl's scope | If a terms page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all. |
+| `FEW_CITATIONS` | notice | SF-derived | Content-shaped page has no observable outbound reference in its body content | Review whether the page should cite its sources. An outbound link inside the body copy is the only carrier a crawl can observe as a citation; the finding never asserts that any link is authoritative. |
+| `YMYL_REVIEW_CANDIDATE` | notice | SF-derived | URL path or title matches a YMYL-adjacent keyword — a review candidate only, not a classification | Have a specialist confirm whether the page genuinely covers Your-Money-Your-Life topics; if it does, the attribution and trust-page evidence above deserves a closer look. |
