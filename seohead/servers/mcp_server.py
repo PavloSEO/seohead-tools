@@ -1499,6 +1499,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
         return _checked(result)
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_observe(
+        directory: str, consumer: str | None = None, scan_limit: int = 20
+    ) -> dict[str, Any]:
+        """Read the bounded project observer snapshot: tasks, methods, competitors,
+        retained scan state and the execution-log tail.  It never starts work or
+        consumes inbox entries; a consumer only receives its own unread summary.
+        """
+        return _checked(handlers.project_observe(directory, consumer, scan_limit))
+
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_inbox_submit(
         directory: str,

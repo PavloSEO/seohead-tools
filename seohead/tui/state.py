@@ -31,6 +31,8 @@ class ShellState:
     quit_requested: bool = False
     note_text: str = ""
     note_ready: bool = False
+    note_kind: str = "note"
+    watch_section: str = "overview"
     _all: list[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -105,7 +107,20 @@ class ShellState:
         if self.view == "watch":
             if key == "char:n":
                 self.note_text = ""
+                self.note_kind = "note"
                 self.view = "note"
+            elif key == "char:g":
+                self.note_text = ""
+                self.note_kind = "proposed_goal"
+                self.view = "note"
+            elif key in {"char:1", "char:2", "char:3", "char:4", "char:5"}:
+                self.watch_section = {
+                    "char:1": "overview",
+                    "char:2": "tasks",
+                    "char:3": "methods",
+                    "char:4": "scans",
+                    "char:5": "log",
+                }[key]
             elif key in ("escape", "char:q", "ctrl_c"):
                 self.quit_requested = True
             return

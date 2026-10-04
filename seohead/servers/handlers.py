@@ -4158,6 +4158,14 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return core(directory, consumer=consumer, limit=limit)
 
 
+def project_observe(
+    directory: str, consumer: str | None = None, scan_limit: int = 20
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_observe as core
+
+    return core(directory, consumer=consumer, scan_limit=scan_limit)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
@@ -4928,6 +4936,7 @@ _RAW_HANDLERS = {
     "project_inbox_acknowledge": project_inbox_acknowledge,
     "project_inbox_goal": project_inbox_goal,
     "project_inbox_unread": project_inbox_unread,
+    "project_observe": project_observe,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,

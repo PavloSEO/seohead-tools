@@ -15,6 +15,7 @@ from seohead.projects.inbox import (
     submit,
     unread_summary,
 )
+from seohead.projects.observer import observe
 from seohead.projects.workspace import create_project
 from seohead.servers.mcp_server import build_server
 
@@ -75,3 +76,28 @@ def test_mcp_progress_returns_notice_without_consuming_it(tmp_path):
         "truncated": False,
     }
     assert unread_summary(root, consumer="agent/session-a")["count"] == 1
+
+
+def test_observer_snapshot_keeps_missing_work_and_logs_visible(tmp_path):
+    root = _project(tmp_path)
+    (root / "log.md").write_text("# Project log\n\nSynthetic handoff evidence\n", encoding="utf-8")
+    submit(root, text="Review missing competitor", kind="proposed_goal")
+
+    result = observe(root, consumer="agent/session-a")
+
+    assert result["progress"]["audit_complete"] is False
+    assert result["preparation"]["state"] == "pending"
+    assert result["scans"]["total"] == 0
+    assert result["inbox_unread"]["count"] == 1
+    assert "Synthetic handoff evidence" in result["log"]["text"]
+
+
+def test_utf8_dictation_text_survives_handoff_and_restart(tmp_path):
+    root = _project(tmp_path)
+    text = "Проверь, почему сценарий и конкурент ещё не пройдены"
+    entry = submit(root, text=text, kind="proposed_goal")["entry"]
+
+    # A new reader process would reload inbox.json through this public API.
+    restored = list_entries(root, consumer="agent/next-session")["entries"]
+    assert restored[0]["id"] == entry["id"]
+    assert restored[0]["text"] == text

@@ -122,6 +122,7 @@ COMMANDS = (
     "remediation-record-verification",
     "remediation-report",
 
+    "project-observe",
     "project-inbox-submit",
     "project-inbox-list",
     "project-inbox-read",
@@ -555,6 +556,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["limit"] = args.limit
         if getattr(args, "unacknowledged_only", False):
             kw["include_acknowledged"] = False
+    elif cmd == "project-observe":
+        kw["directory"] = args.directory
+        if args.consumer is not None:
+            kw["consumer"] = args.consumer
+        if args.scan_limit is not None:
+            kw["scan_limit"] = args.scan_limit
     elif cmd in {"skill-show", "scenario-show"}:
         if getattr(args, "name", None) or getattr(args, "playbook_name", None):
             kw["name"] = getattr(args, "name", None) or args.playbook_name
@@ -1811,6 +1818,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--label", help="human project label")
     if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd == "project-observe":
+        _source_flag(sub, "--directory", help="validated local project workspace")
+        sub.add_argument("--consumer", help="stable local agent/session consumer id")
+        sub.add_argument("--scan-limit", type=int, default=20)
     if cmd.startswith("project-inbox-"):
         _source_flag(sub, "--directory", help="validated local project workspace")
     if cmd == "project-inbox-submit":
@@ -2186,6 +2197,7 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         "status",
         "progress",
+        "observe",
         "inbox-submit",
         "inbox-list",
         "inbox-read",

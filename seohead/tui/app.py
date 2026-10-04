@@ -34,7 +34,7 @@ _SUBTITLE = "interactive shell"
 _PALETTE_HINTS = "type filter · up/down move · enter open · esc clear/back · ? keys · q quit"
 _DETAIL_HINTS = "enter/esc back · ctrl-c quit"
 _HELP_HINTS = "esc back · ctrl-c quit"
-_WATCH_HINTS = "n note · r refresh · esc/q quit · refreshes every second"
+_WATCH_HINTS = "1 overview · 2 tasks · 3 methods · 4 scans · 5 log · n note · g goal · q quit"
 _NOTE_HINTS = "type dictated note · enter save · esc discard"
 
 _HELP_LINES = (
@@ -133,41 +133,77 @@ def _help_lines(palette: theme.Palette) -> list[Text]:
     return out
 
 
-def _watch_lines(project: str, palette: theme.Palette, message: str | None) -> list[Text]:
+def _watch_lines(
+    project: str, palette: theme.Palette, message: str | None, section: str
+) -> list[Text]:
     """Project evidence only: this observer does not start, cancel, or resume work."""
-    from seohead.projects.progress import project_progress
-    from seohead.projects.workspace import project_status
+    from seohead.projects.observer import observe
 
     try:
-        status = project_status(project)
-        progress = project_progress(project, limit=8)
+        snapshot = observe(project)
     except (OSError, ValueError) as exc:
         return [Text(f"project unavailable: {exc}"), Text("No action was started.")]
-    site = status["project"]["site"]
-    scans = status["scans"]
-    partial_scans = sum(
-        bool(item.get("crawl_partial") or item.get("corpus_partial")) for item in scans["items"]
-    )
+    site = snapshot["project"]["site"]
+    progress = snapshot["progress"]
+    preparation = snapshot["preparation"]
     lines = [
-        Text(f"project  {site['label'] or site['host']}", style=palette.title if palette.color else ""),
+        Text(f"{section} · {site['label'] or site['host']}", style=palette.title if palette.color else ""),
         Text(f"site     {site['target']}"),
-        Text(f"scans    {scans['total']} retained · {partial_scans} partial in this page"),
-        Text(f"checklist {progress['state']} · task completion {progress['audit_task_completion']['percent'] if progress['audit_task_completion']['percent'] is not None else 'unknown'}"),
         Text(""),
     ]
     if message:
         lines.append(Text(message, style=palette.accent if palette.color else ""))
-    lines.append(Text("remaining evidence:"))
-    for item in progress["items"]:
-        lines.append(Text(f"  [{item['state']}] {item['id']} — {item['title']}"))
-    if not progress["items"]:
-        lines.append(Text("  no initialized checklist entries"))
+    if section == "overview":
+        lines.extend(
+            (
+                Text(f"preparation  {preparation['state']} · {preparation.get('reason') or 'recorded state'}"),
+                Text(f"competitors  {len(preparation['competitors'])} configured; prepared is not analyzed"),
+                Text(f"scans        {snapshot['scans']['total']} retained"),
+                Text(f"task coverage {progress['audit_task_completion']['percent'] if progress['audit_task_completion']['percent'] is not None else 'unknown'}"),
+                Text(f"goals/notes  {snapshot['inbox']['pagination']['total']} retained prompts and handoffs"),
+                Text(""), Text("Use numbered views to inspect evidence rather than an agent claim."),
+            )
+        )
+    elif section == "tasks":
+        lines.append(Text("planned checklist and attempts:"))
+        for item in progress["items"]:
+            lines.append(Text(f"  [{item['state']}] {item['id']} — {item['title']}"))
+        if not progress["items"]:
+            lines.append(Text("  no initialized checklist entries"))
+    elif section == "methods":
+        lines.append(Text("scenarios and method skills:"))
+        for item in snapshot["methods"]:
+            lines.append(Text(f"  [{item['state']}] {item['id']} · {item['attempt_status']}"))
+        if not snapshot["methods"]:
+            lines.append(Text("  none planned; this is not completion"))
+        lines.append(Text("competitor coverage:"))
+        for item in preparation["competitors"]:
+            lines.append(Text(f"  [{item.get('state', 'unknown')}] {item['url']}"))
+        lines.append(Text("goals and prompts:"))
+        for item in snapshot["inbox"]["entries"][-5:]:
+            lines.append(Text(f"  [{item['goal_state'] or item['kind']}] {item['text']}"))
+    elif section == "scans":
+        lines.append(Text("native/Screaming Frog retained scan history:"))
+        for scan in snapshot["scans"]["items"]:
+            state = "partial" if scan["crawl_partial"] or scan["corpus_partial"] else scan["lifecycle"]
+            lines.append(Text(f"  [{state}] {scan['uuid']} · {scan['source_kind']} · {scan['finish_reason'] or 'unknown stop'}"))
+        if not snapshot["scans"]["items"]:
+            lines.append(Text("  no retained scan; counts and sitemap state are unknown"))
+        for name, step in preparation["steps"].items():
+            if name in {"crawl", "sitemap"}:
+                lines.append(Text(f"  {name}: {step.get('state', 'unknown')} · {step.get('reason', '')}"))
+    else:
+        lines.append(Text("project execution log (tail):"))
+        lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-12:])
+        if snapshot["log"]["truncated"]:
+            lines.append(Text("  log tail is truncated"))
     lines.extend((Text(""), Text("The observer is read-only except for an explicit saved note.")))
     return lines
 
 
 def _note_lines(state: ShellState, palette: theme.Palette) -> list[Text]:
-    label = Text("new project note", style=palette.title) if palette.color else Text("NEW PROJECT NOTE")
+    title = "new proposed goal" if state.note_kind == "proposed_goal" else "new project note"
+    label = Text(title, style=palette.title) if palette.color else Text(title.upper())
     return [label, Text(""), Text(state.note_text or "(type or dictate text, then press enter)")]
 
 
@@ -190,7 +226,7 @@ def build_frame(
     elif state.view == "help":
         body = _help_lines(palette)
     elif state.view == "watch" and project is not None:
-        body = _watch_lines(project, palette, message)
+        body = _watch_lines(project, palette, message, state.watch_section)
     elif state.view == "note":
         body = _note_lines(state, palette)
     else:
@@ -253,8 +289,8 @@ def run(
                 if project and state.note_ready:
                     from seohead.projects.inbox import submit
 
-                    submit(project, text=state.note_text, author_role="specialist")
-                    message = "note saved to the project inbox"
+                    submit(project, text=state.note_text, kind=state.note_kind, author_role="specialist")
+                    message = f"{state.note_kind.replace('_', ' ')} saved to the project inbox"
                     state.note_text = ""
                     state.note_ready = False
     except KeyboardInterrupt:

@@ -98,6 +98,12 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return unread_summary(directory, consumer=consumer, limit=limit)
 
 
+def project_observe(directory: str, consumer: str | None = None, scan_limit: int = 20) -> dict[str, Any]:
+    from seohead.projects.observer import observe
+
+    return observe(directory, consumer=consumer, scan_limit=scan_limit)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
