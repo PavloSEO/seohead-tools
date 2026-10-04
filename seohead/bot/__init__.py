@@ -27,6 +27,12 @@ from seohead.bot.report_delivery import (
     DeliveryUnavailable,
     ReportProfile,
 )
+from seohead.bot.service_delivery import (
+    AuthorizedHTTPUpload,
+    CredentialReference,
+    UploadEndpoint,
+    UploadUnavailable,
+)
 from seohead.bot.wizard import (
     POLICY_PRESETS,
     Event,
@@ -40,8 +46,10 @@ __all__ = [
     "CONTRACT_VERSION",
     "POLICY_PRESETS",
     "Action",
+    "AuthorizedHTTPUpload",
     "AuthorizedJobSubmitter",
     "AuthorizedReportDelivery",
+    "CredentialReference",
     "DeliveryReceipts",
     "DeliveryUnavailable",
     "Event",
@@ -53,6 +61,8 @@ __all__ = [
     "ReportProfile",
     "ScanJobSpec",
     "State",
+    "UploadEndpoint",
+    "UploadUnavailable",
     "WizardSession",
     "allowed_actions",
     "describe_contract",
