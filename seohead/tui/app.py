@@ -68,7 +68,11 @@ def _header_text(palette: theme.Palette) -> Text:
 
 
 def _status_line(state: ShellState, palette: theme.Palette, width: int, height: int) -> Text:
-    mode = theme.badge("ok", "COLOR", palette) if palette.color else theme.badge("off", "NO COLOR", palette)
+    mode = (
+        theme.badge("ok", "COLOR", palette)
+        if palette.color
+        else theme.badge("off", "NO COLOR", palette)
+    )
     size = theme.badge("info", f"{width}x{height}", palette)
     hints = {
         "palette": _PALETTE_HINTS,
@@ -100,7 +104,9 @@ def _palette_lines(state: ShellState, palette: theme.Palette, rows: int) -> list
     if not items:
         empty = f"no commands match {state.query!r}"
         lines.append(
-            Text.from_markup(f"[{palette.muted}]{escape(empty)}[/]") if palette.color else Text(empty)
+            Text.from_markup(f"[{palette.muted}]{escape(empty)}[/]")
+            if palette.color
+            else Text(empty)
         )
     return lines
 
@@ -147,7 +153,10 @@ def _watch_lines(
     progress = snapshot["progress"]
     preparation = snapshot["preparation"]
     lines = [
-        Text(f"{section} · {site['label'] or site['host']}", style=palette.title if palette.color else ""),
+        Text(
+            f"{section} · {site['label'] or site['host']}",
+            style=palette.title if palette.color else "",
+        ),
         Text(f"site     {site['target']}"),
         Text(""),
     ]
@@ -156,12 +165,21 @@ def _watch_lines(
     if section == "overview":
         lines.extend(
             (
-                Text(f"preparation  {preparation['state']} · {preparation.get('reason') or 'recorded state'}"),
-                Text(f"competitors  {len(preparation['competitors'])} configured; prepared is not analyzed"),
+                Text(
+                    f"preparation  {preparation['state']} · {preparation.get('reason') or 'recorded state'}"
+                ),
+                Text(
+                    f"competitors  {len(preparation['competitors'])} configured; prepared is not analyzed"
+                ),
                 Text(f"scans        {snapshot['scans']['total']} retained"),
-                Text(f"task coverage {progress['audit_task_completion']['percent'] if progress['audit_task_completion']['percent'] is not None else 'unknown'}"),
-                Text(f"goals/notes  {snapshot['inbox']['pagination']['total']} retained prompts and handoffs"),
-                Text(""), Text("Use numbered views to inspect evidence rather than an agent claim."),
+                Text(
+                    f"task coverage {progress['audit_task_completion']['percent'] if progress['audit_task_completion']['percent'] is not None else 'unknown'}"
+                ),
+                Text(
+                    f"goals/notes  {snapshot['inbox']['pagination']['total']} retained prompts and handoffs"
+                ),
+                Text(""),
+                Text("Use numbered views to inspect evidence rather than an agent claim."),
             )
         )
     elif section == "tasks":
@@ -185,13 +203,21 @@ def _watch_lines(
     elif section == "scans":
         lines.append(Text("native/Screaming Frog retained scan history:"))
         for scan in snapshot["scans"]["items"]:
-            state = "partial" if scan["crawl_partial"] or scan["corpus_partial"] else scan["lifecycle"]
-            lines.append(Text(f"  [{state}] {scan['uuid']} · {scan['source_kind']} · {scan['finish_reason'] or 'unknown stop'}"))
+            state = (
+                "partial" if scan["crawl_partial"] or scan["corpus_partial"] else scan["lifecycle"]
+            )
+            lines.append(
+                Text(
+                    f"  [{state}] {scan['uuid']} · {scan['source_kind']} · {scan['finish_reason'] or 'unknown stop'}"
+                )
+            )
         if not snapshot["scans"]["items"]:
             lines.append(Text("  no retained scan; counts and sitemap state are unknown"))
         for name, step in preparation["steps"].items():
             if name in {"crawl", "sitemap"}:
-                lines.append(Text(f"  {name}: {step.get('state', 'unknown')} · {step.get('reason', '')}"))
+                lines.append(
+                    Text(f"  {name}: {step.get('state', 'unknown')} · {step.get('reason', '')}")
+                )
     else:
         lines.append(Text("project execution log (tail):"))
         lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-12:])
@@ -208,8 +234,13 @@ def _note_lines(state: ShellState, palette: theme.Palette) -> list[Text]:
 
 
 def build_frame(
-    state: ShellState, *, width: int, height: int, palette: theme.Palette,
-    project: str | None = None, message: str | None = None,
+    state: ShellState,
+    *,
+    width: int,
+    height: int,
+    palette: theme.Palette,
+    project: str | None = None,
+    message: str | None = None,
 ) -> Group:
     """One screen of the shell as a rich renderable (also used by tests)."""
     header = _header_text(palette)
@@ -289,7 +320,12 @@ def run(
                 if project and state.note_ready:
                     from seohead.projects.inbox import submit
 
-                    submit(project, text=state.note_text, kind=state.note_kind, author_role="specialist")
+                    submit(
+                        project,
+                        text=state.note_text,
+                        kind=state.note_kind,
+                        author_role="specialist",
+                    )
                     message = f"{state.note_kind.replace('_', ' ')} saved to the project inbox"
                     state.note_text = ""
                     state.note_ready = False

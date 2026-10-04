@@ -61,7 +61,14 @@ def _references(value: Any) -> list[str]:
 
 def _entry(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {
-        "id", "kind", "text", "references", "author_role", "created_at", "delivery", "goal_state"
+        "id",
+        "kind",
+        "text",
+        "references",
+        "author_role",
+        "created_at",
+        "delivery",
+        "goal_state",
     }:
         raise ValueError("project inbox entry has an unsupported shape")
     if type(value["id"]) is not str or not value["id"].startswith("inbox:"):
@@ -102,14 +109,24 @@ def _entry(value: Any) -> dict[str, Any]:
 def _document(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     path = root / "inbox.json"
     if not path.exists():
-        return {"format": FORMAT, "revision": 0, "project_uuid": project["project_uuid"], "entries": []}
+        return {
+            "format": FORMAT,
+            "revision": 0,
+            "project_uuid": project["project_uuid"],
+            "entries": [],
+        }
     if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BYTES:
         raise ValueError("project inbox is missing, unsafe, or exceeds its byte limit")
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError("project inbox is not valid JSON") from exc
-    if not isinstance(document, dict) or set(document) != {"format", "revision", "project_uuid", "entries"}:
+    if not isinstance(document, dict) or set(document) != {
+        "format",
+        "revision",
+        "project_uuid",
+        "entries",
+    }:
         raise ValueError("project inbox has an unsupported shape")
     if document["format"] != FORMAT or document["project_uuid"] != project["project_uuid"]:
         raise ValueError("project inbox belongs to a different project or format")
@@ -127,7 +144,9 @@ def _document(root: Path, project: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write(root: Path, document: dict[str, Any]) -> None:
-    payload = json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    payload = (
+        json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    )
     if len(payload.encode()) > MAX_BYTES:
         raise ValueError("project inbox exceeds its byte limit")
     fd, stage = tempfile.mkstemp(prefix=".inbox-", dir=root)
@@ -169,7 +188,10 @@ def _transaction(
 
 
 def _public(entry: dict[str, Any], consumer: str | None = None) -> dict[str, Any]:
-    result = {key: entry[key] for key in ("id", "kind", "text", "references", "author_role", "created_at", "goal_state")}
+    result = {
+        key: entry[key]
+        for key in ("id", "kind", "text", "references", "author_role", "created_at", "goal_state")
+    }
     if consumer is not None:
         receipt = entry["delivery"].get(consumer, {})
         result["read_at"] = receipt.get("read_at")
@@ -178,8 +200,13 @@ def _public(entry: dict[str, Any], consumer: str | None = None) -> dict[str, Any
 
 
 def submit(
-    directory: str | Path, *, text: str, kind: str = "note", references: list[str] | None = None,
-    author_role: str = "specialist", expected_revision: int | None = None,
+    directory: str | Path,
+    *,
+    text: str,
+    kind: str = "note",
+    references: list[str] | None = None,
+    author_role: str = "specialist",
+    expected_revision: int | None = None,
 ) -> dict[str, Any]:
     """Store a note or proposed goal without executing anything."""
     if kind not in {"note", "proposed_goal"}:
@@ -188,32 +215,72 @@ def submit(
         raise ValueError("author_role must be specialist or agent")
     with _transaction(directory, expected_revision) as (_, document):
         entry: dict[str, Any] = {
-            "id": f"inbox:{uuid.uuid4()}", "kind": kind, "text": _text(text, "text"),
-            "references": _references(references), "author_role": author_role, "created_at": _now(),
-            "delivery": {}, "goal_state": "proposed" if kind == "proposed_goal" else None,
+            "id": f"inbox:{uuid.uuid4()}",
+            "kind": kind,
+            "text": _text(text, "text"),
+            "references": _references(references),
+            "author_role": author_role,
+            "created_at": _now(),
+            "delivery": {},
+            "goal_state": "proposed" if kind == "proposed_goal" else None,
         }
         document["entries"].append(entry)
         return {"ok": True, "revision": document["revision"] + 1, "entry": _public(entry)}
 
 
 def list_entries(
-    directory: str | Path, *, consumer: str, offset: int = 0, limit: int = 20,
+    directory: str | Path,
+    *,
+    consumer: str,
+    offset: int = 0,
+    limit: int = 20,
     include_acknowledged: bool = True,
 ) -> dict[str, Any]:
     """Read a bounded page without changing delivery state."""
     consumer = _consumer(consumer)
-    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= MAX_PAGE:
+    if (
+        type(offset) is not int
+        or offset < 0
+        or type(limit) is not int
+        or not 1 <= limit <= MAX_PAGE
+    ):
         raise ValueError("offset must be nonnegative and limit must be from 1 to 100")
     with _transaction(directory) as (_, document):
-        entries = [entry for entry in document["entries"] if include_acknowledged or not entry["delivery"].get(consumer, {}).get("acknowledged_at")]
+        entries = [
+            entry
+            for entry in document["entries"]
+            if include_acknowledged
+            or not entry["delivery"].get(consumer, {}).get("acknowledged_at")
+        ]
         page = entries[offset : offset + limit]
-        return {"ok": True, "revision": document["revision"], "entries": [_public(item, consumer) for item in page], "pagination": {"offset": offset, "limit": limit, "total": len(entries), "next_offset": offset + len(page) if offset + len(page) < len(entries) else None}}
+        return {
+            "ok": True,
+            "revision": document["revision"],
+            "entries": [_public(item, consumer) for item in page],
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total": len(entries),
+                "next_offset": offset + len(page) if offset + len(page) < len(entries) else None,
+            },
+        }
 
 
-def mark_read(directory: str | Path, *, consumer: str, entry_ids: list[str], expected_revision: int | None = None) -> dict[str, Any]:
+def mark_read(
+    directory: str | Path,
+    *,
+    consumer: str,
+    entry_ids: list[str],
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
     """Record inspection.  A read message remains unread until acknowledgment."""
     consumer = _consumer(consumer)
-    if not isinstance(entry_ids, list) or not entry_ids or len(entry_ids) > MAX_PAGE or len(entry_ids) != len(set(entry_ids)):
+    if (
+        not isinstance(entry_ids, list)
+        or not entry_ids
+        or len(entry_ids) > MAX_PAGE
+        or len(entry_ids) != len(set(entry_ids))
+    ):
         raise ValueError("entry_ids must be a unique bounded nonempty list")
     with _transaction(directory, expected_revision) as (_, document):
         entries = {entry["id"]: entry for entry in document["entries"]}
@@ -226,15 +293,31 @@ def mark_read(directory: str | Path, *, consumer: str, entry_ids: list[str], exp
             if "read_at" not in receipt:
                 receipt["read_at"] = stamp
                 changed = True
-        return {"ok": True, "revision": document["revision"] + int(changed), "entries": [_public(entries[item], consumer) for item in entry_ids]}
+        return {
+            "ok": True,
+            "revision": document["revision"] + int(changed),
+            "entries": [_public(entries[item], consumer) for item in entry_ids],
+        }
 
 
-def acknowledge(directory: str | Path, *, consumer: str, entry_ids: list[str], expected_revision: int | None = None) -> dict[str, Any]:
+def acknowledge(
+    directory: str | Path,
+    *,
+    consumer: str,
+    entry_ids: list[str],
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
     """Explicitly acknowledge entries; idempotent retries retain the original receipt."""
     consumer = _consumer(consumer)
     with _transaction(directory, expected_revision) as (_, document):
         entries = {entry["id"]: entry for entry in document["entries"]}
-        if not isinstance(entry_ids, list) or not entry_ids or len(entry_ids) > MAX_PAGE or len(entry_ids) != len(set(entry_ids)) or any(item not in entries for item in entry_ids):
+        if (
+            not isinstance(entry_ids, list)
+            or not entry_ids
+            or len(entry_ids) > MAX_PAGE
+            or len(entry_ids) != len(set(entry_ids))
+            or any(item not in entries for item in entry_ids)
+        ):
             raise ValueError("entry_ids must name unique existing inbox entries")
         stamp, changed = _now(), False
         for item in entry_ids:
@@ -244,10 +327,16 @@ def acknowledge(directory: str | Path, *, consumer: str, entry_ids: list[str], e
             if "acknowledged_at" not in receipt:
                 receipt["acknowledged_at"] = stamp
                 changed = True
-        return {"ok": True, "revision": document["revision"] + int(changed), "entries": [_public(entries[item], consumer) for item in entry_ids]}
+        return {
+            "ok": True,
+            "revision": document["revision"] + int(changed),
+            "entries": [_public(entries[item], consumer) for item in entry_ids],
+        }
 
 
-def set_goal_state(directory: str | Path, *, entry_id: str, state: str, expected_revision: int | None = None) -> dict[str, Any]:
+def set_goal_state(
+    directory: str | Path, *, entry_id: str, state: str, expected_revision: int | None = None
+) -> dict[str, Any]:
     """Accept or complete a proposed goal without treating delivery as execution."""
     if state not in {"accepted", "completed"}:
         raise ValueError("goal state must be accepted or completed")
@@ -261,7 +350,11 @@ def set_goal_state(directory: str | Path, *, entry_id: str, state: str, expected
             raise ValueError("a proposed goal must be accepted before completion")
         changed = entry["goal_state"] != state
         entry["goal_state"] = state
-        return {"ok": True, "revision": document["revision"] + int(changed), "entry": _public(entry)}
+        return {
+            "ok": True,
+            "revision": document["revision"] + int(changed),
+            "entry": _public(entry),
+        }
 
 
 def unread_summary(directory: str | Path, *, consumer: str, limit: int = 10) -> dict[str, Any]:
@@ -270,8 +363,19 @@ def unread_summary(directory: str | Path, *, consumer: str, limit: int = 10) -> 
     if type(limit) is not int or not 1 <= limit <= MAX_PAGE:
         raise ValueError("limit must be from 1 to 100")
     with _transaction(directory) as (_, document):
-        unread = [entry for entry in document["entries"] if not entry["delivery"].get(consumer, {}).get("acknowledged_at")]
-        return {"count": len(unread), "entries": [{"id": entry["id"], "kind": entry["kind"], "references": entry["references"]} for entry in unread[:limit]], "truncated": len(unread) > limit}
+        unread = [
+            entry
+            for entry in document["entries"]
+            if not entry["delivery"].get(consumer, {}).get("acknowledged_at")
+        ]
+        return {
+            "count": len(unread),
+            "entries": [
+                {"id": entry["id"], "kind": entry["kind"], "references": entry["references"]}
+                for entry in unread[:limit]
+            ],
+            "truncated": len(unread) > limit,
+        }
 
 
 def fingerprint(directory: str | Path) -> str:

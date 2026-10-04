@@ -21,14 +21,18 @@ def test_occurrences_stay_correlated_to_their_matched_elements(tmp_path):
         out_dir=str(tmp_path / "inventory"),
     )
     ctas = [row for row in result["occurrences"] if row["kind"] == "cta"]
-    assert [(row["label"], row["raw_target"], row["resolved_target"], row["target_state"]) for row in ctas] == [
+    assert [
+        (row["label"], row["raw_target"], row["resolved_target"], row["target_state"])
+        for row in ctas
+    ] == [
         ("Demo", "/demo", "https://example.com/demo", "observed"),
         ("Call", None, None, "missing"),
         ("Buy", "/buy", "https://example.com/buy", "observed"),
     ]
     forms = [row for row in result["occurrences"] if row["kind"] == "form"]
     assert [(row["identifier"], row["raw_target"], row["target_state"]) for row in forms] == [
-        ("lead", "/submit", "observed"), ("lead", None, "missing")
+        ("lead", "/submit", "observed"),
+        ("lead", None, "missing"),
     ]
     assert result["form_groups"][0]["occurrences"] == 2
     assert result["coverage"]["complete"] is False

@@ -61,13 +61,20 @@ def _tracking_params(url: str) -> list[str]:
 
 def _session_params(url: str) -> list[str]:
     """Known session parameter names only; values must never enter audit output."""
-    return [name for name, _value in urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query) if SESSION_PARAM_RE.match(name)]
+    return [
+        name
+        for name, _value in urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query)
+        if SESSION_PARAM_RE.match(name)
+    ]
 
 
 def _redact_query_values(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
     query = urllib.parse.urlencode(
-        [(name, "[redacted]") for name, _value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)]
+        [
+            (name, "[redacted]")
+            for name, _value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+        ]
     )
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 

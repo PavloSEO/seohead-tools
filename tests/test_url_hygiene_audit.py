@@ -43,13 +43,18 @@ def _audit(tmp_path, rows):
         writer = csv.writer(stream)
         writer.writerow(_COLUMNS)
         writer.writerows(rows)
-    return run_audit(input_mode="parse-exports", exports_dir=str(exports), log=lambda _message: None)
+    return run_audit(
+        input_mode="parse-exports", exports_dir=str(exports), log=lambda _message: None
+    )
 
 
 def test_session_parameter_name_is_kept_while_value_is_redacted(tmp_path):
     result = _audit(tmp_path, [_row("https://example.com/account?PHPSESSID=secret-token&id=42")])
     finding = next(issue for issue in result.issues if issue.check == "URL_SESSION_ID")
-    assert finding.target_url == "https://example.com/account?PHPSESSID=%5Bredacted%5D&id=%5Bredacted%5D"
+    assert (
+        finding.target_url
+        == "https://example.com/account?PHPSESSID=%5Bredacted%5D&id=%5Bredacted%5D"
+    )
     assert finding.details == {"parameter_names": ["PHPSESSID"], "url_values_redacted": True}
     assert "secret-token" not in str(finding.details)
 
@@ -59,7 +64,9 @@ def test_slash_pair_requires_two_indexable_pages_without_convergence(tmp_path):
         tmp_path,
         [_row("https://example.com/guide"), _row("https://example.com/guide/")],
     )
-    finding = next(issue for issue in result.issues if issue.check == "URL_TRAILING_SLASH_INCONSISTENT")
+    finding = next(
+        issue for issue in result.issues if issue.check == "URL_TRAILING_SLASH_INCONSISTENT"
+    )
     assert finding.occurrences_count == 2
     assert finding.details["observed_variants"] == [
         "https://example.com/guide",

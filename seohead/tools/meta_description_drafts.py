@@ -127,13 +127,19 @@ def _page_input(item: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]
     if not url or not isinstance(html, str) or not html.strip():
         return {"url": url, "state": "unavailable", "reason": "page has no supplied HTML body"}
     if status >= 400 or "html" not in content_type.lower():
-        return {"url": url, "state": "unavailable", "reason": "page representation is not an eligible HTML page"}
+        return {
+            "url": url,
+            "state": "unavailable",
+            "reason": "page representation is not an eligible HTML page",
+        }
     normalized = normalize_document(html, item.get("content_area"))
     if not normalized["text"]:
         return {"url": url, "state": "unavailable", "reason": "page content area is empty"}
     soup = BeautifulSoup(html, features="lxml")
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
-    description = soup.find("meta", attrs={"name": lambda name: name and name.lower() == "description"})
+    description = soup.find(
+        "meta", attrs={"name": lambda name: name and name.lower() == "description"}
+    )
     old_description = str(description.get("content") or "") if description else ""
     headings = [heading.get_text(" ", strip=True) for heading in soup.find_all(["h1", "h2"])]
     keyword = context["keywords"].get(url)
@@ -149,7 +155,9 @@ def _page_input(item: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]
         "language": context["language"] or normalized["language"]["declared_primary"],
         "language_evidence": normalized["language"],
         "keyword": keyword if isinstance(keyword, str) else "",
-        "keyword_origin": "operator_supplied" if isinstance(keyword, str) and keyword else "unknown",
+        "keyword_origin": "operator_supplied"
+        if isinstance(keyword, str) and keyword
+        else "unknown",
     }
 
 
@@ -168,7 +176,9 @@ def prepare_draft_plan(
         "contract_version": CONTRACT_VERSION,
         "context": configured,
         "pages": pages,
-        "batches": [eligible[index : index + batch_size] for index in range(0, len(eligible), batch_size)],
+        "batches": [
+            eligible[index : index + batch_size] for index in range(0, len(eligible), batch_size)
+        ],
         "coverage": {
             "state": "partial" if len(eligible) != len(pages) else "complete",
             "eligible": len(eligible),
@@ -221,10 +231,13 @@ def prepare_draft_plan_from_normalized(
                 "old_description": str(item.get("old_description") or ""),
                 "content": text[:MAX_CONTENT_CHARS],
                 "content_truncated": len(text) > MAX_CONTENT_CHARS,
-                "language": configured["language"] or item.get("language", {}).get("declared_primary", ""),
+                "language": configured["language"]
+                or item.get("language", {}).get("declared_primary", ""),
                 "language_evidence": item.get("language") or {},
                 "keyword": keyword if isinstance(keyword, str) else "",
-                "keyword_origin": "operator_supplied" if isinstance(keyword, str) and keyword else "unknown",
+                "keyword_origin": "operator_supplied"
+                if isinstance(keyword, str) and keyword
+                else "unknown",
             }
         )
     eligible = [page for page in pages if page["state"] == "eligible"]
@@ -232,7 +245,9 @@ def prepare_draft_plan_from_normalized(
         "contract_version": CONTRACT_VERSION,
         "context": configured,
         "pages": pages,
-        "batches": [eligible[index : index + batch_size] for index in range(0, len(eligible), batch_size)],
+        "batches": [
+            eligible[index : index + batch_size] for index in range(0, len(eligible), batch_size)
+        ],
         "coverage": {
             "state": "partial" if len(eligible) != len(pages) else "complete",
             "eligible": len(eligible),
@@ -305,7 +320,9 @@ class DraftCheckpoint:
             )
 
 
-def _review_reasons(record: dict[str, Any], page: dict[str, Any], context: dict[str, Any]) -> list[str]:
+def _review_reasons(
+    record: dict[str, Any], page: dict[str, Any], context: dict[str, Any]
+) -> list[str]:
     text = record["proposed_description"]
     reasons: list[str] = []
     count = len(text)  # Unicode code points, deliberately not bytes or pixels.
@@ -320,14 +337,18 @@ def _review_reasons(record: dict[str, Any], page: dict[str, Any], context: dict[
     source = " ".join([page["title"], *page["headings"], page["content"]]).casefold()
     if _SUPERLATIVE_RE.search(text) and not _SUPERLATIVE_RE.search(source):
         reasons.append("marketing_claim_not_observed_in_page_evidence")
-    if page["language"] and page["language_evidence"].get("script") == "cyrillic" and any(
-        "a" <= char.lower() <= "z" for char in text
+    if (
+        page["language"]
+        and page["language_evidence"].get("script") == "cyrillic"
+        and any("a" <= char.lower() <= "z" for char in text)
     ):
         reasons.append("possible_language_mismatch")
     return reasons
 
 
-def run_draft_plan(plan: dict[str, Any], executor: DraftExecutor, checkpoint: DraftCheckpoint) -> dict[str, Any]:
+def run_draft_plan(
+    plan: dict[str, Any], executor: DraftExecutor, checkpoint: DraftCheckpoint
+) -> dict[str, Any]:
     """Execute supplied/delegated drafts, validate them and preserve resume state."""
     context = plan["context"]
     declared = _executor(executor)
@@ -335,7 +356,9 @@ def run_draft_plan(plan: dict[str, Any], executor: DraftExecutor, checkpoint: Dr
     pending: list[dict[str, Any]] = []
     for page in plan["pages"]:
         if page["state"] != "eligible":
-            rows.append({**page, "generation_state": "unavailable", "review_reasons": [page["reason"]]})
+            rows.append(
+                {**page, "generation_state": "unavailable", "review_reasons": [page["reason"]]}
+            )
             continue
         key = _draft_key(page, context, declared)
         saved = checkpoint.get(key)
@@ -349,7 +372,12 @@ def run_draft_plan(plan: dict[str, Any], executor: DraftExecutor, checkpoint: Dr
             supplied = executor.execute(batch)
         except Exception as exc:  # Executor errors are checkpoint-visible, never a false success.
             for page in batch:
-                row = {**page, "generation_state": "failed", "error": str(exc), "review_reasons": []}
+                row = {
+                    **page,
+                    "generation_state": "failed",
+                    "error": str(exc),
+                    "review_reasons": [],
+                }
                 checkpoint.put(page["draft_key"], row)
                 rows.append(row)
             continue
@@ -363,10 +391,26 @@ def run_draft_plan(plan: dict[str, Any], executor: DraftExecutor, checkpoint: Dr
                 "correction_attempts": 0,
                 "resumed": False,
             }
-            if not isinstance(draft, dict) or draft.get("source_sha256") != page["source_reference"]["normalized_sha256"]:
-                row = {**base, "generation_state": "failed", "error": "missing or stale structured draft", "review_reasons": []}
-            elif not isinstance(draft.get("proposed_description"), str) or not draft["proposed_description"].strip():
-                row = {**base, "generation_state": "failed", "error": "draft description is missing", "review_reasons": []}
+            if (
+                not isinstance(draft, dict)
+                or draft.get("source_sha256") != page["source_reference"]["normalized_sha256"]
+            ):
+                row = {
+                    **base,
+                    "generation_state": "failed",
+                    "error": "missing or stale structured draft",
+                    "review_reasons": [],
+                }
+            elif (
+                not isinstance(draft.get("proposed_description"), str)
+                or not draft["proposed_description"].strip()
+            ):
+                row = {
+                    **base,
+                    "generation_state": "failed",
+                    "error": "draft description is missing",
+                    "review_reasons": [],
+                }
             else:
                 row = {
                     **base,
@@ -404,13 +448,25 @@ def _spreadsheet_text(value: Any) -> str:
     return f"'{text}" if text.startswith(("=", "+", "-", "@")) else text
 
 
-def export_draft_review(result: dict[str, Any], json_path: str | Path, csv_path: str | Path) -> None:
+def export_draft_review(
+    result: dict[str, Any], json_path: str | Path, csv_path: str | Path
+) -> None:
     """Write local review artifacts; this never applies a CMS change."""
     rows = result.get("rows")
     if not isinstance(rows, list):
         raise ValueError("draft result rows are required")
-    Path(json_path).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    fields = ["url", "generation_state", "old_description", "proposed_description", "character_count", "review_state", "review_reasons"]
+    Path(json_path).write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    fields = [
+        "url",
+        "generation_state",
+        "old_description",
+        "proposed_description",
+        "character_count",
+        "review_state",
+        "review_reasons",
+    ]
     with Path(csv_path).open("w", newline="", encoding="utf-8") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
@@ -418,7 +474,9 @@ def export_draft_review(result: dict[str, Any], json_path: str | Path, csv_path:
             writer.writerow(
                 {
                     field: _spreadsheet_text(
-                        "; ".join(row[field]) if field == "review_reasons" and isinstance(row.get(field), list) else row.get(field)
+                        "; ".join(row[field])
+                        if field == "review_reasons" and isinstance(row.get(field), list)
+                        else row.get(field)
                     )
                     for field in fields
                 }

@@ -60,7 +60,9 @@ def test_local_adapter_groups_only_supplied_embedding_evidence_and_reuses_cache(
 
 
 def test_missing_adapter_is_unavailable_and_never_invents_a_lexical_score(tmp_path):
-    result = analyze_semantic_documents(_documents(), None, EmbeddingCache(tmp_path / "cache.sqlite"))
+    result = analyze_semantic_documents(
+        _documents(), None, EmbeddingCache(tmp_path / "cache.sqlite")
+    )
 
     assert result["ok"] is False
     assert result["coverage"]["state"] == "unavailable"
@@ -108,10 +110,16 @@ def test_candidate_budget_and_invalid_documents_are_explicit(tmp_path):
     assert partial["coverage"]["omitted_documents"] == 1
 
 
-def test_document_bound_is_partial_and_adapter_identity_does_not_leak_a_local_path(tmp_path, monkeypatch):
+def test_document_bound_is_partial_and_adapter_identity_does_not_leak_a_local_path(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(semantic_similarity, "MAX_DOCUMENTS", 2)
-    adapter = LocalEmbeddingAdapter("m", "1", "/private/model", lambda texts: [[1.0] for _ in texts])
-    result = analyze_semantic_documents(_documents(), adapter, EmbeddingCache(tmp_path / "cache.sqlite"))
+    adapter = LocalEmbeddingAdapter(
+        "m", "1", "/private/model", lambda texts: [[1.0] for _ in texts]
+    )
+    result = analyze_semantic_documents(
+        _documents(), adapter, EmbeddingCache(tmp_path / "cache.sqlite")
+    )
 
     assert result["coverage"]["state"] == "partial"
     assert result["coverage"]["omission_reasons"] == {"semantic document limit exceeded": 1}

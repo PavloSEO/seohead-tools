@@ -121,7 +121,6 @@ COMMANDS = (
     "remediation-transition",
     "remediation-record-verification",
     "remediation-report",
-
     "project-observe",
     "project-inbox-submit",
     "project-inbox-list",
@@ -542,7 +541,13 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["producer_build"] = args.producer_build
     elif cmd.startswith("project-inbox-"):
         for name in (
-            "directory", "text", "kind", "consumer", "entry_id", "state", "author_role",
+            "directory",
+            "text",
+            "kind",
+            "consumer",
+            "entry_id",
+            "state",
+            "author_role",
             "expected_revision",
         ):
             value = getattr(args, name, None)
@@ -626,7 +631,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("package", "max_cells", "dataset", "operation"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
-    elif cmd in {"boilerplate-report", "semantic-inputs", "semantic-similarity", "meta-description-drafts"}:
+    elif cmd in {
+        "boilerplate-report",
+        "semantic-inputs",
+        "semantic-similarity",
+        "meta-description-drafts",
+    }:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
         if cmd == "semantic-similarity":
@@ -1303,7 +1313,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--url", help="one exact page URL")
         _source_flag(sub, "--url-contains", dest="url_contains", help="page URL substring")
         sub.add_argument("--max-urls", dest="max_urls", type=int, help="URL cap, 1..500")
-        sub.add_argument("--max-queries-per-url", dest="max_queries_per_url", type=int, help="query cap per URL, 1..500")
+        sub.add_argument(
+            "--max-queries-per-url",
+            dest="max_queries_per_url",
+            type=int,
+            help="query cap per URL, 1..500",
+        )
     if cmd in {
         "scan-evidence",
         "scan-extract",
@@ -1834,7 +1849,9 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "project-inbox-submit":
         _source_flag(sub, "--text", help="specialist note or proposed goal text")
         sub.add_argument("--kind", choices=("note", "proposed_goal"), default="note")
-        sub.add_argument("--references", help="comma-separated goal/task/scan/finding/section references")
+        sub.add_argument(
+            "--references", help="comma-separated goal/task/scan/finding/section references"
+        )
         sub.add_argument("--author-role", choices=("specialist", "agent"), default="specialist")
         sub.add_argument("--expected-revision", type=int)
     if cmd in {"project-inbox-list", "project-inbox-unread"}:
@@ -2152,7 +2169,9 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "semantic-similarity":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
         sub.add_argument("--cache-path", help="local SQLite embedding cache (created if absent)")
-        sub.add_argument("--threshold", type=float, help="cosine candidate threshold (default 0.82)")
+        sub.add_argument(
+            "--threshold", type=float, help="cosine candidate threshold (default 0.82)"
+        )
         sub.add_argument(
             "--max-candidate-comparisons", type=int, help="finite pairwise comparison budget"
         )
@@ -2161,7 +2180,9 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--checkpoint-path", help="local SQLite draft checkpoint")
         sub.add_argument("--batch-size", type=int, help="bounded supplied-draft batch size")
         sub.add_argument("--json-path", help="local JSON review artifact (requires --csv-path)")
-        sub.add_argument("--csv-path", help="local formula-safe CSV review artifact (requires --json-path)")
+        sub.add_argument(
+            "--csv-path", help="local formula-safe CSV review artifact (requires --json-path)"
+        )
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")
 
@@ -2267,9 +2288,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.add_argument(
         "--no-progress", action="store_true", help="disable optional MCP progress notifications"
     )
-    tui = subs.add_parser(
-        "tui", help="interactive terminal shell (needs the optional 'tui' extra)"
-    )
+    tui = subs.add_parser("tui", help="interactive terminal shell (needs the optional 'tui' extra)")
     tui.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
     watch = subs.add_parser("watch", help="observe a local project beside an AI chat")
     watch.add_argument("--project", required=True, help="validated local project workspace")
@@ -2315,8 +2334,7 @@ def main(argv: list[str] | None = None) -> int:
             from seohead.tui.app import run as tui_run
         except ImportError:
             print(
-                "seohead tui needs the optional 'tui' extra: "
-                "pip install 'seohead-seotools[tui]'",
+                "seohead tui needs the optional 'tui' extra: pip install 'seohead-seotools[tui]'",
                 file=sys.stderr,
             )
             return 1

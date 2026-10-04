@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-04T09:08:17Z
+- **Generated:** 2026-10-04T16:26:14Z
 
 ## Health summary
 
-> **No health score.** only 77 of 176 checks could run (44% coverage); too little evidence to score.
+> **No health score.** only 81 of 181 checks could run (45% coverage); too little evidence to score.
 
-_77 of 176 checks could run; the score is not comparable to a run with full evidence_
+_81 of 181 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 99 skipped, 57 silent, 0 disabled (of 176 total)
+- Checks: **20 fired**, 100 skipped, 61 silent, 0 disabled (of 181 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
@@ -283,6 +283,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | Document has more than one <body> element | no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own) |
 | An element the head content model does not allow is written inside <head> | no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own) |
 | <head> is not the first element under <html> once the parser resolves the document | no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own) |
+| HTML id value is repeated in the parsed document | no duplicate-id evidence (native crawl only) |
 | og:title is missing, so social previews may not render correctly | no Open Graph columns in Internal:All (enable OG extraction in SF) |
 | Redirect chain contains two or more hops | no redirect data (Internal:All has no Redirect URL column) |
 | Redirect loop detected | no redirect data (Internal:All has no Redirect URL column) |

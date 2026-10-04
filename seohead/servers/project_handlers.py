@@ -51,19 +51,29 @@ def project_inbox_submit(
     from seohead.projects.inbox import submit
 
     return submit(
-        directory, text=text, kind=kind, references=references, author_role=author_role,
+        directory,
+        text=text,
+        kind=kind,
+        references=references,
+        author_role=author_role,
         expected_revision=expected_revision,
     )
 
 
 def project_inbox_list(
-    directory: str, consumer: str, offset: int = 0, limit: int = 20,
+    directory: str,
+    consumer: str,
+    offset: int = 0,
+    limit: int = 20,
     include_acknowledged: bool = True,
 ) -> dict[str, Any]:
     from seohead.projects.inbox import list_entries
 
     return list_entries(
-        directory, consumer=consumer, offset=offset, limit=limit,
+        directory,
+        consumer=consumer,
+        offset=offset,
+        limit=limit,
         include_acknowledged=include_acknowledged,
     )
 
@@ -73,7 +83,9 @@ def project_inbox_read(
 ) -> dict[str, Any]:
     from seohead.projects.inbox import mark_read
 
-    return mark_read(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+    return mark_read(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
 
 
 def project_inbox_acknowledge(
@@ -81,7 +93,9 @@ def project_inbox_acknowledge(
 ) -> dict[str, Any]:
     from seohead.projects.inbox import acknowledge
 
-    return acknowledge(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+    return acknowledge(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
 
 
 def project_inbox_goal(
@@ -89,7 +103,9 @@ def project_inbox_goal(
 ) -> dict[str, Any]:
     from seohead.projects.inbox import set_goal_state
 
-    return set_goal_state(directory, entry_id=entry_id, state=state, expected_revision=expected_revision)
+    return set_goal_state(
+        directory, entry_id=entry_id, state=state, expected_revision=expected_revision
+    )
 
 
 def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
@@ -98,7 +114,9 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return unread_summary(directory, consumer=consumer, limit=limit)
 
 
-def project_observe(directory: str, consumer: str | None = None, scan_limit: int = 20) -> dict[str, Any]:
+def project_observe(
+    directory: str, consumer: str | None = None, scan_limit: int = 20
+) -> dict[str, Any]:
     from seohead.projects.observer import observe
 
     return observe(directory, consumer=consumer, scan_limit=scan_limit)

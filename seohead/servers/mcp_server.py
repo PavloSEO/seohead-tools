@@ -1553,7 +1553,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
     ) -> dict[str, Any]:
         """Record an agent's explicit inspection; acknowledgment remains separate."""
-        return _checked(handlers.project_inbox_read(directory, consumer, entry_ids, expected_revision))
+        return _checked(
+            handlers.project_inbox_read(directory, consumer, entry_ids, expected_revision)
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_inbox_acknowledge(
@@ -1683,10 +1685,15 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         with its reason instead of guessing. The default is a read-only preview;
         apply=true records the result in project.json.
         """
-        return _checked(with_project_notice(
-            handlers.project_facts(directory=directory, facts=facts, detect=detect, apply=apply),
-            directory, consumer,
-        ))
+        return _checked(
+            with_project_notice(
+                handlers.project_facts(
+                    directory=directory, facts=facts, detect=detect, apply=apply
+                ),
+                directory,
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_init(
@@ -1744,7 +1751,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_record(
-        directory: str, item_id: str, record: dict, expected_revision: int, consumer: str | None = None
+        directory: str,
+        item_id: str,
+        record: dict,
+        expected_revision: int,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Record supplied evidence for one checklist item without executing its operation.
 
@@ -1755,14 +1766,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
         ``pending_exclusion`` inside the denominator. This never makes a network request.
         """
-        return _checked(with_project_notice(
-            handlers.project_checklist_record(
-                directory=directory,
-                item_id=item_id,
-                record=record,
-                expected_revision=expected_revision,
-            ), directory, consumer
-        ))
+        return _checked(
+            with_project_notice(
+                handlers.project_checklist_record(
+                    directory=directory,
+                    item_id=item_id,
+                    record=record,
+                    expected_revision=expected_revision,
+                ),
+                directory,
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_view_list(directory: str) -> dict[str, Any]:
@@ -1850,15 +1865,19 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Competitors must be supplied candidates with provenance; absent sources stay pending.
         All site checklists remain separate. Paid provider calls are never hidden in preparation.
         """
-        return _checked(with_project_notice(
-            handlers.project_prepare(
+        return _checked(
+            with_project_notice(
+                handlers.project_prepare(
+                    directory,
+                    template=template,
+                    competitors=competitors,
+                    approve_large_crawl=approve_large_crawl,
+                    producer_build=producer_build,
+                ),
                 directory,
-                template=template,
-                competitors=competitors,
-                approve_large_crawl=approve_large_crawl,
-                producer_build=producer_build,
-            ), directory, consumer
-        ))
+                consumer,
+            )
+        )
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_start(
@@ -2198,10 +2217,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         out_dir: str | None = None,
     ) -> dict[str, Any]:
         """Inventory supplied CTA/form DOM occurrences without fetching or submitting forms."""
-        return _checked(handlers.marketing_inventory(
-            documents=documents, cta_selector=cta_selector, form_selector=form_selector,
-            id_attributes=id_attributes, id_parameters=id_parameters, out_dir=out_dir,
-        ))
+        return _checked(
+            handlers.marketing_inventory(
+                documents=documents,
+                cta_selector=cta_selector,
+                form_selector=form_selector,
+                id_attributes=id_attributes,
+                id_parameters=id_parameters,
+                out_dir=out_dir,
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_fragment_links(

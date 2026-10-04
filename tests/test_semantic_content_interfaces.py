@@ -26,7 +26,10 @@ def _adapter():
 def test_semantic_similarity_consumes_supplied_vectors_without_model_call_and_reuses_scan(tmp_path):
     scan = _scan(
         tmp_path,
-        [("https://example.test/a", HTML), ("https://example.test/b", HTML.replace("pumps", "equipment"))],
+        [
+            ("https://example.test/a", HTML),
+            ("https://example.test/b", HTML.replace("pumps", "equipment")),
+        ],
     )
     result = handlers.semantic_similarity(
         scan=str(scan),
@@ -88,8 +91,13 @@ def test_cli_and_mcp_register_the_shared_content_routes(monkeypatch, capsys):
             raise AssertionError("explicit source flags must not consume stdin")
 
     monkeypatch.setattr(cli.sys, "stdin", NeverRead())
-    monkeypatch.setitem(handlers.HANDLERS, "semantic_similarity", lambda **kw: {"ok": True, "echo": kw})
-    assert cli.main(["semantic-similarity", "--scan", "saved.sqlite", "--cache-path", "cache.sqlite"]) == 0
+    monkeypatch.setitem(
+        handlers.HANDLERS, "semantic_similarity", lambda **kw: {"ok": True, "echo": kw}
+    )
+    assert (
+        cli.main(["semantic-similarity", "--scan", "saved.sqlite", "--cache-path", "cache.sqlite"])
+        == 0
+    )
     assert json.loads(capsys.readouterr().out)["echo"]["scan"] == "saved.sqlite"
 
     from seohead.servers.mcp_server import build_server

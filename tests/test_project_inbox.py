@@ -44,8 +44,14 @@ def test_note_read_ack_and_goal_transitions_are_explicit_and_durable(tmp_path):
     acknowledged = acknowledge(root, consumer="agent/session-a", entry_ids=[note["id"]])
     assert acknowledged["entries"][0]["acknowledged_at"]
     assert unread_summary(root, consumer="agent/session-a")["count"] == 1
-    assert set_goal_state(root, entry_id=goal["id"], state="accepted")["entry"]["goal_state"] == "accepted"
-    assert set_goal_state(root, entry_id=goal["id"], state="completed")["entry"]["goal_state"] == "completed"
+    assert (
+        set_goal_state(root, entry_id=goal["id"], state="accepted")["entry"]["goal_state"]
+        == "accepted"
+    )
+    assert (
+        set_goal_state(root, entry_id=goal["id"], state="completed")["entry"]["goal_state"]
+        == "completed"
+    )
     with pytest.raises(ValueError, match="proposed goal"):
         set_goal_state(root, entry_id=note["id"], state="accepted")
 
@@ -55,7 +61,9 @@ def test_concurrent_observer_submissions_are_not_lost_and_read_only_is_stable(tm
     scan_hash = fingerprint(root)
 
     def write(index):
-        return submit(root, text=f"Synthetic note {index}", references=["section:coverage"])["entry"]["id"]
+        return submit(root, text=f"Synthetic note {index}", references=["section:coverage"])[
+            "entry"
+        ]["id"]
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         ids = list(executor.map(write, range(8)))

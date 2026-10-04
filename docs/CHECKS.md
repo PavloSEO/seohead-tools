@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**176 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**181 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -306,9 +306,14 @@ python scripts/generate_checks_reference.py
 | `PROTOCOL_RELATIVE_LINK` | notice | crawl:link_findings | Link href is written in the protocol-relative "//host/path" form | Write an explicit https:// href; a protocol-relative one silently follows whatever scheme served the current page, including a plain-HTTP embed. |
 | `OUTLINK_TO_LOCALHOST` | warning | crawl:link_findings | A link points at a loopback address (localhost, 127.0.0.1, ::1, ...) | Replace the development/staging reference with the production URL. |
 | `FOLLOW_AND_NOFOLLOW_INLINKS` | notice | crawl:link_findings | The page receives both a followed and a nofollow internal link | Decide deliberately whether the page should be crawl-priority or not, and make every internal link to it agree. |
+| `HTTP_LINK_ON_HTTPS` | notice | crawl:link_findings | HTTPS page contains an ordinary internal http:// anchor | Write the internal anchor as https:// or a relative URL. A fetched HTTP variant that already redirects to HTTPS is reported as converged, not as this finding. |
 | `FORM_URL_INSECURE` | critical | crawl:link_findings | A form submits to an http:// action, so its data leaves the browser unencrypted regardless of the page's own scheme | Point the form's action at an https:// URL. |
 | `FORM_ON_HTTP_URL` | critical | crawl:link_findings | A form with a password field is served from a plain-HTTP page, so the credentials themselves travel unencrypted before the action URL is even reached | Serve the page itself over HTTPS; an HTTPS form action does not protect input typed on an HTTP page. |
 | `BROKEN_BOOKMARK` | warning | crawl:fragment_links | Link fragment identifies no element on the destination page | Point the href at an element id or <a name> that exists in the destination document, or add the missing target; a different query string is a different document. |
+| `DUPLICATE_ID` | warning | crawl:duplicate_ids | HTML id value is repeated in the parsed document | Give each element its own id; duplicate ids make fragment targets, scripts, and accessibility relationships ambiguous. |
+| `DECLARED_MIME_MISMATCH` | notice | SF-derived | Received Content-Type conflicts with an unambiguous URL filename extension | Confirm the response Content-Type and URL extension describe the intended resource; this is a declaration consistency signal, not full MIME validation. |
+| `URL_SESSION_ID` | warning | SF-derived | Indexable URL contains a recognized session-token parameter | Prevent session identifiers from entering crawlable URLs and consolidate any indexed variants; the finding retains parameter names but redacts their values. |
+| `URL_TRAILING_SLASH_INCONSISTENT` | notice | SF-derived | Comparable trailing-slash URL variants both serve as separate indexable pages | Choose and implement a documented URL policy if both variants are not intentional; redirect or canonical convergence already observed is not reported. |
 
 ## 9.C — objective trust & attribution evidence (issue #823)
 

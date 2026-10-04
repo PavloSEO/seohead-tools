@@ -129,7 +129,9 @@ def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
         raise ValueError("embedding adapter settings must be an object")
     expected_transfer = "none" if declared["kind"] == "local" else "external"
     if declared["data_transfer"] != expected_transfer:
-        raise ValueError(f"{declared['kind']} adapter must declare data_transfer={expected_transfer!r}")
+        raise ValueError(
+            f"{declared['kind']} adapter must declare data_transfer={expected_transfer!r}"
+        )
     if declared["kind"] == "provider" and not declared.get("external_authorized", False):
         raise PermissionError("external semantic provider is not explicitly authorized")
     # Keep cache/report identity reproducible without leaking local model paths,
@@ -201,7 +203,9 @@ class EmbeddingCache:
                 return None
             return value
 
-    def put(self, key: str, source_sha256: str, identity: dict[str, Any], vector: Sequence[float]) -> None:
+    def put(
+        self, key: str, source_sha256: str, identity: dict[str, Any], vector: Sequence[float]
+    ) -> None:
         encoded = _canonical(_vector(vector))
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
@@ -210,7 +214,10 @@ class EmbeddingCache:
                 "(cache_key,source_sha256,identity_json,vector_json) VALUES (?,?,?,?)",
                 (key, source_sha256, _canonical(identity), encoded),
             )
-            excess = con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0] - self.max_entries
+            excess = (
+                con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0]
+                - self.max_entries
+            )
             if excess > 0:
                 con.execute(
                     "DELETE FROM semantic_embeddings WHERE cache_key IN ("

@@ -9,7 +9,11 @@ def test_accessibility_sample_keeps_lighthouse_scope_and_failed_audits():
                 "lighthouseVersion": "12.1.0",
                 "categories": {"accessibility": {"score": 0.82, "title": "Accessibility"}},
                 "audits": {
-                    "color-contrast": {"score": 0, "displayValue": "2 elements", "scoreDisplayMode": "binary"},
+                    "color-contrast": {
+                        "score": 0,
+                        "displayValue": "2 elements",
+                        "scoreDisplayMode": "binary",
+                    },
                     "aria-valid-attr": {"score": None, "scoreDisplayMode": "binary"},
                     "manual-check": {"score": None, "scoreDisplayMode": "manual"},
                     "passed": {"score": 1, "scoreDisplayMode": "binary"},

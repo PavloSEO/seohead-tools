@@ -2814,7 +2814,9 @@ def meta_description_drafts(
         corpus = scan_corpus(scan, kind="semantic")
         if corpus["coverage"]["state"] == "unavailable":
             return {"ok": False, **corpus_public(corpus)}
-        plan = core.prepare_draft_plan_from_normalized(corpus["items"], context, batch_size=batch_size)
+        plan = core.prepare_draft_plan_from_normalized(
+            corpus["items"], context, batch_size=batch_size
+        )
         public = corpus_public(corpus)
     else:
         assert items is not None
@@ -4097,9 +4099,14 @@ def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any
 
     return write_remediation_report(ledger, out_dir) if out_dir else build(ledger)
 
+
 def project_inbox_submit(
-    directory: str, text: str, kind: str = "note", references: list[str] | None = None,
-    author_role: str = "specialist", expected_revision: int | None = None,
+    directory: str,
+    text: str,
+    kind: str = "note",
+    references: list[str] | None = None,
+    author_role: str = "specialist",
+    expected_revision: int | None = None,
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_inbox_submit as core
 
@@ -4114,7 +4121,10 @@ def project_inbox_submit(
 
 
 def project_inbox_list(
-    directory: str, consumer: str, offset: int = 0, limit: int = 20,
+    directory: str,
+    consumer: str,
+    offset: int = 0,
+    limit: int = 20,
     include_acknowledged: bool = True,
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_inbox_list as core
@@ -4133,7 +4143,9 @@ def project_inbox_read(
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_inbox_read as core
 
-    return core(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+    return core(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
 
 
 def project_inbox_acknowledge(
@@ -4141,7 +4153,9 @@ def project_inbox_acknowledge(
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_inbox_acknowledge as core
 
-    return core(directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision)
+    return core(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
 
 
 def project_inbox_goal(
@@ -4816,8 +4830,14 @@ def marketing_inventory(
     """Correlate CTA/form fields per supplied HTML element without network access."""
     from seohead.tools.marketing_inventory import inventory
 
-    return inventory(documents, cta_selector=cta_selector, form_selector=form_selector,
-                     id_attributes=id_attributes, id_parameters=id_parameters, out_dir=out_dir)
+    return inventory(
+        documents,
+        cta_selector=cta_selector,
+        form_selector=form_selector,
+        id_attributes=id_attributes,
+        id_parameters=id_parameters,
+        out_dir=out_dir,
+    )
 
 
 def scan_fragment_links(
@@ -4945,7 +4965,6 @@ _RAW_HANDLERS = {
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,
     "remediation_report": remediation_report,
-
     "project_inbox_submit": project_inbox_submit,
     "project_inbox_list": project_inbox_list,
     "project_inbox_read": project_inbox_read,

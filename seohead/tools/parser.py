@@ -1913,11 +1913,9 @@ def extract_duplicate_ids(soup: BeautifulSoup) -> list[DuplicateId]:
             continue
         value = value[:_DUPLICATE_ID_CHARS]
         counts[value] = counts.get(value, 0) + 1
-    return [
-        {"id": value, "count": count}
-        for value, count in counts.items()
-        if count > 1
-    ][:_DUPLICATE_ID_CAP]
+    return [{"id": value, "count": count} for value, count in counts.items() if count > 1][
+        :_DUPLICATE_ID_CAP
+    ]
 
 
 def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None) -> ParsedPage:

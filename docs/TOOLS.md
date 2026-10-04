@@ -16,8 +16,8 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 117 commands and 122 callable tools,
-with 176 audit checks. These are inventories, not coverage on every input.
+The current registry has 135 commands and 140 callable tools,
+with 181 audit checks. These are inventories, not coverage on every input.
 
 ## Offline BI projection
 
@@ -604,7 +604,7 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
-**176 checks**: 12 critical, 81 warnings, 83 notices. Sources: SF exports,
+**181 checks**: 12 critical, 83 warnings, 86 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -638,7 +638,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(118 + 5):
+(135 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -646,7 +646,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 176 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 181 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another
@@ -656,3 +656,8 @@ seohead mcp        # stdio
 `project-priorities` / `seo_project_priorities` previews data-only work priorities from saved project facts. Explicit `--apply` requires the current checklist revision and saves policy provenance. It preserves operator choices and completion evidence; it does not run detection or change finding severity. See [project workspaces](PROJECTS.md).
 
 `project-facts` / `seo_project_facts` is what puts those facts on the record after creation. Supplied facts are operator decisions and always win; `--detect` runs one `tech-detect` pass over the project's own target, reading robots.txt first, and records what it found as evidence under its own provenance. A detection that fails, is disallowed, or cannot tell two candidates apart leaves the fact absent with its reason. Nothing here runs implicitly: without `--detect` the command is offline, and without `--apply` it only previews.
+
+
+## Additional registered workflows
+
+`remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`. See the generated tool reference for exact inputs, limits and side effects.
