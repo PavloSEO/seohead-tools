@@ -348,40 +348,10 @@ are formally not SEO but expected in a technical audit.
 
 ---
 
-## Top 10 by value for implementation
+## Priorities
 
-Ranked by SEO/audit effect times feasibility. Mode counts: all else equal,
-mode B without network ranks higher.
-
-1. **Canonical -> 4xx/5xx and canonical -> homepage stamp** (§6.3–6.4) —
-   **high**, **mode B**, extends `check_canonical_directives`. Cheap, high
-   SEO value: breaks indexing silently and at scale.
-2. **hreflang -> no return link and -> non-canonical** (§7.5–7.7) —
-   **high**, **mode B**, graph over the hreflang export. Critical for
-   international sites.
-3. **Real Core Web Vitals (LCP/INP/CLS)** (§1.1) — **high**, **A/live**.
-   The opt-in CrUX field path is present (#822); automatic crawl population
-   remains outside it. Reconcile the wider gap-map priorities under #830.
-4. **Required Schema fields per type in the audit document** (§13.1) —
-   **high**; sync with the existing live `schema-check`.
-5. **JS redirect** (§5.1) — **high**, **A** (HTML/render). Common and
-   invisible to SF.
-6. **YMYL + authorship/dates (the E-E-A-T core)** (§2.1, 2.2, 2.6) —
-   **high**, mode B + heuristics. Google's frame for money/life pages;
-   nothing like it exists here.
-7. **Secrets leaked in HTML** (§14.6) — **high**, **A/live**, cheap
-   (regex). Not SEO, but a typical audit finding that raises the report's
-   value.
-8. **Nofollow onto an indexable page** (§8.2) — medium, **mode B**, graph
-   over `*:Inlinks`. §8.1 (the follow/nofollow conflict half of this item)
-   shipped as `FOLLOW_AND_NOFOLLOW_INLINKS`, from the native crawl rather
-   than this export (issue #125).
-9. **Session IDs and trailing-slash desync** (§10.2, 10.4) — medium,
-   **mode B**, pure URL parsing.
-10. **Pagination canonical chain and loop** (§12.2–12.3) — medium,
-    **mode B**, graph over rel_next x canonical.
-
-Cheap remaining mode-B candidates: `EXTERNAL_DOFOLLOW`, `URL_STOP_WORDS`,
-`HREFLANG_MULTI_LANG`, `PAGINATION_BROKEN`, and `PAGINATION_ORPHAN`.
-`OUTLINK_TO_LOCALHOST` and the former canonical/session/HTTP candidates are
-shipped checks, not priorities.
+The generated [reconciliation](COVERAGE_GAPS_RECONCILIATION.md) owns the
+current priority order. It excludes covered and explicitly out-of-scope rows,
+then ranks remaining gaps by the map's stated value, declared B/B+/A
+feasibility, and row number. This avoids leaving shipped checks in an
+implementation queue.
