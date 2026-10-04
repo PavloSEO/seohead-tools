@@ -46,17 +46,22 @@ POLICY_PRESETS: dict[str, dict[str, Any]] = {
     "quick": {
         "limits.max_urls": 50,
         "limits.max_depth": 2,
+        "limits.max_crawl_seconds": 900,
+        "speed.min_delay_seconds": 0.5,
         "rendering.mode": "raw",
     },
     "standard": {
         "limits.max_urls": 200,
         "limits.max_depth": 5,
+        "limits.max_crawl_seconds": 1800,
+        "speed.min_delay_seconds": 0.5,
         "rendering.mode": "raw",
     },
     "thorough": {
         "limits.max_urls": 1000,
         "limits.max_depth": 8,
         "limits.max_crawl_seconds": 1800,
+        "speed.min_delay_seconds": 0.5,
         "rendering.mode": "js",
     },
 }

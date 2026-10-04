@@ -1,0 +1,27 @@
+{
+  "format": "seohead.looker-studio-blueprint.v1",
+  "title": "SEOHEAD Evidence Reporting Pack (Synthetic)",
+  "source_contract": "seohead.bi-manifest.v1",
+  "source_mode": "one Google Sheet worksheet per BI dataset",
+  "global_controls": [
+    {"field": "run_id", "datasets": ["pages", "findings", "metrics", "link_occurrences", "cohorts", "coverage"]},
+    {"field": "state", "dataset": "coverage", "purpose": "scope and completeness disclosure"}
+  ],
+  "pages": [
+    {"id": "overview", "title": "Run scope and coverage", "datasets": ["coverage"], "fields": ["dataset", "state", "source_rows", "exported_rows", "unavailable_rows", "reason"]},
+    {"id": "technical", "title": "Technical URL status and directives", "datasets": ["pages", "cohorts"], "fields": ["url", "status_code", "indexability", "value_label", "state", "reason"]},
+    {"id": "links", "title": "Depth and observed inlinks", "datasets": ["pages", "cohorts", "link_occurrences"], "fields": ["crawl_depth", "unique_inlinks", "numerator", "denominator", "extraction_coverage_state"]},
+    {"id": "content", "title": "Content and metadata screening", "datasets": ["pages", "findings"], "fields": ["url", "title", "meta_description", "h1", "word_count", "check_id", "severity"]},
+    {"id": "performance", "title": "Optional Search Console and Analytics evidence", "datasets": ["metrics", "cohorts"], "fields": ["metric_name", "value_number", "period_start", "period_end", "timezone", "search_value", "sessions_value", "value_label", "state"]}
+  ],
+  "calculated_fields": [
+    {"name": "is_measured_zero", "formula": "CASE WHEN value_state = 'measured' AND value_number = 0 THEN 1 ELSE 0 END", "dataset": "metrics"},
+    {"name": "observed_inlink_share_label", "formula": "CONCAT(CAST(numerator AS TEXT), '/', CAST(denominator AS TEXT))", "dataset": "cohorts", "only_when": "cohort_id = 'observed_unique_inlink_share' AND state = 'available'"}
+  ],
+  "filter_rules": [
+    "Never coerce blank numeric cells to zero; retain state and reason fields in every table and chart tooltip.",
+    "Use source-specific date controls for metrics and display period_start, period_end and timezone beside every performance chart.",
+    "Show inlink percentages only with numerator, denominator and extraction_coverage_state.",
+    "Do not blend Search Console clicks or impressions with GA sessions; the quadrant is an evidence-qualified URL cohort, not a summed metric."
+  ]
+}

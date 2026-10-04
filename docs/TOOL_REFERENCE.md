@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**115 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 120 in total.
+**135 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 140 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -545,6 +545,68 @@ Build the reproducible normalized-input manifest for semantic analysis over reta
 | `content_area` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `semantic-similarity`
+
+MCP name: `seo_semantic_similarity`
+
+Group topical-similarity candidates from supplied embedding vectors.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `embeddings` | `list[dict] | None` | `None` |
+| `adapter` | `dict | None` | `None` |
+| `cache_path` | `str` | `''` |
+| `threshold` | `float` | `0.82` |
+| `max_candidate_comparisons` | `int` | `250000` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Pass either supplied ``items`` ({url, html}) or a retained scan.v1
+``scan``; scan selection and normalization reuse seo_semantic_inputs.
+``embeddings`` contains {url, vector} rows and ``adapter`` declares the
+model/version/settings and transfer policy. SEOHEAD does not download,
+load or call a model here. A provider declaration requires explicit
+external_authorized=true even though this route only consumes supplied
+vectors. cache_path is a local SQLite cache keyed by source hash, model
+identity and settings. Groups are review candidates, never duplicate or
+cannibalization conclusions; missing vectors and bounded coverage stay
+explicit in the response.
+
+### `meta-description-drafts`
+
+MCP name: `seo_meta_description_drafts`
+
+Prepare or validate a resumable, page-grounded meta-description batch.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `context` | `dict | None` | `None` |
+| `drafts` | `list[dict] | None` | `None` |
+| `executor` | `dict | None` | `None` |
+| `checkpoint_path` | `str` | `''` |
+| `batch_size` | `int` | `20` |
+| `json_path` | `str` | `''` |
+| `csv_path` | `str` | `''` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With no drafts this is a dry-run plan over supplied HTML or a retained
+scan.v1 corpus. With structured supplied drafts it validates URL/source
+hashes, Unicode length policy and review flags, then checkpoints only
+local results. The calling or delegated agent owns generation; this tool
+has no model key or provider call. executor declares its versioned
+contract and runtime kind, while checkpoint_path enables resume. Optional
+json_path and csv_path export a review artifact; neither path writes a
+CMS or metadata.
 
 ### `social-meta-check`
 
@@ -1114,6 +1176,67 @@ Requires an OAuth2 bearer token for an own, verified property — see seo_source
 and docs/SETUP.md for how to obtain one. A missing token returns an explicit failure
 naming what to configure; it never fabricates a result.
 
+### `webmaster-url-queries`
+
+MCP name: `seo_webmaster_url_queries`
+
+Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
+
+| Argument | Type | Default |
+|---|---|---|
+| `host_id` | `str` | `required` |
+| `url` | `str | None` | `None` |
+| `url_contains` | `str | None` | `None` |
+| `max_urls` | `int` | `100` |
+| `max_queries_per_url` | `int` | `500` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+This is provider data, not crawl evidence. It preserves URL/query statistics without
+summing CTR or average position across pages; caps remain explicit in the response.
+
+### `miratext-analyze`
+
+MCP name: `seo_miratext_analyze`
+
+Start or resume Miratext analysis; paid and keyword modes need confirmation.
+
+| Argument | Type | Default |
+|---|---|---|
+| `urls` | `list[str] | None` | `None` |
+| `texts` | `list[str] | None` | `None` |
+| `my` | `str | None` | `None` |
+| `hash` | `str | None` | `None` |
+| `check_type` | `str` | `'url'` |
+| `keywords` | `str | None` | `None` |
+| `paid` | `bool` | `False` |
+| `confirm_paid` | `bool` | `False` |
+| `timeout` | `int` | `120` |
+| `top` | `int` | `100` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota
+
+### `gsc-archive`
+
+MCP name: `seo_gsc_archive`
+
+Manage an explicit local GSC SQLite archive. Status is offline and never creates an absent archive. Prepare creates/extends the queue for a verified property and inclusive YYYY-MM-DD dates without calling Google. Run performs at most max_requests API calls (1..1000, default 1), writes checkpoints and obeys quota/retry waits. Backup makes a verified snapshot at a new backup_path. Only prepare creates a database. Search Analytics can omit anonymized/top-limited rows; never sum different datasets.
+
+| Argument | Type | Default |
+|---|---|---|
+| `database` | `str` | `required` |
+| `action` | `Literal['status', 'prepare', 'run', 'backup']` | `'status'` |
+| `site_url` | `str | None` | `None` |
+| `start_date` | `str | None` | `None` |
+| `end_date` | `str | None` | `None` |
+| `max_requests` | `int` | `1` |
+| `pause` | `float` | `1.0` |
+| `backup_path` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
 ### `crux-report`
 
 MCP name: `seo_crux_report`
@@ -1131,7 +1254,7 @@ Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at 
 | `cache_dir` | `str | None` | `None` |
 | `cache_max_age_hours` | `float` | `24` |
 
-**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
 ### `indexnow-submit`
 
@@ -1193,8 +1316,14 @@ Show project scan history and named pending checklist/preparation states.
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+A stable consumer optionally receives a bounded inbox notice.  Reading a
+status never marks notes read or acknowledged.
 
 ### `project-progress`
 
@@ -1207,6 +1336,7 @@ Show a compact, paginated project checklist view and its next actions.
 | `directory` | `str` | `required` |
 | `limit` | `int` | `20` |
 | `offset` | `int` | `0` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1216,6 +1346,210 @@ The page contains at most 100 checklist items. Audit-task completion is a
 percentage only when every included site has an explicit agreed plan and
 the shared coverage axis has a measured, nonzero denominator. It is
 explicitly task completion, not a site-health or remediation percentage.
+
+### `project-observe`
+
+MCP name: `seo_project_observe`
+
+Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
+| `scan_limit` | `int` | `20` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-inbox-submit`
+
+MCP name: `seo_project_inbox_submit`
+
+Persist a specialist note or proposed goal without starting any work.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `text` | `str` | `required` |
+| `kind` | `Literal['note', 'proposed_goal']` | `'note'` |
+| `references` | `list[str] | None` | `None` |
+| `author_role` | `Literal['specialist', 'agent']` | `'specialist'` |
+| `expected_revision` | `int | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-inbox-list`
+
+MCP name: `seo_project_inbox_list`
+
+List a bounded project inbox page without consuming any entries.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `consumer` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `20` |
+| `include_acknowledged` | `bool` | `True` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-inbox-read`
+
+MCP name: `seo_project_inbox_read`
+
+Record an agent's explicit inspection; acknowledgment remains separate.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `consumer` | `str` | `required` |
+| `entry_ids` | `list[str]` | `required` |
+| `expected_revision` | `int | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-inbox-acknowledge`
+
+MCP name: `seo_project_inbox_acknowledge`
+
+Explicitly acknowledge entries. This never accepts or completes a goal.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `consumer` | `str` | `required` |
+| `entry_ids` | `list[str]` | `required` |
+| `expected_revision` | `int | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-inbox-goal`
+
+MCP name: `seo_project_inbox_goal`
+
+Explicitly accept or complete a stored proposed goal; no executor is launched.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `entry_id` | `str` | `required` |
+| `state` | `Literal['accepted', 'completed']` | `required` |
+| `expected_revision` | `int | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-inbox-unread`
+
+MCP name: `seo_project_inbox_unread`
+
+Return a bounded unread reference summary without changing delivery state.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `consumer` | `str` | `required` |
+| `limit` | `int` | `10` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `remediation-summary`
+
+MCP name: `seo_remediation_summary`
+
+Read explicit remediation and recheck coverage from retained local evidence.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The result keeps verified original cases, resolved, persisting,
+regressed, false-positive-reviewed and unverifiable states separate.
+It does not run a crawl or infer that omitted evidence is clean.
+
+### `remediation-cases`
+
+MCP name: `seo_remediation_cases`
+
+Read a bounded page of exact remediation cases and decision history.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `check` | `str | None` | `None` |
+| `url` | `str | None` | `None` |
+| `finding_key` | `str | None` | `None` |
+| `limit` | `int` | `100` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `remediation-transition`
+
+MCP name: `seo_remediation_transition`
+
+Append one revision-safe, evidence-bound lifecycle decision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `occurrence_key` | `str` | `required` |
+| `state` | `str` | `required` |
+| `actor` | `str` | `required` |
+| `reason` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `observation_id` | `int | None` | `None` |
+| `decided_at` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+Measured outcomes require a later retained observation. A user claim,
+missing source or failed fetch cannot resolve a case.
+
+### `remediation-record-verification`
+
+MCP name: `seo_remediation_record_verification`
+
+Attach a retained bounded verification artifact to pending cases.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `verification_path` | `str` | `required` |
+| `actor` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+Every result must map to exactly one pending ledger case. The artifact
+byte digest is saved in the decision evidence; ambiguous or stale
+batches are rejected atomically.
+
+### `remediation-report`
+
+MCP name: `seo_remediation_report`
+
+Render retained before/after remediation evidence without network access.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With out_dir this creates a new immutable JSON/Markdown review snapshot;
+without it, it returns the JSON-ready report document only.
 
 ### `project-facts`
 
@@ -1229,6 +1563,7 @@ Preview or record project stack facts that stack-aware priorities then read.
 | `facts` | `list[dict[str, Any]] | None` | `None` |
 | `detect` | `bool` | `False` |
 | `apply` | `bool` | `False` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
@@ -1309,6 +1644,7 @@ Record supplied evidence for one checklist item without executing its operation.
 | `item_id` | `str` | `required` |
 | `record` | `dict` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1437,6 +1773,7 @@ Prepare an existing project with a bounded native crawl and saved sitemap covera
 | `competitors` | `list | None` | `None` |
 | `approve_large_crawl` | `bool` | `False` |
 | `producer_build` | `str | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
@@ -1682,6 +2019,7 @@ Project a saved scan or audit and optional issue #781 joins into a local typed B
 | `max_rows_per_file` | `int` | `25000` |
 | `max_bytes_per_file` | `int` | `8 * 1024 * 1024` |
 | `max_output_bytes` | `int` | `512 * 1024 * 1024` |
+| `search_metric` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1690,6 +2028,33 @@ Project a saved scan or audit and optional issue #781 joins into a local typed B
 Reads existing evidence only. CSVs are partitioned deterministically;
 null values retain explicit states and reasons, and output limits fail
 without publishing a partial package. No crawl or provider request runs.
+
+### `bi-sheets-plan`
+
+MCP name: `seo_bi_sheets_plan`
+
+Preflight a complete local BI package for Sheets without Google access or writes.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `max_cells` | `int` | `10000000` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `bi-bigquery-plan`
+
+MCP name: `seo_bi_bigquery_plan`
+
+Describe an optional BigQuery load offline; it never selects a project or writes data.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `dataset` | `str` | `required` |
+| `operation` | `str` | `'replace'` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 ### `inspect-url`
 
@@ -1768,6 +2133,23 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 | `limit` | `int` | `100` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `marketing-inventory`
+
+MCP name: `seo_marketing_inventory`
+
+Inventory supplied CTA/form DOM occurrences without fetching or submitting forms.
+
+| Argument | Type | Default |
+|---|---|---|
+| `documents` | `list[dict[str, Any]]` | `required` |
+| `cta_selector` | `str | None` | `None` |
+| `form_selector` | `str | None` | `None` |
+| `id_attributes` | `list[str] | None` | `None` |
+| `id_parameters` | `list[str] | None` | `None` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
 
 ### `scan-fragment-links`
 

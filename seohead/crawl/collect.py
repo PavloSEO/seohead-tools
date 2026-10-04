@@ -180,6 +180,9 @@ class PageRecord:
     # where the truth is "never measured", the same distinction link_placement
     # above makes through its own None.
     trust_signals: dict[str, Any] | None = None
+    # Bounded repeated-id observations from parsed HTML (#828). ``None`` means
+    # HTML was not parsed; an empty list means it was parsed and none repeated.
+    duplicate_ids: list[dict[str, Any]] | None = None
     head_count: int = 0
     body_count: int = 0
     head_not_first: bool = False
@@ -348,6 +351,7 @@ def _record_from_parsed(parsed: dict) -> dict[str, Any]:
         # Always a parsed dict here (a missing key would be a parser defect),
         # so the field above the default keeps its None-for-unmeasured meaning.
         "trust_signals": parsed.get("trust_signals"),
+        "duplicate_ids": parsed.get("duplicate_ids"),
         "head_count": int(position.get("head_count") or 0),
         "body_count": int(position.get("body_count") or 0),
         "head_not_first": bool(position.get("head_not_first")),

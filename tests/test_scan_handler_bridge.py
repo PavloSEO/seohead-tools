@@ -104,7 +104,12 @@ def test_stored_graph_size_does_not_block_page_audit(bridge, monkeypatch, stored
     result = SpiderResult()
     bridge.con.counts["links"] = stored_links
     captured = {}
-    monkeypatch.setattr(scan_handlers, "_rebuild_page_result", lambda _scan: result)
+
+    def rebuild(_scan, **kwargs):
+        captured["page_view"] = kwargs.get("page_view")
+        return result
+
+    monkeypatch.setattr(scan_handlers, "_rebuild_page_result", rebuild)
 
     def audit_bridge(actual, **kwargs):
         captured["result"] = actual
@@ -126,6 +131,7 @@ def test_stored_graph_size_does_not_block_page_audit(bridge, monkeypatch, stored
         "outlinks": 0,
         "external_outlinks": 0,
     }
+    assert captured["page_view"] is True
     assert captured["kwargs"]["out_dir"] is None
 
 

@@ -3415,6 +3415,7 @@ all = [
     { name = "pypdf" },
     { name = "python-dateutil" },
     { name = "python-docx" },
+    { name = "rich" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "snowballstemmer" },
@@ -3463,6 +3464,9 @@ sitemap = [
     { name = "advertools" },
     { name = "python-dateutil" },
 ]
+tui = [
+    { name = "rich" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3504,6 +3508,8 @@ requires-dist = [
     { name = "python-docx", marker = "extra == 'reports'", specifier = ">=1.1,<2" },
     { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21,<1" },
+    { name = "rich", marker = "extra == 'all'", specifier = ">=13.7,<16" },
+    { name = "rich", marker = "extra == 'tui'", specifier = ">=13.7,<16" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9,<1" },
     { name = "scikit-learn", marker = "extra == 'all'", specifier = ">=1.4,<2" },
     { name = "scikit-learn", marker = "extra == 'cluster'", specifier = ">=1.4,<2" },
@@ -3514,7 +3520,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.30,<1" },
     { name = "uvicorn", marker = "extra == 'remote'", specifier = ">=0.30,<1" },
 ]
-provides-extras = ["sitemap", "mcp", "remote", "render", "reports", "pdf", "cluster", "gsc", "dev", "all"]
+provides-extras = ["sitemap", "mcp", "remote", "tui", "render", "reports", "pdf", "cluster", "gsc", "dev", "all"]
 
 [[package]]
 name = "service-identity"

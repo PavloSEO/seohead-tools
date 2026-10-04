@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-04T09:08:17Z",
+    "generated_at": "2026-10-04T16:26:14Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -287,6 +287,10 @@
         "reason": "no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own)"
       },
       {
+        "id": "DUPLICATE_ID",
+        "reason": "no duplicate-id evidence (native crawl only)"
+      },
+      {
         "id": "OG_MISSING",
         "reason": "no Open Graph columns in Internal:All (enable OG extraction in SF)"
       },
@@ -500,12 +504,12 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 176,
+      "checks_total": 181,
       "checks_fired": 20,
-      "checks_skipped": 99,
+      "checks_skipped": 100,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 57,
+      "checks_silent": 61,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
@@ -517,6 +521,7 @@
         "CANONICAL_RELATIVE",
         "CANONICAL_TARGET_ERROR",
         "CANONICAL_TO_REDIRECT",
+        "DECLARED_MIME_MISMATCH",
         "DEEP_CRAWL_DEPTH",
         "DESC_TOO_LONG",
         "FOLLOW_AND_NOFOLLOW_INLINKS",
@@ -529,6 +534,7 @@
         "H2_TOO_LONG",
         "HIGH_EXTERNAL_OUTLINKS",
         "HIGH_OUTLINKS",
+        "HTTP_LINK_ON_HTTPS",
         "HTTP_URL",
         "IMPORTANT_URL_BLOCKED_BY_ROBOTS",
         "INLINK_BOILERPLATE_ONLY",
@@ -559,16 +565,18 @@
         "URL_NON_ASCII",
         "URL_NOT_IN_SITEMAP",
         "URL_REPETITIVE_PATH",
+        "URL_SESSION_ID",
         "URL_TOO_LONG",
         "URL_TRACKING_PARAMS",
+        "URL_TRAILING_SLASH_INCONSISTENT",
         "URL_UNDERSCORES",
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.438
+      "coverage": 0.448
     },
-    "health_score_reason": "only 77 of 176 checks could run (44% coverage); too little evidence to score",
-    "health_score_basis": "77 of 176 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 81 of 181 checks could run (45% coverage); too little evidence to score",
+    "health_score_basis": "81 of 181 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

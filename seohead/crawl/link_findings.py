@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ipaddress
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -102,6 +103,38 @@ def protocol_relative_links(links: list[LinkEdge]) -> list[dict[str, Any]]:
                 }
             )
     return out
+
+
+def http_links_on_https_pages(
+    links: Iterable[LinkEdge], host: str, safely_upgraded: set[str]
+) -> list[dict[str, Any]]:
+    """Observed internal ``http://`` anchors on HTTPS pages (#832).
+
+    A raw href is required because resolved targets alone cannot distinguish an
+    explicit HTTP anchor from an ordinary relative URL. A fetched HTTP variant
+    that demonstrably redirects to HTTPS is left out: it already converges.
+    """
+    host = host.lower()
+    findings = []
+    for edge in links:
+        source = urlsplit(edge.source)
+        destination = urlsplit(edge.destination)
+        if (
+            source.scheme.lower() != "https"
+            or (source.hostname or "").lower() != host
+            or (destination.hostname or "").lower() != host
+            or not edge.raw_href.lower().startswith("http://")
+            or edge.destination in safely_upgraded
+        ):
+            continue
+        findings.append(
+            {
+                "target_url": edge.source,
+                "destination": edge.destination,
+                "raw_href": edge.raw_href,
+            }
+        )
+    return findings
 
 
 def follow_and_nofollow_inlinks(links: list[LinkEdge], host: str) -> list[str]:

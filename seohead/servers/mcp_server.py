@@ -84,6 +84,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 
+    def with_project_notice(
+        result: dict[str, Any], directory: str, consumer: str | None
+    ) -> dict[str, Any]:
+        """Attach a scoped notice without letting an unrelated project leak in."""
+        if consumer is None:
+            return result
+        result = dict(result)
+        result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return result
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_parse(
         url: str = "", urls: list[str] | None = None, options: dict[str, Any] | None = None
@@ -568,6 +578,76 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         capped at 10,000 documents and 16 MiB of normalized retained input;
         reaching a bound reports the exact partial coverage."""
         return _checked(handlers.semantic_inputs(items=items, scan=scan, content_area=content_area))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_semantic_similarity(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        embeddings: list[dict] | None = None,
+        adapter: dict | None = None,
+        cache_path: str = "",
+        threshold: float = 0.82,
+        max_candidate_comparisons: int = 250_000,
+    ) -> dict[str, Any]:
+        """Group topical-similarity candidates from supplied embedding vectors.
+
+        Pass either supplied ``items`` ({url, html}) or a retained scan.v1
+        ``scan``; scan selection and normalization reuse seo_semantic_inputs.
+        ``embeddings`` contains {url, vector} rows and ``adapter`` declares the
+        model/version/settings and transfer policy. SEOHEAD does not download,
+        load or call a model here. A provider declaration requires explicit
+        external_authorized=true even though this route only consumes supplied
+        vectors. cache_path is a local SQLite cache keyed by source hash, model
+        identity and settings. Groups are review candidates, never duplicate or
+        cannibalization conclusions; missing vectors and bounded coverage stay
+        explicit in the response."""
+        return _checked(
+            handlers.semantic_similarity(
+                items=items,
+                scan=scan,
+                embeddings=embeddings,
+                adapter=adapter,
+                cache_path=cache_path or None,
+                threshold=threshold,
+                max_candidate_comparisons=max_candidate_comparisons,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_meta_description_drafts(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        context: dict | None = None,
+        drafts: list[dict] | None = None,
+        executor: dict | None = None,
+        checkpoint_path: str = "",
+        batch_size: int = 20,
+        json_path: str = "",
+        csv_path: str = "",
+    ) -> dict[str, Any]:
+        """Prepare or validate a resumable, page-grounded meta-description batch.
+
+        With no drafts this is a dry-run plan over supplied HTML or a retained
+        scan.v1 corpus. With structured supplied drafts it validates URL/source
+        hashes, Unicode length policy and review flags, then checkpoints only
+        local results. The calling or delegated agent owns generation; this tool
+        has no model key or provider call. executor declares its versioned
+        contract and runtime kind, while checkpoint_path enables resume. Optional
+        json_path and csv_path export a review artifact; neither path writes a
+        CMS or metadata."""
+        return _checked(
+            handlers.meta_description_drafts(
+                items=items,
+                scan=scan,
+                context=context,
+                drafts=drafts,
+                executor=executor,
+                checkpoint_path=checkpoint_path or None,
+                batch_size=batch_size,
+                json_path=json_path or None,
+                csv_path=csv_path or None,
+            )
+        )
 
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
@@ -1250,7 +1330,90 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_webmaster_url_queries(
+        host_id: str,
+        url: str | None = None,
+        url_contains: str | None = None,
+        max_urls: int = 100,
+        max_queries_per_url: int = 500,
+    ) -> dict[str, Any]:
+        """Read bounded Yandex Webmaster URL-to-query evidence for a verified host.
+
+        This is provider data, not crawl evidence. It preserves URL/query statistics without
+        summing CTR or average position across pages; caps remain explicit in the response.
+        """
+        return _checked(
+            handlers.webmaster_url_queries(
+                host_id=host_id,
+                url=url,
+                url_contains=url_contains,
+                max_urls=max_urls,
+                max_queries_per_url=max_queries_per_url,
+            )
+        )
+
+    @mcp.tool(annotations=paid, structured_output=True)
+    def seo_miratext_analyze(
+        urls: list[str] | None = None,
+        texts: list[str] | None = None,
+        my: str | None = None,
+        hash: str | None = None,
+        check_type: str = "url",
+        keywords: str | None = None,
+        paid: bool = False,
+        confirm_paid: bool = False,
+        timeout: int = 120,
+        top: int = 100,
+    ) -> dict[str, Any]:
+        """Start or resume Miratext analysis; paid and keyword modes need confirmation."""
+        return _checked(
+            handlers.miratext_analyze(
+                urls=urls,
+                texts=texts,
+                my=my,
+                hash=hash,
+                check_type=check_type,
+                keywords=keywords,
+                paid=paid,
+                confirm_paid=confirm_paid,
+                timeout=timeout,
+                top=top,
+            )
+        )
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_gsc_archive(
+        database: str,
+        action: Literal["status", "prepare", "run", "backup"] = "status",
+        site_url: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        max_requests: int = 1,
+        pause: float = 1.0,
+        backup_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Manage an explicit local GSC SQLite archive. Status is offline and never creates
+        an absent archive. Prepare creates/extends the queue for a verified property and
+        inclusive YYYY-MM-DD dates without calling Google. Run performs at most max_requests
+        API calls (1..1000, default 1), writes checkpoints and obeys quota/retry waits. Backup
+        makes a verified snapshot at a new backup_path. Only prepare creates a database.
+        Search Analytics can omit anonymized/top-limited rows; never sum different datasets.
+        """
+        return _checked(
+            handlers.gsc_archive(
+                database=database,
+                action=action,
+                site_url=site_url,
+                start_date=start_date,
+                end_date=end_date,
+                max_requests=max_requests,
+                pause=pause,
+                backup_path=backup_path,
+            )
+        )
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_crux_report(
         url: str | None = None,
         origin: str | None = None,
@@ -1319,12 +1482,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_status(directory: str) -> dict[str, Any]:
-        """Show project scan history and named pending checklist/preparation states."""
-        return _checked(handlers.project_status(directory=directory))
+    def seo_project_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
+        """Show project scan history and named pending checklist/preparation states.
+
+        A stable consumer optionally receives a bounded inbox notice.  Reading a
+        status never marks notes read or acknowledged.
+        """
+        result = handlers.project_status(directory=directory)
+        if consumer is not None:
+            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return _checked(result)
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    def seo_project_progress(
+        directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
+    ) -> dict[str, Any]:
         """Show a compact, paginated project checklist view and its next actions.
 
         The page contains at most 100 checklist items. Audit-task completion is a
@@ -1332,7 +1504,170 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         the shared coverage axis has a measured, nonzero denominator. It is
         explicitly task completion, not a site-health or remediation percentage.
         """
-        return _checked(handlers.project_progress(directory=directory, limit=limit, offset=offset))
+        result = handlers.project_progress(directory=directory, limit=limit, offset=offset)
+        if consumer is not None:
+            result["inbox_unread"] = handlers.project_inbox_unread(directory, consumer)
+        return _checked(result)
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_observe(
+        directory: str, consumer: str | None = None, scan_limit: int = 20
+    ) -> dict[str, Any]:
+        """Read the bounded project observer snapshot: tasks, methods, competitors,
+        retained scan state and the execution-log tail.  It never starts work or
+        consumes inbox entries; a consumer only receives its own unread summary.
+        """
+        return _checked(handlers.project_observe(directory, consumer, scan_limit))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_submit(
+        directory: str,
+        text: str,
+        kind: Literal["note", "proposed_goal"] = "note",
+        references: list[str] | None = None,
+        author_role: Literal["specialist", "agent"] = "specialist",
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Persist a specialist note or proposed goal without starting any work."""
+        return _checked(
+            handlers.project_inbox_submit(
+                directory, text, kind, references, author_role, expected_revision
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_inbox_list(
+        directory: str,
+        consumer: str,
+        offset: int = 0,
+        limit: int = 20,
+        include_acknowledged: bool = True,
+    ) -> dict[str, Any]:
+        """List a bounded project inbox page without consuming any entries."""
+        return _checked(
+            handlers.project_inbox_list(directory, consumer, offset, limit, include_acknowledged)
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_read(
+        directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        """Record an agent's explicit inspection; acknowledgment remains separate."""
+        return _checked(
+            handlers.project_inbox_read(directory, consumer, entry_ids, expected_revision)
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_acknowledge(
+        directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        """Explicitly acknowledge entries.  This never accepts or completes a goal."""
+        return _checked(
+            handlers.project_inbox_acknowledge(directory, consumer, entry_ids, expected_revision)
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_inbox_goal(
+        directory: str,
+        entry_id: str,
+        state: Literal["accepted", "completed"],
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Explicitly accept or complete a stored proposed goal; no executor is launched."""
+        return _checked(handlers.project_inbox_goal(directory, entry_id, state, expected_revision))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
+        """Return a bounded unread reference summary without changing delivery state."""
+        return _checked(handlers.project_inbox_unread(directory, consumer, limit))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_remediation_summary(ledger: str) -> dict[str, Any]:
+        """Read explicit remediation and recheck coverage from retained local evidence.
+
+        The result keeps verified original cases, resolved, persisting,
+        regressed, false-positive-reviewed and unverifiable states separate.
+        It does not run a crawl or infer that omitted evidence is clean.
+        """
+        return _checked(handlers.remediation_summary(ledger=ledger))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_remediation_cases(
+        ledger: str,
+        check: str | None = None,
+        url: str | None = None,
+        finding_key: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Read a bounded page of exact remediation cases and decision history."""
+        return _checked(
+            handlers.remediation_cases(
+                ledger=ledger,
+                check=check,
+                url=url,
+                finding_key=finding_key,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_transition(
+        ledger: str,
+        occurrence_key: str,
+        state: str,
+        actor: str,
+        reason: str,
+        expected_revision: int,
+        observation_id: int | None = None,
+        decided_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Append one revision-safe, evidence-bound lifecycle decision.
+
+        Measured outcomes require a later retained observation. A user claim,
+        missing source or failed fetch cannot resolve a case.
+        """
+        return _checked(
+            handlers.remediation_transition(
+                ledger=ledger,
+                occurrence_key=occurrence_key,
+                state=state,
+                actor=actor,
+                reason=reason,
+                expected_revision=expected_revision,
+                observation_id=observation_id,
+                decided_at=decided_at,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_record_verification(
+        ledger: str, verification_path: str, actor: str, expected_revision: int
+    ) -> dict[str, Any]:
+        """Attach a retained bounded verification artifact to pending cases.
+
+        Every result must map to exactly one pending ledger case. The artifact
+        byte digest is saved in the decision evidence; ambiguous or stale
+        batches are rejected atomically.
+        """
+        return _checked(
+            handlers.remediation_record_verification(
+                ledger=ledger,
+                verification_path=verification_path,
+                actor=actor,
+                expected_revision=expected_revision,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+        """Render retained before/after remediation evidence without network access.
+
+        With out_dir this creates a new immutable JSON/Markdown review snapshot;
+        without it, it returns the JSON-ready report document only.
+        """
+        return _checked(handlers.remediation_report(ledger=ledger, out_dir=out_dir))
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_facts(
@@ -1340,6 +1675,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         facts: list[dict[str, Any]] | None = None,
         detect: bool = False,
         apply: bool = False,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Preview or record project stack facts that stack-aware priorities then read.
 
@@ -1350,7 +1686,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         apply=true records the result in project.json.
         """
         return _checked(
-            handlers.project_facts(directory=directory, facts=facts, detect=detect, apply=apply)
+            with_project_notice(
+                handlers.project_facts(
+                    directory=directory, facts=facts, detect=detect, apply=apply
+                ),
+                directory,
+                consumer,
+            )
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
@@ -1409,7 +1751,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_record(
-        directory: str, item_id: str, record: dict, expected_revision: int
+        directory: str,
+        item_id: str,
+        record: dict,
+        expected_revision: int,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Record supplied evidence for one checklist item without executing its operation.
 
@@ -1421,11 +1767,15 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         ``pending_exclusion`` inside the denominator. This never makes a network request.
         """
         return _checked(
-            handlers.project_checklist_record(
-                directory=directory,
-                item_id=item_id,
-                record=record,
-                expected_revision=expected_revision,
+            with_project_notice(
+                handlers.project_checklist_record(
+                    directory=directory,
+                    item_id=item_id,
+                    record=record,
+                    expected_revision=expected_revision,
+                ),
+                directory,
+                consumer,
             )
         )
 
@@ -1508,6 +1858,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         competitors: list | None = None,
         approve_large_crawl: bool = False,
         producer_build: str | None = None,
+        consumer: str | None = None,
     ) -> dict[str, Any]:
         """Prepare an existing project with a bounded native crawl and saved sitemap coverage.
 
@@ -1515,12 +1866,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         All site checklists remain separate. Paid provider calls are never hidden in preparation.
         """
         return _checked(
-            handlers.project_prepare(
+            with_project_notice(
+                handlers.project_prepare(
+                    directory,
+                    template=template,
+                    competitors=competitors,
+                    approve_large_crawl=approve_large_crawl,
+                    producer_build=producer_build,
+                ),
                 directory,
-                template=template,
-                competitors=competitors,
-                approve_large_crawl=approve_large_crawl,
-                producer_build=producer_build,
+                consumer,
             )
         )
 
@@ -1733,6 +2088,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         max_rows_per_file: int = 25_000,
         max_bytes_per_file: int = 8 * 1024 * 1024,
         max_output_bytes: int = 512 * 1024 * 1024,
+        search_metric: str | None = None,
     ) -> dict[str, Any]:
         """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
 
@@ -1749,7 +2105,22 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_rows_per_file=max_rows_per_file,
                 max_bytes_per_file=max_bytes_per_file,
                 max_output_bytes=max_output_bytes,
+                search_metric=search_metric,
             )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
+        """Preflight a complete local BI package for Sheets without Google access or writes."""
+        return _checked(handlers.bi_sheets_plan(package=package, max_cells=max_cells))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_bi_bigquery_plan(
+        package: str, dataset: str, operation: str = "replace"
+    ) -> dict[str, Any]:
+        """Describe an optional BigQuery load offline; it never selects a project or writes data."""
+        return _checked(
+            handlers.bi_bigquery_plan(package=package, dataset=dataset, operation=operation)
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
@@ -1833,6 +2204,27 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 url=url,
                 representation=representation,
                 limit=limit,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_marketing_inventory(
+        documents: list[dict[str, Any]],
+        cta_selector: str | None = None,
+        form_selector: str | None = None,
+        id_attributes: list[str] | None = None,
+        id_parameters: list[str] | None = None,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Inventory supplied CTA/form DOM occurrences without fetching or submitting forms."""
+        return _checked(
+            handlers.marketing_inventory(
+                documents=documents,
+                cta_selector=cta_selector,
+                form_selector=form_selector,
+                id_attributes=id_attributes,
+                id_parameters=id_parameters,
+                out_dir=out_dir,
             )
         )
 

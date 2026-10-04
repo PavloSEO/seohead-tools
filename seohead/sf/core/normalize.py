@@ -63,6 +63,8 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     # Native-crawl only (#823): the page's authorship/date/article-scope markup
     # signals -- a {author, dates, article} object, not a cell an export holds.
     "trust_signals": ["Trust Signals"],
+    # Native-crawl only (#828): bounded records of repeated literal DOM ids.
+    "duplicate_ids": ["Duplicate IDs"],
     "h2_2": ["H2-2"],
     "meta_robots": ["Meta Robots 1"],
     "x_robots": ["X-Robots-Tag 1"],
@@ -341,6 +343,20 @@ def resolve_columns(
     return resolved
 
 
+def iter_records_from_df(
+    df: pd.DataFrame, field_map: dict[str, list[str]]
+) -> Iterable[dict[str, Any]]:
+    """Yield normalized records without a whole-frame Python dict list.
+
+    The DataFrame remains the export boundary, but native analysis no longer
+    needs an intermediate ``to_dict('records')`` population before it can
+    construct its audit context.
+    """
+    columns = tuple(df.columns)
+    for values in df.itertuples(index=False, name=None):
+        yield record_from_mapping(dict(zip(columns, values, strict=True)), field_map)
+
+
 def records_from_df(df: pd.DataFrame, field_map: dict[str, list[str]]) -> list[dict[str, Any]]:
     """Vectorized projection of a frame onto canonical records.
 
@@ -385,10 +401,15 @@ def records_from_df(df: pd.DataFrame, field_map: dict[str, list[str]]) -> list[d
 
 def row_to_record(row: pd.Series, field_map: dict[str, list[str]]) -> dict[str, Any]:
     """Single-row projection (kept for ad-hoc use; bulk path is records_from_df)."""
-    resolved = resolve_columns(row.index, field_map)
+    return record_from_mapping(row, field_map)
+
+
+def record_from_mapping(row: Any, field_map: dict[str, list[str]]) -> dict[str, Any]:
+    """Normalize one mapping row without requiring a DataFrame or building a row list."""
+    resolved = resolve_columns(row.keys(), field_map)
     record: dict[str, Any] = {}
     for field_name, col in resolved.items():
-        raw = row[col] if col is not None else None
+        raw = row.get(col) if col is not None else None
         if field_name in INT_FIELDS:
             record[field_name] = to_int(raw)
         elif field_name in FLOAT_FIELDS:

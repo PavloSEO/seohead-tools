@@ -116,6 +116,13 @@ class ImageLinkRef(TypedDict):
     destination: str
 
 
+class DuplicateId(TypedDict):
+    """One repeated HTML id value and its observed occurrence count."""
+
+    id: str
+    count: int
+
+
 class LinkPlacement(TypedDict):
     """The two link defects a page region cannot show (issue #634).
 
@@ -326,6 +333,10 @@ class ParsedPage(_ParsedPageOptional):
     # empty on a measured absence, so an audit can review the signals behind a
     # finding instead of trusting a blended verdict.
     trust_signals: TrustSignals
+    # Repeated ids are a bounded native-parser observation. ``[]`` means the
+    # parsed document had none; parser-disabled evidence is represented by the
+    # absence of the projected crawl field, never as a clean empty list.
+    duplicate_ids: list[DuplicateId]
     # How many live <meta name="description"> tags the document declares.
     meta_description_count: int
     # The <meta name="fragment"> content attribute exactly as written, "" when

@@ -16,8 +16,8 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 115 commands and 120 callable tools,
-with 176 audit checks. These are inventories, not coverage on every input.
+The current registry has 135 commands and 140 callable tools,
+with 181 audit checks. These are inventories, not coverage on every input.
 
 ## Offline BI projection
 
@@ -25,6 +25,9 @@ with 176 audit checks. These are inventories, not coverage on every input.
 from saved local scan/audit and supplied provider evidence. See [BI.md](BI.md) for
 source/output limits, null states and the explicit audit.v2 compatibility bound.
 It makes no provider requests or remote writes.
+
+`bi-sheets-plan` and `bi-bigquery-plan` verify a complete local package and emit only an
+offline preflight. They never authenticate, select a cloud target, activate billing, or write.
 
 ## Topvisor
 
@@ -178,6 +181,8 @@ because the rules could not be read, so the command never claims crawling is all
 | `markdown-extract` | Renders a page as Markdown in two scopes: `content_markdown` (boilerplate stripped, structure kept — worth diffing, scoring, or feeding to a model) and `full_markdown` (header/footer included, for reading — Markdown has already lost the tag structure `boilerplate-report` hashes, so it is not a valid input there) |
 | `boilerplate-report` | Hashes header/nav/footer *markup* per page across a crawled corpus and reports minority template groups (fraction + sample URL), answering whether boilerplate is actually the same everywhere; each page needs the original `html` or a precomputed `hash`, never Markdown. `--scan` streams retained page HTML offline and keeps only each page's digest, so coverage does not depend on total HTML size; reaching the 10,000-document or 16 MiB retained-input bound reports the exact partial coverage — never a clean result. |
 | `semantic-inputs` | Builds the reproducible normalized-input manifest semantic analysis consumes: per document the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy, and language evidence (`<html lang>` plus letter-script shares over the normalized text) — the normalized text itself is never returned. `--scan` streams retained complete bodies offline under the crawl's recorded content-area config with no refetch; a missing or partial body stays an explicit omission, never a clean empty result. `--input '{"items":[{"url":...,"html":...}]}'` normalizes supplied markup under an optional `content_area`. Corpus bounds are the shared 10,000-document and 16 MiB retained-input caps. |
+| `semantic-similarity` | Groups supplied embedding vectors into topical-similarity review candidates over supplied HTML or a retained `scan.v1` corpus. It reuses `semantic-inputs` normalization and records model/version/settings, input coverage and bounded comparisons. SEOHEAD does not load, download or call a model: the calling agent supplies vectors and an explicit local/provider transfer declaration. Cache entries are local SQLite and keyed by source hash plus model configuration. Similarity is never presented as a duplicate or cannibalization conclusion. |
+| `meta-description-drafts` | Prepares a bounded dry-run or validates structured drafts supplied by a calling/delegated agent. It reads only supplied HTML or retained scan content, stores local checkpoints by source/context/executor identity, reports unavailable inputs and review flags, and optionally exports local JSON plus formula-safe CSV. It never calls a model, writes a CMS or promises a search snippet. |
 | `keywords-cluster` | Keyword clustering; the algorithm and parameters come via `--input` |
 | `render-check` | Raw HTML vs the rendered DOM + lab metrics. See the [js-render-check](../.claude/skills/js-render-check/SKILL.md) skill |
 
@@ -323,6 +328,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
 | `scan-evidence` | Reads one bounded saved-evidence section: capabilities, corpus, structured data, rendered routes, resources, or timeline. It never fetches or replays a scan. | — |
 | `scan-extract` | Applies closed declarative extraction rules to retained complete bodies only. It is offline, body-retention limited, and does not persist the ad-hoc result. | — |
+| `marketing-inventory` | Correlates CTA and form/iframe fields per supplied DOM occurrence. It never fetches, submits forms, or inspects iframe contents; an explicit new output directory writes local JSON and formula-safe CSV. | optional local artifact write |
 | `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
 | `scan-requeue` | Requeues a restricted saved URL/page selection only after creating a mandatory verified backup. | writes artifact and backup |
 | `scan-import-urls` | Imports an explicit local URL list into a saved scan only after creating a mandatory verified backup. | writes artifact and backup |
@@ -444,17 +450,36 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `wayback-history` | Every Internet Archive snapshot of a URL: when it changed, what status it returned, what MIME type it was | free, no key |
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
+| `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
+| `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
 | `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
 | `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
+| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
+
+`gsc-archive --database ./analytics/search-console.sqlite --action prepare --site-url sc-domain:example.test --start-date 2025-06-01 --end-date 2026-09-01`
+creates the archive and queues availability checks without network calls. Dates are inclusive in
+Pacific Time; select a range inside Google's available history (up to approximately 16 months).
+For a new file, it also initializes the shared versioned provider-history store used by
+`sources-sync`, `sources-status`, and `sources-export`; richer archive datasets remain separate
+grains in that same SQLite file.
+Then run `gsc-archive --database ./analytics/search-console.sqlite --action run --max-requests 10 --pause 1`.
+`--action status` reads the existing archive without credential access or creating an absent file.
+`--action backup --backup-path ./backups/search-console-snapshot.sqlite` creates a verified snapshot
+and refuses an existing destination. JSON-only input and `seo_gsc_archive` use the same arguments.
+
+Archive datasets preserve provider, engine, request provenance and nullable metrics. Availability
+expands into separate daily totals, pages, queries, detail and appearance datasets where supported.
+Google may omit anonymized queries or cap returned rows: a `capped` job is not exhaustive evidence.
+Quota waits cover all GSC properties in that archive (15 minutes; daily quota: 24 hours); transient
+transport/5xx failures get at most three attempts per page. Across multiple archives, the caller must
+coordinate provider backoff. Neither prepare nor status launches collection implicitly.
 
 Provider history uses one `sources.sqlite` per project (`--project`) or an explicit `--db`.
-`sources-sync` is an explicit provider request. It fetches missing days, records every requested
-day, and replaces each successfully fetched day in one SQLite transaction. Complete zero-row
-days differ from sampled, thresholded, truncated or capped partial results, failures and days
-held back by provider lag. A failed or partial
-forced retry never erases a previously complete day. GSC history here is the bounded web
-date/query/page grain; the separate #718 archive's additional datasets and resumable quota
-checkpoints are not part of this command. No independent GSC archive is created by these tools.
+`sources-sync` fetches missing days, records every requested day, and replaces each successfully
+fetched day in one SQLite transaction. Complete zero-row days differ from sampled, thresholded,
+truncated or capped partial results, failures and days held back by provider lag. A failed or
+partial forced retry never erases a previously complete day. GSC history is the bounded web
+date/query/page grain; the separate archive adds independent datasets and resumable checkpoints.
 
 `sources-status` reads the local file without provider calls or schema writes. `sources-export`
 orders by resource, date and dimensions and limits both JSON and CSV to at most 100,000 rows.
@@ -579,7 +604,7 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
-**176 checks**: 12 critical, 81 warnings, 83 notices. Sources: SF exports,
+**181 checks**: 12 critical, 83 warnings, 86 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -613,7 +638,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(115 + 5):
+(135 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -621,7 +646,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 176 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 181 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another
@@ -631,3 +656,8 @@ seohead mcp        # stdio
 `project-priorities` / `seo_project_priorities` previews data-only work priorities from saved project facts. Explicit `--apply` requires the current checklist revision and saves policy provenance. It preserves operator choices and completion evidence; it does not run detection or change finding severity. See [project workspaces](PROJECTS.md).
 
 `project-facts` / `seo_project_facts` is what puts those facts on the record after creation. Supplied facts are operator decisions and always win; `--detect` runs one `tech-detect` pass over the project's own target, reading robots.txt first, and records what it found as evidence under its own provenance. A detection that fails, is disallowed, or cannot tell two candidates apart leaves the fact absent with its reason. Nothing here runs implicitly: without `--detect` the command is offline, and without `--apply` it only previews.
+
+
+## Additional registered workflows
+
+`remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`. See the generated tool reference for exact inputs, limits and side effects.

@@ -67,6 +67,8 @@ COMMANDS = (
     "markdown-extract",
     "boilerplate-report",
     "semantic-inputs",
+    "semantic-similarity",
+    "meta-description-drafts",
     "social-meta-check",
     "soft404-check",
     "log-analyze",
@@ -95,6 +97,9 @@ COMMANDS = (
     "wayback-history",
     "crtsh-subdomains",
     "gsc-query",
+    "webmaster-url-queries",
+    "miratext-analyze",
+    "gsc-archive",
     "crux-report",
     "indexnow-submit",
     "scan-list",
@@ -111,6 +116,18 @@ COMMANDS = (
     "project-open",
     "project-status",
     "project-progress",
+    "remediation-summary",
+    "remediation-cases",
+    "remediation-transition",
+    "remediation-record-verification",
+    "remediation-report",
+    "project-observe",
+    "project-inbox-submit",
+    "project-inbox-list",
+    "project-inbox-read",
+    "project-inbox-acknowledge",
+    "project-inbox-goal",
+    "project-inbox-unread",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -136,11 +153,14 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "bi-sheets-plan",
+    "bi-bigquery-plan",
     "inspect-url",
     "audit-workflow",
     "tool-catalog",
     "scan-evidence",
     "scan-extract",
+    "marketing-inventory",
     "scan-fragment-links",
     "scan-requeue",
     "scan-import-urls",
@@ -323,6 +343,8 @@ def _split_list(val: str | None) -> list[str] | None:
 def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     """Return (handler_name, kwargs) for a command from flags + --input JSON."""
     data = _load_input(getattr(args, "input", None), allow_stdin=not _has_source_flag(args))
+    if cmd == "gsc-archive" and not isinstance(data, dict):
+        raise ValueError("gsc-archive input must be a JSON object")
     handler_name = cmd.replace("-", "_")
     kw: dict[str, Any] = dict(data)  # --input is the base; flags override/augment
 
@@ -455,6 +477,34 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
     elif cmd in {
+        "remediation-summary",
+        "remediation-cases",
+        "remediation-transition",
+        "remediation-record-verification",
+        "remediation-report",
+    }:
+        for name in (
+            "ledger",
+            "check",
+            "url",
+            "finding_key",
+            "occurrence_key",
+            "state",
+            "actor",
+            "reason",
+            "expected_revision",
+            "observation_id",
+            "decided_at",
+            "out_dir",
+            "verification_path",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if cmd == "remediation-cases":
+            kw["limit"] = args.limit
+            kw["offset"] = args.offset
+    elif cmd in {
         "project-new",
         "project-open",
         "project-status",
@@ -489,6 +539,36 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["approve_large_crawl"] = True
         if getattr(args, "producer_build", None):
             kw["producer_build"] = args.producer_build
+    elif cmd.startswith("project-inbox-"):
+        for name in (
+            "directory",
+            "text",
+            "kind",
+            "consumer",
+            "entry_id",
+            "state",
+            "author_role",
+            "expected_revision",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "references", None):
+            kw["references"] = _split_list(args.references)
+        if getattr(args, "entry_ids", None):
+            kw["entry_ids"] = _split_list(args.entry_ids)
+        if getattr(args, "offset", None) is not None:
+            kw["offset"] = args.offset
+        if getattr(args, "limit", None) is not None:
+            kw["limit"] = args.limit
+        if getattr(args, "unacknowledged_only", False):
+            kw["include_acknowledged"] = False
+    elif cmd == "project-observe":
+        kw["directory"] = args.directory
+        if args.consumer is not None:
+            kw["consumer"] = args.consumer
+        if args.scan_limit is not None:
+            kw["scan_limit"] = args.scan_limit
     elif cmd in {"skill-show", "scenario-show"}:
         if getattr(args, "name", None) or getattr(args, "playbook_name", None):
             kw["name"] = getattr(args, "name", None) or args.playbook_name
@@ -541,14 +621,34 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
+            "search_metric",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
         if getattr(args, "provider_join", None):
             kw["provider_joins"] = args.provider_join
-    elif cmd in {"boilerplate-report", "semantic-inputs"}:
+    elif cmd in {"bi-sheets-plan", "bi-bigquery-plan"}:
+        for name in ("package", "max_cells", "dataset", "operation"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd in {
+        "boilerplate-report",
+        "semantic-inputs",
+        "semantic-similarity",
+        "meta-description-drafts",
+    }:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
+        if cmd == "semantic-similarity":
+            for name in ("cache_path", "threshold", "max_candidate_comparisons"):
+                value = getattr(args, name, None)
+                if value is not None:
+                    kw[name] = value
+        if cmd == "meta-description-drafts":
+            for name in ("checkpoint_path", "batch_size", "json_path", "csv_path"):
+                value = getattr(args, name, None)
+                if value is not None:
+                    kw[name] = value
         # items[]/pages[] and content_area are intentionally accepted through --input JSON.
     elif cmd == "log-analyze":
         if args.path:
@@ -753,6 +853,25 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["dimensions"] = _split_list(args.dimensions)
         if getattr(args, "row_limit", None):
             kw["row_limit"] = args.row_limit
+    if cmd == "webmaster-url-queries":
+        for name in ("host_id", "url", "url_contains", "max_urls", "max_queries_per_url"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+    if cmd == "gsc-archive":
+        for name in (
+            "database",
+            "action",
+            "site_url",
+            "start_date",
+            "end_date",
+            "max_requests",
+            "pause",
+            "backup_path",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     if cmd == "crux-report":
         if getattr(args, "url", None):
             kw["url"] = args.url
@@ -1189,6 +1308,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="verify bot identities with forward-confirmed reverse DNS "
             "(performs network lookups)",
         )
+    if cmd == "webmaster-url-queries":
+        _source_flag(sub, "--host-id", dest="host_id", help="verified Yandex Webmaster host ID")
+        _source_flag(sub, "--url", help="one exact page URL")
+        _source_flag(sub, "--url-contains", dest="url_contains", help="page URL substring")
+        sub.add_argument("--max-urls", dest="max_urls", type=int, help="URL cap, 1..500")
+        sub.add_argument(
+            "--max-queries-per-url",
+            dest="max_queries_per_url",
+            type=int,
+            help="query cap per URL, 1..500",
+        )
     if cmd in {
         "scan-evidence",
         "scan-extract",
@@ -1465,6 +1595,34 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--dimensions", help="comma-separated dimensions, e.g. query,page")
         sub.add_argument("--row-limit", dest="row_limit", type=int, help="rows to return")
         sub.add_argument("--inspection-url", dest="inspection_url", help="URL for mode=inspect_url")
+    if cmd == "gsc-archive":
+        _source_flag(sub, "--database", help="explicit local SQLite archive file")
+        sub.add_argument(
+            "--action",
+            choices=("status", "prepare", "run", "backup"),
+            help="offline status (default), prepare, bounded run, or backup",
+        )
+        sub.add_argument(
+            "--site-url", dest="site_url", help="verified property; required for prepare"
+        )
+        sub.add_argument(
+            "--start-date", dest="start_date", help="inclusive YYYY-MM-DD; required for prepare"
+        )
+        sub.add_argument(
+            "--end-date", dest="end_date", help="inclusive YYYY-MM-DD; required for prepare"
+        )
+        sub.add_argument(
+            "--max-requests",
+            dest="max_requests",
+            type=int,
+            help="API requests per run, 1..1000 (default 1)",
+        )
+        sub.add_argument(
+            "--pause", type=float, help="seconds between API requests, 0..60 (default 1)"
+        )
+        sub.add_argument(
+            "--backup-path", dest="backup_path", help="new snapshot file; required for backup"
+        )
     if cmd == "crux-report":
         _source_flag(sub, "--url", help="page URL to report on")
         _source_flag(sub, "--origin", help="origin to report on, instead of a single URL")
@@ -1682,9 +1840,70 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--label", help="human project label")
     if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd == "project-observe":
+        _source_flag(sub, "--directory", help="validated local project workspace")
+        sub.add_argument("--consumer", help="stable local agent/session consumer id")
+        sub.add_argument("--scan-limit", type=int, default=20)
+    if cmd.startswith("project-inbox-"):
+        _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd == "project-inbox-submit":
+        _source_flag(sub, "--text", help="specialist note or proposed goal text")
+        sub.add_argument("--kind", choices=("note", "proposed_goal"), default="note")
+        sub.add_argument(
+            "--references", help="comma-separated goal/task/scan/finding/section references"
+        )
+        sub.add_argument("--author-role", choices=("specialist", "agent"), default="specialist")
+        sub.add_argument("--expected-revision", type=int)
+    if cmd in {"project-inbox-list", "project-inbox-unread"}:
+        sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")
+        sub.add_argument("--limit", type=int, default=20 if cmd.endswith("list") else 10)
+    if cmd == "project-inbox-list":
+        sub.add_argument("--offset", type=int, default=0)
+        sub.add_argument("--unacknowledged-only", action="store_true")
+    if cmd in {"project-inbox-read", "project-inbox-acknowledge"}:
+        sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")
+        sub.add_argument("--entry-ids", required=True, help="comma-separated inbox entry ids")
+        sub.add_argument("--expected-revision", type=int)
+    if cmd == "project-inbox-goal":
+        sub.add_argument("--entry-id", required=True)
+        sub.add_argument("--state", required=True, choices=("accepted", "completed"))
+        sub.add_argument("--expected-revision", type=int)
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
+    if cmd in {
+        "remediation-summary",
+        "remediation-cases",
+        "remediation-transition",
+        "remediation-record-verification",
+        "remediation-report",
+    }:
+        _source_flag(sub, "--ledger", help="validated local ledger.v1 SQLite artifact")
+    if cmd == "remediation-cases":
+        sub.add_argument("--check", help="exact registry check identifier")
+        sub.add_argument("--url", help="exact affected URL")
+        sub.add_argument("--finding-key", dest="finding_key", help="exact finding SHA-256 key")
+        sub.add_argument("--limit", type=int, default=100, help="findings per page (1..1000)")
+        sub.add_argument("--offset", type=int, default=0, help="zero-based finding offset")
+    if cmd == "remediation-transition":
+        sub.add_argument("--occurrence-key", dest="occurrence_key", help="case SHA-256 key")
+        sub.add_argument("--state", help="next lifecycle state")
+        sub.add_argument("--actor", help="decision actor")
+        sub.add_argument("--reason", help="bounded decision rationale")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument("--observation-id", dest="observation_id", type=int)
+        sub.add_argument("--decided-at", dest="decided_at", help="UTC ISO-8601 decision time")
+    if cmd == "remediation-record-verification":
+        _source_flag(
+            sub,
+            "--verification-path",
+            dest="verification_path",
+            help="retained verification.v1 JSON",
+        )
+        sub.add_argument("--actor", help="recheck actor")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+    if cmd == "remediation-report":
+        sub.add_argument("--out-dir", dest="out_dir", help="new directory for JSON and Markdown")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {
@@ -1812,6 +2031,22 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-rows-per-file", type=int, help="CSV partition row bound")
         sub.add_argument("--max-bytes-per-file", type=int, help="CSV partition byte bound")
         sub.add_argument("--max-output-bytes", type=int, help="hard total package byte bound")
+        sub.add_argument(
+            "--search-metric",
+            choices=("clicks", "impressions"),
+            help="explicit Search Console axis for complete compatible GA sessions quadrants",
+        )
+    if cmd == "bi-sheets-plan":
+        _source_flag(sub, "--package", help="complete local BI package directory")
+        sub.add_argument(
+            "--max-cells", type=int, help="declared Sheets cell capacity (maximum 10000000)"
+        )
+    if cmd == "bi-bigquery-plan":
+        _source_flag(sub, "--package", help="complete local BI package directory")
+        sub.add_argument(
+            "--dataset", required=True, help="planned BigQuery dataset name; no cloud write occurs"
+        )
+        sub.add_argument("--operation", choices=("replace", "append"), default="replace")
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":
@@ -1931,6 +2166,23 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
     if cmd == "semantic-inputs":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+    if cmd == "semantic-similarity":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument("--cache-path", help="local SQLite embedding cache (created if absent)")
+        sub.add_argument(
+            "--threshold", type=float, help="cosine candidate threshold (default 0.82)"
+        )
+        sub.add_argument(
+            "--max-candidate-comparisons", type=int, help="finite pairwise comparison budget"
+        )
+    if cmd == "meta-description-drafts":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument("--checkpoint-path", help="local SQLite draft checkpoint")
+        sub.add_argument("--batch-size", type=int, help="bounded supplied-draft batch size")
+        sub.add_argument("--json-path", help="local JSON review artifact (requires --csv-path)")
+        sub.add_argument(
+            "--csv-path", help="local formula-safe CSV review artifact (requires --json-path)"
+        )
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")
 
@@ -1989,6 +2241,13 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         "status",
         "progress",
+        "observe",
+        "inbox-submit",
+        "inbox-list",
+        "inbox-read",
+        "inbox-acknowledge",
+        "inbox-goal",
+        "inbox-unread",
         "facts",
         "checklist-init",
         "checklist-update",
@@ -2029,6 +2288,11 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.add_argument(
         "--no-progress", action="store_true", help="disable optional MCP progress notifications"
     )
+    tui = subs.add_parser("tui", help="interactive terminal shell (needs the optional 'tui' extra)")
+    tui.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
+    watch = subs.add_parser("watch", help="observe a local project beside an AI chat")
+    watch.add_argument("--project", required=True, help="validated local project workspace")
+    watch.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
     return p
 
 
@@ -2065,6 +2329,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile == "full" and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
+    if cmd in {"tui", "watch"}:
+        try:
+            from seohead.tui.app import run as tui_run
+        except ImportError:
+            print(
+                "seohead tui needs the optional 'tui' extra: pip install 'seohead-seotools[tui]'",
+                file=sys.stderr,
+            )
+            return 1
+        return tui_run(no_color=args.no_color, project=getattr(args, "project", None))
     from seohead.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))

@@ -229,6 +229,26 @@ jobs:
       - run: pytest tests/test_pdf_validation.py -q
 
 
+  disposable-service-profile:
+    name: Disposable TLS proxy, recovery, and rollback profile
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Exercise owned loopback TLS and recovery fixture
+        run: >
+          python scripts/disposable_service_profile.py
+          --metrics-out "$RUNNER_TEMP/disposable-service-profile.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: disposable-service-profile
+          path: ${{ runner.temp }}/disposable-service-profile.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   docker:
     runs-on: ubuntu-latest
     steps:

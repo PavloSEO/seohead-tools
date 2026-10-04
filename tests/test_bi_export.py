@@ -425,3 +425,110 @@ def test_companion_audit_findings_are_projected_without_reading_empty_inline_slo
     manifest = json.loads((package / "manifest.json").read_text())
     assert len(_csv_rows(package, manifest, "findings")) == len(issues)
     assert manifest["run"]["audit_available"] is True
+
+
+def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidence(tmp_path):
+    audit = {
+        "schema": "seohead.site-audit/1",
+        "url": "https://example.test/",
+        "domain": "example.test",
+        "generated_at": "2026-01-02T03:04:05Z",
+        "site": {},
+        "pages": [{"url": "https://example.test/", "status_code": 200, "crawl_depth": 3}],
+        "findings": [],
+        "summary": {
+            "pages_checked": 1,
+            "findings_total": 0,
+            "findings_by_severity": {"critical": 0, "warning": 0, "notice": 0},
+            "tools_run": [],
+            "tools_failed": [],
+        },
+    }
+
+    def evidence(provider, metric, value, *, timezone="UTC"):
+        return normalize_inline(
+            [{"url": "https://example.test/", metric: value}],
+            manifest={
+                "format": "seohead.evidence-mapping.v1",
+                "source": {
+                    "provider": provider,
+                    "operation": "synthetic",
+                    "privacy": "supplied",
+                    "timezone": timezone,
+                },
+                "url": {"field": "url", "kind": "absolute"},
+                "row_shape": "flat",
+                "dimensions": [],
+                "metrics": [{"name": metric, "type": "number", "unit": "count"}],
+                "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
+                "collection": {"state": "complete"},
+            },
+        )
+
+    gsc = tmp_path / "gsc.json"
+    ga4 = tmp_path / "ga4.json"
+    gsc.write_text(json.dumps(evidence("gsc", "clicks", 0)), encoding="utf-8")
+    ga4.write_text(json.dumps(evidence("ga4", "sessions", 2)), encoding="utf-8")
+    package = tmp_path / "cohort-bi"
+
+    export_bi(
+        audit=audit,
+        provider_joins=[gsc, ga4],
+        out_dir=package,
+        search_metric="clicks",
+    )
+
+    manifest = json.loads((package / "manifest.json").read_text())
+    cohorts = _csv_rows(package, manifest, "cohorts")
+    quadrant = next(row for row in cohorts if row["cohort_id"] == "search_visibility_vs_sessions")
+    assert quadrant["membership"] == "member"
+    assert quadrant["value_label"] == "zero_search_positive_sessions"
+    assert quadrant["search_value"] == "0"
+    assert quadrant["sessions_value"] == "2"
+    assert quadrant["period_start"] == "2026-01-01"
+    assert quadrant["timezone"] == "UTC"
+    assert manifest["datasets"]["cohorts"]["row_count"] == 5
+
+    no_provider = tmp_path / "cohort-no-provider"
+    export_bi(audit=audit, out_dir=no_provider)
+    missing = next(
+        row
+        for row in _csv_rows(
+            no_provider, json.loads((no_provider / "manifest.json").read_text()), "cohorts"
+        )
+        if row["cohort_id"] == "search_visibility_vs_sessions"
+    )
+    assert missing["membership"] == "unclassified"
+    assert missing["state"] == "not_configured"
+    inlinks = next(
+        row
+        for row in _csv_rows(
+            no_provider, json.loads((no_provider / "manifest.json").read_text()), "cohorts"
+        )
+        if row["cohort_id"] == "observed_unique_inlink_share"
+    )
+    assert inlinks["state"] == "unavailable"
+
+    mismatched = tmp_path / "ga4-mismatched.json"
+    mismatched.write_text(
+        json.dumps(evidence("ga4", "sessions", 2, timezone="America/New_York")),
+        encoding="utf-8",
+    )
+    incompatible_package = tmp_path / "cohort-incompatible"
+    export_bi(
+        audit=audit,
+        provider_joins=[gsc, mismatched],
+        out_dir=incompatible_package,
+        search_metric="clicks",
+    )
+    incompatible = next(
+        row
+        for row in _csv_rows(
+            incompatible_package,
+            json.loads((incompatible_package / "manifest.json").read_text()),
+            "cohorts",
+        )
+        if row["cohort_id"] == "search_visibility_vs_sessions"
+    )
+    assert incompatible["membership"] == "unclassified"
+    assert incompatible["state"] == "incomplete"

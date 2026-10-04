@@ -173,6 +173,134 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     assert degraded.audit_reason == "required report artifact unavailable"
 
 
+def test_trusted_remote_browser_and_credential_references_are_not_submission_fields(
+    monkeypatch, tmp_path
+):
+    _network(monkeypatch)
+    secret = "Bearer synthetic-value-that-must-not-be-stored"
+    monkeypatch.setenv("SEOHEAD_REMOTE_TEST_TOKEN", secret)
+    seen = []
+
+    def runner(_url, **kwargs):
+        seen.append(kwargs["settings"])
+        return {"audit_available": False, "partial": True}
+
+    limits = RemoteProjectLimits(
+        browser_transport={
+            "transport": "remote",
+            "remote_protocol": "playwright",
+            "remote_endpoint_env": "SEOHEAD_REMOTE_BROWSER_ENDPOINT",
+            "remote_playwright_version": "1.57.0",
+        },
+        credential_headers=(
+            {
+                "host": "public.example.test",
+                "headers": {"Authorization": "env:SEOHEAD_REMOTE_TEST_TOKEN"},
+            },
+        ),
+    )
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {"alpha": limits},
+        producer_build="a" * 40,
+        runner=runner,
+    )
+    request = ScanSubmission(
+        target_url=SITE,
+        options={"max_urls": 1, "max_requests": 20, "rendering_mode": "js"},
+    )
+    outcome = backend.submit(
+        "alpha",
+        "operator-a",
+        "synthetic-remote-settings",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    )
+    with sqlite3.connect(backend.db_path) as con:
+        stored = con.execute(
+            "SELECT config_json FROM jobs WHERE job_id=?", (outcome.job.job_id,)
+        ).fetchone()[0]
+    assert secret not in stored
+    assert json.loads(stored)["rendering"]["browser"]["transport"] == "remote"
+    assert json.loads(stored)["http"]["credential_headers"][0]["headers"] == {
+        "Authorization": "env:SEOHEAD_REMOTE_TEST_TOKEN"
+    }
+    assert backend.run_one("worker-a").state == "failed"
+    assert seen and seen[0]["rendering"]["browser"]["transport"] == "remote"
+    assert secret not in json.dumps(backend.events("alpha", outcome.job.job_id))
+
+
+def test_missing_trusted_credential_reference_refuses_before_queueing(monkeypatch, tmp_path):
+    monkeypatch.delenv("SEOHEAD_MISSING_REMOTE_TOKEN", raising=False)
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {
+            "alpha": RemoteProjectLimits(
+                credential_headers=(
+                    {
+                        "host": "public.example.test",
+                        "headers": {"Authorization": "env:SEOHEAD_MISSING_REMOTE_TOKEN"},
+                    },
+                )
+            )
+        },
+        producer_build="a" * 40,
+    )
+    request = ScanSubmission(target_url=SITE, options={"max_urls": 1, "max_requests": 20})
+    with pytest.raises(ValueError, match="SEOHEAD_MISSING_REMOTE_TOKEN"):
+        backend.submit(
+            "alpha",
+            "operator-a",
+            "synthetic-missing-reference",
+            request.fingerprint(),
+            request,
+            request.options.effective_config(),
+        )
+
+
+def test_trusted_credential_reference_reaches_runtime_without_leaking_provenance(
+    monkeypatch, tmp_path
+):
+    requests = _network(monkeypatch)
+    secret = "Bearer synthetic-runtime-secret"
+    monkeypatch.setenv("SEOHEAD_REMOTE_RUNTIME_TOKEN", secret)
+    backend = SQLiteJobBackend(
+        tmp_path / "remote-state",
+        {
+            "alpha": RemoteProjectLimits(
+                credential_headers=(
+                    {
+                        "host": "public.example.test",
+                        "headers": {"Authorization": "env:SEOHEAD_REMOTE_RUNTIME_TOKEN"},
+                    },
+                )
+            )
+        },
+        producer_build="a" * 40,
+    )
+    request = ScanSubmission(target_url=SITE, options={"max_urls": 1, "max_requests": 20})
+    job = backend.submit(
+        "alpha",
+        "operator-a",
+        "synthetic-runtime-reference",
+        request.fingerprint(),
+        request,
+        request.options.effective_config(),
+    ).job
+    assert backend.run_one("worker-a").state == "finished"
+    assert any(outbound.headers.get("authorization") == secret for outbound in requests)
+    scan_ref = next(
+        item for item in backend.get_result("alpha", job.job_id).artifacts if item.kind == "scan"
+    )
+    scan_path = backend.artifact_path("alpha", job.job_id, scan_ref.artifact_id)
+    with sqlite3.connect(scan_path) as con:
+        stored = con.execute("SELECT config_json FROM scan WHERE singleton=1").fetchone()[0]
+    assert secret not in stored
+    assert "REDACTED" in stored
+    assert secret not in json.dumps(backend.events("alpha", job.job_id))
+
+
 @pytest.mark.parametrize("kind", ["scan", "audit_json", "audit_md"])
 def test_same_size_artifact_tampering_denies_download_and_complete_coverage(
     monkeypatch, tmp_path, kind

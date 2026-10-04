@@ -611,6 +611,15 @@ measured empty value or zero count. Current imports validate and store actual
 field types. Imported older records therefore leave the `pages` capability partial
 independently of the run's `crawl_partial` state.
 
+`trust_signals_json` sits outside that table deliberately. The parser's
+byline/date/article evidence (issue #823) is an optional record field rather
+than a late one: an absent key in a `pages.jsonl` row is a legal present-day
+state -- the page's body was never parsed for trust signals -- not proof that
+the record predates the field, so it feeds neither the required-field check
+nor the legacy-fields report. `NULL` here means the page never yielded parsed
+body evidence, which is unmeasured, not a measured "nothing found". A measured
+absence is the object with empty lists.
+
 This is a prerelease `scan.v1` schema synchronized with that current record
 contract. There is no automatic migration. A prototype SQLite file with the old
 DDL is refused and must be explicitly reimported from its legacy source. The

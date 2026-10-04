@@ -162,6 +162,13 @@
       "title": "The page's content sits inside an iframe and is not attributed to this URL"
     },
     {
+      "definition_hash": "d5d387a562f8b67bc4c29f121e4131580157172181de7ba5bfa7e928584f7753",
+      "id": "check:DECLARED_MIME_MISMATCH",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "Received Content-Type conflicts with an unambiguous URL filename extension"
+    },
+    {
       "definition_hash": "d966160498ae085257a1ecf8645ed1b83b132318aa979141f0deb1dc636ae281",
       "id": "check:DEEP_CLICK_DEPTH",
       "kind": "check",
@@ -251,6 +258,13 @@
       "kind": "check",
       "source": "runtime:CHECKS",
       "title": "Exact duplicate content (identical hash)"
+    },
+    {
+      "definition_hash": "89bb1bed40937aa2346f0d4accb6a5c3e2eaa27638fab572792c5ed2fe483354",
+      "id": "check:DUPLICATE_ID",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "HTML id value is repeated in the parsed document"
     },
     {
       "definition_hash": "eeb86555466f519ae8bf4a9c8a4bfd5f5c7de657f2c4361082732ce5c01af3f8",
@@ -517,6 +531,13 @@
       "kind": "check",
       "source": "runtime:CHECKS",
       "title": "Response uses HTTP/1.x rather than HTTP/2 or newer"
+    },
+    {
+      "definition_hash": "a94b91e8a8b7b6cd05e7d23942e95bb9e764ed6d5d3d3d00d6ebbd2cad348ad8",
+      "id": "check:HTTP_LINK_ON_HTTPS",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "HTTPS page contains an ordinary internal http:// anchor"
     },
     {
       "definition_hash": "fd1f08742e96875b8d19701212f4bc0be74732a469bf7938d32a110561a56e14",
@@ -1191,6 +1212,13 @@
       "title": "URL path contains a repeated segment"
     },
     {
+      "definition_hash": "65e694ebb79b021a5ba25fbc2105e51d5055330e3e050acaef3735314f9fa28d",
+      "id": "check:URL_SESSION_ID",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "Indexable URL contains a recognized session-token parameter"
+    },
+    {
       "definition_hash": "444f2b5a95bcb653e0892f508c2af9a5e1051e2764758e9e03b273a3ca3bbe7b",
       "id": "check:URL_TOO_LONG",
       "kind": "check",
@@ -1203,6 +1231,13 @@
       "kind": "check",
       "source": "runtime:CHECKS",
       "title": "Indexable URL contains a tracking parameter such as utm_, gclid, or fbclid"
+    },
+    {
+      "definition_hash": "2a8b6e64692e3616d442ec4a5aef21d7172779a180ea715d2317c62330c71780",
+      "id": "check:URL_TRAILING_SLASH_INCONSISTENT",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "Comparable trailing-slash URL variants both serve as separate indexable pages"
     },
     {
       "definition_hash": "21d51fd628cbca57ccc5145dc43c7999dde6ce332e6d4feed0faedc5ffb640ce",

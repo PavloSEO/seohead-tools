@@ -4,6 +4,7 @@ from seohead.crawl.link_findings import (
     follow_and_nofollow_inlinks,
     form_url_insecure,
     forms_on_http_pages_with_password,
+    http_links_on_https_pages,
     outlinks_to_localhost,
     protocol_relative_links,
     unsafe_cross_origin_links,
@@ -45,6 +46,25 @@ def test_ipv6_loopback_is_flagged():
 def test_ordinary_external_host_is_not_flagged():
     links = [edge("https://example.com/", "https://other.example/x")]
     assert outlinks_to_localhost(links) == []
+
+
+def test_http_internal_anchor_on_https_page_requires_raw_href_and_no_safe_redirect():
+    links = [
+        edge(
+            "https://example.com/source",
+            "http://example.com/target",
+            raw_href="http://example.com/target",
+        ),
+        edge("https://example.com/source", "https://example.com/relative", raw_href="/relative"),
+    ]
+    assert http_links_on_https_pages(links, "example.com", set()) == [
+        {
+            "target_url": "https://example.com/source",
+            "destination": "http://example.com/target",
+            "raw_href": "http://example.com/target",
+        }
+    ]
+    assert http_links_on_https_pages(links, "example.com", {"http://example.com/target"}) == []
 
 
 def test_dotted_localhost_subdomain_is_flagged():

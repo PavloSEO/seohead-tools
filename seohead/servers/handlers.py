@@ -1295,7 +1295,7 @@ def _audit_crawl_result(
     exports.missing = list(evidence["missing"])
 
     audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
-    ctx = AuditContext(exports, audit_config)
+    ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
@@ -1544,6 +1544,27 @@ def _audit_crawl_result(
                     else link_findings.follow_and_nofollow_inlinks(links, crawl_host)
                 ):
                     ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=dest)
+                if settings["link_attributes"]["capture"]:
+                    safely_upgraded = {
+                        page.url
+                        for page in ctx.pages
+                        if page.status_code is not None
+                        and 300 <= int(page.status_code) <= 399
+                        and str(page.metrics.get("_record", {}).get("redirect_url") or "")
+                        .lower()
+                        .startswith("https://")
+                    }
+                    for item in link_findings.http_links_on_https_pages(
+                        graph.iter_links() if graph else links,
+                        crawl_host,
+                        safely_upgraded,
+                    ):
+                        ctx.add("HTTP_LINK_ON_HTTPS", target_url=item["target_url"], details=item)
+                else:
+                    ctx.skip(
+                        "HTTP_LINK_ON_HTTPS",
+                        "link_attributes.capture is false; original href schemes were not retained",
+                    )
             else:
                 ctx.skip(
                     "FOLLOW_AND_NOFOLLOW_INLINKS",
@@ -1553,6 +1574,7 @@ def _audit_crawl_result(
             reason = "crawl-list input retains no link-edge evidence"
             ctx.skip("OUTLINK_TO_LOCALHOST", reason)
             ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", reason)
+            ctx.skip("HTTP_LINK_ON_HTTPS", reason)
 
         if has_form_evidence:
             for item in (
@@ -1707,6 +1729,9 @@ def _audit_crawl_result(
         ).fetchone()[0]
         audit = attach_contract(audit, scan_uuid=scan_identity, con=stored_scan.con)
         audit = attach_saved_corpus(audit, stored_scan.con, derived=saved_corpus)
+    # ``to_json`` above has copied the report payload. The native page store is
+    # no longer needed and must not leave its temporary SQLite file behind.
+    ctx.close()
 
     tasks_written: dict[str, str] = {}
     if out_dir:
@@ -2700,6 +2725,119 @@ def semantic_inputs(
     }
 
 
+def semantic_similarity(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    embeddings: list[dict] | None = None,
+    adapter: dict[str, Any] | None = None,
+    cache_path: str | None = None,
+    threshold: float = 0.82,
+    max_candidate_comparisons: int = 250_000,
+) -> dict[str, Any]:
+    """Group supplied embedding evidence; this handler never loads or calls a model."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    if not isinstance(adapter, dict):
+        raise ValueError("adapter declaration is required")
+    if not cache_path:
+        raise ValueError("cache_path is required for local semantic embedding reuse")
+    if not isinstance(embeddings, list):
+        raise ValueError("embeddings[] is required; SEOHEAD does not call a model by default")
+    from seohead.tools import semantic_similarity as core
+    from seohead.tools import text_normalize as norm_core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, "groups": [], **corpus_public(corpus)}
+        documents = corpus["items"]
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        documents = norm_core.prepare_items(items)
+        public = {
+            "normalization": norm_core.normalization_policy(),
+            "coverage": {
+                "state": "complete",
+                "eligible_documents": len(items),
+                "prepared_documents": len(documents),
+                "analyzed_documents": 0,
+                "omitted_documents": 0,
+                "omission_reasons": {},
+            },
+        }
+    vectors = {
+        entry.get("url"): entry.get("vector")
+        for entry in embeddings
+        if isinstance(entry, dict) and isinstance(entry.get("url"), str)
+    }
+    for document in documents:
+        if document.get("url") in vectors:
+            document["embedding"] = vectors[document["url"]]
+    result = core.analyze_semantic_documents(
+        documents,
+        core.DeclaredEmbeddingAdapter(adapter),
+        core.EmbeddingCache(cache_path),
+        threshold=threshold,
+        max_candidate_comparisons=max_candidate_comparisons,
+    )
+    if "coverage" in public:
+        result["source_coverage"] = public["coverage"]
+    if "source" in public:
+        result["source"] = public["source"]
+    if "normalization" in public:
+        result["normalization"] = public["normalization"]
+    return result
+
+
+def meta_description_drafts(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    context: dict[str, Any] | None = None,
+    drafts: list[dict] | None = None,
+    executor: dict[str, Any] | None = None,
+    checkpoint_path: str | None = None,
+    batch_size: int = 20,
+    json_path: str | None = None,
+    csv_path: str | None = None,
+) -> dict[str, Any]:
+    """Prepare or validate resumable, page-grounded supplied drafts without model calls."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    from seohead.tools import meta_description_drafts as core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        plan = core.prepare_draft_plan_from_normalized(
+            corpus["items"], context, batch_size=batch_size
+        )
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        plan = core.prepare_draft_plan(items, context, batch_size=batch_size)
+        public = {}
+    if drafts is None:
+        return {"ok": True, "plan": plan, **public}
+    if not isinstance(executor, dict) or not checkpoint_path:
+        raise ValueError("draft execution requires executor declaration and checkpoint_path")
+    if (json_path is None) != (csv_path is None):
+        raise ValueError("json_path and csv_path must be supplied together")
+    result = core.run_draft_plan(
+        plan,
+        core.DeclaredDraftExecutor(executor, drafts),
+        core.DraftCheckpoint(checkpoint_path),
+    )
+    if json_path and csv_path:
+        core.export_draft_review(result, json_path, csv_path)
+    return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
+
+
 def social_meta_check(
     url: str | None = None, og: dict[str, str] | None = None, twitter: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -3403,6 +3541,124 @@ def gsc_query(
     )
 
 
+def webmaster_url_queries(
+    host_id: str | None = None,
+    url: str | None = None,
+    url_contains: str | None = None,
+    max_urls: int = 100,
+    max_queries_per_url: int = 500,
+) -> dict[str, Any]:
+    """Read bounded URL-to-query evidence from an own Yandex Webmaster host."""
+    if not host_id:
+        raise ValueError("host_id required")
+    from seohead.data_sources import yandex_webmaster as core
+
+    return core.url_queries(
+        host_id,
+        url=url,
+        url_contains=url_contains,
+        max_urls=max_urls,
+        max_queries_per_url=max_queries_per_url,
+    )
+
+
+def miratext_analyze(**request: Any) -> dict[str, Any]:
+    """Start or resume a bounded Miratext analysis; paid modes need explicit confirmation."""
+    from seohead.data_sources import miratext
+
+    return miratext.analyze(**request)
+
+
+def gsc_archive(
+    database: str | None = None,
+    action: str = "status",
+    site_url: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_requests: int = 1,
+    pause: float = 1.0,
+    backup_path: str | None = None,
+) -> dict[str, Any]:
+    """Manage an explicitly selected local GSC SQLite archive.
+
+    Status is offline and does not create an absent archive. Prepare is the only action
+    that creates a database; run performs bounded API work and resumes saved checkpoints.
+    Backup snapshots an existing archive into a new local file. No credentials are inputs.
+    """
+    import math
+    import sqlite3
+
+    from seohead.data_sources.gsc import _validate_date_range
+    from seohead.data_sources.gsc_archive import Archive
+
+    if action not in ("status", "prepare", "run", "backup"):
+        raise ValueError("action must be status, prepare, run, or backup")
+    if type(max_requests) is not int or not 1 <= max_requests <= 1000:
+        raise ValueError("max_requests must be an integer in 1..1000")
+    if type(pause) not in (int, float) or not math.isfinite(pause) or not 0 <= pause <= 60:
+        raise ValueError("pause must be a finite number in 0..60 seconds")
+
+    def local_path(value: str | None, name: str) -> Path:
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or "\x00" in value
+            or "://" in value
+            or value.startswith(("file:", ":memory:"))
+        ):
+            raise ValueError(f"{name} must be an explicit local file path")
+        path = Path(value).expanduser().resolve()
+        if path.exists() and not path.is_file():
+            raise ValueError(f"{name} must point to a file")
+        return path
+
+    path = local_path(database, "database")
+    if action == "prepare":
+        if not isinstance(site_url, str) or not site_url.strip():
+            raise ValueError("site_url is required for prepare")
+        if _validate_date_range(start_date, end_date):
+            raise ValueError("prepare requires an ordered YYYY-MM-DD start_date and end_date")
+    elif any(v is not None for v in (site_url, start_date, end_date)):
+        raise ValueError("site_url, start_date, and end_date apply only to prepare")
+    destination = None
+    if action == "backup":
+        destination = local_path(backup_path, "backup_path")
+        if destination == path or destination.exists():
+            raise ValueError("backup_path must be a new file different from database")
+    elif backup_path is not None:
+        raise ValueError("backup_path applies only to backup")
+    if action != "prepare" and not path.is_file():
+        return {
+            "ok": False,
+            "state": "not_found",
+            "database": str(path),
+            "error": "Archive does not exist; prepare it first",
+        }
+
+    archive = None
+    try:
+        archive = Archive(
+            path, create=action == "prepare", read_only=action in ("status", "backup")
+        )
+        if action == "prepare":
+            return archive.prepare(site_url, start_date, end_date)
+        if action == "run":
+            return archive.run_batch(max_requests=max_requests, pause=pause)
+        if action == "backup":
+            return {"ok": True, "database": str(path), "backup": archive.backup(destination)}
+        return archive.status()
+    except (OSError, sqlite3.Error, RuntimeError):
+        return {
+            "ok": False,
+            "state": "failed",
+            "database": str(path),
+            "error": "Archive operation failed; check file access, writer lock, schema, and GSC credentials",
+        }
+    finally:
+        if archive is not None:
+            archive.close()
+
+
 def crux_report(
     url: str | None = None,
     origin: str | None = None,
@@ -3775,6 +4031,153 @@ def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[s
     from seohead.servers.project_handlers import project_progress as core
 
     return core(directory, limit=limit, offset=offset)
+
+
+def remediation_summary(ledger: str) -> dict[str, Any]:
+    """Read explicit remediation and recheck denominators from a local ledger."""
+    from seohead.storage.ledger import remediation_summary as core
+
+    return core(ledger)
+
+
+def remediation_cases(
+    ledger: str,
+    check: str | None = None,
+    url: str | None = None,
+    finding_key: str | None = None,
+    limit: int | None = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Read paginated ledger cases and immutable observation/decision history."""
+    from seohead.storage.ledger import read_cases
+
+    return read_cases(
+        ledger, check=check, url=url, finding_key=finding_key, limit=limit, offset=offset
+    )
+
+
+def remediation_transition(
+    ledger: str,
+    occurrence_key: str,
+    state: str,
+    actor: str,
+    reason: str,
+    expected_revision: int,
+    observation_id: int | None = None,
+    decided_at: str | None = None,
+) -> dict[str, Any]:
+    """Append one evidence-bound lifecycle decision to a local ledger."""
+    from seohead.storage.ledger import transition_occurrence
+
+    return transition_occurrence(
+        ledger,
+        occurrence_key=occurrence_key,
+        state=state,
+        actor=actor,
+        reason=reason,
+        expected_revision=expected_revision,
+        observation_id=observation_id,
+        decided_at=decided_at,
+    )
+
+
+def remediation_record_verification(
+    ledger: str, verification_path: str, actor: str, expected_revision: int
+) -> dict[str, Any]:
+    """Persist a retained bounded recheck artifact against pending ledger cases."""
+    from seohead.storage.ledger import record_verification
+
+    return record_verification(
+        ledger, verification_path, actor=actor, expected_revision=expected_revision
+    )
+
+
+def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+    """Render retained remediation evidence, optionally to a new local directory."""
+    from seohead.storage.ledger import remediation_report as build
+    from seohead.storage.ledger import write_remediation_report
+
+    return write_remediation_report(ledger, out_dir) if out_dir else build(ledger)
+
+
+def project_inbox_submit(
+    directory: str,
+    text: str,
+    kind: str = "note",
+    references: list[str] | None = None,
+    author_role: str = "specialist",
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_submit as core
+
+    return core(
+        directory,
+        text=text,
+        kind=kind,
+        references=references,
+        author_role=author_role,
+        expected_revision=expected_revision,
+    )
+
+
+def project_inbox_list(
+    directory: str,
+    consumer: str,
+    offset: int = 0,
+    limit: int = 20,
+    include_acknowledged: bool = True,
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_list as core
+
+    return core(
+        directory,
+        consumer=consumer,
+        offset=offset,
+        limit=limit,
+        include_acknowledged=include_acknowledged,
+    )
+
+
+def project_inbox_read(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_read as core
+
+    return core(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
+
+
+def project_inbox_acknowledge(
+    directory: str, consumer: str, entry_ids: list[str], expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_acknowledge as core
+
+    return core(
+        directory, consumer=consumer, entry_ids=entry_ids, expected_revision=expected_revision
+    )
+
+
+def project_inbox_goal(
+    directory: str, entry_id: str, state: str, expected_revision: int | None = None
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_goal as core
+
+    return core(directory, entry_id=entry_id, state=state, expected_revision=expected_revision)
+
+
+def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_inbox_unread as core
+
+    return core(directory, consumer=consumer, limit=limit)
+
+
+def project_observe(
+    directory: str, consumer: str | None = None, scan_limit: int = 20
+) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_observe as core
+
+    return core(directory, consumer=consumer, scan_limit=scan_limit)
 
 
 def project_facts(
@@ -4257,6 +4660,7 @@ def bi_export(
     max_rows_per_file: int = 25_000,
     max_bytes_per_file: int = 8 * 1024 * 1024,
     max_output_bytes: int = 512 * 1024 * 1024,
+    search_metric: str | None = None,
 ) -> dict[str, Any]:
     """Write typed, partitioned BI datasets from saved local crawl evidence."""
     from seohead.reports.bi import export_bi as core
@@ -4271,8 +4675,23 @@ def bi_export(
             max_rows_per_file=max_rows_per_file,
             max_bytes_per_file=max_bytes_per_file,
             max_output_bytes=max_output_bytes,
+            search_metric=search_metric,
         ),
     }
+
+
+def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
+    """Preflight a complete BI package for Sheets without credentials or writes."""
+    from seohead.reports.bi_destinations import sheets_plan
+
+    return {"ok": True, **sheets_plan(package, max_cells=max_cells)}
+
+
+def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> dict[str, Any]:
+    """Describe a BigQuery load without a project, credentials, billing, or writes."""
+    from seohead.reports.bi_destinations import bigquery_plan
+
+    return {"ok": True, **bigquery_plan(package, dataset=dataset, operation=operation)}
 
 
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
@@ -4400,6 +4819,27 @@ def scan_extract(
     return core(input_path, rules, url=url, representation=representation, limit=limit)
 
 
+def marketing_inventory(
+    documents: list[dict[str, Any]],
+    cta_selector: str | None = None,
+    form_selector: str | None = None,
+    id_attributes: list[str] | None = None,
+    id_parameters: list[str] | None = None,
+    out_dir: str | None = None,
+) -> dict[str, Any]:
+    """Correlate CTA/form fields per supplied HTML element without network access."""
+    from seohead.tools.marketing_inventory import inventory
+
+    return inventory(
+        documents,
+        cta_selector=cta_selector,
+        form_selector=form_selector,
+        id_attributes=id_attributes,
+        id_parameters=id_parameters,
+        out_dir=out_dir,
+    )
+
+
 def scan_fragment_links(
     input_path: str,
     offset: int = 0,
@@ -4457,6 +4897,8 @@ _RAW_HANDLERS = {
     "markdown_extract": markdown_extract,
     "boilerplate_report": boilerplate_report,
     "semantic_inputs": semantic_inputs,
+    "semantic_similarity": semantic_similarity,
+    "meta_description_drafts": meta_description_drafts,
     "log_scan": log_scan,
     "crawl_diagnose": crawl_diagnose,
     "crawl_diagnose_export": crawl_diagnose_export,
@@ -4492,6 +4934,9 @@ _RAW_HANDLERS = {
     "wayback_history": wayback_history,
     "crtsh_subdomains": crtsh_subdomains,
     "gsc_query": gsc_query,
+    "webmaster_url_queries": webmaster_url_queries,
+    "miratext_analyze": miratext_analyze,
+    "gsc_archive": gsc_archive,
     "crux_report": crux_report,
     "indexnow_submit": indexnow_submit,
     "scan_reanalyze": scan_reanalyze,
@@ -4502,6 +4947,7 @@ _RAW_HANDLERS = {
     "scan_rendered_routes": scan_rendered_routes,
     "scan_evidence": scan_evidence,
     "scan_extract": scan_extract,
+    "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,
     "scan_import_urls": scan_import_urls,
@@ -4514,6 +4960,18 @@ _RAW_HANDLERS = {
     "project_open": project_open,
     "project_status": project_status,
     "project_progress": project_progress,
+    "remediation_summary": remediation_summary,
+    "remediation_cases": remediation_cases,
+    "remediation_transition": remediation_transition,
+    "remediation_record_verification": remediation_record_verification,
+    "remediation_report": remediation_report,
+    "project_inbox_submit": project_inbox_submit,
+    "project_inbox_list": project_inbox_list,
+    "project_inbox_read": project_inbox_read,
+    "project_inbox_acknowledge": project_inbox_acknowledge,
+    "project_inbox_goal": project_inbox_goal,
+    "project_inbox_unread": project_inbox_unread,
+    "project_observe": project_observe,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,
@@ -4542,6 +5000,8 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "bi_sheets_plan": bi_sheets_plan,
+    "bi_bigquery_plan": bi_bigquery_plan,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server

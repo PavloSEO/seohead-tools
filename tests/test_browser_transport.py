@@ -12,7 +12,11 @@ from seohead.crawl import settings
 from seohead.servers import handlers
 from seohead.servers.mcp_server import build_server
 from seohead.tools import browser_transport, render
-from tests.test_render_check_identity import _install_stack
+from tests.test_render_check_identity import (
+    _deliver_route_during_navigation,
+    _install_stack,
+    _PinnedRoute,
+)
 from tests.test_render_document import _rendering_config
 
 pytest_plugins = ("tests.test_render_document",)
@@ -287,3 +291,55 @@ def test_remote_missing_pinned_route_capability_fails_before_page(monkeypatch, f
     assert result["reason"] == "remote_capability_unsupported"
     assert not fake_stack["context"].new_page_route_snapshots
     assert fake_stack["browser"].closed
+
+
+def test_remote_request_boundary_cancellation_closes_the_isolated_context(monkeypatch, fake_stack):
+    import httpx
+
+    config = _remote(monkeypatch)
+    monkeypatch.setattr(
+        fake_stack["chromium"],
+        "connect",
+        lambda _endpoint, **_kwargs: fake_stack["browser"],
+        raising=False,
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request))
+    )
+    monkeypatch.setattr(render, "http_client", lambda *_args, **_kwargs: (client, False))
+    route = _PinnedRoute()
+    _deliver_route_during_navigation(monkeypatch, fake_stack, route)
+
+    def cancel():
+        raise render.RenderCancelled()
+
+    result = render.render_document(
+        "https://example.com/", _rendering_config(**config), request_gate=cancel
+    )
+    assert result["reason"] == "render_cancelled"
+    assert route.aborted == ["blockedbyclient"]
+    assert fake_stack["context"].closed and fake_stack["browser"].closed
+    assert fake_stack["chromium"].launch_calls == []
+
+
+def test_remote_disconnect_is_redacted_and_closes_context(monkeypatch, fake_stack):
+    config = _remote(monkeypatch)
+    monkeypatch.setattr(
+        fake_stack["chromium"],
+        "connect",
+        lambda _endpoint, **_kwargs: fake_stack["browser"],
+        raising=False,
+    )
+
+    def disconnect(*_args, **_kwargs):
+        raise RuntimeError("wss://browser.example.test/?token=synthetic disconnected")
+
+    monkeypatch.setattr(fake_stack["page"], "goto", disconnect)
+    result = render.render_document("https://example.com/", _rendering_config(**config))
+    assert result == {
+        "ok": False,
+        "url": "https://example.com/",
+        "error": "Remote browser rendering failed after connection",
+        "reason": "remote_render_failed",
+    }
+    assert fake_stack["context"].closed and fake_stack["browser"].closed

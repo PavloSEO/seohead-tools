@@ -45,13 +45,13 @@ seohead/
   tools/          live page, content, image, log, and structured-data tools
   recon/          domain and infrastructure reconnaissance
   crawl/          native site collector (crawl-site) — no Screaming Frog required
-  sf/             Screaming Frog export runner and 176-check analyzer, shared with crawl/'s output
+  sf/             Screaming Frog export runner and 181-check analyzer, shared with crawl/'s output
   audit/          bounded sitemap-based evidence orchestration
   reports/        XLSX, DOCX, CSV, Markdown, and JSON formatting
   data_sources/   optional demand, SERP, and traffic providers
   servers/        shared handlers and MCP registration
   bot/            versioned guided-scan conversation contract and wizard for the
-                  approved bot roadmap (docs/TELEGRAM_BOT.md); it is a core-side
+                  approved adapter roadmap (docs/GUIDED_SCAN_ADAPTER.md); it is a core-side
                   contract, not a third interface — adapters submit through the
                   JobSubmitter protocol
   skills/         packaged SEO workflow playbooks

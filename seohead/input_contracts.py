@@ -324,6 +324,37 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("crtsh-subdomains", "crtsh_subdomains", _form("domain", "domain")),
     _command("gsc-query", "gsc_query", _form("provider_query", "site_url")),
     _command(
+        "webmaster-url-queries",
+        "webmaster_url_queries",
+        _form("provider_query", "host_id", note="Bounded Yandex URL-to-query evidence."),
+    ),
+    _command(
+        "miratext-analyze",
+        "miratext_analyze",
+        _form("inline_json", note="Miratext analysis; paid modes require confirmation."),
+    ),
+    _command(
+        "gsc-archive",
+        "gsc_archive",
+        _form(
+            "local_file",
+            "database",
+            note="Explicit SQLite archive. Only prepare creates a missing file; status and backup are offline.",
+        ),
+        _form(
+            "inline_json",
+            "database",
+            "action",
+            "site_url",
+            "start_date",
+            "end_date",
+            "max_requests",
+            "pause",
+            "backup_path",
+            note="prepare queues inclusive dates; run makes bounded Google API calls; backup requires a new destination.",
+        ),
+    ),
+    _command(
         "crux-report",
         "crux_report",
         _form("provider_query", "url"),
@@ -553,9 +584,26 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
-            note="Optional positive partition and total-output bounds; exceeding a hard limit fails without publishing a package.",
+            "search_metric",
+            note="Optional positive partition/total-output bounds and explicit Search Console clicks or impressions axis; exceeding a hard limit fails without publishing a package.",
         ),
         note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
+    ),
+    _command(
+        "bi-sheets-plan",
+        "bi_sheets_plan",
+        _form("local_directory", "package"),
+        _form(
+            "inline_json", "max_cells", note="Optional declared capacity, never an API quota check."
+        ),
+        note="Offline package/checksum/capacity preflight; no Google authentication or write.",
+    ),
+    _command(
+        "bi-bigquery-plan",
+        "bi_bigquery_plan",
+        _form("local_directory", "package"),
+        _form("selector", "dataset", "operation"),
+        note="Offline optional-load plan; no project selection, billing, authentication, or write.",
     ),
     _command(
         "inspect-url",

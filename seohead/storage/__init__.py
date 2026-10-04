@@ -341,16 +341,21 @@ def _text(path: Path) -> str:
 
 
 def _audit(text: str) -> dict[str, Any]:
+    document = _loads(text, "audit")
+    _validate_audit_document(document)
+    return document
+
+
+def _validate_audit_document(document: Any) -> None:
+    """Validate an already parsed audit without making a second JSON document."""
     import jsonschema
 
-    document = _loads(text, "audit")
     schema = json.loads(files("seohead.sf.schema").joinpath("audit.schema.json").read_text("utf-8"))
     error = next(jsonschema.Draft202012Validator(schema).iter_errors(document), None)
     if error is not None:
         raise ScanError(f"audit schema: {error.message}")
     if document["schema_version"] != "2.0":
         raise ScanError(f"unsupported audit schema_version: {document['schema_version']!r}")
-    return document
 
 
 def _config(value: Any) -> dict[str, Any]:
@@ -731,9 +736,15 @@ def _validate(con, *, require_audit: bool = True) -> None:
             require_audit
             and con.execute("SELECT 1 FROM audit WHERE singleton=1").fetchone() is None
         ):
-            raise ScanError(
-                "native scan has no current audit; collection evidence is available separately"
-            )
+            from .audit_v2 import AuditV2Reader, audit_v2_path
+
+            database = con.execute("PRAGMA database_list").fetchone()[2]
+            if not database or not audit_v2_path(database).exists():
+                raise ScanError(
+                    "native scan has no current audit; collection evidence is available separately"
+                )
+            with AuditV2Reader(database):
+                pass
         return
     for table in _FUTURE_TABLES:
         if con.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone():
@@ -861,7 +872,13 @@ def open_scan(path: str | Path, *, require_audit: bool = True):
                 require_audit
                 and con.execute("SELECT 1 FROM audit WHERE singleton=1").fetchone() is None
             ):
-                raise ScanError("scan.v2 has no current audit")
+                from .audit_v2 import AuditV2Reader, audit_v2_path
+
+                companion = audit_v2_path(path)
+                if not companion.exists():
+                    raise ScanError("scan.v2 has no current audit")
+                with AuditV2Reader(path):
+                    pass
         else:
             _validate(con, require_audit=require_audit)
         return con

@@ -178,6 +178,7 @@ def _row(
         # checks skip there by name. None means the body was never parsed,
         # which the checks read as unmeasured, not as "no signals".
         "Trust Signals": record.trust_signals,
+        "Duplicate IDs": record.duplicate_ids,
         "Canonical Link Element 1": record.canonical,
         "Meta Robots 1": record.meta_robots,
         "X-Robots-Tag 1": record.x_robots,
