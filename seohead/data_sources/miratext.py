@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -151,21 +152,51 @@ def analyze(
         if keywords:
             fields.append(("keywords_search[keywords]", keywords))
     encoded = urllib.parse.urlencode(fields)
-    try:
-        body = json.loads((transport or _transport(key))(encoded, b""))
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+
+    def request(payload: str) -> dict[str, Any] | None:
+        try:
+            response = json.loads((transport or _transport(key))(payload, b""))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+            return None
+        return (
+            response
+            if isinstance(response, dict) and isinstance(response.get("result"), str)
+            else None
+        )
+
+    body = request(encoded)
+    if body is None:
         return {"ok": False, "state": "failed", "error": "Miratext request failed"}
-    if not isinstance(body, dict) or not isinstance(body.get("result"), str):
-        return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
     if body["result"] != "ok":
         return {"ok": False, "state": "failed", "error": "Miratext rejected the request"}
     state = body.get("status", "accepted")
+    if not isinstance(state, str):
+        return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
+    deadline = time.monotonic() + timeout
+    polls = 0
+    while state in {"draft", "working"} and isinstance(body.get("hash"), str):
+        if time.monotonic() >= deadline or (transport is not None and polls):
+            break
+        if transport is None:
+            time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
+        resumed = request(
+            urllib.parse.urlencode(
+                [("api_key", key), ("check_type", check_type), ("hash", body["hash"])]
+            )
+        )
+        if resumed is None or resumed.get("result") != "ok":
+            break
+        body, state = resumed, resumed.get("status", "accepted")
+        if not isinstance(state, str):
+            return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
+        polls += 1
     result = {
         "ok": True,
         "state": state,
         "hash": body.get("hash"),
         "paid": paid,
         "resumable": state in {"draft", "working"},
+        "wait_exhausted": state in {"draft", "working"},
     }
     if state == "accepted":
         result["author_tables"] = _author_tables(body.get("data"), top)

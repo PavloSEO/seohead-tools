@@ -22,8 +22,27 @@ def test_free_request_is_form_encoded_and_resumable_without_key_echo():
         "hash": "job-1",
         "paid": False,
         "resumable": True,
+        "wait_exhausted": True,
     }
     assert "url%5B%5D=https%3A%2F%2Fexample.test%2Fa" in seen[0]
+
+
+def test_bounded_poll_can_finish_a_synthetic_queued_analysis():
+    responses = iter(
+        [
+            {"result": "ok", "hash": "job-1", "status": "draft"},
+            {
+                "result": "ok",
+                "hash": "job-1",
+                "status": "accepted",
+                "data": {"tz": {"keywordsAll": []}},
+            },
+        ]
+    )
+    result = miratext.analyze(
+        urls=["x"], my="y", api_key="canary", transport=lambda *_: json.dumps(next(responses))
+    )
+    assert result["state"] == "accepted" and result["wait_exhausted"] is False
 
 
 def test_paid_and_keywords_are_refused_before_provider_call():
