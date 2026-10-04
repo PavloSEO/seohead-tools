@@ -826,6 +826,19 @@ Google organic results for a query — who actually ranks. Same geo rules as seo
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota
 
+### `topvisor-read`
+
+MCP name: `seo_topvisor_read`
+
+Read existing Topvisor projects, competitors, groups, keywords, history or summary. Uses topvisor/access_token and topvisor/user_id under the central credential root (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100, maximum 1000; the continuation signal is the provider's nextOffset — present on non-final pages, absent on the last — not len(result) == limit. Provider total and limitedBy pass through when sent, separate from the echoed request limit/offset. projects/competitors/groups/keywords return arrays; history and summary return objects (history rows at result.keywords; summary covers the two requested dates). Non-project operations require project_id. History regions_indexes are project region indexes (projects with show_searchers_and_regions:2), not geographic region keys; summary takes the singular region_index. In positionsData, position is an integer ordinal rank; "--" means the query had no position inside the checked depth — unavailable, not rank 0 or 100 — and a requested date without an entry is a missing observation. headers.dates lists dates actually returned; topsByDepth is percent of queries in Top N; visitors, dynamics and tops are counts; avgs is an average rank. Does not launch checks, add/edit/delete records, or authorize paid operations. Transport redirects are refused and provider errors are redacted.
+
+| Argument | Type | Default |
+|---|---|---|
+| `operation` | `str` | `'projects'` |
+| `params` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
 ### `metrika-counters`
 
 MCP name: `seo_metrika_counters`

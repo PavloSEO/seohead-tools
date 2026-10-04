@@ -16,6 +16,36 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+## Topvisor
+
+`topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
+competitors, keyword groups, keywords, position history or summaries. Pass an
+`operation` and a `params` object through the ordinary JSON input. Credentials are
+`~/.config/topvisor/access_token` and `~/.config/topvisor/user_id`, with environment
+overrides `TOPVISOR_TOKEN` and `TOPVISOR_USER_ID`. No project-local credential copies
+are needed. This tool never launches checks or modifies provider records.
+
+Paginate explicitly using `limit` and `offset`; a single page is not a complete
+inventory. The continuation signal is the provider's `nextOffset` key — present on
+every non-final page, absent on the last — not `len(result) == limit`. `total` and
+`limitedBy` pass through when Topvisor sends them, separately from the echoed
+request `limit`/`offset`. `projects`, `competitors`, `groups` and `keywords`
+return arrays; `history` and `summary` return objects — history rows live at
+`result.keywords`, and `summary` covers the two requested dates rather than a
+page of rows.
+
+Field semantics worth keeping straight: a `position` inside
+`result.keywords[N].positionsData[date:projectId:regionIndex]` is an ordinal
+rank; Topvisor's `"--"` marker means the query had no position inside the
+checked depth — an unavailable value, never rank 0 or 100 — and a requested
+date with no `positionsData` entry is a missing observation, not zero
+movement. `result.headers.dates` lists the dates actually included in a
+history report; `existsDates` can name checks outside the requested interval.
+`topsByDepth` is a percent of queries in Top N; `visitors`, `dynamics` and
+`tops` are counts; `avgs` is an average rank. History needs `regions_indexes` —
+the project region *index* from `projects` with `show_searchers_and_regions:2`,
+not the geographic region `key`; `summary` takes the singular `region_index`.
+
 ## Project workspace
 
 | Command | What it does | Network |

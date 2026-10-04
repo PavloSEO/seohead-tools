@@ -2509,6 +2509,19 @@ def google_serp(
     )
 
 
+def topvisor_read(
+    operation: str = "projects", params: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Read one bounded page of existing Topvisor data without launching paid checks."""
+    from seohead.data_sources.credentials import MissingCredential
+    from seohead.data_sources.topvisor import TopvisorError, fetch
+
+    try:
+        return fetch(operation, params)
+    except (MissingCredential, TopvisorError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def metrika_counters() -> dict[str, Any]:
     """List Metrika counters visible to the token and expose the ``counter_id`` required by reports."""
     from seohead.data_sources.credentials import MissingCredential
@@ -3480,6 +3493,7 @@ _RAW_HANDLERS = {
     "spend_report": spend_report,
     "sources_doctor": sources_doctor,
     "regions_tree": regions_tree,
+    "topvisor_read": topvisor_read,
     "metrika_counters": metrika_counters,
     "metrika_setup": metrika_setup,
     "metrika_report": metrika_report,
