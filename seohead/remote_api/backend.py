@@ -8,6 +8,7 @@ remains the collector and audit owner.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -73,6 +74,10 @@ class RemoteProjectLimits:
     max_concurrency: int = 4
     max_requests_per_origin: int = 1_000
     min_delay_seconds: float = 0.5
+    # These service-owned settings are never accepted from a scan submission.
+    # They contain only environment variable references, not credential values.
+    browser_transport: Mapping[str, str] | None = None
+    credential_headers: tuple[dict[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         if any(
@@ -89,6 +94,14 @@ class RemoteProjectLimits:
             )
         ):
             raise ValueError("remote project limits must be positive")
+        if self.browser_transport is not None:
+            from seohead.tools.browser_transport import validate_config
+
+            validate_config(dict(self.browser_transport))
+        if not isinstance(self.credential_headers, tuple) or any(
+            not isinstance(entry, dict) for entry in self.credential_headers
+        ):
+            raise ValueError("remote credential headers must be a tuple of header mappings")
         RemoteEgressPolicy(
             "validation",
             self.allowed_private_hosts,
@@ -96,6 +109,7 @@ class RemoteProjectLimits:
             max_total_requests=self.max_requests,
             max_concurrency=self.max_concurrency,
             min_delay_seconds=self.min_delay_seconds,
+            allow_remote_browser=self.browser_transport is not None,
         )
 
     def policy(self, project_id: str) -> RemoteEgressPolicy:
@@ -107,7 +121,26 @@ class RemoteProjectLimits:
             max_total_requests=self.max_requests,
             max_concurrency=self.max_concurrency,
             min_delay_seconds=self.min_delay_seconds,
+            allow_remote_browser=self.browser_transport is not None,
         )
+
+    def effective_config(self, submitted: dict[str, Any]) -> dict[str, Any]:
+        """Apply trusted service-only browser and auth references before validation.
+
+        The job payload has no route to an endpoint or a credential value. A
+        missing or revoked environment reference consequently fails before the
+        worker opens the scan, and only redacted references reach scan metadata.
+        """
+        from seohead.crawl.settings import validate
+
+        config = copy.deepcopy(submitted)
+        if self.browser_transport is not None:
+            config["rendering"]["browser"].update(dict(self.browser_transport))
+        if self.credential_headers:
+            config["http"]["credential_headers"] = copy.deepcopy(list(self.credential_headers))
+            config["http"]["credentials_acknowledged"] = True
+        validate(config)
+        return config
 
 
 def _stamp(now: float) -> str:
@@ -262,6 +295,7 @@ class SQLiteJobBackend:
     ) -> None:
         """Serve the API policy Protocol without sharing per-job counters."""
         limits = self._project(project_id)
+        effective_config = limits.effective_config(effective_config)
         if (
             effective_config["limits"]["max_urls"] > limits.max_urls
             or effective_config["limits"]["max_requests"] > limits.max_requests
@@ -327,15 +361,17 @@ class SQLiteJobBackend:
         effective_config: dict[str, Any],
     ) -> SubmitOutcome:
         limits = self._project(project_id)
+        submitted_config = request.options.effective_config()
         if (
             not subject
             or not idempotency_key
             or not isinstance(request, ScanSubmission)
             or fingerprint != request.fingerprint()
-            or effective_config != request.options.effective_config()
+            or effective_config != submitted_config
         ):
             raise ValueError("job request and resolved settings do not match")
         self.authorize_submission(project_id, request.target_url, effective_config)
+        effective_config = limits.effective_config(effective_config)
         created_at = _stamp(self.now())
         with self._db(write=True) as con:
             previous = con.execute(
@@ -834,7 +870,7 @@ class SQLiteJobBackend:
             self._job_dir(project_id, job_id, create=True)
             request = ScanSubmission.model_validate_json(row["request_json"])
             config = json.loads(row["config_json"])
-            if config != request.options.effective_config():
+            if config != limits.effective_config(request.options.effective_config()):
                 raise ValueError("stored effective config disagrees with the submitted request")
             if self._project_usage(project_id) >= limits.max_disk_bytes:
                 raise WorkerResourceLimit("project disk quota reached")

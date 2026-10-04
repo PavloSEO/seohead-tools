@@ -1,9 +1,9 @@
-# Guided bot conversation contract
+# Guided scan-adapter conversation contract
 
-The guided-bot roadmap (epic #751) adds a conversational way to configure,
+The guided-scan roadmap (epic #751) adds a conversational way to configure,
 confirm and follow a scan without a terminal. This document is the contract
-that every delivery surface — starting with Telegram — binds to. The code
-that executes it lives in `seohead/bot/`:
+that every delivery surface binds to. The code that executes it lives in
+`seohead/bot/`:
 
 - `seohead/bot/contract.py` — the versioned state machine as data
   (`CONTRACT_VERSION = "seohead.bot.conversation/1"`, states, actions,
@@ -13,9 +13,9 @@ that executes it lives in `seohead/bot/`:
   configuration through `seohead.crawl.settings`, and hands confirmed jobs
   to a `JobSubmitter` protocol.
 
-The package contains no Telegram SDK code, no network calls and no crawl
-logic. The adapter owns platform identity, markup and delivery; the driver
-owns the conversation; the shared core owns the scan.
+The package contains no messaging SDK code, no account identity, no network
+calls and no crawl logic. The adapter owns platform identity, markup and
+delivery; the driver owns the conversation; the shared core owns the scan.
 
 ## States
 
@@ -63,8 +63,10 @@ submit.
   `awaiting_site` with an explicit notice; a lapsed `running` session also
   requests cancellation so no job keeps running unattended.
 - **No UI handler implements crawl logic.** `JobSubmitter` is the only
-  boundary: `submit(spec) -> job_id`, `cancel(job_id) -> bool`. Scan
-  execution is the queue/core's job (issue #771 and its siblings).
+  boundary: `submit(spec) -> job_id`, `cancel(job_id) -> bool`.
+  `AuthorizedJobSubmitter` is the reusable implementation for an explicit
+  actor/project allowlist over the durable queue. Scan execution is the
+  queue/core's job (issue #771 and its siblings).
 - **Credentials stay out of chat.** The wizard accepts named policies and
   dotted setting paths resolved by the core loader; credential headers
   remain `env:` references resolved at request time by

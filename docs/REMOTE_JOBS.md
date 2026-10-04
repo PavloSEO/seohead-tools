@@ -16,6 +16,17 @@ calls the existing `crawl_site_scan(settings=...)` handler inside
 environment variables at dispatch. This preserves the same target, DNS,
 redirect and browser-resource guard through the whole run.
 
+`RemoteProjectLimits` may additionally hold a service-owned remote Playwright
+transport selection and host-bound `env:NAME` credential-header references.
+Neither setting is accepted in `ScanSubmission`: an HTTP caller cannot select
+a browser endpoint, send a token, or widen another project's access. The
+worker records the selected transport identity and redacted credential
+references in the retained scan configuration, never endpoint values or
+resolved header values. A missing or revoked reference is refused before the
+collector starts. Remote rendering still uses the same pinned HTTP fulfiller
+for navigation, redirects, subresources and popups; WebSockets are blocked,
+and a failed remote connection never launches a local browser.
+
 Each submit is atomically keyed by `(project_id, subject, Idempotency-Key)`.
 An identical request returns its existing job; a changed request conflicts.
 Claims use SQLite `BEGIN IMMEDIATE`, a lease owner, expiry and heartbeat.
@@ -49,9 +60,11 @@ requests per origin, concurrency, crawl duration, delay floor and disk bytes.
 Over-budget submissions and a full queue return explicit bounded API errors.
 The native scan's own body and free-space limits still apply. CPU and RAM
 hard limits belong to the deployment's isolated worker process/container;
-this Python backend does not claim OS-level containment. Proxy routes and
-alternate browser backends remain rejected for queued jobs until their
-egress can be validated under the same policy.
+this Python backend does not claim OS-level containment. Proxy routes,
+persistent profiles and alternate browser backends remain rejected for queued
+jobs. A project may opt into only the version-checked Playwright transport
+described above, which keeps every browser HTTP route on the policy-bound
+pinned client.
 
 Retention is explicit. `prune_terminal(project_id, before=...)` lists eligible
 terminal jobs without deleting anything; `confirm=True` tombstones and removes
@@ -65,3 +78,8 @@ the actual native collector against a fake DNS/HTTP transport; it neither
 opens a public listener nor contacts a customer site. Deployment, TLS,
 service supervision, hard CPU/RAM containment and backup/restore are separate
 from this backend and must be demonstrated in the self-hosted service profile.
+
+`seohead.bot.AuthorizedJobSubmitter` is a generic consumer for a conversation
+or notification adapter. It maps one authorized actor and an explicit project
+set to this same backend, and exposes only submit, status and cancel. It has no
+messaging SDK, account identity, delivery credentials or crawler code.

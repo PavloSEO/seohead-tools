@@ -51,7 +51,7 @@ seohead/
   data_sources/   optional demand, SERP, and traffic providers
   servers/        shared handlers and MCP registration
   bot/            versioned guided-scan conversation contract and wizard for the
-                  approved bot roadmap (docs/TELEGRAM_BOT.md); it is a core-side
+                  approved adapter roadmap (docs/GUIDED_SCAN_ADAPTER.md); it is a core-side
                   contract, not a third interface — adapters submit through the
                   JobSubmitter protocol
   skills/         packaged SEO workflow playbooks

@@ -57,6 +57,7 @@ class RemoteEgressPolicy:
     max_total_requests: int = 20_000
     max_concurrency: int = 4
     min_delay_seconds: float = 0.5
+    allow_remote_browser: bool = False
     _requests: dict[tuple[str, str, int], int] = field(default_factory=dict, init=False, repr=False)
     _lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
@@ -78,6 +79,8 @@ class RemoteEgressPolicy:
             or self.min_delay_seconds < 0
         ):
             raise ValueError("remote delay floor must be finite and nonnegative")
+        if type(self.allow_remote_browser) is not bool:
+            raise ValueError("remote browser permission must be a boolean")
         normalized: set[str] = set()
         for value in self.allowed_private_hosts:
             if not isinstance(value, str):
@@ -172,13 +175,14 @@ class RemoteEgressPolicy:
                     "unsupported_proxy", "remote proxy routing is not enabled for queued jobs"
                 )
             browser = rendering["browser"]
-            if (
-                browser.get("persistent_profile")
-                or browser.get("transport", "local") != "local"
-                or browser.get("backend", "local") != "local"
-            ):
+            if browser.get("persistent_profile") or browser.get("backend", "local") != "local":
                 raise RemoteTargetError(
                     "unsupported_browser", "remote browser backend or profile is unsupported"
+                )
+            if browser.get("transport", "local") == "remote" and not self.allow_remote_browser:
+                raise RemoteTargetError(
+                    "unsupported_browser",
+                    "remote browser transport is not enabled for this project",
                 )
         except RemoteTargetError:
             raise

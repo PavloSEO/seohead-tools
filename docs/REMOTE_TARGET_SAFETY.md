@@ -33,15 +33,16 @@ error and is never reported as a clean measurement. The future worker must
 translate that error into partial/failed job evidence and preserve the scan's
 actual finish reason.
 
-Queued remote jobs currently reject proxy routing and alternate browser
-backends/profiles. A proxy endpoint or remote browser can change the true
-network destination; support requires a separate proof that the same policy
-governs that transport. The local CLI/MCP proxy feature may still be used under
-its own explicit policy. Remote jobs force `trust_env=False` when constructing
-the shared HTTP client, so ambient proxy variables cannot silently reroute a
-tenant's job. TLS verification remains enabled. No browser request may fall
-back to Chromium's own network path; unsupported browser requests remain
-blocked with an explicit limitation.
+Queued remote jobs reject proxy routing, persistent profiles and alternate
+browser backends. A trusted project configuration may opt into a version-checked
+remote Playwright transport; its endpoint remains an environment reference and
+cannot be supplied by a job. The browser can issue HTTP only through the same
+pinned policy-bound fulfiller, including redirects, popup pages and
+subresources; WebSockets remain blocked. The local CLI/MCP proxy feature may
+still be used under its own explicit policy. Remote jobs force `trust_env=False`
+when constructing the shared HTTP client, so ambient proxy variables cannot
+silently reroute a tenant's job. TLS verification remains enabled. A remote
+connection or capability failure never falls back to a local browser.
 
 Submission URLs, redirect URLs, exception causes, credential-bearing headers
 and browser request bodies must not be serialized to service events or logs.

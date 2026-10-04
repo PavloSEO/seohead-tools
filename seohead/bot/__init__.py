@@ -16,6 +16,7 @@ from seohead.bot.contract import (
     allowed_actions,
     describe_contract,
 )
+from seohead.bot.job_adapter import AuthorizedJobSubmitter
 from seohead.bot.wizard import (
     POLICY_PRESETS,
     Event,
@@ -29,6 +30,7 @@ __all__ = [
     "CONTRACT_VERSION",
     "POLICY_PRESETS",
     "Action",
+    "AuthorizedJobSubmitter",
     "Event",
     "Field",
     "JobSubmitter",

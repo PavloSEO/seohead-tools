@@ -11,6 +11,7 @@ CLI and a local MCP server.
 | Setting the toolkit up from zero | [SETUP.md](SETUP.md) — versions, deps, first run |
 | Installing on a headless Linux VPS over SSH | [LINUX_VPS.md](LINUX_VPS.md) — pinned install, browser dependencies, upgrades, rollback, and measured CI smoke |
 | Looking for a copy-paste command | [USAGE.md](USAGE.md) — runnable examples |
+| Checking Docker or remote-service boundaries | [CONTAINERS.md](CONTAINERS.md) — current CLI image and explicit operator-owned service boundary |
 | Checking which source inputs a command accepts | [INPUTS.md](INPUTS.md) — generated command-input catalogue |
 | Managing or inspecting saved scans | [STORAGE.md](STORAGE.md) — SQLite import, provenance, retained bodies, snapshots, and reviewed retention |
 | Importing a third-party crawl export | [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md) — versioned CSV manifest, field coverage, and limits |
@@ -34,7 +35,7 @@ CLI and a local MCP server.
 | Checking what our guidance was aligned against | [GOOGLE_GUIDANCE_REVIEW.md](GOOGLE_GUIDANCE_REVIEW.md) — the 175 Google Search Central guides read on 2026-09-09, their labels, and the three repairs |
 | Understanding the product and its role beside Screaming Frog | [COMPARISON.md](COMPARISON.md) — canonical positioning, workflow, and boundaries |
 | Reviewing the software for security, legal, or procurement | [SOFTWARE_REVIEW.md](SOFTWARE_REVIEW.md) — generated evidence pack, outbound endpoints, data flow, storage |
-| Integrating the guided scan bot | [TELEGRAM_BOT.md](TELEGRAM_BOT.md) — the versioned conversation contract, states, transitions, and invariants |
+| Integrating a guided scan adapter | [GUIDED_SCAN_ADAPTER.md](GUIDED_SCAN_ADAPTER.md) — the generic versioned conversation contract, states, transitions, and invariants |
 
 ## What lives here
 
