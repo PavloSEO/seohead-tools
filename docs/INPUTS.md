@@ -62,8 +62,8 @@ and this decision makes no backend migration.
 | `markdown-extract` | Live URL (`url`)<br>Inline HTML (`html`) | — |
 | `boilerplate-report` | Inline corpus (`pages`)<br>Scan artifact (`scan`) | — |
 | `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
-| `semantic-similarity` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`embeddings, adapter`)<br>Local file (`cache_path`)<br>Selector (`threshold, max_candidate_comparisons`) | — |
-| `meta-description-drafts` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context, drafts, executor`)<br>Local file (`checkpoint_path, json_path, csv_path`)<br>Selector (`batch_size`) | — |
+| `semantic-similarity` | Inline corpus (`items`); requires `embeddings, adapter, cache_path`<br>Scan artifact (`scan`); requires `embeddings, adapter, cache_path`<br>Inline JSON (`embeddings, adapter`)<br>Local file (`cache_path`)<br>Selector (`threshold, max_candidate_comparisons`) | Supplied normalized-vector evidence; no model is loaded or called.; Uses the retained semantic corpus and its recorded normalization policy.; Local SQLite embedding cache. |
+| `meta-description-drafts` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context`)<br>Inline JSON (`drafts, executor`); requires `checkpoint_path`<br>Local file (`checkpoint_path, json_path, csv_path`)<br>Selector (`batch_size`) | Dry-run needs only supplied page HTML.; Uses retained normalized page content offline.; Optional versioned site instructions.; Optional structured caller/delegated-agent results; no provider call. |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
