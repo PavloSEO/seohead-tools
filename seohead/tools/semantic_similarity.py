@@ -363,11 +363,22 @@ def analyze_semantic_documents(
     groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for index, (document, _) in enumerate(usable):
         groups[root(index)].append(document)
+    candidates = [
+        {
+            "source_url": edge["left"],
+            "target_url": edge["right"],
+            "similarity": edge["similarity"],
+            "kind": "semantic_internal_link_review_candidate",
+            "conclusion": "review whether a contextual internal link is useful; similarity alone does not prove relevance or demand",
+        }
+        for edge in edges
+    ]
     return {
         "ok": True,
         "adapter": identity,
         "coverage": coverage,
         "candidate_comparisons": comparisons,
+        "internal_link_candidates": candidates,
         "groups": [
             {
                 "kind": "semantic_similarity_candidate",

@@ -589,7 +589,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         threshold: float = 0.82,
         max_candidate_comparisons: int = 250_000,
     ) -> dict[str, Any]:
-        """Group topical-similarity candidates from supplied embedding vectors.
+        """Group topical and internal-link review candidates from supplied vectors.
 
         Pass either supplied ``items`` ({url, html}) or a retained scan.v1
         ``scan``; scan selection and normalization reuse seo_semantic_inputs.
