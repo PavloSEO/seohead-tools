@@ -74,6 +74,9 @@ COMMANDS = (
     "serp-fetch",
     "spend-report",
     "sources-doctor",
+    "sources-sync",
+    "sources-status",
+    "sources-export",
     "regions-tree",
     "topvisor-read",
     "metrika-counters",
@@ -802,6 +805,23 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         kw["save_to"] = args.save_to
     if cmd == "spend-report" and getattr(args, "since", None):
         kw["since"] = args.since
+    if cmd in {"sources-sync", "sources-status", "sources-export"}:
+        for name in (
+            "source",
+            "resource",
+            "start_date",
+            "end_date",
+            "match",
+            "limit",
+            "out",
+            "db",
+            "project",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "force", False):
+            kw["force"] = True
     if cmd in URL_COMMANDS:
         if args.url:
             kw["url"] = args.url
@@ -1373,6 +1393,24 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--save-to", dest="save_to", help="save a flat {name: id} mapping as JSON")
     if cmd == "spend-report":
         sub.add_argument("--since", help="include charges on or after YYYY-MM-DD")
+    if cmd in {"sources-sync", "sources-status", "sources-export"}:
+        _source_flag(sub, "--db", help="sources SQLite database path")
+        _source_flag(sub, "--project", help="project directory; uses its sources.sqlite")
+    if cmd in {"sources-sync", "sources-export"}:
+        sub.add_argument("--source", help="gsc, ga4, metrika, webmaster, or webmaster_history")
+        sub.add_argument(
+            "--resource", help="GSC property, GA4 property, Metrika counter, or Webmaster host ID"
+        )
+        sub.add_argument("--start-date", dest="start_date", help="YYYY-MM-DD")
+        sub.add_argument("--end-date", dest="end_date", help="YYYY-MM-DD")
+    if cmd == "sources-sync":
+        sub.add_argument("--force", action="store_true", help="re-fetch days already stored")
+    if cmd == "sources-export":
+        sub.add_argument("--match", help="substring of any dimension (query, page, ...)")
+        sub.add_argument("--limit", type=int, help="maximum JSON rows (default 1000)")
+        sub.add_argument(
+            "--out", help="new CSV with at most --limit matching rows; never overwrites"
+        )
     if cmd == "report-build":
         _source_flag(
             sub, "--audit", help="path to an audit JSON document or scan.v1 SQLite artifact"

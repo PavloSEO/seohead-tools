@@ -2919,6 +2919,69 @@ def sources_doctor() -> dict[str, Any]:
     }
 
 
+def sources_sync(
+    source: str | None = None,
+    resource: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    db: str | None = None,
+    project: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Fetch missing or explicitly forced days into one local provider database.
+
+    ``source`` is gsc, ga4, metrika, webmaster, or webmaster_history; ``resource`` is the
+    property, counter, or Webmaster host ID. Lagged days are recorded, not fetched.
+    """
+    from seohead.data_sources import sources_db as core
+
+    if not source:
+        raise ValueError(f"source required: one of {sorted(core.SOURCES)}")
+    return core.sync(
+        core.db_path(db, project),
+        source,
+        resource or "",
+        start_date=start_date,
+        end_date=end_date,
+        force=force,
+    )
+
+
+def sources_status(db: str | None = None, project: str | None = None) -> dict[str, Any]:
+    """Summarize requested, complete, empty, partial, failed and lagged days offline."""
+    from seohead.data_sources import sources_db as core
+
+    return core.status(core.db_path(db, project))
+
+
+def sources_export(
+    source: str | None = None,
+    resource: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    match: str | None = None,
+    limit: int = 1000,
+    out: str | None = None,
+    db: str | None = None,
+    project: str | None = None,
+) -> dict[str, Any]:
+    """Read at most limit ordered provider rows or write them to a new private CSV."""
+    from seohead.data_sources import sources_db as core
+
+    if not source:
+        raise ValueError(f"source required: one of {sorted(core.SOURCES)}")
+    return core.query(
+        core.db_path(db, project),
+        source,
+        resource=resource,
+        start_date=start_date,
+        end_date=end_date,
+        match=match,
+        limit=limit,
+        out=out,
+    )
+
+
 def scan_reanalyze(input_path: str, out: str, producer_build: str | None = None) -> dict[str, Any]:
     """Derive a fresh SQLite scan by parsing retained evidence without network access."""
     from seohead.servers.reanalysis_handlers import reanalyze_scan
@@ -3727,6 +3790,9 @@ _RAW_HANDLERS = {
     "serp_fetch": serp_fetch,
     "spend_report": spend_report,
     "sources_doctor": sources_doctor,
+    "sources_sync": sources_sync,
+    "sources_status": sources_status,
+    "sources_export": sources_export,
     "regions_tree": regions_tree,
     "topvisor_read": topvisor_read,
     "metrika_counters": metrika_counters,

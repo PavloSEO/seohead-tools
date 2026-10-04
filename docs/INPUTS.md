@@ -72,6 +72,9 @@ and this decision makes no backend migration.
 | `serp-fetch` | Provider query (`query`)<br>Provider query (`queries`) | — |
 | `spend-report` | Local log | Configured local spend log. |
 | `sources-doctor` | Local configuration | — |
+| `sources-sync` | Provider query (`source, resource`)<br>Local file (`db`)<br>Project directory (`project`) | Explicit provider read and local SQLite write; records requested coverage and replaces eligible days atomically. |
+| `sources-status` | Local file (`db`)<br>Project directory (`project`) | — |
+| `sources-export` | Local file (`db`)<br>Project directory (`project`) | — |
 | `regions-tree` | Local configuration | — |
 | `topvisor-read` | Inline JSON (`operation, params`) | One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations. |
 | `metrika-counters` | Local configuration | — |

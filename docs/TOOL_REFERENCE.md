@@ -888,6 +888,57 @@ overwrite=true replaces them. The PDF needs an installed Chrome, Edge or Chromiu
 reported as skipped. brand is a JSON object or file: name, accent, ink, card,
 table_header, positive, negative, font_stack, logo_text.
 
+### `sources-sync`
+
+MCP name: `seo_sources_sync`
+
+Accumulate provider data in one local SQLite database: fetch missing or explicitly forced days. source is gsc, ga4, metrika, webmaster (queries per day) or webmaster_history (daily shows/clicks, pages in search, crawl by HTTP class); resource is the property (sc-domain:example.com), GA4 property ID, Metrika counter ID or Webmaster host ID (https:example.com:443). Pass db (a file path) or project (its sources.sqlite is used). Default period is the last 28 eligible days. Requested lagged days remain visible without being fetched. force=true re-fetches stored days; a partial or failed retry cannot erase a complete day. Tokens are never stored.
+
+| Argument | Type | Default |
+|---|---|---|
+| `source` | `str` | `required` |
+| `resource` | `str` | `required` |
+| `start_date` | `str | None` | `None` |
+| `end_date` | `str | None` | `None` |
+| `db` | `str | None` | `None` |
+| `project` | `str | None` | `None` |
+| `force` | `bool` | `False` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+### `sources-status`
+
+MCP name: `seo_sources_status`
+
+Offline local history: requested, complete, empty, partial, failed, pending and lagged dates, gaps, rows, metric additivity and reporting-timezone policy.
+
+| Argument | Type | Default |
+|---|---|---|
+| `db` | `str | None` | `None` |
+| `project` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `sources-export`
+
+MCP name: `seo_sources_export`
+
+Read stored rows of one source filtered by resource, date range and a substring of any dimension (match). Returns at most limit ordered rows with their daily coverage state; out writes the same bounded result to a new private CSV. The response names non-additive metrics and has_more when additional rows exist.
+
+| Argument | Type | Default |
+|---|---|---|
+| `source` | `str` | `required` |
+| `resource` | `str | None` | `None` |
+| `start_date` | `str | None` | `None` |
+| `end_date` | `str | None` | `None` |
+| `match` | `str | None` | `None` |
+| `limit` | `int` | `1000` |
+| `out` | `str | None` | `None` |
+| `db` | `str | None` | `None` |
+| `project` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
 ### `regions-tree`
 
 MCP name: `seo_regions_tree`

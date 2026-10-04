@@ -222,6 +222,26 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "spend-report", "spend_report", _form("local_log", note="Configured local spend log.")
     ),
     _command("sources-doctor", "sources_doctor", _form("local_config")),
+    _command(
+        "sources-sync",
+        "sources_sync",
+        _form("provider_query", "source", "resource"),
+        _form("local_file", "db"),
+        _form("project_directory", "project"),
+        note="Explicit provider read and local SQLite write; records requested coverage and replaces eligible days atomically.",
+    ),
+    _command(
+        "sources-status",
+        "sources_status",
+        _form("local_file", "db"),
+        _form("project_directory", "project"),
+    ),
+    _command(
+        "sources-export",
+        "sources_export",
+        _form("local_file", "db"),
+        _form("project_directory", "project"),
+    ),
     _command("regions-tree", "regions_tree", _form("local_config")),
     _command(
         "topvisor-read",
