@@ -15,6 +15,7 @@ from seohead import cli
 from seohead.crawl import sqlite_adapter
 from seohead.data_sources.evidence_import import normalize_inline
 from seohead.data_sources.evidence_join import evidence_compatibility, join_evidence
+from seohead.reports import bi as bi_report
 from seohead.reports.bi import BIExportError, export_bi
 from seohead.servers import handlers
 from seohead.storage import open_scan
@@ -142,6 +143,66 @@ def _files(package: Path) -> dict[str, bytes]:
         for path in sorted(package.rglob("*"))
         if path.is_file()
     }
+
+
+def test_million_page_projection_factories_are_lazy_and_reiterable():
+    produced = {"count": 0}
+
+    def pages():
+        for ordinal in range(1_000_000):
+            produced["count"] += 1
+            yield {
+                "url": f"https://example.test/{ordinal}",
+                "page_ordinal": ordinal,
+                "status_code": 200,
+                "content_type": "text/html",
+                "size_bytes": 1,
+                "response_time": 0.01,
+                "title": "Page",
+                "meta_description": "",
+                "h1": "Page",
+                "canonical": "",
+                "word_count": 1,
+                "crawl_depth": 1,
+                "inlinks": 0,
+                "unique_inlinks": 0,
+                "outlinks": 0,
+                "external_outlinks": 0,
+                "representation": "static",
+                "document_id": 1,
+            }
+
+    run = bi_report._RunInput(
+        run_id="large-synthetic",
+        source_kind="scan",
+        source_schema="scan.v1",
+        source_name="large.sqlite",
+        source_sha256="a" * 64,
+        source_bytes=1,
+        run_metadata={
+            "crawl_state": "complete",
+            "crawl_reason": None,
+            "capabilities": {"links": {"state": "complete"}},
+        },
+        pages_factory=pages,
+        page_count=1_000_000,
+        findings_factory=lambda: iter(()),
+        finding_count=0,
+        groups=[],
+        links_factory=lambda: iter(()),
+        links_source_state="complete",
+        links_source_reason=None,
+        coverage_rows=[],
+        link_count=0,
+    )
+    first = next(run.pages_factory())
+    assert first["url"] == "https://example.test/0"
+    assert produced["count"] == 1, "page factory must not materialize the million-page population"
+    first_cohorts = list(__import__("itertools").islice(bi_report._cohort_rows(run, [], None), 5))
+    assert len(first_cohorts) == 5
+    assert produced["count"] == 2, "cohort projection must consume only its current page"
+    assert sum(1 for _ in run.pages_factory()) == run.page_count
+    assert produced["count"] == 1_000_002, "the full source remains re-iterable without a list"
 
 
 def test_scan_projection_conserves_pages_findings_links_and_provider_grain(tmp_path, monkeypatch):
@@ -538,3 +599,36 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
     )
     assert incompatible["membership"] == "unclassified"
     assert incompatible["state"] == "incomplete"
+
+
+def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
+    package = tmp_path / "bi"
+    workbook = tmp_path / "pages.xlsx"
+    assert (
+        cli.main(
+            [
+                "bi-export",
+                "--audit",
+                "examples/audit.json",
+                "--out-dir",
+                str(package),
+                "--xlsx-out",
+                str(workbook),
+                "--xlsx-dataset",
+                "pages",
+                "--xlsx-max-rows-per-sheet",
+                "2",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["xlsx"]["dataset"] == "pages"
+    assert workbook.is_file()
+
+
+def test_scan_hash_budget_refuses_before_writing_a_package(tmp_path, monkeypatch):
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    with pytest.raises(BIExportError, match="scan exceeds"):
+        export_bi(scan=scan_path, out_dir=tmp_path / "bounded", max_scan_bytes=1)
+    assert not (tmp_path / "bounded").exists()

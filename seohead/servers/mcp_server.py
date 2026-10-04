@@ -1820,7 +1820,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_remediation_record_verification(
-        ledger: str, verification_path: str, actor: str, expected_revision: int
+        ledger: str,
+        verification_path: str,
+        actor: str,
+        expected_revision: int,
+        occurrence_keys: list[str] | None = None,
+        task_id: str = "unassigned",
     ) -> dict[str, Any]:
         """Attach a retained bounded verification artifact to pending cases.
 
@@ -1834,17 +1839,55 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 verification_path=verification_path,
                 actor=actor,
                 expected_revision=expected_revision,
+                occurrence_keys=occurrence_keys,
+                task_id=task_id,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_recheck(
+        ledger: str,
+        baseline: str,
+        occurrence_keys: list[str],
+        actor: str,
+        expected_revision: int,
+        out_dir: str,
+        task_id: str = "unassigned",
+        after: str | None = None,
+        config: str | None = None,
+    ) -> dict[str, Any]:
+        """Recheck exact pending ledger cases without widening to a site crawl.
+
+        The baseline must be the retained audit that produced each case. The
+        command writes a separate immutable verification artifact, then records
+        its hashes and measured outcome atomically in the local ledger.
+        """
+        return _checked(
+            handlers.remediation_recheck(
+                ledger=ledger,
+                baseline=baseline,
+                occurrence_keys=occurrence_keys,
+                actor=actor,
+                expected_revision=expected_revision,
+                out_dir=out_dir,
+                task_id=task_id,
+                after=after,
+                config=config,
             )
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
-    def seo_remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+    def seo_remediation_report(
+        ledger: str, out_dir: str | None = None, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
         """Render retained before/after remediation evidence without network access.
 
         With out_dir this creates a new immutable JSON/Markdown review snapshot;
         without it, it returns the JSON-ready report document only.
         """
-        return _checked(handlers.remediation_report(ledger=ledger, out_dir=out_dir))
+        return _checked(
+            handlers.remediation_report(ledger=ledger, out_dir=out_dir, limit=limit, offset=offset)
+        )
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_facts(
@@ -2309,8 +2352,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         provider_joins: list[str] | None = None,
         max_rows_per_file: int = 25_000,
         max_bytes_per_file: int = 8 * 1024 * 1024,
-        max_output_bytes: int = 512 * 1024 * 1024,
+        max_output_bytes: int = 4 * 1024 * 1024 * 1024,
+        max_scan_bytes: int = 8 * 1024 * 1024 * 1024,
         search_metric: str | None = None,
+        xlsx_out: str | None = None,
+        xlsx_dataset: str | None = None,
+        xlsx_max_rows_per_sheet: int = 1_048_575,
     ) -> dict[str, Any]:
         """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
 
@@ -2327,7 +2374,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_rows_per_file=max_rows_per_file,
                 max_bytes_per_file=max_bytes_per_file,
                 max_output_bytes=max_output_bytes,
+                max_scan_bytes=max_scan_bytes,
                 search_metric=search_metric,
+                xlsx_out=xlsx_out,
+                xlsx_dataset=xlsx_dataset,
+                xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
             )
         )
 

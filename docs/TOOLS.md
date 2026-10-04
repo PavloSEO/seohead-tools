@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 147 commands and 152 callable tools,
+The current registry has 148 commands and 153 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -43,7 +43,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `project-progress` · `project-start` · `project-status` · `project-view-list` · `project-view-save` ·
 `project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` ·
 `provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` ·
-`redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` ·
+`redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` · `remediation-recheck` ·
 `remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` ·
 `render-check` · `report-build` · `robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` ·
 `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` ·
@@ -693,7 +693,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(147 + 5):
+(148 + 5):
 
 ```bash
 seohead mcp        # stdio

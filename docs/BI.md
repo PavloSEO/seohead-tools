@@ -54,10 +54,16 @@ Output is staged and published only after bounds and row conservation pass; exis
 output is refused. Scan access is read-only. A missing saved audit makes findings
 unavailable, rather than a clean zero-findings audit. Valid audit.v2 companions are
 read with an explicit 64 MiB compatibility bound so their findings cannot silently
-vanish behind the inline slot. The scan input remains limited to 120 MiB and 50,000
-pages; providers and total output have separate hard budgets. This implementation
-materializes bounded pages/findings/provider observations; it does not demonstrate
-streaming million-page BI or a copyable Looker Studio template.
+vanish behind the inline slot. A native scan may contain up to 1,000,000 retained pages and
+is read through re-iterable SQLite cursors rather than a page list; pages and cohorts are written
+as partitioned streams with exact source-row conservation. The caller can raise the output budget
+up to 16 GiB for that full local package. `bi-export` hashes a native scan in a separately explicit
+`--max-scan-bytes` streamed budget: the default is 8 GiB and the bounded maximum is 32 GiB, so a
+populated representative million-page database is not silently treated as a small 4 GiB source.
+Providers and total output retain separate hard budgets:
+for a large scan, normalized provider evidence must first be saved as an `evidence-join` artifact,
+so the BI exporter never materializes a million crawl pages to re-join it. This implementation does
+not demonstrate a copyable Looker Studio template.
 
 ## Explicit Google destinations
 
@@ -112,6 +118,17 @@ typed subset of the corresponding versioned BI dataset. Every row and remote JSO
 bounded before transport; a too-wide row fails during preflight rather than constructing a giant
 request. A selected projection uses the matching dataset mapping from a normal complete target
 configuration; unrelated configured datasets are not sent.
+
+For a local spreadsheet review, apply `filter_package` with its closed equality predicates and
+declared column subset, then pass that selected package to `export_bi_xlsx`. It reads CSV
+partitions with `openpyxl` write-only worksheets, repeats the verified header on each numbered
+sheet, and splits before Excel's 1,048,576-row limit. The XLSX result reports exact source rows
+and sheet count; it does not aggregate or infer values.
+
+For an unfiltered dataset, the same consumer is available through the existing public export
+surface: `seohead bi-export --audit audit.json --out-dir ./bi --xlsx-out ./pages.xlsx
+--xlsx-dataset pages`. `--xlsx-out` and `--xlsx-dataset` are paired; add
+`--xlsx-max-rows-per-sheet` only to lower the split threshold for a specific review workflow.
 
 ## Publication cohorts
 

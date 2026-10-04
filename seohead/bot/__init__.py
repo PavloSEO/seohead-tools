@@ -2,10 +2,10 @@
 
 This package is the bot-facing half of the guided-scan roadmap (epic #751).
 It defines a versioned conversation state machine and a session driver that
-walks a user from a site address to a confirmed scan job. It deliberately
-contains no Telegram SDK code and no crawl logic: adapters bind it to a
-delivery surface, and job submission goes through the ``JobSubmitter``
-protocol into the shared core.
+walks a user from a site address to a confirmed scan job. Its optional Bot
+API wire adapter is caller-driven and disabled by default: it has no polling,
+listener, account provisioning, or crawl logic. Job submission goes through
+the ``JobSubmitter`` protocol into the shared core.
 """
 
 from seohead.bot.contract import (
@@ -23,6 +23,7 @@ from seohead.bot.job_adapter import (
 )
 from seohead.bot.report_delivery import (
     AuthorizedReportDelivery,
+    DeliveryAmbiguous,
     DeliveryReceipts,
     DeliveryUnavailable,
     ReportProfile,
@@ -32,6 +33,17 @@ from seohead.bot.service_delivery import (
     CredentialReference,
     UploadEndpoint,
     UploadUnavailable,
+)
+from seohead.bot.telegram_adapter import (
+    TelegramAmbiguous,
+    TelegramBotClient,
+    TelegramBotConfig,
+    TelegramChatAuthorizationStore,
+    TelegramDocumentTransport,
+    TelegramGuidedAdapter,
+    TelegramUnavailable,
+    telegram_destination,
+    telegram_subject,
 )
 from seohead.bot.wizard import (
     POLICY_PRESETS,
@@ -50,6 +62,7 @@ __all__ = [
     "AuthorizedJobSubmitter",
     "AuthorizedReportDelivery",
     "CredentialReference",
+    "DeliveryAmbiguous",
     "DeliveryReceipts",
     "DeliveryUnavailable",
     "Event",
@@ -61,9 +74,18 @@ __all__ = [
     "ReportProfile",
     "ScanJobSpec",
     "State",
+    "TelegramAmbiguous",
+    "TelegramBotClient",
+    "TelegramBotConfig",
+    "TelegramChatAuthorizationStore",
+    "TelegramDocumentTransport",
+    "TelegramGuidedAdapter",
+    "TelegramUnavailable",
     "UploadEndpoint",
     "UploadUnavailable",
     "WizardSession",
     "allowed_actions",
     "describe_contract",
+    "telegram_destination",
+    "telegram_subject",
 ]

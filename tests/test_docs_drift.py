@@ -8,7 +8,7 @@ import re
 import tokenize
 
 from scripts.build_changelog import fragment_paths
-from seohead.cli import COMMANDS, URL_COMMANDS
+from seohead.cli import COMMANDS, DOCUMENTED_CLI_ENTRYPOINTS, URL_COMMANDS
 from seohead.provider_matrix import render as render_provider_matrix
 from seohead.servers.handlers import HANDLERS
 from seohead.servers.tool_reference import load_seo_tools, load_sf_tools
@@ -53,7 +53,7 @@ PUBLIC_PYTHON = sorted((ROOT / "seohead").glob("**/*.py")) + sorted(
     (ROOT / "tests").glob("**/*.py")
 )
 
-EXTRA_COMMANDS = {"sf", "mcp", "scan", "project"}
+EXTRA_COMMANDS = set(DOCUMENTED_CLI_ENTRYPOINTS)
 # This literal Cyrillic range intentionally detects non-English public prose.
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")  # noqa: RUF001
 ALLOWED_LOCALIZED_MARKDOWN = {

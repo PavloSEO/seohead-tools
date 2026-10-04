@@ -493,10 +493,23 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "actor", "expected_revision"),
     ),
     _command(
+        "remediation-recheck",
+        "remediation_recheck",
+        _form("local_file", "ledger", "baseline", "out_dir"),
+        _form(
+            "audit_document",
+            "after",
+            note="Optional retained later audit for offline verification.",
+        ),
+        _form("selector", "occurrence_keys", "actor", "expected_revision", "task_id"),
+        _form("local_config", "config", note="Required when the baseline redacted credentials."),
+    ),
+    _command(
         "remediation-report",
         "remediation_report",
         _form("local_file", "ledger"),
         _form("local_directory", "out_dir"),
+        _form("selector", "limit", "offset"),
     ),
     _command(
         "project-facts",
@@ -701,9 +714,18 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
+            "max_scan_bytes",
             "search_metric",
+            "xlsx_max_rows_per_sheet",
             note="Optional positive partition/total-output bounds and explicit Search Console clicks or impressions axis; exceeding a hard limit fails without publishing a package.",
         ),
+        _form(
+            "local_file",
+            "xlsx_out",
+            required_with=("xlsx_dataset",),
+            note="Optional new split XLSX consumer output from one verified package dataset.",
+        ),
+        _form("selector", "xlsx_dataset", required_with=("xlsx_out",)),
         note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
     ),
     _command(

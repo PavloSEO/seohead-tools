@@ -120,6 +120,7 @@ COMMANDS = (
     "remediation-cases",
     "remediation-transition",
     "remediation-record-verification",
+    "remediation-recheck",
     "remediation-report",
     "project-observe",
     "project-inbox-submit",
@@ -177,6 +178,17 @@ COMMANDS = (
     "scan-requeue",
     "scan-import-urls",
 )
+
+# These are real top-level CLI entry points but deliberately do not belong in
+# ``COMMANDS``: that registry is the one-to-one shared core handler/MCP surface.
+# The terminal shell has neither a generic handler nor an MCP equivalent.
+INTERACTIVE_COMMANDS = ("tui", "watch")
+
+# Public-doc checks need to distinguish an actual CLI entry point from an
+# unknown spelling without pretending every entry point is an MCP tool.  The
+# namespace entries own subcommand parsers; ``mcp`` and the interactive shell
+# own process/session behavior rather than a shared handler.
+DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
 
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
@@ -506,6 +518,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "remediation-cases",
         "remediation-transition",
         "remediation-record-verification",
+        "remediation-recheck",
         "remediation-report",
     }:
         for name in (
@@ -522,13 +535,21 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "decided_at",
             "out_dir",
             "verification_path",
+            "baseline",
+            "after",
+            "config",
+            "task_id",
         ):
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
-        if cmd == "remediation-cases":
+        if cmd in {"remediation-cases", "remediation-report"}:
             kw["limit"] = args.limit
             kw["offset"] = args.offset
+        if cmd in {"remediation-record-verification", "remediation-recheck"} and getattr(
+            args, "occurrence_keys", None
+        ):
+            kw["occurrence_keys"] = _split_list(args.occurrence_keys)
     elif cmd in {
         "project-new",
         "project-open",
@@ -646,7 +667,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
+            "max_scan_bytes",
             "search_metric",
+            "xlsx_out",
+            "xlsx_dataset",
+            "xlsx_max_rows_per_sheet",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -1939,6 +1964,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "remediation-cases",
         "remediation-transition",
         "remediation-record-verification",
+        "remediation-recheck",
         "remediation-report",
     }:
         _source_flag(sub, "--ledger", help="validated local ledger.v1 SQLite artifact")
@@ -1965,8 +1991,39 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--actor", help="recheck actor")
         sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument("--occurrence-keys", help="comma-separated exact ledger case keys")
+        sub.add_argument(
+            "--task-id",
+            dest="task_id",
+            default="unassigned",
+            help="local remediation task identifier",
+        )
+    if cmd == "remediation-recheck":
+        _source_flag(
+            sub, "--baseline", help="retained baseline audit.json used to create the ledger cases"
+        )
+        sub.add_argument("--occurrence-keys", help="comma-separated exact pending ledger case keys")
+        _source_flag(sub, "--after", help="retained later audit for offline bounded verification")
+        sub.add_argument(
+            "--config", help="original crawler config when the baseline redacted secrets"
+        )
+        sub.add_argument("--actor", help="bounded recheck actor")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument(
+            "--task-id",
+            dest="task_id",
+            default="unassigned",
+            help="local remediation task identifier",
+        )
+        sub.add_argument(
+            "--out-dir", dest="out_dir", help="new immutable verification evidence directory"
+        )
     if cmd == "remediation-report":
         sub.add_argument("--out-dir", dest="out_dir", help="new directory for JSON and Markdown")
+        sub.add_argument(
+            "--limit", type=int, default=100, help="findings per report page (1..1000)"
+        )
+        sub.add_argument("--offset", type=int, default=0, help="zero-based finding offset")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {
@@ -2095,9 +2152,24 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-bytes-per-file", type=int, help="CSV partition byte bound")
         sub.add_argument("--max-output-bytes", type=int, help="hard total package byte bound")
         sub.add_argument(
+            "--max-scan-bytes",
+            type=int,
+            help="streamed native scan hash/read budget (default 8 GiB; maximum 32 GiB)",
+        )
+        sub.add_argument(
             "--search-metric",
             choices=("clicks", "impressions"),
             help="explicit Search Console axis for complete compatible GA sessions quadrants",
+        )
+        _source_flag(sub, "--xlsx-out", help="optional new split XLSX consumer output")
+        sub.add_argument(
+            "--xlsx-dataset",
+            help="declared BI dataset to write to split XLSX worksheets",
+        )
+        sub.add_argument(
+            "--xlsx-max-rows-per-sheet",
+            type=int,
+            help="data rows per XLSX worksheet, below Excel's row limit",
         )
     if cmd == "bi-sheets-plan":
         _source_flag(sub, "--package", help="complete local BI package directory")
@@ -2405,7 +2477,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile == "full" and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
-    if cmd in {"tui", "watch"}:
+    if cmd in INTERACTIVE_COMMANDS:
         try:
             from seohead.tui.app import run as tui_run
         except ImportError:

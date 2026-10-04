@@ -2107,20 +2107,18 @@ def verify_fixes(
 
     from seohead.crawl import settings as crawl_settings
     from seohead.crawl.list_input import read_url_list
+    from seohead.storage.inputs import load_audit_source
     from seohead.verification import (
         classify,
+        compact_after_source,
         digest,
         markdown,
         offline_observation_gap,
-        scan_identity,
-        select,
+        select_source,
     )
 
     if not out_dir:
         raise ValueError("out_dir required: a new directory for immutable verification evidence")
-    baseline_doc = _load_audit(baseline, "baseline")
-    if baseline_doc.get("schema_version") != "2.0":
-        raise ValueError("baseline must be an audit.json schema_version 2.0 document")
     if isinstance(view, (str, os.PathLike)):
         saved_view = json.loads(Path(view).read_text(encoding="utf-8"))
     else:
@@ -2128,9 +2126,15 @@ def verify_fixes(
     requested_urls = list(urls or [])
     if urls_file:
         requested_urls.extend(read_url_list(urls_file))
-    selected, targets = select(
-        baseline_doc, finding_ids=finding_ids, urls=requested_urls, view=saved_view
-    )
+    baseline_is_source = hasattr(baseline, "iter_collection")
+    baseline_source = baseline if baseline_is_source else load_audit_source(baseline, "baseline")
+    try:
+        baseline_doc, selected, targets, baseline_identity = select_source(
+            baseline_source, finding_ids=finding_ids, urls=requested_urls, view=saved_view
+        )
+    finally:
+        if not baseline_is_source and hasattr(baseline_source, "close"):
+            baseline_source.close()
 
     destination = Path(out_dir).absolute()
     if destination.exists():
@@ -2140,16 +2144,21 @@ def verify_fixes(
     collection: dict[str, Any] = {"state": "offline" if after is not None else "not_run"}
 
     if after is not None:
-        after_doc = _load_audit(after, "after")
+        after_is_source = hasattr(after, "iter_collection")
+        after_source = after if after_is_source else load_audit_source(after, "after")
+        try:
+            after_doc, after_identity = compact_after_source(after_source, selected)
+        finally:
+            if not after_is_source and hasattr(after_source, "close"):
+                after_source.close()
         gap = offline_observation_gap(baseline_doc, after_doc)
         if gap is None:
             observations = dict.fromkeys(targets, after_doc)
-        after_run = after_doc.get("run")
         collection.update(
             state="offline" if gap is None else "not_verifiable",
-            audit_sha256=digest(after_doc),
-            scan_uuid=scan_identity(after_doc),
-            generated_at=after_run.get("generated_at") if isinstance(after_run, dict) else None,
+            audit_sha256=after_identity["audit_sha256"],
+            scan_uuid=after_identity["scan_uuid"],
+            generated_at=after_identity["generated_at"],
         )
         if gap is not None:
             collection["reason"] = gap
@@ -2243,13 +2252,9 @@ def verify_fixes(
         "schema_version": "verification.v1",
         "observed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "baseline": {
-            "audit_sha256": digest(baseline_doc),
-            "scan_uuid": scan_identity(baseline_doc),
-            "generated_at": (
-                baseline_doc["run"].get("generated_at")
-                if isinstance(baseline_doc.get("run"), dict)
-                else None
-            ),
+            "audit_sha256": baseline_identity["audit_sha256"],
+            "scan_uuid": baseline_identity["scan_uuid"],
+            "generated_at": baseline_identity["generated_at"],
         },
         "selection": {"finding_ids": [item.get("id") for item in selected], "urls": targets},
         "collection": collection,
@@ -4238,22 +4243,140 @@ def remediation_transition(
 
 
 def remediation_record_verification(
-    ledger: str, verification_path: str, actor: str, expected_revision: int
+    ledger: str,
+    verification_path: str,
+    actor: str,
+    expected_revision: int,
+    occurrence_keys: list[str] | None = None,
+    task_id: str = "unassigned",
 ) -> dict[str, Any]:
     """Persist a retained bounded recheck artifact against pending ledger cases."""
     from seohead.storage.ledger import record_verification
 
     return record_verification(
-        ledger, verification_path, actor=actor, expected_revision=expected_revision
+        ledger,
+        verification_path,
+        actor=actor,
+        expected_revision=expected_revision,
+        occurrence_keys=occurrence_keys,
+        task_id=task_id,
     )
 
 
-def remediation_report(ledger: str, out_dir: str | None = None) -> dict[str, Any]:
+def remediation_recheck(
+    ledger: str,
+    baseline: Any,
+    occurrence_keys: list[str],
+    actor: str,
+    expected_revision: int,
+    out_dir: str,
+    task_id: str = "unassigned",
+    after: Any = None,
+    config: str | None = None,
+) -> dict[str, Any]:
+    """Run the guarded bounded verifier for exact pending ledger cases.
+
+    The supplied baseline must be byte-identical to the retained source audit
+    for every selected target occurrence.  This keeps a finding-key recheck
+    from silently selecting another revision or widening into a whole-site
+    crawl.  The verifier writes its immutable evidence first; only then does
+    the ledger atomically bind typed outcomes to that evidence.
+    """
+    from seohead.storage.inputs import load_audit_source
+    from seohead.storage.ledger import LedgerError, canonical_url, open_ledger, record_verification
+    from seohead.verification import source_identity
+
+    if not isinstance(occurrence_keys, list) or not occurrence_keys:
+        raise ValueError("occurrence_keys must be a nonempty list of exact ledger case keys")
+    if len(occurrence_keys) > 5_000 or len(set(occurrence_keys)) != len(occurrence_keys):
+        raise ValueError("occurrence_keys must be a distinct bounded case selection")
+    baseline_source = load_audit_source(baseline, "baseline")
+    baseline_identity = source_identity(baseline_source)
+    baseline_sha = baseline_identity["audit_sha256"]
+    baseline_scan_uuid = baseline_identity["scan_uuid"]
+
+    con = open_ledger(ledger)
+    try:
+        revision = int(
+            con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
+        )
+        if revision != expected_revision:
+            raise LedgerError("ledger revision changed; reread cases before starting a recheck")
+        bindings: dict[str, tuple[str, str, str]] = {}
+        for key in occurrence_keys:
+            row = con.execute(
+                "SELECT o.occurrence_key,o.current_state,o.subject_value,c.check_key,ob.issue_ordinal "
+                "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
+                "JOIN observation ob ON ob.occurrence_id=o.occurrence_id "
+                "JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
+                "WHERE o.occurrence_key=? AND o.subject_type='url' AND ob.role='target' "
+                "AND (s.audit_sha256=? OR s.scan_uuid=?)",
+                (key, baseline_sha, baseline_scan_uuid or ""),
+            ).fetchall()
+            if len(row) != 1:
+                raise LedgerError(
+                    "selected case does not map to exactly one retained target occurrence in this baseline"
+                )
+            case = row[0]
+            if case["current_state"] != "recheck_pending":
+                raise LedgerError("selected case must be recheck_pending before execution")
+            if str(case["issue_ordinal"]) in bindings:
+                raise LedgerError("selected cases map to the same baseline finding ordinal")
+            bindings[str(case["issue_ordinal"])] = (
+                case["occurrence_key"],
+                case["check_key"],
+                case["subject_value"],
+            )
+    finally:
+        con.close()
+
+    try:
+        verified = verify_fixes(
+            baseline=baseline_source,
+            finding_ids=list(bindings),
+            after=after,
+            config=config,
+            out_dir=out_dir,
+        )
+    finally:
+        if hasattr(baseline_source, "close"):
+            baseline_source.close()
+    keys_in_result = []
+    for finding in verified["findings"]:
+        binding = bindings.get(str(finding.get("finding_id")))
+        if (
+            binding is None
+            or finding.get("check") != binding[1]
+            or not isinstance(finding.get("url"), str)
+            or canonical_url(finding["url"]) != binding[2]
+        ):
+            raise LedgerError(
+                "guarded verifier returned a finding outside the selected ledger cases"
+            )
+        keys_in_result.append(binding[0])
+    recorded = record_verification(
+        ledger,
+        verified["verification"],
+        actor=actor,
+        expected_revision=expected_revision,
+        occurrence_keys=keys_in_result,
+        task_id=task_id,
+    )
+    return {"ok": True, "verification": verified, "recording": recorded}
+
+
+def remediation_report(
+    ledger: str, out_dir: str | None = None, limit: int = 100, offset: int = 0
+) -> dict[str, Any]:
     """Render retained remediation evidence, optionally to a new local directory."""
     from seohead.storage.ledger import remediation_report as build
     from seohead.storage.ledger import write_remediation_report
 
-    return write_remediation_report(ledger, out_dir) if out_dir else build(ledger)
+    return (
+        write_remediation_report(ledger, out_dir, limit=limit, offset=offset)
+        if out_dir
+        else build(ledger, limit=limit, offset=offset)
+    )
 
 
 def project_inbox_submit(
@@ -4815,25 +4938,41 @@ def bi_export(
     out_dir: str | None = None,
     max_rows_per_file: int = 25_000,
     max_bytes_per_file: int = 8 * 1024 * 1024,
-    max_output_bytes: int = 512 * 1024 * 1024,
+    max_output_bytes: int = 4 * 1024 * 1024 * 1024,
+    max_scan_bytes: int = 8 * 1024 * 1024 * 1024,
     search_metric: str | None = None,
+    xlsx_out: str | None = None,
+    xlsx_dataset: str | None = None,
+    xlsx_max_rows_per_sheet: int = 1_048_575,
 ) -> dict[str, Any]:
     """Write typed, partitioned BI datasets from saved local crawl evidence."""
     from seohead.reports.bi import export_bi as core
+    from seohead.reports.bi_destinations import export_bi_xlsx
 
-    return {
-        "ok": True,
-        **core(
-            scan=scan,
-            audit=audit,
-            provider_joins=provider_joins,
-            out_dir=out_dir,
-            max_rows_per_file=max_rows_per_file,
-            max_bytes_per_file=max_bytes_per_file,
-            max_output_bytes=max_output_bytes,
-            search_metric=search_metric,
-        ),
-    }
+    result = core(
+        scan=scan,
+        audit=audit,
+        provider_joins=provider_joins,
+        out_dir=out_dir,
+        max_rows_per_file=max_rows_per_file,
+        max_bytes_per_file=max_bytes_per_file,
+        max_output_bytes=max_output_bytes,
+        max_scan_bytes=max_scan_bytes,
+        search_metric=search_metric,
+    )
+    if (xlsx_out is None) != (xlsx_dataset is None):
+        raise ValueError("xlsx_out and xlsx_dataset must be supplied together")
+    xlsx = (
+        export_bi_xlsx(
+            result["output_directory"],
+            dataset=xlsx_dataset,
+            out=xlsx_out,
+            max_rows_per_sheet=xlsx_max_rows_per_sheet,
+        )
+        if xlsx_out is not None
+        else None
+    )
+    return {"ok": True, **result, "xlsx": xlsx}
 
 
 def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:
@@ -5185,6 +5324,7 @@ _RAW_HANDLERS = {
     "remediation_cases": remediation_cases,
     "remediation_transition": remediation_transition,
     "remediation_record_verification": remediation_record_verification,
+    "remediation_recheck": remediation_recheck,
     "remediation_report": remediation_report,
     "project_inbox_submit": project_inbox_submit,
     "project_inbox_list": project_inbox_list,

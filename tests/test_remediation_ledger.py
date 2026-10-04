@@ -495,6 +495,55 @@ def test_case_reads_paginate_exact_findings_without_changing_coverage_totals(tmp
         read_cases(ledger, limit=0)
 
 
+def test_remediation_coverage_keeps_the_full_original_population_in_every_ratio(tmp_path):
+    """A partial recheck cannot make unresolved cases disappear from either denominator."""
+    ledger = _ledger(tmp_path)
+    urls = [f"https://example.test/case-{index}" for index in range(600)]
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[
+            _issue(f"ISSUE-{index:06d}", "CHECK_ONE", target=url) for index, url in enumerate(urls)
+        ],
+        page_urls=urls,
+    )
+    ingest_scan(ledger, scan)
+    con = open_ledger(ledger, write=True)
+    try:
+        rows = con.execute(
+            "SELECT occurrence_id,finding_id FROM occurrence ORDER BY occurrence_id"
+        ).fetchall()
+        assert len(rows) == 600
+        con.execute("BEGIN IMMEDIATE")
+        for state, group in (
+            ("resolved", rows[:300]),
+            ("persisting", rows[300:550]),
+            ("unverifiable", rows[550:]),
+        ):
+            con.executemany(
+                "UPDATE occurrence SET current_state=? WHERE occurrence_id=?",
+                [(state, row["occurrence_id"]) for row in group],
+            )
+            con.executemany(
+                "UPDATE finding SET current_state=? WHERE finding_id=?",
+                [(state, row["finding_id"]) for row in group],
+            )
+        con.execute("UPDATE ledger SET ledger_revision=ledger_revision+1 WHERE singleton=1")
+        con.commit()
+    finally:
+        con.close()
+    summary = remediation_summary(ledger)
+    assert summary["denominators"] == {
+        "verified_original_occurrences": 600,
+        "remediation_cases": 600,
+    }
+    assert summary["resolved_percent"] == 50.0
+    assert summary["rechecked_percent"] == 91.7
+    assert summary["tasks"]["unassigned"]["status"] == "blocked"
+    report = remediation_report(ledger, limit=1, offset=1)
+    assert report["pagination"] == {"total": 600, "limit": 1, "offset": 1, "returned": 1}
+    assert len(report["cases"]) == 1
+
+
 def test_remediation_report_writes_deterministic_review_files_without_mutating_ledger(tmp_path):
     ledger = _ledger(tmp_path)
     scan = _scan(
@@ -538,6 +587,12 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
         json.dumps(
             {
                 "schema_version": "verification.v1",
+                "baseline": {
+                    "audit_sha256": occurrence["observations"][0]["source_scan"]["audit_sha256"],
+                    "scan_uuid": occurrence["observations"][0]["source_scan"]["scan_uuid"],
+                },
+                "selection": {"finding_ids": ["ISSUE-000001"], "urls": [A]},
+                "collection": {"state": "measured", "audits": [{"sha256": "b" * 64}]},
                 "findings": [
                     {
                         "finding_id": "ISSUE-000001",
@@ -545,6 +600,10 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
                         "url": A,
                         "status": "resolved",
                         "reason": "measured clean verdict",
+                        "before": {"id": "ISSUE-000001", "check": "CHECK_ONE", "target_url": A},
+                        "before_page": {"url": A, "status_code": 200},
+                        "after": None,
+                        "after_page": {"url": A, "status_code": 200},
                     }
                 ],
             }
@@ -557,8 +616,21 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
     assert recorded["recorded"] == 1
     stored = _occurrences(read_cases(ledger))[0]
     assert stored["current_state"] == "resolved"
+    binding = stored["decisions"][-1]["verification"]
     assert stored["decisions"][-1]["observation_id"] is None
-    assert recorded["verification_sha256"] in stored["decisions"][-1]["reason"]
+    assert binding["measured"] is True
+    assert binding["artifact_sha256"] == recorded["verification_sha256"]
+    assert (
+        binding["baseline_audit_sha256"]
+        == occurrence["observations"][0]["source_scan"]["audit_sha256"]
+    )
+    assert binding["scope_sha256"]
+    report = remediation_report(ledger)
+    assert report == remediation_report(ledger)
+    assert (
+        report["cases"][0]["decision"]["verification"]["artifact_sha256"]
+        == recorded["verification_sha256"]
+    )
 
 
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):
@@ -839,14 +911,174 @@ def test_scan_without_audit_is_refused(tmp_path):
 def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
     ledger = _ledger(tmp_path)
     con = sqlite3.connect(ledger)
-    con.execute("PRAGMA user_version=2")
+    con.execute("PRAGMA user_version=3")
     con.commit()
     con.close()
     digest = _file_sha(ledger)
     for write in (False, True):
         with pytest.raises(LedgerError, match="user_version"):
             open_ledger(ledger, write=write)
-    assert _file_sha(ledger) == digest
+        assert _file_sha(ledger) == digest
+
+
+def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_path):
+    """The additive verification tables do not make a read open mutate old evidence."""
+    from seohead.storage import ledger as ledger_module
+
+    path = tmp_path / "v1.sqlite"
+    con = sqlite3.connect(path)
+    con.executescript(ledger_module._schema())
+    con.execute(
+        "INSERT INTO ledger VALUES(1,?,?,?,?,?,?)",
+        (str(uuid.uuid4()), "ledger.v1", "2026-10-01T00:00:00Z", "test", BUILD, 0),
+    )
+    con.commit()
+    con.close()
+    original = _file_sha(path)
+    with pytest.raises(LedgerError, match="user_version 1"):
+        open_ledger(path)
+    assert _file_sha(path) == original
+    upgraded = open_ledger(path, write=True)
+    try:
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert upgraded.execute("SELECT format_version FROM ledger").fetchone()[0] == "ledger.v1"
+        assert upgraded.execute("SELECT COUNT(*) FROM verification_artifact").fetchone()[0] == 0
+    finally:
+        upgraded.close()
+    reopened = open_ledger(path)
+    reopened.close()
+
+
+def test_audit_v2_ingest_streams_large_issue_population_without_legacy_materialization(
+    tmp_path, monkeypatch
+):
+    """A retained audit.v2 remains disk-backed while the ledger records every case."""
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    project = _project(tmp_path)
+    scan_path = tmp_path / "large.sqlite"
+    meta = _metadata()
+    with NativeScan.create(scan_path, **meta) as scan:
+        header = {
+            "schema_version": "2.0",
+            "run": {
+                "source": SITE,
+                "scan_uuid": scan.con.execute("SELECT scan_uuid FROM scan").fetchone()[0],
+                "generated_at": "2026-10-01T00:00:00Z",
+                "crawl_config": manifest(meta["config"]),
+            },
+            "summary": {"totals": {}, "by_severity": {}, "by_check": {}},
+            "issues": [],
+            "pages": [],
+            "groups": [],
+        }
+        scan.save_audit_v2(
+            header,
+            {
+                "/issues": (
+                    _issue(
+                        f"ISSUE-{index:06d}",
+                        "TITLE_MISSING",
+                        target=f"https://example.test/page-{index}",
+                        group_id="GROUP-ONE" if index == 0 else None,
+                    )
+                    for index in range(10_001)
+                ),
+                "/pages": (
+                    {
+                        "url": f"https://example.test/page-{index}",
+                        "status_code": 200,
+                        "content_type": "text/html",
+                        "metrics": {"representation": "static"},
+                    }
+                    for index in range(10_001)
+                ),
+                "/groups": [{"group_id": "GROUP-ONE", "check": "TITLE_MISSING", "count": 1}],
+            },
+        )
+        scan.finish_without_audit("synthetic large audit.v2")
+    monkeypatch.setattr(
+        AuditV2Reader,
+        "materialize_legacy",
+        lambda *_args, **_kwargs: pytest.fail("large audit.v2 was materialized"),
+    )
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda *_args, **_kwargs: pytest.fail("large scan was read into one bytes object"),
+    )
+    ledger = create_ledger(tmp_path / "ledger.sqlite", project_dir=project, producer_build=BUILD)
+    result = ingest_scan(ledger, scan_path)
+    assert result["recorded"]["findings"] == 10_001
+    assert result["recorded"]["occurrences"] == 10_001
+    assert result["recorded"]["group_memberships_state"] == "partial"
+    assert ledger_summary(ledger)["counts"]["occurrence"] == 10_001
+
+    occurrence = next(
+        item
+        for item in _occurrences(read_cases(ledger, limit=20))
+        if item["subject_value"].endswith("page-1")
+    )
+    revision = ledger_summary(ledger)["ledger_revision"]
+    for state in ("verified", "fix_reported", "recheck_pending"):
+        transition_occurrence(
+            ledger,
+            occurrence_key=occurrence["occurrence_key"],
+            state=state,
+            actor="reviewer",
+            reason=f"move to {state}",
+            expected_revision=revision,
+        )
+        revision += 1
+    after_path = tmp_path / "after.sqlite"
+    with NativeScan.create(after_path, **meta) as scan:
+        header = {
+            "schema_version": "2.0",
+            "run": {
+                "source": SITE,
+                "scan_uuid": scan.con.execute("SELECT scan_uuid FROM scan").fetchone()[0],
+                "generated_at": "2026-10-02T00:00:00Z",
+                "crawl_config": manifest(meta["config"]),
+            },
+            "summary": {
+                "totals": {},
+                "by_severity": {},
+                "by_check": {},
+                "check_coverage": {"checks_silent_ids": ["TITLE_MISSING"]},
+            },
+            "issues": [],
+            "pages": [],
+        }
+        scan.save_audit_v2(
+            header,
+            {
+                "/issues": [],
+                "/pages": (
+                    {
+                        "url": f"https://example.test/page-{index}",
+                        "status_code": 200,
+                        "content_type": "text/html",
+                        "metrics": {"representation": "static"},
+                    }
+                    for index in range(10_001)
+                ),
+            },
+        )
+        scan.finish_without_audit("synthetic after audit.v2")
+    from seohead.servers.handlers import remediation_recheck
+
+    rechecked = remediation_recheck(
+        ledger=str(ledger),
+        baseline=str(scan_path),
+        occurrence_keys=[occurrence["occurrence_key"]],
+        actor="large-synthetic-recheck",
+        expected_revision=revision,
+        out_dir=str(tmp_path / "verification"),
+        task_id="large-audit-v2",
+        after=str(after_path),
+    )
+    assert rechecked["verification"]["summary"]["resolved"] == 1
+    assert rechecked["recording"]["recorded"] == 1
     foreign = tmp_path / "foreign.sqlite"
     foreign.write_bytes(b"not a ledger")
     with pytest.raises(LedgerError):

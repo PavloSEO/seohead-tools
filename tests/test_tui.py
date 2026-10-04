@@ -45,6 +45,12 @@ def test_tui_is_an_optional_command_with_a_plain_mode_flag():
     assert theme.color_enabled(no_color_flag=True, stdout_is_tty=True) is False
 
 
+def test_interactive_entrypoints_are_declared_without_becoming_handler_commands():
+    assert set(cli.INTERACTIVE_COMMANDS) == {"tui", "watch"}
+    assert set(cli.INTERACTIVE_COMMANDS).isdisjoint(cli.COMMANDS)
+    assert set(cli.INTERACTIVE_COMMANDS) <= set(cli.DOCUMENTED_CLI_ENTRYPOINTS)
+
+
 def test_raw_key_reader_keeps_one_utf8_character_intact():
     reader, writer = os.pipe()
     try:

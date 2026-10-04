@@ -344,6 +344,7 @@ class AuditV2Reader:
             raise AuditV2Error("audit.v2 companion must contain exactly one metadata row")
         self.binding = json.loads(row["binding_json"])
         self.header = json.loads(row["header_json"])
+        self.sha256 = row["sha256"]
         if not isinstance(self.binding, dict) or not isinstance(self.header, dict):
             raise AuditV2Error("audit.v2 metadata must be JSON objects")
         if len(row["header_json"].encode("utf-8")) > MAX_HEADER_BYTES:

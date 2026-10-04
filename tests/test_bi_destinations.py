@@ -117,6 +117,35 @@ def test_destination_preflight_streams_partitions_and_accepts_selected_projectio
     assert plan["worksheets"][0]["columns"] == 3
 
 
+def test_selected_bi_view_streams_to_excel_with_numbered_sheet_splitting(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    filtered = filter_package(
+        package,
+        dataset="cohorts",
+        out_dir=tmp_path / "filtered",
+        columns=["run_id", "cohort_id", "state"],
+    )
+    from seohead.reports.bi_destinations import export_bi_xlsx
+
+    result = export_bi_xlsx(
+        tmp_path / "filtered",
+        dataset="cohorts",
+        out=tmp_path / "cohorts.xlsx",
+        max_rows_per_sheet=2,
+    )
+    assert result["rows"] == filtered["row_count"]
+    assert result["worksheets"] == (filtered["row_count"] + 1) // 2
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(tmp_path / "cohorts.xlsx", read_only=True)
+    try:
+        assert workbook.sheetnames[0] == "cohorts-0001"
+        assert next(iter(workbook["cohorts-0001"].values)) == ("run_id", "cohort_id", "state")
+    finally:
+        workbook.close()
+
+
 def test_selected_projection_preview_uses_its_mapping_from_a_full_target_config(
     tmp_path, monkeypatch
 ):

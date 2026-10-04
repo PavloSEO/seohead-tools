@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**147 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 152 in total.
+**148 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 153 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1669,6 +1669,8 @@ Attach a retained bounded verification artifact to pending cases.
 | `verification_path` | `str` | `required` |
 | `actor` | `str` | `required` |
 | `expected_revision` | `int` | `required` |
+| `occurrence_keys` | `list[str] | None` | `None` |
+| `task_id` | `str` | `'unassigned'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
 
@@ -1677,6 +1679,32 @@ Attach a retained bounded verification artifact to pending cases.
 Every result must map to exactly one pending ledger case. The artifact
 byte digest is saved in the decision evidence; ambiguous or stale
 batches are rejected atomically.
+
+### `remediation-recheck`
+
+MCP name: `seo_remediation_recheck`
+
+Recheck exact pending ledger cases without widening to a site crawl.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `baseline` | `str` | `required` |
+| `occurrence_keys` | `list[str]` | `required` |
+| `actor` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `out_dir` | `str` | `required` |
+| `task_id` | `str` | `'unassigned'` |
+| `after` | `str | None` | `None` |
+| `config` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+The baseline must be the retained audit that produced each case. The
+command writes a separate immutable verification artifact, then records
+its hashes and measured outcome atomically in the local ledger.
 
 ### `remediation-report`
 
@@ -1688,6 +1716,8 @@ Render retained before/after remediation evidence without network access.
 |---|---|---|
 | `ledger` | `str` | `required` |
 | `out_dir` | `str | None` | `None` |
+| `limit` | `int` | `100` |
+| `offset` | `int` | `0` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -2172,8 +2202,12 @@ Project a saved scan or audit and optional issue #781 joins into a local typed B
 | `provider_joins` | `list[str] | None` | `None` |
 | `max_rows_per_file` | `int` | `25000` |
 | `max_bytes_per_file` | `int` | `8 * 1024 * 1024` |
-| `max_output_bytes` | `int` | `512 * 1024 * 1024` |
+| `max_output_bytes` | `int` | `4 * 1024 * 1024 * 1024` |
+| `max_scan_bytes` | `int` | `8 * 1024 * 1024 * 1024` |
 | `search_metric` | `str | None` | `None` |
+| `xlsx_out` | `str | None` | `None` |
+| `xlsx_dataset` | `str | None` | `None` |
+| `xlsx_max_rows_per_sheet` | `int` | `1048575` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
