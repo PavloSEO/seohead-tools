@@ -1288,6 +1288,7 @@ Open a local project workspace without executing template references.
 |---|---|---|
 | `directory` | `str` | `required` |
 | `expected_site` | `str | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1485,6 +1486,7 @@ Start a local registered workflow; it performs no scan or provider call.
 | `steps` | `list[str]` | `required` |
 | `expected_revision` | `int` | `0` |
 | `context` | `dict[str, Any] | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1503,6 +1505,8 @@ Persist one registered-step result before the next step or agent handoff.
 | `evidence` | `list[dict] | None` | `None` |
 | `expected_revision` | `int` | `0` |
 | `review` | `dict[str, Any] | None` | `None` |
+| `phase` | `str | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1515,6 +1519,7 @@ Recover the exact next registered step after interruption or handoff.
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1522,7 +1527,7 @@ Recover the exact next registered step after interruption or handoff.
 
 MCP name: `seo_workflow_execute`
 
-Run a supplied local synthetic sequence, checkpointing every step.
+Checkpoint a supplied local sequence without executing network work.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -1531,6 +1536,7 @@ Run a supplied local synthetic sequence, checkpointing every step.
 | `steps` | `list[str]` | `required` |
 | `outcomes` | `list[dict]` | `required` |
 | `context` | `dict[str, Any] | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1545,6 +1551,7 @@ Reopen only the interrupted registered step after a second-agent handoff.
 | `directory` | `str` | `required` |
 | `run_id` | `str` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1559,6 +1566,7 @@ Configure a disabled local incremental monitor; this starts no schedule or messa
 | `directory` | `str` | `required` |
 | `policy` | `dict` | `required` |
 | `expected_revision` | `int` | `0` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1574,6 +1582,7 @@ Record one bounded retained-scan diff; quiet runs do not notify anyone.
 | `scan_id` | `str` | `required` |
 | `observations` | `list[dict]` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1588,6 +1597,7 @@ Claim or recover a local run; no timer, crawl, or delivery starts here.
 | `directory` | `str` | `required` |
 | `action` | `str` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1600,6 +1610,7 @@ Read local monitor policy and its last retained checkpoint.
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1719,6 +1730,7 @@ Initialize or reconcile a local checklist without executing a check, skill, or s
 | `template` | `dict | None` | `None` |
 | `expected_revision` | `int | None` | `None` |
 | `plan` | `dict | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1755,6 +1767,7 @@ Add or update one local checklist definition without executing it.
 | `directory` | `str` | `required` |
 | `item` | `dict` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1798,6 +1811,7 @@ List saved declarative finding views and the current project view-config revisio
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1811,6 +1825,7 @@ Read one saved finding view with its stable identity, schema version and revisio
 |---|---|---|
 | `directory` | `str` | `required` |
 | `name` | `str` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1825,6 +1840,7 @@ Create or revise a bounded declarative finding view using an expected config rev
 | `directory` | `str` | `required` |
 | `view` | `dict[str, Any]` | `required` |
 | `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1846,6 +1862,7 @@ Apply one saved view to an audit object, JSON file, or validated scan.v1 SQLite 
 | `name` | `str` | `required` |
 | `audit` | `dict | str` | `required` |
 | `offset` | `int` | `0` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -1867,6 +1884,7 @@ Preview stack-aware project priorities from saved facts without network requests
 | `policy` | `dict | None` | `None` |
 | `apply` | `bool` | `False` |
 | `expected_revision` | `int | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1889,6 +1907,7 @@ Read or explicitly update operator crawl defaults and project admission threshol
 | `policy` | `dict | None` | `None` |
 | `apply` | `bool` | `False` |
 | `expected_revision` | `int | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1929,6 +1948,7 @@ Create and prepare a new bounded project; failures leave inspectable pending wor
 | `competitors` | `list | None` | `None` |
 | `approve_large_crawl` | `bool` | `False` |
 | `producer_build` | `str | None` | `None` |
+| `consumer` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
