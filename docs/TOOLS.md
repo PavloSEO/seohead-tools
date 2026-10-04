@@ -451,6 +451,9 @@ priority adjustment. It never changes a technical finding's severity. See the
 `gsc-archive --database ./analytics/search-console.sqlite --action prepare --site-url sc-domain:example.test --start-date 2025-06-01 --end-date 2026-09-01`
 creates the archive and queues availability checks without network calls. Dates are inclusive in
 Pacific Time; select a range inside Google's available history (up to approximately 16 months).
+For a new file, it also initializes the shared versioned provider-history store used by
+`sources-sync`, `sources-status`, and `sources-export`; richer archive datasets remain separate
+grains in that same SQLite file.
 Then run `gsc-archive --database ./analytics/search-console.sqlite --action run --max-requests 10 --pause 1`.
 `--action status` reads the existing archive without credential access or creating an absent file.
 `--action backup --backup-path ./backups/search-console-snapshot.sqlite` creates a verified snapshot

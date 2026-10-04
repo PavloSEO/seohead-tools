@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from seohead.data_sources import gsc_archive
+from seohead.data_sources import gsc_archive, sources_db
 from seohead.data_sources.gsc_archive import Archive
 
 
@@ -98,6 +98,19 @@ def test_refuses_unowned_database_without_schema_mutation(tmp_path):
         assert db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == [
             ("important",)
         ]
+
+
+def test_new_archive_reuses_the_versioned_provider_history_store(tmp_path):
+    path = tmp_path / "sources.sqlite"
+    archive = Archive(path)
+    archive.prepare("sc-domain:example.test", "2026-01-01", "2026-01-01")
+    archive.close()
+    history = sources_db.status(path)
+    assert history["schema_version"] == sources_db.SCHEMA_VERSION
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT value FROM archive_meta WHERE key='kind'").fetchone()[0] == (
+            "seohead.search_analytics"
+        )
 
 
 def test_single_writer_and_verified_backup(tmp_path):

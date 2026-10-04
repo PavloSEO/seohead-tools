@@ -91,6 +91,8 @@ class Archive:
     """One writer per archive; transaction boundaries are one received API page."""
 
     def __init__(self, path: str | Path, *, create: bool = True, read_only: bool = False):
+        from seohead.data_sources import sources_db
+
         self.path = Path(path).expanduser().resolve()
         existed = self.path.exists()
         self.read_only = read_only
@@ -120,6 +122,13 @@ class Archive:
             except OSError:
                 self._lock.close()
                 raise RuntimeError("Another writer already owns this GSC archive") from None
+            if not existed:
+                # New archives live in the same versioned project SQLite store as the broader
+                # provider history. GSC-specific queue/fact tables retain their independent
+                # grains without inventing a second file or a competing credential boundary.
+                bootstrap = sources_db.connect(self.path, create=True)
+                bootstrap.close()
+                existed = True
             try:
                 self.db = sqlite3.connect(self.path, timeout=30)
             except sqlite3.Error:
@@ -131,10 +140,34 @@ class Archive:
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='archive_meta'"
             ).fetchone()
             if not marker:
-                self.db.close()
-                if self._lock:
-                    self._lock.close()
-                raise ValueError("Existing database is not a GSC archive; refusing to modify it")
+                source_identity = (
+                    dict(self.db.execute("SELECT key, value FROM sources_meta"))
+                    if self.db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='sources_meta'"
+                    ).fetchone()
+                    else {}
+                )
+                if (
+                    source_identity.get("kind") != sources_db.SCHEMA_KIND
+                    or source_identity.get("schema_version") != sources_db.SCHEMA_VERSION
+                    or read_only
+                    or not create
+                ):
+                    self.db.close()
+                    if self._lock:
+                        self._lock.close()
+                    raise ValueError(
+                        "Existing database is not a GSC archive; refusing to modify it"
+                    )
+                self.db.executescript(SCHEMA)
+                self.db.execute(
+                    "INSERT INTO archive_meta VALUES('schema_version',?)", (str(SCHEMA_VERSION),)
+                )
+                self.db.execute(
+                    "INSERT INTO archive_meta VALUES('kind','seohead.search_analytics')"
+                )
+                self.db.commit()
+                marker = True
             version = self.db.execute(
                 "SELECT value FROM archive_meta WHERE key='schema_version'"
             ).fetchone()
