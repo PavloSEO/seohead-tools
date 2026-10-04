@@ -34,6 +34,7 @@ COMMANDS = (
     "crawl-diagnose",
     "crawl-diagnose-export",
     "compare-crawls",
+    "verify-fixes",
     "crawl-enrich",
     "crawl-import",
     "segment-diff",
@@ -105,6 +106,7 @@ COMMANDS = (
     "project-new",
     "project-open",
     "project-status",
+    "project-progress",
     "project-facts",
     "project-checklist-init",
     "project-checklist-update",
@@ -443,6 +445,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "project-new",
         "project-open",
         "project-status",
+        "project-progress",
         "project-facts",
         "project-checklist-init",
         "project-checklist-update",
@@ -456,6 +459,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
+        if cmd == "project-progress":
+            kw["limit"] = args.limit
+            kw["offset"] = args.offset
         if getattr(args, "expected_revision", None) is not None:
             kw["expected_revision"] = args.expected_revision
         if getattr(args, "item_id", None) is not None:
@@ -591,6 +597,15 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["after"] = args.after
         if getattr(args, "force", False):
             kw["force"] = True
+    elif cmd == "verify-fixes":
+        for name in ("baseline", "view", "urls_file", "after", "config", "out_dir"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        for flag, key in (("finding_ids", "finding_ids"), ("urls", "urls")):
+            value = getattr(args, flag, None)
+            if value:
+                kw[key] = _split_list(value)
     elif cmd == "crawl-enrich":
         for name in ("audit", "external_csv", "url_column", "out_urls"):
             value = getattr(args, name, None)
@@ -1501,6 +1516,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             sub, "--before", help="path to the earlier audit.json or scan.v1 SQLite artifact"
         )
         _source_flag(sub, "--after", help="path to the later audit.json or scan.v1 SQLite artifact")
+    if cmd == "verify-fixes":
+        _source_flag(sub, "--baseline", help="saved baseline audit.json or SQLite scan")
+        sub.add_argument("--finding-ids", help="comma-separated baseline finding IDs")
+        _source_flag(sub, "--view", help="saved verification_view.v1 JSON selection")
+        _source_flag(sub, "--urls", help="comma-separated affected baseline URLs")
+        _source_flag(sub, "--urls-file", help="TXT/CSV/XLSX/XML affected URL list")
+        _source_flag(sub, "--after", help="existing after audit/scan for offline verification")
+        sub.add_argument(
+            "--config", help="original crawler config when the baseline redacted secrets"
+        )
+        sub.add_argument("--out-dir", help="new directory for recrawl and immutable verification")
     if cmd == "segment-diff":
         # See the log-scan comment above: `required=True` here would reject a JSON-only
         # `--input '{"audit": ..., "source": ..., "target": ...}'` call the same way (#218).
@@ -1586,8 +1612,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--directory", help="new project directory")
         _source_flag(sub, "--target", help="primary site URL")
         sub.add_argument("--label", help="human project label")
-    if cmd in {"project-open", "project-status"}:
+    if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd == "project-progress":
+        sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
+        sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {
@@ -1863,6 +1892,7 @@ def build_parser() -> argparse.ArgumentParser:
         "new",
         "open",
         "status",
+        "progress",
         "facts",
         "checklist-init",
         "checklist-update",

@@ -112,6 +112,27 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("audit_document", "before", "after", note="Each path may be audit JSON or scan.v1."),
     ),
     _command(
+        "verify-fixes",
+        "verify_fixes",
+        _form("audit_document", "baseline", required_with=("out_dir",)),
+        _form(
+            "audit_document",
+            "after",
+            required_with=("baseline", "out_dir"),
+            note="Offline verification without recrawling.",
+        ),
+        _form("selector", "finding_ids", required_with=("baseline", "out_dir")),
+        _form(
+            "local_file",
+            "view",
+            required_with=("baseline", "out_dir"),
+            note="Saved verification_view.v1 selection.",
+        ),
+        _form("url_list", "urls", required_with=("baseline", "out_dir")),
+        _form("local_file", "urls_file", required_with=("baseline", "out_dir")),
+        _form("local_config", "config", note="Required when the baseline redacted credentials."),
+    ),
+    _command(
         "crawl-enrich",
         "crawl_enrich",
         _form("audit_document", "audit", required_with=("external_csv",)),
@@ -318,6 +339,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("project-open", "project_open", _form("project_directory", "directory")),
     _command("project-status", "project_status", _form("project_directory", "directory")),
     _command(
+        "project-progress",
+        "project_progress",
+        _form("project_directory", "directory"),
+        _form("inline_json", "limit", "offset", note="Optional bounded progress pagination."),
+    ),
+    _command(
         "project-facts",
         "project_facts",
         _form("project_directory", "directory"),
@@ -333,6 +360,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project_checklist_init",
         _form("project_directory", "directory"),
         _form("inline_json", "template", note="Optional reusable data-only checklist template."),
+        _form(
+            "inline_json",
+            "plan",
+            note="Optional agreed scope plan fixing the URL-population and task denominators.",
+        ),
     ),
     _command(
         "project-checklist-update",
@@ -348,7 +380,8 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "inline_json",
             "record",
-            note="Requires expected_revision; records supplied evidence only.",
+            note="Requires expected_revision; records supplied evidence only; "
+            "not_applicable needs reason, reviewer and an evidence basis.",
         ),
     ),
     _command("project-view-list", "project_view_list", _form("project_directory", "directory")),

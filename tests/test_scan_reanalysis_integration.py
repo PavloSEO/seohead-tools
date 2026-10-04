@@ -78,10 +78,11 @@ def _source(
     body_mode: str = "captured_entity_bytes",
     finding_exclusions=None,
     fetcher=_fetcher,
+    start_url: str = "https://example.test/",
 ) -> dict:
     settings = _settings(body_mode=body_mode, finding_exclusions=finding_exclusions)
     crawl_to_scan(
-        "https://example.test/",
+        start_url,
         scan_out=str(path),
         settings=settings,
         producer_version=__version__,
@@ -91,11 +92,13 @@ def _source(
         sleeper=lambda _seconds: None,
     )
     if body_mode == "captured_entity_bytes":
-        _save_native_audit(path, settings)
+        _save_native_audit(path, settings, start_url=start_url)
     return settings
 
 
-def _save_native_audit(path: Path, settings: dict) -> None:
+def _save_native_audit(
+    path: Path, settings: dict, *, start_url: str = "https://example.test/"
+) -> None:
     """Use the normal native audit pipeline once, over the retained source scan."""
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.crawl.sqlite_adapter import retained_start_gate
@@ -106,11 +109,11 @@ def _save_native_audit(path: Path, settings: dict) -> None:
     with NativeScan.open(path) as scan:
         result = _rebuild_page_result(scan)
         result.start_page_evidence = retained_start_gate(scan, settings)
-        with prepare_sitemap_reconciliation(scan.con, start_url="https://example.test/") as sitemap:
+        with prepare_sitemap_reconciliation(scan.con, start_url=start_url) as sitemap:
             _unused, audit = _audit_crawl_result(
                 result,
                 settings=settings,
-                url="https://example.test/",
+                url=start_url,
                 sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
                 discovery={
                     "mode": "spider",

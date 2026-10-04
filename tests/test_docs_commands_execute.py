@@ -427,6 +427,7 @@ def test_documented_command_executes_or_at_least_still_parses(
     if argv[:1] == ["project"] and argv[1] in {
         "open",
         "status",
+        "progress",
         "facts",
         "checklist-init",
         "checklist-update",

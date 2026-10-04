@@ -32,6 +32,7 @@ and this decision makes no backend migration.
 | `crawl-diagnose` | Scan artifact (`scan`)<br>Local directory (`run`) | Choose one retained source; diagnosis is offline and read-only. |
 | `crawl-diagnose-export` | Scan artifact (`scan`); requires `export`<br>Local directory (`run`); requires `export`<br>Local file (`export`) | Choose one retained source and a new redacted export destination; refuses overwrite. |
 | `compare-crawls` | Audit document (`before, after`) | Each path may be audit JSON or scan.v1. |
+| `verify-fixes` | Audit document (`baseline`); requires `out_dir`<br>Audit document (`after`); requires `baseline, out_dir`<br>Selector (`finding_ids`); requires `baseline, out_dir`<br>Local file (`view`); requires `baseline, out_dir`<br>URL list (`urls`); requires `baseline, out_dir`<br>Local file (`urls_file`); requires `baseline, out_dir`<br>Local configuration (`config`) | Offline verification without recrawling.; Saved verification_view.v1 selection.; Required when the baseline redacted credentials. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
 | `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |
 | `segment-diff` | Audit document (`audit`) | — |
@@ -94,8 +95,9 @@ and this decision makes no backend migration.
 | `project-new` | Project directory (`directory`)<br>Live URL (`target`) | — |
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
+| `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
-| `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`) | Optional reusable data-only checklist template. |
+| `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |
 | `project-checklist-record` | Project directory (`directory`)<br>Selector (`item_id`)<br>Inline JSON (`record`) | Requires expected_revision; records supplied evidence only. |
 | `project-view-list` | Project directory (`directory`) | — |

@@ -662,6 +662,36 @@ Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four dis
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `verify-fixes`
+
+MCP name: `seo_verify_fixes`
+
+Recheck selected baseline findings in an explicit, bounded URL subset.
+
+| Argument | Type | Default |
+|---|---|---|
+| `baseline` | `Any` | `required` |
+| `out_dir` | `str` | `required` |
+| `finding_ids` | `list[str] | None` | `None` |
+| `view` | `Any` | `None` |
+| `urls` | `list[str] | None` | `None` |
+| `urls_file` | `str | None` | `None` |
+| `after` | `Any` | `None` |
+| `config` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Select baseline finding IDs, a saved verification_view.v1 JSON view, or
+affected URLs. With ``after`` the comparison is offline and requires a
+distinct scan UUID plus a later observation time. Otherwise the
+recorded HTTP/robots/render policy is verified before the existing crawler
+fetches selected pages; JS baselines use one URL per rendered crawl. A new
+directory receives the recrawl evidence and immutable verification JSON
+and Markdown report. Unfetched, skipped, site-wide and incomparable
+findings remain not_verifiable, never resolved.
+
 ### `crawl-enrich`
 
 MCP name: `seo_crawl_enrich`
@@ -1146,6 +1176,27 @@ Show project scan history and named pending checklist/preparation states.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `project-progress`
+
+MCP name: `seo_project_progress`
+
+Show a compact, paginated project checklist view and its next actions.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `limit` | `int` | `20` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The page contains at most 100 checklist items. Audit-task completion is a
+percentage only when every included site has an explicit agreed plan and
+the shared coverage axis has a measured, nonzero denominator. It is
+explicitly task completion, not a site-health or remediation percentage.
+
 ### `project-facts`
 
 MCP name: `seo_project_facts`
@@ -1180,14 +1231,31 @@ Initialize or reconcile a local checklist without executing a check, skill, or s
 | `directory` | `str` | `required` |
 | `template` | `dict | None` | `None` |
 | `expected_revision` | `int | None` | `None` |
+| `plan` | `dict | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
 **Behavior and failure modes**
 
-template is an optional data-only ``seohead.checklist-template.v1`` document. The result
-returns the current state, revision, counts, views and items; use that revision for a
-later conditional write. This never makes a network request.
+template is an optional data-only ``seohead.checklist-template.v1`` document. plan is an
+optional agreed audit scope {reviewer, population, tasks}: population declares kind
+(``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
+``source``, an optional ``name`` and ``reason``, and optional per-``templates``
+populations; ``unknown`` keeps the URL denominator null with a reason. Template
+populations are agreed sub-populations of the site population: enumerated
+template URLs must belong to an enumerated site set, and declared template
+membership can never exceed the agreed site size; incoherent plans are refused
+rather than trimmed. tasks is
+``{kind: all_agreed}`` or a sourced ``{kind: selection, ids, source}`` naming the agreed
+checklist items; items outside a selection stay visible as ``not_agreed`` outside every
+denominator. A size-only population cannot verify measured-URL membership, so its
+numerator counts only enumerated URLs. Recording a plan upgrades the checklist to
+``seohead.coverage.v3`` and appends to the retained plan history; an identical
+agreement is an idempotent no-op, while a changed agreement starts a new revision and
+stale-marks evidence recorded under an earlier agreement instead of shrinking
+denominators. The result
+returns the current state, revision, counts, coverage axes, views and items; use that
+revision for a later conditional write. This never makes a network request.
 
 ### `project-checklist-update`
 
@@ -1228,7 +1296,10 @@ Record supplied evidence for one checklist item without executing its operation.
 
 expected_revision prevents an overwrite of newer checklist history. The record is
 validated against the item's scope and evidence contract, then the returned status names
-remaining, blocked and manual-review work. This never makes a network request.
+remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
+exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
+project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
+``pending_exclusion`` inside the denominator. This never makes a network request.
 
 ### `project-view-list`
 

@@ -26,6 +26,10 @@ materialized audit is currently limited to 10,000 pages, 20,000 forms and
 Use one file per imported run; do not merge runs or write an imported artifact
 concurrently.
 
+Scan artifacts are immutable evidence: the `ledger.v1` remediation ledger
+([LEDGER.md](LEDGER.md)) reads a scan without writing it and tracks findings,
+occurrences and their observation history in a separate file.
+
 ## Start here
 
 For the operator capture-to-prune route and the current release-capacity status,

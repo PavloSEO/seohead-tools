@@ -1,13 +1,15 @@
 # Skill map
 
-24 skills in `.claude/skills/`, in two tiers.
+25 skills in `.claude/skills/`, organized as method skills, an entry controller, and one versioned
+full-audit contract.
 
 **Method skills** — 23 of them. Each covers one thing well: when to apply it, in what
 order, how to read the result, and where the boundary is beyond which the tool starts to lie.
 
 **The controller** — `control/`, which decides *which* method skill to run on a site nobody has
-looked at yet, and whether to believe the answer. It routes rather than restating, and it is
-the only skill that carries its own sub-skills and a reference archive:
+looked at yet, and whether to believe the answer. The versioned contract — `full-audit-v1/`
+(`workflow/full-audit-v1`) — fixes the reusable audit sequence without adding checks. Both route
+rather than restating methods; `control/` also carries its own sub-skills and reference archive:
 
 ```
 .claude/skills/control/
@@ -22,6 +24,10 @@ the only skill that carries its own sub-skills and a reference archive:
   reference/limits.md          what this toolkit cannot answer at all
 ```
 
+Retrieve the full-audit contract with `seohead skill-show --name workflow/full-audit-v1` or
+`seo_skill_show(name="workflow/full-audit-v1")` over MCP. The v1 identifier stays addressable;
+an incompatible workflow gets a new versioned ID.
+
 Each sub-skill is loadable on its own: a reader who needs only the rate lesson should not have
 to read the deliverables section. The reference archive matters as much as the sub-skills —
 every defect found on a live site so far was recognisable by a pattern, and writing those down
@@ -32,8 +38,9 @@ is what lets the next run catch one in minutes instead of an afternoon.
 ```
 given a domain, what to do?
    └─ control ────────── the entry point for any unscoped audit request: scope,
-        │                 crawl, scan, read the audit honestly, verify live,
-        │                 produce the deliverable
+        │                 and route to the versioned full-audit-v1 contract
+        ├─ full-audit-v1 ─ run one budgeted collection, reuse evidence, verify,
+        │                    and report actual coverage and unavailable work
         ├─ seo-deep-audit ─ delegate here for the crawl step instead of native
         │                    crawl-site only when SF (licensed CLI or exports)
         │                    is available and full-registry depth is wanted
@@ -48,6 +55,7 @@ Then by the layer of the task.
 | Skill | When |
 |---|---|
 | **control** | The single entry point for an unscoped "audit this site" request, or when you are about to write a one-off script to check pages. The whole loop: scope, crawl, `log-scan` the run, read `audit.json`'s honesty fields before its findings, verify criticals live, build the deliverable. Routes to the method skills below rather than restating them; carries its own sub-skills and reference archive. Written against a 4 260-URL run over three live sites |
+| **full-audit-v1** | Versioned, addressable execution contract used by `control`: scope and budget gates, evidence reuse, existing collector/method routes, verification, honest coverage and report completion. Adds no checks of its own |
 | **seo-deep-audit** | Not a second unscoped-audit entry point — `control` delegates its crawl step here when a licensed SF CLI or supplied exports are available and full-registry depth is wanted, and it is also fine to call directly once that decision is already made (SF/exports named or already in hand) |
 | **audit-roadmap** | Unfamiliar domain: 5 minutes of recon to decide what to collect next |
 | **sf-boundaries** | The fork "does Screaming Frog cover this, or does it need an agent?" — a router |
@@ -98,6 +106,11 @@ Then by the layer of the task.
 | **analytics-console-review** | A user-authorized signed-in console or aggregate export is available, but no provider API is configured | Host browser or user export; optional `sources-doctor`, `metrika-report`, and page/SF checks |
 
 ## Tools without a skill of their own
+63 of the 98 commands are not named in any skill's own body (a mention inside
+another tool's Markdown table above does not count) — used inline as plumbing inside
+a workflow's write-up, or not yet needed by one at all — and have no skill of their own,
+deliberately: a skill per single command is noise. `tests/test_docs_drift.py` recomputes this
+list by scanning every skill file for each command name, so it cannot silently rot.
 
 68 of the 98 commands are not named in any skill's own body (a mention inside
 another tool's Markdown table above does not count) — used inline as plumbing

@@ -53,8 +53,9 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-new` | Create a portable local project with site facts and custom template/profile references; does not execute a checklist | no |
 | `project-open` | Validate and open a saved project without rewriting it | no |
 | `project-status` | Show scan history and explicit pending checklist/preparation states | no |
+| `project-progress` | Show a compact, bounded page of checklist states and next actions; any percentage is explicitly labelled audit-task completion and requires an agreed scope | no |
 | `project-facts` | Preview or record the project's stack facts; `--detect` fetches the target once after robots.txt, and an unavailable or ambiguous detection leaves the fact absent with its reason | only with `--detect` |
-| `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue and an optional data-only template; does not execute items | no |
+| `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue, an optional data-only template, and an optional agreed scope `plan` that fixes the URL-population and task denominators; does not execute items | no |
 | `project-checklist-update` | Add or edit one checklist definition with an expected revision; does not execute it | no |
 | `project-checklist-record` | Validate and record supplied evidence for one item with an expected revision; does not execute it | no |
 | `project-view-list` / `project-view-show` | List saved finding views or retrieve one with stable identity and schema/config revisions | no |
@@ -222,6 +223,7 @@ details (adaptive back-off, which checks come back `skipped` and why) and
 | `crawl-diagnose` | Explains low progress from a retained native SQLite scan (`--scan`) or legacy run (`--run`): frontier, decisions, robots/scope/depth/budgets, content types, rendering eligibility and recorded failures. Shows exact bounded decision samples and explicit next steps; the total number of site URLs stays unknown. No crawl or network request. | reads files |
 | `crawl-diagnose-export` | Explicitly writes a redacted JSON copy of the same offline diagnosis with `--export PATH`; unknown freeform labels and scan identity are removed, and existing files are never overwritten. | creates one file |
 | `compare-crawls` | Diffs two audit documents into `entered` / `left` / `appeared` / `disappeared` findings, so a fix is distinguished from a page that simply dropped out of the crawl. Refuses known-different effective crawl settings unless the operator explicitly passes `--force`. | — |
+| `verify-fixes` | Rechecks selected baseline finding IDs, URLs, or a saved `verification_view.v1` selection. Reuses recorded HTTP/robots/render policy and classifies resolved, persisting, changed, and not-verifiable findings from the affected pages only; whole-site and unmeasured checks cannot become fixed. `--after` uses an existing audit offline. | fetches selected URLs unless `--after` is given; creates a new immutable JSON/Markdown verification under `--out-dir` |
 | `crawl-enrich` | Joins an existing audit or scan to a local URL-keyed traffic/search CSV. It keeps matched, crawl-only, external-only, and unkeyable rows distinct; a completed crawl can export reliable same-origin external-only URLs for list mode. | optionally writes a URL-list file under `--out-urls` |
 | `crawl-import` | Reads a local manifest-mapped CSV crawl bundle and returns `third_party_crawl.v1` with foreign source identity, pages/links/statuses/redirects, exact field coverage, duplicate counts and input hashes. This is not a native scan or SF audit. | reads the manifest and listed CSV files |
 | `segment-diff` | Answers "which pages exist in one segment and not in another" from one crawl, using the site's own hreflang declarations as the authority. Mirrored paths are a fallback only where the site's declared pairs prove it mirrors them; a partially crawled target segment yields no absences at all, because a page nobody fetched is not a page that is missing. Reads a native crawl whose config declared `scope.segments`, not an SF export | — |
@@ -278,6 +280,7 @@ seohead crawl-site --url https://example.com/ --max-urls 200
 seohead crawl-diagnose --scan ./scans/audit.sqlite
 seohead crawl-diagnose-export --run ./run --max-decisions 10 --export ./diagnostic-redacted.json
 seohead compare-crawls --before old-audit.json --after new-audit.json
+seohead verify-fixes --baseline old-audit.json --finding-ids ISSUE-000001 --out-dir ./verification-1
 seohead crawl-import --manifest third_party_crawl/full/manifest.json
 seohead segment-diff --audit ./multilingual/audit.json --source en --target pl
 seohead crawl-describe-settings

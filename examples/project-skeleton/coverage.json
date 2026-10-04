@@ -7657,6 +7657,50 @@
       ],
       "records": []
     },
+    "scenario:full-audit": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "manual",
+        "id": "scenario:full-audit",
+        "kind": "scenario",
+        "operation": null,
+        "order": 174,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "3b16cbe3ac102d45fc9fbc492d1203e514a7701805c9b2d5b284a0b568ab5486",
+        "title": "Full audit: from authorized scope to a verified report"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "manual",
+            "id": "scenario:full-audit",
+            "kind": "scenario",
+            "operation": null,
+            "order": 174,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "3b16cbe3ac102d45fc9fbc492d1203e514a7701805c9b2d5b284a0b568ab5486",
+            "title": "Full audit: from authorized scope to a verified report"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
     "scenario:heading-hierarchy": {
       "definition": {
         "dependencies": [],
@@ -7665,7 +7709,7 @@
         "id": "scenario:heading-hierarchy",
         "kind": "scenario",
         "operation": null,
-        "order": 174,
+        "order": 175,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7685,7 +7729,7 @@
             "id": "scenario:heading-hierarchy",
             "kind": "scenario",
             "operation": null,
-            "order": 174,
+            "order": 175,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7709,7 +7753,7 @@
         "id": "scenario:hreflang-codes",
         "kind": "scenario",
         "operation": null,
-        "order": 175,
+        "order": 176,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7729,7 +7773,7 @@
             "id": "scenario:hreflang-codes",
             "kind": "scenario",
             "operation": null,
-            "order": 175,
+            "order": 176,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7753,7 +7797,7 @@
         "id": "scenario:hreflang-return-links",
         "kind": "scenario",
         "operation": null,
-        "order": 176,
+        "order": 177,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7773,7 +7817,7 @@
             "id": "scenario:hreflang-return-links",
             "kind": "scenario",
             "operation": null,
-            "order": 176,
+            "order": 177,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7797,7 +7841,7 @@
         "id": "scenario:https",
         "kind": "scenario",
         "operation": null,
-        "order": 177,
+        "order": 178,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7817,7 +7861,7 @@
             "id": "scenario:https",
             "kind": "scenario",
             "operation": null,
-            "order": 177,
+            "order": 178,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7841,7 +7885,7 @@
         "id": "scenario:image-alt-text",
         "kind": "scenario",
         "operation": null,
-        "order": 178,
+        "order": 179,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7861,7 +7905,7 @@
             "id": "scenario:image-alt-text",
             "kind": "scenario",
             "operation": null,
-            "order": 178,
+            "order": 179,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7885,7 +7929,7 @@
         "id": "scenario:image-dimensions",
         "kind": "scenario",
         "operation": null,
-        "order": 179,
+        "order": 180,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7905,7 +7949,7 @@
             "id": "scenario:image-dimensions",
             "kind": "scenario",
             "operation": null,
-            "order": 179,
+            "order": 180,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7929,7 +7973,7 @@
         "id": "scenario:images",
         "kind": "scenario",
         "operation": null,
-        "order": 180,
+        "order": 181,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7949,7 +7993,7 @@
             "id": "scenario:images",
             "kind": "scenario",
             "operation": null,
-            "order": 180,
+            "order": 181,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -7973,7 +8017,7 @@
         "id": "scenario:infrastructure",
         "kind": "scenario",
         "operation": null,
-        "order": 181,
+        "order": 182,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -7993,7 +8037,7 @@
             "id": "scenario:infrastructure",
             "kind": "scenario",
             "operation": null,
-            "order": 181,
+            "order": 182,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8017,7 +8061,7 @@
         "id": "scenario:js-blocked-resources",
         "kind": "scenario",
         "operation": null,
-        "order": 182,
+        "order": 183,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8037,7 +8081,7 @@
             "id": "scenario:js-blocked-resources",
             "kind": "scenario",
             "operation": null,
-            "order": 182,
+            "order": 183,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8061,7 +8105,7 @@
         "id": "scenario:js-canonical",
         "kind": "scenario",
         "operation": null,
-        "order": 183,
+        "order": 184,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8081,7 +8125,7 @@
             "id": "scenario:js-canonical",
             "kind": "scenario",
             "operation": null,
-            "order": 183,
+            "order": 184,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8105,7 +8149,7 @@
         "id": "scenario:js-content",
         "kind": "scenario",
         "operation": null,
-        "order": 184,
+        "order": 185,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8125,7 +8169,7 @@
             "id": "scenario:js-content",
             "kind": "scenario",
             "operation": null,
-            "order": 184,
+            "order": 185,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8149,7 +8193,7 @@
         "id": "scenario:js-directives",
         "kind": "scenario",
         "operation": null,
-        "order": 185,
+        "order": 186,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8169,7 +8213,7 @@
             "id": "scenario:js-directives",
             "kind": "scenario",
             "operation": null,
-            "order": 185,
+            "order": 186,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8193,7 +8237,7 @@
         "id": "scenario:js-errors",
         "kind": "scenario",
         "operation": null,
-        "order": 186,
+        "order": 187,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8213,7 +8257,7 @@
             "id": "scenario:js-errors",
             "kind": "scenario",
             "operation": null,
-            "order": 186,
+            "order": 187,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8237,7 +8281,7 @@
         "id": "scenario:js-legacy-ajax",
         "kind": "scenario",
         "operation": null,
-        "order": 187,
+        "order": 188,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8257,7 +8301,7 @@
             "id": "scenario:js-legacy-ajax",
             "kind": "scenario",
             "operation": null,
-            "order": 187,
+            "order": 188,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8281,7 +8325,7 @@
         "id": "scenario:js-metadata",
         "kind": "scenario",
         "operation": null,
-        "order": 188,
+        "order": 189,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8301,7 +8345,7 @@
             "id": "scenario:js-metadata",
             "kind": "scenario",
             "operation": null,
-            "order": 188,
+            "order": 189,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8325,7 +8369,7 @@
         "id": "scenario:meta-descriptions",
         "kind": "scenario",
         "operation": null,
-        "order": 189,
+        "order": 190,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8345,7 +8389,7 @@
             "id": "scenario:meta-descriptions",
             "kind": "scenario",
             "operation": null,
-            "order": 189,
+            "order": 190,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8369,7 +8413,7 @@
         "id": "scenario:metadata",
         "kind": "scenario",
         "operation": null,
-        "order": 190,
+        "order": 191,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8389,7 +8433,7 @@
             "id": "scenario:metadata",
             "kind": "scenario",
             "operation": null,
-            "order": 190,
+            "order": 191,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8413,7 +8457,7 @@
         "id": "scenario:mobile-viewport",
         "kind": "scenario",
         "operation": null,
-        "order": 191,
+        "order": 192,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8433,7 +8477,7 @@
             "id": "scenario:mobile-viewport",
             "kind": "scenario",
             "operation": null,
-            "order": 191,
+            "order": 192,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8457,7 +8501,7 @@
         "id": "scenario:noindex-audit",
         "kind": "scenario",
         "operation": null,
-        "order": 192,
+        "order": 193,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8477,7 +8521,7 @@
             "id": "scenario:noindex-audit",
             "kind": "scenario",
             "operation": null,
-            "order": 192,
+            "order": 193,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8501,7 +8545,7 @@
         "id": "scenario:oversized-documents",
         "kind": "scenario",
         "operation": null,
-        "order": 193,
+        "order": 194,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8521,7 +8565,7 @@
             "id": "scenario:oversized-documents",
             "kind": "scenario",
             "operation": null,
-            "order": 193,
+            "order": 194,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8545,7 +8589,7 @@
         "id": "scenario:pagination",
         "kind": "scenario",
         "operation": null,
-        "order": 194,
+        "order": 195,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8565,7 +8609,7 @@
             "id": "scenario:pagination",
             "kind": "scenario",
             "operation": null,
-            "order": 194,
+            "order": 195,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8589,7 +8633,7 @@
         "id": "scenario:project-control",
         "kind": "scenario",
         "operation": null,
-        "order": 195,
+        "order": 196,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8609,7 +8653,7 @@
             "id": "scenario:project-control",
             "kind": "scenario",
             "operation": null,
-            "order": 195,
+            "order": 196,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8633,7 +8677,7 @@
         "id": "scenario:provider-evidence",
         "kind": "scenario",
         "operation": null,
-        "order": 196,
+        "order": 197,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8653,7 +8697,7 @@
             "id": "scenario:provider-evidence",
             "kind": "scenario",
             "operation": null,
-            "order": 196,
+            "order": 197,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8677,7 +8721,7 @@
         "id": "scenario:readability",
         "kind": "scenario",
         "operation": null,
-        "order": 197,
+        "order": 198,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8697,7 +8741,7 @@
             "id": "scenario:readability",
             "kind": "scenario",
             "operation": null,
-            "order": 197,
+            "order": 198,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8721,7 +8765,7 @@
         "id": "scenario:redirects",
         "kind": "scenario",
         "operation": null,
-        "order": 198,
+        "order": 199,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8741,7 +8785,7 @@
             "id": "scenario:redirects",
             "kind": "scenario",
             "operation": null,
-            "order": 198,
+            "order": 199,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8765,7 +8809,7 @@
         "id": "scenario:rendering",
         "kind": "scenario",
         "operation": null,
-        "order": 199,
+        "order": 200,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8785,7 +8829,7 @@
             "id": "scenario:rendering",
             "kind": "scenario",
             "operation": null,
-            "order": 199,
+            "order": 200,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8809,7 +8853,7 @@
         "id": "scenario:robots-blocked",
         "kind": "scenario",
         "operation": null,
-        "order": 200,
+        "order": 201,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8829,7 +8873,7 @@
             "id": "scenario:robots-blocked",
             "kind": "scenario",
             "operation": null,
-            "order": 200,
+            "order": 201,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8853,7 +8897,7 @@
         "id": "scenario:robots-directives",
         "kind": "scenario",
         "operation": null,
-        "order": 201,
+        "order": 202,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8873,7 +8917,7 @@
             "id": "scenario:robots-directives",
             "kind": "scenario",
             "operation": null,
-            "order": 201,
+            "order": 202,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8897,7 +8941,7 @@
         "id": "scenario:saved-evidence",
         "kind": "scenario",
         "operation": null,
-        "order": 202,
+        "order": 203,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8917,7 +8961,7 @@
             "id": "scenario:saved-evidence",
             "kind": "scenario",
             "operation": null,
-            "order": 202,
+            "order": 203,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8941,7 +8985,7 @@
         "id": "scenario:schema-validation",
         "kind": "scenario",
         "operation": null,
-        "order": 203,
+        "order": 204,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -8961,7 +9005,7 @@
             "id": "scenario:schema-validation",
             "kind": "scenario",
             "operation": null,
-            "order": 203,
+            "order": 204,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -8985,7 +9029,7 @@
         "id": "scenario:security-headers",
         "kind": "scenario",
         "operation": null,
-        "order": 204,
+        "order": 205,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9005,7 +9049,7 @@
             "id": "scenario:security-headers",
             "kind": "scenario",
             "operation": null,
-            "order": 204,
+            "order": 205,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9029,7 +9073,7 @@
         "id": "scenario:sitemap-health",
         "kind": "scenario",
         "operation": null,
-        "order": 205,
+        "order": 206,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9049,7 +9093,7 @@
             "id": "scenario:sitemap-health",
             "kind": "scenario",
             "operation": null,
-            "order": 205,
+            "order": 206,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9073,7 +9117,7 @@
         "id": "scenario:sitemap-reconciliation",
         "kind": "scenario",
         "operation": null,
-        "order": 206,
+        "order": 207,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9093,7 +9137,7 @@
             "id": "scenario:sitemap-reconciliation",
             "kind": "scenario",
             "operation": null,
-            "order": 206,
+            "order": 207,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9117,7 +9161,7 @@
         "id": "scenario:soft-404s",
         "kind": "scenario",
         "operation": null,
-        "order": 207,
+        "order": 208,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9137,7 +9181,7 @@
             "id": "scenario:soft-404s",
             "kind": "scenario",
             "operation": null,
-            "order": 207,
+            "order": 208,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9161,7 +9205,7 @@
         "id": "scenario:speed-delivery-and-weight",
         "kind": "scenario",
         "operation": null,
-        "order": 208,
+        "order": 209,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9181,7 +9225,7 @@
             "id": "scenario:speed-delivery-and-weight",
             "kind": "scenario",
             "operation": null,
-            "order": 208,
+            "order": 209,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9205,7 +9249,7 @@
         "id": "scenario:speed-javascript-bundles",
         "kind": "scenario",
         "operation": null,
-        "order": 209,
+        "order": 210,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9225,7 +9269,7 @@
             "id": "scenario:speed-javascript-bundles",
             "kind": "scenario",
             "operation": null,
-            "order": 209,
+            "order": 210,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9249,7 +9293,7 @@
         "id": "scenario:speed-render-blocking",
         "kind": "scenario",
         "operation": null,
-        "order": 210,
+        "order": 211,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9269,7 +9313,7 @@
             "id": "scenario:speed-render-blocking",
             "kind": "scenario",
             "operation": null,
-            "order": 210,
+            "order": 211,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9293,7 +9337,7 @@
         "id": "scenario:speed-server-response",
         "kind": "scenario",
         "operation": null,
-        "order": 211,
+        "order": 212,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9313,7 +9357,7 @@
             "id": "scenario:speed-server-response",
             "kind": "scenario",
             "operation": null,
-            "order": 211,
+            "order": 212,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9337,7 +9381,7 @@
         "id": "scenario:structure",
         "kind": "scenario",
         "operation": null,
-        "order": 212,
+        "order": 213,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9357,7 +9401,7 @@
             "id": "scenario:structure",
             "kind": "scenario",
             "operation": null,
-            "order": 212,
+            "order": 213,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9381,7 +9425,7 @@
         "id": "scenario:structured-data",
         "kind": "scenario",
         "operation": null,
-        "order": 213,
+        "order": 214,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9401,7 +9445,7 @@
             "id": "scenario:structured-data",
             "kind": "scenario",
             "operation": null,
-            "order": 213,
+            "order": 214,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9425,7 +9469,7 @@
         "id": "scenario:thin-content",
         "kind": "scenario",
         "operation": null,
-        "order": 214,
+        "order": 215,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9445,7 +9489,7 @@
             "id": "scenario:thin-content",
             "kind": "scenario",
             "operation": null,
-            "order": 214,
+            "order": 215,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9469,7 +9513,7 @@
         "id": "scenario:title-and-h1",
         "kind": "scenario",
         "operation": null,
-        "order": 215,
+        "order": 216,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9489,7 +9533,7 @@
             "id": "scenario:title-and-h1",
             "kind": "scenario",
             "operation": null,
-            "order": 215,
+            "order": 216,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9513,7 +9557,7 @@
         "id": "scenario:title-length",
         "kind": "scenario",
         "operation": null,
-        "order": 216,
+        "order": 217,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9533,7 +9577,7 @@
             "id": "scenario:title-length",
             "kind": "scenario",
             "operation": null,
-            "order": 216,
+            "order": 217,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9557,7 +9601,7 @@
         "id": "scenario:titles-missing",
         "kind": "scenario",
         "operation": null,
-        "order": 217,
+        "order": 218,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9577,7 +9621,7 @@
             "id": "scenario:titles-missing",
             "kind": "scenario",
             "operation": null,
-            "order": 217,
+            "order": 218,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9601,7 +9645,7 @@
         "id": "scenario:unlinked-canonical",
         "kind": "scenario",
         "operation": null,
-        "order": 218,
+        "order": 219,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9621,7 +9665,7 @@
             "id": "scenario:unlinked-canonical",
             "kind": "scenario",
             "operation": null,
-            "order": 218,
+            "order": 219,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9645,7 +9689,7 @@
         "id": "scenario:url-hygiene",
         "kind": "scenario",
         "operation": null,
-        "order": 219,
+        "order": 220,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9665,7 +9709,7 @@
             "id": "scenario:url-hygiene",
             "kind": "scenario",
             "operation": null,
-            "order": 219,
+            "order": 220,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9689,7 +9733,7 @@
         "id": "scenario:url-parameters",
         "kind": "scenario",
         "operation": null,
-        "order": 220,
+        "order": 221,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9709,7 +9753,7 @@
             "id": "scenario:url-parameters",
             "kind": "scenario",
             "operation": null,
-            "order": 220,
+            "order": 221,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9733,7 +9777,7 @@
         "id": "skill:general/article-writer",
         "kind": "skill",
         "operation": null,
-        "order": 221,
+        "order": 222,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9753,7 +9797,7 @@
             "id": "skill:general/article-writer",
             "kind": "skill",
             "operation": null,
-            "order": 221,
+            "order": 222,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9777,7 +9821,7 @@
         "id": "skill:general/seo-audit-page",
         "kind": "skill",
         "operation": null,
-        "order": 222,
+        "order": 223,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9797,7 +9841,7 @@
             "id": "skill:general/seo-audit-page",
             "kind": "skill",
             "operation": null,
-            "order": 222,
+            "order": 223,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9821,7 +9865,7 @@
         "id": "skill:general/seo-content",
         "kind": "skill",
         "operation": null,
-        "order": 223,
+        "order": 224,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9841,7 +9885,7 @@
             "id": "skill:general/seo-content",
             "kind": "skill",
             "operation": null,
-            "order": 223,
+            "order": 224,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9865,7 +9909,7 @@
         "id": "skill:general/seo-markup",
         "kind": "skill",
         "operation": null,
-        "order": 224,
+        "order": 225,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9885,7 +9929,7 @@
             "id": "skill:general/seo-markup",
             "kind": "skill",
             "operation": null,
-            "order": 224,
+            "order": 225,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9909,7 +9953,7 @@
         "id": "skill:general/seo-optimize",
         "kind": "skill",
         "operation": null,
-        "order": 225,
+        "order": 226,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9929,7 +9973,7 @@
             "id": "skill:general/seo-optimize",
             "kind": "skill",
             "operation": null,
-            "order": 225,
+            "order": 226,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9953,7 +9997,7 @@
         "id": "skill:general/seo-research",
         "kind": "skill",
         "operation": null,
-        "order": 226,
+        "order": 227,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -9973,7 +10017,7 @@
             "id": "skill:general/seo-research",
             "kind": "skill",
             "operation": null,
-            "order": 226,
+            "order": 227,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -9997,7 +10041,7 @@
         "id": "skill:general/service-landing-copy",
         "kind": "skill",
         "operation": null,
-        "order": 227,
+        "order": 228,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10017,7 +10061,7 @@
             "id": "skill:general/service-landing-copy",
             "kind": "skill",
             "operation": null,
-            "order": 227,
+            "order": 228,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10041,7 +10085,7 @@
         "id": "skill:workflow/analytics-console-review",
         "kind": "skill",
         "operation": null,
-        "order": 228,
+        "order": 229,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10061,7 +10105,7 @@
             "id": "skill:workflow/analytics-console-review",
             "kind": "skill",
             "operation": null,
-            "order": 228,
+            "order": 229,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10085,7 +10129,7 @@
         "id": "skill:workflow/audit-roadmap",
         "kind": "skill",
         "operation": null,
-        "order": 229,
+        "order": 230,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10105,7 +10149,7 @@
             "id": "skill:workflow/audit-roadmap",
             "kind": "skill",
             "operation": null,
-            "order": 229,
+            "order": 230,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10129,7 +10173,7 @@
         "id": "skill:workflow/backlinks-check",
         "kind": "skill",
         "operation": null,
-        "order": 230,
+        "order": 231,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10149,7 +10193,7 @@
             "id": "skill:workflow/backlinks-check",
             "kind": "skill",
             "operation": null,
-            "order": 230,
+            "order": 231,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10173,7 +10217,7 @@
         "id": "skill:workflow/control",
         "kind": "skill",
         "operation": null,
-        "order": 231,
+        "order": 232,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10181,7 +10225,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "c6a0705a45255949c9595c234b636f836d56d3bcdf5a13c5b9eb822b5cd0f093",
+        "source_hash": "dff0d5d8192d3652fc3ac0141ad2622d1ddcfd81442eb7c8f09948aff0401d22",
         "title": "control"
       },
       "definitions": [
@@ -10193,7 +10237,7 @@
             "id": "skill:workflow/control",
             "kind": "skill",
             "operation": null,
-            "order": 231,
+            "order": 232,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10201,7 +10245,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "c6a0705a45255949c9595c234b636f836d56d3bcdf5a13c5b9eb822b5cd0f093",
+            "source_hash": "dff0d5d8192d3652fc3ac0141ad2622d1ddcfd81442eb7c8f09948aff0401d22",
             "title": "control"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10217,7 +10261,7 @@
         "id": "skill:workflow/duplicate-audit",
         "kind": "skill",
         "operation": null,
-        "order": 232,
+        "order": 233,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10237,7 +10281,7 @@
             "id": "skill:workflow/duplicate-audit",
             "kind": "skill",
             "operation": null,
-            "order": 232,
+            "order": 233,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10253,6 +10297,50 @@
       ],
       "records": []
     },
+    "skill:workflow/full-audit-v1": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "manual",
+        "id": "skill:workflow/full-audit-v1",
+        "kind": "skill",
+        "operation": null,
+        "order": 234,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "9d13a897636baea9d9f3601febf4794eb3e74536a91a6f87754ee51dd43529b9",
+        "title": "full-audit-v1"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "manual",
+            "id": "skill:workflow/full-audit-v1",
+            "kind": "skill",
+            "operation": null,
+            "order": 234,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "9d13a897636baea9d9f3601febf4794eb3e74536a91a6f87754ee51dd43529b9",
+            "title": "full-audit-v1"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
     "skill:workflow/geo-aeo-audit": {
       "definition": {
         "dependencies": [],
@@ -10261,7 +10349,7 @@
         "id": "skill:workflow/geo-aeo-audit",
         "kind": "skill",
         "operation": null,
-        "order": 233,
+        "order": 235,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10281,7 +10369,7 @@
             "id": "skill:workflow/geo-aeo-audit",
             "kind": "skill",
             "operation": null,
-            "order": 233,
+            "order": 235,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10305,7 +10393,7 @@
         "id": "skill:workflow/heading-outline",
         "kind": "skill",
         "operation": null,
-        "order": 234,
+        "order": 236,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10325,7 +10413,7 @@
             "id": "skill:workflow/heading-outline",
             "kind": "skill",
             "operation": null,
-            "order": 234,
+            "order": 236,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10349,7 +10437,7 @@
         "id": "skill:workflow/internal-linking",
         "kind": "skill",
         "operation": null,
-        "order": 235,
+        "order": 237,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10369,7 +10457,7 @@
             "id": "skill:workflow/internal-linking",
             "kind": "skill",
             "operation": null,
-            "order": 235,
+            "order": 237,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10393,7 +10481,7 @@
         "id": "skill:workflow/js-render-check",
         "kind": "skill",
         "operation": null,
-        "order": 236,
+        "order": 238,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10413,7 +10501,7 @@
             "id": "skill:workflow/js-render-check",
             "kind": "skill",
             "operation": null,
-            "order": 236,
+            "order": 238,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10437,7 +10525,7 @@
         "id": "skill:workflow/regional-audit",
         "kind": "skill",
         "operation": null,
-        "order": 237,
+        "order": 239,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10457,7 +10545,7 @@
             "id": "skill:workflow/regional-audit",
             "kind": "skill",
             "operation": null,
-            "order": 237,
+            "order": 239,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10481,7 +10569,7 @@
         "id": "skill:workflow/robots-audit",
         "kind": "skill",
         "operation": null,
-        "order": 238,
+        "order": 240,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10501,7 +10589,7 @@
             "id": "skill:workflow/robots-audit",
             "kind": "skill",
             "operation": null,
-            "order": 238,
+            "order": 240,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10525,7 +10613,7 @@
         "id": "skill:workflow/schema-graph",
         "kind": "skill",
         "operation": null,
-        "order": 239,
+        "order": 241,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10545,7 +10633,7 @@
             "id": "skill:workflow/schema-graph",
             "kind": "skill",
             "operation": null,
-            "order": 239,
+            "order": 241,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10569,7 +10657,7 @@
         "id": "skill:workflow/security-audit",
         "kind": "skill",
         "operation": null,
-        "order": 240,
+        "order": 242,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10589,7 +10677,7 @@
             "id": "skill:workflow/security-audit",
             "kind": "skill",
             "operation": null,
-            "order": 240,
+            "order": 242,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10613,7 +10701,7 @@
         "id": "skill:workflow/seo-deep-audit",
         "kind": "skill",
         "operation": null,
-        "order": 241,
+        "order": 243,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10633,7 +10721,7 @@
             "id": "skill:workflow/seo-deep-audit",
             "kind": "skill",
             "operation": null,
-            "order": 241,
+            "order": 243,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10657,7 +10745,7 @@
         "id": "skill:workflow/seo-recon",
         "kind": "skill",
         "operation": null,
-        "order": 242,
+        "order": 244,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10677,7 +10765,7 @@
             "id": "skill:workflow/seo-recon",
             "kind": "skill",
             "operation": null,
-            "order": 242,
+            "order": 244,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10701,7 +10789,7 @@
         "id": "skill:workflow/sf-analyzer",
         "kind": "skill",
         "operation": null,
-        "order": 243,
+        "order": 245,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10721,7 +10809,7 @@
             "id": "skill:workflow/sf-analyzer",
             "kind": "skill",
             "operation": null,
-            "order": 243,
+            "order": 245,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10745,7 +10833,7 @@
         "id": "skill:workflow/sf-boundaries",
         "kind": "skill",
         "operation": null,
-        "order": 244,
+        "order": 246,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10765,7 +10853,7 @@
             "id": "skill:workflow/sf-boundaries",
             "kind": "skill",
             "operation": null,
-            "order": 244,
+            "order": 246,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10789,7 +10877,7 @@
         "id": "skill:workflow/sf-config",
         "kind": "skill",
         "operation": null,
-        "order": 245,
+        "order": 247,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10809,7 +10897,7 @@
             "id": "skill:workflow/sf-config",
             "kind": "skill",
             "operation": null,
-            "order": 245,
+            "order": 247,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10833,7 +10921,7 @@
         "id": "skill:workflow/sf-report",
         "kind": "skill",
         "operation": null,
-        "order": 246,
+        "order": 248,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10853,7 +10941,7 @@
             "id": "skill:workflow/sf-report",
             "kind": "skill",
             "operation": null,
-            "order": 246,
+            "order": 248,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10877,7 +10965,7 @@
         "id": "skill:workflow/sf-tasks",
         "kind": "skill",
         "operation": null,
-        "order": 247,
+        "order": 249,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10897,7 +10985,7 @@
             "id": "skill:workflow/sf-tasks",
             "kind": "skill",
             "operation": null,
-            "order": 247,
+            "order": 249,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10921,7 +11009,7 @@
         "id": "skill:workflow/silo-audit",
         "kind": "skill",
         "operation": null,
-        "order": 248,
+        "order": 250,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10941,7 +11029,7 @@
             "id": "skill:workflow/silo-audit",
             "kind": "skill",
             "operation": null,
-            "order": 248,
+            "order": 250,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10965,7 +11053,7 @@
         "id": "skill:workflow/site-report",
         "kind": "skill",
         "operation": null,
-        "order": 249,
+        "order": 251,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10985,7 +11073,7 @@
             "id": "skill:workflow/site-report",
             "kind": "skill",
             "operation": null,
-            "order": 249,
+            "order": 251,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11009,7 +11097,7 @@
         "id": "skill:workflow/tech-audit",
         "kind": "skill",
         "operation": null,
-        "order": 250,
+        "order": 252,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11029,7 +11117,7 @@
             "id": "skill:workflow/tech-audit",
             "kind": "skill",
             "operation": null,
-            "order": 250,
+            "order": 252,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11053,7 +11141,7 @@
         "id": "skill:workflow/traffic-report",
         "kind": "skill",
         "operation": null,
-        "order": 251,
+        "order": 253,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11073,7 +11161,7 @@
             "id": "skill:workflow/traffic-report",
             "kind": "skill",
             "operation": null,
-            "order": 251,
+            "order": 253,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
