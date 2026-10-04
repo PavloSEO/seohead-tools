@@ -295,22 +295,26 @@ def test_scan_projection_conserves_pages_findings_links_and_provider_grain(tmp_p
 
 def test_audit_v2_page_overlay_is_keyed_not_positional(tmp_path, monkeypatch):
     """A valid audit.v2 collection may be ordered independently from the crawl."""
-    from seohead.storage.audit_v2 import AuditV2Reader, _get_pointer, write_audit_v2
+    from seohead.storage.audit_v2 import write_audit_v2
 
     scan_path = _crawl_with_audit(tmp_path, monkeypatch)
-    with AuditV2Reader(scan_path) as reader:
-        document = reader.materialize_legacy()
-        binding = reader.binding
-        pointers = tuple(reader.collections)
+    document = read_audit(scan_path)
+    with open_scan(scan_path) as con:
+        scan = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
+    binding = {
+        "scan_uuid": scan["scan_uuid"],
+        "evidence_revision": scan["evidence_revision"],
+        "analyzer_version": scan["writer_version"],
+        "analyzer_revision": scan["writer_revision"],
+    }
     expected = {page["url"]: page.get("indexability") for page in document["pages"]}
     write_audit_v2(
         scan_path,
         document,
         {
-            pointer: reversed(_get_pointer(document, pointer))
-            if pointer == "/pages"
-            else _get_pointer(document, pointer)
-            for pointer in pointers
+            "/issues": document["issues"],
+            "/pages": reversed(document["pages"]),
+            "/groups": document["groups"],
         },
         binding,
     )
