@@ -16,6 +16,8 @@ that every delivery surface binds to. The code that executes it lives in
 The package contains no messaging SDK code, no account identity, no network
 calls and no crawl logic. The adapter owns platform identity, markup and
 delivery; the driver owns the conversation; the shared core owns the scan.
+It is intentionally platform-neutral: this repository does not provision a
+bot account, connect to a personal account, or send messages itself.
 
 ## States
 
@@ -78,6 +80,20 @@ submit.
   injected transport call. That receipt is also passed to the transport as its
   idempotency key. A restarted adapter returns a completed receipt instead of
   sending again; a failed transport remains pending for a deliberate retry.
+- **Ownership survives restart.** An adapter that persists
+  `JobOwnershipStore` records only `(job_id, subject, project_id)`. On a later
+  status or cancellation request, it uses that mapping before asking the
+  queue. It therefore cannot enumerate another subject's jobs merely because
+  both subjects can use the same project. The store is private (`0700`
+  directory and `0600` database); it never holds a URL, settings, credentials,
+  or report content.
+- **Profiles are derived from retained evidence.** `ReportProfile` supports
+  a full retained JSON/Markdown artifact, or an offline regenerated PDF,
+  XLSX, DOCX, CSV, Markdown, or JSON view. A findings-only profile can filter
+  by severity and check while leaving the source audit's coverage and skipped
+  checks intact. An empty filtered result is explicitly marked `empty`; it is
+  never presented as an unrun audit. Render failures and delivery-size limits
+  are actionable failures, not successful delivery receipts.
 
 ## Versioning
 
