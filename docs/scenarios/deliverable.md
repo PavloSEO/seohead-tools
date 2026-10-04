@@ -54,6 +54,34 @@ schema); it does not group, prioritize, or import anywhere by itself.
 its own schema. `report-build` rejects `tasks.json` (`audit document schema not recognized`):
 the two are separate contracts, and CSV rows are findings, not tasks.
 
+When the specialist has mapped URLs to a shared render template or component, `sf tasks` can use
+`"group_by": "check_assignment"` in `tasks_pipeline`. This is an offline data declaration, not
+a detector or code-execution language:
+
+```json
+{
+  "tasks_pipeline": {
+    "group_by": "check_assignment",
+    "max_urls_per_task": 25,
+    "assignments": [{
+      "name": "Article template",
+      "kind": "template",
+      "urls": ["https://example.com/articles/one", "https://example.com/articles/two"],
+      "rationale": "Operator mapped the shared article render path.",
+      "state": "declared"
+    }]
+  }
+}
+```
+
+The resulting `H1_MISSING + Article template` item retains its occurrence count, unique-page
+count, capped representative URLs, saved evidence references and a retrieval note back to the
+source audit. It is a **declared** common-cause candidate, not proof that one edit fixes every
+page. Use `state: "confirmed"` only with `confirmed_by` and a recorded `confirmation`; otherwise
+verify one representative and then every affected URL. With no operator mapping, existing
+validated crawl segment rules form **candidate** groups. Unmatched URLs remain an explicit
+**unassigned** group; partial crawl and suppression/coverage statements remain unchanged.
+
 **5. Hand over the artifacts beside it.** A report that says "optimize your images" is a
 request. A report with the optimized images attached is a delivery — see
 the [images scenario](images.md).

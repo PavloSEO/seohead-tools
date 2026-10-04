@@ -135,6 +135,9 @@ python -m seohead.storage export-run scan.sqlite --out-dir NEW_DIR
 # use the stored audit through existing report, comparison, and task routes
 seohead report-build --audit scan.sqlite --format md --out report.md
 seohead compare-crawls --before before.sqlite --after after.sqlite
+# Optional declared release mapping; never inferred from titles or page text.
+seohead compare-crawls --before before.sqlite --after after.sqlite \
+  --correspondence ./url-correspondence.json
 seohead sf tasks --json scan.sqlite --out tasks
 
 # retained native evidence only: create a new derived artifact without network replay

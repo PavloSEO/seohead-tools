@@ -29,6 +29,36 @@ The CLI and MCP server share the same 135 handlers, and five additional MCP tool
 Screaming Frog audit workflow. A registration test prevents a command from existing in only one
 interface.
 
+## Release review across a declared URL migration
+
+`compare-crawls` compares exact URLs by default. A changed path or host is not silently paired by
+title, canonical, content, or a redirect guess. For a release that intentionally moved URLs, pass
+an explicit closed `url-correspondence.v1` JSON document:
+
+```json
+{
+  "schema_version": "url-correspondence.v1",
+  "origin_map": {
+    "https://before.example.test": "https://after.example.test"
+  },
+  "pairs": [
+    {
+      "before": "https://before.example.test/legacy%2Fpage?view=full",
+      "after": "https://after.example.test/replacement?view=full"
+    }
+  ]
+}
+```
+
+`origin_map` preserves each remaining raw path, encoded character, query, and fragment. Explicit
+`pairs` override that path when a page moved differently; repeated source or destination pairs,
+unknown keys, and incomplete objects are refused. The result has an inspectable
+`release_review` section with schema `release_review.v1`: declared/matched/missing pairs, both
+URLs and origins, host-change flags, source and coverage state for status, title, description,
+H1, canonical, and robots directives, plus the same finding deltas. A mapped host is reported as
+a host change; it is never rewritten away. Missing pages, partial crawls, and incompatible policy
+or configuration evidence retain their normal warnings and classifications.
+
 ### Deep analysis of existing crawl data
 
 Export mode evaluates Screaming Frog CSV/XLSX data against a 181-check registry without crawling

@@ -126,13 +126,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "tasks_pipeline": {
         "include_severities": ["critical", "warning", "notice"],
-        "group_by": "check",  # check (one task per problem type) | issue (one per URL)
+        # check (one task per problem type) | issue (one per URL) |
+        # check_assignment (one declared template/component or segment candidate per check)
+        "group_by": "check",
         "priority_map": {"critical": "P1", "warning": "P2", "notice": "P3"},
         "effort_map": {"critical": "high", "warning": "medium", "notice": "low"},
         "max_urls_per_task": 25,
         "min_occurrences": 1,
         "include_checks": [],  # empty = all enabled checks
         "exclude_checks": [],
+        # Optional operator-supplied URL assignments for check_assignment.
+        # Each row is a closed data declaration, never an executable rule.
+        "assignments": [],
     },
     "checks": {},  # per-check overrides: {"CHECK_ID": {"enabled": false, "severity": "notice"}}
     "severity_overrides": {},  # {"CHECK_ID": "notice"}

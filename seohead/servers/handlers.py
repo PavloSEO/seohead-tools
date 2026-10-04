@@ -2001,7 +2001,12 @@ def _load_audit(
     return load_audit_document(value, label, diagnostics)
 
 
-def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -> dict[str, Any]:
+def compare_crawls(
+    before: Any = None,
+    after: Any = None,
+    force: bool = False,
+    correspondence: Any = None,
+) -> dict[str, Any]:
     """Diff two audits: which findings were fixed, which are new, which pages
     dropped out of the crawl entirely. See seohead.sf.core.compare for why
     "fixed" and "no longer crawled" are kept apart rather than merged."""
@@ -2012,7 +2017,7 @@ def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -
     before_doc = load_audit_source(before, "before", diagnostics)
     after_doc = load_audit_source(after, "after", diagnostics)
     try:
-        result = compare(before_doc, after_doc, force=force)
+        result = compare(before_doc, after_doc, force=force, correspondence=correspondence)
     finally:
         if not hasattr(before, "iter_collection") and hasattr(before_doc, "close"):
             before_doc.close()

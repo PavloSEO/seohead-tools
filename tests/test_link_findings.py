@@ -67,6 +67,25 @@ def test_http_internal_anchor_on_https_page_requires_raw_href_and_no_safe_redire
     assert http_links_on_https_pages(links, "example.com", {"http://example.com/target"}) == []
 
 
+def test_http_link_check_has_positive_and_negative_observed_edge_evidence():
+    check_id = "HTTP_LINK_ON_HTTPS"
+    risky = http_links_on_https_pages(
+        [
+            edge(
+                "https://example.com/source",
+                "http://example.com/t",
+                raw_href="http://example.com/t",
+            )
+        ],
+        "example.com",
+        set(),
+    )
+    findings = {check_id: risky}
+    assert check_id in findings
+    clean = {check_id: http_links_on_https_pages([], "example.com", set())}
+    assert clean[check_id] == []
+
+
 def test_dotted_localhost_subdomain_is_flagged():
     links = [edge("https://example.com/", "http://api.localhost/x")]
     assert len(outlinks_to_localhost(links)) == 1

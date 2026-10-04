@@ -42,6 +42,7 @@ from seohead.storage import (
     ScanError,
     _config,
     _dump,
+    _duplicate_ids,
     _expected,
     _has_negative_page_counts,
     _heading_outline,
@@ -95,6 +96,7 @@ _PAGE_JSON_SOURCES = {
     "heading_outline_json": "heading_outline",
     "link_placement_json": "link_placement",
     "trust_signals_json": "trust_signals",
+    "duplicate_ids_json": "duplicate_ids",
     "canonical_chain_json": "canonical_chain",
 }
 
@@ -110,6 +112,7 @@ _OPTIONAL_PAGE_SOURCES = {
     # A page whose body was never parsed records no signals (issue #823) --
     # NULL is its recorded state, not a missing required value.
     "trust_signals",
+    "duplicate_ids",
 }
 MAX_EDGES_PER_PAGE = 20_000
 MAX_PAGE_COMMIT_ITEMS = 20_000
@@ -1282,6 +1285,7 @@ class NativeScan:
                 outline = json.loads(page["heading_outline_json"] or "[]")
                 placement = json.loads(page["link_placement_json"] or "null")
                 signals = json.loads(page["trust_signals_json"] or "null")
+                duplicate_ids = json.loads(page["duplicate_ids_json"] or "null")
                 chain = json.loads(page["redirect_chain_json"])
             except (TypeError, ValueError) as exc:
                 raise ScanError("native scan page JSON is invalid") from exc
@@ -1290,6 +1294,8 @@ class NativeScan:
                 _link_placement(placement)
             if signals is not None:
                 _trust_signals(signals)
+            if duplicate_ids is not None:
+                _duplicate_ids(duplicate_ids)
             if (
                 not isinstance(alternates, list)
                 or any(
@@ -2019,6 +2025,8 @@ class NativeScan:
                     _link_placement(value)
                 if name == "trust_signals_json" and value is not None:
                     _trust_signals(value)
+                if name == "duplicate_ids_json" and value is not None:
+                    _duplicate_ids(value)
                 if name in {"redirect_chain_json", "canonical_chain_json"} and (
                     not isinstance(value, list)
                     or any(not isinstance(item, dict) for item in value or [])

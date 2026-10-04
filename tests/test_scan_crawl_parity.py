@@ -103,10 +103,11 @@ def _scan_records(path):
                     "heading_outline": "heading_outline_json",
                     "link_placement": "link_placement_json",
                     "trust_signals": "trust_signals_json",
+                    "duplicate_ids": "duplicate_ids_json",
                     "canonical_chain": "canonical_chain_json",
                 }.get(field.name, field.name)
                 value = row[source]
-                if source in {"link_placement_json", "trust_signals_json"}:
+                if source in {"link_placement_json", "trust_signals_json", "duplicate_ids_json"}:
                     # Nullable by design: a scan written before link placement
                     # was recorded measured none, which is not "found none".
                     value = json.loads(value) if value is not None else None

@@ -235,6 +235,31 @@ def test_over_budget_query_becomes_atomic_rejection_not_rollback(tmp_path):
         )
 
 
+def test_native_scan_persists_bounded_duplicate_id_observations(tmp_path):
+    path = tmp_path / "duplicate-ids.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        lease = scan.claim(1)[0]
+        record = _record()
+        record["duplicate_ids"] = [{"id": "menu-item", "count": 2}]
+        scan.commit_page(lease, record, links=[], forms=[], decisions=[], runtime=_runtime())
+        assert scan.con.execute("SELECT duplicate_ids_json FROM pages").fetchone()[0] == (
+            '[{"count": 2, "id": "menu-item"}]'
+        )
+
+
+def test_native_scan_refuses_malformed_duplicate_id_observations(tmp_path):
+    path = tmp_path / "bad-duplicate-ids.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        lease = scan.claim(1)[0]
+        record = _record()
+        record["duplicate_ids"] = [{"id": "menu-item", "count": 1}]
+        with pytest.raises(ScanError, match="duplicate_ids"):
+            scan.commit_page(lease, record, links=[], forms=[], decisions=[], runtime=_runtime())
+        assert scan.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0] == 0
+
+
 def test_terminal_scan_refuses_mutation_but_inspects(tmp_path):
     path = tmp_path / "scan.sqlite"
     with NativeScan.create(path, **_metadata()) as scan:

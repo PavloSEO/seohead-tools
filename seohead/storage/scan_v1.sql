@@ -152,6 +152,9 @@ CREATE TABLE pages (
   -- was never parsed, or a scan written before the signals were recorded, is
   -- unmeasured -- which is not the same as a measured empty object.
   trust_signals_json TEXT,
+  -- Bounded repeated literal DOM ids (issue #828). NULL means the HTML body
+  -- was not parsed or this older source did not record the observation.
+  duplicate_ids_json TEXT,
   -- List mode's bounded canonical walk: the chain it inspected and the target it
   -- settled on. Nullable, because a run that never walked canonicals recorded neither.
   canonical_chain_json TEXT,

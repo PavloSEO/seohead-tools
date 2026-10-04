@@ -26,11 +26,314 @@ or it no longer does.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 class CompareError(ValueError):
     """Two audits that cannot be compared without lying about the result."""
+
+
+_CORRESPONDENCE_SCHEMA = "url-correspondence.v1"
+_RELEASE_REVIEW_SCHEMA = "release_review.v1"
+_CORRESPONDENCE_KEYS = frozenset({"schema_version", "origin_map", "pairs"})
+_PAIR_KEYS = frozenset({"before", "after"})
+
+
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Keep a JSON map from silently replacing a declared correspondence."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise CompareError(f"url correspondence repeats object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _origin(value: str, *, label: str) -> str:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise CompareError(
+            f"{label} must be an http(s) origin without a path, query, fragment, or userinfo"
+        )
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _url(value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise CompareError(f"{label} must be a non-empty absolute http(s) URL")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise CompareError(f"{label} must be a non-empty absolute http(s) URL without userinfo")
+    return value
+
+
+def _load_correspondence(value: Any) -> dict[str, Any]:
+    """Read the deliberately small, closed URL-pairing declaration.
+
+    It is intentionally not a redirect matcher and never looks at page text or
+    titles.  A release reviewer has to declare the migration relationship.
+    """
+    if isinstance(value, (str, Path)):
+        try:
+            raw = Path(value).read_text(encoding="utf-8")
+            value = json.loads(raw, object_pairs_hook=_reject_duplicate_object_keys)
+        except OSError as exc:
+            raise CompareError(f"could not read url correspondence: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise CompareError(f"url correspondence is not valid JSON: {exc.msg}") from exc
+    if not isinstance(value, Mapping):
+        raise CompareError("url correspondence must be an object or a JSON file path")
+    if set(value) != _CORRESPONDENCE_KEYS:
+        extra = sorted(set(value) - _CORRESPONDENCE_KEYS)
+        missing = sorted(_CORRESPONDENCE_KEYS - set(value))
+        details = []
+        if extra:
+            details.append(f"unknown keys: {', '.join(extra)}")
+        if missing:
+            details.append(f"missing keys: {', '.join(missing)}")
+        raise CompareError("url correspondence has a closed schema (" + "; ".join(details) + ")")
+    if value.get("schema_version") != _CORRESPONDENCE_SCHEMA:
+        raise CompareError(f"url correspondence schema_version must be {_CORRESPONDENCE_SCHEMA!r}")
+
+    raw_origins = value["origin_map"]
+    if not isinstance(raw_origins, Mapping):
+        raise CompareError("url correspondence origin_map must be an object")
+    origins: dict[str, str] = {}
+    for before, after in raw_origins.items():
+        if not isinstance(before, str) or not isinstance(after, str):
+            raise CompareError("url correspondence origin_map keys and values must be strings")
+        before_origin = _origin(before, label="origin_map key")
+        after_origin = _origin(after, label="origin_map value")
+        if before != before_origin or after != after_origin:
+            raise CompareError(
+                "url correspondence origins must be written without a trailing slash"
+            )
+        origins[before_origin] = after_origin
+
+    raw_pairs = value["pairs"]
+    if not isinstance(raw_pairs, list):
+        raise CompareError("url correspondence pairs must be a list")
+    pairs: dict[str, str] = {}
+    reverse_pairs: dict[str, str] = {}
+    for index, raw_pair in enumerate(raw_pairs):
+        if not isinstance(raw_pair, Mapping) or set(raw_pair) != _PAIR_KEYS:
+            raise CompareError(
+                f"url correspondence pairs[{index}] must contain exactly before and after"
+            )
+        before = _url(raw_pair.get("before"), label=f"pairs[{index}].before")
+        after = _url(raw_pair.get("after"), label=f"pairs[{index}].after")
+        if before in pairs:
+            raise CompareError(f"url correspondence maps {before!r} more than once")
+        if after in reverse_pairs:
+            raise CompareError(
+                f"url correspondence maps both {reverse_pairs[after]!r} and {before!r} to {after!r}"
+            )
+        pairs[before] = after
+        reverse_pairs[after] = before
+    return {"origin_map": origins, "pairs": pairs}
+
+
+def _mapped_url(url: str, correspondence: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """Return one declared destination and its source, never an inferred one."""
+    explicit = correspondence["pairs"].get(url)
+    origin = f"{urlsplit(url).scheme}://{urlsplit(url).netloc}" if urlsplit(url).netloc else None
+    target_origin = correspondence["origin_map"].get(origin) if origin else None
+    origin_target = f"{target_origin}{url[len(origin) :]}" if target_origin and origin else None
+    if explicit is not None:
+        return explicit, "explicit_pair"
+    if origin_target is not None:
+        return origin_target, "origin_map"
+    return None, None
+
+
+def _page_rows(audit: Any) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    for page in _iter_rows(audit, "pages"):
+        url = page.get("url")
+        if not url:
+            continue
+        if url in rows:
+            raise CompareError(f"url correspondence cannot pair duplicate page URL {url!r}")
+        rows[url] = page
+    return rows
+
+
+def _host_changed(before: str, after: str) -> bool:
+    return urlsplit(before).hostname != urlsplit(after).hostname
+
+
+def _resolve_correspondence(
+    before: Any, after: Any, declaration: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Bind declared pairs to the retained page rows and expose every miss."""
+    before_pages = _page_rows(before)
+    after_pages = _page_rows(after)
+    resolved: dict[str, str] = {}
+    pair_rows: list[dict[str, Any]] = []
+    seen_after: dict[str, str] = {}
+    for before_url in sorted(before_pages):
+        after_url, kind = _mapped_url(before_url, declaration)
+        if after_url is None:
+            continue
+        row = {
+            "before_url": before_url,
+            "after_url": after_url,
+            "correspondence_key": after_url,
+            "kind": kind,
+            "before_origin": f"{urlsplit(before_url).scheme}://{urlsplit(before_url).netloc}",
+            "after_origin": f"{urlsplit(after_url).scheme}://{urlsplit(after_url).netloc}",
+            "host_changed": _host_changed(before_url, after_url),
+        }
+        if after_url not in after_pages:
+            row["state"] = "after_not_crawled"
+            pair_rows.append(row)
+            continue
+        other_before = seen_after.get(after_url)
+        if other_before is not None and other_before != before_url:
+            raise CompareError(
+                f"url correspondence maps both {other_before!r} and {before_url!r} to crawled page {after_url!r}"
+            )
+        seen_after[after_url] = before_url
+        resolved[before_url] = after_url
+        row["state"] = "matched"
+        pair_rows.append(row)
+
+    # Explicit entries outside the saved baseline remain visible rather than
+    # disappearing from a review just because one crawl did not contain them.
+    declared_before = {row["before_url"] for row in pair_rows}
+    for before_url, after_url in sorted(declaration["pairs"].items()):
+        if before_url in declared_before:
+            continue
+        pair_rows.append(
+            {
+                "before_url": before_url,
+                "after_url": after_url,
+                "correspondence_key": after_url,
+                "kind": "explicit_pair",
+                "before_origin": f"{urlsplit(before_url).scheme}://{urlsplit(before_url).netloc}",
+                "after_origin": f"{urlsplit(after_url).scheme}://{urlsplit(after_url).netloc}",
+                "host_changed": _host_changed(before_url, after_url),
+                "state": "before_not_crawled",
+            }
+        )
+    return {
+        "before_to_after": resolved,
+        "origin_map": dict(declaration["origin_map"]),
+        "pairs": pair_rows,
+        "before_pages": before_pages,
+        "after_pages": after_pages,
+    }
+
+
+def _mapped_issues(
+    audit: Any, before_to_after: Mapping[str, str] | None = None
+) -> dict[tuple[str, str], dict[str, Any]]:
+    records: dict[tuple[str, str], dict[str, Any]] = {}
+    for issue in _iter_rows(audit, "issues"):
+        key = _key(issue)
+        if before_to_after and key[1] in before_to_after:
+            key = (key[0], before_to_after[key[1]])
+        if key in records:
+            raise CompareError(f"comparison has duplicate finding key {key!r}")
+        records[key] = issue
+    return records
+
+
+def _fact(value: Any, present: bool, source: str) -> dict[str, Any]:
+    return {
+        "value": value if present else None,
+        "state": "measured"
+        if present and value is not None
+        else "absent"
+        if present
+        else "unavailable",
+        "source": source,
+        "coverage": "recorded" if present else "unavailable",
+    }
+
+
+def _page_facts(page: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    metrics = page.get("metrics") if isinstance(page.get("metrics"), Mapping) else {}
+    facts = {
+        "status": _fact(page.get("status_code"), "status_code" in page, "pages.status_code"),
+        "title": _fact(metrics.get("title"), "title" in metrics, "pages.metrics.title"),
+        "description": _fact(
+            metrics.get("meta_description"),
+            "meta_description" in metrics,
+            "pages.metrics.meta_description",
+        ),
+        "h1": _fact(metrics.get("h1"), "h1" in metrics, "pages.metrics.h1"),
+        "canonical": _fact(
+            metrics.get("canonical"), "canonical" in metrics, "pages.metrics.canonical"
+        ),
+    }
+    robots_present = "meta_robots" in metrics or "x_robots" in metrics
+    robots = {"meta": metrics.get("meta_robots"), "x_robots": metrics.get("x_robots")}
+    facts["robots"] = _fact(robots, robots_present, "pages.metrics.meta_robots,x_robots")
+    return facts
+
+
+def _release_review(
+    before: Any, after: Any, resolved: Mapping[str, Any], result: Mapping[str, Any], force: bool
+) -> dict[str, Any]:
+    facts: list[dict[str, Any]] = []
+    for pair in resolved["pairs"]:
+        if pair["state"] != "matched":
+            continue
+        before_facts = _page_facts(resolved["before_pages"][pair["before_url"]])
+        after_facts = _page_facts(resolved["after_pages"][pair["after_url"]])
+        facts.append(
+            {
+                "before_url": pair["before_url"],
+                "after_url": pair["after_url"],
+                "correspondence_key": pair["correspondence_key"],
+                "kind": pair["kind"],
+                "host_changed": pair["host_changed"],
+                "before": before_facts,
+                "after": after_facts,
+                "changed": sorted(
+                    name
+                    for name in before_facts
+                    if before_facts[name]["state"] != after_facts[name]["state"]
+                    or before_facts[name]["value"] != after_facts[name]["value"]
+                ),
+            }
+        )
+    return {
+        "schema_version": _RELEASE_REVIEW_SCHEMA,
+        "provenance": {
+            "before_generated_at": _run(before).get("generated_at"),
+            "after_generated_at": _run(after).get("generated_at"),
+            "force": force,
+            "warnings": result["warnings"],
+            "compatibility": result["compatibility"],
+        },
+        "correspondence": {
+            "schema_version": _CORRESPONDENCE_SCHEMA,
+            "origin_map": resolved["origin_map"],
+            "pairs": resolved["pairs"],
+        },
+        "facts": facts,
+        "findings": {name: result[name] for name in ("entered", "left", "appeared", "disappeared")},
+        "summary": result["summary"],
+    }
 
 
 def _key(issue: dict[str, Any]) -> tuple[str, str]:
@@ -140,7 +443,9 @@ def preflight(before: Any, after: Any) -> list[str]:
     return warnings
 
 
-def compare(before: Any, after: Any, *, force: bool = False) -> dict[str, Any]:
+def compare(
+    before: Any, after: Any, *, force: bool = False, correspondence: Any = None
+) -> dict[str, Any]:
     """Diff two audit.json documents into the four sets, per check.
 
     Both documents must carry ``pages`` and ``issues`` in the shape this
@@ -173,10 +478,20 @@ def compare(before: Any, after: Any, *, force: bool = False) -> dict[str, Any]:
             f"{', '.join(changed)}; pass force=True only when this comparison is intended"
         )
 
-    before_urls = _crawled_urls(before_source)
+    resolved: dict[str, Any] | None = None
+    if correspondence is None:
+        before_urls = _crawled_urls(before_source)
+        before_issues = _by_key(before_source)
+    else:
+        resolved = _resolve_correspondence(
+            before_source, after_source, _load_correspondence(correspondence)
+        )
+        before_urls = {
+            resolved["before_to_after"].get(url, url) for url in _crawled_urls(before_source)
+        }
+        before_issues = _mapped_issues(before_source, resolved["before_to_after"])
     after_urls = _crawled_urls(after_source)
-    before_issues = _by_key(before_source)
-    after_issues = _by_key(after_source)
+    after_issues = _by_key(after_source) if correspondence is None else _mapped_issues(after_source)
     # A partial baseline cannot prove a URL it never reached is genuinely new —
     # only that it did not see it (issue #212). Without this, every finding on
     # a URL outside the truncated baseline is misreported as "appeared".
@@ -250,7 +565,7 @@ def compare(before: Any, after: Any, *, force: bool = False) -> dict[str, Any]:
     # cannot flatten an unknown basis into an apparent apples-to-apples diff.
     from .evidence_contract import comparison_compatibility
 
-    return {
+    result = {
         "schema_version": "compare.v1",
         "before": {
             "generated_at": _run(before_source).get("generated_at"),
@@ -274,3 +589,8 @@ def compare(before: Any, after: Any, *, force: bool = False) -> dict[str, Any]:
         "appeared": _sort(appeared),
         "disappeared": _sort(disappeared),
     }
+    if resolved is not None:
+        result["release_review"] = _release_review(
+            before_source, after_source, resolved, result, force
+        )
+    return result
