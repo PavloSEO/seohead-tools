@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup, Tag
 
 from seohead.models import (
     DocumentPosition,
+    DuplicateId,
     FormInfo,
     LinkInfo,
     ParsedPage,
@@ -86,6 +87,9 @@ _OPTION_KEYS = (
 # content root, a per-link ancestor walk) that most callers of parse_html
 # never need.
 _DEFAULT_OFF_OPTIONS = ("url_sources", "resource_declarations", "classify_links")
+
+_DUPLICATE_ID_CAP = 20
+_DUPLICATE_ID_CHARS = 256
 
 # URL-bearing attributes beyond a[href]: media, forms, citations, ping,
 # meta-refresh, and itemtype. This covers carriers that a crawler or auditor
@@ -1893,6 +1897,29 @@ def extract_trust_signals(soup: Any, jsonld_blocks: list[Any], page_url: str) ->
     return {"author": author, "dates": dates, "article": article}
 
 
+def extract_duplicate_ids(soup: BeautifulSoup) -> list[DuplicateId]:
+    """Return repeated literal ``id`` attributes in document order, bounded.
+
+    This is an observable DOM consistency signal, not an HTML conformance
+    validator. Values in template content are not part of the document a user
+    receives and therefore do not contribute to the count.
+    """
+    counts: dict[str, int] = {}
+    for tag in soup.find_all(attrs={"id": True}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        value = tag.get("id")
+        if not isinstance(value, str) or not value:
+            continue
+        value = value[:_DUPLICATE_ID_CHARS]
+        counts[value] = counts.get(value, 0) + 1
+    return [
+        {"id": value, "count": count}
+        for value, count in counts.items()
+        if count > 1
+    ][:_DUPLICATE_ID_CAP]
+
+
 def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None) -> ParsedPage:
     """Extract SEO data from an HTML string (pure — no network).
 
@@ -2002,6 +2029,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # schema-family signals simply reflect whichever jsonld_blocks were parsed
     # above -- with the option off there are none to read.
     result["trust_signals"] = extract_trust_signals(soup, result["jsonld"], final_url)
+    result["duplicate_ids"] = extract_duplicate_ids(soup)
     if opts["links"]:
         content_config = options.get("content_area") if isinstance(options, dict) else None
         position_rules = options.get("link_position_rules") if isinstance(options, dict) else None

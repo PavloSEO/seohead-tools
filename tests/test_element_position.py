@@ -207,6 +207,14 @@ def test_real_div_after_all_the_look_alikes_still_fires():
     assert invalid_head_elements(combined) == ["div"]
 
 
+def test_duplicate_ids_are_bounded_dom_observations_not_template_markup():
+    parsed = parse_html(
+        '<div id="same"></div><p id="same"></p><template><b id="same"></b></template>',
+        "https://example.com/",
+    )
+    assert parsed["duplicate_ids"] == [{"id": "same", "count": 2}]
+
+
 # -- registry checks, through a native crawl (no Screaming Frog export carries this) --
 
 
@@ -345,3 +353,29 @@ def test_position_checks_skip_honestly_on_a_plain_sf_export(result):
     fired = {i.check for i in result.issues}
     for check_id in position_checks:
         assert check_id not in fired
+
+
+def test_duplicate_ids_and_declared_mime_are_observed_without_html_validation_claims():
+    mapping = {
+        "https://example.com/duplicate": _FakeResponse(
+            '<html><head><title>Duplicate</title></head><body><div id="x"></div><p id="x"></p>'
+            + _page("")
+            + "</body></html>",
+            {"content-type": "text/html"},
+        ),
+        "https://example.com/mislabeled.pdf": _FakeResponse(
+            _CLEAN_PAGE, {"content-type": "text/html"}
+        ),
+    }
+    ctx = _run_crawl(mapping)
+    duplicate = [issue for issue in ctx.issues if issue.check == "DUPLICATE_ID"]
+    assert [(issue.target_url, issue.details) for issue in duplicate] == [
+        ("https://example.com/duplicate", {"id": "x", "count": 2})
+    ]
+    mime = [issue for issue in ctx.issues if issue.check == "DECLARED_MIME_MISMATCH"]
+    assert [(issue.target_url, issue.details) for issue in mime] == [
+        (
+            "https://example.com/mislabeled.pdf",
+            {"declared_content_type": "text/html", "extension_content_type": "application/pdf"},
+        )
+    ]

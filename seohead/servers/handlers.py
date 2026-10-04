@@ -1544,6 +1544,27 @@ def _audit_crawl_result(
                     else link_findings.follow_and_nofollow_inlinks(links, crawl_host)
                 ):
                     ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=dest)
+                if settings["link_attributes"]["capture"]:
+                    safely_upgraded = {
+                        page.url
+                        for page in ctx.pages
+                        if page.status_code is not None
+                        and 300 <= int(page.status_code) <= 399
+                        and str(page.metrics.get("_record", {}).get("redirect_url") or "")
+                        .lower()
+                        .startswith("https://")
+                    }
+                    for item in link_findings.http_links_on_https_pages(
+                        graph.iter_links() if graph else links,
+                        crawl_host,
+                        safely_upgraded,
+                    ):
+                        ctx.add("HTTP_LINK_ON_HTTPS", target_url=item["target_url"], details=item)
+                else:
+                    ctx.skip(
+                        "HTTP_LINK_ON_HTTPS",
+                        "link_attributes.capture is false; original href schemes were not retained",
+                    )
             else:
                 ctx.skip(
                     "FOLLOW_AND_NOFOLLOW_INLINKS",
@@ -1553,6 +1574,7 @@ def _audit_crawl_result(
             reason = "crawl-list input retains no link-edge evidence"
             ctx.skip("OUTLINK_TO_LOCALHOST", reason)
             ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", reason)
+            ctx.skip("HTTP_LINK_ON_HTTPS", reason)
 
         if has_form_evidence:
             for item in (

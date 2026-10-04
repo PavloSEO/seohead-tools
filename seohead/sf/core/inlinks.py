@@ -1007,7 +1007,7 @@ def _emit_inlink_composition(ctx: AuditContext, rows) -> None:
                 "ONLY_NOFOLLOW_INLINKS",
                 target_url=target.url,
                 occurrences_count=occurrences,
-                details={"inlink_count": occurrences},
+                details={"inlink_count": occurrences, "sources": sorted(sources)[:20]},
             )
 
         if known_source and not indexable_source:

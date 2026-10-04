@@ -8,6 +8,7 @@ when a column the data would need is absent.
 from __future__ import annotations
 
 import itertools
+import mimetypes
 import re
 import urllib.parse
 from collections import OrderedDict, defaultdict
@@ -44,6 +45,11 @@ TRACKING_PARAM_RE = re.compile(
     re.IGNORECASE,
 )
 
+SESSION_PARAM_RE = re.compile(
+    r"^(?:sid|session(?:_?id)?|phpsessid|jsessionid|asp\.net_sessionid|cfid|cftoken)$",
+    re.IGNORECASE,
+)
+
 
 def _tracking_params(url: str) -> list[str]:
     """Param names on ``url`` that look like tracking IDs (empty == clean)."""
@@ -51,6 +57,26 @@ def _tracking_params(url: str) -> list[str]:
     if not qs:
         return []
     return [k for k in urllib.parse.parse_qs(qs) if TRACKING_PARAM_RE.match(k)]
+
+
+def _session_params(url: str) -> list[str]:
+    """Known session parameter names only; values must never enter audit output."""
+    return [name for name, _value in urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query) if SESSION_PARAM_RE.match(name)]
+
+
+def _redact_query_values(url: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.urlencode(
+        [(name, "[redacted]") for name, _value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)]
+    )
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def _slash_key(url: str) -> tuple[str, str, str, str] | None:
+    parts = urllib.parse.urlsplit(url)
+    if not parts.path or parts.path == "/":
+        return None
+    return (parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query)
 
 
 def _rec(page: Page) -> dict[str, Any]:
@@ -2419,6 +2445,129 @@ def check_document_skeleton(ctx: AuditContext) -> None:
             ctx.add("HEAD_NOT_FIRST", target_url=page.url)
 
 
+def check_html_structure(ctx: AuditContext) -> None:
+    """DUPLICATE_ID and DECLARED_MIME_MISMATCH from bounded observed facts (#828).
+
+    Repeated ids need the parsed DOM, so an export without the native column
+    is explicitly skipped. MIME is deliberately narrower: it only compares
+    unambiguous filename extensions with a received Content-Type family and
+    names absent/malformed headers as unmeasured instead of guessing.
+    """
+    has_duplicate_ids = _has_column(ctx, "duplicate_ids")
+    if not has_duplicate_ids:
+        ctx.skip("DUPLICATE_ID", "no duplicate-id evidence (native crawl only)")
+    unmeasured_ids = 0
+    if has_duplicate_ids:
+        for page in ctx.html_pages():
+            rec = _rec(page)
+            values = rec.get("duplicate_ids")
+            if _body_unavailable(rec) or not isinstance(values, list):
+                unmeasured_ids += 1
+                continue
+            for item in values:
+                if not isinstance(item, dict) or type(item.get("count")) is not int:
+                    continue
+                identifier = item.get("id")
+                if isinstance(identifier, str) and item["count"] > 1:
+                    ctx.add(
+                        "DUPLICATE_ID",
+                        target_url=page.url,
+                        occurrences_count=item["count"],
+                        details={"id": identifier, "count": item["count"]},
+                    )
+    if unmeasured_ids:
+        ctx.skip(
+            "DUPLICATE_ID",
+            f"{unmeasured_ids} page(s) have no parsed duplicate-id evidence",
+        )
+
+    unmeasured_mime = 0
+    observed_mime = 0
+    for page in ctx.pages:
+        path = urllib.parse.urlsplit(page.url).path
+        expected, _ = mimetypes.guess_type(path)
+        if not expected:
+            continue
+        content_type = _rec(page).get("content_type")
+        if not isinstance(content_type, str) or not content_type.strip():
+            unmeasured_mime += 1
+            continue
+        declared = content_type.split(";", 1)[0].strip().lower()
+        if "/" not in declared:
+            unmeasured_mime += 1
+            continue
+        observed_mime += 1
+        if declared != expected.lower():
+            ctx.add(
+                "DECLARED_MIME_MISMATCH",
+                target_url=page.url,
+                details={"declared_content_type": declared, "extension_content_type": expected},
+            )
+    if not observed_mime:
+        ctx.skip("DECLARED_MIME_MISMATCH", "no URL with a recognized extension and Content-Type")
+    elif unmeasured_mime:
+        ctx.skip(
+            "DECLARED_MIME_MISMATCH",
+            f"{unmeasured_mime} recognized-extension URL(s) have no usable Content-Type",
+        )
+
+
+def check_url_hygiene(ctx: AuditContext) -> None:
+    """Known session parameters and observed slash pairs, without URL-policy guesses (#831)."""
+    session_observed = 0
+    indexable_pages = 0
+    for page in ctx.indexable_html_pages():
+        indexable_pages += 1
+        names = sorted(set(_session_params(page.url)), key=str.lower)
+        if not names:
+            continue
+        session_observed += 1
+        ctx.add(
+            "URL_SESSION_ID",
+            target_url=_redact_query_values(page.url),
+            details={"parameter_names": names, "url_values_redacted": True},
+        )
+    if not session_observed and not indexable_pages:
+        ctx.skip("URL_SESSION_ID", "no indexable HTML pages to inspect for session parameters")
+
+    pairs: dict[tuple[str, str, str, str], list[Page]] = defaultdict(list)
+    for page in ctx.pages:
+        key = _slash_key(page.url)
+        if key is not None:
+            pairs[key].append(page)
+    for group in pairs.values():
+        slash = [page for page in group if urllib.parse.urlsplit(page.url).path.endswith("/")]
+        plain = [page for page in group if not urllib.parse.urlsplit(page.url).path.endswith("/")]
+        if not slash or not plain:
+            continue
+        observed = slash + plain
+        urls = {page.url for page in observed}
+        converged = any(
+            page.status_code is not None
+            and 300 <= int(page.status_code) <= 399
+            and isinstance(_rec(page).get("redirect_url"), str)
+            and _rec(page)["redirect_url"] in urls
+            for page in observed
+        ) or any(
+            isinstance(_rec(page).get("canonical"), str)
+            and _rec(page)["canonical"] in urls
+            and _rec(page)["canonical"] != page.url
+            for page in observed
+        )
+        if converged or not all(page.is_indexable and page.status_code == 200 for page in observed):
+            continue
+        ctx.add(
+            "URL_TRAILING_SLASH_INCONSISTENT",
+            target_url=sorted(urls)[0],
+            occurrences_count=len(urls),
+            details={
+                "observed_variants": sorted(urls),
+                "status_codes": {page.url: page.status_code for page in observed},
+                "canonical": {page.url: _rec(page).get("canonical") for page in observed},
+            },
+        )
+
+
 def check_native_page_evidence(ctx: AuditContext) -> None:
     """LOREM_IPSUM_PLACEHOLDER, UNSUPPORTED_PLUGIN, IMG_MISSING_ALT_ATTRIBUTE, IMG_ALT_TOO_LONG.
 
@@ -2707,6 +2856,8 @@ ALL_CHECKS = [
     check_compression,
     check_element_position,
     check_document_skeleton,
+    check_html_structure,
+    check_url_hygiene,
     check_og,
     check_redirect_chains,
     check_native_exports,

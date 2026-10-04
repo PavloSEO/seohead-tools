@@ -21,6 +21,60 @@ TIMEOUT = 90
 Fetcher = Callable[[str, str | None], str]
 
 
+def accessibility_sample(sample: dict[str, Any]) -> dict[str, Any]:
+    """Project one PSI response into a bounded accessibility review sample.
+
+    Lighthouse is a lab measurement.  This mapper deliberately reports the
+    category score and the audit rows Lighthouse did not pass; it never turns
+    an omitted row or a good score into a WCAG/conformance verdict.
+    """
+    category = (sample.get("categories") or {}).get("accessibility")
+    audits = sample.get("audits") or {}
+    if not isinstance(category, dict) or not isinstance(audits, dict):
+        return {
+            "state": "unavailable",
+            "reason": "PSI response has no Lighthouse accessibility category",
+            "scope": {"url": sample.get("url"), "strategy": sample.get("strategy")},
+        }
+    findings = []
+    for audit_id, audit in audits.items():
+        if not isinstance(audit, dict):
+            continue
+        score = audit.get("score")
+        mode = audit.get("score_display_mode")
+        if score == 1:
+            continue
+        if score is None and mode not in {"manual", "informative", "notApplicable"}:
+            state = "incomplete"
+        elif score is None or mode in {"manual", "informative", "notApplicable"}:
+            continue
+        else:
+            state = "failed"
+        findings.append(
+            {
+                "id": audit_id,
+                "state": state,
+                "score": score,
+                "display_value": audit.get("display_value"),
+                "score_display_mode": mode,
+            }
+        )
+    return {
+        "state": "complete",
+        "scope": {
+            "url": sample.get("url"),
+            "final_url": sample.get("final_url"),
+            "strategy": sample.get("strategy"),
+            "provider": "pagespeed",
+            "engine": "Lighthouse",
+            "version": sample.get("lighthouse_version"),
+        },
+        "category": {"score": category.get("score"), "title": category.get("title")},
+        "findings": findings,
+        "note": "This opt-in Lighthouse lab sample is not a WCAG conformance or legal-compliance assessment.",
+    }
+
+
 def _default_fetcher(url: str, api_key: str | None) -> str:
     headers = {"X-goog-api-key": api_key} if api_key else {}
     request = urllib.request.Request(url, headers=headers)
@@ -78,7 +132,7 @@ def _parse(body: dict[str, Any], url: str, strategy: str) -> dict[str, Any] | No
         for name, audit in audits.items()
         if isinstance(audit, dict)
     }
-    return {
+    parsed = {
         "url": url,
         "strategy": strategy,
         "final_url": lighthouse.get("finalUrl"),
@@ -89,6 +143,8 @@ def _parse(body: dict[str, Any], url: str, strategy: str) -> dict[str, Any] | No
         "lab_only": True,
         "note": "PSI lab samples are not CrUX field data, local browser timings, or a site score.",
     }
+    parsed["accessibility_sample"] = accessibility_sample(parsed)
+    return parsed
 
 
 def sample(

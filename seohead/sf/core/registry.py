@@ -1116,6 +1116,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Decide deliberately whether the page should be crawl-priority or not, and "
         "make every internal link to it agree.",
     },
+    "HTTP_LINK_ON_HTTPS": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "HTTPS page contains an ordinary internal http:// anchor",
+        "fix": "Write the internal anchor as https:// or a relative URL. A fetched HTTP variant that already redirects to HTTPS is reported as converged, not as this finding.",
+    },
     "FORM_URL_INSECURE": {
         "severity": "critical",
         "source": "crawl:link_findings",
@@ -1138,6 +1144,30 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Point the href at an element id or <a name> that exists in the "
         "destination document, or add the missing target; a different query "
         "string is a different document.",
+    },
+    "DUPLICATE_ID": {
+        "severity": "warning",
+        "source": "crawl:duplicate_ids",
+        "message": "HTML id value is repeated in the parsed document",
+        "fix": "Give each element its own id; duplicate ids make fragment targets, scripts, and accessibility relationships ambiguous.",
+    },
+    "DECLARED_MIME_MISMATCH": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Received Content-Type conflicts with an unambiguous URL filename extension",
+        "fix": "Confirm the response Content-Type and URL extension describe the intended resource; this is a declaration consistency signal, not full MIME validation.",
+    },
+    "URL_SESSION_ID": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Indexable URL contains a recognized session-token parameter",
+        "fix": "Prevent session identifiers from entering crawlable URLs and consolidate any indexed variants; the finding retains parameter names but redacts their values.",
+    },
+    "URL_TRAILING_SLASH_INCONSISTENT": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Comparable trailing-slash URL variants both serve as separate indexable pages",
+        "fix": "Choose and implement a documented URL policy if both variants are not intentional; redirect or canonical convergence already observed is not reported.",
     },
     # Facts a crawl can observe: which machine-readable byline/date carriers a
     # content-shaped page declared, the discovered-and-indexable state of the

@@ -63,6 +63,8 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     # Native-crawl only (#823): the page's authorship/date/article-scope markup
     # signals -- a {author, dates, article} object, not a cell an export holds.
     "trust_signals": ["Trust Signals"],
+    # Native-crawl only (#828): bounded records of repeated literal DOM ids.
+    "duplicate_ids": ["Duplicate IDs"],
     "h2_2": ["H2-2"],
     "meta_robots": ["Meta Robots 1"],
     "x_robots": ["X-Robots-Tag 1"],
