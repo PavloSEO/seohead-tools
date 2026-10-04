@@ -910,41 +910,6 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("local_file", "urls_file", note="Explicit TXT, CSV, XLSX, or XML URL source."),
         _form("local_file", "backup_path", note="Mandatory new verified backup destination."),
     ),
-    _command(
-        "workflow-start",
-        "workflow_start",
-        _form("project_directory", "directory"),
-        _form("selector", "scenario_id", "steps", "expected_revision"),
-    ),
-    _command(
-        "workflow-checkpoint",
-        "workflow_checkpoint",
-        _form("project_directory", "directory"),
-        _form("selector", "run_id", "step_id", "state", "expected_revision"),
-        _form("inline_json", "evidence"),
-    ),
-    _command("workflow-status", "workflow_status", _form("project_directory", "directory")),
-    _command(
-        "workflow-execute",
-        "workflow_execute",
-        _form("project_directory", "directory"),
-        _form("selector", "scenario_id", "steps"),
-        _form("inline_json", "outcomes"),
-    ),
-    _command(
-        "monitor-configure",
-        "monitor_configure",
-        _form("project_directory", "directory"),
-        _form("inline_json", "policy", "expected_revision"),
-    ),
-    _command(
-        "monitor-run",
-        "monitor_run",
-        _form("project_directory", "directory"),
-        _form("selector", "scan_id", "expected_revision"),
-        _form("inline_json", "observations"),
-    ),
-    _command("monitor-status", "monitor_status", _form("project_directory", "directory")),
 )
 
 
