@@ -612,4 +612,8 @@ def test_pdf_build_uses_only_saved_view_selection(project, tmp_path, monkeypatch
     assert seen["model"]["summary"]["counts"]["findings"]["projected_count"] == 2
     assert seen["model"]["run"]["scope"]["finding_view"]["pagination"]["truncated"] is True
     assert result["finding_view"]["name"] == "triage"
+    from seohead.reports.audit_pdf import render_audit_pdf_html
+
+    html = render_audit_pdf_html(seen["model"], lang=language)
+    assert ("source audit scope" if language == "en" else "объём исходного аудита") in html
     assert "Synthetic broken URL" not in json.dumps(seen["model"])

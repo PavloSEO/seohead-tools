@@ -371,7 +371,9 @@ def rollback_scan_status(
     after = hashlib.sha256(scan.read_bytes()).hexdigest()
     if after != before:
         raise AssertionError("rollback status changed a retained scan")
-    if status.get("ok") is not True and status.get("state") != "unsupported_schema":
+    if status.get("ok") is not True and not (
+        allow_newer_schema and status.get("state") == "unsupported_schema"
+    ):
         raise AssertionError(f"rollback could not read a supported artifact: {status!r}")
     return {
         "state": "readable" if status.get("ok") else "unsupported_schema",

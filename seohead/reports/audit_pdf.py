@@ -22,6 +22,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "audit_for": "Audit for",
         "prepared": "Generated",
         "scope": "Run scope",
+        "view_scope_note": "The finding list uses the selected view/page; summary counts and charts retain the source audit scope.",
         "state": "Run status",
         "complete": "Complete",
         "complete_note": "Completed within the recorded scope; this does not establish exhaustive site coverage.",
@@ -147,6 +148,7 @@ _LABELS: dict[str, dict[str, str]] = {
         "audit_for": "Аудит сайта",
         "prepared": "Сформирован",
         "scope": "Объём проверки",
+        "view_scope_note": "Список проблем ограничен выбранным представлением и страницей; сводные счётчики и графики сохраняют объём исходного аудита.",
         "state": "Статус запуска",
         "complete": "Завершён",
         "complete_note": "Завершён в пределах записанного объёма; это не подтверждает полный обход сайта.",
@@ -477,6 +479,11 @@ def _status(run: Mapping[str, Any], lang: str) -> str:
         f"{_escape(labels[state])}</div>"
         + (f'<p class="state-note">{_escape(note)}</p>' if note else "")
         + f"<p><b>{_escape(labels['scope'])}:</b> {_escape(scope_text)}</p>"
+        + (
+            f'<p class="state-note">{_escape(labels["view_scope_note"])}</p>'
+            if isinstance(scope, Mapping) and "finding_view" in scope
+            else ""
+        )
         + (f"<ul>{reason_html}</ul>" if reason_html else "")
         + "</aside>"
     )
