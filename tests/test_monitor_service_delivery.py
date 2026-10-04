@@ -1,5 +1,7 @@
 """Synthetic tests for explicit, injected monitor notice delivery."""
 
+import json
+
 import pytest
 
 from seohead.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
@@ -22,12 +24,15 @@ def _project(tmp_path, *, urls=None):
             "full_refresh_every": 7,
         },
     )
-    return project, configured
+    project_uuid = json.loads((project / "project.json").read_text(encoding="utf-8"))[
+        "project_uuid"
+    ]
+    return project, configured, project_uuid
 
 
-def _service(tmp_path, sent, *, enabled=True, recoveries=True):
+def _service(tmp_path, project_uuid, sent, *, enabled=True, recoveries=True):
     return MonitorServiceDelivery(
-        project_uuid="project:synthetic",
+        project_uuid=project_uuid,
         allowed_destinations={"service:test"},
         receipts=DeliveryReceipts(tmp_path / "receipts.sqlite"),
         send=lambda destination, payload, receipt: sent.append((destination, payload, receipt)),
@@ -37,7 +42,7 @@ def _service(tmp_path, sent, *, enabled=True, recoveries=True):
 
 
 def test_delivery_is_explicit_disabled_by_default_and_deduplicated_after_restart(tmp_path):
-    project, configured = _project(tmp_path)
+    project, configured, project_uuid = _project(tmp_path)
     retained = run(
         project,
         "scan:alert",
@@ -50,7 +55,7 @@ def test_delivery_is_explicit_disabled_by_default_and_deduplicated_after_restart
         configured["revision"],
     )
     sent = []
-    disabled = _service(tmp_path, sent, enabled=False)
+    disabled = _service(tmp_path, project_uuid, sent, enabled=False)
     with pytest.raises(DeliveryUnavailable, match="disabled"):
         deliver(
             project,
@@ -64,14 +69,14 @@ def test_delivery_is_explicit_disabled_by_default_and_deduplicated_after_restart
         project,
         scan_id="scan:alert",
         destination="service:test",
-        service=_service(tmp_path, sent),
+        service=_service(tmp_path, project_uuid, sent),
         expected_revision=retained["revision"],
     )
     restarted = deliver(
         project,
         scan_id="scan:alert",
         destination="service:test",
-        service=_service(tmp_path, sent),
+        service=_service(tmp_path, project_uuid, sent),
         expected_revision=first["revision"],
     )
     assert len(sent) == 1
@@ -80,7 +85,7 @@ def test_delivery_is_explicit_disabled_by_default_and_deduplicated_after_restart
 
 
 def test_partial_cancelled_and_quiet_runs_do_not_send(tmp_path):
-    project, configured = _project(
+    project, configured, project_uuid = _project(
         tmp_path, urls=["https://example.test/a", "https://example.test/b"]
     )
     partial = run(
@@ -93,7 +98,7 @@ def test_partial_cancelled_and_quiet_runs_do_not_send(tmp_path):
         configured["revision"],
     )
     sent = []
-    service = _service(tmp_path, sent)
+    service = _service(tmp_path, project_uuid, sent)
     with pytest.raises(DeliveryUnavailable, match="partial"):
         deliver(
             project,
@@ -116,7 +121,7 @@ def test_partial_cancelled_and_quiet_runs_do_not_send(tmp_path):
 
 
 def test_recovery_notices_use_the_same_authorized_receipt_path(tmp_path):
-    project, configured = _project(tmp_path)
+    project, configured, project_uuid = _project(tmp_path)
     retained = run(
         project,
         "scan:recovery",
@@ -133,7 +138,7 @@ def test_recovery_notices_use_the_same_authorized_receipt_path(tmp_path):
         project,
         scan_id="scan:recovery",
         destination="service:test",
-        service=_service(tmp_path, sent),
+        service=_service(tmp_path, project_uuid, sent),
         expected_revision=retained["revision"],
     )
     assert result["receipts"][0]["kind"] == "recovery"

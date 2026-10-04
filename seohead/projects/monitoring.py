@@ -398,6 +398,8 @@ def deliver(
     root, document = _load(directory)
     if document["revision"] != expected_revision:
         raise ValueError("monitor revision conflict")
+    if getattr(service, "project_uuid", None) != document["project_uuid"]:
+        raise PermissionError("monitor service is not authorized for this project")
     if document["runner"].get("state") in {"cancelled", "backoff"}:
         raise ValueError("cancelled or backed-off monitor work is not deliverable")
     run = next(
