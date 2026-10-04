@@ -1498,7 +1498,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A stable consumer optionally receives a bounded inbox notice.  Reading a
         status never marks notes read or acknowledged.
         """
-        return _checked(handlers.project_status(directory=directory, consumer=consumer))
+        kwargs = {"directory": directory}
+        if consumer is not None:
+            kwargs["consumer"] = consumer
+        return _checked(handlers.project_status(**kwargs))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_progress(
@@ -1511,11 +1514,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         the shared coverage axis has a measured, nonzero denominator. It is
         explicitly task completion, not a site-health or remediation percentage.
         """
-        return _checked(
-            handlers.project_progress(
-                directory=directory, limit=limit, offset=offset, consumer=consumer
-            )
-        )
+        kwargs = {"directory": directory, "limit": limit, "offset": offset}
+        if consumer is not None:
+            kwargs["consumer"] = consumer
+        return _checked(handlers.project_progress(**kwargs))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_observe(
