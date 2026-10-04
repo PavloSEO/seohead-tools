@@ -1713,7 +1713,9 @@ def _audit_crawl_result(
         header, collections = audit_result.audit_v2_parts()
         analysis_segments = settings["analysis"]["segments"]
         header["segments"] = (
-            _segment_counts(result.pages, collections["/issues"], settings["scope"], analysis_segments)
+            _segment_counts(
+                result.pages, collections["/issues"], settings["scope"], analysis_segments
+            )
             if settings["scope"]["segments"] or analysis_segments
             else {}
         )
@@ -1729,7 +1731,9 @@ def _audit_crawl_result(
                 attach_saved_corpus_header,
             )
 
-            identity = stored_scan.con.execute("SELECT scan_uuid FROM scan WHERE singleton=1").fetchone()[0]
+            identity = stored_scan.con.execute(
+                "SELECT scan_uuid FROM scan WHERE singleton=1"
+            ).fetchone()[0]
             header, collections["/issues"] = attach_contract_parts(
                 header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
             )
