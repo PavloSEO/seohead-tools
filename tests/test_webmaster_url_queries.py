@@ -21,7 +21,10 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
                 "text_indicator_to_statistics": [
                     {
                         "text_indicator": {"value": "pump"},
-                        "statistics": [{"date": "2026-10-01", "field": "IMPRESSIONS", "value": 4}],
+                        "statistics": [
+                            {"date": "2026-10-01", "field": "IMPRESSIONS", "value": 4},
+                            {"date": "2026-10-01", "field": "CLICKS", "value": 1},
+                        ],
                     }
                 ]
             }
@@ -35,6 +38,7 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
         transport=send,
     )
     assert result["ok"] and result["rows"][0]["query"] == "pump"
+    assert result["rows"][0]["daily"][0]["ctr"] == 0.25
     assert [call[0] for call in calls] == ["POST", "POST"]
     assert all("query-analytics/list" in call[1] for call in calls)
     assert calls[0][2]["filters"]["text_filters"][0]["operation"] == "TEXT_MATCH"
@@ -60,7 +64,10 @@ def test_url_queries_paginate_with_explicit_cap():
             {
                 "count": 1,
                 "text_indicator_to_statistics": [
-                    {"text_indicator": {"value": "pump"}, "statistics": []}
+                    {
+                        "text_indicator": {"value": "pump"},
+                        "statistics": [{"date": "2026-10-01", "field": "IMPRESSIONS", "value": 1}],
+                    }
                 ],
             }
         )
