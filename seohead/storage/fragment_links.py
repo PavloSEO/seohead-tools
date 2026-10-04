@@ -213,6 +213,11 @@ def _extract(html: str, final_url: str) -> _DocEvidence:
             unresolvable = False
             try:
                 resolved = urljoin(evidence.base_url, href)
+                # Python <=3.13 drops an explicit empty fragment (`href="#"` or
+                # `href="/page#"`) while 3.14 preserves it. HTML treats that
+                # fragment as a valid top-of-document target on either version.
+                if "#" in href and "#" not in resolved:
+                    resolved += "#" + href.split("#", 1)[1]
             except ValueError:
                 resolved = ""
                 unresolvable = True

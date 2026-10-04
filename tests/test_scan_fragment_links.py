@@ -398,12 +398,18 @@ def test_empty_fragment_top_and_empty_id(tmp_path):
             f"{BASE}/with-top-id",
             '<html><body><div id="top"></div></body></html>',
         )
-        _commit(scan, f"{BASE}/p", '<html><body><a href="/with-top-id#top">x</a></body></html>')
+        _commit(
+            scan,
+            f"{BASE}/p",
+            '<html><body><a href="/with-top-id#top">x</a>'
+            '<a href="/with-top-id#">top of other page</a></body></html>',
+        )
 
     result = _evaluate(path)
     assert _one(result, "#")["match"] == {"kind": "top", "value": ""}
     assert _one(result, "#top")["match"] == {"kind": "top", "value": "top"}
     assert _one(result, "#TOP")["match"] == {"kind": "top", "value": "top"}
+    assert _one(result, "/with-top-id#")["match"] == {"kind": "top", "value": ""}
     # A real `top` element wins before the top-of-document fallback.
     assert _one(result, "/with-top-id#top")["match"] == {"kind": "element_id", "value": "top"}
 
