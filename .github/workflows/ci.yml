@@ -87,10 +87,18 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          from seohead.sf.core.registry import CHECKS
 
           data = json.loads(Path("/tmp/report/audit.json").read_text())
-          assert data["issues"], "the synthetic crawl stopped producing findings"
-          assert len(data["run"]["checks_skipped"]) < 96
+          fired = {issue["check"] for issue in data["issues"]}
+          assert {"BROKEN_INTERNAL_LINK", "BROKEN_PAGE_4XX", "TITLE_MISSING"} <= fired
+          coverage = data["summary"]["check_coverage"]
+          skipped = {entry["id"] for entry in data["run"]["checks_skipped"]}
+          silent = set(coverage["checks_silent_ids"])
+          disabled = set(coverage["checks_disabled_ids"])
+          assert coverage["checks_total"] == len(CHECKS)
+          assert fired | skipped | silent | disabled == set(CHECKS)
+          assert all(entry["reason"] for entry in data["run"]["checks_skipped"])
           print("issues", len(data["issues"]), "health", data["summary"]["health_score"])
           PY
       - name: Verify CLI and MCP registration
