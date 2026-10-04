@@ -11,7 +11,9 @@ Requires the optional ``mcp`` dependency: ``pip install "seohead-seotools[mcp]"`
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any, Literal
 
 from seohead import runlog
@@ -84,10 +86,30 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 
+    host_consumer = os.environ.get("SEOHEAD_MCP_CONSUMER_ID")
+    host_projects = {
+        str(Path(item).resolve())
+        for item in os.environ.get("SEOHEAD_MCP_PROJECT_ALLOWLIST", "").split(os.pathsep)
+        if item
+    }
+
+    def bound_consumer(directory: str, consumer: str | None) -> str | None:
+        """Use only an explicit caller or this stdio process's scoped owner.
+
+        A process binding is opt-in and applies only to the configured project
+        allowlist.  It never guesses a peer agent's identity.
+        """
+        if consumer is not None:
+            return consumer
+        if not host_consumer or not host_projects:
+            return None
+        return host_consumer if str(Path(directory).resolve()) in host_projects else None
+
     def with_project_notice(
         result: dict[str, Any], directory: str, consumer: str | None
     ) -> dict[str, Any]:
         """Attach a scoped notice without letting an unrelated project leak in."""
+        consumer = bound_consumer(directory, consumer)
         if consumer is None:
             return result
         result = dict(result)
@@ -1503,6 +1525,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         status never marks notes read or acknowledged.
         """
         kwargs = {"directory": directory}
+        consumer = bound_consumer(directory, consumer)
         if consumer is not None:
             kwargs["consumer"] = consumer
         return _checked(handlers.project_status(**kwargs))
@@ -1519,6 +1542,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         explicitly task completion, not a site-health or remediation percentage.
         """
         kwargs = {"directory": directory, "limit": limit, "offset": offset}
+        consumer = bound_consumer(directory, consumer)
         if consumer is not None:
             kwargs["consumer"] = consumer
         return _checked(handlers.project_progress(**kwargs))
