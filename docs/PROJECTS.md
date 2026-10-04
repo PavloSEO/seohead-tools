@@ -79,6 +79,13 @@ second screen beside an AI chat. Install the `tui` extra when it is not already
 present. The selected project is the explicit `--project` workspace; the command
 does not discover or scan arbitrary directories.
 
+An agent using the `control` or `full-audit-v1` workflow offers this observer once
+before its first collection or long-running analysis for a project. It asks for an
+explicit yes or no, remembers that answer for the current session and project, and
+does not open a terminal or start a process before yes. A declined offer never
+blocks the audit. The observer needs an existing project workspace; an agent must
+not create one solely to display it.
+
 ```bash
 seohead watch --project ./example-project
 ```

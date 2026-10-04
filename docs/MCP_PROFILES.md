@@ -53,3 +53,10 @@ Run a separate stdio process for another project or agent. Explicit per-call
 `consumer` values remain available where a tool exposes them, but a process does
 not guess one. A summary is informational: it never reads, acknowledges, accepts,
 or completes inbox entries. Those transitions remain explicit project-inbox tools.
+
+When an agent follows the packaged `control` or `full-audit-v1` workflow, it offers
+the corresponding human observer once before the first collection or long-running
+analysis for a project. The offer is an explicit yes/no choice, tracked only in the
+agent's current session/project context. `seo_project_observe` is the MCP-side
+read-only snapshot after an acceptance; it does not substitute for consent, launch
+a terminal, start a scan, or inject inbox content into a chat.

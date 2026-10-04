@@ -46,6 +46,15 @@ Paid provider calls and externally visible writes are outside the default audit.
 the requester explicitly authorizes the provider, operation, and spend. Never submit URLs, change
 production pages, or publish recommendations as part of an audit.
 
+Before the first collection or long-running analysis, make one optional observer offer for the
+current project: “I can open the read-only project observer in a second terminal while this runs.
+Open it?” Use `seohead watch --project ./project-directory` only after an explicit yes. Keep the
+answer in the agent's current session/project context and do not offer again after an accepted or declined answer for that same session and project. Until yes, do not start a shell, watcher process,
+or scan. If there is no explicit project workspace, state that prerequisite and do not create one
+solely for the observer. MCP agents can use `seo_project_observe` as the equivalent read-only
+snapshot only after the same choice; a later project-bound call may receive configured unread inbox
+notices, but the observer does not inject a chat message or execute work automatically.
+
 ## 2. Inventory and reuse evidence
 
 Before collecting anything, inspect available `audit.json`, retained scan files, Screaming Frog

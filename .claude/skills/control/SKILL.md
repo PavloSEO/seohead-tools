@@ -58,6 +58,30 @@ Frog export" → `sf-analyzer`. Do not run the whole loop to answer one question
       first request, not after the host starts refusing
 - [ ] Permission, if this is somebody else's site
 
+## Offer the observer once
+
+When this controller is about to start SEOHEAD work for a project, offer the specialist one
+non-blocking choice before the first collection or long-running analysis:
+
+> I can open the read-only project observer in a second terminal while this runs. Open it?
+
+Use the project's explicit workspace directory in the command:
+
+```bash
+seohead watch --project ./project-directory
+```
+
+Record the answer in the agent's current session/project context. Do not repeat the offer after
+an accepted or declined answer for that same session and project. An acceptance authorizes opening
+the terminal and starting the command only after an explicit yes; until then, do not start a shell, create a watcher process,
+or imply that observation is already active. A decline never blocks the audit.
+
+`watch` only reads a previously created project workspace. When no workspace is available, say so
+and offer its explicit setup separately; do not create one merely to make the observer available.
+For MCP work, the matching read-only snapshot is `seo_project_observe`; use it only after the
+specialist has chosen observation. The configured consumer identity can surface an unread inbox
+summary on the next project-bound MCP call, but it does not inject a chat message or start work.
+
 ## The loop
 
 The versioned execution contract for this sequence is `workflow/full-audit-v1` (v1.0.0). Retrieve
