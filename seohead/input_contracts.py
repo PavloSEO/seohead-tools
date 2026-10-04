@@ -102,6 +102,15 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("audit_document", "audit", required_with=("external_csv",)),
         _form("local_file", "external_csv", required_with=("audit",)),
     ),
+    _command(
+        "crawl-import",
+        "crawl_import",
+        _form(
+            "local_file",
+            "manifest_path",
+            note="third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence",
+        ),
+    ),
     _command("segment-diff", "segment_diff", _form("audit_document", "audit")),
     _command("redirects-generate", "redirects_generate", _form("inline_json", "redirects")),
     _command("redirects-check", "redirects_check", _form("live_url", "url")),
@@ -326,6 +335,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("skill-show", "skill_show", _form("selector", "name")),
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
+    _command(
+        "provider-readiness",
+        "provider_readiness",
+        _form(
+            "inline_json",
+            "provider",
+            "operation",
+            note="Offline readiness and operation discovery; no provider requests.",
+        ),
+    ),
     _command(
         "provider-verify",
         "provider_verify",

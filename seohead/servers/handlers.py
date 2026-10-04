@@ -1700,6 +1700,25 @@ def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -
     return result
 
 
+def crawl_import(manifest_path: str | None = None) -> dict[str, Any]:
+    """Read an explicitly mapped third-party CSV crawl bundle offline.
+
+    The result keeps source identity and field coverage under
+    ``third_party_crawl.v1``. It is not a native scan or an SF Analyzer audit.
+    """
+    if not isinstance(manifest_path, str) or not manifest_path.strip():
+        return {"ok": False, "error": "manifest_path must be a non-empty local path"}
+    from seohead.crawl.external_import import (
+        ExternalCrawlImportError,
+        import_third_party_crawl,
+    )
+
+    try:
+        return {"ok": True, **import_third_party_crawl(manifest_path)}
+    except ExternalCrawlImportError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def crawl_enrich(
     audit: Any = None,
     external_csv: str | None = None,
@@ -2830,7 +2849,7 @@ def spend_report(since: str | None = None) -> dict[str, Any]:
 
 
 def sources_doctor() -> dict[str, Any]:
-    """Report provider readiness and credential locations without exposing secret values."""
+    """Report redacted credential references and readiness without verifying provider access."""
     from seohead.data_sources import credentials as creds
 
     checks = {
@@ -3164,6 +3183,12 @@ def provider_registry() -> dict[str, Any]:
     from seohead.servers.provider_handlers import provider_registry as core
 
     return core()
+
+
+def provider_readiness(provider: str | None = None, operation: str | None = None) -> dict[str, Any]:
+    from seohead.servers.provider_handlers import provider_readiness as core
+
+    return core(provider=provider, operation=operation)
 
 
 def provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3625,6 +3650,7 @@ _RAW_HANDLERS = {
     "facts_export": facts_export,
     "compare_crawls": compare_crawls,
     "crawl_enrich": crawl_enrich,
+    "crawl_import": crawl_import,
     "segment_diff": segment_diff,
     "keywords_expand": keywords_expand,
     "keywords_seasonality": keywords_seasonality,
@@ -3677,6 +3703,7 @@ _RAW_HANDLERS = {
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,
     "provider_registry": provider_registry,
+    "provider_readiness": provider_readiness,
     "provider_verify": provider_verify,
     "provider_collect": provider_collect,
     "provider_join": provider_join,

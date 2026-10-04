@@ -1,0 +1,257 @@
+"""Provider readiness and discovery stay offline, explicit, and redacted."""
+
+from __future__ import annotations
+
+import asyncio
+import io
+import json
+import urllib.error
+
+from seohead import cli
+from seohead.data_sources import credentials, providers
+
+
+def _isolate_credentials(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
+    for provider_sources in providers._CREDENTIAL_SOURCES.values():
+        for _path, env_var in provider_sources.values():
+            monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
+
+
+def test_readiness_lists_operation_routes_and_never_infers_target_access(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        providers,
+        "provider_verify",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("readiness must not make or trigger a provider verification")
+        ),
+    )
+
+    report = providers.provider_readiness("gsc", "search_analytics")
+
+    assert report["ok"] is True
+    assert report["state"] == "missing"
+    assert report["readiness_state"] == "missing"
+    assert report["permission_state"] == "not_verified"
+    assert report["target_access"] == "not_requested"
+    assert report["verified"] is False
+    operation = report["operation"]
+    assert operation["name"] == "search_analytics"
+    assert operation["state"] == "supported"
+    assert operation["surface"] == "provider-collect"
+    assert operation["input_schema"]["required"] == ["provider", "operation", "request"]
+    assert operation["input_schema"]["properties"]["request"]["type"] == "object"
+
+
+def test_credentials_show_redacted_environment_and_config_references(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("ARSENKIN_TOKEN", "synthetic-private-token")
+
+    env_report = providers.provider_readiness("arsenkin")
+    source = env_report["credential_sources"]["api_token"]
+    assert env_report["state"] == "configured_unverified"
+    assert source["state"] == "configured_unverified"
+    assert source["source_reference"] == "env:ARSENKIN_TOKEN"
+    assert "synthetic-private-token" not in json.dumps(env_report)
+    assert "/Users/" not in json.dumps(env_report)
+
+    monkeypatch.delenv("ARSENKIN_TOKEN")
+    token_file = tmp_path / "arsenkin" / "token"
+    token_file.parent.mkdir()
+    token_file.write_text("synthetic-file-token", encoding="utf-8")
+    file_report = providers.provider_readiness("arsenkin")
+    source = file_report["credential_sources"]["api_token"]
+    assert source["source_reference"] == "config:arsenkin/token"
+    assert "synthetic-file-token" not in json.dumps(file_report)
+    assert str(tmp_path) not in json.dumps(file_report)
+
+
+def test_empty_credential_source_is_invalid_not_configured(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    token_file = tmp_path / "crux" / "api_key"
+    token_file.parent.mkdir()
+    token_file.write_text("  \n", encoding="utf-8")
+
+    report = providers.provider_readiness("crux")
+
+    assert report["state"] == "invalid"
+    assert report["credential_sources"]["api_key"]["state"] == "invalid"
+    assert report["credential_sources"]["api_key"]["source_reference"] == "config:crux/api_key"
+    assert report["target_access"] == "not_requested"
+    assert report["verified"] is False
+
+
+def test_invalid_gsc_service_account_is_named_without_echoing_contents(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    account = tmp_path / "gsc" / "service-account.json"
+    account.parent.mkdir()
+    account.write_text('{"private_key":"synthetic-private-canary"', encoding="utf-8")
+    account.chmod(0o600)
+
+    report = providers.provider_readiness("gsc")
+
+    assert report["state"] == "invalid"
+    assert report["credential_sources"]["service_account"]["state"] == "invalid"
+    assert report["credential_sources"]["service_account"]["source_reference"] == (
+        "config:gsc/service-account.json"
+    )
+    assert report["target_access"] == "not_requested"
+    assert "synthetic-private-canary" not in json.dumps(report)
+    assert str(tmp_path) not in json.dumps(report)
+
+
+def test_declared_but_unsupported_operation_is_explicit(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+
+    report = providers.provider_readiness("arsenkin", "serp_clustering")
+
+    assert report["ok"] is False
+    assert report["state"] == "unsupported"
+    assert report["readiness_state"] == "missing"
+    assert report["operation"]["state"] == "unsupported"
+    assert report["operation"]["surface"] is None
+
+
+def test_unknown_provider_and_invalid_operation_selectors_are_explicit():
+    assert providers.provider_readiness("not-a-provider")["state"] == "unsupported"
+    assert providers.provider_readiness("gsc", "")["state"] == "invalid"
+    assert providers.provider_readiness(operation="search_analytics")["state"] == "invalid"
+
+
+def test_operation_discovery_covers_registry_and_separates_surface_states(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    report = providers.provider_readiness()
+    registry = providers.provider_registry()["providers"]
+
+    assert set(report["providers"]) == set(registry)
+    for provider, row in report["providers"].items():
+        discovered = {operation["name"]: operation for operation in row["operations"]}
+        assert set(discovered) == set(registry[provider]["operations"])
+        assert all(
+            operation["state"] in {"supported", "dedicated", "dedicated_write", "unsupported"}
+            for operation in discovered.values()
+        )
+    assert report["providers"]["arsenkin"]["operations"][0]["state"] == "dedicated"
+    assert report["providers"]["indexnow"]["operations"][0]["state"] == "dedicated_write"
+    assert report["providers"]["gsc"]["operations"][0]["input_schema"]["type"] == "object"
+    assert report["providers"]["wayback"]["permission_state"] == "not_verified"
+    assert report["providers"]["wayback"]["target_access"] == "not_requested"
+
+
+def test_provider_verify_reports_insufficient_scope_and_does_not_echo_secret(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-secret-token")
+    from seohead.data_sources import gsc
+
+    monkeypatch.setattr(
+        gsc,
+        "discover_properties",
+        lambda **_kwargs: {
+            "ok": False,
+            "state": "verification_failed",
+            "status": 403,
+            "error": "insufficient_scope: webmasters.readonly is required",
+        },
+    )
+
+    result = providers.provider_verify("gsc")
+
+    assert result["permission_state"] == "insufficient_scope"
+    assert result["target_access"] == "not_requested"
+    assert result["verified"] is False
+    assert result["credential_sources"]["oauth_bearer"]["source_reference"] == (
+        "env:GSC_ACCESS_TOKEN"
+    )
+    assert "synthetic-secret-token" not in json.dumps(result)
+
+
+def test_provider_verify_requires_returned_target_to_claim_access(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-token")
+    from seohead.data_sources import gsc
+
+    monkeypatch.setattr(
+        gsc,
+        "discover_properties",
+        lambda **_kwargs: {"ok": True, "properties": [{"site_url": "sc-domain:example.test"}]},
+    )
+    verified = providers.provider_verify("gsc", {"site_url": "sc-domain:example.test"})
+    assert verified["permission_state"] == "verified"
+    assert verified["target_access"] == "verified"
+    assert verified["verified"] is True
+
+    missing = providers.provider_verify("gsc", {"site_url": "sc-domain:other.test"})
+    assert missing["permission_state"] == "not_granted"
+    assert missing["target_access"] == "not_granted"
+    assert missing["verified"] is False
+
+
+def test_gsc_verification_error_redacts_echoed_bearer():
+    from seohead.data_sources import gsc
+
+    secret = "synthetic-bearer-canary"
+
+    def fail_request(_method, url, _payload, _bearer):
+        body = json.dumps({"error": {"message": f"invalid token {secret}"}}).encode()
+        raise urllib.error.HTTPError(url, 401, "unauthorized", {}, io.BytesIO(body))
+
+    result = gsc.discover_properties(token=secret, transport=fail_request)
+
+    assert result["ok"] is False and result["status"] == 401
+    assert secret not in json.dumps(result)
+
+
+def test_bing_verification_error_does_not_echo_api_key(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    secret = "synthetic-bing-key-canary"
+    monkeypatch.setenv("BING_WEBMASTER_API_KEY", secret)
+    from seohead.data_sources import bing_webmaster
+
+    def fail_request(url):
+        raise urllib.error.HTTPError(url, 403, "denied", {}, io.BytesIO(b""))
+
+    result = bing_webmaster.collect("sites", site_url="", transport=fail_request)
+
+    assert result["ok"] is False and result["status"] == 403
+    assert secret not in json.dumps(result)
+
+
+def test_cli_and_mcp_share_provider_readiness_state(monkeypatch, tmp_path, capsys):
+    from seohead.servers import handlers
+    from seohead.servers.mcp_server import build_server
+
+    _isolate_credentials(monkeypatch, tmp_path)
+    payload = '{"provider":"gsc","operation":"search_analytics"}'
+    expected = {
+        "ok": True,
+        "format": "seohead.provider-readiness.v1",
+        "state": "synthetic",
+    }
+    calls = []
+
+    def fake_readiness(**kwargs):
+        calls.append(kwargs)
+        return expected
+
+    monkeypatch.setattr(handlers, "provider_readiness", fake_readiness)
+    monkeypatch.setitem(handlers.HANDLERS, "provider_readiness", fake_readiness)
+
+    assert cli.main(["provider-readiness", "--input", payload]) == 0
+    cli_result = json.loads(capsys.readouterr().out)
+    server = build_server()
+    asyncio.run(
+        server.call_tool(
+            "seo_provider_readiness", {"provider": "gsc", "operation": "search_analytics"}
+        )
+    )
+
+    assert cli_result == expected
+    assert calls == [
+        {"provider": "gsc", "operation": "search_analytics"},
+        {"provider": "gsc", "operation": "search_analytics"},
+    ]

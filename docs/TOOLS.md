@@ -175,6 +175,7 @@ details (adaptive back-off, which checks come back `skipped` and why) and
 | `crawl-site` | Follows links from a start URL on the same host, respects `robots.txt`, and audits the result. A URL crawl writes one collision-safe native SQLite artifact under `./scans/` by default; `--out-dir` is the explicit legacy directory route. Not full Screaming Frog parity — checks needing evidence a native crawl cannot produce (redirect chains, near-duplicates, readability, ...) come back `skipped`, never a false clean | writes a native scan, or legacy files under explicit `--out-dir` |
 | `compare-crawls` | Diffs two audit documents into `entered` / `left` / `appeared` / `disappeared` findings, so a fix is distinguished from a page that simply dropped out of the crawl. Refuses known-different effective crawl settings unless the operator explicitly passes `--force`. | — |
 | `crawl-enrich` | Joins an existing audit or scan to a local URL-keyed traffic/search CSV. It keeps matched, crawl-only, external-only, and unkeyable rows distinct; a completed crawl can export reliable same-origin external-only URLs for list mode. | optionally writes a URL-list file under `--out-urls` |
+| `crawl-import` | Reads a local manifest-mapped CSV crawl bundle and returns `third_party_crawl.v1` with foreign source identity, pages/links/statuses/redirects, exact field coverage, duplicate counts and input hashes. This is not a native scan or SF audit. | reads the manifest and listed CSV files |
 | `segment-diff` | Answers "which pages exist in one segment and not in another" from one crawl, using the site's own hreflang declarations as the authority. Mirrored paths are a fallback only where the site's declared pairs prove it mirrors them; a partially crawled target segment yields no absences at all, because a page nobody fetched is not a page that is missing. Reads a native crawl whose config declared `scope.segments`, not an SF export | — |
 | `crawl-describe-settings` | Lists every `crawl-site` config setting — dotted path, type, default, description, and whether it is results-affecting — generated from `seohead/crawl/settings.py`. Same source as `crawl-site --config-help`, reachable over MCP for an agent with no filesystem access | — |
 
@@ -193,9 +194,13 @@ claiming the original time bound still applies.
 ```bash
 seohead crawl-site --url https://example.com/ --max-urls 200
 seohead compare-crawls --before old-audit.json --after new-audit.json
+seohead crawl-import --manifest third_party_crawl/full/manifest.json
 seohead segment-diff --audit ./multilingual/audit.json --source en --target pl
 seohead crawl-describe-settings
 ```
+
+The supported manifest, field, coverage, normalization, and size-limit contract
+is documented in [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md).
 
 ---
 
@@ -279,6 +284,7 @@ and spend-journal rules.
 | Command | What it does | Network / writes |
 |---|---|---|
 | `provider-registry` | Lists declared providers and their bounded operations; it does not verify credentials | no |
+| `provider-readiness` | Reports redacted credential-source states, supported operation routes and their shared JSON call-envelope schema, quota/privacy, and whether verification remains necessary. It makes no provider requests | no |
 | `provider-auth` | Manages a private GSC read-only OAuth grant: status, connect from a private grant file, explicit refresh, confirmed local disconnect, or confirmed remote revoke. It never returns OAuth material. | refresh/revoke only when requested |
 | `provider-verify` | Performs one explicit read-only credential and optional target-access check. An authenticated account does not by itself prove access to a requested target. | provider read |
 | `provider-collect` | Performs one declared read-only operation and returns a versioned evidence envelope with complete, partial, failed, or skipped state. An optional restricted artifact directory keeps raw rows locally. | provider read; optional local artifact |
@@ -286,6 +292,17 @@ and spend-journal rules.
 | `provider-replay` | Replays a private saved provider collection against a saved scan offline, writes a restricted joined artifact, and keeps the crawl frontier unchanged. | local artifact write |
 | `evidence-normalize` | Normalizes a supplied CSV/XLSX/JSON or a saved provider envelope into `seohead.normalized-evidence.v1` against an optional `seohead.evidence-mapping.v1` manifest, offline. Every row keeps its grain, provenance and availability state: a measured `0` stays zero while missing, null, blank, suppressed, uncollected and failed inputs stay unavailable. Restricted sources return counts and redacted provenance. | optional restricted artifact under `--out-dir` |
 | `evidence-join` | Joins normalized evidence to `--pages`, `--scan`, or `--audit` under the strict URL policy (explicit `--ignore-query`/`--ignore-scheme`/`--casefold-path` relaxations), preserving matched, crawl-only, external-only and unkeyable populations plus collision counts. `--compare` with a declared `--policy` yields a pure compatible/incompatible/unknown decision across period, timezone, identity, attribution, engine and grain; source metrics such as GSC clicks and GA4 sessions stay distinct and are never summed. | optional private artifact under `--out-dir` |
+
+`sources-doctor` and `provider-readiness` are local setup checks. They distinguish
+missing, invalid and configured-but-unverified credential sources; references use
+`env:VARIABLE`, `config:relative/path`, or a named local grant, never the value or
+an absolute path. Operation discovery labels a route as `provider-collect`, a
+dedicated command, a separate write, or unsupported. Supported operations expose
+the shared `provider`/`operation`/`request` JSON envelope; provider-specific request
+fields remain validated by that operation adapter. Readiness always reports target
+access as unverified; `provider-verify` is the separate, explicit read that can
+return `verified`, `not_granted`, `insufficient_scope`, or `unsupported`. Supplying
+credentials alone never proves access to a property or site.
 
 Provider evidence can change work order only when its coverage is usable; sampled,
 truncated, unmatched, or privacy-thresholded values remain unavailable for a
@@ -299,7 +316,7 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `keywords-exact` | Exact `!W` frequency (Arsenkin's `overal`/`!WS` selector) — what the Wordstat API, base-only, will not give you | Arsenkin account limits; the charge and `task_id` are journaled at task creation |
 | `serp-fetch` | Yandex SERP for a query or a batch. Async only | metered; synchronous search is intentionally absent; verify current tariff |
 | `spend-report` | What was actually charged: by source, operation and day, from the local journal | free |
-| `sources-doctor` | Which sources have their secret and where it lives | free |
+| `sources-doctor` | Which sources have usable credentials, with redacted source references; configured credentials are not verified access | free |
 | `regions-tree` | The authoritative Yandex region tree via `getRegionsTree` | **free** — the only free Wordstat method |
 | `metrika-counters` | Metrika counters visible to the token — this is where `counter_id` comes from | free |
 | `metrika-setup` | How a counter is configured: goals, filters, data operations | free |
@@ -315,6 +332,8 @@ priority adjustment. It never changes a technical finding's severity. See the
 
 ```bash
 seohead sources-doctor                                     # what is ready to run
+seohead provider-readiness --input '{"provider":"gsc","operation":"search_analytics"}'
+seohead provider-verify --input '{"provider":"gsc","request":{"site_url":"sc-domain:example.com"}}'
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -459,7 +478,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(96 + 5):
+(98 + 5):
 
 ```bash
 seohead mcp        # stdio

@@ -120,12 +120,13 @@ def _default_fetcher(url: str) -> Fetcher:
     return fetch
 
 
-def _api_error(exc: urllib.error.HTTPError) -> str:
+def _api_error(exc: urllib.error.HTTPError, secret: str | None = None) -> str:
     try:
         body = json.loads(exc.read().decode("utf-8", "replace"))
-        return str(body.get("error", {}).get("message") or exc.reason)
+        message = str(body.get("error", {}).get("message") or exc.reason)
     except ValueError:
-        return str(exc.reason)
+        message = str(exc.reason)
+    return message.replace(secret, "[redacted]") if secret else message
 
 
 def _response_object(raw: str) -> dict[str, Any] | None:
@@ -174,7 +175,7 @@ def search_analytics(
     try:
         raw = fetch(payload, bearer)
     except urllib.error.HTTPError as exc:
-        return {"ok": False, "error": _api_error(exc), "status": exc.code}
+        return {"ok": False, "error": _api_error(exc, bearer), "status": exc.code}
     except (urllib.error.URLError, TimeoutError) as exc:
         return {"ok": False, "error": f"Search Console request failed: {exc}"}
 
@@ -225,7 +226,7 @@ def inspect_url(
     try:
         raw = fetch(payload, bearer)
     except urllib.error.HTTPError as exc:
-        return {"ok": False, "error": _api_error(exc), "status": exc.code}
+        return {"ok": False, "error": _api_error(exc, bearer), "status": exc.code}
     except (urllib.error.URLError, TimeoutError) as exc:
         return {"ok": False, "error": f"Search Console request failed: {exc}"}
 
@@ -359,7 +360,16 @@ def discover_properties(
             (transport or _request)("GET", f"{SEARCH_ANALYTICS_HOST}/sites", None, bearer)
         )
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-        return {"ok": False, "state": "verification_failed", "verified": False, "error": str(exc)}
+        result = {
+            "ok": False,
+            "state": "verification_failed",
+            "verified": False,
+            "error": str(exc),
+        }
+        if isinstance(exc, urllib.error.HTTPError):
+            result["status"] = exc.code
+            result["error"] = _api_error(exc, bearer)
+        return result
     entries = body.get("siteEntry") if body else None
     if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
         return {

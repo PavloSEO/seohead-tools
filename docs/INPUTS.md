@@ -31,6 +31,7 @@ and this decision makes no backend migration.
 | `log-scan` | Local directory (`run`) | — |
 | `compare-crawls` | Audit document (`before, after`) | Each path may be audit JSON or scan.v1. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
+| `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |
 | `segment-diff` | Audit document (`audit`) | — |
 | `redirects-generate` | Inline JSON (`redirects`) | — |
 | `redirects-check` | Live URL (`url`) | — |
@@ -99,6 +100,7 @@ and this decision makes no backend migration.
 | `skill-show` | Selector (`name`) | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
+| `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |
 | `provider-verify` | Provider identifier (`provider`)<br>Inline JSON (`request`) | Optional read-only target-access request. |
 | `provider-collect` | Provider identifier (`provider`)<br>Selector (`operation`)<br>Inline JSON (`request`)<br>Local directory (`artifact_dir`) | Optional restricted raw-evidence location. |
 | `provider-join` | Inline JSON (`crawl_pages`)<br>Inline JSON (`evidence_rows`)<br>Inline JSON (`adjustments`) | Optional evidence-backed priority adjustments. |

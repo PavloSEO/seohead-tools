@@ -249,7 +249,9 @@ exit code.
 Check readiness first, then work; check what was charged afterwards:
 
 ```bash
-seohead sources-doctor                                  # which secrets are present
+seohead sources-doctor                                  # redacted credential sources and readiness
+seohead provider-readiness --input '{"provider":"gsc","operation":"search_analytics"}'
+seohead provider-verify --input '{"provider":"gsc","request":{"site_url":"sc-domain:example.com"}}'
 seohead keywords-expand --phrase "underfloor heating" --limit 100
 seohead keywords-exact --keywords "underfloor heating,floor screed" --region 225
 seohead serp-fetch --queries "underfloor heating,floor screed" --region 213 --top 10
@@ -262,12 +264,19 @@ seohead metrika-traffic-pdf --counter 12345678 --date1 2026-09-01 --date2 2026-0
 seohead spend-report --since 2026-08-01
 ```
 
+`provider-readiness` is offline: it reports declared operation routes, credential
+source references, and whether a separate permission check is still needed. Its
+`input_schema` describes the shared JSON call envelope; the existing provider
+adapter validates the operation-specific fields. Only an explicit
+`provider-verify` call contacts a supported provider, and a configured secret alone
+never means the selected property or site is accessible.
+
 Money rules for this layer: [GOTCHAS.md](GOTCHAS.md).
 
 ## MCP server
 
 ```bash
-seohead mcp        # stdio server, all 96 seo_* tools + 5 sf_* audit tools
+seohead mcp        # stdio server, all 98 seo_* tools + 5 sf_* audit tools
 ```
 
 Client config (`.mcp.json` in this repo does exactly this):

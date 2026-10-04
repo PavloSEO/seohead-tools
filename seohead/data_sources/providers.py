@@ -118,6 +118,53 @@ _REGISTRY: dict[str, dict[str, Any]] = {
     },
 }
 
+# Credential references are relative to the shared config root or name an
+# environment variable. They are displayable; values and absolute paths are not.
+_CREDENTIAL_SOURCES: dict[str, dict[str, tuple[str, str]]] = {
+    "arsenkin": {"api_token": ("arsenkin/token", "ARSENKIN_TOKEN")},
+    "yandex_cloud": {
+        "api_key": ("yandex-wordstat/api_key", "YANDEX_CLOUD_API_KEY"),
+        "folder_id": ("yandex-wordstat/folder_id", "YANDEX_CLOUD_FOLDER_ID"),
+    },
+    "gsc": {"oauth_bearer": ("gsc/access_token", "GSC_ACCESS_TOKEN")},
+    "crux": {"api_key": ("crux/api_key", "CRUX_API_KEY")},
+    "pagespeed": {"api_key": ("pagespeed/api_key", "PAGESPEED_API_KEY")},
+    "ga4": {"oauth_bearer": ("ga4/access_token", "GA4_ACCESS_TOKEN")},
+    "metrika": {"oauth_bearer": ("yandex-metrika/token", "YANDEX_METRIKA_TOKEN")},
+    "yandex_webmaster": {
+        "oauth_bearer": ("yandex-webmaster/access_token", "YANDEX_WEBMASTER_TOKEN")
+    },
+    "bing_webmaster": {"api_key": ("bing-webmaster/api_key", "BING_WEBMASTER_API_KEY")},
+    "dataforseo_backlinks": {
+        "login": ("dataforseo/login", "DATAFORSEO_LOGIN"),
+        "password": ("dataforseo/password", "DATAFORSEO_PASSWORD"),
+    },
+    "indexnow": {"submission_key": ("indexnow/key", "INDEXNOW_KEY")},
+}
+
+# This map describes only the generic provider-collect dispatch. Dedicated
+# routes and declared-but-unshipped operations stay explicit in discovery.
+_COLLECTABLE_OPERATIONS: dict[str, frozenset[str]] = {
+    "gsc": frozenset({"verify", "properties", "search_analytics", "inspection", "sitemaps"}),
+    "crux": frozenset({"current", "history"}),
+    "pagespeed": frozenset({"mobile_samples", "desktop_samples"}),
+    "ga4": frozenset({"landing_pages"}),
+    "metrika": frozenset({"counters", "aggregate_report"}),
+    "yandex_webmaster": frozenset(_WEBMASTER_OPERATIONS),
+    "bing_webmaster": frozenset({"sites", "crawl", "links", "keywords", "search_performance"}),
+    "dataforseo_backlinks": frozenset({"backlinks_summary"}),
+    "wayback": frozenset({"history"}),
+    "crtsh": frozenset({"subdomains"}),
+}
+_DEDICATED_OPERATIONS = {
+    "arsenkin": {"keyword_frequency": "keywords-exact"},
+    "yandex_cloud": {
+        "wordstat": "keywords-expand / keywords-seasonality",
+        "web_search": "serp-fetch",
+    },
+    "indexnow": {"submit": "indexnow-submit"},
+}
+
 
 def provider_registry() -> dict[str, Any]:
     """Return immutable-by-convention metadata; callers receive a JSON-safe copy."""
@@ -127,47 +174,188 @@ def provider_registry() -> dict[str, Any]:
     }
 
 
-def _credential_components(provider: str) -> dict[str, bool]:
-    paths = {
-        "arsenkin": {"api_token": ("arsenkin/token", "ARSENKIN_TOKEN")},
-        "yandex_cloud": {
-            "api_key": ("yandex-wordstat/api_key", "YANDEX_CLOUD_API_KEY"),
-            "folder_id": ("yandex-wordstat/folder_id", "YANDEX_CLOUD_FOLDER_ID"),
-        },
-        "gsc": {"oauth_bearer": ("gsc/access_token", "GSC_ACCESS_TOKEN")},
-        "crux": {"api_key": ("crux/api_key", "CRUX_API_KEY")},
-        "pagespeed": {"api_key": ("pagespeed/api_key", "PAGESPEED_API_KEY")},
-        "ga4": {"oauth_bearer": ("ga4/access_token", "GA4_ACCESS_TOKEN")},
-        "metrika": {"oauth_bearer": ("yandex-metrika/token", "YANDEX_METRIKA_TOKEN")},
-        "yandex_webmaster": {
-            "oauth_bearer": ("yandex-webmaster/access_token", "YANDEX_WEBMASTER_TOKEN")
-        },
-        "bing_webmaster": {"api_key": ("bing-webmaster/api_key", "BING_WEBMASTER_API_KEY")},
-        "dataforseo_backlinks": {
-            "login": ("dataforseo/login", "DATAFORSEO_LOGIN"),
-            "password": ("dataforseo/password", "DATAFORSEO_PASSWORD"),
-        },
-        "indexnow": {"submission_key": ("indexnow/key", "INDEXNOW_KEY")},
-        "wayback": {},
-        "crtsh": {},
-    }
-    if provider not in paths:
+def _credential_details(provider: str) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
+    sources = _CREDENTIAL_SOURCES.get(provider)
+    if provider not in _REGISTRY:
         raise ValueError("unknown provider")
-    components = {name: credentials.available(*source) for name, source in paths[provider].items()}
+    components: dict[str, bool] = {}
+    details: dict[str, dict[str, Any]] = {}
+    for name, source in (sources or {}).items():
+        state = credentials.source_status(*source)
+        details[name] = state
+        components[name] = state["state"] == "configured_unverified"
     if provider == "gsc":
         components["service_account"] = credentials.gsc_service_account_available()
+        service_status = credentials.gsc_service_account_status()
+        service_reference = (
+            "env:GSC_SERVICE_ACCOUNT_FILE"
+            if "GSC_SERVICE_ACCOUNT_FILE" in os.environ
+            else "config:gsc/service-account.json"
+        )
+        details["service_account"] = {
+            "state": (
+                "configured_unverified"
+                if service_status == "configured_unverified"
+                else "missing"
+                if service_status == "missing"
+                else "invalid"
+            ),
+            "source_reference": service_reference if service_status != "missing" else None,
+            "accepted_source_references": [
+                "env:GSC_SERVICE_ACCOUNT_FILE",
+                "config:gsc/service-account.json",
+            ],
+            **(
+                {"reason": service_status}
+                if service_status not in {"missing", "configured_unverified"}
+                else {}
+            ),
+        }
         from seohead.data_sources.oauth import grant_available
 
-        components["durable_oauth"] = grant_available("gsc")
-    return components
+        grant = grant_available("gsc")
+        components["durable_oauth"] = grant
+        details["durable_oauth"] = {
+            "state": "configured_unverified" if grant else "missing",
+            "source_reference": "local-grant:gsc" if grant else None,
+            "accepted_source_references": ["local-grant:gsc"],
+        }
+    return components, details
+
+
+def _credential_components(provider: str) -> dict[str, bool]:
+    return _credential_details(provider)[0]
+
+
+def _readiness_state(
+    provider: str, components: dict[str, bool], details: dict[str, dict[str, Any]]
+) -> str:
+    if not components:
+        return "not_required"
+    ready = any(components.values()) if provider == "gsc" else all(components.values())
+    if ready:
+        return "configured_unverified"
+    if any(item.get("state") == "invalid" for item in details.values()):
+        return "invalid"
+    return "missing"
+
+
+def _input_schema(provider: str, operation: str) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": ["provider", "operation", "request"],
+        "properties": {
+            "provider": {"type": "string", "const": provider},
+            "operation": {"type": "string", "const": operation},
+            "request": {
+                "type": "object",
+                "additionalProperties": True,
+                "description": "Provider-specific fields are validated by the selected operation adapter.",
+            },
+        },
+    }
+
+
+def _operation_contract(provider: str, operation: str) -> dict[str, Any]:
+    if provider not in _REGISTRY or operation not in _REGISTRY[provider]["operations"]:
+        return {"name": operation, "state": "unsupported", "surface": None}
+    dedicated_surface = _DEDICATED_OPERATIONS.get(provider, {}).get(operation)
+    if dedicated_surface:
+        state, surface = (
+            ("dedicated_write", dedicated_surface)
+            if provider == "indexnow"
+            else ("dedicated", dedicated_surface)
+        )
+    elif operation in _COLLECTABLE_OPERATIONS.get(provider, frozenset()):
+        state, surface = "supported", "provider-collect"
+    else:
+        state, surface = "unsupported", None
+    contract: dict[str, Any] = {"name": operation, "state": state, "surface": surface}
+    if state == "supported":
+        contract["input_schema"] = _input_schema(provider, operation)
+    return contract
+
+
+def _operation_catalog(provider: str) -> list[dict[str, Any]]:
+    return [
+        _operation_contract(provider, operation) for operation in _REGISTRY[provider]["operations"]
+    ]
+
+
+def provider_readiness(provider: str | None = None, operation: str | None = None) -> dict[str, Any]:
+    """Describe credential configuration and operation routes without provider requests."""
+    if operation is not None and (not isinstance(operation, str) or not operation.strip()):
+        return {"ok": False, "state": "invalid", "error": "operation must be a non-empty string"}
+    if operation is not None and provider is None:
+        return {
+            "ok": False,
+            "state": "invalid",
+            "error": "provider is required when selecting an operation",
+        }
+    if provider is not None and (not isinstance(provider, str) or not provider.strip()):
+        return {"ok": False, "state": "invalid", "error": "provider must be a non-empty string"}
+    provider_status = sources_doctor()["providers"]
+    if provider is None:
+        return {
+            "ok": True,
+            "format": "seohead.provider-readiness.v1",
+            "verification_performed": False,
+            "providers": provider_status,
+            "note": "configured credentials are not verified account or target access",
+        }
+    provider = provider.strip()
+    if provider not in _REGISTRY:
+        return {"ok": False, "state": "unsupported", "error": "unsupported provider"}
+    status = provider_status[provider]
+    result: dict[str, Any] = {
+        "ok": True,
+        "format": "seohead.provider-readiness.v1",
+        "provider": provider,
+        "state": status["readiness_state"],
+        "readiness_state": status["readiness_state"],
+        "verified": False,
+        "permission_state": "not_verified",
+        "target_access": "not_requested",
+        "credential_components": status["credential_components"],
+        "credential_sources": status["credential_sources"],
+        "access": _REGISTRY[provider]["access"],
+        "quota_mode": _REGISTRY[provider]["quota_mode"],
+        "privacy_class": _REGISTRY[provider]["privacy_class"],
+        "operations": status["operations"],
+        "verification_surface": (
+            "provider-verify" if provider in {"gsc", "yandex_webmaster", "bing_webmaster"} else None
+        ),
+        "unavailable_reason": status.get("unavailable_reason"),
+    }
+    if operation is not None:
+        operation = operation.strip()
+        selected = next((item for item in status["operations"] if item["name"] == operation), None)
+        if selected is None:
+            return {
+                **result,
+                "ok": False,
+                "state": "unsupported",
+                "readiness_state": status["readiness_state"],
+                "operation": {"name": operation, "state": "unsupported"},
+                "error": "unsupported provider operation",
+            }
+        result["operations"] = [selected]
+        result["operation"] = selected
+        if selected["state"] == "unsupported":
+            result["ok"] = False
+            result["state"] = "unsupported"
+            result["readiness_state"] = status["readiness_state"]
+            result["error"] = "declared operation has no supported route"
+    return result
 
 
 def sources_doctor() -> dict[str, Any]:
-    """Configuration inspection without secret values or a false verification claim."""
+    """Configuration inspection without secrets or a false provider-access claim."""
     providers = {}
     for name in _REGISTRY:
-        components = _credential_components(name)
+        components, sources = _credential_details(name)
         available = any(components.values()) if name == "gsc" else all(components.values())
+        readiness = _readiness_state(name, components, sources)
         providers[name] = {
             "state": (
                 "credential_present"
@@ -177,11 +365,24 @@ def sources_doctor() -> dict[str, Any]:
                 else "not_required"
             ),
             "credential_components": components,
+            "credential_sources": sources,
+            "readiness_state": readiness,
+            "permission_state": "not_verified",
+            "target_access": "not_requested",
             "verified": False,
             "note": "run explicit provider-verify; configured credentials are not verified access",
+            "operations": _operation_catalog(name),
+            "quota_mode": _REGISTRY[name]["quota_mode"],
+            "privacy_class": _REGISTRY[name]["privacy_class"],
         }
         if name == "gsc":
             providers[name]["service_account_status"] = credentials.gsc_service_account_status()
+        if readiness in {"missing", "invalid"}:
+            providers[name]["unavailable_reason"] = (
+                "one or more required credential components are missing"
+                if readiness == "missing"
+                else "one or more configured credential sources are invalid"
+            )
     return {"format": "seohead.provider-doctor.v1", "providers": providers}
 
 
@@ -264,32 +465,79 @@ def _evidence(
     }
 
 
+def _permission_failure_state(result: dict[str, Any]) -> str:
+    """Map only explicit provider evidence to a permission failure category."""
+    error = str(result.get("error") or "").lower().replace("_", " ")
+    if "insufficient scope" in error or ("insufficient" in error and "scope" in error):
+        return "insufficient_scope"
+    if result.get("status") == 401 or "invalid grant" in error or "invalid token" in error:
+        return "invalid"
+    if result.get("status") == 403:
+        return "not_granted"
+    return "verification_failed"
+
+
 def provider_verify(
     provider: str, request: dict[str, Any] | None = None, *, transport: Any = None
 ) -> dict[str, Any]:
     """Perform one declared bounded read when supported; credentials alone stay unverified."""
+    if not isinstance(request, dict) and request is not None:
+        return {
+            "ok": False,
+            "provider": provider,
+            "state": "invalid",
+            "readiness_state": "invalid",
+            "permission_state": "invalid",
+            "target_access": "not_requested",
+            "verified": False,
+            "error": "request must be an object",
+        }
     request = request or {}
-    if provider not in _REGISTRY:
-        raise ValueError("unknown provider")
-    components = _credential_components(provider)
+    if not isinstance(provider, str) or provider not in _REGISTRY:
+        return {
+            "ok": False,
+            "provider": provider if isinstance(provider, str) else None,
+            "state": "unsupported",
+            "readiness_state": "unsupported",
+            "permission_state": "unsupported",
+            "target_access": "not_requested",
+            "verified": False,
+            "error": "unsupported provider",
+        }
+    components, sources = _credential_details(provider)
+    readiness = _readiness_state(provider, components, sources)
     if not components:
         return {
             "ok": False,
             "provider": provider,
             "state": "not_required",
+            "readiness_state": "not_required",
+            "permission_state": "not_required",
+            "target_access": "not_requested",
             "verified": False,
             "credential_components": components,
+            "credential_sources": sources,
             "note": "this public source has no authenticated-access contract to verify",
         }
     ready = any(components.values()) if provider == "gsc" else all(components.values())
     if not ready:
+        missing = readiness == "missing"
         result = {
             "ok": False,
             "provider": provider,
             "state": "not_configured",
+            "readiness_state": readiness,
+            "permission_state": "missing" if missing else "invalid",
+            "target_access": "not_requested",
             "verified": False,
             "credential_components": components,
+            "credential_sources": sources,
         }
+        result["error"] = (
+            "required credential components are missing"
+            if missing
+            else "configured credential source is invalid"
+        )
         if provider == "gsc":
             result["service_account_status"] = credentials.gsc_service_account_status()
         return result
@@ -310,9 +558,14 @@ def provider_verify(
             "ok": False,
             "provider": provider,
             "state": "credential_present",
+            "readiness_state": readiness,
+            "permission_state": "unsupported",
+            "target_access": "not_requested",
             "verified": False,
             "credential_components": components,
-            "note": "this provider needs a declared collection target for a bounded live verification",
+            "credential_sources": sources,
+            "operation_status": "unsupported",
+            "note": "this provider has no supported bounded verification route",
         }
     authenticated = bool(result.get("ok"))
     target = request.get("site_url") or request.get("host_id")
@@ -343,14 +596,28 @@ def provider_verify(
         target_access = (
             "verified" if target in candidates else "not_granted" if candidates else "unknown"
         )
+    if authenticated:
+        permission_state = (
+            "verified"
+            if target_access == "verified"
+            else "not_granted"
+            if target_access == "not_granted"
+            else "authenticated_account"
+        )
+    else:
+        permission_state = _permission_failure_state(result)
     return {
         "ok": authenticated,
         "provider": provider,
         "state": "authenticated" if authenticated else result.get("state", "verification_failed"),
+        "readiness_state": readiness,
+        "permission_state": permission_state,
         "authenticated_account": authenticated,
         "target_access": target_access,
         "verified": target_access == "verified",
         "credential_components": components,
+        "credential_sources": sources,
+        "operations": _operation_catalog(provider),
         "selected_reference": _reference(target),
         "granted_scopes": result.get("scopes") or "unknown",
         "quota_mode": _REGISTRY[provider]["quota_mode"],
@@ -371,6 +638,13 @@ def provider_collect(
 ) -> dict[str, Any]:
     """Explicit provider collection; each dispatch is read-only and may return skipped evidence."""
     if provider not in _REGISTRY or operation not in _REGISTRY[provider]["operations"]:
+        raise ValueError("unsupported provider operation")
+    operation_contract = _operation_contract(provider, operation)
+    if operation_contract["state"] == "dedicated":
+        raise ValueError("this provider operation uses its existing dedicated route")
+    if operation_contract["state"] == "dedicated_write":
+        raise ValueError("this provider operation is a separately confirmed write action")
+    if operation_contract["state"] != "supported":
         raise ValueError("unsupported provider operation")
     if not isinstance(request, dict):
         raise ValueError("request must be an object")
@@ -428,10 +702,6 @@ def provider_collect(
         from seohead.data_sources import crtsh
 
         result = crtsh.subdomains(fetcher=transport, **request)
-    elif provider in {"arsenkin", "yandex_cloud"}:
-        raise ValueError("this paid provider uses its existing dedicated operation contract")
-    elif provider == "indexnow":
-        raise ValueError("IndexNow is a separately confirmed write action, not provider collection")
     elif provider == "metrika":
         if operation not in {"counters", "aggregate_report"}:
             raise ValueError("Metrika raw Logs API is intentionally unreachable")

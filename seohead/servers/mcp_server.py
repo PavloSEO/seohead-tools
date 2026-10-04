@@ -692,6 +692,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_crawl_import(manifest_path: str) -> dict[str, Any]:
+        """Read a versioned third-party crawl CSV bundle from a local manifest.
+
+        The manifest maps source headers to page, link, status, and redirect
+        fields. The result is ``third_party_crawl.v1`` with source identity and
+        per-field coverage; it is not scan.v1 or SF audit evidence.
+        """
+        return _checked(handlers.crawl_import(manifest_path=manifest_path))
+
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_segment_diff(audit: Any, source: str, target: str) -> dict[str, Any]:
         """Cross-segment counterpart diff (#358): which pages in the ``source`` segment
@@ -958,9 +968,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_sources_doctor() -> dict[str, Any]:
-        """Which external data sources are ready to use: whether each secret is present,
-        where it is read from, and where the spend journal lives. Call this before planning
-        a paid run — a missing key is cheaper to find now than mid-collection."""
+        """Inspect redacted credential references, readiness and declared provider operations.
+
+        Configured credentials do not verify account or target permission. This local check makes
+        no provider requests; use seo_provider_verify for an explicit bounded read.
+        """
         return _checked(handlers.sources_doctor())
 
     @mcp.tool(annotations=fetch, structured_output=True)
@@ -1277,6 +1289,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_provider_registry() -> dict[str, Any]:
         """List provider operations, credential components, quota and privacy boundaries."""
         return _checked(handlers.provider_registry())
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_provider_readiness(
+        provider: str | None = None, operation: str | None = None
+    ) -> dict[str, Any]:
+        """Inspect configured credential sources and declared operation routes offline.
+
+        Credential configuration never proves account or target permission. Use
+        seo_provider_verify for an explicit bounded read-only access check.
+        """
+        return _checked(handlers.provider_readiness(provider=provider, operation=operation))
 
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
