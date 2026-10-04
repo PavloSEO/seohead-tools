@@ -4,7 +4,6 @@ import csv
 
 from seohead.sf.core.audit import run_audit
 
-
 _COLUMNS = [
     "Address",
     "Content Type",
@@ -59,6 +58,11 @@ def test_session_parameter_name_is_kept_while_value_is_redacted(tmp_path):
     assert "secret-token" not in str(finding.details)
 
 
+def test_legitimate_id_and_tracking_parameters_are_not_called_session_identifiers(tmp_path):
+    result = _audit(tmp_path, [_row("https://example.com/product?id=42&utm_source=newsletter")])
+    assert "URL_SESSION_ID" not in {issue.check for issue in result.issues}
+
+
 def test_slash_pair_requires_two_indexable_pages_without_convergence(tmp_path):
     result = _audit(
         tmp_path,
@@ -81,5 +85,13 @@ def test_slash_redirect_convergence_is_not_reported(tmp_path):
             _row("https://example.com/guide"),
             _row("https://example.com/guide/", status=301, redirect="https://example.com/guide"),
         ],
+    )
+    assert "URL_TRAILING_SLASH_INCONSISTENT" not in {issue.check for issue in result.issues}
+
+
+def test_case_sensitive_siblings_are_not_folded_into_a_slash_pair(tmp_path):
+    result = _audit(
+        tmp_path,
+        [_row("https://example.com/Guide"), _row("https://example.com/guide/")],
     )
     assert "URL_TRAILING_SLASH_INCONSISTENT" not in {issue.check for issue in result.issues}
