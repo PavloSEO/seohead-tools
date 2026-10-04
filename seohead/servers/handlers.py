@@ -3783,6 +3783,7 @@ def sources_doctor() -> dict[str, Any]:
         "gsc": ("gsc/access_token", "GSC_ACCESS_TOKEN"),
         "crux": ("crux/api_key", "CRUX_API_KEY"),
         "indexnow": ("indexnow/key", "INDEXNOW_KEY"),
+        "miratext": ("miratext/api_key", "MIRATEXT_API_KEY"),
     }
     sources = {
         name: {

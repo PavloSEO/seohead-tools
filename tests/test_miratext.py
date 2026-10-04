@@ -97,3 +97,14 @@ def test_accepted_result_reduces_keyword_and_density_tables():
         "stopwords": ["and"],
         "filters": "provider_not_reported",
     }
+
+
+def test_sources_doctor_reports_miratext_without_printing_the_key(monkeypatch, tmp_path):
+    from seohead.data_sources import credentials
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setenv("MIRATEXT_API_KEY", "synthetic-canary")
+    source = handlers.sources_doctor()["sources"]["miratext"]
+    assert source["ready"] and source["env"] == "MIRATEXT_API_KEY"
+    assert "synthetic-canary" not in json.dumps(source)
