@@ -153,6 +153,32 @@ def follow_and_nofollow_inlinks(links: list[LinkEdge], host: str) -> list[str]:
     return sorted(dest for dest, flags in by_dest.items() if flags == {True, False})
 
 
+def follow_and_nofollow_inlink_details(
+    links: Iterable[LinkEdge], host: str, max_sources: int = 20
+) -> list[dict[str, Any]]:
+    """Observed mixed internal rel states with bounded contributing sources (#832)."""
+    host = host.lower()
+    grouped: dict[str, dict[str, Any]] = {}
+    for edge in links:
+        if (urlsplit(edge.destination).hostname or "").lower() != host:
+            continue
+        item = grouped.setdefault(
+            edge.destination, {"sources": set(), "follow": 0, "nofollow": 0}
+        )
+        item["sources"].add(edge.source)
+        item["nofollow" if edge.nofollow else "follow"] += 1
+    return [
+        {
+            "target_url": destination,
+            "sources": sorted(item["sources"])[:max_sources],
+            "follow_occurrences": item["follow"],
+            "nofollow_occurrences": item["nofollow"],
+        }
+        for destination, item in sorted(grouped.items())
+        if item["follow"] and item["nofollow"]
+    ]
+
+
 def form_url_insecure(forms: list[FormEdge]) -> list[dict[str, Any]]:
     """Forms whose action submits over plain HTTP, regardless of the hosting page's own
     scheme -- data leaves the browser unencrypted the moment the form is submitted."""

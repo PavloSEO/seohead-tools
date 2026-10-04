@@ -1,6 +1,10 @@
+import io
 import json
+import urllib.error
 
+from seohead import cli
 from seohead.data_sources import yandex_webmaster as wm
+from seohead.servers import handlers
 
 
 def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
@@ -21,7 +25,10 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
                 "text_indicator_to_statistics": [
                     {
                         "text_indicator": {"value": "pump"},
-                        "statistics": [{"date": "2026-10-01", "field": "IMPRESSIONS", "value": 4}],
+                        "statistics": [
+                            {"date": "2026-10-01", "field": "IMPRESSIONS", "value": 4},
+                            {"date": "2026-10-01", "field": "CLICKS", "value": 1},
+                        ],
                     }
                 ]
             }
@@ -35,6 +42,7 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
         transport=send,
     )
     assert result["ok"] and result["rows"][0]["query"] == "pump"
+    assert result["rows"][0]["daily"][0]["ctr"] == 0.25
     assert [call[0] for call in calls] == ["POST", "POST"]
     assert all("query-analytics/list" in call[1] for call in calls)
     assert calls[0][2]["filters"]["text_filters"][0]["operation"] == "TEXT_MATCH"
@@ -60,10 +68,54 @@ def test_url_queries_paginate_with_explicit_cap():
             {
                 "count": 1,
                 "text_indicator_to_statistics": [
-                    {"text_indicator": {"value": "pump"}, "statistics": []}
+                    {
+                        "text_indicator": {"value": "pump"},
+                        "statistics": [{"date": "2026-10-01", "field": "IMPRESSIONS", "value": 1}],
+                    }
                 ],
             }
         )
 
     result = wm.url_queries("h", max_urls=2, token="t", user_id="7", transport=send)
     assert result["returned_urls"] == 2 and result["state"] == "complete"
+
+
+def test_query_route_retries_rate_limits_and_returns_only_provider_error_code():
+    calls = 0
+
+    def send(_method, _url, _payload, _token):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise urllib.error.HTTPError("https://api.test", 429, "rate", {}, io.BytesIO(b"{}"))
+        raise urllib.error.HTTPError(
+            "https://api.test", 403, "denied", {}, io.BytesIO(b'{"error_code":"HOST_NOT_FOUND"}')
+        )
+
+    result = wm.url_queries("h", token="canary", user_id="7", transport=send)
+    assert result == {"ok": False, "state": "failed", "error_code": "HOST_NOT_FOUND"}
+    assert calls == 3 and "canary" not in json.dumps(result)
+
+
+def test_cli_url_query_flags_reach_the_shared_handler(monkeypatch):
+    captured = {}
+    monkeypatch.setitem(
+        handlers.HANDLERS,
+        "webmaster_url_queries",
+        lambda **kwargs: captured.update(kwargs) or {"ok": True},
+    )
+    assert (
+        cli.main(
+            [
+                "webmaster-url-queries",
+                "--host-id",
+                "h",
+                "--url",
+                "https://example.test/a",
+                "--max-urls",
+                "2",
+            ]
+        )
+        == 0
+    )
+    assert captured == {"host_id": "h", "url": "https://example.test/a", "max_urls": 2}

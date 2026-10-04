@@ -1,7 +1,7 @@
 # Audit coverage — the gap map
 
 **Purpose.** The list of SEO checks our SF audit
-(`seohead/sf/core/registry.py`, 181 checks) still **lacks**. For every gap:
+(`seohead/sf/core/registry.py`, 182 checks) still **lacks**. For every gap:
 value, implementation mode, likely home in the code. This is a filling plan,
 not a bug report. Items implemented since this map was written are marked
 **DONE**.
@@ -43,6 +43,26 @@ from different starting lists; read both before filing a new gap.
 > `UNAVAILABLE_AFTER` (issue #30), and `IMG_MISSING_ALT_ATTRIBUTE` +
 > `IMG_ALT_TOO_LONG` (rows 9.1/9.2 below, coverage-evidence #385/#386).
 
+## Reconciliation snapshot — 2026-10-04
+
+This map was reconciled against the generated `CHECKS.md`, current registry,
+CLI/MCP handlers, synthetic tests, and open issues. Existing **DONE** rows
+remain covered; the following stale candidates are now settled without
+inventing a broader claim.
+
+| Map rows | Status and current evidence |
+|---|---|
+| 2.1–2.5 | **Covered in registry:** `NO_AUTHOR_BYLINE`, `NO_CONTENT_DATES`, the four trust-page checks, and `FEW_CITATIONS`. They report observed markup/discovery states, never trustworthiness or citation authority. |
+| 2.6–2.7 | **Partial / missing:** `YMYL_REVIEW_CANDIDATE` is a deterministic review candidate, not a classification; disclaimer/editorial-policy detection remains missing. |
+| 3.1–3.9 | **Explicitly out of scope:** no 92-item accessibility/AMP or WCAG engine. `provider-collect` can return a capped opt-in Lighthouse sample with provider, engine, version, strategy, score, and failed/incomplete IDs; it is not WCAG or legal-compliance evidence. |
+| 6.3–6.4 | **Covered in registry:** `CANONICAL_TARGET_ERROR` and `CANONICAL_HOMEPAGE_GROUP`. |
+| 8.2 / 8.4 | **Covered in registry:** `ONLY_NOFOLLOW_INLINKS` for verified indexable targets (with partial-crawl withholding) and native `HTTP_LINK_ON_HTTPS` from retained raw hrefs; observed HTTP→HTTPS redirect convergence stays silent. |
+| 10.2 / 10.4 | **Covered in registry:** `URL_SESSION_ID` redacts values and `URL_TRAILING_SLASH_INCONSISTENT` requires observed, non-convergent indexable pairs while preserving path case. |
+| 11.1–11.7 | **Covered in registry:** `DUPLICATE_ID`, `MISSING_DOCTYPE`, `MISSING_CHARSET`, head/body structure, invalid head elements, `LOREM_IPSUM_PLACEHOLDER`/`PLACEHOLDER_MARKER`, and `DECLARED_MIME_MISMATCH`. These are bounded observations, not HTML conformance validation. |
+
+Every other non-DONE row remains **missing** unless it says partial or A/live.
+The priority list below is therefore a backlog, not a product-capability claim.
+
 ---
 
 ## 1. Performance and Core Web Vitals
@@ -58,7 +78,7 @@ from different starting lists; read both before filing a new gap.
 | 1.7 | Page weight (total) | Total page weight with resources, not HTML only (`LARGE_HTML` covers markup alone) | medium | A/live | id `HEAVY_PAGE_WEIGHT` |
 
 **Context.** `SLOW_RESPONSE` already catches a slow server, but it is no
-substitute for real CWV. None of the 165 crawl-registry checks measures field
+substitute for real CWV. None of the 182 crawl-registry checks measures field
 CWV directly. The opt-in CrUX path added in #822 assesses current-window p75
 with URL/origin, form factor and period provenance; missing field data stays
 unavailable. A one-run `render-check` result remains lab evidence.
@@ -69,13 +89,13 @@ unavailable. A one-run `render-check` result remains lab evidence.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 2.1 | Authorship (byline) | A visible author on content pages | **high** | B+ (Custom Extraction) / A (HTML) | new `eeat.py`, id `NO_AUTHOR_BYLINE` |
-| 2.2 | Publish/update dates | Presence and freshness of content dates | **high** | B+ / A | `eeat.py`, id `NO_CONTENT_DATES` |
-| 2.3 | About / Contact pages | Existence and indexability of about/contact | **high** | B (URL/anchor search in Internal:All) | `eeat.py`, ids `MISSING_ABOUT_PAGE` / `MISSING_CONTACT_PAGE` |
-| 2.4 | Privacy Policy / Terms | Legal pages exist | medium | B | `eeat.py`, id `MISSING_PRIVACY_POLICY` |
-| 2.5 | Outbound citations | Outbound links to authoritative sources in the content body | medium | B (Inlinks + "Content" position) | `eeat.py`, id `FEW_CITATIONS` |
-| 2.6 | YMYL detection | Classify a page as your-money-your-life (finance/health/law) by path/content | **high** | B (heuristics) + LLM on top | `eeat.py`, id `YMYL_PAGE` |
-| 2.7 | Trust signals / disclaimers | Disclaimer / editorial-policy markers | low | A (HTML) | `eeat.py` |
+| 2.1 | Authorship (byline) | Observed author/byline markup on scoped content pages | **high** | **DONE** — `NO_AUTHOR_BYLINE`; no author-quality verdict | `eeat.py` |
+| 2.2 | Publish/update dates | Observed publication/update markup | **high** | **DONE** — `NO_CONTENT_DATES`; freshness remains unjudged | `eeat.py` |
+| 2.3 | About / Contact pages | Discovered/indexable state of about/contact routes | **high** | **DONE** — `MISSING_ABOUT_PAGE` / `MISSING_CONTACT_PAGE` | `eeat.py` |
+| 2.4 | Privacy Policy / Terms | Discovered/indexable legal-page state | medium | **DONE** — `MISSING_PRIVACY_POLICY` / `MISSING_TERMS_PAGE` | `eeat.py` |
+| 2.5 | Outbound citations | Observable body-positioned outbound references | medium | **DONE** — `FEW_CITATIONS`; authority is not inferred | `eeat.py` |
+| 2.6 | YMYL detection | Deterministic review candidate by path/title vocabulary | **high** | **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification | `eeat.py` |
+| 2.7 | Trust signals / disclaimers | Disclaimer / editorial-policy markers | low | Missing | — |
 
 **Context.** The reference is 14 rules in this group in Lighthouse-class
 tools; we have zero. E-E-A-T is Google's quality frame, critical for YMYL
@@ -142,8 +162,8 @@ separate class (they need the full page set, which mode B already has).
 |---|---|---|---|---|---|
 | 6.1 | Canonical chain | A->B, and B canonicalizes elsewhere | **high** | **DONE** — `CANONICAL_CHAIN` | `check_canonical_directives` |
 | 6.2 | Canonical -> redirect | Canonical points at a 3xx URL | **high** | **DONE** — `CANONICAL_TO_REDIRECT` | same |
-| 6.3 | Canonical -> 4xx/5xx | Canonical points at a broken URL | **high** | B (canonical x status) | id `CANONICAL_TO_ERROR` |
-| 6.4 | Canonical -> homepage (stamp) | All canonicals collapse onto `/` instead of the relevant page | medium | B (grouping by canonical) | id `CANONICAL_TO_HOMEPAGE` |
+| 6.3 | Canonical -> 4xx/5xx | Canonical points at a broken URL | **high** | **DONE** — `CANONICAL_TARGET_ERROR` | `check_canonical_target_error` |
+| 6.4 | Canonical -> homepage (stamp) | Distinct sections canonicalize to homepage | medium | **DONE** — `CANONICAL_HOMEPAGE_GROUP` | `check_canonical_homepage_group` |
 | 6.5 | Canonical header vs tag | `<link rel=canonical>` disagrees with the HTTP `Link: rel=canonical` | medium | B+ (SF catches HTTP canonical when configured) / A | id `CANONICAL_HEADER_MISMATCH` |
 | 6.6 | Canonical contains a fragment | `<link rel=canonical>` points at a `#fragment`, which the server never sees | low | **DONE** (issue #30) — `CANONICAL_FRAGMENT` | `check_canonical_extra` |
 | 6.7 | Canonical outside `<head>` | The tag is placed in `<body>` and is silently ignored | medium | **DONE** (issue #123) — `CANONICAL_OUTSIDE_HEAD`, from a native crawl's own parse tree (`seohead.tools.parser.parse_html`'s `document_position`); the eleven catalogued "outside head"/document-skeleton entries all closed together, see `check_element_position`/`check_document_skeleton` | `rules.py` |
@@ -185,9 +205,9 @@ open.
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
 | 8.1 | follow/nofollow conflict per target | One URL receives both follow and nofollow links from different pages | medium | **DONE** — `FOLLOW_AND_NOFOLLOW_INLINKS` | `crawl/link_findings.py` (native crawl, not the `*:Inlinks` export) |
-| 8.2 | Nofollow onto an indexable page | An indexable page is linked to only via nofollow — equity lost | medium | B | id `NOFOLLOW_TO_INDEXABLE` |
+| 8.2 | Nofollow onto an indexable page | Verified indexable page is linked only via nofollow | medium | **DONE** — `ONLY_NOFOLLOW_INLINKS`, withheld on partial crawl | `inlinks.py` |
 | 8.3 | External without nofollow | The page leaks equity without `rel=nofollow/sponsored/ugc` | low | B (Inlinks: external + rel) | id `EXTERNAL_DOFOLLOW` |
-| 8.4 | HTTP links on an HTTPS page | `http://` anchors inside an https page (≠ mixed content, which is about resources) | low | B (Inlinks: scheme) | id `HTTP_LINK_ON_HTTPS` |
+| 8.4 | HTTP links on an HTTPS page | Explicit internal `http://` anchor on a fetched HTTPS page | low | **DONE** — `HTTP_LINK_ON_HTTPS`, with observed redirect convergence excluded | `crawl/link_findings.py` |
 | 8.5 | Localhost/127.0.0.1 in links | A forgotten dev artefact | medium | **DONE** — `OUTLINK_TO_LOCALHOST` | `crawl/link_findings.py` |
 | 8.6 | Generic anchor text | "click here"/"learn more" and localized equivalents | medium | **DONE** — `GENERIC_ANCHOR_TEXT` | `inlinks.py` |
 | 8.7 | Anchor without title (duplicating) | A link without `title=""` with an implicit anchor | low | B+ | id `ANCHOR_NO_TITLE` |
@@ -216,9 +236,9 @@ graph checks land in `inlinks.py` with almost no new math.
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
 | 10.1 | Tracking parameters | `utm_*`, `gclid`, `fbclid`, `msclkid` in an indexable URL | medium | **DONE** — `URL_TRACKING_PARAMS` | `check_url_extra` |
-| 10.2 | Session ID in URL | `?sid=…`/`?PHPSESSID=…` — an indexed session | medium | B | id `URL_SESSION_ID` |
+| 10.2 | Session ID in URL | Known session parameter on an indexable URL | medium | **DONE** — `URL_SESSION_ID`, values redacted | `check_url_hygiene` |
 | 10.3 | Stop words in slug | "the/a/and" and Russian equivalents in the path | low | B | id `URL_STOP_WORDS` |
-| 10.4 | Trailing-slash desync | Some URLs with a slash, some without, at the same level | medium | B (path graph) | id `URL_TRAILING_SLASH_INCONSISTENT` |
+| 10.4 | Trailing-slash desync | Comparable slash/non-slash variants both serve indexable content | medium | **DONE** — `URL_TRAILING_SLASH_INCONSISTENT`; path case/convergence preserved | `check_url_hygiene` |
 | 10.5 | WWW canonicalization | No redirect www <-> non-www | medium | **DONE** as the live `mirror-check` (no registry id) | id `NO_WWW_REDIRECT` |
 
 ---
@@ -227,13 +247,13 @@ graph checks land in `inlinks.py` with almost no new math.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 11.1 | Duplicate `id`s | Two elements with the same `id` — breaks JS/anchors/a11y | medium | A (HTML) | id `DUPLICATE_ID` |
-| 11.2 | No `<!DOCTYPE>` | Quirks mode | low | A (HTML) | id `MISSING_DOCTYPE` |
-| 11.3 | No charset | Encoding not declared | low | A (HTML) | id `MISSING_CHARSET` |
-| 11.4 | Multiple `<head>`/structural dupes | title/desc dupes exist; head — not | low | A (HTML) | id `MULTIPLE_HEAD` |
-| 11.5 | Block elements in `<head>` | Invalid head content breaks parsing | low | A (HTML) | id `INVALID_HEAD_CONTENT` |
-| 11.6 | Lorem ipsum / placeholder | Draft text left in production | medium | A (HTML/content) | id `PLACEHOLDER_TEXT` |
-| 11.7 | MIME vs extension | Content-Type does not match the extension | low | B (Content-Type + URL) | id `MIME_MISMATCH` |
+| 11.1 | Duplicate `id`s | Bounded repeated literal IDs in parsed HTML | medium | **DONE** — `DUPLICATE_ID`; not full HTML conformance | `check_html_structure` |
+| 11.2 | No `<!DOCTYPE>` | Quirks mode | low | **DONE** — `MISSING_DOCTYPE` | `check_doctype` |
+| 11.3 | No charset | Encoding not declared | low | **DONE** — `MISSING_CHARSET` | `check_charset` |
+| 11.4 | Multiple `<head>`/structural dupes | Head/body counts and order | low | **DONE** — `HEAD_MULTIPLE`, `BODY_MULTIPLE`, `HEAD_NOT_FIRST` | `check_document_skeleton` |
+| 11.5 | Block elements in `<head>` | Observed invalid head element | low | **DONE** — `INVALID_HEAD_ELEMENT` | `check_document_skeleton` |
+| 11.6 | Lorem ipsum / placeholder | Content Lorem plus literal template markers in declarations | medium | **DONE** — `LOREM_IPSUM_PLACEHOLDER` / `PLACEHOLDER_MARKER`; ordinary prose stays unclassified | `rules.py` |
+| 11.7 | MIME vs extension | Declared Content-Type conflicts with known filename extension | low | **DONE** — `DECLARED_MIME_MISMATCH`; not full MIME validation | `check_html_structure` |
 
 ---
 
@@ -361,7 +381,7 @@ mode B without network ranks higher.
 10. **Pagination canonical chain and loop** (§12.2–12.3) — medium,
     **mode B**, graph over rel_next x canonical.
 
-Cheap wins still open in mode B (one rule per check): `HTTP_LINK_ON_HTTPS`,
-`CANONICAL_TO_ERROR`, `CANONICAL_TO_HOMEPAGE`, `HREFLANG_NO_RETURN`,
-`HREFLANG_MULTI_LANG`, `URL_SESSION_ID` — all on data the loader already
-reads. `LOCALHOST_LINK` shipped as `OUTLINK_TO_LOCALHOST` (issue #125).
+Cheap remaining mode-B candidates: `EXTERNAL_DOFOLLOW`, `URL_STOP_WORDS`,
+`HREFLANG_MULTI_LANG`, `PAGINATION_BROKEN`, and `PAGINATION_ORPHAN`.
+`OUTLINK_TO_LOCALHOST` and the former canonical/session/HTTP candidates are
+shipped checks, not priorities.

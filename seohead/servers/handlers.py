@@ -1541,12 +1541,12 @@ def _audit_crawl_result(
                 ctx.add("OUTLINK_TO_LOCALHOST", target_url=item["target_url"], details=item)
             crawl_host = (urlsplit(start_norm).hostname or "") if url else ""
             if crawl_host:
-                for dest in (
-                    graph.iter_follow_and_nofollow(crawl_host)
-                    if graph
-                    else link_findings.follow_and_nofollow_inlinks(links, crawl_host)
+                for item in link_findings.follow_and_nofollow_inlink_details(
+                    graph.iter_links() if graph else links, crawl_host
                 ):
-                    ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=dest)
+                    ctx.add(
+                        "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
+                    )
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
@@ -1741,7 +1741,7 @@ def _audit_crawl_result(
         # The lazy page/group factories retain the disk-backed context until
         # the writer has consumed every collection.
         for rows in collections.values():
-            setattr(rows, "_context_owner", ctx)
+            rows._context_owner = ctx
         return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
     audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator
@@ -3785,6 +3785,7 @@ def sources_doctor() -> dict[str, Any]:
         "gsc": ("gsc/access_token", "GSC_ACCESS_TOKEN"),
         "crux": ("crux/api_key", "CRUX_API_KEY"),
         "indexnow": ("indexnow/key", "INDEXNOW_KEY"),
+        "miratext": ("miratext/api_key", "MIRATEXT_API_KEY"),
     }
     sources = {
         name: {
@@ -4821,6 +4822,33 @@ def bi_bigquery_plan(package: str, dataset: str, operation: str = "replace") -> 
     return {"ok": True, **bigquery_plan(package, dataset=dataset, operation=operation)}
 
 
+def bi_destination_apply(
+    package: str,
+    target: str,
+    destination: str,
+    operation: str,
+    apply: bool = False,
+    *,
+    client: Any = None,
+) -> dict[str, Any]:
+    """Apply a verified local BI package through an injected authorized destination client."""
+    if destination not in {"sheets", "bigquery"}:
+        raise ValueError("destination must be 'sheets' or 'bigquery'")
+    if client is None:
+        raise ValueError(
+            "destination apply requires an injected authorized client; CLI/MCP never accepts credentials"
+        )
+    from seohead.reports.bi_destinations import apply_with_client
+
+    return {
+        "ok": True,
+        "destination": destination,
+        **apply_with_client(
+            package, target=target, operation=operation, client=client, apply=apply
+        ),
+    }
+
+
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
     """Run a closed, bounded single-URL investigation using the existing shared tools."""
     chosen = checks if checks is not None else ["metadata", "headers", "robots"]
@@ -5138,6 +5166,7 @@ _RAW_HANDLERS = {
     "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,
     "bi_bigquery_plan": bi_bigquery_plan,
+    "bi_destination_apply": bi_destination_apply,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server

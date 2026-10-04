@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,6 +15,7 @@ from seohead.data_sources.http import open_no_redirect
 
 ENDPOINT = "https://miratext.com/api2/call/article/seoAnalizText"
 SOURCE = "miratext"
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 Transport = Callable[[str, bytes], str]
 
 
@@ -91,7 +94,10 @@ def _transport(key: str) -> Transport:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         with open_no_redirect(request, timeout=30) as response:
-            return response.read().decode("utf-8")
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ValueError("Miratext response exceeds 20 MiB")
+        return body.decode("utf-8")
 
     return send
 
@@ -129,6 +135,14 @@ def analyze(
         }
     if hash is None and not ((urls or texts) and my):
         raise ValueError("pass hash to resume, or URLs/texts and my")
+    if hash is not None and (
+        not isinstance(hash, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", hash)
+    ):
+        raise ValueError("hash must be a 1..128 character provider identifier")
+    if check_type not in {"url", "content"}:
+        raise ValueError("check_type must be url or content")
+    if not all(isinstance(value, str) and value for value in (urls or []) + (texts or [])):
+        raise ValueError("urls and texts must contain non-empty strings")
     if (urls and texts) or (urls and len(urls) > 10) or (texts and len(texts) > 10):
         raise ValueError("pass one of urls or texts with at most 10 items")
     try:
@@ -151,21 +165,51 @@ def analyze(
         if keywords:
             fields.append(("keywords_search[keywords]", keywords))
     encoded = urllib.parse.urlencode(fields)
-    try:
-        body = json.loads((transport or _transport(key))(encoded, b""))
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+
+    def request(payload: str) -> dict[str, Any] | None:
+        try:
+            response = json.loads((transport or _transport(key))(payload, b""))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+            return None
+        return (
+            response
+            if isinstance(response, dict) and isinstance(response.get("result"), str)
+            else None
+        )
+
+    body = request(encoded)
+    if body is None:
         return {"ok": False, "state": "failed", "error": "Miratext request failed"}
-    if not isinstance(body, dict) or not isinstance(body.get("result"), str):
-        return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
     if body["result"] != "ok":
         return {"ok": False, "state": "failed", "error": "Miratext rejected the request"}
     state = body.get("status", "accepted")
+    if not isinstance(state, str):
+        return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
+    deadline = time.monotonic() + timeout
+    polls = 0
+    while state in {"draft", "working"} and isinstance(body.get("hash"), str):
+        if time.monotonic() >= deadline or (transport is not None and polls):
+            break
+        if transport is None:
+            time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
+        resumed = request(
+            urllib.parse.urlencode(
+                [("api_key", key), ("check_type", check_type), ("hash", body["hash"])]
+            )
+        )
+        if resumed is None or resumed.get("result") != "ok":
+            break
+        body, state = resumed, resumed.get("status", "accepted")
+        if not isinstance(state, str):
+            return {"ok": False, "state": "failed", "error": "malformed Miratext response"}
+        polls += 1
     result = {
         "ok": True,
         "state": state,
         "hash": body.get("hash"),
         "paid": paid,
         "resumable": state in {"draft", "working"},
+        "wait_exhausted": state in {"draft", "working"},
     }
     if state == "accepted":
         result["author_tables"] = _author_tables(body.get("data"), top)

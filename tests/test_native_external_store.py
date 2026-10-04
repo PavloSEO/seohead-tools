@@ -5,7 +5,11 @@ from tests.test_scan_native import _metadata
 
 def test_native_external_checks_are_typed_ordered_and_idempotent(tmp_path):
     path = tmp_path / "scan.sqlite"
-    with NativeScan.create(path, **_metadata()) as scan:
+    with NativeScan.create(
+        path,
+        format_version="scan.v2",
+        **_metadata(**{"storage.format_version": "scan.v2"}),
+    ) as scan:
         check = ExternalCheck(
             url="https://outside.example.test/", outcome="blocked", reason="private_target"
         )
@@ -30,4 +34,10 @@ def test_native_external_checks_are_typed_ordered_and_idempotent(tmp_path):
         }
         scan.record_external_checks_summary(summary)
         assert list(scan.external_checks()) == [check.as_dict()]
-        assert scan.read_context("external_checks_summary") == summary
+        assert scan.con.execute("SELECT payload_json FROM external_check_summary").fetchone()[0]
+
+
+def test_v1_external_checks_remain_unavailable(tmp_path):
+    path = tmp_path / "scan.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        assert list(scan.external_checks()) == []

@@ -550,7 +550,7 @@ Build the reproducible normalized-input manifest for semantic analysis over reta
 
 MCP name: `seo_semantic_similarity`
 
-Group topical-similarity candidates from supplied embedding vectors.
+Group topical and internal-link review candidates from supplied vectors.
 
 | Argument | Type | Default |
 |---|---|---|

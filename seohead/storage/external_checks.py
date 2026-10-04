@@ -10,6 +10,16 @@ MAX_EXTERNAL_CHECKS = 50_000
 _OUTCOMES = {"fetched", "failed", "blocked", "skipped"}
 
 
+def ensure_schema(con: Any) -> None:
+    """Install the additive v2 store; v1 readers stay explicitly unavailable."""
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS external_checks (ordinal INTEGER PRIMARY KEY CHECK (ordinal >= 0), outcome TEXT NOT NULL CHECK (outcome IN ('fetched','failed','blocked','skipped')), payload_json TEXT NOT NULL)"
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS external_check_summary (singleton INTEGER PRIMARY KEY CHECK (singleton=1), payload_json TEXT NOT NULL)"
+    )
+
+
 def check_item(ordinal: int, payload: dict[str, Any]) -> dict[str, str]:
     if type(ordinal) is not int or not 0 <= ordinal < MAX_EXTERNAL_CHECKS:
         raise ScanError("external check ordinal is outside the retained bound")

@@ -126,3 +126,14 @@ CREATE TABLE scan_event_meta (
   captured INTEGER NOT NULL,
   dropped INTEGER NOT NULL
 );
+
+CREATE TABLE external_checks (
+  ordinal INTEGER PRIMARY KEY CHECK (ordinal >= 0),
+  outcome TEXT NOT NULL CHECK (outcome IN ('fetched','failed','blocked','skipped')),
+  payload_json TEXT NOT NULL
+);
+
+CREATE TABLE external_check_summary (
+  singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+  payload_json TEXT NOT NULL
+);

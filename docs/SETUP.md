@@ -499,6 +499,7 @@ Credentials (each wins over its file under `~/.config/`; see
 | `DATAFORSEO_PASSWORD` | `~/.config/dataforseo/password` | same |
 | `GSC_ACCESS_TOKEN` | `~/.config/gsc/access_token` | GSC OAuth bearer path |
 | `GSC_SERVICE_ACCOUNT_FILE` | `~/.config/gsc/service-account.json` | optional `.[gsc]` service-account path |
+| `MIRATEXT_API_KEY` | `~/.config/miratext/api_key` | `miratext-analyze`; free queue by default, paid modes require explicit confirmation |
 
 `seohead sources-doctor` reports which of these are present and where they
 are read from — run it before planning any paid collection.

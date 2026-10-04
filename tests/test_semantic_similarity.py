@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -55,6 +56,7 @@ def test_local_adapter_groups_only_supplied_embedding_evidence_and_reuses_cache(
         "https://example.test/water",
     }
     assert "duplicate" in first["groups"][0]["conclusion"]
+    assert first["internal_link_candidates"][0]["kind"] == "semantic_internal_link_review_candidate"
     assert len(calls) == 1
     assert second["coverage"]["state"] == "complete"
 
@@ -124,3 +126,26 @@ def test_document_bound_is_partial_and_adapter_identity_does_not_leak_a_local_pa
     assert result["coverage"]["state"] == "partial"
     assert result["coverage"]["omission_reasons"] == {"semantic document limit exceeded": 1}
     assert "model_path" not in result["adapter"]
+
+
+def test_cache_handles_concurrent_local_writers(tmp_path):
+    cache_path = tmp_path / "shared.sqlite"
+
+    def write(index):
+        cache = EmbeddingCache(cache_path)
+        cache.put(str(index) * 64, "a" * 64, {"model": "fixture"}, [float(index), 1.0])
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(write, range(1, 9)))
+
+    with sqlite3.connect(cache_path) as con:
+        assert con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0] == 8
+
+
+def test_cache_entry_quota_evicts_oldest_vectors(tmp_path):
+    cache = EmbeddingCache(tmp_path / "bounded.sqlite", max_entries=1)
+    cache.put("a" * 64, "a" * 64, {"model": "fixture"}, [1.0])
+    cache.put("b" * 64, "b" * 64, {"model": "fixture"}, [2.0])
+
+    assert cache.get("a" * 64) is None
+    assert cache.get("b" * 64) == [2.0]

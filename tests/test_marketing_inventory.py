@@ -35,6 +35,7 @@ def test_occurrences_stay_correlated_to_their_matched_elements(tmp_path):
         ("lead", None, "missing"),
     ]
     assert result["form_groups"][0]["occurrences"] == 2
+    assert result["label_normalization"] == "lowercase_collapse_whitespace"
     assert result["coverage"]["complete"] is False
     assert result["coverage"]["documents_unavailable"][0]["body_state"] == "unavailable"
     assert (tmp_path / "inventory" / "marketing-inventory.json").is_file()
@@ -50,3 +51,24 @@ def test_formula_like_labels_are_safe_in_csv_and_iframes_are_not_inspected(tmp_p
     with (tmp_path / "inventory" / "marketing-occurrences.csv").open() as stream:
         assert next(csv.DictReader(stream))["label"] == "'=SUM(A1)"
     assert "never fetched or inspected" in result["notes"][1]
+
+
+def test_raw_and_rendered_occurrences_remain_distinct_evidence_rows():
+    result = inventory(
+        [
+            {
+                "url": "https://example.com/",
+                "representation": "raw",
+                "html": '<a class="cta" href="/a">One</a>',
+            },
+            {
+                "url": "https://example.com/",
+                "representation": "rendered",
+                "html": '<a class="cta" href="/b">Two</a>',
+            },
+        ]
+    )
+    assert [(row["representation"], row["resolved_target"]) for row in result["occurrences"]] == [
+        ("raw", "https://example.com/a"),
+        ("rendered", "https://example.com/b"),
+    ]

@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence, Sized
 from dataclasses import dataclass
@@ -177,16 +178,25 @@ class EmbeddingCache:
             raise ValueError("max_entries must be positive")
         self.path = str(path)
         self.max_entries = max_entries
-        with self._connect() as con:
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
-                "cache_key TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, identity_json TEXT NOT NULL, "
-                "vector_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-            )
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                with self._connect() as con:
+                    con.execute("PRAGMA journal_mode=WAL")
+                    con.execute(
+                        "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
+                        "cache_key TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, identity_json TEXT NOT NULL, "
+                        "vector_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+                    )
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
     def _connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.path, timeout=5)
-        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA busy_timeout=5000")
         return con
 
     def get(self, key: str) -> list[float] | None:
@@ -363,11 +373,22 @@ def analyze_semantic_documents(
     groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for index, (document, _) in enumerate(usable):
         groups[root(index)].append(document)
+    candidates = [
+        {
+            "source_url": edge["left"],
+            "target_url": edge["right"],
+            "similarity": edge["similarity"],
+            "kind": "semantic_internal_link_review_candidate",
+            "conclusion": "review whether a contextual internal link is useful; similarity alone does not prove relevance or demand",
+        }
+        for edge in edges
+    ]
     return {
         "ok": True,
         "adapter": identity,
         "coverage": coverage,
         "candidate_comparisons": comparisons,
+        "internal_link_candidates": candidates,
         "groups": [
             {
                 "kind": "semantic_similarity_candidate",

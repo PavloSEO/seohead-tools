@@ -1,6 +1,11 @@
+import asyncio
 import json
 
+import pytest
+
+from seohead import cli
 from seohead.data_sources import miratext
+from seohead.servers import handlers
 
 
 def test_free_request_is_form_encoded_and_resumable_without_key_echo():
@@ -22,8 +27,27 @@ def test_free_request_is_form_encoded_and_resumable_without_key_echo():
         "hash": "job-1",
         "paid": False,
         "resumable": True,
+        "wait_exhausted": True,
     }
     assert "url%5B%5D=https%3A%2F%2Fexample.test%2Fa" in seen[0]
+
+
+def test_bounded_poll_can_finish_a_synthetic_queued_analysis():
+    responses = iter(
+        [
+            {"result": "ok", "hash": "job-1", "status": "draft"},
+            {
+                "result": "ok",
+                "hash": "job-1",
+                "status": "accepted",
+                "data": {"tz": {"keywordsAll": []}},
+            },
+        ]
+    )
+    result = miratext.analyze(
+        urls=["x"], my="y", api_key="canary", transport=lambda *_: json.dumps(next(responses))
+    )
+    assert result["state"] == "accepted" and result["wait_exhausted"] is False
 
 
 def test_paid_and_keywords_are_refused_before_provider_call():
@@ -35,6 +59,33 @@ def test_paid_and_keywords_are_refused_before_provider_call():
         transport=lambda *_: (_ for _ in ()).throw(AssertionError()),
     )
     assert result["state"] == "confirmation_required"
+
+
+def test_confirmed_paid_task_receipt_is_written_immediately(monkeypatch, tmp_path):
+    journal = tmp_path / "spend.jsonl"
+    monkeypatch.setenv("SEOHEAD_SPEND_LOG", str(journal))
+    result = miratext.analyze(
+        urls=["x"],
+        my="y",
+        paid=True,
+        confirm_paid=True,
+        api_key="canary",
+        transport=lambda *_: json.dumps({"result": "ok", "hash": "job-1", "status": "draft"}),
+    )
+    assert result["spend"]["extra"] == {"cost_unknown": True}
+    assert json.loads(journal.read_text())["source"] == "miratext"
+
+
+def test_invalid_hash_and_check_type_fail_before_transport():
+    def forbidden(*_args):
+        raise AssertionError("must not call provider")
+
+    with pytest.raises(ValueError):
+        miratext.analyze(hash="bad hash", api_key="canary", transport=forbidden)
+    with pytest.raises(ValueError):
+        miratext.analyze(
+            urls=["x"], my="y", check_type="unknown", api_key="canary", transport=forbidden
+        )
 
 
 def test_transport_failure_redacts_key():
@@ -97,3 +148,49 @@ def test_accepted_result_reduces_keyword_and_density_tables():
         "stopwords": ["and"],
         "filters": "provider_not_reported",
     }
+
+
+def test_sources_doctor_reports_miratext_without_printing_the_key(monkeypatch, tmp_path):
+    from seohead.data_sources import credentials
+    from seohead.servers import handlers
+
+    monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setenv("MIRATEXT_API_KEY", "synthetic-canary")
+    source = handlers.sources_doctor()["sources"]["miratext"]
+    assert source["ready"] and source["env"] == "MIRATEXT_API_KEY"
+    assert "synthetic-canary" not in json.dumps(source)
+
+
+def test_cli_and_mcp_forward_the_same_miratext_request(monkeypatch):
+    captured = []
+
+    def fake(**kwargs):
+        captured.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setitem(
+        handlers.HANDLERS,
+        "miratext_analyze",
+        fake,
+    )
+    monkeypatch.setattr(handlers, "miratext_analyze", fake)
+    assert cli.main(["miratext-analyze", "--input", '{"urls":["x"],"my":"y"}']) == 0
+    from seohead.servers.mcp_server import build_server
+
+    tool = build_server()._tool_manager.get_tool("seo_miratext_analyze")
+    assert asyncio.run(tool.run({"urls": ["x"], "my": "y"})) == {"ok": True}
+    assert captured == [
+        {"urls": ["x"], "my": "y"},
+        {
+            "urls": ["x"],
+            "texts": None,
+            "my": "y",
+            "hash": None,
+            "check_type": "url",
+            "keywords": None,
+            "paid": False,
+            "confirm_paid": False,
+            "timeout": 120,
+            "top": 100,
+        },
+    ]

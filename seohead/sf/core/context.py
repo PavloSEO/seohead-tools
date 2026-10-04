@@ -213,15 +213,26 @@ class _DiskIssues:
         self.path, self.closed = name, False
         self.con = sqlite3.connect(name)
         self.con.execute(
-            "CREATE TABLE issues (ordinal INTEGER PRIMARY KEY, check_id TEXT, value_json TEXT)"
+            "CREATE TABLE issues (ordinal INTEGER PRIMARY KEY, check_id TEXT NOT NULL, "
+            "target_url TEXT, target_sort TEXT NOT NULL, severity_rank INTEGER NOT NULL, "
+            "value_json TEXT NOT NULL)"
         )
-        self.con.execute("CREATE INDEX issues_check ON issues(check_id, ordinal)")
+        self.con.execute("CREATE INDEX issues_order ON issues(severity_rank, check_id, target_sort, ordinal)")
+        self._next_ordinal = 0
 
     def append(self, issue: Issue) -> None:
-        ordinal = self.con.execute("SELECT COALESCE(MAX(ordinal) + 1, 0) FROM issues").fetchone()[0]
+        ordinal = self._next_ordinal
+        self._next_ordinal += 1
         self.con.execute(
-            "INSERT INTO issues VALUES (?,?,?)",
-            (ordinal, issue.check, json.dumps(issue.__dict__, ensure_ascii=False)),
+            "INSERT INTO issues VALUES (?,?,?,?,?,?)",
+            (
+                ordinal,
+                issue.check,
+                issue.target_url,
+                str(issue.target_url),
+                {"critical": 0, "warning": 1, "notice": 2}.get(issue.severity, 3),
+                json.dumps(issue.__dict__, ensure_ascii=False),
+            ),
         )
 
     def __iter__(self) -> Iterator[Issue]:
@@ -234,6 +245,42 @@ class _DiskIssues:
     def remove_check(self, check_id: str) -> None:
         self.con.execute("DELETE FROM issues WHERE check_id=?", (check_id,))
 
+    def has_check(self, check_id: str) -> bool:
+        return self.con.execute(
+            "SELECT 1 FROM issues WHERE check_id=? LIMIT 1", (check_id,)
+        ).fetchone() is not None
+
+    def iter_deduped_sorted(self) -> Iterator[Issue]:
+        """Yield the legacy de-duplication result without a complete list.
+
+        Native analysis can create a finding per retained row.  The old
+        aggregator copied all of those rows into a Python list merely to sort
+        and merge them.  SQLite already owns the rows, so order by the exact
+        stable-ID key and retain only one duplicate group at a time.
+        """
+        current: Issue | None = None
+        current_key: tuple[str, str | None] | None = None
+        for row in self.con.execute(
+            "SELECT value_json FROM issues "
+            "ORDER BY severity_rank, check_id, target_sort, ordinal"
+        ):
+            issue = Issue(**json.loads(row[0]))
+            key = (issue.check, issue.target_url)
+            if current is not None and issue.target_url is not None and key == current_key:
+                current.locations.extend(issue.locations)
+                unique_sources = {
+                    loc.get("source_url") for loc in current.locations if loc.get("source_url")
+                }
+                current.occurrences_count = max(
+                    len(unique_sources), current.occurrences_count, issue.occurrences_count
+                )
+                continue
+            if current is not None:
+                yield current
+            current, current_key = issue, key
+        if current is not None:
+            yield current
+
     def close(self) -> None:
         if self.closed:
             return
@@ -241,6 +288,149 @@ class _DiskIssues:
         self.con.close()
         with suppress(FileNotFoundError):
             os.unlink(self.path)
+
+
+class _DiskIssueResults:
+    """Final active and suppressed findings, retained as re-iterable SQLite rows."""
+
+    def __init__(self) -> None:
+        descriptor, name = tempfile.mkstemp(prefix="seohead-audit-final-findings-", suffix=".sqlite")
+        os.close(descriptor)
+        self.path, self.closed = name, False
+        self.con = sqlite3.connect(name)
+        self.con.execute(
+            "CREATE TABLE active (ordinal INTEGER PRIMARY KEY, check_id TEXT NOT NULL, "
+            "severity TEXT NOT NULL, target_url TEXT, value_json TEXT NOT NULL)"
+        )
+        self.con.execute(
+            "CREATE TABLE suppressed (ordinal INTEGER PRIMARY KEY, check_id TEXT NOT NULL, "
+            "severity TEXT NOT NULL, target_url TEXT, value_json TEXT NOT NULL)"
+        )
+        self.con.execute(
+            "CREATE TABLE implausible_targets (check_id TEXT NOT NULL, target_url TEXT NOT NULL, "
+            "PRIMARY KEY(check_id, target_url)) WITHOUT ROWID"
+        )
+        self._active_ordinal = self._suppressed_ordinal = 0
+
+    def append_active(self, issue: Issue) -> None:
+        self.con.execute(
+            "INSERT INTO active VALUES (?,?,?,?,?)",
+            (
+                self._active_ordinal,
+                issue.check,
+                issue.severity,
+                issue.target_url,
+                json.dumps(issue.__dict__, ensure_ascii=False),
+            ),
+        )
+        self._active_ordinal += 1
+
+    def append_suppressed(self, issue: dict[str, Any]) -> None:
+        self.con.execute(
+            "INSERT INTO suppressed VALUES (?,?,?,?,?)",
+            (
+                self._suppressed_ordinal,
+                str(issue["check"]),
+                str(issue["severity"]),
+                issue.get("target_url"),
+                json.dumps(issue, ensure_ascii=False),
+            ),
+        )
+        self._suppressed_ordinal += 1
+
+    def remember_implausible_targets(self, issue: Issue, image_targeted: bool) -> None:
+        if image_targeted:
+            return
+        targets = {issue.target_url} if issue.target_url else set()
+        targets.update(
+            str(location["url"])
+            for location in issue.locations
+            if isinstance(location, dict) and location.get("url")
+        )
+        self.con.executemany(
+            "INSERT OR IGNORE INTO implausible_targets VALUES (?,?)",
+            ((issue.check, target) for target in targets),
+        )
+
+    def __iter__(self) -> Iterator[Issue]:
+        for row in self.con.execute("SELECT value_json FROM active ORDER BY ordinal"):
+            yield Issue(**json.loads(row[0]))
+
+    def __len__(self) -> int:
+        return self._active_ordinal
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step != 1:
+                return list(self)[index]
+            return [
+                Issue(**json.loads(row[0]))
+                for row in self.con.execute(
+                    "SELECT value_json FROM active WHERE ordinal>=? AND ordinal<? ORDER BY ordinal",
+                    (start, stop),
+                )
+            ]
+        row = self.con.execute("SELECT value_json FROM active WHERE ordinal=?", (index,)).fetchone()
+        if row is None:
+            raise IndexError(index)
+        return Issue(**json.loads(row[0]))
+
+    def iter_suppressed(self) -> Iterator[dict[str, Any]]:
+        for row in self.con.execute("SELECT value_json FROM suppressed ORDER BY ordinal"):
+            yield json.loads(row[0])
+
+    def suppressed_len(self) -> int:
+        return self._suppressed_ordinal
+
+    def suppressed_slice(self, index):
+        if isinstance(index, slice):
+            start, stop, step = index.indices(self.suppressed_len())
+            if step != 1:
+                return list(self.iter_suppressed())[index]
+            return [
+                json.loads(row[0])
+                for row in self.con.execute(
+                    "SELECT value_json FROM suppressed WHERE ordinal>=? AND ordinal<? ORDER BY ordinal",
+                    (start, stop),
+                )
+            ]
+        row = self.con.execute("SELECT value_json FROM suppressed WHERE ordinal=?", (index,)).fetchone()
+        if row is None:
+            raise IndexError(index)
+        return json.loads(row[0])
+
+    def implausible_counts(self) -> Iterator[tuple[str, int]]:
+        yield from self.con.execute(
+            "SELECT check_id, COUNT(*) FROM implausible_targets GROUP BY check_id"
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.con.close()
+        with suppress(FileNotFoundError):
+            os.unlink(self.path)
+
+
+class _SuppressedIssueView:
+    """List-shaped read view used by existing report renderers."""
+
+    def __init__(self, results: _DiskIssueResults) -> None:
+        self.results = results
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        return self.results.iter_suppressed()
+
+    def __len__(self) -> int:
+        return self.results.suppressed_len()
+
+    def __bool__(self) -> bool:
+        return bool(len(self))
+
+    def __getitem__(self, index):
+        return self.results.suppressed_slice(index)
 
 
 class _DiskGroups:
@@ -394,6 +584,7 @@ class AuditContext:
         self.page_by_norm: Mapping[str, Page] = {}  # normalized-URL index: the representative
         self.redirect_map: dict[str, str] = {}
         self._disk_pages: _DiskPages | None = None
+        self._disk_final_issues: _DiskIssueResults | None = None
         self._html_pages: list[Page] | None = None
         self._indexable_html_pages: list[Page] | None = None
         self._build_pages(disk_backed_pages=disk_backed_pages)
@@ -616,6 +807,9 @@ class AuditContext:
             self._disk_pages = None
         if isinstance(self.issues, _DiskIssues):
             self.issues.close()
+        if self._disk_final_issues is not None:
+            self._disk_final_issues.close()
+            self._disk_final_issues = None
         if isinstance(self.groups, _DiskGroups):
             self.groups.close()
 

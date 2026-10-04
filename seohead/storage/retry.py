@@ -286,6 +286,9 @@ def upgrade_to_v2(con: sqlite3.Connection) -> None:
     from .discovery_ledger import ensure_schema as ensure_discovery_ledger
 
     ensure_discovery_ledger(con)
+    from .external_checks import ensure_schema as ensure_external_checks
+
+    ensure_external_checks(con)
 
 
 def _writer(path: Path) -> sqlite3.Connection:

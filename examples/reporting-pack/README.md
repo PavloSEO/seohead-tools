@@ -5,6 +5,8 @@ This is an original field-and-layout blueprint for the external Looker Studio co
 claim that a Looker report exists. `looker-studio-blueprint.json` is machine-reviewable: it lists
 every page, dataset, field, calculated field and filter rule that a native report must implement.
 `FIELD_GUIDE.md` records the published grain, keys and report-facing fields for each worksheet.
+`layout-preview.svg` is the original visual review of the five blueprint pages; it is not a
+substitute for the native template copy check.
 
 ## Local review
 
