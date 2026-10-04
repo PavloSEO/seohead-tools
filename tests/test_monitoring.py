@@ -164,3 +164,66 @@ def test_alert_suppression_window_expires_after_the_declared_number_of_runs(tmp_
     assert first["run"]["alerts"]
     assert suppressed["run"]["alerts"] == []
     assert repeated["run"]["alerts"]
+
+
+def test_per_url_snapshots_compare_all_seo_monitoring_fields_with_provenance(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": False,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 7,
+        },
+    )
+    baseline = {
+        "status": 200,
+        "indexability": "indexable",
+        "canonical": "https://example.test/a",
+        "robots": "index,follow",
+        "metadata": {"title": "Before"},
+        "content": "before-sha256",
+        "links": {"internal": 2},
+    }
+    first = run(
+        project,
+        "scan:baseline",
+        [{"url": "https://example.test/a", "changes": [], "measurement": baseline}],
+        configured["revision"],
+    )
+    changed = run(
+        project,
+        "scan:after",
+        [
+            {
+                "url": "https://example.test/a",
+                "changes": [],
+                "qualifier": "revalidated",
+                "measurement": {
+                    "status": 301,
+                    "indexability": "noindex",
+                    "canonical": "https://example.test/b",
+                    "robots": "noindex,nofollow",
+                    "metadata": {"title": "After"},
+                    "content": "after-sha256",
+                    "links": {"internal": 1},
+                },
+            }
+        ],
+        first["revision"],
+    )
+    changes = changed["run"]["observations"][0]["changes"]
+    assert {change["field"] for change in changes} == {
+        "status",
+        "indexability",
+        "canonical",
+        "robots",
+        "metadata",
+        "content",
+        "links",
+    }
+    assert {change["baseline_scan_id"] for change in changes} == {"scan:baseline"}
+    assert changed["run"]["observations"][0]["measured_at"].endswith("Z")

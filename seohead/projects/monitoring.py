@@ -21,6 +21,7 @@ FORMAT = "seohead.monitor.v1"
 NAME = "monitor.json"
 _SEVERITIES = ("notice", "warning", "critical")
 _QUALIFIERS = ("fresh", "revalidated", "stale", "unavailable", "partial")
+_TRACKED_FIELDS = ("status", "indexability", "canonical", "robots", "metadata", "content", "links")
 _DEFAULTS = {
     "interval_seconds": 3600,
     "max_render_requests": 0,
@@ -177,7 +178,12 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
     if type(render_request_count) is not int or render_request_count < 0:
         raise ValueError("monitor observation render_request_count is invalid")
     measurement = item.get("measurement")
-    if measurement is not None and (not isinstance(measurement, dict) or len(measurement) > 32):
+    if measurement is not None and (
+        not isinstance(measurement, dict)
+        or not set(measurement) <= set(_TRACKED_FIELDS)
+        or len(measurement) > len(_TRACKED_FIELDS)
+        or len(json.dumps(measurement, sort_keys=True, ensure_ascii=False).encode()) > 64 * 1024
+    ):
         raise ValueError("monitor observation measurement is invalid")
     changes: list[dict[str, Any]] = []
     for change in item["changes"]:
@@ -194,6 +200,44 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "cache_state": cache_state,
         "measured_at": _now(),
     }
+
+
+def _previous_measurement(document: dict[str, Any], url: str) -> tuple[dict[str, Any], str] | None:
+    for earlier in reversed(document["runs"]):
+        for observation in reversed(earlier.get("observations", [])):
+            if observation.get("url") == url and isinstance(observation.get("measurement"), dict):
+                return observation["measurement"], earlier["scan_id"]
+    return None
+
+
+def _measurement_changes(
+    document: dict[str, Any], observation: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Compare only two measured values; omitted and unavailable fields stay unknown."""
+    if observation["qualifier"] in {"stale", "unavailable", "partial"}:
+        return []
+    current = observation["measurement"]
+    previous = _previous_measurement(document, observation["url"])
+    if current is None or previous is None:
+        return []
+    baseline, baseline_scan_id = previous
+    changes = []
+    for field in _TRACKED_FIELDS:
+        if field not in current or field not in baseline or current[field] == baseline[field]:
+            continue
+        changes.append(
+            {
+                "kind": f"{field}_changed",
+                "field": field,
+                "before": baseline[field],
+                "after": current[field],
+                "baseline_scan_id": baseline_scan_id,
+                "severity": "warning"
+                if field in {"status", "indexability", "canonical", "robots"}
+                else "notice",
+            }
+        )
+    return changes
 
 
 def _recent_alerts(document: dict[str, Any], suppression_runs: int) -> set[str]:
@@ -221,6 +265,10 @@ def run(
     if not isinstance(observations, list) or not observations or len(observations) > limit:
         raise ValueError("observations exceed configured incremental scope")
     normalized = [_observation(item, policy) for item in observations]
+    for item in normalized:
+        derived = _measurement_changes(document, item)
+        seen = {_change_key(change) for change in item["changes"]}
+        item["changes"].extend(change for change in derived if _change_key(change) not in seen)
     if len({item["url"] for item in normalized}) != len(normalized):
         raise ValueError("monitor observations may contain each URL only once")
     if sum(item["request_count"] for item in normalized) > policy["max_requests"]:
