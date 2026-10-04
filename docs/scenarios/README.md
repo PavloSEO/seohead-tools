@@ -63,6 +63,7 @@ does rather than by what somebody thought of.
 | # | Scenario | Start here when |
 |---:|---|---|
 | 9 | [Canonical basics](canonical-basics.md) | the defects that are a typo, not a strategy |
+| 60 | [Canonical destinations](canonical-destinations.md) | where the target responds, and when distinct sections point home |
 | 10 | [Conflicting canonicals](canonical-conflicts.md) | two answers to a question that takes one |
 | 11 | [Canonicalised pages](canonicalised-pages.md) | how much of the site is deliberately not itself |
 | 12 | [The canonical nobody links to](unlinked-canonical.md) | a preferred URL with no way in |

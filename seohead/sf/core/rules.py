@@ -797,11 +797,37 @@ def check_canonical_directives(ctx: AuditContext) -> None:
             # (issue #95). "The canonical points at something non-indexable" is only true
             # when no page under the key is indexable.
             targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
-            if targets and not any(t.is_indexable for t in targets):
+            target_codes = [t.status_code for t in targets]
+            target_is_redirect = any(
+                code is not None and 300 <= int(code) <= 399 for code in target_codes
+            )
+            target_is_http_error = bool(target_codes) and all(
+                code is not None and 400 <= int(code) <= 599 for code in target_codes
+            )
+            if (
+                targets
+                and not any(t.is_indexable for t in targets)
+                and (
+                    any(code is not None and 200 <= int(code) <= 299 for code in target_codes)
+                    or (not target_is_redirect and not target_is_http_error)
+                )
+            ):
                 ctx.add(
                     "CANONICAL_NON_INDEXABLE",
                     target_url=page.url,
-                    details={"canonical": canonical},
+                    details={
+                        "canonical": canonical,
+                        "canonical_target_evidence": [
+                            {
+                                "url": target.url,
+                                "status_code": target.status_code,
+                                "indexability": target.indexability,
+                                "indexability_status": target.indexability_status,
+                            }
+                            for target in targets[:20]
+                        ],
+                        "canonical_target_evidence_omitted": max(0, len(targets) - 20),
+                    },
                 )
         robots = robots_directives(rec.get("meta_robots"), rec.get("x_robots"))
         if "noindex" in robots:
@@ -1409,6 +1435,270 @@ def check_canonical_to_redirect(ctx: AuditContext) -> None:
                 "canonical_status_code": target.status_code,
                 "redirect_url": redirect_url,
             },
+        )
+
+
+def check_canonical_target_error(ctx: AuditContext) -> None:
+    """CANONICAL_TARGET_ERROR — a fetched canonical target answers 4xx or 5xx.
+
+    This is the status-specific sibling of CANONICAL_NON_INDEXABLE and
+    CANONICAL_TO_REDIRECT. It reuses Internal:All's canonical and response-code
+    graph, and only makes an error claim when every row under the normalized
+    target key has a known 4xx/5xx status. An absent target or a row with no
+    status is unavailable evidence, not a broken destination. A 2xx variant
+    clears the claim; 3xx remains CANONICAL_TO_REDIRECT.
+    """
+    if not _has_column(ctx, "canonical"):
+        ctx.skip("CANONICAL_TARGET_ERROR", "no Canonical column in Internal:All")
+        return
+    if not _has_column(ctx, "status_code"):
+        ctx.skip("CANONICAL_TARGET_ERROR", "no Status Code column in Internal:All")
+        return
+
+    has_any_canonical = any(_rec(page).get("canonical") for page in ctx.html_pages())
+    if not has_any_canonical:
+        ctx.skip("CANONICAL_TARGET_ERROR", "no canonical values in Internal:All")
+        return
+
+    issues: list[tuple[Page, str, list[Page]]] = []
+    unavailable_count = 0
+    for page in ctx.html_pages():
+        canonical = _rec(page).get("canonical")
+        if not canonical or norm_url(canonical) == norm_url(page.url):
+            continue
+        targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+        if not targets:
+            unavailable_count += 1
+            continue
+        codes = [target.status_code for target in targets]
+        if any(code is None for code in codes):
+            unavailable_count += 1
+            continue
+        if any(200 <= int(code) <= 299 for code in codes):
+            continue
+        if any(300 <= int(code) <= 399 for code in codes):
+            continue  # reported by CANONICAL_TO_REDIRECT
+        if all(400 <= int(code) <= 599 for code in codes):
+            issues.append((page, canonical, targets))
+        else:
+            unavailable_count += 1
+
+    if unavailable_count and not issues:
+        ctx.skip(
+            "CANONICAL_TARGET_ERROR",
+            f"{unavailable_count} canonical target(s) were not captured with classifiable response status",
+        )
+        return
+
+    for page, canonical, targets in issues:
+        codes = sorted(
+            {int(target.status_code) for target in targets if target.status_code is not None}
+        )
+        ctx.add(
+            "CANONICAL_TARGET_ERROR",
+            target_url=page.url,
+            status_code=codes[0] if len(codes) == 1 else None,
+            details={
+                "source_url": page.url,
+                "source_status_code": page.status_code,
+                "source_indexability": page.indexability,
+                "canonical_target_url": canonical,
+                "canonical_target_responses": [
+                    {
+                        "url": target.url,
+                        "status_code": target.status_code,
+                        "indexability": target.indexability,
+                        "indexability_status": target.indexability_status,
+                    }
+                    for target in targets[:20]
+                ],
+                "canonical_target_responses_omitted": max(0, len(targets) - 20),
+                "status_coverage": "partial" if unavailable_count else "complete",
+                "unclassified_target_count": unavailable_count,
+            },
+        )
+
+
+_PAGINATION_PATH_RE = re.compile(r"(?:^|/)(?:page|paged)[/-]\d+(?:/|$)", re.IGNORECASE)
+
+
+def _homepage_url(url: str) -> bool:
+    """Whether a canonical names an HTTP(S) origin root without query/fragment."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        return (
+            parsed.scheme.lower() in {"http", "https"}
+            and bool(parsed.hostname)
+            and parsed.path in {"", "/"}
+            and not parsed.query
+            and not parsed.fragment
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
+def _same_home_origin(source: str, target: str) -> bool:
+    """Keep protocol/host aliases and cross-host language canonicals out of the group."""
+    try:
+        source_parts = urllib.parse.urlsplit(source)
+        target_parts = urllib.parse.urlsplit(target)
+        source_port = source_parts.port or {"http": 80, "https": 443}.get(
+            source_parts.scheme.lower()
+        )
+        target_port = target_parts.port or {"http": 80, "https": 443}.get(
+            target_parts.scheme.lower()
+        )
+        return (
+            source_parts.scheme.lower() == target_parts.scheme.lower()
+            and (source_parts.hostname or "").lower() == (target_parts.hostname or "").lower()
+            and source_port == target_port
+        )
+    except ValueError:
+        return False
+
+
+def check_canonical_homepage_group(ctx: AuditContext) -> None:
+    """Find only strongly evidenced groups of distinct pages canonicalized home.
+
+    A group needs at least three fetched, indexable pages across two top-level
+    path sections, each with a distinct non-empty title and H1 that differ from
+    the fetched homepage. Query URLs and recognizable page-number paths are
+    excluded. If response, indexability, title, H1, or homepage evidence is
+    missing, the check says why instead of presenting a site-wide pattern.
+    """
+    fields = ("canonical", "status_code", "indexability", "title", "h1")
+    missing = [field for field in fields if not _has_column(ctx, field)]
+    if missing:
+        ctx.skip(
+            "CANONICAL_HOMEPAGE_GROUP",
+            "missing supporting Internal:All columns: " + ", ".join(missing),
+        )
+        return
+
+    pages = ctx.html_pages()
+    if not any(_rec(page).get("canonical") for page in ctx.indexable_html_pages()):
+        ctx.skip("CANONICAL_HOMEPAGE_GROUP", "no canonical values in fetched indexable HTML")
+        return
+
+    configured_policy = ctx.config.get("canonical_policy")
+    matching_canonical_rule = None
+    if isinstance(configured_policy, dict) and any(
+        configured_policy.get(key) for key in ("pagination", "filters")
+    ):
+        try:
+            from seohead.canonical_policy import matching_canonical_rule
+        except ImportError:
+            ctx.skip(
+                "CANONICAL_HOMEPAGE_GROUP",
+                "canonical_policy is configured but its shared matcher is unavailable",
+            )
+            return
+
+    grouped: dict[str, list[tuple[Page, str]]] = defaultdict(list)
+    unavailable_home_targets = 0
+    unavailable_sources = 0
+    for page in pages:
+        canonical = _rec(page).get("canonical")
+        if (
+            not canonical
+            or not _homepage_url(canonical)
+            or not _same_home_origin(page.url, canonical)
+        ):
+            continue
+        source_parts = urllib.parse.urlsplit(page.url)
+        if source_parts.path in {"", "/"} or source_parts.query or source_parts.fragment:
+            continue  # self/home and query-based filter/pagination URLs are expected exceptions
+        if _PAGINATION_PATH_RE.search(source_parts.path):
+            continue
+        if matching_canonical_rule and any(
+            matching_canonical_rule(configured_policy, category, page.url)
+            for category in ("pagination", "filters")
+        ):
+            continue  # #727 owns configured pagination/filter URLs
+        if not page.indexability or not page.indexability.strip():
+            unavailable_sources += 1
+            continue
+        if not page.is_indexable:
+            continue
+        section = next((part for part in source_parts.path.split("/") if part), "")
+        if not section:
+            continue
+        title = str(_rec(page).get("title") or "").strip()
+        h1 = str(_rec(page).get("h1") or "").strip()
+        if not title or not h1 or _body_unavailable(_rec(page)):
+            unavailable_sources += 1
+            continue
+        home_key = norm_url(canonical)
+        home_rows = ctx.pages_by_norm.get(home_key) or []
+        home = next((target for target in home_rows if target.is_2xx and target.is_indexable), None)
+        if home is None:
+            if not home_rows or any(
+                target.status_code is None
+                or (
+                    target.is_2xx
+                    and (target.indexability is None or not target.indexability.strip())
+                )
+                for target in home_rows
+            ):
+                unavailable_home_targets += 1
+            continue
+        home_record = _rec(home)
+        home_title = str(home_record.get("title") or "").strip().casefold()
+        home_h1 = str(home_record.get("h1") or "").strip().casefold()
+        if not home_title or not home_h1 or _body_unavailable(home_record):
+            unavailable_home_targets += 1
+            continue
+        if title.casefold() == home_title or h1.casefold() == home_h1:
+            continue
+        grouped[home_key].append((page, section))
+
+    found = False
+    for home_key, candidates in sorted(grouped.items()):
+        by_url = {page.url: (page, section) for page, section in candidates}
+        candidates = [by_url[url] for url in sorted(by_url)]
+        titles = {str(_rec(page).get("title") or "").strip().casefold() for page, _ in candidates}
+        headings = {str(_rec(page).get("h1") or "").strip().casefold() for page, _ in candidates}
+        sections = {section.casefold() for _, section in candidates}
+        if len(candidates) < 3 or len(sections) < 2 or len(titles) < 3 or len(headings) < 3:
+            continue
+        home_rows = ctx.pages_by_norm.get(home_key) or []
+        home = next(target for target in home_rows if target.is_2xx and target.is_indexable)
+        for page, section in candidates:
+            ctx.add(
+                "CANONICAL_HOMEPAGE_GROUP",
+                target_url=page.url,
+                status_code=page.status_code,
+                locations=[{"source_url": page.url, "canonical_target_url": home.url}],
+                details={
+                    "canonical_target_url": home.url,
+                    "canonical_target_status_code": home.status_code,
+                    "canonical_target_indexability": home.indexability,
+                    "source_path_section": section,
+                    "source_title": _rec(page).get("title"),
+                    "source_h1": _rec(page).get("h1"),
+                    "source_count": len(candidates),
+                    "source_sections": sorted(sections),
+                    "source_titles_distinct": len(titles),
+                    "source_h1_distinct": len(headings),
+                    "minimum_sources": 3,
+                    "minimum_sections": 2,
+                    "evidence_rule": (
+                        "fetched indexable sources have distinct non-empty titles and H1s, "
+                        "span multiple top-level path sections, and exclude query/pagination URLs"
+                    ),
+                    "unavailable_home_target_count": unavailable_home_targets,
+                    "unavailable_source_evidence_count": unavailable_sources,
+                },
+            )
+        found = True
+
+    if (unavailable_home_targets or unavailable_sources) and not found:
+        ctx.skip(
+            "CANONICAL_HOMEPAGE_GROUP",
+            f"{unavailable_home_targets} homepage target(s) and "
+            f"{unavailable_sources} source page(s) lack complete evidence",
         )
 
 
@@ -2401,6 +2691,8 @@ ALL_CHECKS = [
     check_canonical_extra,
     check_canonical_chain,
     check_canonical_to_redirect,
+    check_canonical_target_error,
+    check_canonical_homepage_group,
     check_unlinked_canonical,
     check_pagination,
     check_pagination_series,
