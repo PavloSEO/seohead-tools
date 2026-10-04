@@ -24,3 +24,32 @@ known. Notifications are sent only when the caller supplied an MCP `progressToke
 messages label the unknown total, values are monotonic and throttled, and context exit stops
 emission on success, cancellation, or failure. Progress does not guarantee client timeout or
 completion behavior.
+
+## Scoped project inbox notices
+
+A local stdio host can opt into a stable inbox recipient without making the
+recipient a shared default. Set both `SEOHEAD_MCP_CONSUMER_ID` and
+`SEOHEAD_MCP_PROJECT_ALLOWLIST` at process startup. The allowlist is a
+path-separator-delimited list of existing local project directories. A matching
+project call receives only that consumer's bounded unread summary; a call for a
+project outside the allowlist receives no inferred consumer identity.
+
+```json
+{
+  "mcpServers": {
+    "seohead-shop": {
+      "command": "/absolute/path/to/.venv/bin/seohead",
+      "args": ["mcp"],
+      "env": {
+        "SEOHEAD_MCP_CONSUMER_ID": "agent/shop-audit",
+        "SEOHEAD_MCP_PROJECT_ALLOWLIST": "/absolute/path/to/shop-project"
+      }
+    }
+  }
+}
+```
+
+Run a separate stdio process for another project or agent. Explicit per-call
+`consumer` values remain available where a tool exposes them, but a process does
+not guess one. A summary is informational: it never reads, acknowledges, accepts,
+or completes inbox entries. Those transitions remain explicit project-inbox tools.

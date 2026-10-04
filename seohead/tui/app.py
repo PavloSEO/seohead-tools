@@ -35,8 +35,13 @@ _SUBTITLE = "interactive shell"
 _PALETTE_HINTS = "type filter · up/down move · enter open · esc clear/back · ? keys · q quit"
 _DETAIL_HINTS = "enter/esc back · ctrl-c quit"
 _HELP_HINTS = "esc back · ctrl-c quit"
-_WATCH_HINTS = "1 overview · 2 tasks · 3 methods · 4 scans · 5 log · n note · g goal · q quit"
+_WATCH_HINTS = (
+    "1 overview · 2 tasks · 3 methods · 4 scans · 5 findings · 6 views · 7 activity · 8 log "
+    "· arrows/page browse · n note · g goal · q quit"
+)
 _NOTE_HINTS = "type dictated note · enter save · esc discard"
+_FILTER_HINTS = "type finding filter · enter apply · esc discard"
+_WATCH_DETAIL_HINTS = "enter/esc back · ctrl-c quit"
 
 _HELP_LINES = (
     ("up / down, page up / page down", "move the cursor through the command list"),
@@ -79,6 +84,8 @@ def _status_line(state: ShellState, palette: theme.Palette, width: int, height: 
         "help": _HELP_HINTS,
         "watch": _WATCH_HINTS,
         "note": _NOTE_HINTS,
+        "watch_filter": _FILTER_HINTS,
+        "watch_detail": _WATCH_DETAIL_HINTS,
     }[state.view]
     if palette.color:
         return Text.from_markup(f"{mode}  {size}  {hints}")
@@ -138,19 +145,43 @@ def _help_lines(palette: theme.Palette) -> list[Text]:
     return out
 
 
-def _watch_lines(
-    project: str, palette: theme.Palette, message: str | None, section: str
-) -> list[Text]:
-    """Project evidence only: this observer does not start, cancel, or resume work."""
+def _select(lines: list[str], index: int, palette: theme.Palette) -> list[Text]:
+    """Render a bounded selection list without assigning any action to Enter."""
+    if not lines:
+        return [Text("  no retained entries")]
+    selected = min(max(index, 0), len(lines) - 1)
+    rendered = []
+    for ordinal, line in enumerate(lines):
+        marker = ">" if ordinal == selected else " "
+        rendered.append(
+            Text(
+                f" {marker} {line}",
+                style=palette.highlight if palette.color and ordinal == selected else "",
+            )
+        )
+    return rendered
+
+
+def _watch_snapshot(project: str) -> tuple[dict | None, list[Text]]:
     from seohead.projects.observer import observe
 
     try:
-        snapshot = observe(project)
+        return observe(project), []
     except (OSError, ValueError) as exc:
-        return [Text(f"project unavailable: {exc}"), Text("No action was started.")]
+        return None, [Text(f"project unavailable: {exc}"), Text("No action was started.")]
+
+
+def _watch_lines(
+    project: str, state: ShellState, palette: theme.Palette, message: str | None
+) -> list[Text]:
+    """Browsable retained project evidence; it never starts, cancels or resumes work."""
+    snapshot, failure = _watch_snapshot(project)
+    if snapshot is None:
+        return failure
     site = snapshot["project"]["site"]
     progress = snapshot["progress"]
     preparation = snapshot["preparation"]
+    section = state.watch_section
     lines = [
         Text(
             f"{section} · {site['label'] or site['host']}",
@@ -162,107 +193,270 @@ def _watch_lines(
     if message:
         lines.append(Text(message, style=palette.accent if palette.color else ""))
     if section == "overview":
+        completion = progress["audit_task_completion"]
         lines.extend(
-            (
+            [
                 Text(
                     f"preparation  {preparation['state']} · {preparation.get('reason') or 'recorded state'}"
                 ),
                 Text(
-                    f"competitors  {len(preparation['competitors'])} configured; prepared is not analyzed"
-                ),
-                Text(f"scans        {snapshot['scans']['total']} retained"),
-                Text(
-                    f"task coverage {progress['audit_task_completion']['percent'] if progress['audit_task_completion']['percent'] is not None else 'unknown'}"
+                    f"scans        {snapshot['scans']['total']} retained; unknown totals remain unknown"
                 ),
                 Text(
-                    f"goals/notes  {snapshot['inbox']['pagination']['total']} retained prompts and handoffs"
+                    f"task coverage {completion['percent'] if completion['percent'] is not None else 'unknown'}"
                 ),
+                Text(
+                    f"competitors  {len(preparation['competitors'])} configured; configured is not analyzed"
+                ),
+                Text(f"goals/notes  {snapshot['inbox']['pagination']['total']} persistent entries"),
                 Text(
                     f"workflow runs {len(snapshot['execution']['runs'])} · next {snapshot['execution']['next_action'] or 'none'}"
                 ),
                 Text(
-                    f"monitor      {'configured' if snapshot['monitor']['policy'] else 'not configured'} · "
-                    f"last run {snapshot['monitor']['last_run']['state'] if snapshot['monitor']['last_run'] else 'none'}"
+                    f"monitor      {'configured' if snapshot['monitor']['policy'] else 'not configured'} · last {snapshot['monitor']['last_run']['state'] if snapshot['monitor']['last_run'] else 'none'}"
                 ),
                 Text(""),
-                Text("Use numbered views to inspect evidence rather than an agent claim."),
-            )
+                Text("Use numbered views to inspect retained evidence, not an agent claim."),
+            ]
         )
     elif section == "tasks":
-        lines.append(Text("planned checklist and attempts:"))
-        for item in progress["items"]:
-            lines.append(Text(f"  [{item['state']}] {item['id']} — {item['title']}"))
-        if not progress["items"]:
-            lines.append(Text("  no initialized checklist entries"))
+        entries = [
+            f"[{item['state']}] {item['id']} · {item['title']} · {item['attempt_status']}"
+            for item in progress["items"]
+        ]
+        lines.append(
+            Text("checklist (completion, partial, skipped and unavailable remain distinct):")
+        )
+        lines.extend(_select(entries, state.watch_index, palette))
+        if state.watch_index >= len(entries):
+            state.watch_index = max(0, len(entries) - 1)
     elif section == "methods":
-        lines.append(Text("scenarios and method skills:"))
-        for item in snapshot["methods"]:
-            lines.append(Text(f"  [{item['state']}] {item['id']} · {item['attempt_status']}"))
-        if not snapshot["methods"]:
-            lines.append(Text("  none planned; this is not completion"))
-        lines.append(Text("competitor coverage:"))
-        for item in preparation["competitors"]:
-            lines.append(Text(f"  [{item.get('state', 'unknown')}] {item['url']}"))
-        lines.append(Text("goals and prompts:"))
-        for run in snapshot["execution"]["runs"][-3:]:
-            lines.append(Text(f"  [{run['state']}] {run['scenario_id']} · {run['id']}"))
-        for item in snapshot["inbox"]["entries"][-5:]:
-            lines.append(Text(f"  [{item['goal_state'] or item['kind']}] {item['text']}"))
+        methods = [
+            f"[{item['state']}] {item['id']} · attempt {item['attempt_status']} · {item['reason'] or 'no reason recorded'}"
+            for item in snapshot["methods"]
+        ]
+        competitors = [
+            f"competitor [{item.get('state', 'unknown')}] {item['url']}"
+            for item in preparation["competitors"]
+        ]
+        lines.append(Text("planned scenarios, skills and competitor coverage:"))
+        lines.extend(_select([*methods, *competitors], state.watch_index, palette))
     elif section == "scans":
-        lines.append(Text("native/Screaming Frog retained scan history:"))
+        entries = []
         for scan in snapshot["scans"]["items"]:
-            state = (
+            status = (
                 "partial" if scan["crawl_partial"] or scan["corpus_partial"] else scan["lifecycle"]
             )
-            lines.append(
-                Text(
-                    f"  [{state}] {scan['uuid']} · {scan['source_kind']} · {scan['finish_reason'] or 'unknown stop'}"
-                )
-            )
             evidence = scan["evidence"]
-            if evidence["state"] == "available":
-                frontier = evidence["frontier"]
-                counts = frontier.get("counts") if frontier["state"] == "available" else None
-                lines.append(
-                    Text(
-                        f"    frontier {counts if counts is not None else 'unknown'} · "
-                        f"findings {evidence['findings']['total']} · "
-                        f"sitemaps {evidence['sitemaps']['fetch_summaries']}"
-                    )
-                )
-                for finding in evidence["findings"]["items"][:3]:
-                    lines.append(
-                        Text(
-                            f"      {finding['severity']} {finding['check']} · "
-                            f"{finding['target_url'] or finding['id']}"
-                        )
-                    )
-                if evidence["findings"]["truncated"]:
-                    lines.append(Text("      additional findings retained in the scan artifact"))
-            else:
-                lines.append(Text(f"    evidence unavailable: {evidence['reason']}"))
-        if not snapshot["scans"]["items"]:
-            lines.append(Text("  no retained scan; counts and sitemap state are unknown"))
+            finding_count = evidence.get("findings", {}).get("total", "unavailable")
+            entries.append(
+                f"[{status}] {scan['uuid']} · {scan['source_kind']} · findings {finding_count} · {scan['finish_reason'] or 'unknown stop'}"
+            )
+        if snapshot["scans"]["items"]:
+            state.watch_index = min(state.watch_index, len(snapshot["scans"]["items"]) - 1)
+            state.watch_selected_scan_uuid = snapshot["scans"]["items"][state.watch_index]["uuid"]
+        lines.append(Text("native/Screaming Frog retained scans; select a scan to inspect state:"))
+        lines.extend(_select(entries, state.watch_index, palette))
         for name, step in preparation["steps"].items():
             if name in {"crawl", "sitemap"}:
                 lines.append(
                     Text(f"  {name}: {step.get('state', 'unknown')} · {step.get('reason', '')}")
                 )
-        monitor = snapshot["monitor"]
-        if monitor["last_run"] is not None:
+    elif section == "findings":
+        from seohead.projects.observer import findings_page
+
+        try:
+            page = findings_page(
+                project,
+                scan_uuid=state.watch_selected_scan_uuid,
+                offset=state.watch_offset,
+                query=state.watch_query,
+                sort=state.watch_sort,
+                descending=state.watch_descending,
+            )
+        except (OSError, ValueError) as exc:
+            lines.append(Text(f"findings unavailable: {exc}"))
+        else:
+            items = page["items"]
+            state.watch_index = min(state.watch_index, max(0, len(items) - 1))
+            if items:
+                state.watch_detail_ordinal = items[state.watch_index]["ordinal"]
             lines.append(
                 Text(
-                    f"  monitor {monitor['last_run']['state']} · "
-                    f"scan {monitor['last_run']['scan_id']} · "
-                    f"observed {len(monitor['last_run']['observed_urls'])} URLs"
+                    f"findings {page['counts']['matched']}/{page['counts']['source']} · page {page['pagination']['offset']} · "
+                    f"filter={state.watch_query!r} · sort={state.watch_sort} {'desc' if state.watch_descending else 'asc'}"
                 )
             )
+            lines.extend(
+                _select(
+                    [
+                        f"[{item['severity'] or 'unknown'}] {item['check'] or item['id']} · {item['target_url'] or ''} · {item['message'] or ''}"
+                        for item in items
+                    ],
+                    state.watch_index,
+                    palette,
+                )
+            )
+            lines.append(
+                Text(
+                    "f filter · c clear · s sort field · r reverse · enter evidence · page keys next/previous"
+                )
+            )
+    elif section == "views":
+        saved = snapshot["saved_views"]
+        view_lines = [
+            f"{item['name']} · revision {item['revision']} · {', '.join(item['definition']['columns'])}"
+            for item in saved.get("views", [])
+        ]
+        if saved.get("views"):
+            state.watch_index = min(state.watch_index, len(saved["views"]) - 1)
+            state.watch_view_name = saved["views"][state.watch_index]["name"]
+        review = snapshot["review"]
+        lines.append(Text("saved finding views and review/export readiness:"))
+        lines.extend(_select(view_lines, state.watch_index, palette))
+        lines.extend(
+            [
+                Text(f"manual review waiting: {len(review['manual_waiting'])}"),
+                Text(f"approved deliverables ready: {len(review['deliverable_ready'])}"),
+                Text(
+                    "Export is an explicit CLI/MCP action; this observer does not publish anything."
+                ),
+            ]
+        )
+    elif section == "activity":
+        monitor = snapshot["monitor"]
+        lines.extend(
+            [
+                Text(f"workflow next action: {snapshot['execution']['next_action'] or 'none'}"),
+                Text(f"workflow resumable run: {snapshot['execution']['resumable_run'] or 'none'}"),
+                Text(f"monitor policy: {'configured' if monitor['policy'] else 'not configured'}"),
+                Text(f"monitor runner: {monitor['runner'].get('state', 'unknown')}"),
+                Text(
+                    f"monitor last run: {monitor['last_run']['state'] if monitor['last_run'] else 'none'}"
+                ),
+                Text(""),
+                Text("recent workflow records:"),
+            ]
+        )
+        lines.extend(
+            _select(
+                [
+                    f"[{run['state']}] {run['scenario']['id']} · {run['id']} · next {run['next_action'] or 'none'}"
+                    for run in snapshot["execution"]["runs"][-20:]
+                ],
+                state.watch_index,
+                palette,
+            )
+        )
     else:
-        lines.append(Text("project execution log (tail):"))
-        lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-12:])
+        lines.append(Text("project execution log (bounded retained tail):"))
+        lines.extend(Text(line) for line in snapshot["log"]["text"].splitlines()[-20:])
         if snapshot["log"]["truncated"]:
             lines.append(Text("  log tail is truncated"))
-    lines.extend((Text(""), Text("The observer is read-only except for an explicit saved note.")))
+    lines.extend(
+        (
+            Text(""),
+            Text("The observer is read-only except for an explicit saved note or proposed goal."),
+        )
+    )
+    return lines
+
+
+def _watch_detail_lines(project: str, state: ShellState, palette: theme.Palette) -> list[Text]:
+    from seohead.projects.observer import finding_detail, saved_view_page
+
+    try:
+        if state.watch_detail_kind == "scan":
+            snapshot, failure = _watch_snapshot(project)
+            if snapshot is None:
+                return failure
+            scan = next(
+                (
+                    item
+                    for item in snapshot["scans"]["items"]
+                    if item["uuid"] == state.watch_selected_scan_uuid
+                ),
+                None,
+            )
+            if scan is None:
+                return [
+                    Text("The selected retained scan is no longer available."),
+                    Text("Press escape to return."),
+                ]
+            evidence = scan["evidence"]
+            return [
+                Text("retained scan", style=palette.title if palette.color else ""),
+                Text(f"uuid       {scan['uuid']}"),
+                Text(f"source     {scan['source_kind']}"),
+                Text(f"lifecycle  {scan['lifecycle']}"),
+                Text(f"stop       {scan['finish_reason'] or 'unknown'}"),
+                Text(f"frontier   {evidence.get('frontier', {}).get('counts', 'unavailable')}"),
+                Text(f"findings   {evidence.get('findings', {}).get('total', 'unavailable')}"),
+                Text(
+                    f"sitemaps   {evidence.get('sitemaps', {}).get('fetch_summaries', 'unavailable')}"
+                ),
+                Text(
+                    "This page only reads the saved scan. Choose Findings to browse its evidence."
+                ),
+            ]
+        if state.watch_detail_kind == "view":
+            if state.watch_view_name is None:
+                return [Text("No saved view is selected."), Text("Press escape to return.")]
+            page = saved_view_page(
+                project,
+                name=state.watch_view_name,
+                scan_uuid=state.watch_selected_scan_uuid,
+            )["result"]
+            return [
+                Text(
+                    f"saved view · {state.watch_view_name}",
+                    style=palette.title if palette.color else "",
+                ),
+                Text(
+                    f"source findings {page['counts']['source']} · matched {page['counts']['matched']}"
+                ),
+                Text(f"state {page['state']} · page size {page['pagination']['page_size']}"),
+                Text(""),
+                *[
+                    Text(
+                        "  "
+                        + " · ".join(
+                            f"{column}={item['fields'].get(column) or 'unknown'}"
+                            for column in page["columns"]
+                        )
+                    )
+                    for item in page["items"]
+                ],
+                Text(
+                    "This applies a saved local definition to retained evidence; it does not export or publish."
+                ),
+            ]
+        if state.watch_detail_ordinal is None:
+            return [Text("No retained finding is selected."), Text("Press escape to return.")]
+        detail = finding_detail(
+            project, scan_uuid=state.watch_selected_scan_uuid, ordinal=state.watch_detail_ordinal
+        )
+    except (OSError, ValueError) as exc:
+        return [Text(f"observer detail unavailable: {exc}"), Text("Press escape to return.")]
+    finding = detail["finding"]
+    lines = [
+        Text(
+            f"finding evidence · {finding['check'] or finding['id']}",
+            style=palette.title if palette.color else "",
+        ),
+        Text(f"ordinal  {finding['ordinal']}"),
+        Text(f"severity {finding['severity'] or 'unknown'}"),
+        Text(f"target   {finding['target_url'] or 'not recorded'}"),
+        Text(f"message  {finding['message'] or 'not recorded'}"),
+        Text(f"fingerprint {finding['fingerprint'] or 'not recorded'}"),
+        Text(""),
+        Text("retained evidence:"),
+    ]
+    for key, value in detail["evidence"].items():
+        rendered = str(value).replace("\n", " ")
+        lines.append(Text(f"  {key}: {rendered[:240]}"))
+    lines.append(Text(""))
+    lines.append(Text("This is a bounded projection of the saved audit; it did not rerun a check."))
     return lines
 
 
@@ -296,9 +490,17 @@ def build_frame(
     elif state.view == "help":
         body = _help_lines(palette)
     elif state.view == "watch" and project is not None:
-        body = _watch_lines(project, palette, message, state.watch_section)
+        body = _watch_lines(project, state, palette, message)
+    elif state.view == "watch_detail" and project is not None:
+        body = _watch_detail_lines(project, state, palette)
     elif state.view == "note":
         body = _note_lines(state, palette)
+    elif state.view == "watch_filter":
+        body = [
+            Text("finding filter", style=palette.title if palette.color else ""),
+            Text(""),
+            Text(state.watch_query or "(type text, then press enter)"),
+        ]
     else:
         filter_line = Text(f"filter: {state.query}")
         if palette.color:
