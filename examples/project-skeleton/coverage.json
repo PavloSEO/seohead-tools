@@ -8597,7 +8597,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "3b16cbe3ac102d45fc9fbc492d1203e514a7701805c9b2d5b284a0b568ab5486",
+        "source_hash": "b946664fce6b706dde56b82866d76e2ef4363fe0bcc789ae062f3f8421e744ea",
         "title": "Full audit: from authorized scope to a verified report"
       },
       "definitions": [
@@ -8617,7 +8617,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "3b16cbe3ac102d45fc9fbc492d1203e514a7701805c9b2d5b284a0b568ab5486",
+            "source_hash": "b946664fce6b706dde56b82866d76e2ef4363fe0bcc789ae062f3f8421e744ea",
             "title": "Full audit: from authorized scope to a verified report"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9653,7 +9653,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "2cc0d4005ebd557a8a523209af533ed1f72ddd58257c72c115650c612d5cf648",
+        "source_hash": "b96e6067aa27d6f25e3942b87467c1365da2376e0359952e988cb0dd75d1ade1",
         "title": "Provider evidence \u2014 connect, verify, collect, join, and revoke"
       },
       "definitions": [
@@ -9673,7 +9673,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "2cc0d4005ebd557a8a523209af533ed1f72ddd58257c72c115650c612d5cf648",
+            "source_hash": "b96e6067aa27d6f25e3942b87467c1365da2376e0359952e988cb0dd75d1ade1",
             "title": "Provider evidence \u2014 connect, verify, collect, join, and revoke"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -11193,7 +11193,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "ef07d886b153869a5115ed6ce3f932c61804e1b2d70d4655c819904ecc3d5a88",
+        "source_hash": "4da8f4f241e59bb54471d7565997c14d230e8d43adf694b625d3416ae6733e2f",
         "title": "control"
       },
       "definitions": [
@@ -11213,7 +11213,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "ef07d886b153869a5115ed6ce3f932c61804e1b2d70d4655c819904ecc3d5a88",
+            "source_hash": "4da8f4f241e59bb54471d7565997c14d230e8d43adf694b625d3416ae6733e2f",
             "title": "control"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -11281,7 +11281,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "9d13a897636baea9d9f3601febf4794eb3e74536a91a6f87754ee51dd43529b9",
+        "source_hash": "7600c4bcebfd06d6e1890cd7f5503ece8b4e1d4eec9bb733f824a2947aafef7c",
         "title": "full-audit-v1"
       },
       "definitions": [
@@ -11301,7 +11301,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "9d13a897636baea9d9f3601febf4794eb3e74536a91a6f87754ee51dd43529b9",
+            "source_hash": "7600c4bcebfd06d6e1890cd7f5503ece8b4e1d4eec9bb733f824a2947aafef7c",
             "title": "full-audit-v1"
           },
           "observed_at": "2026-09-09T00:00:00Z"
