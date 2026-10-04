@@ -34,6 +34,7 @@ CLI and a local MCP server.
 | Checking what our guidance was aligned against | [GOOGLE_GUIDANCE_REVIEW.md](GOOGLE_GUIDANCE_REVIEW.md) — the 175 Google Search Central guides read on 2026-09-09, their labels, and the three repairs |
 | Understanding the product and its role beside Screaming Frog | [COMPARISON.md](COMPARISON.md) — canonical positioning, workflow, and boundaries |
 | Reviewing the software for security, legal, or procurement | [SOFTWARE_REVIEW.md](SOFTWARE_REVIEW.md) — generated evidence pack, outbound endpoints, data flow, storage |
+| Integrating the guided scan bot | [TELEGRAM_BOT.md](TELEGRAM_BOT.md) — the versioned conversation contract, states, transitions, and invariants |
 
 ## What lives here
 
