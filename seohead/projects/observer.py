@@ -6,7 +6,11 @@ scan-history and inbox stores.  It owns no crawl, task, finding, or job state.
 
 from __future__ import annotations
 
+import copy
+import json
+from collections import OrderedDict
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from .inbox import list_entries, unread_summary
@@ -18,6 +22,13 @@ FINDING_PAGE_SIZE = 50
 MAX_FINDING_PAGE_SIZE = 100
 _FINDING_SORTS = ("severity", "check", "target_url", "id")
 _SEVERITY_RANK = {"critical": 0, "error": 1, "warning": 2, "notice": 3, "info": 4}
+_EVIDENCE_CACHE_LIMIT = 32
+_EVIDENCE_CACHE: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
+_EVIDENCE_CACHE_LOCK = RLock()
+_FINDINGS_CACHE_LIMIT = 8
+_FINDINGS_CACHE_MAX_BYTES = 8 * 1024 * 1024
+_FINDINGS_CACHE: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
+_FINDINGS_CACHE_LOCK = RLock()
 
 
 def _log(root: Path) -> dict[str, Any]:
@@ -29,18 +40,128 @@ def _log(root: Path) -> dict[str, Any]:
     return {"text": text, "truncated": size > LOG_BYTES, "bytes": size}
 
 
-def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
+def _stat_state(path: Path) -> tuple[int, int, int, int] | None:
+    """Return enough identity to reject cache entries after an artifact replacement."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size
+
+
+def _evidence_cache_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Key one evidence projection by artifact bytes and retained scan configuration.
+
+    A running SQLite scan can commit through its WAL while the main file's
+    timestamp is unchanged.  Include the WAL and SHM state in every key, even
+    when either sidecar is currently absent, so a new checkpoint immediately
+    invalidates the prior projection on the next observer refresh.
+    """
+    from seohead.storage.audit_v2 import audit_v2_path
+
+    source = Path(row["path"])
+    return (
+        str(source.resolve()),
+        _stat_state(source),
+        _stat_state(source.with_name(source.name + "-wal")),
+        _stat_state(source.with_name(source.name + "-shm")),
+        _stat_state(audit_v2_path(source)),
+        row.get("uuid"),
+        row.get("lifecycle"),
+        row.get("finish_reason"),
+        row.get("crawl_partial"),
+        row.get("corpus_partial"),
+        row.get("evidence_revision"),
+        row.get("config_fingerprint"),
+        row.get("format_version"),
+        row.get("source_kind"),
+    )
+
+
+def _cache_get(key: tuple[Any, ...]) -> dict[str, Any] | None:
+    with _EVIDENCE_CACHE_LOCK:
+        value = _EVIDENCE_CACHE.get(key)
+        if value is None:
+            return None
+        _EVIDENCE_CACHE.move_to_end(key)
+        return copy.deepcopy(value)
+
+
+def _cache_put(key: tuple[Any, ...], value: dict[str, Any]) -> dict[str, Any]:
+    with _EVIDENCE_CACHE_LOCK:
+        _EVIDENCE_CACHE[key] = copy.deepcopy(value)
+        _EVIDENCE_CACHE.move_to_end(key)
+        while len(_EVIDENCE_CACHE) > _EVIDENCE_CACHE_LIMIT:
+            _EVIDENCE_CACHE.popitem(last=False)
+    return copy.deepcopy(value)
+
+
+def _read_retained_findings(row: dict[str, Any]) -> dict[str, Any]:
+    """Materialise only the audit fields observer summary/detail views need."""
+    from seohead.storage import read_audit
+
+    audit = read_audit(row["path"])
+    issues = audit.get("issues")
+    if not isinstance(issues, list) or any(not isinstance(item, dict) for item in issues):
+        raise ValueError("retained scan audit has no readable finding list")
+    run = audit.get("run")
+    return {
+        "issues": tuple(copy.deepcopy(issues)),
+        "skipped_checks": copy.deepcopy(run.get("checks_skipped", []))
+        if isinstance(run, dict)
+        else [],
+        "schema_version": audit.get("schema_version"),
+        "generated_at": run.get("generated_at") if isinstance(run, dict) else None,
+    }
+
+
+def _findings_cache_get(key: tuple[Any, ...]) -> dict[str, Any] | None:
+    with _FINDINGS_CACHE_LOCK:
+        value = _FINDINGS_CACHE.get(key)
+        if value is None:
+            return None
+        _FINDINGS_CACHE.move_to_end(key)
+        return value
+
+
+def _findings_cache_put(key: tuple[Any, ...], value: dict[str, Any]) -> None:
+    with _FINDINGS_CACHE_LOCK:
+        _FINDINGS_CACHE[key] = value
+        _FINDINGS_CACHE.move_to_end(key)
+        while len(_FINDINGS_CACHE) > _FINDINGS_CACHE_LIMIT:
+            _FINDINGS_CACHE.popitem(last=False)
+
+
+def _retained_findings(row: dict[str, Any]) -> dict[str, Any]:
+    """Reuse bounded finding rows while source, audit and retained state match."""
+    key = _evidence_cache_key(row)
+    cached = _findings_cache_get(key)
+    if cached is not None:
+        return cached
+    findings = _read_retained_findings(row)
+    if _evidence_cache_key(row) != key:
+        return findings
+    try:
+        size = len(json.dumps(findings, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    except (TypeError, ValueError):
+        return findings
+    if size <= _FINDINGS_CACHE_MAX_BYTES:
+        _findings_cache_put(key, findings)
+    return findings
+
+
+def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
     """Read retained scan evidence only; failures remain observable data."""
-    from seohead.storage import open_scan, read_audit
+    from seohead.storage import open_scan
     from seohead.storage.status import scan_status
 
     path = row["path"]
     try:
         status = scan_status(path)
-        audit = read_audit(path)
+        retained = _retained_findings(row)
         by_severity: dict[str, int] = {}
         finding_items = []
-        for issue in audit.get("issues", []):
+        for issue in retained["issues"]:
             severity = issue.get("severity") if isinstance(issue, dict) else None
             if isinstance(severity, str):
                 by_severity[severity] = by_severity.get(severity, 0) + 1
@@ -71,13 +192,36 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
                 "total": sum(by_severity.values()),
                 "by_severity": by_severity,
                 "items": finding_items,
-                "truncated": len(audit.get("issues", [])) > len(finding_items),
+                "truncated": len(retained["issues"]) > len(finding_items),
             },
             "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
-            "skipped_checks": audit.get("run", {}).get("checks_skipped", []),
+            "skipped_checks": retained["skipped_checks"],
         }
     except (OSError, ValueError, KeyError) as exc:
         return {"state": "unavailable", "reason": str(exc)}
+
+
+def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    """Read one retained projection once per unchanged scan/audit state.
+
+    The terminal observer redraws each second.  Reopening and materialising a
+    completed audit for every redraw made a passive second-screen view slower
+    than the crawler it was meant to observe.  Cache only successful projections
+    and verify source, WAL/SHM, audit companion and retained config state before
+    reusing one.  Failures remain uncached so recovery is visible immediately.
+    """
+    key = _evidence_cache_key(row)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    evidence = _read_scan_evidence(row)
+    if evidence.get("state") != "available":
+        return evidence
+    # Do not retain an observation read while its source was being changed.
+    # The following refresh will read the stable state instead.
+    if _evidence_cache_key(row) != key:
+        return evidence
+    return _cache_put(key, evidence)
 
 
 def _relative_artifact(root: Path, path: str) -> str | None:
@@ -338,12 +482,7 @@ def findings_page(
     if sort not in _FINDING_SORTS:
         raise ValueError("finding sort must be severity, check, target_url or id")
     row = _scan_row(directory, scan_uuid)
-    from seohead.storage import read_audit
-
-    audit = read_audit(row["path"])
-    issues = audit.get("issues")
-    if not isinstance(issues, list) or any(not isinstance(item, dict) for item in issues):
-        raise ValueError("retained scan audit has no readable finding list")
+    issues = _retained_findings(row)["issues"]
     needle = query.casefold().strip()
     indexed = list(enumerate(issues))
     if needle:
@@ -398,15 +537,9 @@ def finding_detail(
     if type(ordinal) is not int or ordinal < 0:
         raise ValueError("finding ordinal must be non-negative")
     row = _scan_row(directory, scan_uuid)
-    from seohead.storage import read_audit
-
-    audit = read_audit(row["path"])
-    issues = audit.get("issues")
-    if (
-        not isinstance(issues, list)
-        or ordinal >= len(issues)
-        or not isinstance(issues[ordinal], dict)
-    ):
+    retained = _retained_findings(row)
+    issues = retained["issues"]
+    if ordinal >= len(issues):
         raise ValueError("retained finding ordinal is unavailable")
     issue = issues[ordinal]
     return {
@@ -415,8 +548,8 @@ def finding_detail(
         "finding": _finding_summary(issue, ordinal),
         "evidence": _bounded_value(issue),
         "audit": {
-            "schema_version": audit.get("schema_version"),
-            "generated_at": (audit.get("run") or {}).get("generated_at"),
+            "schema_version": retained["schema_version"],
+            "generated_at": retained["generated_at"],
         },
     }
 
