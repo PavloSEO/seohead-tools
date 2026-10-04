@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from seohead.reports.bi import export_bi
-from seohead.reports.bi_destinations import bigquery_plan, sheets_plan
+from seohead.reports.bi_destinations import (
+    BIDestinationError,
+    apply_with_client,
+    bigquery_plan,
+    sheets_plan,
+)
 
 
 def _audit():
@@ -26,3 +33,36 @@ def test_offline_destination_plans_reconcile_the_complete_local_package(tmp_path
     assert bigquery["billing_required"] is True
     assert all(row["table"].startswith("seohead_") for row in bigquery["tables"])
     assert sheets_plan(package, max_cells=1)["state"] == "unavailable"
+
+
+def test_injected_destination_client_is_explicit_transactional_and_streamed(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def authorize_target(self, target):
+            self.calls.append(("authorize", target))
+            return True
+
+        def begin(self, **kwargs):
+            self.calls.append(("begin", kwargs))
+            return "tx"
+
+        def write(self, transaction, dataset, rows):
+            self.calls.append(("write", transaction, dataset, len(rows)))
+
+        def commit(self, transaction):
+            self.calls.append(("commit", transaction))
+
+    client = Client()
+    with pytest.raises(BIDestinationError, match="apply=True"):
+        apply_with_client(package, target="synthetic", operation="replace", client=client)
+    result = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert result["rows"]["pages"] == 1
+    assert client.calls[0] == ("authorize", "synthetic")
+    assert client.calls[-1] == ("commit", "tx")

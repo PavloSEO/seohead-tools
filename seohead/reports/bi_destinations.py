@@ -7,6 +7,7 @@ artifact a future explicit apply operation must reconcile with the package.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 from pathlib import Path
@@ -123,4 +124,77 @@ def bigquery_plan(
             for name, info in datasets.items()
         ],
         "required_authorization": "explicit billed project/dataset target and separate cost plus apply confirmation",
+    }
+
+
+def _csv_chunks(root: Path, dataset: dict[str, Any], size: int = 1_000):
+    """Yield a header once and bounded rows from every verified partition."""
+    header = None
+    chunk = []
+    for part in dataset["partitions"]:
+        with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
+            rows = csv.reader(stream)
+            current_header = next(rows)
+            if header is None:
+                header = current_header
+                yield [header]
+            elif current_header != header:
+                raise BIDestinationError("dataset partition headers disagree")
+            for row in rows:
+                chunk.append(row)
+                if len(chunk) == size:
+                    yield chunk
+                    chunk = []
+    if chunk:
+        yield chunk
+
+
+def apply_with_client(
+    package: str | Path,
+    *,
+    target: str,
+    operation: str,
+    client: Any,
+    apply: bool = False,
+) -> dict[str, Any]:
+    """Stream a package through an injected, already-authorized transaction client.
+
+    A concrete Google client belongs outside this core.  It must implement
+    ``authorize_target``, ``begin``, ``write`` and ``commit``; an exception triggers
+    its optional ``abort`` hook, preserving the prior target until commit.
+    """
+    if not apply:
+        raise BIDestinationError("apply=True is required for a destination write")
+    if operation not in {"replace", "append"}:
+        raise BIDestinationError("operation must be 'replace' or 'append'")
+    root, manifest = _manifest(package)
+    datasets = _verify_partitions(root, manifest)
+    if not isinstance(target, str) or not target:
+        raise BIDestinationError("an explicit destination target is required")
+    if client.authorize_target(target) is not True:
+        raise BIDestinationError("injected client did not authorize the requested target")
+    transaction = client.begin(target=target, operation=operation, schema_version=BI_SCHEMA_VERSION)
+    written = {}
+    try:
+        for name, info in datasets.items():
+            count = 0
+            first_chunk = True
+            for rows in _csv_chunks(root, manifest["datasets"][name]):
+                client.write(transaction, name, rows)
+                count += len(rows) - (1 if first_chunk else 0)
+                first_chunk = False
+            if count != info["rows"]:
+                raise BIDestinationError(f"destination row conservation failed for {name!r}")
+            written[name] = count
+        client.commit(transaction)
+    except BaseException:
+        abort = getattr(client, "abort", None)
+        if abort is not None:
+            abort(transaction)
+        raise
+    return {
+        "format": "seohead.bi-destination-apply.v1",
+        "target": target,
+        "operation": operation,
+        "rows": written,
     }

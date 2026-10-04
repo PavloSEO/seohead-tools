@@ -677,13 +677,15 @@ class _RunInput:
     source_bytes: int
     run_metadata: dict[str, Any]
     pages: list[dict[str, Any]]
-    findings: list[dict[str, Any]]
+    findings_factory: Any
+    finding_count: int
     groups: list[dict[str, Any]]
     links_factory: Any
     links_source_state: str
     links_source_reason: str | None
     coverage_rows: list[dict[str, Any]]
     link_count: int | None
+    close: Any = None
 
 
 @dataclass
@@ -887,7 +889,8 @@ def _audit_source(document: dict[str, Any], raw: bytes, source_name: str | None)
         source_bytes=len(raw),
         run_metadata=metadata,
         pages=pages,
-        findings=findings,
+        findings_factory=lambda: iter(findings),
+        finding_count=len(findings),
         groups=groups,
         links_factory=lambda: iter(()),
         links_source_state="unavailable",
@@ -971,11 +974,12 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
         audit_row = con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
         from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
-        if audit_v2_path(path).exists():
-            # This projection remains explicitly bounded; never substitute an
-            # empty inline slot for the retained companion's findings.
-            with AuditV2Reader(path) as reader:
-                audit = reader.materialize_legacy(max_bytes=MAX_AUDIT_BYTES)
+        audit_reader = AuditV2Reader(path) if audit_v2_path(path).exists() else None
+        if audit_reader is not None:
+            # Keep issue rows in their companion and reopen the ordered cursor
+            # for each consumer.  Large audit.v2 findings never pass through
+            # legacy JSON materialization.
+            audit = audit_reader.header
         else:
             audit = json.loads(audit_row[0]) if audit_row else None
         capabilities = json.loads(scan["capabilities_json"])
@@ -998,13 +1002,32 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
     groups = audit.get("groups") if isinstance(audit, dict) else []
     findings = findings if isinstance(findings, list) else []
     groups = groups if isinstance(groups, list) else []
+    if audit_reader is not None:
+
+        def findings_factory():
+            return audit_reader.iter_collection("/issues")
+
+        finding_count = audit_reader.count("/issues")
+        groups = (
+            list(audit_reader.iter_collection("/groups"))
+            if "/groups" in audit_reader.collections
+            else []
+        )
+        audit_page_rows = audit_reader.iter_collection("/pages")
+    else:
+
+        def findings_factory():
+            return iter(findings)
+
+        finding_count = len(findings)
+        audit_page_rows = (audit.get("pages") or []) if isinstance(audit, dict) else []
     audit_pages = (
         {
             page.get("url"): {
                 "indexability": page.get("indexability"),
                 "indexability_status": page.get("indexability_status"),
             }
-            for page in (audit.get("pages") or [])
+            for page in audit_page_rows
             if isinstance(page, dict) and isinstance(page.get("url"), str)
         }
         if isinstance(audit, dict)
@@ -1012,7 +1035,7 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
     )
     for page in pages:
         page["_bi_audit_page"] = audit_pages.get(page.get("url"))
-    if len(findings) > MAX_FINDINGS:
+    if finding_count > MAX_FINDINGS:
         raise BIExportError(f"scan findings exceed the {MAX_FINDINGS}-row source bound")
     link_count = int(con.execute("SELECT COUNT(*) FROM links").fetchone()[0])
     if link_count > MAX_LINK_OCCURRENCES:
@@ -1113,13 +1136,15 @@ def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) ->
         source_bytes=scan_bytes,
         run_metadata=metadata,
         pages=pages,
-        findings=findings,
+        findings_factory=findings_factory,
+        finding_count=finding_count,
         groups=groups,
         links_factory=links_factory,
         links_source_state=str(links_state),
         links_source_reason=links_reason,
         coverage_rows=coverage_rows,
         link_count=link_count if links_state in {"complete", "partial"} else None,
+        close=audit_reader.close if audit_reader is not None else None,
     )
 
 
@@ -2462,7 +2487,7 @@ def _coverage_rows(
     )
     for dataset, result, source_count in (
         ("pages", pages_result, len(run.pages)),
-        ("findings", findings_result, len(run.findings)),
+        ("findings", findings_result, run.finding_count),
         ("link_occurrences", links_result, run.link_count),
         ("metrics", metrics_result, None),
         ("cohorts", cohorts_result, len(run.pages) * 5),
@@ -2483,7 +2508,7 @@ def _coverage_rows(
     if run.groups:
         linked_group_ids = {
             finding.get("group_id")
-            for finding in run.findings
+            for finding in run.findings_factory()
             if isinstance(finding.get("group_id"), str)
         }
         all_group_ids = {
@@ -2661,7 +2686,11 @@ def _scan_run(
         raise BIExportError(f"scan input failed validation: {exc}") from exc
     with closing(con):
         run = _scan_source(path, con)
-        return _write_package(run, con, out_directory, providers, **limits)
+        try:
+            return _write_package(run, con, out_directory, providers, **limits)
+        finally:
+            if run.close is not None:
+                run.close()
 
 
 def _audit_run(
@@ -2782,7 +2811,7 @@ def _write_package(
             yield _page_row(run, page, ordinal)
 
     def finding_rows() -> Iterator[dict[str, Any]]:
-        for ordinal, finding in enumerate(run.findings):
+        for ordinal, finding in enumerate(run.findings_factory()):
             yield _finding_source(run, finding, ordinal, group_map)
 
     def link_rows() -> Iterator[dict[str, Any]]:
@@ -2910,7 +2939,7 @@ def _write_package(
                 if run.run_metadata.get("audit_available", True)
                 else "scan has no current saved audit; findings were not produced",
                 "retained source findings",
-                {"source_rows": len(run.findings)},
+                {"source_rows": run.finding_count},
             ),
             "metrics": (
                 "not_configured"
