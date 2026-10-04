@@ -1625,11 +1625,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         evidence: list[dict] | None = None,
         expected_revision: int = 0,
         review: dict[str, Any] | None = None,
+        phase: str | None = None,
     ) -> dict[str, Any]:
         """Persist one registered-step result before the next step or agent handoff."""
         return _checked(
             handlers.workflow_checkpoint(
-                directory, run_id, step_id, state, evidence, expected_revision, review
+                directory, run_id, step_id, state, evidence, expected_revision, review, phase
             )
         )
 

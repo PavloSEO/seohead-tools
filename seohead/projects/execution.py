@@ -169,6 +169,7 @@ def start(
         + sum(existing["scenario"]["id"] == scenario_id for existing in document["runs"]),
         "scenario": {"id": scenario_id, "definition_hash": _catalogue_hash(scenario_id)},
         "context": _context(context, project),
+        "phase": (context or {}).get("phase", "registered"),
         "steps": [
             {
                 "id": step,
@@ -200,6 +201,7 @@ def checkpoint(
     evidence: list[dict] | None = None,
     expected_revision: int,
     review: dict[str, Any] | None = None,
+    phase: str | None = None,
 ) -> dict[str, Any]:
     root, _, document = _load(directory)
     if document["revision"] != expected_revision:
@@ -224,6 +226,8 @@ def checkpoint(
     approved = _review(review, step["execution_kind"], state)
     if approved:
         step["review"] = approved
+    if phase is not None:
+        run["phase"] = _text(phase, "phase", 128)
     if state == "succeeded" and all(item["state"] == "succeeded" for item in run["steps"]):
         run["state"] = "completed"
     elif state != "succeeded":
@@ -309,6 +313,7 @@ def execute(
             state=outcome.get("state"),
             evidence=outcome.get("evidence"),
             review=outcome.get("review"),
+            phase=outcome.get("phase"),
             expected_revision=revision,
         )
         revision = result["revision"]

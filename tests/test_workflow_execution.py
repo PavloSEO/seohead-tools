@@ -63,6 +63,7 @@ def test_second_session_resumes_only_the_interrupted_registered_step(tmp_path):
         run_id=started["run"]["id"],
         step_id=steps[0],
         state="succeeded",
+        phase="own-site-capture",
         expected_revision=started["revision"],
     )
     interrupted = checkpoint(
@@ -78,6 +79,7 @@ def test_second_session_resumes_only_the_interrupted_registered_step(tmp_path):
     assert recovered["next_action"] == steps[1]
     assert recovered["run"]["steps"][0]["state"] == "succeeded"
     assert recovered["run"]["context"]["own_site"] == "https://example.test/"
+    assert recovered["run"]["phase"] == "own-site-capture"
 
 
 def test_manual_step_needs_an_explicit_review_before_completion(tmp_path):

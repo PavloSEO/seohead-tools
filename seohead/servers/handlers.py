@@ -4112,6 +4112,7 @@ def workflow_checkpoint(
     evidence: list[dict] | None = None,
     expected_revision: int = 0,
     review: dict[str, Any] | None = None,
+    phase: str | None = None,
 ) -> dict[str, Any]:
     from seohead.projects.execution import checkpoint
 
@@ -4123,6 +4124,7 @@ def workflow_checkpoint(
         evidence=evidence,
         expected_revision=expected_revision,
         review=review,
+        phase=phase,
     )
 
 
