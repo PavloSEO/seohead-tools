@@ -730,13 +730,14 @@ Build one comparable facts table (schema facts.v1) across several sites from cra
 
 MCP name: `seo_compare_crawls`
 
-Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the page is still crawled and no longer matches — a real fix), appeared (a genuinely new page with a finding), disappeared (the page is not in this crawl at all, so a missing finding proves nothing). "left" and "disappeared" look identical in a naive diff and mean opposite things. Refuses a known difference in results-affecting settings unless ``force`` is true; partial-crawl warnings remain attached to the historical result.
+Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the page is still crawled and no longer matches — a real fix), appeared (a genuinely new page with a finding), disappeared (the page is not in this crawl at all, so a missing finding proves nothing). "left" and "disappeared" look identical in a naive diff and mean opposite things. Optional ``correspondence`` is a closed url-correspondence.v1 object (or local JSON path) declaring origin and explicit URL pairs for a migration; it never infers pairs from titles or content and adds a release_review.v1 facts/finding artifact. Refuses a known difference in results-affecting settings unless ``force`` is true; partial-crawl warnings remain attached to the historical result.
 
 | Argument | Type | Default |
 |---|---|---|
 | `before` | `Any` | `required` |
 | `after` | `Any` | `required` |
 | `force` | `bool` | `False` |
+| `correspondence` | `Any` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

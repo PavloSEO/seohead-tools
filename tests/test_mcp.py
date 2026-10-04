@@ -243,6 +243,39 @@ def test_crawl_site_explicit_override_changes_only_that_setting(monkeypatch):
         assert forwarded[key] is None
 
 
+def test_compare_crawls_mcp_forwards_declared_correspondence(monkeypatch):
+    received = []
+    monkeypatch.setattr(
+        "seohead.servers.handlers.compare_crawls",
+        lambda **kwargs: received.append(kwargs) or {"ok": True},
+    )
+    tool = build_server()._tool_manager.get_tool("seo_compare_crawls")
+    correspondence = {
+        "schema_version": "url-correspondence.v1",
+        "origin_map": {},
+        "pairs": [],
+    }
+
+    asyncio.run(
+        tool.run(
+            {
+                "before": {"pages": [], "issues": []},
+                "after": {"pages": [], "issues": []},
+                "correspondence": correspondence,
+            }
+        )
+    )
+
+    assert received == [
+        {
+            "before": {"pages": [], "issues": []},
+            "after": {"pages": [], "issues": []},
+            "force": False,
+            "correspondence": correspondence,
+        }
+    ]
+
+
 def test_crawl_site_forwards_the_rendering_browser_overrides(monkeypatch):
     """#744: MCP and CLI share one handler, so the engine/viewport/concurrency
     keys must arrive as the same dotted-path overrides a --set run builds --

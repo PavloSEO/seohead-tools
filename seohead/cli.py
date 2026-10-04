@@ -728,6 +728,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["before"] = args.before
         if getattr(args, "after", None):
             kw["after"] = args.after
+        if getattr(args, "correspondence", None):
+            kw["correspondence"] = args.correspondence
         if getattr(args, "force", False):
             kw["force"] = True
     elif cmd == "verify-fixes":
@@ -1465,6 +1467,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-depth", type=int, help=argparse.SUPPRESS)
         sub.add_argument("--min-delay", type=float, help=argparse.SUPPRESS)
     if cmd == "compare-crawls":
+        sub.add_argument(
+            "--correspondence",
+            help="url-correspondence.v1 JSON file declaring origin and URL pairs",
+        )
         sub.add_argument(
             "--force",
             action="store_true",

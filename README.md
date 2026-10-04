@@ -83,7 +83,7 @@ authorizes it, rather than spending hours unasked.
 | Existing Screaming Frog exports | `seohead sf run --exports-dir ./exports --out ./report --tasks` | Offline analysis of supplied CSV/XLSX files; no SF installation, licence or target request required |
 | A licensed local Screaming Frog installation | `seohead sf run --crawl https://example.com --out ./report --tasks` | A local SF crawl followed by the same audit artifacts |
 | A bounded current-state evidence pass | `seohead site-audit --url https://example.com --limit 25` | One `seohead.site-audit/1` document from selected sitemap URLs and site-level checks |
-| Two compatible audit documents | `seohead compare-crawls --before before.json --after after.json` | Findings that entered, changed, or disappeared between runs |
+| Two compatible audit documents | `seohead compare-crawls --before before.json --after after.json` | Findings that entered, changed, or disappeared between runs; an optional declared `url-correspondence.v1` map adds a saved release-review facts artifact without title/content inference |
 | An agent client | `seohead mcp` | The local stdio MCP server, with the same public behavior as the CLI |
 
 `crawl-site` is SEOHEAD's primary collector and is free to run locally; no Screaming Frog licence or paid crawl API is required. It still sends bounded, read-only requests to the approved site. Native crawling and Screaming Frog use different collectors and may discover different URL populations. Treat their outputs as distinct evidence and compare them only with compatible scope, configuration and provenance. Existing SF CSV/XLSX exports are analyzed offline and do not require an SF installation or a new crawl. Live SF mode requires a separately installed, active licence.

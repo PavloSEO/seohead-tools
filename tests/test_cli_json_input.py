@@ -58,6 +58,23 @@ def test_compare_crawls_force_flag_reaches_the_handler(monkeypatch, capsys):
     assert captured["force"] is True
 
 
+def test_compare_crawls_correspondence_flag_reaches_the_shared_handler(monkeypatch, capsys):
+    captured = _capture(monkeypatch, "compare_crawls")
+    rc = cli.main(
+        [
+            "compare-crawls",
+            "--before",
+            "before.json",
+            "--after",
+            "after.json",
+            "--correspondence",
+            "release-map.json",
+        ]
+    )
+    assert rc == 0
+    assert captured["correspondence"] == "release-map.json"
+
+
 def test_log_scan_flag_still_works_and_overrides_json(monkeypatch, capsys):
     """Path flags remain supported and take precedence over --input, per the issue's acceptance
     criteria — the flag path must not have regressed while fixing the JSON-only path."""

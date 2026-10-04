@@ -110,6 +110,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "compare-crawls",
         "compare_crawls",
         _form("audit_document", "before", "after", note="Each path may be audit JSON or scan.v1."),
+        _form(
+            "local_file",
+            "correspondence",
+            note="Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default.",
+        ),
     ),
     _command(
         "verify-fixes",

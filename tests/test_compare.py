@@ -5,8 +5,11 @@ module. A naive diff of two finding sets cannot make it; this one can because
 it also looks at which URLs were actually crawled each time.
 """
 
+import json
+
 import pytest
 
+from seohead.servers.handlers import compare_crawls
 from seohead.sf.core.compare import CompareError, compare, preflight
 
 
@@ -338,3 +341,202 @@ def test_an_audit_wide_finding_never_lands_in_appeared_or_disappeared():
     result = compare(before, after)
     assert result["appeared"] == []
     assert result["disappeared"] == []
+
+
+# ── declared release correspondence (issue #877) ────────────────────────
+
+
+def _correspondence(*, origins=None, pairs=None):
+    return {
+        "schema_version": "url-correspondence.v1",
+        "origin_map": origins or {},
+        "pairs": pairs or [],
+    }
+
+
+def _page(url, **metrics):
+    return {
+        "url": url,
+        "status_code": 200,
+        "metrics": {
+            "title": "Before title",
+            "meta_description": "Before description",
+            "h1": ["Before H1"],
+            "canonical": url,
+            "meta_robots": "index,follow",
+            "x_robots": None,
+            **metrics,
+        },
+    }
+
+
+def test_exact_comparison_remains_the_default_without_a_correspondence():
+    before = _audit(["https://before.test/old"], [("X", "https://before.test/old")])
+    after = _audit(["https://after.test/new"], [("X", "https://after.test/new")])
+
+    result = compare(before, after)
+
+    assert result["summary"] == {
+        "entered": 0,
+        "left": 0,
+        "appeared": 1,
+        "disappeared": 1,
+        "by_check": {"X": {"entered": 0, "left": 0, "appeared": 1, "disappeared": 1}},
+    }
+    assert "release_review" not in result
+
+
+def test_declared_origin_map_compares_migrated_findings_and_emits_review_facts():
+    before_url = "https://before.test/a%2Fb?view=full"
+    after_url = "https://after.test/a%2Fb?view=full"
+    before = {
+        "run": {"generated_at": "before"},
+        "pages": [_page(before_url)],
+        "issues": [{"check": "X", "target_url": before_url}],
+    }
+    after = {
+        "run": {"generated_at": "after"},
+        "pages": [
+            _page(
+                after_url,
+                title="After title",
+                meta_description="After description",
+                h1=["After H1"],
+                canonical=after_url,
+                meta_robots="noindex",
+            )
+        ],
+        "issues": [],
+    }
+
+    result = compare(
+        before,
+        after,
+        correspondence=_correspondence(origins={"https://before.test": "https://after.test"}),
+    )
+
+    assert [issue["target_url"] for issue in result["left"]] == [before_url]
+    assert result["disappeared"] == []
+    review = result["release_review"]
+    assert review["schema_version"] == "release_review.v1"
+    assert review["correspondence"]["origin_map"] == {"https://before.test": "https://after.test"}
+    pair = review["correspondence"]["pairs"][0]
+    assert pair["before_url"] == before_url
+    assert pair["after_url"] == after_url
+    assert pair["host_changed"] is True
+    facts = review["facts"][0]
+    assert facts["correspondence_key"] == after_url
+    assert facts["before"]["title"] == {
+        "value": "Before title",
+        "state": "measured",
+        "source": "pages.metrics.title",
+        "coverage": "recorded",
+    }
+    assert set(facts["changed"]) == {"title", "description", "h1", "canonical", "robots"}
+    assert facts["after"]["robots"]["value"]["meta"] == "noindex"
+    assert review["findings"]["left"] == result["left"]
+
+
+def test_explicit_pair_can_declare_a_path_change_without_title_inference():
+    before_url = "https://before.test/legacy"
+    after_url = "https://after.test/replacement"
+    before = _audit([before_url], [("X", before_url)])
+    after = _audit([after_url], [("X", after_url)])
+
+    result = compare(
+        before,
+        after,
+        correspondence=_correspondence(pairs=[{"before": before_url, "after": after_url}]),
+    )
+
+    assert result["summary"] == {
+        "entered": 0,
+        "left": 0,
+        "appeared": 0,
+        "disappeared": 0,
+        "by_check": {},
+    }
+    assert result["release_review"]["correspondence"]["pairs"][0]["kind"] == "explicit_pair"
+
+
+def test_explicit_pairs_override_an_origin_map_and_collisions_are_refused():
+    before = _audit(["https://before.test/a"], [])
+    after = _audit(["https://after.test/other"], [])
+    with pytest.raises(CompareError, match="closed schema"):
+        compare(before, after, correspondence={**_correspondence(), "title_match": True})
+    override = compare(
+        before,
+        after,
+        correspondence=_correspondence(
+            origins={"https://before.test": "https://after.test"},
+            pairs=[{"before": "https://before.test/a", "after": "https://after.test/other"}],
+        ),
+    )
+    assert override["release_review"]["correspondence"]["pairs"][0]["kind"] == "explicit_pair"
+    collision_before = _audit(["https://one.test/a", "https://two.test/a"], [])
+    with pytest.raises(CompareError, match=r"both .* crawled page"):
+        compare(
+            collision_before,
+            _audit(["https://after.test/a"], []),
+            correspondence=_correspondence(
+                origins={
+                    "https://one.test": "https://after.test",
+                    "https://two.test": "https://after.test",
+                }
+            ),
+        )
+    with pytest.raises(CompareError, match=r"maps 'https://before\.test/a' more than once"):
+        compare(
+            before,
+            after,
+            correspondence=_correspondence(
+                pairs=[
+                    {"before": "https://before.test/a", "after": "https://after.test/other"},
+                    {"before": "https://before.test/a", "after": "https://after.test/another"},
+                ]
+            ),
+        )
+
+
+def test_unmatched_declared_pair_stays_visible_and_missing_facts_are_not_clean():
+    before_url = "https://before.test/old"
+    after_url = "https://after.test/new"
+    result = compare(
+        _audit([], []),
+        _audit([], []),
+        correspondence=_correspondence(pairs=[{"before": before_url, "after": after_url}]),
+    )
+
+    pair = result["release_review"]["correspondence"]["pairs"][0]
+    assert pair["state"] == "before_not_crawled"
+    assert result["release_review"]["facts"] == []
+
+
+def test_shared_handler_reads_the_declared_correspondence_file(tmp_path):
+    before_url = "https://before.test/old"
+    after_url = "https://after.test/new"
+    declaration = tmp_path / "url-correspondence.json"
+    declaration.write_text(
+        json.dumps(_correspondence(pairs=[{"before": before_url, "after": after_url}])),
+        encoding="utf-8",
+    )
+
+    result = compare_crawls(
+        before=_audit([before_url], [("X", before_url)]),
+        after=_audit([after_url], []),
+        correspondence=str(declaration),
+    )
+
+    assert result["summary"]["left"] == 1
+    assert result["release_review"]["correspondence"]["pairs"][0]["state"] == "matched"
+
+
+def test_correspondence_file_rejects_duplicate_json_keys(tmp_path):
+    declaration = tmp_path / "url-correspondence.json"
+    declaration.write_text(
+        '{"schema_version":"url-correspondence.v1","origin_map":{},"pairs":[],"pairs":[]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CompareError, match="repeats object key"):
+        compare(_audit([], []), _audit([], []), correspondence=str(declaration))

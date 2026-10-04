@@ -34,6 +34,19 @@ comparison.
 seohead compare-crawls --before ./old-audit.json --after ./new-audit.json
 ```
 
+For a release that deliberately moved URLs, declare the migration rather than relying on matching
+titles or page text:
+
+```bash
+seohead compare-crawls --before ./old-audit.json --after ./new-audit.json \
+  --correspondence ./url-correspondence.json
+```
+
+The optional JSON document has exactly `schema_version: "url-correspondence.v1"`, an
+`origin_map`, and explicit `pairs`. The returned `release_review.v1` section records both URLs,
+host differences, declared/missing pairs, source/coverage state for page facts, and the finding
+delta. A title match is never a URL correspondence.
+
 **4. Check both runs before believing the diff.**
 
 ```bash
@@ -45,7 +58,8 @@ A difference between two runs, one of which contradicts itself, is not a change 
 ## What comes out
 
 Findings that appeared, findings that disappeared, and pages that changed status — the shape a
-release review needs, rather than two full audits to read side by side.
+release review needs, rather than two full audits to read side by side. With declared URL
+correspondence, the same output also contains the saved `release_review.v1` artifact.
 
 ## What it costs
 
