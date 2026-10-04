@@ -97,6 +97,25 @@ def test_unauthorized_chat_never_reaches_bot_api(monkeypatch, tmp_path):
     assert requests == []
 
 
+def test_chat_grant_survives_restart_and_revoke_takes_effect(monkeypatch, tmp_path):
+    requests = []
+    path = tmp_path / "chats.sqlite"
+    subject = telegram_subject("7")
+    initial = TelegramChatAuthorizationStore(path)
+    initial.grant(subject, "-10042")
+    restarted = TelegramChatAuthorizationStore(path)
+    assert restarted.allows(subject, "-10042")
+    adapter = TelegramGuidedAdapter(
+        _client(monkeypatch, requests),
+        restarted,
+        lambda *_: WizardSession(_Submitter()),
+    )
+    restarted.revoke(subject, "-10042")
+    with pytest.raises(PermissionError, match="not authorized"):
+        adapter.handle_update(_update("https://example.com/"))
+    assert requests == []
+
+
 def test_progress_and_document_transport_are_confirmed_offline(monkeypatch, tmp_path):
     requests = []
     client = _client(monkeypatch, requests, result={"message_id": 12})
