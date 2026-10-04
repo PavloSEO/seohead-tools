@@ -57,6 +57,36 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _REVISION = re.compile(r"[0-9a-f]{40}\Z")
 _UTC = timezone.utc
 
+# A lifecycle is deliberately a decision layer over retained observations.  It
+# never changes an observation or turns an absent/failed fetch into a fix.
+_LIFECYCLE_STATES = frozenset(
+    {
+        "detected",
+        "verified",
+        "fix_reported",
+        "recheck_pending",
+        "resolved",
+        "persisting",
+        "false_positive_reviewed",
+        "unverifiable",
+        "regressed",
+    }
+)
+_TRANSITIONS = {
+    "detected": frozenset({"verified", "fix_reported", "false_positive_reviewed", "unverifiable"}),
+    "verified": frozenset(
+        {"fix_reported", "recheck_pending", "false_positive_reviewed", "unverifiable"}
+    ),
+    "fix_reported": frozenset({"verified", "recheck_pending", "unverifiable"}),
+    "recheck_pending": frozenset({"resolved", "persisting", "regressed", "unverifiable"}),
+    "resolved": frozenset({"recheck_pending", "regressed"}),
+    "persisting": frozenset({"fix_reported", "recheck_pending", "regressed", "unverifiable"}),
+    "false_positive_reviewed": frozenset({"verified", "recheck_pending"}),
+    "unverifiable": frozenset({"verified", "fix_reported", "recheck_pending"}),
+    "regressed": frozenset({"fix_reported", "recheck_pending", "unverifiable"}),
+}
+_MEASURED_OUTCOMES = frozenset({"resolved", "persisting", "regressed"})
+
 
 class LedgerError(ScanError):
     """The input cannot be used as a supported, consistent ledger artifact."""
@@ -237,6 +267,29 @@ def _validate(con) -> None:
         raise LedgerError("ledger writer build must be a full lowercase Git commit SHA")
     if type(header["ledger_revision"]) is not int or header["ledger_revision"] < 0:
         raise LedgerError("invalid ledger revision")
+    if (
+        con.execute(
+            "SELECT 1 FROM finding WHERE current_state NOT IN ("
+            + ",".join("?" for _ in _LIFECYCLE_STATES)
+            + ") LIMIT 1",
+            tuple(sorted(_LIFECYCLE_STATES)),
+        ).fetchone()
+        or con.execute(
+            "SELECT 1 FROM occurrence WHERE current_state NOT IN ("
+            + ",".join("?" for _ in _LIFECYCLE_STATES)
+            + ") LIMIT 1",
+            tuple(sorted(_LIFECYCLE_STATES)),
+        ).fetchone()
+    ):
+        raise LedgerError("ledger contains an unsupported lifecycle state")
+    if con.execute(
+        "SELECT 1 FROM decision WHERE state NOT IN ("
+        + ",".join("?" for _ in _LIFECYCLE_STATES)
+        + ") OR actor='' OR reason='' OR decided_at_state!='known' OR decided_at IS NULL "
+        "LIMIT 1",
+        tuple(sorted(_LIFECYCLE_STATES)),
+    ).fetchone():
+        raise LedgerError("ledger contains an invalid lifecycle decision")
     for site in con.execute("SELECT * FROM site"):
         try:
             uuid.UUID(site["project_uuid"])
@@ -1504,6 +1557,241 @@ def note_source_missing(
     return {"ok": True, "ledger_revision": int(revision)}
 
 
+def _lifecycle_text(value: Any, name: str, maximum: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise LedgerError(f"{name} must be nonempty text of at most {maximum} characters")
+    return value.strip()
+
+
+def _finding_state(con: sqlite3.Connection, finding_id: int) -> str:
+    """Project exact occurrence states to one conservative finding state.
+
+    A finding is resolved only when every retained occurrence is resolved.
+    Mixed evidence is never flattened to resolved; the most actionable retained
+    state remains visible to a page that lists findings.
+    """
+    states = {
+        row[0]
+        for row in con.execute(
+            "SELECT current_state FROM occurrence WHERE finding_id=?", (finding_id,)
+        )
+    }
+    if not states:
+        return "detected"
+    if states == {"resolved"}:
+        return "resolved"
+    if "regressed" in states:
+        return "regressed"
+    if "persisting" in states:
+        return "persisting"
+    if "recheck_pending" in states:
+        return "recheck_pending"
+    if states == {"false_positive_reviewed"}:
+        return "false_positive_reviewed"
+    if "unverifiable" in states:
+        return "unverifiable"
+    if "fix_reported" in states:
+        return "fix_reported"
+    if "verified" in states:
+        return "verified"
+    return "detected"
+
+
+def _outcome_observation(
+    con: sqlite3.Connection, occurrence_id: int, observation_id: int | None
+) -> int | None:
+    """Validate an evidence reference used for a measured lifecycle outcome."""
+    if observation_id is None:
+        raise LedgerError("a measured lifecycle outcome requires an observation_id")
+    if type(observation_id) is not int or observation_id < 1:
+        raise LedgerError("observation_id must be a positive integer")
+    row = con.execute(
+        "SELECT o.observation_id,o.observation_revision,o.evidence_state,s.artifact_state "
+        "FROM observation o JOIN source_scan s ON s.source_scan_id=o.source_scan_id "
+        "WHERE o.observation_id=? AND o.occurrence_id=?",
+        (observation_id, occurrence_id),
+    ).fetchone()
+    if row is None:
+        raise LedgerError("observation_id does not belong to this occurrence")
+    if row["evidence_state"] != "measured" or row["artifact_state"] != "present":
+        raise LedgerError("measured lifecycle outcomes require retained measured evidence")
+    if row["observation_revision"] <= 1:
+        raise LedgerError(
+            "measured lifecycle outcomes require a later observation, not baseline evidence"
+        )
+    return int(row["observation_id"])
+
+
+def transition_occurrence(
+    ledger: str | Path | sqlite3.Connection,
+    *,
+    occurrence_key: str,
+    state: str,
+    actor: str,
+    reason: str,
+    expected_revision: int,
+    observation_id: int | None = None,
+    decided_at: str | None = None,
+) -> dict[str, Any]:
+    """Append one validated, revision-safe lifecycle decision for a case.
+
+    The caller supplies the ledger revision read from ``ledger_summary`` or
+    ``read_cases``.  A stale writer is refused before mutation.  In particular,
+    a user assertion cannot resolve a finding: ``resolved``, ``persisting`` and
+    ``regressed`` require a retained measured observation after the baseline.
+    """
+    if not isinstance(occurrence_key, str) or not _SHA256.fullmatch(occurrence_key):
+        raise LedgerError("occurrence_key must be a lowercase SHA-256 key")
+    if state not in _LIFECYCLE_STATES:
+        raise LedgerError("unsupported lifecycle state")
+    actor = _lifecycle_text(actor, "actor", 128)
+    reason = _lifecycle_text(reason, "reason", 2048)
+    if type(expected_revision) is not int or expected_revision < 0:
+        raise LedgerError("expected_revision must be a nonnegative integer")
+    if decided_at is not None and _validated_time(decided_at) is None:
+        raise LedgerError("decided_at must be a UTC ISO-8601 timestamp")
+
+    own = not isinstance(ledger, sqlite3.Connection)
+    con = open_ledger(ledger, write=True) if own else ledger
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        header = con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()
+        if header is None or header["ledger_revision"] != expected_revision:
+            raise LedgerError("ledger revision changed; reread cases before recording a decision")
+        occurrence = con.execute(
+            "SELECT occurrence_id,finding_id,current_state FROM occurrence WHERE occurrence_key=?",
+            (occurrence_key,),
+        ).fetchone()
+        if occurrence is None:
+            raise LedgerError("unknown occurrence_key")
+        previous = occurrence["current_state"]
+        if state == previous:
+            raise LedgerError("lifecycle transition must change the current state")
+        if state not in _TRANSITIONS.get(previous, frozenset()):
+            raise LedgerError(f"invalid lifecycle transition from {previous!r} to {state!r}")
+        linked_observation = (
+            _outcome_observation(con, int(occurrence["occurrence_id"]), observation_id)
+            if state in _MEASURED_OUTCOMES
+            else None
+        )
+        if observation_id is not None and state not in _MEASURED_OUTCOMES:
+            linked_observation = _outcome_observation(
+                con, int(occurrence["occurrence_id"]), observation_id
+            )
+        next_revision = expected_revision + 1
+        recorded_at = decided_at or _utc()
+        con.execute(
+            "INSERT INTO decision(occurrence_id,state,actor,reason,decided_at,decided_at_state,"
+            "observation_id,ledger_revision) VALUES(?,?,?,?,?,?,?,?)",
+            (
+                occurrence["occurrence_id"],
+                state,
+                actor,
+                reason,
+                recorded_at,
+                "known",
+                linked_observation,
+                next_revision,
+            ),
+        )
+        con.execute(
+            "UPDATE occurrence SET current_state=? WHERE occurrence_id=?",
+            (state, occurrence["occurrence_id"]),
+        )
+        finding_state = _finding_state(con, int(occurrence["finding_id"]))
+        con.execute(
+            "UPDATE finding SET current_state=? WHERE finding_id=?",
+            (finding_state, occurrence["finding_id"]),
+        )
+        con.execute("UPDATE ledger SET ledger_revision=? WHERE singleton=1", (next_revision,))
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    finally:
+        if own:
+            con.close()
+    return {
+        "ok": True,
+        "occurrence_key": occurrence_key,
+        "previous_state": previous,
+        "state": state,
+        "finding_state": finding_state,
+        "observation_id": linked_observation,
+        "ledger_revision": next_revision,
+    }
+
+
+def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
+    """Return case counts and explicitly named remediation/recheck denominators.
+
+    ``resolved_percent`` includes unresolved evidence states in its denominator;
+    ``rechecked_percent`` deliberately excludes ``unverifiable`` from its
+    numerator.  This makes a partial or failed recheck visible instead of
+    shrinking the original case population.
+    """
+    own = not isinstance(ledger, sqlite3.Connection)
+    con = open_ledger(ledger) if own else ledger
+    try:
+        counts = {state: 0 for state in _LIFECYCLE_STATES}
+        for row in con.execute(
+            "SELECT current_state,COUNT(*) AS count FROM occurrence GROUP BY current_state"
+        ):
+            counts[row["current_state"]] = int(row["count"])
+        original = sum(counts.values())
+        false_positive = counts["false_positive_reviewed"]
+        remediation_denominator = original - false_positive
+        resolved = counts["resolved"]
+        rechecked = resolved + counts["persisting"] + counts["regressed"]
+        return {
+            "ok": True,
+            "ledger_revision": int(
+                con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
+            ),
+            "counts": counts,
+            "denominators": {
+                "verified_original_occurrences": original,
+                "remediation_cases": remediation_denominator,
+            },
+            "resolved_percent": (
+                round(100 * resolved / remediation_denominator, 1)
+                if remediation_denominator
+                else None
+            ),
+            "rechecked_percent": round(100 * rechecked / original, 1) if original else None,
+            "reason": None if original else "the ledger has no occurrence population",
+        }
+    finally:
+        if own:
+            con.close()
+
+
+def remediation_report(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
+    """Build deterministic JSON-ready before/after rows without performing I/O or network work."""
+    summary = remediation_summary(ledger)
+    cases = read_cases(ledger)
+    rows = []
+    for finding in cases["findings"]:
+        for occurrence in finding["occurrences"]:
+            decisions = occurrence["decisions"]
+            latest = decisions[-1] if decisions else None
+            rows.append(
+                {
+                    "finding_key": finding["finding_key"],
+                    "check": finding["check"],
+                    "subject": occurrence["subject_value"],
+                    "occurrence_key": occurrence["occurrence_key"],
+                    "baseline": occurrence["observations"][0]
+                    if occurrence["observations"]
+                    else None,
+                    "state": occurrence["current_state"],
+                    "decision": latest,
+                    "observations": occurrence["observations"],
+                }
+            )
+    return {"schema_version": "remediation-report.v1", "summary": summary, "cases": rows}
+
+
 def ledger_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
     """Return ledger identity plus the independent finding/occurrence/URL counts."""
     own = not isinstance(ledger, sqlite3.Connection)
@@ -1681,6 +1969,22 @@ def read_cases(
                     view = _observation_view(row, previous)
                     previous = view
                     observations.append(view)
+                decisions = [
+                    {
+                        "decision_id": row["decision_id"],
+                        "state": row["state"],
+                        "actor": row["actor"],
+                        "reason": row["reason"],
+                        "decided_at": row["decided_at"],
+                        "decided_at_state": row["decided_at_state"],
+                        "observation_id": row["observation_id"],
+                        "ledger_revision": row["ledger_revision"],
+                    }
+                    for row in con.execute(
+                        "SELECT * FROM decision WHERE occurrence_id=? ORDER BY decision_id",
+                        (occurrence["occurrence_id"],),
+                    )
+                ]
                 occurrences.append(
                     {
                         "occurrence_id": occurrence["occurrence_id"],
@@ -1693,6 +1997,7 @@ def read_cases(
                         "current_state": occurrence["current_state"],
                         "first_seen_at": occurrence["first_seen_at"],
                         "observations": observations,
+                        "decisions": decisions,
                     }
                 )
             findings.append(

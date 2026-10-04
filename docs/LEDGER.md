@@ -176,15 +176,29 @@ transactional, so a failed write leaves the previous committed state; keep a
 backup before a migration if you must be able to return to the exact prior
 bytes.
 
-## What this version does not do
+## Lifecycle decisions and remediation coverage
 
-`ledger.v1` records population, identity and append-only history only. It
-does not implement lifecycle transitions (#789), targeted recrawl (#790),
-coverage percentages (#791), or before/after reports (#792). The `decision`
-table, `current_state` columns and `ledger_revision` reserve those lanes;
-until then every case reads `detected`, and no absence in a later partial
-scan, no user assertion, no failed fetch and no configuration change marks
-anything resolved.
+`transition_occurrence` appends an immutable lifecycle decision and uses the
+ledger revision as an optimistic-write precondition. Its states are `detected`,
+`verified`, `fix_reported`, `recheck_pending`, `resolved`, `persisting`,
+`false_positive_reviewed`, `unverifiable` and `regressed`. Invalid transitions
+and stale writers are refused. Finding state is a conservative projection of
+its occurrence states: a mixed finding never reads as resolved.
+
+Claims and missing data do not resolve a case. A `resolved`, `persisting` or
+`regressed` decision requires an exact retained, measured observation after
+the baseline; the decision stores that observation id. A false-positive review
+is retained as its own state and is excluded from the remediation denominator,
+never counted as a fix. Targeted recrawl selection and writing a new
+verification artifact remain separate workflow work: an omission from a later
+partial scan still has no lifecycle effect.
+
+`remediation_summary` exposes distinct original-case, remediation and recheck
+denominators. `resolved_percent` keeps unverifiable cases in its denominator;
+`rechecked_percent` counts only retained resolved/persisting/regressed evidence,
+so failed or partial work cannot improve a percentage. `remediation_report`
+returns deterministic JSON-ready rows with the baseline, later observations
+and latest decision; it makes no network request or file write.
 
 ## Core API
 
@@ -200,7 +214,12 @@ anything resolved.
   including `distinct_affected_urls`.
 - `read_cases(ledger, *, check=None, url=None, finding_key=None) -> dict` —
   findings with occurrences, membership, group history and ordered
-  observations.
+  observations and lifecycle decisions.
+- `transition_occurrence(ledger, *, occurrence_key, state, actor, reason,
+  expected_revision, observation_id=None, decided_at=None) -> dict` — append
+  one revision-safe lifecycle decision.
+- `remediation_summary(ledger) -> dict` and `remediation_report(ledger) -> dict`
+  — explicit coverage totals and deterministic before/after data without I/O.
 - `note_source_missing(ledger, source_scan_id, *, reason)` — mark a bound
   artifact missing without losing its digests.
 - `register_site(con, *, project_uuid, target, role)` — register an

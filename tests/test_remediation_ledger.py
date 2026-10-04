@@ -27,6 +27,9 @@ from seohead.storage.ledger import (
     occurrence_key,
     open_ledger,
     read_cases,
+    remediation_report,
+    remediation_summary,
+    transition_occurrence,
 )
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _metadata, _runtime
@@ -378,6 +381,96 @@ def test_changed_observation_appends_history_without_rekeying(tmp_path):
     assert {row["severity"] for row in projections} == {"warning", "critical"}
     assert {row["status_code"] for row in projections} == {200, 404}
     assert occurrence["current_state"] == "detected"
+
+
+def test_lifecycle_transitions_are_revision_safe_and_evidence_bound(tmp_path):
+    ledger = _ledger(tmp_path)
+    first = _scan(
+        tmp_path / "first.sqlite",
+        issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)],
+    )
+    later = _scan(
+        tmp_path / "later.sqlite",
+        issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A, message="rechecked")],
+        generated_at="2026-10-02T00:00:00Z",
+    )
+    ingest_scan(ledger, first)
+    ingest_scan(ledger, later)
+    occurrence = _occurrences(read_cases(ledger))[0]
+    key = occurrence["occurrence_key"]
+    revision = ledger_summary(ledger)["ledger_revision"]
+
+    transition_occurrence(
+        ledger,
+        occurrence_key=key,
+        state="verified",
+        actor="reviewer",
+        reason="baseline evidence reviewed",
+        expected_revision=revision,
+        decided_at="2026-10-03T00:00:00Z",
+    )
+    with pytest.raises(LedgerError, match="ledger revision changed"):
+        transition_occurrence(
+            ledger,
+            occurrence_key=key,
+            state="fix_reported",
+            actor="reviewer",
+            reason="stale writer",
+            expected_revision=revision,
+        )
+    revision += 1
+    transition_occurrence(
+        ledger,
+        occurrence_key=key,
+        state="fix_reported",
+        actor="operator",
+        reason="fix claim is ready for a recheck",
+        expected_revision=revision,
+        decided_at="2026-10-03T00:01:00Z",
+    )
+    revision += 1
+    transition_occurrence(
+        ledger,
+        occurrence_key=key,
+        state="recheck_pending",
+        actor="reviewer",
+        reason="request a compatible recheck",
+        expected_revision=revision,
+        decided_at="2026-10-03T00:02:00Z",
+    )
+    revision += 1
+    with pytest.raises(LedgerError, match="requires an observation_id"):
+        transition_occurrence(
+            ledger,
+            occurrence_key=key,
+            state="resolved",
+            actor="operator",
+            reason="a claim alone cannot resolve a case",
+            expected_revision=revision,
+        )
+    result = transition_occurrence(
+        ledger,
+        occurrence_key=key,
+        state="persisting",
+        actor="reviewer",
+        reason="later retained evidence still contains the case",
+        expected_revision=revision,
+        observation_id=occurrence["observations"][1]["observation_id"],
+        decided_at="2026-10-03T00:03:00Z",
+    )
+    assert result["state"] == result["finding_state"] == "persisting"
+    stored = _occurrences(read_cases(ledger))[0]
+    assert [decision["state"] for decision in stored["decisions"]] == [
+        "verified",
+        "fix_reported",
+        "recheck_pending",
+        "persisting",
+    ]
+    summary = remediation_summary(ledger)
+    assert summary["counts"]["persisting"] == 1
+    assert summary["resolved_percent"] == 0.0
+    assert summary["rechecked_percent"] == 100.0
+    assert remediation_report(ledger) == remediation_report(ledger)
 
 
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):
