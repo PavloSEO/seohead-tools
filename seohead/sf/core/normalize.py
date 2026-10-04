@@ -385,10 +385,15 @@ def records_from_df(df: pd.DataFrame, field_map: dict[str, list[str]]) -> list[d
 
 def row_to_record(row: pd.Series, field_map: dict[str, list[str]]) -> dict[str, Any]:
     """Single-row projection (kept for ad-hoc use; bulk path is records_from_df)."""
-    resolved = resolve_columns(row.index, field_map)
+    return record_from_mapping(row, field_map)
+
+
+def record_from_mapping(row: Any, field_map: dict[str, list[str]]) -> dict[str, Any]:
+    """Normalize one mapping row without requiring a DataFrame or building a row list."""
+    resolved = resolve_columns(row.keys(), field_map)
     record: dict[str, Any] = {}
     for field_name, col in resolved.items():
-        raw = row[col] if col is not None else None
+        raw = row.get(col) if col is not None else None
         if field_name in INT_FIELDS:
             record[field_name] = to_int(raw)
         elif field_name in FLOAT_FIELDS:
