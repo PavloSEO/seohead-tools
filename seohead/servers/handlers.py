@@ -1116,6 +1116,7 @@ def _audit_crawl_result(
     validate_config(audit_config)
     from seohead.sf.core.aggregate import aggregate
     from seohead.sf.core.context import AuditContext
+    from seohead.sf.core.eeat import run_eeat
     from seohead.sf.core.heuristics import run_heuristics
     from seohead.sf.core.inlinks import run_inlinks
     from seohead.sf.core.loader import LoadedExports
@@ -1327,6 +1328,11 @@ def _audit_crawl_result(
         ctx.graph_access = None
     else:
         run_inlinks(ctx)
+    # The same wiring obligation a third time (issue #823): the objective
+    # trust/attribution pass reads the Internal:All-shaped evidence and the
+    # link graph both pipelines above already built, and on an export-shaped
+    # input it reaches its own honest skip branches (no Trust Signals column).
+    run_eeat(ctx)
     # Same gap, two more modules (issue #165): DOM size, HTML weight, templated
     # titles and the near-duplicate/exact-duplicate heuristic fallback all live in
     # heuristics.py and were never reached from a crawl either. DOM depth/nodes and

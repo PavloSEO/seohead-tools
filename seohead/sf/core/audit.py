@@ -21,6 +21,7 @@ from ..export_manifest import (
 )
 from .aggregate import aggregate
 from .context import AuditContext
+from .eeat import run_eeat
 from .heuristics import run_heuristics
 from .inlinks import run_inlinks
 from .loader import load_exports
@@ -179,6 +180,7 @@ def run_audit(
 
     run_rules(ctx)
     run_inlinks(ctx)
+    run_eeat(ctx)
     size_stats = run_heuristics(ctx)
     sitemap_summary = run_sitemap(ctx, sitemap_url=sitemap_url)
 

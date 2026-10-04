@@ -1139,6 +1139,78 @@ CHECKS: dict[str, dict[str, Any]] = {
         "destination document, or add the missing target; a different query "
         "string is a different document.",
     },
+    # Facts a crawl can observe: which machine-readable byline/date carriers a
+    # content-shaped page declared, the discovered-and-indexable state of the
+    # conventional trust pages, and where outbound links actually sit.
+    # Deliberately no E-E-A-T score and no trustworthiness verdict -- every
+    # finding quotes the carriers and the state it stands on so a specialist
+    # reviews facts.
+    # 9.C — objective trust & attribution evidence (issue #823)
+    "NO_AUTHOR_BYLINE": {
+        "severity": "notice",
+        "source": "crawl:trust_signals",
+        "message": "Content-shaped page declares no author or byline markup",
+        "fix": "If the page's authorship should be attributable, declare it with a "
+        "machine-readable carrier: meta author, rel=author, itemprop=author, or "
+        "a JSON-LD author property.",
+    },
+    "NO_CONTENT_DATES": {
+        "severity": "notice",
+        "source": "crawl:trust_signals",
+        "message": "Content-shaped page declares no publication or update date",
+        "fix": "If the page should be dated, declare it machine-readably: "
+        "article:published_time or datePublished markup, a <time datetime> "
+        "element, or a Last-Modified response header.",
+    },
+    "MISSING_ABOUT_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable About page was found in the crawl's scope",
+        "fix": "If an About page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_CONTACT_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable Contact page was found in the crawl's scope",
+        "fix": "If a Contact page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_PRIVACY_POLICY": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable privacy policy page was found in the crawl's scope",
+        "fix": "If a privacy policy exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_TERMS_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable terms-of-use page was found in the crawl's scope",
+        "fix": "If a terms page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "FEW_CITATIONS": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Content-shaped page has no observable outbound reference in its body content",
+        "fix": "Review whether the page should cite its sources. An outbound link "
+        "inside the body copy is the only carrier a crawl can observe as a "
+        "citation; the finding never asserts that any link is authoritative.",
+    },
+    "YMYL_REVIEW_CANDIDATE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "URL path or title matches a YMYL-adjacent keyword — a review "
+        "candidate only, not a classification",
+        "fix": "Have a specialist confirm whether the page genuinely covers "
+        "Your-Money-Your-Life topics; if it does, the attribution and "
+        "trust-page evidence above deserves a closer look.",
+    },
 }
 
 

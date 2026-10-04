@@ -147,6 +147,11 @@ CREATE TABLE pages (
   -- name nothing. Nullable, because a scan written before link placement was
   -- recorded measured neither, which is not the same as finding none.
   link_placement_json TEXT,
+  -- The page's authorship/date/article-scope markup signals (issue #823), as
+  -- the parser's {author, dates, article} object. Nullable: a page whose body
+  -- was never parsed, or a scan written before the signals were recorded, is
+  -- unmeasured -- which is not the same as a measured empty object.
+  trust_signals_json TEXT,
   -- List mode's bounded canonical walk: the chain it inspected and the target it
   -- settled on. Nullable, because a run that never walked canonicals recorded neither.
   canonical_chain_json TEXT,

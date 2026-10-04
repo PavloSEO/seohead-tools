@@ -104,7 +104,7 @@ def test_invalid_answer_stays_and_never_submits(session):
     reply = answer(session, "ludicrous")
     assert reply.state == State.AWAITING_POLICY
     answer(session, "quick")
-    reply = answer(session, "pdf")
+    reply = answer(session, "png")
     assert reply.state == State.AWAITING_REPORT
     assert session._submitter.specs == []
 

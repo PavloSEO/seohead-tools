@@ -521,6 +521,22 @@ def aggregate(
                 "reason": PARTIAL_DEPTH_REASON,
             }
         summary["internal_linking"] = internal_linking
+    # The issue-#823 evidence block: the audit's own account of the scope it
+    # evaluated (how many pages entered the authorship checks) and the state of
+    # each conventional trust page -- found_indexable, found_non_indexable,
+    # found_error, discovered_not_crawled or not_discovered. A report can read
+    # the states without trusting any single finding's wording.
+    if ctx.trust_evidence:
+        trust_evidence = dict(ctx.trust_evidence)
+        if crawl_partial:
+            # A partial crawl's "not_discovered" covers only the fetched set;
+            # the unfetched frontier may still hold the page. Said once here so
+            # the four per-kind findings need not each repeat it.
+            trust_evidence["crawl_scope"] = (
+                "partial crawl: 'not_discovered' and 'not measured' states "
+                "describe only the fetched set, not the whole site"
+            )
+        summary["trust_evidence"] = trust_evidence
     if size_stats:
         summary["size_stats_bytes"] = {k: int(v) for k, v in size_stats.items() if k != "iqr"}
     if sitemap_summary:

@@ -173,6 +173,13 @@ class PageRecord:
     # HTML was never parsed (an error, a non-HTML response) keeps the empty
     # default, which is true of a document with no anchors in it.
     link_placement: dict[str, Any] = field(default_factory=empty_link_placement)
+    # The page's authorship/date/article-scope markup evidence, as the parser's
+    # per-signal list (issue #823). ``None`` — not an empty object — when this
+    # record's HTML was never parsed (an error, a non-HTML response, an
+    # oversized body): an empty object would read as "measured, no signals"
+    # where the truth is "never measured", the same distinction link_placement
+    # above makes through its own None.
+    trust_signals: dict[str, Any] | None = None
     head_count: int = 0
     body_count: int = 0
     head_not_first: bool = False
@@ -338,6 +345,9 @@ def _record_from_parsed(parsed: dict) -> dict[str, Any]:
         "hreflang": list(parsed.get("hreflang") or []),
         "heading_outline": list(parsed.get("heading_outline") or []),
         "link_placement": parsed.get("link_placement") or empty_link_placement(),
+        # Always a parsed dict here (a missing key would be a parser defect),
+        # so the field above the default keeps its None-for-unmeasured meaning.
+        "trust_signals": parsed.get("trust_signals"),
         "head_count": int(position.get("head_count") or 0),
         "body_count": int(position.get("body_count") or 0),
         "head_not_first": bool(position.get("head_not_first")),

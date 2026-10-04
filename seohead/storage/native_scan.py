@@ -50,6 +50,7 @@ from seohead.storage import (
     _objects,
     _runtime,
     _schema,
+    _trust_signals,
     _url,
     _validate_scalar_storage,
 )
@@ -93,6 +94,7 @@ _PAGE_JSON_SOURCES = {
     "hreflang_json": "hreflang",
     "heading_outline_json": "heading_outline",
     "link_placement_json": "link_placement",
+    "trust_signals_json": "trust_signals",
     "canonical_chain_json": "canonical_chain",
 }
 
@@ -105,6 +107,9 @@ _OPTIONAL_PAGE_SOURCES = {
     "canonical_outside_head",
     "directives_outside_head",
     "hreflang_outside_head",
+    # A page whose body was never parsed records no signals (issue #823) --
+    # NULL is its recorded state, not a missing required value.
+    "trust_signals",
 }
 MAX_EDGES_PER_PAGE = 20_000
 MAX_PAGE_COMMIT_ITEMS = 20_000
@@ -1276,12 +1281,15 @@ class NativeScan:
                 alternates = json.loads(page["hreflang_json"] or "[]")
                 outline = json.loads(page["heading_outline_json"] or "[]")
                 placement = json.loads(page["link_placement_json"] or "null")
+                signals = json.loads(page["trust_signals_json"] or "null")
                 chain = json.loads(page["redirect_chain_json"])
             except (TypeError, ValueError) as exc:
                 raise ScanError("native scan page JSON is invalid") from exc
             _heading_outline(outline)
             if placement is not None:
                 _link_placement(placement)
+            if signals is not None:
+                _trust_signals(signals)
             if (
                 not isinstance(alternates, list)
                 or any(
@@ -2009,6 +2017,8 @@ class NativeScan:
                     _heading_outline(value)
                 if name == "link_placement_json" and value is not None:
                     _link_placement(value)
+                if name == "trust_signals_json" and value is not None:
+                    _trust_signals(value)
                 if name in {"redirect_chain_json", "canonical_chain_json"} and (
                     not isinstance(value, list)
                     or any(not isinstance(item, dict) for item in value or [])

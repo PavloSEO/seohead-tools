@@ -97,6 +97,13 @@ _LATE_PAGE_FIELDS = {
     "ajax_scheme_outlinks": "ajax_scheme_outlinks",
     "og_url": "og_url",
 }
+# Record fields a pages.jsonl may carry or omit, and whose null is a recorded
+# state rather than a type error -- distinct from _LATE_PAGE_FIELDS, where an
+# absent key marks a scan written before the field existed and a present null
+# is refused. A page whose body was never parsed has no trust-signal evidence
+# (issue #823), which is exactly the recorded fact; it must therefore feed
+# neither the required-field check below nor _legacy_fields_missing.
+_OPTIONAL_PAGE_RECORD_FIELDS = frozenset({"trust_signals"})
 _PAGE_NONNEGATIVE_INTS = {
     "ajax_scheme_outlinks",
     "body_count",
@@ -197,6 +204,31 @@ def _link_placement(value: Any) -> None:
         for item in value["image_no_text"]
     ):
         raise ScanError("link_placement.image_no_text must be a list of destination objects")
+
+
+def _trust_signals(value: Any) -> None:
+    """Validate one page's stored trust-signal evidence (#823).
+
+    ``None`` never reaches here -- a page whose body was never parsed stores
+    SQL NULL, and the callers keep that distinction rather than collapsing it
+    into an empty object.
+    """
+    if not isinstance(value, dict) or set(value) != {"author", "dates", "article"}:
+        raise ScanError("trust_signals must be an object with author, dates and article")
+    for key in ("author", "dates"):
+        if not isinstance(value[key], list) or any(
+            not isinstance(item, dict)
+            or set(item) != {"signal", "confidence", "value"}
+            or any(type(part) is not str for part in item.values())
+            for item in value[key]
+        ):
+            raise ScanError(
+                f"trust_signals.{key} must be a list of signal/confidence/value string objects"
+            )
+    if not isinstance(value["article"], list) or any(
+        type(marker) is not str for marker in value["article"]
+    ):
+        raise ScanError("trust_signals.article must be a list of marker strings")
 
 
 def _hreflang(value: Any) -> None:
@@ -448,6 +480,7 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
             "hreflang_json",
             "heading_outline_json",
             "link_placement_json",
+            "trust_signals_json",
             "canonical_chain_json",
         }
     ) | {
@@ -456,10 +489,12 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
         "hreflang",
         "heading_outline",
         "link_placement",
+        "trust_signals",
         "canonical_chain",
     }
     for ordinal, record in enumerate(_jsonl(source / "pages.jsonl", limitations, inputs)):
-        if (names - set(_LATE_PAGE_FIELDS)) - set(record) or set(record) - names:
+        required = names - set(_LATE_PAGE_FIELDS) - _OPTIONAL_PAGE_RECORD_FIELDS
+        if required - set(record) or set(record) - names:
             raise ScanError(
                 f"pages.jsonl: fields differ from scan.v1: {sorted(set(record) ^ names)}"
             )
@@ -480,6 +515,13 @@ def _import_pages(con, source: Path, limitations: list[str], inputs: list[dict])
         if placement is not None:
             _link_placement(placement)
         row["link_placement_json"] = None if placement is None else _dump(placement)
+        # Absent key (a scan written before the field) and present null (a page
+        # whose body was never parsed) both store NULL -- see
+        # _OPTIONAL_PAGE_RECORD_FIELDS.
+        signals = row.pop("trust_signals", None)
+        if signals is not None:
+            _trust_signals(signals)
+        row["trust_signals_json"] = None if signals is None else _dump(signals)
         canonical_chain = row.pop("canonical_chain", None)
         if canonical_chain is not None and (
             not isinstance(canonical_chain, list)
