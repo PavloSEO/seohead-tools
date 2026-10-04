@@ -1095,7 +1095,17 @@ def check_discovery_path(ctx: AuditContext) -> None:
         ctx.skip("DEEP_DISCOVERY_PATH", "no page at Crawl Depth 0 to use as the seed")
         return
 
-    depths, parents = bfs_tree_from_seed(edges, norm_url(seed.url))
+    depths_raw, parents_raw = bfs_tree_from_seed(edges, norm_url(seed.url))
+    # Native evidence and the SF-shaped record bridge can disagree only in
+    # harmless URL spelling (notably a trailing slash).  The page view uses
+    # norm_url keys, so normalize both sides of the predecessor tree once
+    # before emission.  Without this, every lookup misses and the bounded
+    # branch falls back to materializing the full route for every page.
+    depths = {norm_url(key): depth for key, depth in depths_raw.items()}
+    parents = {
+        norm_url(key): (norm_url(parent) if parent is not None else None)
+        for key, parent in parents_raw.items()
+    }
     _emit_discovery_paths(
         ctx,
         lambda key: route_from_parents(parents, key),
