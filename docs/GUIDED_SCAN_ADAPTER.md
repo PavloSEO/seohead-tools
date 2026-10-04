@@ -123,6 +123,24 @@ A `202 Accepted` response is also not terminal delivery evidence and is
 refused: an asynchronous platform adapter must persist and verify its own
 delivery state before it tells this core that the receipt succeeded.
 
+## Optional Telegram Bot API wire adapter
+
+`seohead.bot.telegram_adapter` supplies Bot API wire code without enabling a
+listener, polling loop, or account. `TelegramBotConfig` accepts only an HTTPS
+origin and an `env:NAME` token reference. `TelegramChatAuthorizationStore`
+is an explicit private actor/chat allowlist. `TelegramGuidedAdapter` accepts
+one caller-provided update at a time, derives a stable `telegram:<user_id>`
+subject, verifies the chat grant, renders `Reply` buttons as inline keyboards,
+acknowledges callbacks, and sends worker-provided progress without inventing a
+total. `TelegramDocumentTransport` implements the report-delivery callback
+using `sendDocument` and requires the Bot API to confirm a message id.
+
+The adapter has no polling, webhook registration, secret provisioning,
+chat-reading, or deployment code. Telegram does not provide an upload
+idempotency key, so it does not retry an ambiguous `sendDocument` outcome;
+the durable core leaves a failed attempt pending for an explicit operator
+decision rather than claiming that a recipient has a report.
+
 ## Versioning
 
 `CONTRACT_VERSION` identifies the shape of a persisted conversation. Bump it

@@ -33,6 +33,16 @@ from seohead.bot.service_delivery import (
     UploadEndpoint,
     UploadUnavailable,
 )
+from seohead.bot.telegram_adapter import (
+    TelegramBotClient,
+    TelegramBotConfig,
+    TelegramChatAuthorizationStore,
+    TelegramDocumentTransport,
+    TelegramGuidedAdapter,
+    TelegramUnavailable,
+    telegram_destination,
+    telegram_subject,
+)
 from seohead.bot.wizard import (
     POLICY_PRESETS,
     Event,
@@ -61,9 +71,17 @@ __all__ = [
     "ReportProfile",
     "ScanJobSpec",
     "State",
+    "TelegramBotClient",
+    "TelegramBotConfig",
+    "TelegramChatAuthorizationStore",
+    "TelegramDocumentTransport",
+    "TelegramGuidedAdapter",
+    "TelegramUnavailable",
     "UploadEndpoint",
     "UploadUnavailable",
     "WizardSession",
     "allowed_actions",
     "describe_contract",
+    "telegram_destination",
+    "telegram_subject",
 ]
