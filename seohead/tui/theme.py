@@ -47,11 +47,11 @@ class Palette:
     color: bool
     #: Style names consumed by the renderer; kept symbolic so a future theme
     #: change touches this file only.
-    accent: str = "bold cyan"
-    title: str = "bold white"
+    accent: str = "bold #67e8f9"
+    title: str = "bold #f1f5f9"
     body: str = ""
-    muted: str = "dim"
-    highlight: str = "reverse"
+    muted: str = "#94a3b8"
+    highlight: str = "bold #f8fafc on #1e3a5f"
 
 
 def color_enabled(
