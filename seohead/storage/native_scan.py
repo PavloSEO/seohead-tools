@@ -1530,32 +1530,67 @@ class NativeScan:
 
     def record_external_check(self, ordinal: int, payload: dict[str, Any]) -> None:
         """Persist one bounded external outcome in stable decision order."""
-        from .external_checks import check_item
-        from .native_context import put_context
+        from .external_checks import MAX_EXTERNAL_CHECKS, validate_check
 
         self._assert_mutable()
+        if (
+            self.con.execute("SELECT format_version FROM scan WHERE singleton=1").fetchone()[0]
+            != "scan.v2"
+        ):
+            raise ScanError("external checks require scan.v2 retained storage")
+        item = {
+            "kind": "external_check",
+            "item_key": str(ordinal),
+            "payload_version": "scan_context.v1",
+            "payload_json": _dump(payload),
+            "completeness": "complete",
+            "reason": "",
+        }
+        validate_check(item, payload)
+        if not 0 <= ordinal < MAX_EXTERNAL_CHECKS:
+            raise ScanError("external check ordinal is outside the retained bound")
         self._begin()
         try:
-            put_context(self.con, check_item(ordinal, payload))
+            existing = self.con.execute(
+                "SELECT payload_json FROM external_checks WHERE ordinal=?", (ordinal,)
+            ).fetchone()
+            if existing is not None and existing[0] != item["payload_json"]:
+                raise ScanError("external check retry disagrees with retained outcome")
+            self.con.execute(
+                "INSERT OR IGNORE INTO external_checks(ordinal,outcome,payload_json) VALUES(?,?,?)",
+                (ordinal, payload["outcome"], item["payload_json"]),
+            )
             self.con.commit()
         except BaseException:
             self._rollback()
             raise
 
     def external_checks(self):
-        for row in self.con.execute(
-            "SELECT payload_json FROM context_items WHERE kind='external_check' ORDER BY CAST(item_key AS INTEGER)"
+        if (
+            self.con.execute("SELECT format_version FROM scan WHERE singleton=1").fetchone()[0]
+            != "scan.v2"
         ):
+            return
+        for row in self.con.execute("SELECT payload_json FROM external_checks ORDER BY ordinal"):
             yield json.loads(row[0])
 
     def record_external_checks_summary(self, summary: dict[str, Any]) -> None:
-        from .external_checks import summary_item
-        from .native_context import put_context
+        from .external_checks import summary_item, validate_summary
 
         self._assert_mutable()
+        if (
+            self.con.execute("SELECT format_version FROM scan WHERE singleton=1").fetchone()[0]
+            != "scan.v2"
+        ):
+            raise ScanError("external checks require scan.v2 retained storage")
+        item = summary_item(summary)
+        validate_summary(item, summary)
         self._begin()
         try:
-            put_context(self.con, summary_item(summary))
+            self.con.execute(
+                "INSERT INTO external_check_summary(singleton,payload_json) VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET payload_json=excluded.payload_json",
+                (item["payload_json"],),
+            )
             self.con.commit()
         except BaseException:
             self._rollback()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.metadata
 import json
 import platform
@@ -379,6 +380,12 @@ def crawl_site_scan(
         raise ValueError("url is required for a SQLite scan crawl")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
+    if (
+        settings["discovery"]["external"]["crawl"]
+        and settings["storage"]["format_version"] != "scan.v2"
+    ):
+        settings = copy.deepcopy(settings)
+        settings["storage"]["format_version"] = "scan.v2"
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
     sitemap_seed = {
         "sitemap_url": sitemap,
