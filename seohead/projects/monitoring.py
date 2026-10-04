@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
@@ -34,8 +35,12 @@ def configure(directory: str, policy: dict, expected_revision: int = 0) -> dict:
     if doc["revision"] != expected_revision:
         raise ValueError("monitor revision conflict")
     required = {"enabled", "urls", "max_urls", "max_requests", "full_refresh_every"}
-    if not isinstance(policy, dict) or set(policy) != required or policy["enabled"] is not False:
-        raise ValueError("monitor policy must be disabled and declare bounded incremental scope")
+    if (
+        not isinstance(policy, dict)
+        or set(policy) != required
+        or type(policy["enabled"]) is not bool
+    ):
+        raise ValueError("monitor policy must declare bounded incremental scope")
     if (
         not isinstance(policy["urls"], list)
         or not policy["urls"]
@@ -75,7 +80,13 @@ def run(directory: str, scan_id: str, observations: list[dict], expected_revisio
         raise ValueError("scan_id required")
     if not isinstance(observations, list) or len(observations) > policy["max_urls"]:
         raise ValueError("observations exceed configured incremental scope")
-    alerts = []
+    prior = {
+        json.dumps(change, sort_keys=True, separators=(",", ":"))
+        for earlier in doc["runs"]
+        for alert in earlier.get("alerts", [])
+        for change in alert.get("changes", [])
+    }
+    alerts, recoveries = [], []
     for item in observations:
         if (
             not isinstance(item, dict)
@@ -89,13 +100,25 @@ def run(directory: str, scan_id: str, observations: list[dict], expected_revisio
             for change in item["changes"]
             if isinstance(change, dict) and change.get("severity") in {"critical", "warning"}
         ]
-        if meaningful:
-            alerts.append({"url": item["url"], "changes": meaningful, "state": "actionable"})
+        new = [
+            change
+            for change in meaningful
+            if json.dumps(change, sort_keys=True, separators=(",", ":")) not in prior
+        ]
+        if new:
+            alerts.append({"url": item["url"], "changes": new, "state": "actionable"})
+        recoveries.extend(
+            {"url": item["url"], "change": change, "state": "recovery"}
+            for change in item["changes"]
+            if isinstance(change, dict) and change.get("kind") == "recovered"
+        )
     run = {
         "scan_id": scan_id,
         "observed_urls": [item["url"] for item in observations],
         "alerts": alerts,
-        "state": "actionable" if alerts else "quiet",
+        "recoveries": recoveries,
+        "baseline": observations,
+        "state": "actionable" if alerts or recoveries else "quiet",
     }
     doc["runs"].append(run)
     doc["revision"] += 1
