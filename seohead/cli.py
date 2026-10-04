@@ -120,6 +120,7 @@ COMMANDS = (
     "remediation-cases",
     "remediation-transition",
     "remediation-record-verification",
+    "remediation-recheck",
     "remediation-report",
     "project-observe",
     "project-inbox-submit",
@@ -517,6 +518,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "remediation-cases",
         "remediation-transition",
         "remediation-record-verification",
+        "remediation-recheck",
         "remediation-report",
     }:
         for name in (
@@ -533,13 +535,21 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "decided_at",
             "out_dir",
             "verification_path",
+            "baseline",
+            "after",
+            "config",
+            "task_id",
         ):
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
-        if cmd == "remediation-cases":
+        if cmd in {"remediation-cases", "remediation-report"}:
             kw["limit"] = args.limit
             kw["offset"] = args.offset
+        if cmd in {"remediation-record-verification", "remediation-recheck"} and getattr(
+            args, "occurrence_keys", None
+        ):
+            kw["occurrence_keys"] = _split_list(args.occurrence_keys)
     elif cmd in {
         "project-new",
         "project-open",
@@ -1950,6 +1960,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "remediation-cases",
         "remediation-transition",
         "remediation-record-verification",
+        "remediation-recheck",
         "remediation-report",
     }:
         _source_flag(sub, "--ledger", help="validated local ledger.v1 SQLite artifact")
@@ -1976,8 +1987,39 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--actor", help="recheck actor")
         sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument("--occurrence-keys", help="comma-separated exact ledger case keys")
+        sub.add_argument(
+            "--task-id",
+            dest="task_id",
+            default="unassigned",
+            help="local remediation task identifier",
+        )
+    if cmd == "remediation-recheck":
+        _source_flag(
+            sub, "--baseline", help="retained baseline audit.json used to create the ledger cases"
+        )
+        sub.add_argument("--occurrence-keys", help="comma-separated exact pending ledger case keys")
+        _source_flag(sub, "--after", help="retained later audit for offline bounded verification")
+        sub.add_argument(
+            "--config", help="original crawler config when the baseline redacted secrets"
+        )
+        sub.add_argument("--actor", help="bounded recheck actor")
+        sub.add_argument("--expected-revision", dest="expected_revision", type=int)
+        sub.add_argument(
+            "--task-id",
+            dest="task_id",
+            default="unassigned",
+            help="local remediation task identifier",
+        )
+        sub.add_argument(
+            "--out-dir", dest="out_dir", help="new immutable verification evidence directory"
+        )
     if cmd == "remediation-report":
         sub.add_argument("--out-dir", dest="out_dir", help="new directory for JSON and Markdown")
+        sub.add_argument(
+            "--limit", type=int, default=100, help="findings per report page (1..1000)"
+        )
+        sub.add_argument("--offset", type=int, default=0, help="zero-based finding offset")
     if cmd == "project-open":
         sub.add_argument("--expected-site", help="expected target host")
     if cmd in {

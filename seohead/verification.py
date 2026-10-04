@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
+from copy import deepcopy
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -22,6 +24,7 @@ from seohead.sf.core.registry import CHECKS
 
 MAX_URLS = 500
 MAX_FINDINGS = 5_000
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _NONLOCAL = (
     UNLINKED_FINDING_CHECKS
     | GRAPH_WIDE_FINDING_CHECKS
@@ -177,6 +180,212 @@ def select(
     if len(targets) > MAX_URLS:
         raise ValueError(f"selection exceeds {MAX_URLS} URLs")
     return chosen, targets
+
+
+def select_source(
+    source: Any,
+    *,
+    finding_ids: list[str] | None = None,
+    urls: list[str] | None = None,
+    view: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str], dict[str, Any]]:
+    """Select a compact audit document without materializing an audit.v2 corpus.
+
+    The reader's collections remain on disk. Selection streams ``/issues`` and
+    ``/pages`` once, retaining only the bounded requested findings and their
+    affected page observations. Legacy documents retain the existing path.
+    """
+    if not hasattr(source, "iter_collection"):
+        if not isinstance(source, Mapping):
+            raise ValueError("baseline must be an audit document or audit.v2 reader")
+        document = dict(source)
+        selected, targets = select(document, finding_ids=finding_ids, urls=urls, view=view)
+        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
+        return (
+            document,
+            selected,
+            targets,
+            {
+                "audit_sha256": digest(document),
+                "scan_uuid": scan_identity(document),
+                "generated_at": run.get("generated_at"),
+            },
+        )
+
+    header = getattr(source, "header", None)
+    collections = getattr(source, "collections", None)
+    if not isinstance(header, Mapping) or not isinstance(collections, Mapping):
+        raise ValueError("audit.v2 source has no validated header/collection index")
+    if header.get("schema_version") != "2.0":
+        raise ValueError("baseline must be an audit.json schema_version 2.0 document")
+    if "/issues" not in collections or "/pages" not in collections:
+        raise ValueError("audit.v2 source lacks required /issues or /pages collections")
+    if view is not None:
+        if not isinstance(view, Mapping) or view.get("schema_version") != "verification_view.v1":
+            raise ValueError("view must be a verification_view.v1 object")
+        view_ids = _strings(view.get("finding_ids"), "view.finding_ids")
+        view_urls = _strings(view.get("urls"), "view.urls")
+        checks = _strings(view.get("checks"), "view.checks")
+    else:
+        view_ids, view_urls, checks = [], [], []
+    ids = set(_strings(finding_ids, "finding_ids") + view_ids)
+    wanted_urls = set(_strings(urls, "urls") + view_urls)
+    if not (ids or wanted_urls or checks):
+        raise ValueError("select at least one finding ID, saved view, or affected URL")
+    unknown_checks = set(checks) - CHECKS.keys()
+    if unknown_checks:
+        raise ValueError(f"view names unknown checks: {', '.join(sorted(unknown_checks))}")
+
+    chosen: list[dict[str, Any]] = []
+    found_ids: set[str] = set()
+    for item in source.iter_collection("/issues"):
+        if not isinstance(item, dict):
+            raise ValueError("audit.v2 issue collection contains a non-object")
+        issue_id = item.get("id")
+        if isinstance(issue_id, str) and issue_id in ids:
+            found_ids.add(issue_id)
+        if (
+            (isinstance(issue_id, str) and issue_id in ids)
+            or (isinstance(item.get("target_url"), str) and item["target_url"] in wanted_urls)
+            or (isinstance(item.get("check"), str) and item["check"] in checks)
+        ):
+            chosen.append(item)
+            if len(chosen) > MAX_FINDINGS:
+                raise ValueError(f"selection exceeds {MAX_FINDINGS} findings")
+    unknown = ids - found_ids
+    if unknown:
+        raise ValueError(f"finding IDs are absent from baseline: {', '.join(sorted(unknown))}")
+    if not chosen:
+        raise ValueError("selection matches no baseline findings")
+    invalid_checks = {item.get("check") for item in chosen if item.get("check") not in CHECKS}
+    if invalid_checks:
+        raise ValueError(
+            f"baseline findings name unknown checks: {sorted(map(str, invalid_checks))}"
+        )
+    targets = list(
+        dict.fromkeys(
+            item["target_url"]
+            for item in chosen
+            if isinstance(item.get("target_url"), str) and _local_issue(item)
+        )
+    )
+    if len(targets) > MAX_URLS:
+        raise ValueError(f"selection exceeds {MAX_URLS} URLs")
+    selected_page_urls = {
+        item["target_url"] for item in chosen if isinstance(item.get("target_url"), str)
+    }
+    needed_pages = wanted_urls | selected_page_urls
+    pages: list[dict[str, Any]] = []
+    seen_pages: set[str] = set()
+    for page in source.iter_collection("/pages"):
+        if isinstance(page, dict) and page.get("url") in needed_pages:
+            pages.append(page)
+            seen_pages.add(page["url"])
+    missing_urls = wanted_urls - seen_pages
+    if missing_urls:
+        raise ValueError(f"URLs are absent from baseline pages: {', '.join(sorted(missing_urls))}")
+    missing_targets = set(targets) - seen_pages
+    if missing_targets:
+        raise ValueError("selected finding has no affected baseline page to recrawl")
+    compact = deepcopy(dict(header))
+    compact["issues"] = chosen
+    compact["pages"] = pages
+    run = compact.get("run") if isinstance(compact.get("run"), Mapping) else {}
+    audit_sha256 = getattr(source, "sha256", None)
+    if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
+        raise ValueError("audit.v2 source has no valid content hash")
+    binding = getattr(source, "binding", {})
+    scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
+    return (
+        compact,
+        chosen,
+        targets,
+        {
+            "audit_sha256": audit_sha256,
+            "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(compact),
+            "generated_at": run.get("generated_at"),
+        },
+    )
+
+
+def source_identity(source: Any) -> dict[str, Any]:
+    """Return retained audit identity without forcing an audit.v2 materialization."""
+    if hasattr(source, "header"):
+        header = source.header
+        if not isinstance(header, Mapping):
+            raise ValueError("audit.v2 source has no validated header")
+        audit_sha256 = getattr(source, "sha256", None)
+        if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
+            raise ValueError("audit.v2 source has no valid content hash")
+        binding = getattr(source, "binding", {})
+        scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
+        run = header.get("run") if isinstance(header.get("run"), Mapping) else {}
+        return {
+            "audit_sha256": audit_sha256,
+            "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(header),
+            "generated_at": run.get("generated_at"),
+        }
+    if not isinstance(source, Mapping):
+        raise ValueError("audit must be an audit document or audit.v2 reader")
+    run = source.get("run") if isinstance(source.get("run"), Mapping) else {}
+    return {
+        "audit_sha256": digest(source),
+        "scan_uuid": scan_identity(source),
+        "generated_at": run.get("generated_at"),
+    }
+
+
+def compact_after_source(
+    source: Any,
+    selected: list[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Retain only after rows that can affect the selected recheck verdicts."""
+    if not hasattr(source, "iter_collection"):
+        if not isinstance(source, Mapping):
+            raise ValueError("after must be an audit document or audit.v2 reader")
+        document = dict(source)
+        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
+        return document, {
+            "audit_sha256": digest(document),
+            "scan_uuid": scan_identity(document),
+            "generated_at": run.get("generated_at"),
+        }
+    pairs = {
+        (item.get("check"), item.get("target_url"))
+        for item in selected
+        if isinstance(item.get("check"), str) and isinstance(item.get("target_url"), str)
+    }
+    wanted_urls = {url for _, url in pairs}
+    header = getattr(source, "header", None)
+    collections = getattr(source, "collections", None)
+    if not isinstance(header, Mapping) or not isinstance(collections, Mapping):
+        raise ValueError("after audit.v2 source has no validated header/collection index")
+    if "/issues" not in collections or "/pages" not in collections:
+        raise ValueError("after audit.v2 source lacks required /issues or /pages collections")
+    issues = [
+        item
+        for item in source.iter_collection("/issues")
+        if isinstance(item, dict) and (item.get("check"), item.get("target_url")) in pairs
+    ]
+    pages = [
+        page
+        for page in source.iter_collection("/pages")
+        if isinstance(page, dict) and page.get("url") in wanted_urls
+    ]
+    compact = deepcopy(dict(header))
+    compact["issues"] = issues
+    compact["pages"] = pages
+    run = compact.get("run") if isinstance(compact.get("run"), Mapping) else {}
+    audit_sha256 = getattr(source, "sha256", None)
+    if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
+        raise ValueError("after audit.v2 source has no valid content hash")
+    binding = getattr(source, "binding", {})
+    scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
+    return compact, {
+        "audit_sha256": audit_sha256,
+        "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(compact),
+        "generated_at": run.get("generated_at"),
+    }
 
 
 def _issue_signature(issue: Mapping[str, Any]) -> str:

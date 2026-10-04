@@ -114,7 +114,8 @@ and this decision makes no backend migration.
 | `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset`) | — |
 | `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |
 | `remediation-record-verification` | Local file (`ledger, verification_path`)<br>Selector (`actor, expected_revision`) | — |
-| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`) | — |
+| `remediation-recheck` | Local file (`ledger, baseline, out_dir`)<br>Audit document (`after`)<br>Selector (`occurrence_keys, actor, expected_revision, task_id`)<br>Local configuration (`config`) | Optional retained later audit for offline verification.; Required when the baseline redacted credentials. |
+| `remediation-report` | Local file (`ledger`)<br>Local directory (`out_dir`)<br>Selector (`limit, offset`) | — |
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
 | `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |

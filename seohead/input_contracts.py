@@ -493,10 +493,23 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "actor", "expected_revision"),
     ),
     _command(
+        "remediation-recheck",
+        "remediation_recheck",
+        _form("local_file", "ledger", "baseline", "out_dir"),
+        _form(
+            "audit_document",
+            "after",
+            note="Optional retained later audit for offline verification.",
+        ),
+        _form("selector", "occurrence_keys", "actor", "expected_revision", "task_id"),
+        _form("local_config", "config", note="Required when the baseline redacted credentials."),
+    ),
+    _command(
         "remediation-report",
         "remediation_report",
         _form("local_file", "ledger"),
         _form("local_directory", "out_dir"),
+        _form("selector", "limit", "offset"),
     ),
     _command(
         "project-facts",

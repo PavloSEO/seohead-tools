@@ -44,7 +44,7 @@ from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
 APPLICATION_ID = 1397051212  # ASCII SEOL; scan artifacts use SEOH (1397051208).
-USER_VERSION = 1
+USER_VERSION = 2
 FORMAT_VERSION = "ledger.v1"
 READ_TIMEOUT_SECONDS = 30
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -110,6 +110,25 @@ def _schema() -> str:
     return files(__package__).joinpath("ledger_v1.sql").read_text(encoding="utf-8")
 
 
+def _v2_schema() -> str:
+    """The additive v2 evidence binding, kept separate from the v1 bootstrap.
+
+    Keeping this delta separate lets an existing ledger.v1 migrate in one
+    transaction while a fresh ledger is built from the identical sequence.
+    ``sqlite_master`` is deliberately compared after applying this delta, so a
+    hand-added evidence table is never silently accepted.
+    """
+    return files(__package__).joinpath("ledger_v2.sql").read_text(encoding="utf-8")
+
+
+def _apply_v2_schema(con: sqlite3.Connection) -> None:
+    """Apply the v1 -> v2 DDL one statement at a time inside a transaction."""
+    for piece in _v2_schema().split(";"):
+        statement = piece.strip()
+        if statement and not statement.startswith("--"):
+            con.execute(statement)
+
+
 def _ddl_statements() -> list[str]:
     """Schema statements minus PRAGMAs, for transactional migration.
 
@@ -147,6 +166,7 @@ def _expected() -> list[tuple]:
     con = sqlite3.connect(":memory:")
     try:
         con.executescript(_schema())
+        _apply_v2_schema(con)
         return _objects(con)
     finally:
         con.close()
@@ -158,6 +178,12 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _json_sha256(value: Any) -> str:
+    """Hash one retained JSON value without depending on its file formatting."""
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _key(*parts: str) -> str:
@@ -293,6 +319,14 @@ def _validate(con) -> None:
         tuple(sorted(_LIFECYCLE_STATES)),
     ).fetchone():
         raise LedgerError("ledger contains an invalid lifecycle decision")
+    if con.execute(
+        "SELECT 1 FROM decision d LEFT JOIN verification_result vr "
+        "ON vr.verification_result_id=d.verification_result_id "
+        "WHERE d.verification_result_id IS NOT NULL AND (vr.verification_result_id IS NULL "
+        "OR vr.outcome!=d.state OR (d.state IN ('resolved','persisting','regressed') "
+        "AND vr.measured!=1)) LIMIT 1"
+    ).fetchone():
+        raise LedgerError("ledger verification decision is missing measured result evidence")
     for site in con.execute("SELECT * FROM site"):
         try:
             uuid.UUID(site["project_uuid"])
@@ -381,12 +415,12 @@ def _migrate_0_to_1(con: sqlite3.Connection) -> None:
     con.execute("DROP TABLE ledger_meta")
     for statement in _ddl_statements():
         con.execute(statement)
-    con.execute(f"PRAGMA user_version={USER_VERSION}")
+    con.execute("PRAGMA user_version=1")
     con.execute(
         "INSERT INTO ledger VALUES(1,?,?,?,?,?,?)",
         (
             meta["ledger_uuid"],
-            FORMAT_VERSION,
+            "ledger.v1",
             meta["created_at"],
             meta["writer_version"],
             meta["writer_revision"],
@@ -402,7 +436,14 @@ def _migrate_0_to_1(con: sqlite3.Connection) -> None:
     )
 
 
-_MIGRATIONS = {0: _migrate_0_to_1}
+def _migrate_1_to_2(con: sqlite3.Connection) -> None:
+    """Add immutable verification artifact/result bindings to a v1 ledger."""
+    _apply_v2_schema(con)
+    con.execute("UPDATE ledger SET format_version=? WHERE singleton=1", (FORMAT_VERSION,))
+    con.execute("PRAGMA user_version=2")
+
+
+_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2}
 
 
 def _migrate(con: sqlite3.Connection) -> None:
@@ -498,6 +539,8 @@ def create_ledger(path: str | Path, *, project_dir: str | Path, producer_build: 
         con = sqlite3.connect(temporary)
         con.row_factory = sqlite3.Row
         con.executescript(_schema())
+        _apply_v2_schema(con)
+        con.execute("PRAGMA user_version=2")
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA synchronous=FULL")
@@ -1266,18 +1309,59 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
     path = Path(scan_path)
     digest = _sha256_file(path)
     scan_con = open_scan(path)
+    audit_reader = None
+    streamed_issues = None
+    group_memberships_state = "complete"
     try:
         scan_row = scan_con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
         audit = scan_con.execute("SELECT * FROM audit WHERE singleton=1").fetchone()
-        if audit is None:
-            raise LedgerError("source scan has no saved audit to ingest")
-        scan, audit_row = dict(scan_row), dict(audit)
-        document = _loads(audit_row["document_json"], "audit")
+        if scan_row is None:
+            raise LedgerError("source scan has no header to ingest")
+        scan = dict(scan_row)
         from seohead.sf.core.evidence_contract import attach_contract
 
-        projected = attach_contract(document, scan_uuid=scan["scan_uuid"], con=scan_con)
-        representations = _representation_map(scan_con, document)
-        by_url, doc_url = _observation_index(scan_con)
+        if audit is not None:
+            audit_row = dict(audit)
+            document = _loads(audit_row["document_json"], "audit")
+            projected = attach_contract(document, scan_uuid=scan["scan_uuid"], con=scan_con)
+            representations = _representation_map(scan_con, document)
+            by_url, doc_url = _observation_index(scan_con)
+            raw_issues = document.get("issues") if isinstance(document.get("issues"), list) else []
+            groups: dict[str, dict[str, Any]] | None = {
+                group.get("group_id"): group
+                for group in (document.get("groups") or [])
+                if isinstance(group, dict)
+            }
+        else:
+            from seohead.sf.core.evidence_contract import attach_contract_parts
+            from seohead.sf.core.models import _Rows
+            from seohead.storage.audit_v2 import AuditV2Reader
+
+            audit_reader = AuditV2Reader(path)
+            document = dict(audit_reader.header)
+            if document.get("schema_version") != "2.0":
+                raise LedgerError("audit.v2 header has an unsupported schema version")
+            if "/issues" not in audit_reader.collections:
+                raise LedgerError("audit.v2 source has no retained issue collection")
+            rows = _Rows(lambda: audit_reader.iter_collection("/issues"))
+            projected, streamed_issues = attach_contract_parts(
+                document, rows, scan_uuid=scan["scan_uuid"], con=None
+            )
+            document = projected
+            audit_row = {
+                "sha256": audit_reader.sha256,
+                "schema_version": document["schema_version"],
+                "created_at": (document.get("run") or {}).get("generated_at"),
+                "analyzer_version": audit_reader.binding["analyzer_version"],
+                "analyzer_revision": audit_reader.binding["analyzer_revision"],
+            }
+            representations = {}
+            by_url, doc_url = {}, {}
+            raw_issues = None
+            groups = None
+            group_memberships_state = (
+                "partial" if "/groups" in audit_reader.collections else "unavailable"
+            )
     finally:
         scan_con.close()
     run = document.get("run") if isinstance(document.get("run"), dict) else {}
@@ -1296,13 +1380,13 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
     netloc = urlsplit(start).netloc.lower() if isinstance(start, str) and start else ""
     if not netloc:
         raise LedgerError("source scan does not record the site it belongs to")
-    issues = projected.get("issues") if isinstance(projected.get("issues"), list) else []
-    raw_issues = document.get("issues") if isinstance(document.get("issues"), list) else []
-    groups = {
-        group.get("group_id"): group
-        for group in (document.get("groups") or [])
-        if isinstance(group, dict)
-    }
+    if streamed_issues is None:
+        issues = projected.get("issues") if isinstance(projected.get("issues"), list) else []
+    else:
+        # ``attach_contract_parts`` returns a re-iterable disk-backed stream.
+        # It must not be wrapped in list() here: a million-row audit.v2 is the
+        # exact case this ledger ingestion path exists to retain.
+        issues = streamed_issues
     observed_at = _validated_time(run.get("generated_at"))
 
     own = not isinstance(ledger, sqlite3.Connection)
@@ -1339,7 +1423,11 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
         for ordinal, projected_issue in enumerate(issues):
             if not isinstance(projected_issue, dict):
                 raise LedgerError("saved audit issue is not an object")
-            issue = raw_issues[ordinal] if ordinal < len(raw_issues) else projected_issue
+            issue = (
+                raw_issues[ordinal]
+                if isinstance(raw_issues, list) and ordinal < len(raw_issues)
+                else projected_issue
+            )
             check_key = projected_issue.get("check")
             check_id = _check_id(con, check_key, refuse_new)
             target = projected_issue.get("target_url")
@@ -1416,7 +1504,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                 },
             )
             group_ref = projected_issue.get("group_id")
-            if isinstance(group_ref, str) and group_ref:
+            if isinstance(group_ref, str) and group_ref and groups is not None:
                 group = groups.get(group_ref) or {}
                 counts["group_memberships"] += _insert_group(
                     con,
@@ -1435,6 +1523,13 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                         "group_urls_json": _dump(group.get("urls") or []),
                     },
                 )
+            elif isinstance(group_ref, str) and group_ref:
+                # The audit.v2 stream retained the issue's group reference but
+                # this ledger reader has not materialized a group lookup table.
+                # Keep that loss explicit in the ingest result rather than
+                # inventing an empty group membership.
+                if group_memberships_state != "partial":
+                    group_memberships_state = "unavailable"
             for spec in specs:
                 occurrence_id, created, _ = _insert_occurrence(
                     con,
@@ -1502,6 +1597,8 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
     finally:
         if own:
             con.close()
+        if audit_reader is not None:
+            audit_reader.close()
     return {
         "ok": True,
         "ledger_revision": int(revision),
@@ -1515,7 +1612,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
         "new_source": new_source,
         "already_recorded": not changed,
         "scan_bytes_differ": bytes_differ,
-        "recorded": counts,
+        "recorded": {**counts, "group_memberships_state": group_memberships_state},
     }
 
 
@@ -1731,14 +1828,17 @@ def record_verification(
     *,
     actor: str,
     expected_revision: int,
+    occurrence_keys: list[str] | None = None,
+    task_id: str = "unassigned",
 ) -> dict[str, Any]:
     """Apply one retained ``verification.v1`` artifact to pending ledger cases.
 
-    The verification artifact is already the immutable evidence produced by the
-    bounded recheck lane.  This records its byte digest and row id alongside
-    every resulting decision, rather than pretending a missing after-finding is
-    an observation.  All rows must map to exactly one pending local occurrence;
-    an ambiguous, incomplete or stale batch is refused atomically.
+    The artifact remains a standalone immutable file, while the ledger stores
+    its byte digest, exact selected scope and one typed result per occurrence.
+    Measured outcomes are refused unless the guarded verifier retained the
+    before/after page evidence that supports them.  ``occurrence_keys`` is the
+    preferred exact binding used by the ledger-aware recheck command; the
+    legacy check/URL lookup remains only for one unambiguous local occurrence.
     """
     path = Path(verification_path)
     if not path.is_file() or path.is_symlink() or path.stat().st_size > MAX_PAYLOAD_BYTES:
@@ -1755,6 +1855,36 @@ def record_verification(
     if type(expected_revision) is not int or expected_revision < 0:
         raise LedgerError("expected_revision must be a nonnegative integer")
     actor = _lifecycle_text(actor, "actor", 128)
+    task_id = _lifecycle_text(task_id, "task_id", 128)
+    if occurrence_keys is not None:
+        if not isinstance(occurrence_keys, list) or len(occurrence_keys) != len(findings):
+            raise LedgerError(
+                "occurrence_keys must name exactly one key for every verification row"
+            )
+        if any(not isinstance(key, str) or not _SHA256.fullmatch(key) for key in occurrence_keys):
+            raise LedgerError("occurrence_keys must contain lowercase SHA-256 keys")
+        if len(set(occurrence_keys)) != len(occurrence_keys):
+            raise LedgerError("occurrence_keys must not repeat a ledger case")
+    baseline = document.get("baseline")
+    selection = document.get("selection")
+    collection = document.get("collection")
+    if (
+        not isinstance(baseline, dict)
+        or not isinstance(selection, dict)
+        or not isinstance(collection, dict)
+    ):
+        raise LedgerError("verification artifact lacks baseline, selection or collection evidence")
+    baseline_sha = baseline.get("audit_sha256")
+    if not isinstance(baseline_sha, str) or not _SHA256.fullmatch(baseline_sha):
+        raise LedgerError("verification artifact baseline audit_sha256 is invalid")
+    baseline_scan_uuid = baseline.get("scan_uuid")
+    if baseline_scan_uuid is not None and (
+        not isinstance(baseline_scan_uuid, str) or not baseline_scan_uuid
+    ):
+        raise LedgerError("verification artifact baseline scan_uuid is invalid")
+    collection_state = collection.get("state")
+    if collection_state not in {"measured", "offline", "partial", "not_run", "not_verifiable"}:
+        raise LedgerError("verification artifact collection state is invalid")
     artifact_sha256 = _sha256_file(path)
     outcomes = {
         "resolved": "resolved",
@@ -1770,7 +1900,30 @@ def record_verification(
         header = con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()
         if header is None or header["ledger_revision"] != expected_revision:
             raise LedgerError("ledger revision changed; reread cases before recording verification")
-        prepared: list[tuple[sqlite3.Row, str, str]] = []
+        existing = con.execute(
+            "SELECT verification_id FROM verification_artifact WHERE artifact_sha256=?",
+            (artifact_sha256,),
+        ).fetchone()
+        if existing is not None:
+            raise LedgerError("verification artifact was already recorded")
+        con.execute(
+            "INSERT INTO verification_artifact(artifact_sha256,schema_version,artifact_path,task_id,"
+            "baseline_audit_sha256,selection_sha256,collection_sha256,collection_state,recorded_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                artifact_sha256,
+                "verification.v1",
+                str(path.absolute()),
+                task_id,
+                baseline_sha,
+                _json_sha256(selection),
+                _json_sha256(collection),
+                collection_state,
+                _utc(),
+            ),
+        )
+        verification_id = int(con.execute("SELECT last_insert_rowid()").fetchone()[0])
+        prepared: list[tuple[sqlite3.Row, str, str, dict[str, Any]]] = []
         seen: set[int] = set()
         for index, item in enumerate(findings):
             if not isinstance(item, dict):
@@ -1778,12 +1931,22 @@ def record_verification(
             check, url, status = item.get("check"), item.get("url"), item.get("status")
             if not isinstance(check, str) or not isinstance(url, str) or status not in outcomes:
                 raise LedgerError("verification finding has unsupported check, URL or status")
-            rows = con.execute(
-                "SELECT o.occurrence_id,o.finding_id,o.current_state FROM occurrence o "
-                "JOIN check_def c ON c.check_id=o.check_id "
-                "WHERE c.check_key=? AND o.subject_type='url' AND o.subject_value=?",
-                (check, canonical_url(url)),
-            ).fetchall()
+            canonical = canonical_url(url)
+            if occurrence_keys is None:
+                rows = con.execute(
+                    "SELECT o.occurrence_id,o.finding_id,o.current_state,o.occurrence_key FROM occurrence o "
+                    "JOIN check_def c ON c.check_id=o.check_id "
+                    "WHERE c.check_key=? AND o.subject_type='url' AND o.subject_value=?",
+                    (check, canonical),
+                ).fetchall()
+            else:
+                rows = con.execute(
+                    "SELECT o.occurrence_id,o.finding_id,o.current_state,o.occurrence_key,c.check_key "
+                    "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
+                    "WHERE o.occurrence_key=? AND o.subject_type='url' AND o.subject_value=? "
+                    "AND c.check_key=?",
+                    (occurrence_keys[index], canonical, check),
+                ).fetchall()
             if len(rows) != 1:
                 raise LedgerError(
                     "verification finding does not map to exactly one ledger occurrence"
@@ -1795,6 +1958,28 @@ def record_verification(
                 )
             if occurrence["current_state"] != "recheck_pending":
                 raise LedgerError("verification result requires a recheck_pending occurrence")
+            source = con.execute(
+                "SELECT 1 FROM observation ob JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
+                "WHERE ob.occurrence_id=? AND ob.role='target' "
+                "AND (s.audit_sha256=? OR s.scan_uuid=?) LIMIT 1",
+                (occurrence["occurrence_id"], baseline_sha, baseline_scan_uuid or ""),
+            ).fetchone()
+            if source is None:
+                raise LedgerError(
+                    "verification artifact baseline does not bind the selected ledger case"
+                )
+            before = item.get("before")
+            before_page = item.get("before_page")
+            after = item.get("after")
+            after_page = item.get("after_page")
+            if not isinstance(before, dict) or not isinstance(before_page, dict):
+                raise LedgerError("verification result lacks exact baseline finding/page evidence")
+            state = outcomes[status]
+            measured = state in _MEASURED_OUTCOMES
+            if measured and collection_state not in {"measured", "offline", "partial"}:
+                raise LedgerError("measured verification outcome lacks a completed collection")
+            if measured and not isinstance(after_page, dict):
+                raise LedgerError("measured verification outcome lacks an after page observation")
             detail = item.get("reason")
             if not isinstance(detail, str):
                 detail = ""
@@ -1803,13 +1988,32 @@ def record_verification(
                 "reason",
                 2048,
             )
-            prepared.append((occurrence, outcomes[status], reason))
+            evidence = {
+                "row_index": index,
+                "before_sha256": _json_sha256({"finding": before, "page": before_page}),
+                "after_sha256": (
+                    _json_sha256({"finding": after, "page": after_page})
+                    if isinstance(after_page, dict)
+                    else None
+                ),
+                "scope_sha256": _json_sha256(
+                    {
+                        "check": check,
+                        "url": canonical,
+                        "before": {"finding": before, "page": before_page},
+                        "after": {"finding": after, "page": after_page},
+                    }
+                ),
+                "measured": measured,
+                "reason": detail,
+            }
+            prepared.append((occurrence, state, reason, evidence))
             seen.add(int(occurrence["occurrence_id"]))
         next_revision = expected_revision + 1
-        for occurrence, state, reason in prepared:
+        for occurrence, state, reason, evidence in prepared:
             con.execute(
                 "INSERT INTO decision(occurrence_id,state,actor,reason,decided_at,decided_at_state,"
-                "observation_id,ledger_revision) VALUES(?,?,?,?,?,?,?,?)",
+                "observation_id,ledger_revision,verification_result_id) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     occurrence["occurrence_id"],
                     state,
@@ -1819,7 +2023,29 @@ def record_verification(
                     "known",
                     None,
                     next_revision,
+                    None,
                 ),
+            )
+            decision_id = int(con.execute("SELECT last_insert_rowid()").fetchone()[0])
+            con.execute(
+                "INSERT INTO verification_result(verification_id,occurrence_id,row_index,outcome,measured,"
+                "before_sha256,after_sha256,scope_sha256,reason) VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    verification_id,
+                    occurrence["occurrence_id"],
+                    evidence["row_index"],
+                    state,
+                    int(evidence["measured"]),
+                    evidence["before_sha256"],
+                    evidence["after_sha256"],
+                    evidence["scope_sha256"],
+                    evidence["reason"],
+                ),
+            )
+            verification_result_id = int(con.execute("SELECT last_insert_rowid()").fetchone()[0])
+            con.execute(
+                "UPDATE decision SET verification_result_id=? WHERE decision_id=?",
+                (verification_result_id, decision_id),
             )
             con.execute(
                 "UPDATE occurrence SET current_state=? WHERE occurrence_id=?",
@@ -1842,6 +2068,8 @@ def record_verification(
         "ok": True,
         "ledger_revision": next_revision,
         "verification_sha256": artifact_sha256,
+        "verification_id": verification_id,
+        "task_id": task_id,
         "recorded": len(prepared),
     }
 
@@ -1867,6 +2095,53 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
         remediation_denominator = original - false_positive
         resolved = counts["resolved"]
         rechecked = resolved + counts["persisting"] + counts["regressed"]
+        task_counts: dict[str, dict[str, int]] = {}
+        for row in con.execute(
+            "SELECT o.current_state,COALESCE((SELECT va.task_id FROM decision d "
+            "JOIN verification_result vr ON vr.verification_result_id=d.verification_result_id "
+            "JOIN verification_artifact va ON va.verification_id=vr.verification_id "
+            "WHERE d.occurrence_id=o.occurrence_id ORDER BY d.decision_id DESC LIMIT 1),"
+            "'unassigned') AS task_id FROM occurrence o"
+        ):
+            bucket = task_counts.setdefault(
+                row["task_id"], {state: 0 for state in _LIFECYCLE_STATES}
+            )
+            bucket[row["current_state"]] += 1
+
+        def task_view(task_counts: dict[str, int]) -> dict[str, Any]:
+            task_original = sum(task_counts.values())
+            task_actionable = task_original - task_counts["false_positive_reviewed"]
+            task_rechecked = (
+                task_counts["resolved"] + task_counts["persisting"] + task_counts["regressed"]
+            )
+            if not task_original:
+                status = "unavailable"
+            elif task_counts["unverifiable"]:
+                status = "blocked"
+            elif any(
+                task_counts[state]
+                for state in ("detected", "verified", "fix_reported", "recheck_pending")
+            ):
+                status = "in_progress"
+            else:
+                status = "complete"
+            return {
+                "status": status,
+                "counts": task_counts,
+                "denominators": {
+                    "verified_original_occurrences": task_original,
+                    "remediation_cases": task_actionable,
+                },
+                "resolved_percent": (
+                    round(100 * task_counts["resolved"] / task_actionable, 1)
+                    if task_actionable
+                    else None
+                ),
+                "rechecked_percent": (
+                    round(100 * task_rechecked / task_original, 1) if task_original else None
+                ),
+            }
+
         return {
             "ok": True,
             "ledger_revision": int(
@@ -1883,6 +2158,7 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
                 else None
             ),
             "rechecked_percent": round(100 * rechecked / original, 1) if original else None,
+            "tasks": {name: task_view(task_counts[name]) for name in sorted(task_counts)},
             "reason": None if original else "the ledger has no occurrence population",
         }
     finally:
@@ -1890,10 +2166,20 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
             con.close()
 
 
-def remediation_report(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
-    """Build deterministic JSON-ready before/after rows without performing I/O or network work."""
+def remediation_report(
+    ledger: str | Path | sqlite3.Connection,
+    *,
+    limit: int = DEFAULT_CASE_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Build one deterministic, bounded page of before/after evidence rows.
+
+    The summary always covers the complete ledger population. Exact cases are
+    deliberately paginated, so a million-row retained audit cannot turn a
+    routine report read into a second full in-memory audit export.
+    """
     summary = remediation_summary(ledger)
-    cases = read_cases(ledger, limit=None)
+    cases = read_cases(ledger, limit=limit, offset=offset)
     rows = []
     for finding in cases["findings"]:
         for occurrence in finding["occurrences"]:
@@ -1913,7 +2199,17 @@ def remediation_report(ledger: str | Path | sqlite3.Connection) -> dict[str, Any
                     "observations": occurrence["observations"],
                 }
             )
-    return {"schema_version": "remediation-report.v1", "summary": summary, "cases": rows}
+    return {
+        "schema_version": "remediation-report.v1",
+        "summary": summary,
+        "pagination": {
+            "total": cases["total"],
+            "limit": cases["limit"],
+            "offset": cases["offset"],
+            "returned": len(cases["findings"]),
+        },
+        "cases": rows,
+    }
 
 
 def remediation_markdown(document: dict[str, Any]) -> str:
@@ -1922,13 +2218,21 @@ def remediation_markdown(document: dict[str, Any]) -> str:
         raise LedgerError("unsupported remediation report document")
     summary = document.get("summary")
     cases = document.get("cases")
-    if not isinstance(summary, dict) or not isinstance(cases, list):
+    pagination = document.get("pagination")
+    if (
+        not isinstance(summary, dict)
+        or not isinstance(cases, list)
+        or not isinstance(pagination, dict)
+    ):
         raise LedgerError("invalid remediation report document")
     counts = summary.get("counts") or {}
     lines = [
         "# Remediation evidence report",
         "",
         f"Ledger revision: {summary.get('ledger_revision')}",
+        "Cases: "
+        f"{pagination.get('returned')} shown from {pagination.get('total')} "
+        f"(limit={pagination.get('limit')}, offset={pagination.get('offset')})",
         "",
         "| State | Check | Subject | Evidence |",
         "|---|---|---|---|",
@@ -1937,10 +2241,18 @@ def remediation_markdown(document: dict[str, Any]) -> str:
         if not isinstance(case, dict):
             raise LedgerError("invalid remediation report case")
         decision = case.get("decision") or {}
+        verification = decision.get("verification") if isinstance(decision, dict) else None
         evidence = (
-            f"decision {decision.get('decision_id')} / observation {decision.get('observation_id')}"
-            if decision
-            else "no lifecycle decision"
+            "verification "
+            f"{verification.get('artifact_sha256')} / {verification.get('outcome')} / "
+            f"baseline {verification.get('baseline_audit_sha256')} / "
+            f"scope {verification.get('scope_sha256')}"
+            if isinstance(verification, dict)
+            else (
+                f"decision {decision.get('decision_id')} / observation {decision.get('observation_id')}"
+                if decision
+                else "no lifecycle decision"
+            )
         )
         cells = [
             str(case.get("state") or ""),
@@ -1972,11 +2284,48 @@ def remediation_markdown(document: dict[str, Any]) -> str:
             "",
         ]
     )
+    tasks = summary.get("tasks") or {}
+    if tasks:
+        lines.extend(
+            [
+                "## Task coverage",
+                "",
+                "| Task | Status | Resolved | Rechecked |",
+                "|---|---|---:|---:|",
+            ]
+        )
+        for task_id in sorted(tasks):
+            task = tasks[task_id]
+            lines.append(
+                "| "
+                + " | ".join(
+                    (
+                        task_id,
+                        str(task.get("status") or "unavailable"),
+                        (
+                            f"{task.get('resolved_percent')}%"
+                            if task.get("resolved_percent") is not None
+                            else "unavailable"
+                        ),
+                        (
+                            f"{task.get('rechecked_percent')}%"
+                            if task.get("rechecked_percent") is not None
+                            else "unavailable"
+                        ),
+                    )
+                )
+                + " |"
+            )
+        lines.append("")
     return "\n".join(lines)
 
 
 def write_remediation_report(
-    ledger: str | Path | sqlite3.Connection, out_dir: str | Path
+    ledger: str | Path | sqlite3.Connection,
+    out_dir: str | Path,
+    *,
+    limit: int = DEFAULT_CASE_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Write one new JSON/Markdown report directory from existing ledger evidence.
 
@@ -1987,7 +2336,7 @@ def write_remediation_report(
     if destination.exists():
         raise FileExistsError(f"remediation report output already exists: {destination}")
     destination.mkdir(parents=True)
-    document = remediation_report(ledger)
+    document = remediation_report(ledger, limit=limit, offset=offset)
 
     def write_new(path: Path, content: str) -> None:
         fd, temporary = tempfile.mkstemp(prefix=".remediation-", dir=destination)
@@ -2030,6 +2379,8 @@ def ledger_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
             "finding_group",
             "observation",
             "decision",
+            "verification_artifact",
+            "verification_result",
         ):
             counts[table] = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
         counts["distinct_affected_urls"] = con.execute(
@@ -2207,22 +2558,47 @@ def read_cases(
                     view = _observation_view(row, previous)
                     previous = view
                     observations.append(view)
-                decisions = [
-                    {
-                        "decision_id": row["decision_id"],
-                        "state": row["state"],
-                        "actor": row["actor"],
-                        "reason": row["reason"],
-                        "decided_at": row["decided_at"],
-                        "decided_at_state": row["decided_at_state"],
-                        "observation_id": row["observation_id"],
-                        "ledger_revision": row["ledger_revision"],
-                    }
-                    for row in con.execute(
-                        "SELECT * FROM decision WHERE occurrence_id=? ORDER BY decision_id",
-                        (occurrence["occurrence_id"],),
+                decisions = []
+                for row in con.execute(
+                    "SELECT d.*,vr.outcome AS verification_outcome,vr.measured AS verification_measured,"
+                    "vr.before_sha256,vr.after_sha256,vr.scope_sha256,va.artifact_sha256,"
+                    "va.artifact_path,va.task_id,va.baseline_audit_sha256,va.selection_sha256,"
+                    "va.collection_sha256,va.collection_state "
+                    "FROM decision d "
+                    "LEFT JOIN verification_result vr ON vr.verification_result_id=d.verification_result_id "
+                    "LEFT JOIN verification_artifact va ON va.verification_id=vr.verification_id "
+                    "WHERE d.occurrence_id=? ORDER BY d.decision_id",
+                    (occurrence["occurrence_id"],),
+                ):
+                    verification = None
+                    if row["verification_result_id"] is not None:
+                        verification = {
+                            "artifact_sha256": row["artifact_sha256"],
+                            "artifact_path": row["artifact_path"],
+                            "task_id": row["task_id"],
+                            "baseline_audit_sha256": row["baseline_audit_sha256"],
+                            "selection_sha256": row["selection_sha256"],
+                            "collection_sha256": row["collection_sha256"],
+                            "collection_state": row["collection_state"],
+                            "outcome": row["verification_outcome"],
+                            "measured": bool(row["verification_measured"]),
+                            "before_sha256": row["before_sha256"],
+                            "after_sha256": row["after_sha256"],
+                            "scope_sha256": row["scope_sha256"],
+                        }
+                    decisions.append(
+                        {
+                            "decision_id": row["decision_id"],
+                            "state": row["state"],
+                            "actor": row["actor"],
+                            "reason": row["reason"],
+                            "decided_at": row["decided_at"],
+                            "decided_at_state": row["decided_at_state"],
+                            "observation_id": row["observation_id"],
+                            "ledger_revision": row["ledger_revision"],
+                            "verification": verification,
+                        }
                     )
-                ]
                 occurrences.append(
                     {
                         "occurrence_id": occurrence["occurrence_id"],

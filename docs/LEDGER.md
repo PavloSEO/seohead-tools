@@ -19,7 +19,7 @@ population until an explicit later lane classifies it.
 | Format | `ledger.v1` |
 | SQLite signature | `SQLite format 3\000` |
 | `application_id` | `1397051212` (`SEOL`; scans use `SEOH`) |
-| `user_version` | `1` |
+| `user_version` | `2` |
 
 A reader must require all three identifiers. `open_ledger` returns a validated
 connection or refuses; it never auto-repairs, never opens a foreign file, and
@@ -57,6 +57,8 @@ finding_observation the run-local audit projection per finding per source
 finding_group       group membership per finding per source (history)
 observation         append-only sighting per occurrence per source
 decision            reserved for #789 lifecycle transition history
+verification_artifact immutable verification.v1 file identity, selected scope and collection state
+verification_result  one exact before/after outcome bound to an occurrence and decision
 ```
 
 Foreign keys are enforced and checked on every validated open together with a
@@ -159,7 +161,9 @@ and a `ledger_meta` marker naming the intended ledger UUID, project/site
 binding and writer. An explicit write open runs the 0→1 migration, which
 materializes the full schema plus the header and primary site row from that
 marker. `create_ledger` itself always writes a complete validated
-`ledger.v1`.
+`ledger.v1`. Version 2 adds immutable `verification_artifact` and
+`verification_result` bindings. A write open migrates v1 to v2 atomically;
+readers of an older artifact still refuse rather than changing it.
 
 `ledger.ledger_revision` counts committed write transactions that changed
 ledger content (reserved for optimistic concurrency in #789). It is
@@ -187,7 +191,9 @@ its occurrence states: a mixed finding never reads as resolved.
 
 Claims and missing data do not resolve a case. A `resolved`, `persisting` or
 `regressed` decision requires an exact retained, measured observation after
-the baseline; the decision stores that observation id. A false-positive review
+the baseline; the decision stores that observation id or a typed result from a
+saved `verification.v1` artifact. The latter preserves the baseline/selection/
+collection hashes, exact before/after scope hashes and the artifact digest. A false-positive review
 is retained as its own state and is excluded from the remediation denominator,
 never counted as a fix. Targeted recrawl selection and writing a new
 verification artifact remain separate workflow work: an omission from a later
@@ -196,10 +202,13 @@ partial scan still has no lifecycle effect.
 `remediation_summary` exposes distinct original-case, remediation and recheck
 denominators. `resolved_percent` keeps unverifiable cases in its denominator;
 `rechecked_percent` counts only retained resolved/persisting/regressed evidence,
-so failed or partial work cannot improve a percentage. `remediation_report`
-returns deterministic JSON-ready rows with the baseline, later observations
-and latest decision. `write_remediation_report` writes a new, never-overwritten
-JSON/Markdown review directory from that data; neither path makes a network
+so failed or partial work cannot improve a percentage. It also partitions the
+full original population by retained recheck task id; unassigned cases remain
+visible rather than disappearing from a denominator. `remediation_report`
+returns one deterministic, paginated JSON-ready case page with the baseline,
+later observations and latest decision while its summary still covers the full
+ledger. `write_remediation_report` writes a new, never-overwritten
+JSON/Markdown review directory from that page; neither path makes a network
 request or mutates the ledger.
 
 ## Core API
@@ -210,8 +219,9 @@ request or mutates the ledger.
   new project-bound ledger; never overwrites.
 - `open_ledger(path, *, write=False)` — validated read or write connection.
 - `ingest_scan(ledger, scan_path) -> dict` — ingest one validated saved audit
-  (read-only); returns binding, `ledger_revision`, per-entity `recorded`
-  counts and `already_recorded`.
+  (read-only), streaming `audit.v2` issue rows instead of materializing a
+  legacy document; returns binding, `ledger_revision`, per-entity `recorded`
+  counts, explicit `group_memberships_state` and `already_recorded`.
 - `ledger_summary(ledger) -> dict` — identity, sites and per-table counts
   including `distinct_affected_urls`.
 - `read_cases(ledger, *, check=None, url=None, finding_key=None) -> dict` —
@@ -222,9 +232,13 @@ request or mutates the ledger.
 - `transition_occurrence(ledger, *, occurrence_key, state, actor, reason,
   expected_revision, observation_id=None, decided_at=None) -> dict` — append
   one revision-safe lifecycle decision.
-- `remediation_summary(ledger) -> dict` and `remediation_report(ledger) -> dict`
-  — explicit coverage totals and deterministic before/after data without I/O.
-- `write_remediation_report(ledger, out_dir) -> dict` — create one immutable
+- `record_verification(ledger, verification_path, *, actor, expected_revision,
+  occurrence_keys=None, task_id='unassigned') -> dict` — bind a retained
+  verification artifact to exact pending cases with typed outcome evidence.
+- `remediation_summary(ledger) -> dict` and `remediation_report(ledger, *,
+  limit=100, offset=0) -> dict` — explicit full coverage totals and one bounded
+  before/after case page without I/O.
+- `write_remediation_report(ledger, out_dir, *, limit=100, offset=0) -> dict` — create one immutable
   JSON/Markdown review snapshot from already retained evidence.
 - `note_source_missing(ledger, source_scan_id, *, reason)` — mark a bound
   artifact missing without losing its digests.
