@@ -1,9 +1,9 @@
 # Audit Tasks — example.com
 
-> 70 of 165 checks could run; the score is not comparable to a run with full evidence
+> 77 of 176 checks could run; the score is not comparable to a run with full evidence
 
-- Source: audit generated at 2026-10-03T20:53:40Z (health n/a)
-- Tasks: **16** (P1: 3, P2: 8, P3: 5)
+- Source: audit generated at 2026-10-04T09:08:17Z (health n/a)
+- Tasks: **20** (P1: 3, P2: 8, P3: 9)
 
 ## P1 (3)
 
@@ -70,7 +70,7 @@
     - Reproduction: At https://example.com/page-b: Threshold: 200.
         - https://example.com/page-b
 
-## P3 (5)
+## P3 (9)
 
 - [ ] **H2 is duplicated across multiple URLs — 3 pages** · notice · effort: low
     - _How to fix:_ Use a unique, page-specific H2 on each URL, or accept it for a shared boilerplate subheading that is genuinely meant to repeat.
@@ -102,4 +102,20 @@
     - _How to fix:_ Increase the proportion of meaningful visible content or reduce unnecessary markup.
     - Reproduction: At https://example.com/page-b: Text ratio: 8.0.
         - https://example.com/page-b
+
+- [ ] **No indexable About page was found in the crawl's scope** · notice · effort: low
+    - _How to fix:_ If an About page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+    - Reproduction: Reproduction unavailable from the saved audit.
+
+- [ ] **No indexable Contact page was found in the crawl's scope** · notice · effort: low
+    - _How to fix:_ If a Contact page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+    - Reproduction: Reproduction unavailable from the saved audit.
+
+- [ ] **No indexable privacy policy page was found in the crawl's scope** · notice · effort: low
+    - _How to fix:_ If a privacy policy exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+    - Reproduction: Reproduction unavailable from the saved audit.
+
+- [ ] **No indexable terms-of-use page was found in the crawl's scope** · notice · effort: low
+    - _How to fix:_ If a terms page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.
+    - Reproduction: Reproduction unavailable from the saved audit.
 

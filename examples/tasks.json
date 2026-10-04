@@ -3,21 +3,21 @@
   "source": {
     "project": "example.com",
     "site_name": "example.com",
-    "generated_at": "2026-10-03T20:53:40Z",
+    "generated_at": "2026-10-04T09:08:17Z",
     "health_score": null,
     "crawl_valid": true,
     "crawl_invalid_reason": null,
     "crawl_partial": false,
     "crawl_finish_reason": null,
     "health_score_scope": null,
-    "health_score_basis": "70 of 165 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_basis": "77 of 176 checks could run; the score is not comparable to a run with full evidence",
     "check_coverage": {
-      "checks_total": 165,
-      "checks_fired": 16,
-      "checks_skipped": 95,
+      "checks_total": 176,
+      "checks_fired": 20,
+      "checks_skipped": 99,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 56,
+      "checks_silent": 57,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
@@ -74,9 +74,10 @@
         "URL_TOO_LONG",
         "URL_TRACKING_PARAMS",
         "URL_UNDERSCORES",
-        "URL_UPPERCASE"
+        "URL_UPPERCASE",
+        "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.424
+      "coverage": 0.438
     }
   },
   "pipeline": {
@@ -102,11 +103,11 @@
     "exclude_checks": []
   },
   "summary": {
-    "tasks_total": 16,
+    "tasks_total": 20,
     "by_priority": {
       "P1": 3,
       "P2": 8,
-      "P3": 5
+      "P3": 9
     }
   },
   "tasks": [
@@ -547,6 +548,102 @@
       "urls_truncated": 0,
       "reproductions": [
         "At https://example.com/page-b: Text ratio: 8.0."
+      ],
+      "evidence_references": [
+        {
+          "state": "unavailable",
+          "reason": "no stable saved-evidence reference is present"
+        }
+      ],
+      "evidence_references_truncated": 0
+    },
+    {
+      "id": "TASK-95602865",
+      "check": "MISSING_ABOUT_PAGE",
+      "priority": "P3",
+      "severity": "notice",
+      "effort": "low",
+      "title": "No indexable About page was found in the crawl's scope",
+      "fix_hint": "If an About page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.",
+      "source": "SF-derived",
+      "affected_count": 1,
+      "occurrences": 1,
+      "urls": [],
+      "urls_truncated": 0,
+      "reproductions": [
+        "Reproduction unavailable from the saved audit."
+      ],
+      "evidence_references": [
+        {
+          "state": "unavailable",
+          "reason": "no stable saved-evidence reference is present"
+        }
+      ],
+      "evidence_references_truncated": 0
+    },
+    {
+      "id": "TASK-bbfc8d0a",
+      "check": "MISSING_CONTACT_PAGE",
+      "priority": "P3",
+      "severity": "notice",
+      "effort": "low",
+      "title": "No indexable Contact page was found in the crawl's scope",
+      "fix_hint": "If a Contact page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.",
+      "source": "SF-derived",
+      "affected_count": 1,
+      "occurrences": 1,
+      "urls": [],
+      "urls_truncated": 0,
+      "reproductions": [
+        "Reproduction unavailable from the saved audit."
+      ],
+      "evidence_references": [
+        {
+          "state": "unavailable",
+          "reason": "no stable saved-evidence reference is present"
+        }
+      ],
+      "evidence_references_truncated": 0
+    },
+    {
+      "id": "TASK-bf29c748",
+      "check": "MISSING_PRIVACY_POLICY",
+      "priority": "P3",
+      "severity": "notice",
+      "effort": "low",
+      "title": "No indexable privacy policy page was found in the crawl's scope",
+      "fix_hint": "If a privacy policy exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.",
+      "source": "SF-derived",
+      "affected_count": 1,
+      "occurrences": 1,
+      "urls": [],
+      "urls_truncated": 0,
+      "reproductions": [
+        "Reproduction unavailable from the saved audit."
+      ],
+      "evidence_references": [
+        {
+          "state": "unavailable",
+          "reason": "no stable saved-evidence reference is present"
+        }
+      ],
+      "evidence_references_truncated": 0
+    },
+    {
+      "id": "TASK-f973d9b2",
+      "check": "MISSING_TERMS_PAGE",
+      "priority": "P3",
+      "severity": "notice",
+      "effort": "low",
+      "title": "No indexable terms-of-use page was found in the crawl's scope",
+      "fix_hint": "If a terms page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all.",
+      "source": "SF-derived",
+      "affected_count": 1,
+      "occurrences": 1,
+      "urls": [],
+      "urls_truncated": 0,
+      "reproductions": [
+        "Reproduction unavailable from the saved audit."
       ],
       "evidence_references": [
         {

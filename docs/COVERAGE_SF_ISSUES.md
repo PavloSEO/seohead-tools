@@ -18,14 +18,14 @@ here is written about *our own* behaviour.
 | check | 126 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
-| gap | 8 | we should find it and do not |
+| gap | 7 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **158 are found today**, 18 are
-found in part, 8 are gaps worth closing, and
+remaining 212 issues, **159 are found today**, 18 are
+found in part, 7 are gaps worth closing, and
 28 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth

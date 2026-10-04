@@ -135,6 +135,7 @@ COMMANDS = (
     "provider-join",
     "evidence-normalize",
     "evidence-join",
+    "bi-export",
     "inspect-url",
     "audit-workflow",
     "tool-catalog",
@@ -532,6 +533,19 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
+    elif cmd == "bi-export":
+        for name in (
+            "scan",
+            "audit",
+            "out_dir",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+        ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+        if getattr(args, "provider_join", None):
+            kw["provider_joins"] = args.provider_join
     elif cmd in {"boilerplate-report", "semantic-inputs"}:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
@@ -1784,6 +1798,20 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--ignore-scheme", action="store_true")
         sub.add_argument("--casefold-path", action="store_true")
         _source_flag(sub, "--out-dir", help="private local join output directory")
+    if cmd == "bi-export":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact")
+        _source_flag(sub, "--audit", help="supported saved audit JSON document")
+        _source_flag(
+            sub,
+            "--provider-join",
+            action="append",
+            dest="provider_join",
+            help="saved issue #781 evidence-join artifact or normalized evidence JSON; repeatable",
+        )
+        _source_flag(sub, "--out-dir", help="new local BI package directory (never overwritten)")
+        sub.add_argument("--max-rows-per-file", type=int, help="CSV partition row bound")
+        sub.add_argument("--max-bytes-per-file", type=int, help="CSV partition byte bound")
+        sub.add_argument("--max-output-bytes", type=int, help="hard total package byte bound")
     if cmd == "project-checklist-record":
         _source_flag(sub, "--item-id", help="checklist item identifier to record")
     if cmd == "scan-body-diff":

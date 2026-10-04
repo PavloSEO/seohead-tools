@@ -338,3 +338,21 @@ def test_report_refuses_stale_severity_summary_instead_of_claiming_clean(tmp_pat
     result = build_report(scan, fmt="md", path=str(tmp_path / "stale.md"))
     assert result["ok"] is False
     assert "warning issue count disagrees" in result["error"]
+
+
+def test_streamed_report_refuses_saved_view_instead_of_silently_ignoring_it(tmp_path):
+    from seohead.reports import build_report
+
+    scan = tmp_path / "scan.sqlite"
+    binding = _scan(scan)
+    write_audit_v2(
+        scan,
+        {"schema_version": "2.0", "run": {}, "summary": {}, "issues": [], "pages": []},
+        {"/issues": [], "/pages": []},
+        binding,
+    )
+    output = tmp_path / "filtered.csv"
+    result = build_report(scan, fmt="csv", path=str(output), project=str(tmp_path), view="triage")
+    assert result["ok"] is False
+    assert "saved finding views" in result["error"]
+    assert not output.exists()

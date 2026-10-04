@@ -16,6 +16,16 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
+The current registry has 115 commands and 120 callable tools,
+with 176 audit checks. These are inventories, not coverage on every input.
+
+## Offline BI projection
+
+`bi-export` writes typed, bounded CSV partitions and a provenance/coverage manifest
+from saved local scan/audit and supplied provider evidence. See [BI.md](BI.md) for
+source/output limits, null states and the explicit audit.v2 compatibility bound.
+It makes no provider requests or remote writes.
+
 ## Topvisor
 
 `topvisor-read` / `seo_topvisor_read` reads one bounded page of existing projects,
@@ -569,7 +579,7 @@ seohead sf tasks --json report/audit.json                            # backlog f
 Note: `sf tasks` takes the audit path via the required `--json` flag, not as
 a positional argument (`seohead/sf/cli.py`).
 
-**165 checks**: 12 critical, 78 warnings, 75 notices. Sources: SF exports,
+**176 checks**: 12 critical, 81 warnings, 83 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -603,7 +613,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(98 + 5):
+(115 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -611,7 +621,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 165 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 176 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another

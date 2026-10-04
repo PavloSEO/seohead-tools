@@ -534,6 +534,30 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         ),
     ),
     _command(
+        "bi-export",
+        "bi_export",
+        _form("scan_artifact", "scan", note="Alternative validated scan.v1 source."),
+        _form("audit_document", "audit", note="Alternative supported audit JSON source."),
+        _form(
+            "local_file",
+            "provider_joins",
+            note="Optional saved issue #781 evidence-join/normalized-evidence JSON files; repeatable.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Required new local package directory; existing output is refused.",
+        ),
+        _form(
+            "inline_json",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            note="Optional positive partition and total-output bounds; exceeding a hard limit fails without publishing a package.",
+        ),
+        note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
+    ),
+    _command(
         "inspect-url",
         "inspect_url",
         _form("live_url", "url"),

@@ -1724,6 +1724,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_bi_export(
+        out_dir: str,
+        scan: str | None = None,
+        audit: Any = None,
+        provider_joins: list[str] | None = None,
+        max_rows_per_file: int = 25_000,
+        max_bytes_per_file: int = 8 * 1024 * 1024,
+        max_output_bytes: int = 512 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
+
+        Reads existing evidence only. CSVs are partitioned deterministically;
+        null values retain explicit states and reasons, and output limits fail
+        without publishing a partial package. No crawl or provider request runs.
+        """
+        return _checked(
+            handlers.bi_export(
+                scan=scan,
+                audit=audit,
+                provider_joins=provider_joins,
+                out_dir=out_dir,
+                max_rows_per_file=max_rows_per_file,
+                max_bytes_per_file=max_bytes_per_file,
+                max_output_bytes=max_output_bytes,
+            )
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
         """Inspect one URL with bounded metadata/header/robots/redirect/structured/render steps."""

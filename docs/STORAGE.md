@@ -1113,3 +1113,11 @@ sitemap. Exclusion counts derive from decision occurrences. Raw start-page HTML
 is not hidden in a context row: it requires the later document/body lane.
 This native-core context table predates the later body/resource lanes. Network
 replay remains unavailable; retained-evidence reanalysis is documented above.
+
+
+### Streamed report compatibility
+
+Saved finding views are currently unavailable for streamed audit.v2 report inputs.
+The report builder refuses that combination explicitly rather than silently ignoring
+the selected view. PDF and project coverage remain explicitly unavailable on the
+streaming path; bounded inline audit reports retain their view/language support.

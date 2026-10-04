@@ -975,7 +975,10 @@ def render_check(
                     endpoint,
                     timeout_seconds=timeout,
                     local_launch_options=(
-                        {**dict(BROWSER_ENGINES[engine]["launch_options"]), **_local_chromium_launch_options()}
+                        {
+                            **dict(BROWSER_ENGINES[engine]["launch_options"]),
+                            **_local_chromium_launch_options(),
+                        }
                         if endpoint is None and engine == "chromium"
                         else dict(BROWSER_ENGINES[engine]["launch_options"])
                     ),
@@ -1562,7 +1565,10 @@ def render_document(
                     endpoint,
                     timeout_seconds=nav_timeout,
                     local_launch_options=(
-                        {**dict(BROWSER_ENGINES[engine]["launch_options"]), **_local_chromium_launch_options()}
+                        {
+                            **dict(BROWSER_ENGINES[engine]["launch_options"]),
+                            **_local_chromium_launch_options(),
+                        }
                         if endpoint is None and engine == "chromium"
                         else dict(BROWSER_ENGINES[engine]["launch_options"])
                     ),

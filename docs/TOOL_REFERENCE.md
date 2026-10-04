@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**98 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 103 in total.
+**115 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 120 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -620,7 +620,7 @@ Compare the raw server HTML with the DOM after JavaScript runs — the gap betwe
 
 MCP name: `seo_site_audit`
 
-Run the whole live toolkit over one site and return a single audit document (schema seohead.site-audit/1). Site-level tools run once (domain profile, CDN and cache, tech stack, security headers, robots, AI crawlers, llms.txt, regions, raw-vs-rendered, sitemap); page-level tools run per URL (parse, Schema.org, Open Graph). URLs come from the sitemap unless you pass `urls`. Every finding is collected into one sorted list with a severity assigned by aggregator rules — the document says so explicitly, because severity here is a rule, not a measurement. A tool that fails does NOT fail the audit: it lands in summary.tools_failed with its reason, so silence is never mistaken for a clean result. Feed the returned document straight into seo_report_build.
+Run the whole live toolkit over one site and return a single audit document (schema seohead.site-audit/1). Site-level tools run once (domain profile, CDN and cache, tech stack, security headers, robots, AI crawlers, llms.txt, regions, raw-vs-rendered, sitemap); page-level tools run per URL (parse, Schema.org, Open Graph). URLs come from the sitemap unless you pass `urls`. Every finding is collected into one sorted list with a severity assigned by aggregator rules — the document says so explicitly, because severity here is a rule, not a measurement. A tool that fails does NOT fail the audit: it lands in summary.tools_failed with its reason, so silence is never mistaken for a clean result. Feed the returned document straight into seo_report_build. Optional crux_evidence is an already collected CrUX current record or bounded sample; no Google request occurs here. URL and origin field scopes remain distinct from Lighthouse lab results.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -630,6 +630,7 @@ Run the whole live toolkit over one site and return a single audit document (sch
 | `concurrency` | `int` | `5` |
 | `render` | `bool` | `False` |
 | `skip` | `list[str] | None` | `None` |
+| `crux_evidence` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
@@ -637,7 +638,7 @@ Run the whole live toolkit over one site and return a single audit document (sch
 
 MCP name: `seo_report_build`
 
-Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report. Optional view applies one saved finding view; it leaves health, evidence, coverage and source scan untouched. offset pages through the stable sorted view. This never makes a network request.
+Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git; pdf is a localized offline Chromium printout (en or ru). PDF requires the optional `pdf` dependencies and a local Chrome, Edge or Chromium. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report. Optional view applies one saved finding view; it leaves health, evidence, coverage and source scan untouched. offset pages through the stable sorted view. This never makes a network request.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -647,6 +648,7 @@ Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict r
 | `project` | `str | None` | `None` |
 | `view` | `str | None` | `None` |
 | `offset` | `int` | `0` |
+| `lang` | `str` | `'en'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -1116,16 +1118,20 @@ naming what to configure; it never fabricates a result.
 
 MCP name: `seo_crux_report`
 
-Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th percentile — the honest counterpart to seo_render_check's synthesized-score-free design (issue #59). Pass exactly one of url/origin. Requires a Chrome UX Report API key. A target with too little real-user traffic is not an error; CrUX has nothing to report for it, which comes back here as an empty metrics object.
+Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th percentile — the honest counterpart to seo_render_check's synthesized-score-free design (issue #59). Pass exactly one of url/origin. Requires a Chrome UX Report API key. No eligible field record and missing metrics remain unavailable. Optional urls samples at most 25 targets; cache_dir enables an explicit local cache. Never substitutes Lighthouse lab metrics for CrUX field data.
 
 | Argument | Type | Default |
 |---|---|---|
 | `url` | `str | None` | `None` |
 | `origin` | `str | None` | `None` |
+| `urls` | `list[str] | None` | `None` |
 | `form_factor` | `str | None` | `None` |
 | `metrics` | `list[str] | None` | `None` |
+| `max_samples` | `int` | `25` |
+| `cache_dir` | `str | None` | `None` |
+| `cache_max_age_hours` | `float` | `24` |
 
-**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
 ### `indexnow-submit`
 
@@ -1661,6 +1667,30 @@ identity, attribution, engine and grain; source metrics such as GSC
 clicks and GA4 sessions stay distinct and are never summed. Restricted
 inputs return counts only.
 
+### `bi-export`
+
+MCP name: `seo_bi_export`
+
+Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
+
+| Argument | Type | Default |
+|---|---|---|
+| `out_dir` | `str` | `required` |
+| `scan` | `str | None` | `None` |
+| `audit` | `Any` | `None` |
+| `provider_joins` | `list[str] | None` | `None` |
+| `max_rows_per_file` | `int` | `25000` |
+| `max_bytes_per_file` | `int` | `8 * 1024 * 1024` |
+| `max_output_bytes` | `int` | `512 * 1024 * 1024` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Reads existing evidence only. CSVs are partitioned deterministically;
+null values retain explicit states and reasons, and output limits fail
+without publishing a partial package. No crawl or provider request runs.
+
 ### `inspect-url`
 
 MCP name: `seo_inspect_url`
@@ -1738,6 +1768,29 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 | `limit` | `int` | `100` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-fragment-links`
+
+MCP name: `seo_scan_fragment_links`
+
+Evaluate every retained fragment anchor offline and page the results.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `state` | `Literal['resolved', 'missing', 'skipped'] | None` | `None` |
+| `representation` | `Literal['static', 'rendered', 'legacy_fragment'] | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Only complete retained HTML/DOM is measured: a missing, truncated,
+unsupported, failed or budget-exhausted body is a named skipped
+occurrence or unavailable source, never a broken fragment. Nothing is
+fetched and the artifact is not modified.
 
 ### `scan-requeue`
 

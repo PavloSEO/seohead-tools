@@ -585,3 +585,29 @@ def test_findings_view_reads_a_synthetic_validated_scan_offline(project):
     assert result["source"]["rows_key"] == "issues"
     assert result["source"]["identity"]
     assert result["counts"]["source"] == len(read_audit(scan)["issues"])
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_pdf_build_uses_only_saved_view_selection(project, tmp_path, monkeypatch, language):
+    from seohead.reports import build_report
+
+    save_view(project, definition(filters={"severity": ["warning"]}), expected_revision=0)
+    seen = {}
+
+    def write(model, path, *, lang):
+        seen.update(model=model, lang=lang)
+        return {"ok": True, "path": str(path)}
+
+    monkeypatch.setattr("seohead.reports.pdf_output.write_pdf_report", write)
+    result = build_report(
+        audit_document(),
+        fmt="pdf",
+        path=str(tmp_path / "view.pdf"),
+        project=str(project),
+        view="triage",
+        lang=language,
+    )
+    assert result["ok"] is True
+    assert seen["lang"] == language
+    assert seen["model"]["summary"]["counts"]["findings"]["projected_count"] == 2
+    assert "Synthetic broken URL" not in json.dumps(seen["model"])

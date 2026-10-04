@@ -324,6 +324,7 @@ def _read_links_jsonl(path: str) -> list[LinkEdge]:
 def _read_forms_jsonl(path: str) -> list[FormEdge]:
     return [FormEdge(**raw) for raw in _jsonl_rows(path)]
 
+
 def _read_external_jsonl(path: str) -> list[ExternalCheck]:
     """Reconstruct the external-destination outcomes a prior run recorded.
 

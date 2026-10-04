@@ -249,7 +249,11 @@ def _normalize_sf_audit(document: dict[str, Any]) -> dict[str, Any]:
     # promises the developer handoff carries all of it, so every field the SF
     # issue actually has is preserved here even where a given writer does not
     # yet render it (#220).
-    findings = [_normalize_sf_issue(issue) | ({"__view_segment": issue["__view_segment"]} if "__view_segment" in issue else {}) for issue in document.get("issues") or []]
+    findings = [
+        _normalize_sf_issue(issue)
+        | ({"__view_segment": issue["__view_segment"]} if "__view_segment" in issue else {})
+        for issue in document.get("issues") or []
+    ]
     pages = [_normalize_sf_page(page) for page in document.get("pages") or []]
 
     tools_failed = [
@@ -558,6 +562,11 @@ def build_report(
         return {"ok": False, "error": str(exc)}
     if hasattr(document, "iter_collection"):
         try:
+            if view is not None:
+                return {
+                    "ok": False,
+                    "error": "saved finding views are not implemented for streamed audit.v2 inputs",
+                }
             if fmt not in FORMATS:
                 return {
                     "ok": False,

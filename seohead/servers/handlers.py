@@ -1949,7 +1949,9 @@ def report_build(
         raise ValueError("audit required: audit document or path to its JSON representation")
     from seohead.reports import build_report
 
-    return build_report(audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang)
+    return build_report(
+        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang
+    )
 
 
 def facts_export(sites: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -4238,6 +4240,32 @@ def evidence_join(
     return response
 
 
+def bi_export(
+    scan: str | None = None,
+    audit: Any = None,
+    provider_joins: list[str] | None = None,
+    out_dir: str | None = None,
+    max_rows_per_file: int = 25_000,
+    max_bytes_per_file: int = 8 * 1024 * 1024,
+    max_output_bytes: int = 512 * 1024 * 1024,
+) -> dict[str, Any]:
+    """Write typed, partitioned BI datasets from saved local crawl evidence."""
+    from seohead.reports.bi import export_bi as core
+
+    return {
+        "ok": True,
+        **core(
+            scan=scan,
+            audit=audit,
+            provider_joins=provider_joins,
+            out_dir=out_dir,
+            max_rows_per_file=max_rows_per_file,
+            max_bytes_per_file=max_bytes_per_file,
+            max_output_bytes=max_output_bytes,
+        ),
+    }
+
+
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
     """Run a closed, bounded single-URL investigation using the existing shared tools."""
     chosen = checks if checks is not None else ["metadata", "headers", "robots"]
@@ -4504,6 +4532,7 @@ _RAW_HANDLERS = {
     "provider_join": provider_join,
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
+    "bi_export": bi_export,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server

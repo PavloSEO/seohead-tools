@@ -39,10 +39,28 @@ def _forwarding_calls() -> list[tuple[str, str, set[str]]]:
     """
     out: list[tuple[str, str, set[str]]] = []
 
-    def visit(node: ast.AST, owner: str) -> None:
+    def visit(node: ast.AST, owner: str, unpacked: dict[str, set[str]]) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                visit(child, child.name)
+                dictionaries: dict[str, set[str]] = {}
+                for assignment in ast.walk(child):
+                    if not isinstance(assignment, ast.Assign):
+                        continue
+                    for target in assignment.targets:
+                        if isinstance(target, ast.Name) and isinstance(assignment.value, ast.Dict):
+                            dictionaries.setdefault(target.id, set()).update(
+                                key.value
+                                for key in assignment.value.keys
+                                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                            )
+                        elif (
+                            isinstance(target, ast.Subscript)
+                            and isinstance(target.value, ast.Name)
+                            and isinstance(target.slice, ast.Constant)
+                            and isinstance(target.slice.value, str)
+                        ):
+                            dictionaries.setdefault(target.value.id, set()).add(target.slice.value)
+                visit(child, child.name, dictionaries)
                 continue
             if isinstance(child, ast.Call):
                 func = child.func
@@ -51,10 +69,14 @@ def _forwarding_calls() -> list[tuple[str, str, set[str]]]:
                     and isinstance(func.value, ast.Name)
                     and func.value.id == "handlers"
                 ):
-                    out.append((owner, func.attr, {kw.arg for kw in child.keywords if kw.arg}))
-            visit(child, owner)
+                    keywords = {kw.arg for kw in child.keywords if kw.arg}
+                    for kw in child.keywords:
+                        if kw.arg is None and isinstance(kw.value, ast.Name):
+                            keywords.update(unpacked.get(kw.value.id, set()))
+                    out.append((owner, func.attr, keywords))
+            visit(child, owner, unpacked)
 
-    visit(ast.parse(MCP_SERVER.read_text(encoding="utf-8")), "<module>")
+    visit(ast.parse(MCP_SERVER.read_text(encoding="utf-8")), "<module>", {})
     return out
 
 
@@ -191,7 +213,10 @@ def test_the_scan_found_the_tools():
 def test_forwarded_keywords_exist_on_the_handler(tool, handler_name, forwarded):
     handler = getattr(handlers, handler_name, None)
     assert handler is not None, f"{tool} forwards to handlers.{handler_name}, which does not exist"
-    accepted = set(inspect.signature(handler).parameters)
+    parameters = inspect.signature(handler).parameters
+    accepted = set(parameters)
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return  # Python accepts named tool parameters through **params.
     unexpected = forwarded - accepted
     assert not unexpected, (
         f"{tool} passes {sorted(unexpected)} to handlers.{handler_name}, "
