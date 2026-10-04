@@ -22,3 +22,28 @@ certificate for `localhost` and `127.0.0.1`. It proves the repository's safe
 bind, reverse-proxy, authorization, volume and rollback mechanics without
 claiming a public DNS route, firewall configuration, external certificate, or
 production deployment. Those remain explicit operator actions.
+
+## Synthetic recovery checklist
+
+The fixture is the repeatable recovery procedure for this repository boundary:
+
+1. The private upstream serves `/healthz`; the TLS proxy is the only fixture
+   endpoint observed by the client.
+2. An unauthenticated artifact request must return `401`; an authorized request
+   must return the retained bytes unchanged.
+3. Copy the owned artifact volume, mutate the original, then restore the copy and
+   compare the recovered bytes.
+4. Delete only the owned fixture artifact to exercise expiry; it never scans a
+   host directory or a customer path.
+5. Switch the atomic `current` pointer to a new release, read its revision, then
+   switch back and read the prior revision.
+
+The emitted JSON names each completed check. An operator investigating a failed
+future service run should retain that JSON alongside a redacted incident record:
+UTC time, service/revision identity, private/proxy bind addresses, health status,
+artifact digest, recovery action, result, and follow-up owner. Do not include
+tokens, headers, customer URLs, artifact contents, or certificate private keys.
+
+CI's completed Docker and disposable-profile jobs are build evidence for the
+repository image and fixture only. They do not prove that a local Docker daemon,
+an external DNS name, a firewall rule, or a production certificate is present.
