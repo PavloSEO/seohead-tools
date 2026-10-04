@@ -40,3 +40,60 @@ def test_paid_and_keywords_are_refused_before_provider_call():
 def test_transport_failure_redacts_key():
     result = miratext.analyze(urls=["x"], my="y", api_key="canary", transport=lambda *_: "not json")
     assert result["ok"] is False and "canary" not in json.dumps(result)
+
+
+def test_accepted_result_reduces_keyword_and_density_tables():
+    result = miratext.analyze(
+        hash="job-1",
+        api_key="canary",
+        top=1,
+        transport=lambda *_: json.dumps(
+            {
+                "result": "ok",
+                "status": "accepted",
+                "data": {
+                    "tz": {
+                        "keywordsAll": [
+                            {
+                                "word": "pump",
+                                "sites": 4,
+                                "density": 1.2,
+                                "mine": 0,
+                                "recommended": 2,
+                            },
+                            {"word": "valve", "sites": 2},
+                        ],
+                        "densityDeviation": [
+                            {"word": "pump", "mine": 0, "median": 1.2, "delta": -1.2}
+                        ],
+                        "stopwords": ["and"],
+                    }
+                },
+            }
+        ),
+    )
+    assert result["author_tables"] == {
+        "state": "complete",
+        "reason": None,
+        "words": [
+            {
+                "word": "pump",
+                "sites": 4,
+                "median_density": 1.2,
+                "mine": 0,
+                "recommended": 2,
+                "unit": "provider_reported",
+            }
+        ],
+        "density_deviation": [
+            {
+                "word": "pump",
+                "mine": 0,
+                "median_density": 1.2,
+                "deviation": -1.2,
+                "unit": "provider_reported",
+            }
+        ],
+        "stopwords": ["and"],
+        "filters": "provider_not_reported",
+    }
