@@ -159,38 +159,6 @@ def collect(
         return {"ok": False, "state": "not_configured", "verified": False, "error": str(exc)}
     send = transport or _default_transport
 
-    def daily_statistics(statistics: list[Any]) -> list[dict[str, Any]]:
-        buckets: dict[str, dict[str, float]] = {}
-        for item in statistics:
-            if not isinstance(item, dict) or not isinstance(item.get("date"), str):
-                raise ValueError("malformed Yandex Webmaster query statistic")
-            field, value = item.get("field"), item.get("value")
-            if field not in _QUERY_FIELDS or type(value) not in (int, float):
-                raise ValueError("malformed Yandex Webmaster query statistic")
-            bucket = buckets.setdefault(item["date"], {})
-            if field in {"IMPRESSIONS", "CLICKS", "DEMAND"}:
-                bucket[field] = bucket.get(field, 0.0) + float(value)
-            else:
-                bucket[field] = float(value)
-        rows = []
-        for day, values in sorted(buckets.items()):
-            impressions = values.get("IMPRESSIONS", 0.0)
-            if impressions <= 0:
-                continue
-            clicks = values.get("CLICKS", 0.0)
-            rows.append(
-                {
-                    "date": day,
-                    "impressions": impressions,
-                    "clicks": clicks,
-                    "demand": values.get("DEMAND"),
-                    "ctr": clicks / impressions,
-                    "position": values.get("POSITION"),
-                    "unit": "provider_reported",
-                }
-            )
-        return rows
-
     query = dict(DEFAULT_PARAMS.get(operation, {}), **(params or {}))
     spec = PAGED.get(operation)
     if paginate and spec is not None and max_rows < 1:
