@@ -1,0 +1,46 @@
+{
+  "format": "seohead.looker-studio-source-alias-contract.v1",
+  "template_state": "planned_aliases_unverified_until_native_template_exists",
+  "purpose": "Exact Google Sheets data-source aliases that the original five-page Looker Studio template must contain before a local Linking API URL can configure a copy.",
+  "source_contract": "seohead.bi-manifest.v1",
+  "connector": "googleSheets",
+  "required_mappings": [
+    {
+      "alias": "coverage_sheet",
+      "dataset": "coverage",
+      "data_source_name": "SEOHEAD Synthetic — coverage"
+    },
+    {
+      "alias": "pages_sheet",
+      "dataset": "pages",
+      "data_source_name": "SEOHEAD Synthetic — pages"
+    },
+    {
+      "alias": "findings_sheet",
+      "dataset": "findings",
+      "data_source_name": "SEOHEAD Synthetic — findings"
+    },
+    {
+      "alias": "links_sheet",
+      "dataset": "link_occurrences",
+      "data_source_name": "SEOHEAD Synthetic — link occurrences"
+    },
+    {
+      "alias": "cohorts_sheet",
+      "dataset": "cohorts",
+      "data_source_name": "SEOHEAD Synthetic — cohorts"
+    },
+    {
+      "alias": "metrics_sheet",
+      "dataset": "metrics",
+      "data_source_name": "SEOHEAD Synthetic — metrics"
+    }
+  ],
+  "operator_proof_required": [
+    "Record the native report ID after creating the original five-page template from the blueprint.",
+    "Open the report's Linking API alias view and confirm every alias above is present exactly once on its declared dataset.",
+    "Record the synthetic spreadsheet ID and each worksheet ID only in the local destination configuration; do not commit them.",
+    "Open a fresh-account/session copy through the generated Linking API URL and verify all five pages and controls render without a data-source error."
+  ],
+  "not_a_template": true
+}

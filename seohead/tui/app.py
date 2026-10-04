@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from typing import TextIO
 
 from rich.console import Console, Group
+from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.text import Text
@@ -484,7 +485,8 @@ def build_frame(
             "resize the window or press q / ctrl-c to leave"
         )
         return Group(header, Text(""), notice, Text(""), status)
-    body_rows = height - 6
+    footer = list(status.wrap(Console(width=width), width))
+    body_rows = max(1, height - 4 - len(footer))
     if state.view == "detail":
         body = _detail_lines(state, palette)
     elif state.view == "help":
@@ -509,11 +511,16 @@ def build_frame(
             header,
             Text(""),
             filter_line,
-            *_palette_lines(state, palette, body_rows),
+            *_palette_lines(state, palette, max(1, body_rows - 1)),
             Text(""),
-            status,
+            *footer,
         )
-    return Group(header, Text(""), *body[: max(body_rows, 1)], Text(""), status)
+    # Keep each evidence row within its allotted line; a long URL or note
+    # must not push the footer below the terminal viewport.
+    for line in body:
+        line.no_wrap = True
+        line.overflow = "ellipsis"
+    return Group(header, Text(""), *body[:body_rows], Text(""), *footer)
 
 
 def run(
@@ -541,22 +548,31 @@ def run(
     fd = stdin.fileno()
     message: str | None = None
     try:
-        with keys.raw_mode(fd):
+        with (
+            keys.raw_mode(fd),
+            Live(
+                console=console,
+                screen=True,
+                auto_refresh=False,
+                vertical_overflow="crop",
+            ) as live,
+        ):
             while not state.quit_requested:
-                console.clear()
-                console.print(
+                live.update(
                     Panel(
                         build_frame(
                             state,
-                            width=console.size.width,
-                            height=console.size.height,
+                            width=max(1, console.size.width - 4),
+                            height=max(1, console.size.height - 2),
                             palette=palette,
                             project=project,
                             message=message,
                         ),
                         border_style="cyan" if palette.color else "none",
                         padding=(0, 1),
-                    )
+                        height=console.size.height,
+                    ),
+                    refresh=True,
                 )
                 state.handle_key(keys.read_key(fd, timeout=1.0 if project else None))
                 if project and state.note_ready:
@@ -573,8 +589,6 @@ def run(
                     state.note_ready = False
     except KeyboardInterrupt:
         pass
-    finally:
-        console.clear()
     return 0
 
 

@@ -709,6 +709,114 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
     assert incompatible["state"] == "incomplete"
 
 
+def test_cohort_quadrants_refuse_normalized_url_key_collisions(tmp_path):
+    """A provider row may not be attributed to several raw crawl URLs."""
+    audit = {
+        "schema": "seohead.site-audit/1",
+        "url": "https://example.test/",
+        "domain": "example.test",
+        "generated_at": "2026-01-02T03:04:05Z",
+        "site": {},
+        # These are distinct retained source URLs but share external_join.v1's
+        # normalized key.  A traffic row must not become two URL cohorts.
+        "pages": [
+            {"url": "https://example.test/a", "status_code": 200},
+            {"url": "https://EXAMPLE.test/a", "status_code": 200},
+        ],
+        "findings": [],
+        "summary": {
+            "pages_checked": 2,
+            "findings_total": 0,
+            "findings_by_severity": {"critical": 0, "warning": 0, "notice": 0},
+            "tools_run": [],
+            "tools_failed": [],
+        },
+    }
+
+    def evidence(provider, metric, value):
+        return normalize_inline(
+            [{"url": "https://example.test/a", metric: value}],
+            manifest={
+                "format": "seohead.evidence-mapping.v1",
+                "source": {
+                    "provider": provider,
+                    "operation": "synthetic",
+                    "privacy": "supplied",
+                    "timezone": "UTC",
+                },
+                "url": {"field": "url", "kind": "absolute"},
+                "row_shape": "flat",
+                "dimensions": [],
+                "metrics": [{"name": metric, "type": "number", "unit": "count"}],
+                "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
+                "collection": {"state": "complete"},
+            },
+        )
+
+    gsc, ga4 = tmp_path / "gsc.json", tmp_path / "ga4.json"
+    gsc.write_text(json.dumps(evidence("gsc", "clicks", 0)), encoding="utf-8")
+    ga4.write_text(json.dumps(evidence("ga4", "sessions", 2)), encoding="utf-8")
+    package = tmp_path / "collision-bi"
+    export_bi(
+        audit=audit,
+        provider_joins=[gsc, ga4],
+        out_dir=package,
+        search_metric="clicks",
+    )
+
+    manifest = json.loads((package / "manifest.json").read_text())
+    quadrants = [
+        row
+        for row in _csv_rows(package, manifest, "cohorts")
+        if row["cohort_id"] == "search_visibility_vs_sessions"
+    ]
+    assert len(quadrants) == 2
+    assert all(row["membership"] == "unclassified" for row in quadrants)
+    assert all(row["state"] == "incomplete" for row in quadrants)
+    assert all("matches multiple retained crawl URLs" in row["reason"] for row in quadrants)
+    assert all(row["value_label"] == "" for row in quadrants)
+
+
+def test_quadrant_pairing_refuses_cursor_backed_multi_page_match():
+    """The durable store's matched_page_count has the same ambiguity gate."""
+
+    def observation(metric, value):
+        return {
+            "row": {"dimensions": {}},
+            "metric": {"name": metric},
+            "entry": {"state": "measured", "value": value},
+            "population": "matched",
+            "url": {"state": "keyed", "normalized": "https://example.test/a"},
+            "matched_page_count": 2,
+        }
+
+    def source(provider, metric, value):
+        return (
+            object(),
+            bi_report._ObservationStream(lambda: iter((observation(metric, value),)), 1),
+            {
+                "evidence": {
+                    "provider": provider,
+                    "collection": {"state": "complete"},
+                    "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
+                    "timezone": "UTC",
+                }
+            },
+        )
+
+    pairs, reason, blocked = bi_report._quadrant_candidates(
+        [source("gsc", "clicks", 0), source("ga4", "sessions", 2)], "clicks"
+    )
+    assert pairs == {}
+    assert reason is None
+    assert blocked == {
+        "https://example.test/a": (
+            "normalized URL key matches multiple retained crawl URLs; "
+            "provider traffic cannot be attributed to one URL observation"
+        )
+    }
+
+
 def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
     package = tmp_path / "bi"
     workbook = tmp_path / "pages.xlsx"

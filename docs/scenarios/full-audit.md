@@ -19,6 +19,20 @@ Confirm the target, read-only authorization, URL/template scope, and finite craw
 available exports and retained scans before collecting. For the general case, run one native crawl
 and reuse its audit and page evidence:
 
+Before the first collection or long-running analysis, offer the specialist the optional second-screen
+observer once for the current session and project. Start it only after an explicit yes; an accepted
+or declined answer is not asked again for the same project in that session. The observer is local,
+read-only, and never starts a scan:
+
+```bash
+seohead watch --project ./project-directory
+```
+
+It requires an existing explicit project workspace. Do not create a project, launch a shell, or
+start a watcher merely because the offer was shown. MCP callers use `seo_project_observe` for the
+same read-only snapshot after the choice; configured unread notes arrive only on a later
+project-bound tool call and never enter the agent chat automatically.
+
 ```bash
 seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./run
 seohead log-scan --run ./run

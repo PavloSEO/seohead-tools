@@ -2212,6 +2212,7 @@ def _provider_observations(
                     "dimensions": dimensions_row,
                     "population": populations.get(identity, "unkeyable"),
                     "matched_urls": sorted(matches.get(identity, [])),
+                    "matched_page_count": len(matches.get(identity, [])),
                     "url": url,
                 }
             )
@@ -2431,7 +2432,7 @@ def _cohort_row(
 def _quadrant_candidates(
     sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
     search_metric: str | None,
-) -> tuple[dict[str, tuple[dict[str, Any], dict[str, Any]]], str | None]:
+) -> tuple[dict[str, tuple[dict[str, Any], dict[str, Any]]], str | None, dict[str, str]]:
     """Return only one-to-one, complete, same-window search/session pairs.
 
     The normalized provider grain may include query/device dimensions.  Those
@@ -2439,9 +2440,10 @@ def _quadrant_candidates(
     unclassified rather than becoming a dashboard-friendly fiction.
     """
     if search_metric not in {"clicks", "impressions"}:
-        return {}, "choose search_metric 'clicks' or 'impressions' to enable quadrants"
+        return {}, "choose search_metric 'clicks' or 'impressions' to enable quadrants", {}
     search: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
     sessions: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    blocked: dict[str, str] = {}
     for _provider, observations, info in sources:
         header = info["evidence"]
         provider_name = str(header.get("provider") or "").casefold()
@@ -2473,6 +2475,24 @@ def _quadrant_candidates(
             key = url.get("normalized")
             if not isinstance(key, str):
                 continue
+            matched_page_count = observation.get(
+                "matched_page_count", len(observation.get("matched_urls") or ())
+            )
+            if type(matched_page_count) is not int or matched_page_count < 1:
+                raise BIExportError("matched provider observation has an invalid page-match count")
+            if matched_page_count != 1:
+                blocked.setdefault(
+                    key,
+                    "normalized URL key matches multiple retained crawl URLs; "
+                    "provider traffic cannot be attributed to one URL observation",
+                )
+                continue
+            if row.get("ambiguous"):
+                blocked.setdefault(
+                    key,
+                    "provider source marks this normalized URL row as ambiguous",
+                )
+                continue
             source = {
                 "provider": header.get("provider"),
                 "metric": metric.get("name"),
@@ -2499,10 +2519,29 @@ def _quadrant_candidates(
         session_rows = sessions.get(key, [])
         if len(search_rows) == 1 and len(session_rows) == 1:
             paired_by_url[key[0]].append((search_rows[0], session_rows[0]))
+        elif len(search_rows) > 1 or len(session_rows) > 1:
+            blocked.setdefault(
+                key[0],
+                "more than one complete provider observation shares this normalized URL key and period",
+            )
     # Two compatible windows for one URL are still not one selected reporting
     # window. Keep the URL unclassified until the operator supplies one source
     # period, rather than allowing iteration order to choose it.
-    return {url: pairs[0] for url, pairs in paired_by_url.items() if len(pairs) == 1}, None
+    for url, pairs in paired_by_url.items():
+        if len(pairs) != 1:
+            blocked.setdefault(
+                url,
+                "more than one compatible provider period is retained for this normalized URL key",
+            )
+    return (
+        {
+            url: pairs[0]
+            for url, pairs in paired_by_url.items()
+            if len(pairs) == 1 and url not in blocked
+        },
+        None,
+        blocked,
+    )
 
 
 def _cohort_rows(
@@ -2527,7 +2566,7 @@ def _cohort_rows(
         "dimensionless URL value from each complete source for the same inclusive local-date window "
         "and timezone; values are never summed."
     )
-    pairs, pair_reason = _quadrant_candidates(sources, search_metric)
+    pairs, pair_reason, blocked_keys = _quadrant_candidates(sources, search_metric)
     denominator = run.page_count
     for ordinal, page in enumerate(run.pages_factory()):
         projected = _page_row(run, page, ordinal)
@@ -2636,6 +2675,7 @@ def _cohort_rows(
             )
         key = projected["url_key"]
         pair = pairs.get(key) if isinstance(key, str) else None
+        blocked_reason = blocked_keys.get(key) if isinstance(key, str) else None
         if pair is not None:
             search, sessions = pair
             search_value = search["value"]
@@ -2679,6 +2719,7 @@ def _cohort_rows(
                 membership="unclassified",
                 state="not_configured" if pair_reason else "incomplete",
                 reason=pair_reason
+                or blocked_reason
                 or "no one-to-one complete compatible URL metric pair is retained",
                 search_metric=search_metric,
                 search_state="not_configured" if pair_reason else "unavailable",

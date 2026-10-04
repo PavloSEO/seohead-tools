@@ -53,6 +53,11 @@ def raw_mode(fd: int) -> Iterator[None]:
     previous = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
+        # Input is raw, but terminal output still needs LF -> CRLF. Without
+        # this, each Rich line starts at the previous line's column.
+        attributes = termios.tcgetattr(fd)
+        attributes[1] |= termios.OPOST | termios.ONLCR
+        termios.tcsetattr(fd, termios.TCSANOW, attributes)
         yield
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, previous)
