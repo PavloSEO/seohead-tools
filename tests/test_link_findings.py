@@ -1,6 +1,7 @@
 """Offline tests for the link/form security findings (issue #125)."""
 
 from seohead.crawl.link_findings import (
+    follow_and_nofollow_inlink_details,
     follow_and_nofollow_inlinks,
     form_url_insecure,
     forms_on_http_pages_with_password,
@@ -234,6 +235,14 @@ def test_page_linked_both_follow_and_nofollow_is_flagged():
         edge("https://example.com/b", "https://example.com/target", nofollow=True),
     ]
     assert follow_and_nofollow_inlinks(links, "example.com") == ["https://example.com/target"]
+    assert follow_and_nofollow_inlink_details(links, "example.com") == [
+        {
+            "target_url": "https://example.com/target",
+            "sources": ["https://example.com/a", "https://example.com/b"],
+            "follow_occurrences": 1,
+            "nofollow_occurrences": 1,
+        }
+    ]
 
 
 def test_page_linked_only_followed_is_not_flagged():

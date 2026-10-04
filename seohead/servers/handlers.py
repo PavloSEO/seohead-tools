@@ -1541,12 +1541,10 @@ def _audit_crawl_result(
                 ctx.add("OUTLINK_TO_LOCALHOST", target_url=item["target_url"], details=item)
             crawl_host = (urlsplit(start_norm).hostname or "") if url else ""
             if crawl_host:
-                for dest in (
-                    graph.iter_follow_and_nofollow(crawl_host)
-                    if graph
-                    else link_findings.follow_and_nofollow_inlinks(links, crawl_host)
+                for item in link_findings.follow_and_nofollow_inlink_details(
+                    graph.iter_links() if graph else links, crawl_host
                 ):
-                    ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=dest)
+                    ctx.add("FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item)
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
