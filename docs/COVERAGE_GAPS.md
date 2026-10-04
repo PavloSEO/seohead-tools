@@ -1,7 +1,7 @@
 # Audit coverage — the gap map
 
 **Purpose.** The list of SEO checks our SF audit
-(`seohead/sf/core/registry.py`, 162 checks) still **lacks**. For every gap:
+(`seohead/sf/core/registry.py`, 176 checks) still **lacks**. For every gap:
 value, implementation mode, likely home in the code. This is a filling plan,
 not a bug report. Items implemented since this map was written are marked
 **DONE**.
@@ -49,7 +49,7 @@ from different starting lists; read both before filing a new gap.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 1.1 | Real Core Web Vitals (LCP/INP/CLS) | Field/lab metrics vs official thresholds (LCP 2.5/4 s, INP 200/500 ms, CLS 0.1/0.25) | **high** | A/live | new `cwv.py` or a `pagespeed` skill (PSI/CrUX) |
+| 1.1 | Real Core Web Vitals (LCP/INP/CLS) | Field p75 vs official thresholds (LCP 2.5/4 s, INP 200/500 ms, CLS 0.1/0.25) | **high** | **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check | `data_sources/crux.py` + `cwv.py` (#822) |
 | 1.2 | TTFB separate from `response_time` | Time to first byte as its own metric (800/1800 ms), not overall response time | medium | B+ (SF "Response Time" ≈ TTFB only with a light body; exact TTFB is A/live) | extend `check_url_and_perf`, id `SLOW_TTFB` |
 | 1.3 | FCP / render speed | First Contentful Paint (1.8/3 s) | medium | A/live | `cwv.py` / PSI |
 | 1.4 | Response compression (Brotli/gzip) | content-encoding on text responses | medium | **partially DONE** in the live `asset-weight-check` (CSS/JS only; the HTML response itself is still open) | id `NO_COMPRESSION` |
@@ -58,10 +58,10 @@ from different starting lists; read both before filing a new gap.
 | 1.7 | Page weight (total) | Total page weight with resources, not HTML only (`LARGE_HTML` covers markup alone) | medium | A/live | id `HEAVY_PAGE_WEIGHT` |
 
 **Context.** `SLOW_RESPONSE` already catches a slow server, but it is no
-substitute for real CWV — Google ranks by LCP/INP/CLS. This is the largest
-qualitative gap: none of the 162 checks measures them directly. (Lab LCP/CLS
-from one Chromium run exist in the live `render-check` as `metrics_lab` —
-labelled lab, not field.)
+substitute for real CWV. None of the 165 crawl-registry checks measures field
+CWV directly. The opt-in CrUX path added in #822 assesses current-window p75
+with URL/origin, form factor and period provenance; missing field data stays
+unavailable. A one-run `render-check` result remains lab evidence.
 
 ---
 
@@ -151,10 +151,10 @@ separate class (they need the full page set, which mode B already has).
 
 ---
 
-## 7. hreflang — detail (currently one aggregated `HREFLANG_ERROR`)
+## 7. hreflang — relation and target detail
 
-The native SF hreflang export merges everything into one filter. Splitting
-into separate ids pays off in precise fix scenarios in the report.
+The SF Issues tab groups hreflang defects. Separate registry IDs make each
+measured relation and target defect actionable in the report.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
@@ -162,9 +162,9 @@ into separate ids pays off in precise fix scenarios in the report.
 | 7.2 | No self-reference | No hreflang link to the page itself | medium | **DONE** (issue #30) — `HREFLANG_MISSING_SELF_REFERENCE` | `inlinks.py` |
 | 7.3 | lang ≠ page language | Self-reference hreflang disagrees with `<html lang>` | medium | B+ — still open; `<html lang>` is not a column `Internal:All` exports | `HREFLANG_LANG_MISMATCH` |
 | 7.4 | Relative URL in hreflang | `href` not absolute | low | B+ — still open; the bulk hreflang export resolves `href` before SF writes it, so a relative-vs-absolute check needs the raw markup | `HREFLANG_RELATIVE` |
-| 7.5 | No return link | A->B exists, B->A does not | **high** | B (graph over the hreflang export) — still open, tracked under reciprocity in #15, not duplicated here | `HREFLANG_NO_RETURN` |
+| 7.5 | No return link | A->B exists, B->A does not | **high** | **DONE** — `HREFLANG_MISSING_RETURN_LINK`; native retained declarations distinguish a measured missing return from an unmeasured target (#825) | `inlinks.py` |
 | 7.6 | hreflang -> non-canonical | The target is itself canonicalized elsewhere | medium | **DONE** (issue #30) — `HREFLANG_NOT_CANONICAL` | `inlinks.py` |
-| 7.7 | hreflang -> noindex | The target is closed from indexing | medium | B (graph) — still open | `HREFLANG_TO_NOINDEX` |
+| 7.7 | hreflang -> noindex | The target is closed from indexing | medium | **DONE** — `HREFLANG_NOINDEX_TARGET` over observed target evidence (#825) | `inlinks.py` |
 | 7.8 | hreflang -> redirect/4xx | The target is broken or redirecting | **high** | **DONE** — `HREFLANG_BROKEN_TARGET` | `inlinks.py` |
 | 7.9 | Duplicate lang per target | One URL listed with different `lang`s from different sources | medium | B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang) | `HREFLANG_MULTI_LANG` |
 | 7.10 | Duplicate lang per source | One page declares the same hreflang value more than once | medium | **DONE** (issue #30) — `HREFLANG_MULTIPLE_ENTRIES` | `inlinks.py` |
@@ -173,9 +173,9 @@ into separate ids pays off in precise fix scenarios in the report.
 
 **Context.** The live `seo_hreflang_check` (x-default, self-reference,
 duplicates, malformed codes) validates one URL's own markup by live fetch;
-7.1/7.2/7.6/7.10/7.11 above now cover the equivalent ground for a whole
+7.1/7.2/7.5/7.6/7.7/7.10/7.11 above now cover the equivalent ground for a whole
 crawl from the bulk hreflang export, reusing that tool's ISO validator
-instead of re-implementing it (issue #30). 7.3/7.4/7.5/7.7/7.9/7.12 remain
+instead of re-implementing it (issues #30 and #825). 7.3/7.4/7.9/7.12 remain
 open.
 
 ---
@@ -339,9 +339,9 @@ mode B without network ranks higher.
 2. **hreflang -> no return link and -> non-canonical** (§7.5–7.7) —
    **high**, **mode B**, graph over the hreflang export. Critical for
    international sites.
-3. **Real Core Web Vitals (LCP/INP/CLS)** (§1.1) — **high**, **A/live**
-   via PSI/CrUX. The only direct ranking factor on the list; without it
-   the audit is incomplete.
+3. **Real Core Web Vitals (LCP/INP/CLS)** (§1.1) — **high**, **A/live**.
+   The opt-in CrUX field path is present (#822); automatic crawl population
+   remains outside it. Reconcile the wider gap-map priorities under #830.
 4. **Required Schema fields per type in the audit document** (§13.1) —
    **high**; sync with the existing live `schema-check`.
 5. **JS redirect** (§5.1) — **high**, **A** (HTML/render). Common and

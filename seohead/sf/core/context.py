@@ -48,6 +48,9 @@ class AuditContext:
         # Native scan callers may provide a cursor-backed graph reader.  Export
         # callers leave this unset and retain the established DataFrame path.
         self.graph_access = graph_access
+        # Native retained scans can supply complete, document-bound hreflang
+        # relations. Export audits retain the established DataFrame path.
+        self.native_hreflang: dict[str, Any] | None = None
         # Where the crawl actually started, when the producer knows. A native crawl
         # does; a Screaming Frog export carries no such field, and the checks that
         # need one fall back to Crawl Depth 0 -- but only when exactly one page has
@@ -57,6 +60,11 @@ class AuditContext:
         # inlinks.check_internal_link_graph and copied into the audit summary by
         # aggregate(). Empty until that check has run.
         self.internal_linking: dict[str, Any] = {}
+        # The objective trust-evidence block (issue #823), filled by
+        # eeat.run_eeat and copied into the audit summary by aggregate():
+        # which pages entered the authorship scope, and the per-kind state
+        # of each conventional trust page. Empty until that pass has run.
+        self.trust_evidence: dict[str, Any] = {}
         self.thresholds: dict[str, Any] = config.get("thresholds", {})
         self.requirements: dict[str, Any] = config.get("requirements", {})
         self.issues: list[Issue] = []

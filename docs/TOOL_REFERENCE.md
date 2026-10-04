@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**98 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 103 in total.
+**115 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 120 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -134,6 +134,14 @@ says, exactly like the CLI's flags -- pass one explicitly only to
 change that one setting. ``seo_crawl_describe_settings`` lists the
 defaults each of them falls back to.
 
+``http.proxy`` in ``config`` or ``overrides`` selects an explicit HTTP
+forward proxy for the entire native crawl, including sitemap, resource
+and pinned browser requests. Credentials require an ``env:VARIABLE``
+URL reference; ``http.proxy_allow_private`` authorizes only a private
+proxy endpoint, not private targets. Ambient proxy variables are ignored.
+Proxied runs require cache off and a fresh artifact; failures never
+fall back to direct egress.
+
 A URL crawl with neither ``scan_out`` nor ``out_dir`` writes a collision-safe
 SQLite scan below the caller's ``scans/`` directory. ``scan_out`` overrides
 that destination; ``out_dir`` selects the explicit legacy directory route.
@@ -181,6 +189,35 @@ Report claims a finished run makes that cannot all be true at once: a recorded s
 | `max_per_rule` | `int` | `20` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `crawl-diagnose`
+
+MCP name: `seo_crawl_diagnose`
+
+Explain a small or unfinished native crawl from retained scan or run evidence. This MCP tool is read-only and makes no network request. To deliberately write a new redacted JSON file, use ``seo_crawl_diagnose_export`` or the CLI's ``crawl-diagnose-export --export`` command.
+
+| Argument | Type | Default |
+|---|---|---|
+| `scan` | `str | None` | `None` |
+| `run` | `str | None` | `None` |
+| `max_decisions` | `int` | `20` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `crawl-diagnose-export`
+
+MCP name: `seo_crawl_diagnose_export`
+
+Create one new redacted crawl-diagnostic JSON file from retained evidence. This tool writes a file with no overwrite and makes no network request. Use the read-only ``seo_crawl_diagnose`` when a file is not needed.
+
+| Argument | Type | Default |
+|---|---|---|
+| `export` | `str` | `required` |
+| `scan` | `str | None` | `None` |
+| `run` | `str | None` | `None` |
+| `max_decisions` | `int` | `20` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
 ### `sitemap-crawl`
 
@@ -495,6 +532,20 @@ Answer "is the boilerplate actually the same everywhere?" across a crawled corpu
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `semantic-inputs`
+
+MCP name: `seo_semantic_inputs`
+
+Build the reproducible normalized-input manifest for semantic analysis over retained page content. Each document entry names the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy that was applied, and the language evidence (the page's own <html lang> declaration plus letter-script shares over the normalized text) — the normalized text itself is never returned. Pass scan for a validated read-only scan.v1 corpus: it streams retained complete bodies offline with no refetch, under the crawl's recorded content_area config, and a missing or partial body stays an explicit omission — never an empty clean result. Or pass items as a list of {"url", "html"} to normalize supplied markup offline under an optional content_area config. The corpus is capped at 10,000 documents and 16 MiB of normalized retained input; reaching a bound reports the exact partial coverage.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `content_area` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `social-meta-check`
 
 MCP name: `seo_social_meta_check`
@@ -553,7 +604,7 @@ Audit a site's regional structure: subdomains (msk.site.ru), folders (site.ru/ms
 
 MCP name: `seo_render_check`
 
-Compare the raw server HTML with the DOM after JavaScript runs — the gap between them is what a non-rendering crawler loses. Reports an empty SPA shell (<div id="root"></div> means a robot gets a blank page), the share of text and internal links that appear only after JS, a title/canonical rewritten by script, and Schema.org markup injected client-side. Also returns lab timings (TTFB, FCP, LCP, CLS, load) measured in one Chromium run — these are lab numbers, not field Core Web Vitals from CrUX, and are labelled metrics_lab for that reason. Also returns dual_crawl (schema dualcrawl.v1): per-URL image/link evidence seen by only the raw pass or only the rendered pass, a separate question from the raw/rendered diff above. Requires Playwright; if it is missing the tool says so and gives the install command instead of failing. A render that did not finish — a document with no title, no h1, no canonical and no links, far smaller than the raw response — comes back as ok:false with reason "incomplete_render" and both snapshots, never as findings about the site: an unmeasured page is not a defect. A requested wait milestone that times out (networkidle on a site with long-polling scripts) falls back to reading the DOM at domcontentloaded, recorded in wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity; user_agent overrides that identity for both requests.
+Compare the raw server HTML with the DOM after JavaScript runs — the gap between them is what a non-rendering crawler loses. Reports an empty SPA shell (<div id="root"></div> means a robot gets a blank page), the share of text and internal links that appear only after JS, a title/canonical rewritten by script, and Schema.org markup injected client-side. Also returns lab timings (TTFB, FCP, LCP, CLS, load) measured in one Chromium run — these are lab numbers, not field Core Web Vitals from CrUX, and are labelled metrics_lab for that reason. Also returns dual_crawl (schema dualcrawl.v1): per-URL image/link evidence seen by only the raw pass or only the rendered pass, a separate question from the raw/rendered diff above. Requires Playwright; if it is missing the tool says so and gives the install command instead of failing. A render that did not finish — a document with no title, no h1, no canonical and no links, far smaller than the raw response — comes back as ok:false with reason "incomplete_render" and both snapshots, never as findings about the site: an unmeasured page is not a defect. A requested wait milestone that times out (networkidle on a site with long-polling scripts) falls back to reading the DOM at domcontentloaded, recorded in wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity; user_agent overrides that identity for both requests. `transport_config` opts into an operator-supplied remote Playwright connection using `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env` and `remote_playwright_version`. It never provisions a server or falls back to local launch after a remote failure.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -561,6 +612,7 @@ Compare the raw server HTML with the DOM after JavaScript runs — the gap betwe
 | `viewport` | `str` | `'desktop'` |
 | `wait` | `str` | `'load'` |
 | `user_agent` | `str | None` | `None` |
+| `transport_config` | `dict[str, str] | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
@@ -568,7 +620,7 @@ Compare the raw server HTML with the DOM after JavaScript runs — the gap betwe
 
 MCP name: `seo_site_audit`
 
-Run the whole live toolkit over one site and return a single audit document (schema seohead.site-audit/1). Site-level tools run once (domain profile, CDN and cache, tech stack, security headers, robots, AI crawlers, llms.txt, regions, raw-vs-rendered, sitemap); page-level tools run per URL (parse, Schema.org, Open Graph). URLs come from the sitemap unless you pass `urls`. Every finding is collected into one sorted list with a severity assigned by aggregator rules — the document says so explicitly, because severity here is a rule, not a measurement. A tool that fails does NOT fail the audit: it lands in summary.tools_failed with its reason, so silence is never mistaken for a clean result. Feed the returned document straight into seo_report_build.
+Run the whole live toolkit over one site and return a single audit document (schema seohead.site-audit/1). Site-level tools run once (domain profile, CDN and cache, tech stack, security headers, robots, AI crawlers, llms.txt, regions, raw-vs-rendered, sitemap); page-level tools run per URL (parse, Schema.org, Open Graph). URLs come from the sitemap unless you pass `urls`. Every finding is collected into one sorted list with a severity assigned by aggregator rules — the document says so explicitly, because severity here is a rule, not a measurement. A tool that fails does NOT fail the audit: it lands in summary.tools_failed with its reason, so silence is never mistaken for a clean result. Feed the returned document straight into seo_report_build. Optional crux_evidence is an already collected CrUX current record or bounded sample; no Google request occurs here. URL and origin field scopes remain distinct from Lighthouse lab results.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -578,6 +630,7 @@ Run the whole live toolkit over one site and return a single audit document (sch
 | `concurrency` | `int` | `5` |
 | `render` | `bool` | `False` |
 | `skip` | `list[str] | None` | `None` |
+| `crux_evidence` | `dict[str, Any] | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
@@ -585,7 +638,7 @@ Run the whole live toolkit over one site and return a single audit document (sch
 
 MCP name: `seo_report_build`
 
-Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report; the original JSON audit remains unchanged. This never makes a network request.
+Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit schemas are recognized and normalized before rendering. xlsx has four sheets with filters and a live Excel chart — for work; docx is prose with headings — for the client; csv writes separate findings, scope-evidence, and page tables for a tracker, listed under outputs; md is for reading and for git; pdf is a localized offline Chromium printout (en or ru). PDF requires the optional `pdf` dependencies and a local Chrome, Edge or Chromium. The generators compute nothing and reach no network: what is not in the JSON does not appear in the report. A document matching neither schema is refused with ok: false naming the mismatch, never rendered as an empty report. Pass project to include validated checklist coverage, reasons, scope and measurements in a human report. Optional view applies one saved finding view; it leaves health, evidence, coverage and source scan untouched. offset pages through the stable sorted view. This never makes a network request.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -593,6 +646,9 @@ Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict r
 | `fmt` | `str` | `'xlsx'` |
 | `out` | `str | None` | `None` |
 | `project` | `str | None` | `None` |
+| `view` | `str | None` | `None` |
+| `offset` | `int` | `0` |
+| `lang` | `str` | `'en'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -621,6 +677,36 @@ Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four dis
 | `force` | `bool` | `False` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `verify-fixes`
+
+MCP name: `seo_verify_fixes`
+
+Recheck selected baseline findings in an explicit, bounded URL subset.
+
+| Argument | Type | Default |
+|---|---|---|
+| `baseline` | `Any` | `required` |
+| `out_dir` | `str` | `required` |
+| `finding_ids` | `list[str] | None` | `None` |
+| `view` | `Any` | `None` |
+| `urls` | `list[str] | None` | `None` |
+| `urls_file` | `str | None` | `None` |
+| `after` | `Any` | `None` |
+| `config` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Select baseline finding IDs, a saved verification_view.v1 JSON view, or
+affected URLs. With ``after`` the comparison is offline and requires a
+distinct scan UUID plus a later observation time. Otherwise the
+recorded HTTP/robots/render policy is verified before the existing crawler
+fetches selected pages; JS baselines use one URL per rendered crawl. A new
+directory receives the recrawl evidence and immutable verification JSON
+and Markdown report. Unfetched, skipped, site-wide and incomparable
+findings remain not_verifiable, never resolved.
 
 ### `crawl-enrich`
 
@@ -788,6 +874,19 @@ Google organic results for a query — who actually ranks. Same geo rules as seo
 
 **Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota
 
+### `topvisor-read`
+
+MCP name: `seo_topvisor_read`
+
+Read existing Topvisor projects, competitors, groups, keywords, history or summary. Uses topvisor/access_token and topvisor/user_id under the central credential root (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100, maximum 1000; the continuation signal is the provider's nextOffset — present on non-final pages, absent on the last — not len(result) == limit. Provider total and limitedBy pass through when sent, separate from the echoed request limit/offset. projects/competitors/groups/keywords return arrays; history and summary return objects (history rows at result.keywords; summary covers the two requested dates). Non-project operations require project_id. History regions_indexes are project region indexes (projects with show_searchers_and_regions:2), not geographic region keys; summary takes the singular region_index. In positionsData, position is an integer ordinal rank; "--" means the query had no position inside the checked depth — unavailable, not rank 0 or 100 — and a requested date without an entry is a missing observation. headers.dates lists dates actually returned; topsByDepth is percent of queries in Top N; visitors, dynamics and tops are counts; avgs is an average rank. Does not launch checks, add/edit/delete records, or authorize paid operations. Transport redirects are refused and provider errors are redacted.
+
+| Argument | Type | Default |
+|---|---|---|
+| `operation` | `str` | `'projects'` |
+| `params` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
 ### `metrika-counters`
 
 MCP name: `seo_metrika_counters`
@@ -814,7 +913,7 @@ How a counter is configured: goals, filters, data operations. Check this BEFORE 
 
 MCP name: `seo_metrika_report`
 
-What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped".
+What visitors actually did, as flat records. metrics and dimensions are comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative forms like 30daysAgo. This is the missing half of an audit: a page can be technically perfect and get no visits at all. paginate=true walks every page but stops at 100 000 rows, and says so via "capped". A "Query is too complicated" refusal is retried month by month and, when a month still refuses, at a sampled accuracy; "split", "accuracy", "sampled" and "sample_share" in the answer say what was actually used — a null "sampled" means the API did not report it, not "unsampled". Only count metrics additive over disjoint periods (ym:s:visits, ym:s:pageviews) can be merged — unique-visitor, ratio or average metrics fail rather than sum wrong.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -953,11 +1052,16 @@ What the paid sources have actually charged: totals by source, by operation and 
 
 MCP name: `seo_sources_doctor`
 
-Which external data sources are ready to use: whether each secret is present, where it is read from, and where the spend journal lives. Call this before planning a paid run — a missing key is cheaper to find now than mid-collection.
+Inspect redacted credential references, readiness and declared provider operations.
 
 Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Configured credentials do not verify account or target permission. This local check makes
+no provider requests; use seo_provider_verify for an explicit bounded read.
 
 ### `wayback-history`
 
@@ -1014,16 +1118,20 @@ naming what to configure; it never fabricates a result.
 
 MCP name: `seo_crux_report`
 
-Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th percentile — the honest counterpart to seo_render_check's synthesized-score-free design (issue #59). Pass exactly one of url/origin. Requires a Chrome UX Report API key. A target with too little real-user traffic is not an error; CrUX has nothing to report for it, which comes back here as an empty metrics object.
+Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th percentile — the honest counterpart to seo_render_check's synthesized-score-free design (issue #59). Pass exactly one of url/origin. Requires a Chrome UX Report API key. No eligible field record and missing metrics remain unavailable. Optional urls samples at most 25 targets; cache_dir enables an explicit local cache. Never substitutes Lighthouse lab metrics for CrUX field data.
 
 | Argument | Type | Default |
 |---|---|---|
 | `url` | `str | None` | `None` |
 | `origin` | `str | None` | `None` |
+| `urls` | `list[str] | None` | `None` |
 | `form_factor` | `str | None` | `None` |
 | `metrics` | `list[str] | None` | `None` |
+| `max_samples` | `int` | `25` |
+| `cache_dir` | `str | None` | `None` |
+| `cache_max_age_hours` | `float` | `24` |
 
-**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
 
 ### `indexnow-submit`
 
@@ -1088,6 +1196,27 @@ Show project scan history and named pending checklist/preparation states.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `project-progress`
+
+MCP name: `seo_project_progress`
+
+Show a compact, paginated project checklist view and its next actions.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `limit` | `int` | `20` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The page contains at most 100 checklist items. Audit-task completion is a
+percentage only when every included site has an explicit agreed plan and
+the shared coverage axis has a measured, nonzero denominator. It is
+explicitly task completion, not a site-health or remediation percentage.
+
 ### `project-facts`
 
 MCP name: `seo_project_facts`
@@ -1122,14 +1251,31 @@ Initialize or reconcile a local checklist without executing a check, skill, or s
 | `directory` | `str` | `required` |
 | `template` | `dict | None` | `None` |
 | `expected_revision` | `int | None` | `None` |
+| `plan` | `dict | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
 **Behavior and failure modes**
 
-template is an optional data-only ``seohead.checklist-template.v1`` document. The result
-returns the current state, revision, counts, views and items; use that revision for a
-later conditional write. This never makes a network request.
+template is an optional data-only ``seohead.checklist-template.v1`` document. plan is an
+optional agreed audit scope {reviewer, population, tasks}: population declares kind
+(``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
+``source``, an optional ``name`` and ``reason``, and optional per-``templates``
+populations; ``unknown`` keeps the URL denominator null with a reason. Template
+populations are agreed sub-populations of the site population: enumerated
+template URLs must belong to an enumerated site set, and declared template
+membership can never exceed the agreed site size; incoherent plans are refused
+rather than trimmed. tasks is
+``{kind: all_agreed}`` or a sourced ``{kind: selection, ids, source}`` naming the agreed
+checklist items; items outside a selection stay visible as ``not_agreed`` outside every
+denominator. A size-only population cannot verify measured-URL membership, so its
+numerator counts only enumerated URLs. Recording a plan upgrades the checklist to
+``seohead.coverage.v3`` and appends to the retained plan history; an identical
+agreement is an idempotent no-op, while a changed agreement starts a new revision and
+stale-marks evidence recorded under an earlier agreement instead of shrinking
+denominators. The result
+returns the current state, revision, counts, coverage axes, views and items; use that
+revision for a later conditional write. This never makes a network request.
 
 ### `project-checklist-update`
 
@@ -1170,7 +1316,76 @@ Record supplied evidence for one checklist item without executing its operation.
 
 expected_revision prevents an overwrite of newer checklist history. The record is
 validated against the item's scope and evidence contract, then the returned status names
-remaining, blocked and manual-review work. This never makes a network request.
+remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
+exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
+project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
+``pending_exclusion`` inside the denominator. This never makes a network request.
+
+### `project-view-list`
+
+MCP name: `seo_project_view_list`
+
+List saved declarative finding views and the current project view-config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-view-show`
+
+MCP name: `seo_project_view_show`
+
+Read one saved finding view with its stable identity, schema version and revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-view-save`
+
+MCP name: `seo_project_view_save`
+
+Create or revise a bounded declarative finding view using an expected config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `view` | `dict[str, Any]` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Filters are closed severity/check/URL/segment selections. Sorting and column projection
+use registered fields only; no SQL, code, or regular expressions are accepted. This
+changes project view configuration only; it does not edit scans or affect scores/tasks.
+
+### `findings-view`
+
+MCP name: `seo_findings_view`
+
+Apply one saved view to an audit object, JSON file, or validated scan.v1 SQLite artifact.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+| `audit` | `dict | str` | `required` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Returns a deterministic projected page with total matches, missing-field counts,
+truncation, source identity, and view/config revisions. Filtering never suppresses
+findings or changes audit coverage/scoring; no crawl or provider call occurs.
 
 ### `project-priorities`
 
@@ -1323,6 +1538,24 @@ Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `provider-readiness`
+
+MCP name: `seo_provider_readiness`
+
+Inspect configured credential sources and declared operation routes offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `provider` | `str | None` | `None` |
+| `operation` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Credential configuration never proves account or target permission. Use
+seo_provider_verify for an explicit bounded read-only access check.
+
 ### `provider-verify`
 
 MCP name: `seo_provider_verify`
@@ -1371,6 +1604,92 @@ Join supplied URL evidence exactly and preserve unmatched populations and techni
 | `adjustments` | `list[dict[str, Any]] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `evidence-normalize`
+
+MCP name: `seo_evidence_normalize`
+
+Normalize a supplied CSV/XLSX/JSON or saved provider envelope, fully offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `file` | `str` | `required` |
+| `mapping` | `Any` | `None` |
+| `sheet` | `str | None` | `None` |
+| `site_origin` | `str | None` | `None` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Every row keeps its declared grain, provenance and availability state: a
+measured zero stays zero while missing, null, blank, suppressed,
+uncollected and failed inputs stay unavailable. Restricted sources
+return counts and redacted provenance; normalized rows live only in an
+explicit private ``out_dir`` artifact. No provider, DNS or page fetch
+ever runs here.
+
+### `evidence-join`
+
+MCP name: `seo_evidence_join`
+
+Join normalized analytics/search evidence to crawl pages, offline only.
+
+| Argument | Type | Default |
+|---|---|---|
+| `evidence` | `Any` | `required` |
+| `audit` | `Any` | `None` |
+| `scan` | `str | None` | `None` |
+| `pages` | `Any` | `None` |
+| `compare` | `Any` | `None` |
+| `mapping` | `Any` | `None` |
+| `compare_mapping` | `Any` | `None` |
+| `policy` | `Any` | `None` |
+| `sheet` | `str | None` | `None` |
+| `compare_sheet` | `str | None` | `None` |
+| `site_origin` | `str | None` | `None` |
+| `compare_site_origin` | `str | None` | `None` |
+| `ignore_query` | `bool` | `False` |
+| `ignore_scheme` | `bool` | `False` |
+| `casefold_path` | `bool` | `False` |
+| `out_dir` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Retains matched, crawl-only, external-only and unkeyable populations
+with per-field provenance, and reports key collisions instead of
+multiplying rows. ``compare`` plus a declared ``policy`` yields a pure
+compatible/incompatible/unknown decision across period, timezone,
+identity, attribution, engine and grain; source metrics such as GSC
+clicks and GA4 sessions stay distinct and are never summed. Restricted
+inputs return counts only.
+
+### `bi-export`
+
+MCP name: `seo_bi_export`
+
+Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
+
+| Argument | Type | Default |
+|---|---|---|
+| `out_dir` | `str` | `required` |
+| `scan` | `str | None` | `None` |
+| `audit` | `Any` | `None` |
+| `provider_joins` | `list[str] | None` | `None` |
+| `max_rows_per_file` | `int` | `25000` |
+| `max_bytes_per_file` | `int` | `8 * 1024 * 1024` |
+| `max_output_bytes` | `int` | `512 * 1024 * 1024` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Reads existing evidence only. CSVs are partitioned deterministically;
+null values retain explicit states and reasons, and output limits fail
+without publishing a partial package. No crawl or provider request runs.
 
 ### `inspect-url`
 
@@ -1450,6 +1769,29 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `scan-fragment-links`
+
+MCP name: `seo_scan_fragment_links`
+
+Evaluate every retained fragment anchor offline and page the results.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `state` | `Literal['resolved', 'missing', 'skipped'] | None` | `None` |
+| `representation` | `Literal['static', 'rendered', 'legacy_fragment'] | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Only complete retained HTML/DOM is measured: a missing, truncated,
+unsupported, failed or budget-exhausted body is a named skipped
+occurrence or unavailable source, never a broken fragment. Nothing is
+fetched and the artifact is not modified.
+
 ### `scan-requeue`
 
 MCP name: `seo_scan_requeue`
@@ -1515,6 +1857,47 @@ Read a bounded, paginated table view from one saved scan.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `scan-link-inspect`
+
+MCP name: `seo_scan_link_inspect`
+
+Inspect saved shortest paths, reverse inlinks, or per-link DOM context offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `view` | `str` | `'path'` |
+| `seed` | `str | None` | `None` |
+| `target` | `str | None` | `None` |
+| `representation` | `str` | `'all'` |
+| `cursor` | `str | None` | `None` |
+| `link_id` | `int | None` | `None` |
+| `document_id` | `int | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
+| `max_bytes` | `int` | `1048576` |
+| `max_body_bytes` | `int` | `5 * 1024 * 1024` |
+| `max_nodes` | `int` | `10000` |
+| `max_edges` | `int` | `200000` |
+| `max_depth` | `int` | `20` |
+| `timeout_seconds` | `float` | `15.0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Path hops and inlinks cite exact link IDs and scan identity; absence in a
+partial graph is never a confirmed orphan. Inlinks use a cursor bound to
+scan/revision/target/representation. Context requires link_id or
+document_id, and missing retained bodies return unavailable evidence.
+No network request or scan mutation occurs. Path defaults to 10,000
+visited nodes, 200,000 examined edges, 20 hops and 15 seconds (hard
+maxima 100,000/2,000,000/100/30). Inlinks page at most 500 rows; context
+pages at most 500 rows and one document, with an 8 MiB body hard cap.
+max_bytes bounds serialized item output (4 KiB..8 MiB); an over-budget
+full response returns a named limit result. Invalid scans and URLs are
+error results, not empty or clean graph evidence.
+
 ### `scan-status`
 
 MCP name: `seo_scan_status`
@@ -1549,6 +1932,22 @@ Create a consistent new SQLite snapshot without overwriting a destination.
 |---|---|---|
 | `input_path` | `str` | `required` |
 | `out` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `scan-export`
+
+MCP name: `seo_scan_export`
+
+Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `out` | `str` | `required` |
+| `format` | `str` | `'json'` |
+| `records` | `list[str] | None` | `None` |
+| `fields` | `dict[str, list[str]] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 

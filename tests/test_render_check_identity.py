@@ -176,6 +176,7 @@ def _install_stack(monkeypatch, raw_html, rendered_html, *, goto_error=None, tim
 
 @pytest.fixture
 def fake_stack(monkeypatch):
+    monkeypatch.delenv("SEOHEAD_CHROME", raising=False)
     """A raw fetch and a rendered fetch of two script-free documents -- shaped after #199's
     own offline reproducer, so the harness stands for exactly the case it describes: a
     server-side User-Agent variant with no JavaScript involved anywhere.
@@ -201,6 +202,20 @@ def test_the_shared_identity_is_recorded_in_the_result(fake_stack):
     result = render_check("https://example.com/")
     assert result["ok"] is True
     assert result["user_agent"] == UA
+
+
+def test_raw_and_browser_clients_share_the_crawl_proxy_route(fake_stack):
+    from seohead.recon.net import ProxyRoute
+
+    route = ProxyRoute(
+        proxy=object(), identity="http://proxy.example.test:3128", authenticated=False
+    )
+    result = render_check("https://example.com/", proxy_route=route)
+
+    assert result["ok"] is True
+    assert len(fake_stack["http_calls"]) == 2
+    assert all(call["proxy_route"] is route for call in fake_stack["http_calls"])
+    assert all(call["trust_env"] is False for call in fake_stack["http_calls"])
 
 
 def test_mobile_render_check_uses_one_mobile_identity_for_raw_and_browser(fake_stack):

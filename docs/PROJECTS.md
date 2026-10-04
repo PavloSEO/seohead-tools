@@ -8,14 +8,19 @@ under its `scans/` directory. Each scan keeps its own site, build and configurat
 seohead project new --directory ./example-project --target https://example.test/ --label "Example"
 seohead project open --directory ./example-project
 seohead project status --directory ./example-project
+seohead project progress --directory ./example-project --limit 20 --offset 0
 ```
 
-The directory contains `project.json`, `scans/`, `reports/` and `log.md`.
+The directory contains `project.json`, `scans/`, `reports/`, `log.md`, and, after
+the first saved view, `finding-views.json`.
 `project.json` records format `seohead.project.v1`, integer version 1, a persistent
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.
 Existing project directories are never overwritten. Move the entire directory to
-preserve the relative artifact references.
+preserve the relative artifact references. The `ledger.v1` remediation ledger
+([LEDGER.md](LEDGER.md)) binds to this project UUID and normalized site target: it
+tracks the project's findings and their observation history in a separate artifact,
+never inside a scan.
 
 Facts are optional scalar values with a name, source (`provenance`) and UTC
 `observed_at` timestamp, or null when the observation time is unknown. Keep secrets
@@ -40,6 +45,32 @@ deliverable review are explicit local coverage operations described below; creat
 or opening a project never runs them. Before checklist initialization, status says
 `not_initialized`. Automatic project preparation remains `pending`; neither state
 is a 0/0 result or a completed audit.
+
+## Compact progress and next actions
+
+`project progress` and MCP `seo_project_progress` return a bounded checklist page,
+state counts and up to five next actions without returning the full scan history.
+The `limit` is 1–100 (default 20); `offset` is a zero-based item offset. Pages
+include the checklist revision so a caller can detect that the project changed
+between reads. Item states separate completed, remaining, running, blocked, stale,
+unavailable, review, deliverable, excluded and not-agreed work. Failed attempts
+remain visible as blocked with their original attempt status; an excluded or
+not-agreed item stays outside next actions.
+
+The only percentage is labelled **Audit-task completion**. It reuses the
+checklist's `coverage.audit_tasks` numerator and denominator, and appears only
+when every included site has an explicitly recorded plan and that axis has a
+measured, nonzero denominator. It is not a site-health or remediation percentage.
+URL-population coverage is returned separately. Without an explicit plan, for an
+unknown or partial task denominator, or when no applicable tasks remain, the
+percentage is null with a reason; it is never presented as 100% by default.
+The pagination total counts visible checklist rows, while the checklist's own
+counts and coverage axes retain their applicability rules.
+
+```bash
+seohead project progress --directory ./example-project --limit 10 --offset 0
+seohead project progress --directory ./example-project --limit 10 --offset 10
+```
 
 ## Recording stack facts
 
@@ -93,6 +124,36 @@ does not run a check, skill or scenario, and makes no network request.
 seohead project checklist-init --directory ./example-project
 ```
 
+`checklist-init` also accepts an optional `plan` recording the agreed audit
+scope: who agreed it (`reviewer`), the URL `population` it covers, and the
+agreed `tasks` set. A population declares a `kind` — `complete_set` for a
+known full population, `sample` for a named agreed sample, or `unknown` when
+no population was agreed — plus a `source` saying where it came from, and
+either a `size` or an enumerated `urls` list it derives its size from
+(per-template populations sit under `templates`). `unknown` carries no size
+or URLs, only a reason. Template populations are agreed sub-populations of
+the site population: when the site set is enumerated every template URL must
+belong to it, and declared template membership — one template's `size` or the
+union of all enumerated template URLs — can never exceed the agreed site
+`size`, so an incoherent plan is refused rather than trimmed or
+double-counted. `tasks` is `{kind: all_agreed}` — the default, every
+checklist item is agreed — or `{kind: selection, ids, source}` naming the
+agreed item IDs, which must already exist in the reconciled checklist. Items
+outside a selection stay visible as `not_agreed` and sit outside every
+denominator; they were never agreed, so they need no exclusion review.
+Recording a plan upgrades the checklist to `seohead.coverage.v3` and appends
+to a retained plan history; status returns the current `plan` plus earlier
+agreements under `plan_history`. Re-recording an identical agreement is an
+idempotent no-op, while a changed agreement starts a new plan revision:
+evidence recorded under an earlier plan revision is marked stale rather than
+re-evaluated against the new scope. Reading or reconciling without a plan
+never upgrades or invents a population.
+
+```bash
+seohead project checklist-init --directory ./example-project \
+  --input '{"plan":{"reviewer":"Lead auditor","population":{"kind":"complete_set","size":null,"urls":["https://example.test/"],"name":null,"source":"Agreed sitemap export","reason":null,"templates":null}}}'
+```
+
 [`examples/project-skeleton`](../examples/project-skeleton) is shipped with that
 step already applied, so its committed `coverage.json` carries one definition per
 catalogue item and its status reports counts instead of `not_initialized`:
@@ -141,6 +202,37 @@ does not fetch pages, run a checklist, or contact a provider. The MCP equivalent
 are `seo_project_checklist_init`, `seo_project_checklist_update` and
 `seo_project_checklist_record`.
 
+## Saved finding views
+
+Named finding views are stored in project-local `finding-views.json` with a closed schema and
+schema/config revisions. A view can select severities, check IDs, exact URLs and declared segment
+names, then specify a registered sort field, display columns and page size. Values within a
+filter are ORed; separate filters are ANDed. Expressions, SQL, code and regex filters are refused.
+
+```bash
+seohead project view-list --directory ./example-project
+seohead project view-save --directory ./example-project --expected-revision 0 \
+  --input '{"view":{"name":"critical-pages","filters":{"severity":["critical"]},"sort":{"field":"url","direction":"asc"},"columns":["severity","check","url","text"],"page_size":100}}'
+seohead findings-view --directory ./example-project --name critical-pages \
+  --audit ./example-project/scans/current.sqlite --offset 0
+seohead report-build --audit ./example-project/scans/current.sqlite --project ./example-project \
+  --view critical-pages --format md --out ./example-project/reports/critical-pages.md
+```
+
+The first save uses config revision `0`; each following save requires the most recent
+`config_revision`. A view keeps its stable ID while its own revision increments. The apply result
+includes source scan identity, schema and config revisions, total/matched/returned counts,
+missing-field counts and stable pagination metadata. Missing values in a filter do not match and
+are counted. Missing projected values are `null` and named on the row. Sort ties keep source order;
+missing sort values are last. Segment filters reuse the segment definitions and existing evaluator
+stored with the audit; absent definitions return an explicit unavailable error instead of an empty
+result. View definitions themselves accept no regex expressions.
+
+Views only affect displayed finding rows and fields. Reports label the view and returned page;
+audit totals, evidence coverage and scores still describe the source audit. The saved scan and its
+findings are unchanged. The MCP `seo_findings_view` operation exposes the same bounded projection
+to terminal clients and future navigation surfaces.
+
 `report-build --project DIRECTORY` includes the validated checklist coverage, reasons,
 scope and measurement in a human report without fetching or rerunning the audit. The
 original JSON audit remains unchanged, and `--out` still controls the destination.
@@ -164,14 +256,26 @@ from a reasoned `not_applicable` decision.
 Execution records use `running`, `failed`, `unavailable`, `succeeded`, or
 `not_applicable`. The checklist states remain `run`, `not_run`, and
 `not_applicable`: failed or unavailable attempts are unfinished. Every record
-requires a reason. Applicability decisions also require a reviewer; missing data
-alone is not an exclusion.
+requires a reason. An applicability decision also requires a reviewer and an
+inspectable evidence basis — a project-relative `artifact` (digested like any
+other evidence) or an explicit `evidence` reference; missing data alone is not
+an exclusion. A reviewed exclusion keeps its stable ID and history, exits the
+task and check denominators only through that recorded decision, and is listed
+separately under `exclusions` with its reason, reviewer, basis and revision. A
+disabled item or an exclusion whose
+record is stale or was written before the evidence-basis rule stays inside the
+denominator as `pending_exclusion` until a specialist reviews it again, so
+disabling, removal from the catalogue or reclassification can never silently
+shrink agreed counts.
 
 Automatic completion binds a registered check to a validated SQLite artifact
 under `scans/` or `reports/`, verifies the saved check outcome and site identity,
 and records its digest, producer/configuration, time, and measured population.
 A template requires explicit sample URLs matching that artifact's population.
-Partial measurements remain limited even when the step completed. This metadata
+Partial measurements remain limited even when the step completed: an item
+whose scope is the whole site stays unfinished until a complete observation,
+while an item scoped to explicit sample URLs finishes once the artifact
+covers exactly those URLs. This metadata
 records provenance and detects changed local bytes; it is not independent
 attestation of how an artifact was produced.
 
@@ -179,9 +283,45 @@ Manual completion requires a named reviewer and either `signoff: true` or an
 artifact with `review: "approved"`. Deliverables always require an artifact and
 approved review. A file's existence, opening a skill, or discovering a finding
 does not establish completed work or an implemented client-site fix. Current
-status lists running, blocked, waiting-for-manual-review, deliverable-ready, and
-remaining items from the same records. A previously run step can become blocked
-when its dependency becomes stale; human reports show that distinction.
+status lists running, blocked, waiting-for-manual-review, deliverable-ready,
+pending-exclusion and remaining items from the same records. A previously run
+step can become blocked when its dependency becomes stale; human reports show
+that distinction.
+
+Status also returns `coverage`, five named ratios that never share a
+denominator. `audit_tasks` counts applicable tasks completed over the agreed
+task set; `checks` the same for automatic checks only (with `measured_urls`
+reported beside it); `manual_review` and `deliverable_review` count human
+signoffs and approved deliverables over their own applicable sets; and
+`url_population` counts distinct eligible URLs covered by fresh measurements
+over the agreed plan population — never a row or finding count. Each axis
+states its `basis`, `numerator`, `denominator` and a `state`; task axes also
+carry `excluded`, `pending_exclusion`, `not_agreed` and `unfinished` counts,
+and the URL axis carries `measured_urls`, `unverified_measurements` and the
+population kind/name. A denominator that cannot be
+justified — no recorded plan or an `unknown` population — is `null` with a
+`state` of `unknown` and a reason, never coerced to 0/0 or reported as 100%;
+measurements that cannot be verified against the agreed population keep the
+axis `partial` and count only verified URLs. The URL axis is a single
+site-level ratio: a template-scoped measurement verifies membership against
+its template's declared population when one is recorded, otherwise against
+the site population. Because template populations are validated as
+sub-populations when the plan is recorded — enumerated URLs must belong to
+the enumerated site set and declared membership cannot exceed the agreed
+size — the numerator can never pass its denominator. Membership is verified
+against the agreed enumeration: a population declared only by `size` cannot
+prove which measured URLs belong to it, so its numerator stays at the
+verified count and the axis reports the unverifiable measurements. A
+measurement that covers its explicit sample
+completes that task's scope but cannot establish full-site coverage; a
+site-scoped check backed by a partial scan stays unfinished. Missing
+inputs, unavailable checks, partial scans and stale evidence all remain
+unfinished. The top-level `complete` flag requires every applicable agreed
+task finished, no pending exclusions, and the agreed URL population fully
+covered by verified measurements — a checklist with no recorded scope, an
+`unknown` population, or uncovered eligible URLs never reports a completed
+audit. Multi-site aggregation sums these axes per site and degrades to
+`unknown` whenever any site cannot justify its denominator.
 
 Writes use an exclusive `.coverage.lock`, optimistic revisions and atomic file
 replacement. A concurrent writer refuses without discarding earlier work. After

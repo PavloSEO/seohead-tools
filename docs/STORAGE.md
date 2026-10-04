@@ -1,17 +1,34 @@
-# Scan storage (`scan.v1`)
+# Scan storage (`scan.v1` and `audit.v2`)
 
-A scan artifact is one ordinary SQLite file for one crawl. Its format identifier is
+A scan's collection artifact is one ordinary SQLite file for one crawl. Its format identifier is
 `scan.v1`; its SQLite file signature is the normal `SQLite format 3\000` header,
 and its identity is also recorded as `application_id=1397051208` (`SEOH`) and
 `user_version=1`. A reader must require all three identifiers to agree before it
 treats a file as a scan artifact.
 
+Large saved audits can use an adjacent, versioned `audit.v2` SQLite companion named
+`<scan-path>.audit-v2.sqlite`. It keeps the frozen `scan.v1`/`scan.v2` schema unchanged;
+the companion binds to the scan UUID, evidence revision, and analyzer build. Scan history
+counts the companion's disk bytes, excludes it from the scan-file catalogue, snapshots it
+as a validated pair, and prunes it with its scan. Copy both files when moving an artifact.
+The companion contains complete ordered collections, not a sample or a replacement for
+missing evidence.
+
 The legacy importer packages an existing crawl directory. A URL-mode `crawl-site`
 run writes a native SQLite artifact under `./scans/` by default; `--scan-out` chooses
 an explicit file. An explicit `--out-dir` or configured `output.dir` selects the
-legacy directory workflow. Both retain the existing audit/report contract.
+legacy directory workflow. Both retain the existing audit/report contract within
+their declared materialization limits.
+The directory collector writes page/link/form evidence incrementally. Its
+materialized audit is currently limited to 10,000 pages, 20,000 forms and
+1,500,000 links; a larger corpus retains its JSONL evidence and reports
+`audit_available: false` with exact counts and the exceeded bound.
 Use one file per imported run; do not merge runs or write an imported artifact
 concurrently.
+
+Scan artifacts are immutable evidence: the `ledger.v1` remediation ledger
+([LEDGER.md](LEDGER.md)) reads a scan without writing it and tracks findings,
+occurrences and their observation history in a separate file.
 
 ## Start here
 
@@ -51,6 +68,33 @@ The native default is `storage.body_mode=captured_entity_bytes`; the only other
 supported value is `off`. The recorded retention policy, body state, and
 capability state determine what a particular scan actually retained.
 
+## Experimental synthetic capacity admission
+
+The stable live crawler ceiling remains **50,000 URLs**. The optional
+`storage.capacity_profile="experimental_synthetic"` marker admits a declared
+`limits.max_urls` up to 1,000,000 for direct `NativeScan` synthetic storage
+profiles. It is persisted in `scan.config_json` and the configuration
+fingerprint, and is validated on create, inspect, reopen, snapshot, and resume.
+Older scans with no marker retain their original fingerprint and read as stable.
+The marker is rejected by live CLI/MCP crawl handlers and the SQLite collector,
+even below 50,000 URLs. It does not change `checked_url_budget`, actual crawl
+admission, audit/report limits, or release support.
+
+Use this mode only for predeclared offline profile cases with explicit page,
+link-density, body/DOM, time, memory, disk and interruption budgets. A profile
+that writes 100,000 or 1,000,000 synthetic rows establishes only the stages it
+actually completed. The #818 end-to-end gate remains **unmet** until #815 has
+recorded the required 10k/50k/100k/1M matrix, #816 has a measured large-audit
+representation, and #817 has measured bounded collection, resume, JS and
+audit-bridge behavior at multiple link densities. Each stage must pass its
+frozen budget with complete URL/link evidence, honest finish and partialness
+states, restart recovery, and working downstream compare/report consumers
+before proposing any live cap change. The published 50,000-page attempt below
+remains blocked by its 900-second stage ceiling. No benchmark result promotes
+the ceiling automatically: a specialist must review the frozen manifests,
+failed/skipped stages and retained artifacts, then explicitly approve a
+separate cap/configuration change.
+
 ## Explicit local history operations
 
 The `scan` CLI group and matching `seo_scan_*` MCP tools operate on individual,
@@ -58,13 +102,15 @@ validated `scan.v1` artifacts. They are deliberately not a catalog service: no d
 discovers scans, no command migrates an artifact, and no operation deletes bodies
 separately from their SQLite file.
 
-`scan list` accepts one existing directory and considers only `*.sqlite` files.
-For each candidate it validates the SQLite identity and `scan.v1` schema while
+`scan list` accepts one existing directory and considers scan `*.sqlite` files;
+it excludes `*.audit-v2.sqlite` companions from the scan count. For each candidate
+it validates the SQLite identity and scan schema while
 reading metadata only; it never reads retained body BLOBs. The directory scan is
 capped at 10,000 candidate files and 64 MiB of accumulated metadata. Invalid,
 foreign, inaccessible, or changed candidates appear in `errors` rather than being
 silently accepted. The result is ordered by finish (or creation) time and includes
-the aggregate disk use and history warning threshold.
+the aggregate disk use and history warning threshold. `disk_bytes` includes any
+audit-v2 companion.
 
 `scan inspect` validates one artifact, then exposes a paginated read-only view of
 one whitelist table: `pages`, `links`, `forms`, `decisions`, `frontier`,
@@ -75,6 +121,8 @@ or page would exceed the budget, the result says `truncated: true` and
 `has_more: true` instead of loading a partial BLOB or claiming the table ended.
 
 `scan snapshot` validates the source and copies it through SQLite's Backup API.
+When an audit-v2 companion exists, it validates and copies that companion too,
+publishing the companion before the scan so a visible snapshot has its audit.
 `--out` may be a new filename or an existing directory. For a directory, the tool
 creates `YYYYMMDDTHHMMSSZ_host_shortUUID.sqlite` in UTC. Both forms are no-clobber:
 an existing file, symlink, or generated-name collision is refused. A snapshot is
@@ -106,6 +154,32 @@ Static comparisons also support retained JS/CSS responses. A page's active raw
 inventory takes precedence over later diagnostic responses, and rendered DOM
 comparisons require compatible recorded renderer settings and transforms.
 
+`scan fragment-links` validates one artifact, then evaluates every
+fragment-bearing `<a href>` in retained complete HTML/DOM documents — same-page
+`#target` anchors and cross-page `/page#target` links alike. The fragment is
+matched the way the WHATWG scroll-to-the-fragment algorithm resolves it: the
+serialized fragment against element ids and legacy `<a name>` targets first,
+then the percent-decoded, UTF-8-decoded value against both (`+` stays a
+literal plus, malformed escapes pass through, invalid UTF-8 becomes U+FFFD),
+then the `top` fallback; an empty `#` resolves to the document top. Static, rendered and legacy-fragment representations are
+evaluated independently — an id that exists only in rendered DOM resolves the
+rendered link, never the static one. Relative hrefs resolve against the
+recorded effective `<base href>`; stored redirect and final-URL hops are
+followed inside the retained corpus; a different query string is a different
+document. Each occurrence is `resolved`, `missing` (the only state that can
+become a `BROKEN_BOOKMARK` finding) or `skipped` with a named reason: a
+destination absent from the scan, a non-HTML, truncated, omitted, failed or
+budget-exhausted body, an unsupported URL scheme, an href the URL resolver
+refuses, or an unverifiable `#:~:` text directive is always a named skip,
+never a broken bookmark. Inert
+`<template>` content contributes neither anchors nor targets. Results are
+deterministically ordered by page ordinal, representation and in-document
+anchor order, and paginated with `offset`/`limit` plus `total`/`returned`/
+`next_offset`; the coverage block says when extraction or result caps omitted
+evidence or occurrences ended in named skips (counted per reason in
+`skip_reasons`), so a partial inventory can never read as a complete one. No
+destination is fetched and the artifact is not modified.
+
 A scan made partial only by recovery of a truncated JSONL tail cannot be represented
 faithfully by these three files when its unchanged audit says the crawl was complete.
 That export is refused; use the original SQLite artifact, which keeps the recovery
@@ -132,6 +206,128 @@ cryptographic attestation. The effective configuration comes from the exact
 import is refused; if both exist they must agree. The importer records no separate
 importer-version field because `scan.v1` has no such column.
 
+## Scan data export (scan_export.v1)
+
+`scan export` (also the flat `scan-export` form and the `seo_scan_export` MCP
+tool) serializes retained scan data — not a report — under the versioned
+`scan_export.v1` contract. It is a read-only, offline operation that accepts a
+validated `scan.v1` SQLite artifact or an SF Analyzer `audit.json` document
+(`schema_version` "2.0"). Site-audit reports are refused: they are rendered
+output, not retained evidence. The three-file `export-run` output above is a
+different, legacy round-trip format and is unchanged.
+
+```bash
+seohead scan-export --scan native.sqlite --out export.json --format json
+seohead scan-export --scan native.sqlite --out export.xml --format xml
+seohead scan-export --scan audit.json --out export.csv --format csv --records pages,findings
+```
+
+### Envelope
+
+JSON and XML carry the contract structurally; the CSV manifest file and the
+XLSX Summary sheet carry the same fields as key/value rows:
+
+- `format` — the literal `scan_export.v1`.
+- `provenance` — run identity: scan UUID, source kind, start URL, lifecycle,
+  finish reason, partialness flags, writer version/revision, timestamps, and
+  the saved audit's presence state. Field selection never removes it.
+- `projection` — the record fields actually emitted, per record type.
+- `statistics` — `record_types` exported, exact `rows` per type, and `run`
+  totals from the saved audit (or an explicit `unavailable` state).
+- `coverage` — per-record-type `state`/`reason`/`exported`/`source_rows`; the
+  check inventory (`ran`, `skipped`, `disabled`, `unaccounted` with reasons and
+  the saved `check_coverage` totals); declared `capabilities` and `limitations`.
+- `records` — the projected rows in deterministic source order.
+
+`--records` selects record types (default: every type the input can provide).
+`--fields TYPE=f1,f2` (repeatable) projects record fields; a field a source
+never recorded exports as an explicit absent value — JSON `null`, XML
+`state="absent"`, CSV/XLSX `\N` — always distinguishable from an empty string
+or a measured zero. An `audit.json` input retains no link records: `links` is then
+`unavailable` in coverage, skipped by the default selection, and an explicit
+`--records links` request fails rather than emitting an empty table.
+
+### Record fields
+
+For a `scan.v1` artifact, `pages` supports the retained projection:
+`url`, `status_code`, `content_type`, `size_bytes`, `response_time`,
+`redirect_url`, `title`, `meta_description`, `h1`, `h1_2`, `h2`, `canonical`,
+`meta_robots`, `x_robots`, `og_title`, `og_description`, `og_image`, `og_url`,
+`word_count`, `text_ratio`, `content_frames`, `content_frames_same_origin`,
+`crawl_depth`, `content_encoding`, `charset`, `doctype`, `viewport`,
+`meta_refresh`, `http_refresh`, `meta_description_count`, `h1_alt_text`,
+`lorem_ipsum_count`, `images_total`, `images_missing_alt_attr`,
+`images_max_alt_length`, `plugin_elements`, `meta_fragment`,
+`ajax_scheme_outlinks`, `title_outside_head`, `meta_description_outside_head`,
+`canonical_outside_head`, `directives_outside_head`, `hreflang_outside_head`,
+`hreflang`, `heading_outline`, `link_placement`, `canonical_chain`,
+`final_canonical`, `head_count`, `body_count`, `head_not_first`,
+`invalid_head_elements`, `outlinks`, `external_outlinks`, `jsonld_blocks_found`,
+`jsonld_blocks_parsed`, `error`, `error_kind`, `cache_status`,
+`body_unavailable`, `representation`, `redirect_chain`, `final_url`.
+
+For an `audit.json` document, `pages` supports: `url`, `status_code`,
+`indexability`, `indexability_status`, `content_type`, `metrics`, `issues`,
+`issue_ids`.
+
+`links` (scan.v1 only) supports: `source`, `destination`, `anchor`, `nofollow`,
+`position`, `rel`, `target`, `raw_href`.
+
+`findings` supports: `id`, `check`, `severity`, `source`, `message`,
+`target_url`, `status_code`, `occurrences_count`, `locations`, `details`,
+`fix_hint`, `evidence`.
+
+Unknown record types or field names are rejected before any output file is
+created, with an error naming the invalid selection and the supported values.
+
+### XML shape
+
+The XML export is UTF-8, deterministic, and generated serialization only —
+the exporter never parses caller-supplied XML, DTDs, stylesheets, or entities.
+The root element is `scan-export` in namespace
+`https://github.com/PavloSEO/seotools/schema/scan_export.v1` with attribute
+`format="scan_export.v1"`. Element and attribute names are the JSON contract
+names verbatim: `<provenance>`, `<projection>`, `<statistics>`, `<coverage>`,
+then `<records>` containing `<pages><page>`, `<links><link>`, and
+`<findings><finding>` elements whose children are the selected field names.
+Scalar values carry `type="string"`, `type="boolean"`, `type="integer"`, or
+`type="number"`; booleans are `true`/`false`; absent values carry
+`state="absent"`; nested objects and arrays serialize as JSON text with
+`format="json"`. Metadata lists use repeated `<item>` elements. Literal
+carriage returns use numeric character references so parsing preserves them;
+XML 1.0 forbidden control characters fail with a record/field path before
+any final export is published. Metadata mapping keys that are not safe XML
+element names use `<entry key="original key">` so arbitrary retained JSON keys
+do not make the document malformed or lose their spelling.
+
+### Output files and limits
+
+JSON writes one `*.json` file, XML one `*.xml`, XLSX one `*.xlsx`. CSV treats
+`--out` as a base name and writes `BASE.pages.csv`, `BASE.links.csv`,
+`BASE.findings.csv` (only selected types) plus `BASE.manifest.csv` describing
+the file set, envelope, and exact row counts. CSV uses `;` delimiters and a
+UTF-8 BOM like the other CSV outputs. Every target is written through a
+sibling temp file and linked into place; existing destinations are refused,
+and a failure removes exactly the files it created — no plausible partial
+artifact remains and the result is `ok: false`.
+
+CSV and XLSX data cells and envelope values use the same reversible text
+encoding: `\N` means absent (`null`), `\E` means an empty string, a leading
+`\\` represents one literal leading backslash, and `\F` prefixes an original
+string beginning with `=`, `+`, `-`, `@`, tab, or carriage return. Decode these
+tokens in that order after reading a cell; for example, source `\N` exports as
+`\\N`, and source `=SUM(1,1)` exports as `\F=SUM(1,1)`. Other text is unchanged.
+The `\F` prefix keeps spreadsheet software from evaluating source text as a
+formula. JSON and XML retain the original values without these escapes.
+
+Records stream from the validated storage iterators; neither format builds a
+second in-memory copy of the scan. XLSX uses openpyxl's write-only workbook and
+refuses rather than truncates when data exceeds Excel's limits: 1,048,576 rows
+or 16,384 columns per sheet, or 32,767 characters per cell. Workbook splitting
+is not implemented; it is #759's scope, like finding filters, segment
+selection, and an export index manifest. CSV and XLSX encode formula-leading
+cell text safely (CWE-1236); JSON and XML carry raw retained values.
+
 ## Offline reanalysis
 
 ```bash
@@ -148,6 +344,11 @@ input: the output has a new scan UUID, records its parent UUID, and records the
 current analyzer build. It preserves the capture configuration; there is no
 configuration override because mixing parser results from a different capture
 scope would make the derived audit incomparable.
+
+The saved `analysis.finding_exclusions` policy is part of that configuration and
+audit provenance. It changes the active findings, score, and tasks while keeping
+full suppressed records with their rules and reasons in the audit. Reanalysis
+reuses the saved policy against retained evidence; it makes no site request.
 
 Reanalysis uses only retained static HTML and rendered DOM with the existing
 parser and check registry. It makes no HTTP, DNS, browser, provider, or resource
@@ -177,8 +378,21 @@ and `context_items` hold the native storage core's recovery and collection lanes
 (empty in legacy imports). `responses`,
 `documents` and `bodies` hold captured HTTP/document provenance. `resource_refs` records
 direct script/stylesheet declarations and their capture state. Fetching referenced
-resource bodies is a separate explicit option. `audit.document_json` is the only authoritative stored audit
-snapshot; report formats render that document and do not compute new findings.
+resource bodies is a separate explicit option. An inline audit is stored in
+`audit.document_json`; an audit-v2 audit is stored in the adjacent companion.
+Report formats render the saved document and do not compute new findings.
+
+Native audits bind hreflang relations to the selected retained document and
+its `language_evidence` context item. Their
+`summary.saved_corpus_derivations.internationalization` records raw labels and
+hrefs, normalized target identities, duplicate/conflicting label context,
+target status/indexability, each return-link verdict, and relation coverage.
+A complete target document with an empty declaration set proves a missing
+return link; an uncrawled target, unavailable body, ambiguous URL variant or
+partial population remains unmeasured. The audit emits
+`HREFLANG_MISSING_RETURN_LINK`, `HREFLANG_BROKEN_TARGET` and
+`HREFLANG_NOINDEX_TARGET` only from the corresponding measured evidence.
+Report builders read these saved results without fetching pages again.
 
 Existing report and comparison routes can take a scan path directly. The MCP
 `seo_report_build`, `seo_compare_crawls`, and SF audit summary, issues, and tasks
@@ -230,7 +444,11 @@ reuse a persistent browser profile, never because the browser carried back a coo
 the site itself set to a same-origin subresource. A crawl reports how many rendered
 DOMs it retained and the reasons it dropped the rest in `rendered_bodies`, for the
 same reason `html_bodies` exists -- both counts are derived from the artifact, so a
-finished scan still answers the question afterwards. Native SQLite mode requires
+finished scan still answers the question afterwards. Every rendered document's
+`renderer` provenance records the requested and effective engine, its reported
+version, the effective viewport and the configured page concurrency -- a failed
+attempt records what was requested with `engine: "unknown"` rather than inventing a
+successful render. Native SQLite mode requires
 `cache.mode=off` before collection; it never changes or deletes the old directory
 cache, which remains part of the directory workflow.
 
@@ -319,6 +537,43 @@ anchors were never inspected for this, which is not the same as finding none.
 `og_*` columns above; it is nullable because a crawl written before it was
 collected never read the tag, and the Open Graph check names `og:url` missing
 whenever this reads empty.
+
+### Per-occurrence link context
+
+`seohead.storage.link_context.context_for_link(scan, link_id)` and
+`contexts_for_document(scan, document_id, offset=0, limit=100)` derive the
+versioned `link_occurrence_context.v1` result **on demand** from one complete
+retained HTML body or rendered DOM. They do not change `scan.v1`/`scan.v2`,
+fetch a URL or touch the frontier. Every result cites its scan UUID, evidence
+revision, `link_id`, source document, representation and stored ordinal. Repeated
+source-target links remain separate. Document-level queries preserve source URL
+and representation even when the document contains zero links. Raw and rendered documents are read and
+reported independently; a rendered position never fills an unavailable raw
+position. A missing, omitted, truncated, non-HTML or over-budget body returns
+`unavailable` with a reason rather than a fabricated placement or heading.
+
+The extractor uses the recorded content-root and position rules. A matched
+selector is positive placement evidence; a content-root match is labelled as
+inference and names the root-selection strategy. The bounded DOM path uses
+`nth-of-type` segments without page-specific IDs or classes. For content links,
+the nearest preceding heading in the same section/article wins; otherwise the
+nearest preceding content heading is used. Nav/footer links do not borrow a
+content heading. Heading text and selector excerpts are capped at 160
+characters, DOM paths at 12 levels/512 characters, and truncation is explicit.
+
+The reader replays the saved link-storage filter against the document and
+checks every retained occurrence in ordinal order, including `raw_href`, `rel`
+and `target` when attribute capture was enabled. If old parser behavior or
+missing configuration prevents an exact replay, the document context is
+`unavailable`; it never guesses which duplicate anchor was stored. It processes
+one document at a time, with at most 20,000 eligible anchors, a default 5 MiB
+decoded-body budget (hard cap 8 MiB), and a 500-row/1 MiB serialized-item
+page default (hard item-byte cap 8 MiB). Byte-limited pages stop before a whole occurrence and
+return the next offset. Omitted
+anchors make document coverage `partial`; a single-link result also carries that
+coverage. `seohead scan-link-inspect --view context` and the matching
+`seo_scan_link_inspect` MCP tool expose this result by `link_id` or `document_id`.
+
 `body_unavailable` records why collection could not parse a page
 body (for example, an oversized response); it does **not** describe whether this
 artifact retained that body. `meta_refresh` and `http_refresh` retain the markup
@@ -537,6 +792,16 @@ size or store budget keep a named omission instead. The raw start-page HTML is
 read from that retained static document for the rendering gate. A legacy three-file
 import cannot recreate discarded bodies, response provenance or native resume state.
 
+In URL mode, `scope.include_extensions` and `scope.exclude_extensions` record
+pre-request frontier decisions while keeping the referring `links` rows. The
+response media filters record a per-URL decision after headers arrive; a filtered
+response retains its status, media type, headers and redirect evidence while its
+entity is omitted. `pages.body_unavailable` carries the media filter reason so
+body-derived audit checks remain `skipped`. The saved crawl config includes all
+four filter lists, so a resume with changed rules is refused before reusing its
+frontier. The `resources.fetch` lane remains separately governed by its own MIME
+and byte budgets.
+
 The collector keeps only its bounded worker batch and page observations in
 Python; page/link/form records, seen identities, queue, query variants and
 recovery state live in SQLite. Parser caps retain at most 20,000 link observations and 2,000 form observations
@@ -556,10 +821,27 @@ arbitrary field lengths or finding populations. Sitemap capture streams membersh
 in chunks of 256, with the existing per-root expansion limits; it no longer
 allocates the full declared-URL list before an admission check.
 
-The complete serialized audit also has the existing 64 MiB reader limit.
-The writer checks that exact size before replacing an audit. If it cannot fit,
-the result explicitly says `audit_available=false`; all captured observations
-remain intact. No findings are truncated and the reader limit is not raised.
+The inline `audit.document_json` contract still has its existing 64 MiB limit.
+Its writer checks the exact serialized size before replacing the row. Audit-v2
+stores ordered collection rows in the adjacent SQLite companion, with a 64 MiB
+header ceiling and an 8 MiB ceiling per row; the collection population has no
+64 MiB total limit. Each row has a stable ordinal, and a SHA-256 digest covers
+the header, binding, collection paths, order, and exact JSON row text. Readers
+validate the scan binding, SQLite schema, foreign keys, row counts, ordering,
+and digest before exposing any collection. The four reconciliation arrays under
+`summary.sitemap` are separate collections too; they must not be truncated into
+an apparently complete summary.
+
+`report-build` and `compare-crawls` accept an audit-v2 scan path. JSON output
+streams the complete document; CSV, XLSX, Markdown and DOCX consume ordered rows
+without constructing a second audit dictionary. DOCX retains its established
+40-findings-per-severity and 60-page display limits while showing the exact
+stored totals. The compatibility `read_audit`, `resolve_audit_input`, and
+`export-run` document paths still materialize only up to 64 MiB and fail with a
+named size error above it. They never return a partial document or infer a clean
+result. A producer that chooses audit-v2 must do so before building the legacy
+complete audit dictionary; collection-to-header selection remains the producer's
+responsibility.
 
 A resumed scan without the required retained static start-page HTML has a named
 no-audit guard; it cannot invent a clean rendering verdict.
@@ -591,6 +873,18 @@ measures collection only: the analyzer compatibility bridge, report rendering,
 sitemap expansion, large page fields and retained bodies are outside this result.
 No larger default crawl ceiling follows from these measurements.
 
+For metadata-only native scans (`storage.body_mode=off`) with no captured
+responses, documents, bodies, or resource refs, the writer now derives corpus
+capabilities once from the existing full SQL calculation and reuses that exact
+summary after checking those evidence tables remain empty. It updates the same
+scan metadata inside each page transaction. Any body, render, or resource
+evidence returns to the full calculation; reopening a writer derives the
+invariant again, and inspection still validates against all stored rows. A
+bounded 2,048-page sparse cProfile reduced `corpus_summary` and reanalysis
+queries from 2,048 calls each to one each. This is a sparse-writer improvement,
+not a dense-body or million-URL capacity result; staged #815/#818 acceptance
+still gates any crawl ceiling change.
+
 Reproduce with `python scripts/profile_scan_collector.py`.
 The profiler emits progress and JSON with platform/runtime versions and source
 file hashes. It keeps no full edge graph in Python. See
@@ -616,8 +910,9 @@ fragment links to the selected target, in stable link-ID pages. Its opaque
 using it with another query is refused. Defaults are 100 rows, 1 MiB serialized
 item bytes, and 15 seconds. Rows preserve raw/rendered identity. A blank
 position is unmeasured. Each result includes the scan UUID and evidence revision
-so clients can avoid combining pages from different scan snapshots. These are
-Python core functions; shared CLI/MCP registration belongs to issue #807.
+so clients can avoid combining pages from different scan snapshots. The shared
+`scan-link-inspect` CLI and `seo_scan_link_inspect` MCP entry points expose the
+same core with `--view path` or `--view inlinks` and bounded output.
 
 A found path proves only that these retained edges connect the two URLs.
 `unreachable_in_observed_graph` does not prove a site-wide orphan. The result
@@ -818,3 +1113,11 @@ sitemap. Exclusion counts derive from decision occurrences. Raw start-page HTML
 is not hidden in a context row: it requires the later document/body lane.
 This native-core context table predates the later body/resource lanes. Network
 replay remains unavailable; retained-evidence reanalysis is documented above.
+
+
+### Streamed report compatibility
+
+Saved finding views are currently unavailable for streamed audit.v2 report inputs.
+The report builder refuses that combination explicitly rather than silently ignoring
+the selected view. PDF and project coverage remain explicitly unavailable on the
+streaming path; bounded inline audit reports retain their view/language support.

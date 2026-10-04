@@ -1,8 +1,8 @@
 # Usage scenarios
 
-The rest of the documentation lists what this toolkit *has*: 98 commands, 103 callable tools,
-162 checks, 30 workflow skills, each described on its own. This directory describes what it
-**does** — the chains that run several of them in order and end in something a person can act on.
+The command, tool, check and skill catalogues describe what this toolkit *has*. This directory
+describes what it **does** — the chains that use those capabilities in order and end in something
+a person can act on.
 
 The distinction matters. One command is a measurement. A chain is a deliverable:
 
@@ -33,7 +33,7 @@ build rather than sitting here misleading its next reader.
 
 ## The scenarios
 
-59 chains, grouped by the question you arrived with. Every issue this toolkit can find
+60 workflows, grouped by the question you arrived with. Every issue this toolkit can find
 appears in at least one of them — `tests/test_scenario_coverage.py` asserts that against
 [COVERAGE_SF_ISSUES.md](../COVERAGE_SF_ISSUES.md), so the catalogue is decided by what the code
 does rather than by what somebody thought of.
@@ -63,6 +63,7 @@ does rather than by what somebody thought of.
 | # | Scenario | Start here when |
 |---:|---|---|
 | 9 | [Canonical basics](canonical-basics.md) | the defects that are a typo, not a strategy |
+| 60 | [Canonical destinations](canonical-destinations.md) | where the target responds, and when distinct sections point home |
 | 10 | [Conflicting canonicals](canonical-conflicts.md) | two answers to a question that takes one |
 | 11 | [Canonicalised pages](canonicalised-pages.md) | how much of the site is deliberately not itself |
 | 12 | [The canonical nobody links to](unlinked-canonical.md) | a preferred URL with no way in |
@@ -179,14 +180,14 @@ does rather than by what somebody thought of.
 | 57 | [Provider evidence](provider-evidence.md) | connect, verify, collect, join, refresh, and revoke external evidence |
 | 58 | [Project control](project-control.md) | prepare a bounded local project without claiming the audit is complete |
 | 59 | [Saved evidence](saved-evidence.md) | reuse retained observations and separate backup-protected mutations |
+| 60 | [Full audit](full-audit.md) | run an authorized, scoped audit and report verified coverage honestly |
 
 
 ## The rule underneath all of them
 
-Run the crawl once; run everything else against what it collected. Every scenario here starts
-from one `crawl-site` run and reuses its `audit.json` and `pages.jsonl`, because a second crawl
-of the same site to answer a second question is a second load on somebody's server for an
-answer that is already on disk.
+Use one collection for the agreed scope, then reuse its `audit.json`, retained pages and other
+provenanced evidence across method checks. A scenario may select a supplied-export or other
+specialized path, but a second crawl of the same scope needs a stated evidence gap and budget.
 
 After any chain, `seohead log-scan --run <dir>` reports whether the run contradicts itself
 before you act on its numbers. Every defect this toolkit has had on live sites was an impossible

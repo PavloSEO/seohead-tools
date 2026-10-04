@@ -1682,6 +1682,217 @@ def extract_frames(
     return frames
 
 
+# ── Trust & attribution signals (issue #823) ──────────────────────────────
+#
+# The objective markup facts the authorship/date checks in sf/core/eeat.py
+# evaluate. Every entry names the carrier that produced it (``signal``) and a
+# confidence (``high`` for an explicit machine-readable declaration, ``medium``
+# for a conventional carrier), so the audit reports reviewed evidence rather
+# than a blended verdict. Nothing here asserts trustworthiness: a byline-class
+# element proves a CSS class exists, never that the page is trustworthy.
+
+_TRUST_SIGNAL_CAP = 8
+_TRUST_VALUE_CHARS = 160
+
+# Schema.org types that declare the page content-shaped. Kept lowercase for
+# case-folded comparison; the emitted marker preserves the declared spelling.
+_ARTICLE_JSONLD_TYPES = frozenset(
+    {
+        "article",
+        "newsarticle",
+        "analysisnewsarticle",
+        "askpublicnewsarticle",
+        "backgroundnewsarticle",
+        "opinionnewsarticle",
+        "reportagenewsarticle",
+        "reviewnewsarticle",
+        "blogposting",
+        "liveblogposting",
+        "advertisercontentarticle",
+        "satiricalarticle",
+        "scholarlyarticle",
+        "techarticle",
+        "socialmediaposting",
+        "report",
+    }
+)
+
+# <meta name=...> keys that carry a declared date. ``article:published_time``
+# and friends are matched separately so their signal names stay specific.
+_DATE_META_NAMES = frozenset(
+    {
+        "date",
+        "dc.date",
+        "dc.date.issued",
+        "dcterms.created",
+        "dcterms.modified",
+        "datecreated",
+        "datepublished",
+        "datemodified",
+        "publishdate",
+        "publish-date",
+        "pubdate",
+        "last-modified",
+        "article_date",
+    }
+)
+
+# Schema.org date properties recognised in JSON-LD and microdata, compared
+# case-folded; the emitted signal name keeps the declared spelling.
+_TRUST_DATE_PROPS = frozenset({"datepublished", "datemodified", "datecreated", "uploaddate"})
+
+# A date written into the URL path itself: /2024/05/..., /2024-05-12-...
+# Medium confidence — a path segment is a real, objective URL fact, but it is
+# a convention, not a declared publication date.
+_URL_PATH_DATE_RE = re.compile(r"/(19|20)\d{2}(?:[-/](?:0?[1-9]|1[0-2])){1,2}(?:[-/]|$)")
+
+_AUTHOR_REL_RE = re.compile(r"\bauthor\b", re.IGNORECASE)
+_BYLINE_CLASS_RE = re.compile(r"\bbyline\b", re.IGNORECASE)
+
+
+def _jsonld_node_walk(node: Any) -> list[dict[str, Any]]:
+    """Every dict inside arbitrarily nested JSON-LD (graph, @graph, lists)."""
+    out: list[dict[str, Any]] = []
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            out.append(cur)
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return out
+
+
+def _ld_scalar(value: Any) -> str:
+    """The first plain string a JSON-LD value carries (name, @id, list item)."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("name", "@id", "url"):
+            inner = value.get(key)
+            if isinstance(inner, str) and inner.strip():
+                return inner
+        return ""
+    if isinstance(value, list):
+        for item in value:
+            found = _ld_scalar(item)
+            if found:
+                return found
+    return ""
+
+
+def extract_trust_signals(soup: Any, jsonld_blocks: list[Any], page_url: str) -> dict[str, Any]:
+    """Objective authorship, date and article-scope markup facts (issue #823).
+
+    ``jsonld_blocks`` is the already-parsed JSON-LD ``parse_html`` produces, so
+    malformed blocks are already excluded by ``_extract_jsonld`` and reported
+    beside it -- this function never re-parses script text. Every signal names
+    its carrier and confidence; an empty list is a measured absence, and
+    ``<template>`` content is skipped exactly as every other reader here skips
+    it (``_INERT_LINK_CONTAINERS``).
+    """
+    author: list[dict[str, str]] = []
+    dates: list[dict[str, str]] = []
+    article: list[str] = []
+
+    def add(family: list[dict[str, str]], signal: str, confidence: str, value: Any) -> None:
+        if len(family) >= _TRUST_SIGNAL_CAP:
+            return
+        text = value if isinstance(value, str) else ""
+        family.append(
+            {
+                "signal": signal,
+                "confidence": confidence,
+                "value": collapse_whitespace(text)[:_TRUST_VALUE_CHARS],
+            }
+        )
+
+    for tag in soup.find_all("meta"):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        content = tag.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        name = tag.get("name") or ""
+        name = name.lower().strip() if isinstance(name, str) else ""
+        prop = tag.get("property") or ""
+        prop = prop.lower().strip() if isinstance(prop, str) else ""
+        if name == "author":
+            add(author, "meta_author", "high", content)
+        elif name == "article:author" or prop == "article:author":
+            add(author, "meta_article_author", "high", content)
+        if prop == "article:published_time":
+            add(dates, "meta_article_published", "high", content)
+        elif prop == "article:modified_time":
+            add(dates, "meta_article_modified", "high", content)
+        elif prop == "og:updated_time":
+            add(dates, "meta_og_updated", "high", content)
+        elif name in _DATE_META_NAMES:
+            add(dates, f"meta_date:{name}", "high", content)
+        if prop == "og:type" and content.strip().lower() == "article":
+            article.append("og_type")
+
+    # rel=author is meaningful only on the link-bearing elements.
+    for tag in soup.find_all(["a", "link"], attrs={"rel": _AUTHOR_REL_RE}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        value = tag.get("href") or collapse_whitespace(tag.get_text(" "))
+        add(author, "rel_author", "high", value)
+
+    for tag in soup.find_all(attrs={"itemprop": _AUTHOR_REL_RE}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        value = tag.get("content") or tag.get("href") or collapse_whitespace(tag.get_text(" "))
+        add(author, "microdata_author", "high", value)
+
+    # A "byline" class is a convention, not a declaration -- medium confidence.
+    for tag in soup.find_all(attrs={"class": _BYLINE_CLASS_RE}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        text = collapse_whitespace(tag.get_text(" "))
+        if text:
+            add(author, "byline_class", "medium", text)
+
+    for tag in soup.find_all(attrs={"itemprop": True}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        prop = tag.get("itemprop")
+        prop = prop.lower().strip() if isinstance(prop, str) else ""
+        if prop in _TRUST_DATE_PROPS:
+            value = tag.get("content") or tag.get("datetime") or tag.get_text(" ")
+            add(dates, f"microdata_date:{prop}", "high", value)
+
+    for tag in soup.find_all("time", attrs={"datetime": True}):
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        add(dates, "time_element", "medium", tag.get("datetime"))
+
+    for node in _jsonld_node_walk(jsonld_blocks):
+        raw_type = node.get("@type")
+        declared = raw_type if isinstance(raw_type, list) else [raw_type]
+        for item in declared:
+            if isinstance(item, str) and item.lower() in _ARTICLE_JSONLD_TYPES:
+                marker = f"jsonld_type:{item}"
+                if marker not in article:
+                    article.append(marker)
+        if node.get("author") is not None:
+            add(author, "jsonld_author", "high", _ld_scalar(node.get("author")))
+        for key, value in node.items():
+            if not isinstance(key, str) or key.lower() not in _TRUST_DATE_PROPS:
+                continue
+            add(dates, f"jsonld_date:{key}", "high", _ld_scalar(value))
+
+    if any(not _has_ancestor(tag, _INERT_LINK_CONTAINERS) for tag in soup.find_all("article")):
+        article.append("article_element")
+
+    path_date = _URL_PATH_DATE_RE.search(urlparse(page_url).path)
+    if path_date:
+        add(dates, "url_path_date", "medium", path_date.group(0).strip("/-"))
+
+    return {"author": author, "dates": dates, "article": article}
+
+
 def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None) -> ParsedPage:
     """Extract SEO data from an HTML string (pure — no network).
 
@@ -1785,6 +1996,12 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["jsonld"], result["jsonld_invalid"] = _extract_jsonld(soup)
     else:
         result["jsonld"], result["jsonld_invalid"] = [], []
+    # Ungated like heading_outline: the per-family lists are capped, and an
+    # audit that can see which authorship/date markup a page declared does not
+    # have to infer trust evidence from an aggregate count (#823). The
+    # schema-family signals simply reflect whichever jsonld_blocks were parsed
+    # above -- with the option off there are none to read.
+    result["trust_signals"] = extract_trust_signals(soup, result["jsonld"], final_url)
     if opts["links"]:
         content_config = options.get("content_area") if isinstance(options, dict) else None
         position_rules = options.get("link_position_rules") if isinstance(options, dict) else None

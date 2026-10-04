@@ -1,28 +1,30 @@
-# seohead-seotools documentation
+# SEOHEAD Tools documentation
 
-Headless evidence and audit-automation toolkit: it analyzes Screaming Frog exports, adds bounded
-live URL and infrastructure checks plus explicit external data sources, and exposes one shared
-core through two interfaces — CLI and local MCP. It is not a general-purpose crawler.
+Headless SEO evidence and audit automation: a native site crawler, Screaming Frog export analysis,
+bounded live URL and infrastructure checks, and explicit external data sources, exposed through the
+CLI and a local MCP server.
 
 ## Where to start
 
 | You are… | Read |
 |---|---|
 | Setting the toolkit up from zero | [SETUP.md](SETUP.md) — versions, deps, first run |
+| Installing on a headless Linux VPS over SSH | [LINUX_VPS.md](LINUX_VPS.md) — pinned install, browser dependencies, upgrades, rollback, and measured CI smoke |
 | Looking for a copy-paste command | [USAGE.md](USAGE.md) — runnable examples |
 | Checking which source inputs a command accepts | [INPUTS.md](INPUTS.md) — generated command-input catalogue |
 | Managing or inspecting saved scans | [STORAGE.md](STORAGE.md) — SQLite import, provenance, retained bodies, snapshots, and reviewed retention |
 | Importing a third-party crawl export | [THIRD_PARTY_CRAWL_IMPORT.md](THIRD_PARTY_CRAWL_IMPORT.md) — versioned CSV manifest, field coverage, and limits |
+| Tracking findings and their history across scans | [LEDGER.md](LEDGER.md) — the `ledger.v1` remediation ledger: identity, observations, coverage, migration |
 | Operating a SQLite scan baseline or reviewing capacity evidence | [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md) — capture-to-prune workflow, evidence limits, and the measured release-profile record with its two named limits |
 | New to the toolkit | [GUIDELINE.md](GUIDELINE.md) — what it is, the first run, reading an audit honestly, the usual mistakes |
 | A native crawl stopped early | [RECOVERY.md](RECOVERY.md) — the two checkpoints, `--resume`, resume vs. intentional fresh start |
-| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — 59 chains, each with its commands, its output, its cost and its limits |
-| Looking for a tool | [TOOLS.md](TOOLS.md) — reference for all 100 |
+| Wondering what this can do end to end | [scenarios/](scenarios/README.md) — workflows, outputs, costs and limits |
+| Looking for a tool | [TOOLS.md](TOOLS.md) — inventory, network use, side effects and limits |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
-| Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — all 149, generated from the registry |
-| Wondering how this compares to a licensed crawler | [COVERAGE_SF_ISSUES.md](COVERAGE_SF_ISSUES.md) — all 320 published issues, each with a status |
-| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — map of the 24 skills |
+| Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — current check registry, generated from source |
+| Wondering how this compares to a licensed crawler | [COVERAGE_SF_ISSUES.md](COVERAGE_SF_ISSUES.md) — published coverage claims and status |
+| Looking for a method, not a command | [SKILLS.md](SKILLS.md) — workflow and method-skill map |
 | Looking for a no-key workflow | [RECIPES.md](RECIPES.md) — exports, traffic decline, bounded live audit |
 | About to change code | [ARCHITECTURE.md](ARCHITECTURE.md) — layers and invariants |
 | Naming a new module or test file | [NAMING.md](NAMING.md) — what a name must say, and what is deliberately left alone |
@@ -31,6 +33,8 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 | Arguing with a past decision | [DECISIONS.md](DECISIONS.md) — why it was done that way |
 | Checking what our guidance was aligned against | [GOOGLE_GUIDANCE_REVIEW.md](GOOGLE_GUIDANCE_REVIEW.md) — the 175 Google Search Central guides read on 2026-09-09, their labels, and the three repairs |
 | Understanding the product and its role beside Screaming Frog | [COMPARISON.md](COMPARISON.md) — canonical positioning, workflow, and boundaries |
+| Reviewing the software for security, legal, or procurement | [SOFTWARE_REVIEW.md](SOFTWARE_REVIEW.md) — generated evidence pack, outbound endpoints, data flow, storage |
+| Integrating the guided scan bot | [TELEGRAM_BOT.md](TELEGRAM_BOT.md) — the versioned conversation contract, states, transitions, and invariants |
 
 ## What lives here
 
@@ -49,7 +53,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
   retained scan artifacts, audit documents, inline corpora, provider queries,
   and the distinct operational stores. Generated from
   `seohead/input_contracts.py` (`scripts/generate_input_reference.py`).
-- **[CHECKS.md](CHECKS.md)** — the 162 checks the SF crawl audit runs: what each fires
+- **[CHECKS.md](CHECKS.md)** — the checks the SF crawl audit runs: what each fires
   on, what evidence it needs, and the fix that ships with the finding. Generated
   from `seohead/sf/core/registry.py` (`scripts/generate_checks_reference.py`);
   `tests/test_docs_drift.py` fails the build if it drifts from the registry.
@@ -70,7 +74,7 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 - **[NAMING.md](NAMING.md)** — what a module or test file name must say, when a
   basename may legitimately repeat across packages, and what naming decisions
   are deliberately left open.
-- **[TESTING.md](TESTING.md)** — how to run the suite, what the 1500+ tests
+- **[TESTING.md](TESTING.md)** — how to run the suite, what the tests
   cover, what they deliberately do not, and which missing tests to write first.
 - **[GOTCHAS.md](GOTCHAS.md)** — operational traps captured by tests and code
   contracts: API money, quotas, stdin quirks, and explicit mutation flags.
@@ -84,16 +88,20 @@ core through two interfaces — CLI and local MCP. It is not a general-purpose c
 - **[COVERAGE_GAPS.md](COVERAGE_GAPS.md)** — the map of what the audit still
   lacks, with implemented items marked as done.
 - **[CHECKLIST_AUDIT.md](CHECKLIST_AUDIT.md)** — the audit registry checked
-  category by category against an external ~320-item technical-SEO
+  category by category against an external technical-SEO
   checklist, with each claim marked verified or unverified and evidence
   quoted from the registry.
-- **[SKILLS.md](SKILLS.md)** — the 22 technical workflow skills: when to apply each,
+- **[SKILLS.md](SKILLS.md)** — technical workflow skills: when to apply each,
   which tools it drives, which tools deliberately have no skill.
 - **[RECIPES.md](RECIPES.md)** — three agent workflows that use existing exports, bounded
   public evidence, or a user-authorized browser without pretending that provider credentials exist.
 - **[RECOVERY.md](RECOVERY.md)** — resuming a native `crawl-site` run that stopped early: the
   `crawl_state.json` checkpoint and its identical-invocation requirement, `--resume` for a
   SQLite scan, and how to tell a successful resume from an intentional fresh start.
+- **[SOFTWARE_REVIEW.md](SOFTWARE_REVIEW.md)** — the evidence pack an internal
+  security/legal/procurement review asks for: generated dependency/license
+  inventory, release checksums and provenance, the outbound-endpoint and
+  data-flow map, storage and telemetry facts, and how to verify it all.
 
 ### Repository contracts
 

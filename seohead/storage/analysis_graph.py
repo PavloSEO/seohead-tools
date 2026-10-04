@@ -147,6 +147,19 @@ class AnalysisGraph:
         )
         self._ready = True
 
+    def iter_evidence_links(self) -> Iterator[dict[str, str | None]]:
+        """Repeatable normalized observations for fact-only attribution checks."""
+        self._prepare()
+        for source, destination, anchor, position in self.con.execute(
+            f"SELECT raw_src,raw_dst,anchor,position FROM {self._edges} ORDER BY seq"
+        ):
+            yield {
+                "source_url": source,
+                "destination_url": destination,
+                "anchor": anchor or None,
+                "link_position": position or None,
+            }
+
     def iter_anchor_groups(
         self, is_generic_anchor: Callable[[str], bool], max_locations: int
     ) -> Iterator[AnchorGroup]:

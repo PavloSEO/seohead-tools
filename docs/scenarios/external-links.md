@@ -25,7 +25,31 @@ That is deliberate: a crawl of your site that follows every outbound link become
 everyone else's, at your rate, from your address. The crawl gives you the inventory —
 `discovery.external.store` keeps it — and the checking is a separate, explicit step.
 
-**2. Check the destinations of one page, deliberately.**
+**2a. Opt into a bounded check at crawl time, when you mean to check them all.**
+
+```json
+{"discovery": {"external": {"store": true, "crawl": true}},
+ "external_checks": {"max_targets": 100, "max_hosts": 20, "max_requests": 300, "max_redirects": 5}}
+```
+
+With `discovery.external.crawl` on, the same crawl runs a second, separate phase once the
+internal frontier closes: each distinct recorded destination is requested once — status, content
+type, redirect chain — inside `external_checks.*` budgets that share nothing with the internal
+frontier's own limits. It is bounded, not a second-origin crawl: `max_depth` hops of *same-host*
+links on a destination that answered is the only recursion it ever does, off-host links found on
+an external page are never followed, and a redirect to a private or non-public target is refused
+by the same guard the internal crawl runs under.
+
+Every destination ends with a written outcome in `./run/external_checks.jsonl` — `fetched`,
+`failed`, `blocked`, or `skipped` with the budget that declined it — plus the pages that linked
+to it, and the run's own coverage summary lands in `discovery.external_checks` in the result
+(finish reason, per-outcome counts, requests and hosts spent), deliberately distinct from the
+internal crawl's `finish_reason`. An interrupted or budget-stopped phase resumes where it
+stopped: decided destinations are not re-requested, and spent budgets are not reopened. The
+phase exists on the legacy directory route (`--out-dir`) of a site crawl only; a `--scan-out`
+run or a list-mode run with the option set refuses by name rather than silently dropping it.
+
+**2b. Or check the destinations of one page, deliberately.**
 
 ```bash
 seohead links-check --url https://example.com/page
@@ -81,9 +105,10 @@ else's server and worth re-checking next week before touching the article.
 
 ## What it costs
 
-One request per external destination you check, and none at all from the crawl itself. This is
-the one chain here that sends requests to servers that did not ask for them, so check a sample
-of pages rather than the whole archive, and do it once.
+One request per external destination you check — and, with `discovery.external.crawl` on, one
+per destination the crawl recorded plus each redirect hop it follows, all inside the
+`external_checks.*` budgets. This is the one chain here that sends requests to servers that did
+not ask for them, so check a sample of pages rather than the whole archive, and do it once.
 
 Nothing paid.
 

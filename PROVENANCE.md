@@ -25,10 +25,10 @@ implementations. Publicly relevant inspirations and data licences are listed in
 
 Counts shown in the README are checked against source registries:
 
-- 98 shared handlers exposed through the CLI and `seo_*` MCP tools;
+- 115 shared handlers exposed through the CLI and `seo_*` MCP tools;
 - five Screaming Frog-specific `sf_*` MCP tools;
-- 162 audit checks in the crawl registry;
-- 24 technical workflow skills plus seven packaged SEO playbooks;
+- 176 audit checks in the crawl registry;
+- 25 technical workflow skills plus seven packaged SEO playbooks;
 - Over 1100 offline tests in the current suite.
 
 When these registries change, tests and public counts must change in the same pull request.

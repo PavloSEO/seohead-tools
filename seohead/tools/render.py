@@ -31,13 +31,21 @@ import os
 import re
 import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 
 from bs4 import BeautifulSoup
 
-from seohead.recon.net import UA, http_client, normalize_url, validate_url
+from seohead.recon.net import UA, client_network_policy, http_client, normalize_url, validate_url
+from seohead.recon.remote_policy import RemoteTargetError, current_remote_policy
 from seohead.tools import dualcrawl
+from seohead.tools.browser_transport import (
+    BrowserTransportError,
+    open_browser,
+    open_context,
+    prepare,
+)
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
 # renders a different DOM at different widths, so comparing two runs requires
@@ -47,6 +55,81 @@ VIEWPORT_PRESETS: dict[str, dict[str, int]] = {
     "desktop": {"width": 1366, "height": 768},
     "mobile": {"width": 390, "height": 844},
 }
+
+# Headless engines the pinned renderer can launch, keyed by the Playwright
+# browser name a crawl config may select (seohead.crawl.settings.RENDER_ENGINES
+# validates against the same list -- keep them in step). Each entry carries
+# the launch options the guarded path may pass and whether Playwright can
+# emulate a mobile viewport (``is_mobile``) with that engine -- it documents
+# the option as unsupported on Firefox, so asking for it there is a
+# capability error, not a silently different render. ``has_touch`` is a
+# general context option every engine accepts, so touch emulation alone is
+# never gated by this map.
+BROWSER_ENGINES: dict[str, dict[str, Any]] = {
+    "chromium": {"launch_options": {"chromium_sandbox": True}, "mobile_emulation": True},
+    "firefox": {"launch_options": {}, "mobile_emulation": False},
+    "webkit": {"launch_options": {}, "mobile_emulation": True},
+}
+
+
+def _engine_capability_error(engine: str, browser_cfg: dict[str, Any]) -> str:
+    """Name why ``engine`` cannot serve ``browser_cfg``, or ``""`` when it can.
+
+    Unknown names and unsupported emulation combinations are distinct errors
+    from a missing Playwright or a missing browser binary: each tells the
+    operator a different corrective action, and none silently substitutes
+    another engine.
+    """
+    if engine not in BROWSER_ENGINES:
+        supported = ", ".join(sorted(BROWSER_ENGINES))
+        return f"unsupported rendering engine {engine!r}; supported engines: {supported}"
+    if not BROWSER_ENGINES[engine]["mobile_emulation"] and browser_cfg.get("mobile_emulation"):
+        return (
+            f"rendering engine {engine!r} cannot emulate a mobile viewport "
+            "(Playwright does not implement is_mobile for it); unset "
+            "mobile_emulation or pick another engine"
+        )
+    return ""
+
+
+def _missing_browser_binary(exc: BaseException) -> bool:
+    """Whether ``exc`` is Playwright's "browser executable not installed" error."""
+    message = str(exc).lower()
+    return "executable doesn't exist" in message or "browser is not installed" in message
+
+
+def resolve_viewport(browser_cfg: dict[str, Any]) -> dict[str, int]:
+    """Effective pixel dimensions a render context must be created with.
+
+    The named preset supplies dimensions unless ``viewport_width`` and
+    ``viewport_height`` carry a complete custom pair; the preset keeps deciding
+    the profile either way, so old configs behave exactly as before. A
+    malformed pair raises instead of guessing -- crawl settings validation
+    rejects the same shapes before a run reaches here.
+    """
+    from seohead.crawl.settings import MAX_VIEWPORT_DIMENSION_PX
+
+    preset = VIEWPORT_PRESETS.get(
+        str(browser_cfg.get("viewport", "desktop")), VIEWPORT_PRESETS["desktop"]
+    )
+    width = browser_cfg.get("viewport_width")
+    height = browser_cfg.get("viewport_height")
+    if width in (None, 0) and height in (None, 0):
+        return dict(preset)
+    if (
+        type(width) is not int
+        or type(height) is not int
+        or width < 1
+        or height < 1
+        or width > MAX_VIEWPORT_DIMENSION_PX
+        or height > MAX_VIEWPORT_DIMENSION_PX
+    ):
+        raise ValueError(
+            "viewport_width and viewport_height must be a complete pair of "
+            f"integers between 1 and {MAX_VIEWPORT_DIMENSION_PX}"
+        )
+    return {"width": width, "height": height}
+
 
 # A stable diagnostic representation, not a crawler identity or fingerprint-evasion
 # profile. ``render_check(..., viewport="mobile")`` compares what a typical
@@ -186,6 +269,7 @@ def _pinned_browser_route(
     if type(max_response_bytes) is not int or max_response_bytes < 1:
         raise ValueError("browser response limit must be a positive integer")
     limitations: list[str] = []
+    policy = client_network_policy(client)
 
     def abort(route: Any, reason: str) -> None:
         if reason not in limitations:
@@ -197,10 +281,18 @@ def _pinned_browser_route(
         url = str(request.url)
         method = str(request.method).upper()
         if method not in _BROWSER_METHODS:
-            abort(route, f"browser method {method} is unsupported by pinned rendering")
+            reason = (
+                "browser method is unsupported by pinned rendering"
+                if policy is not None
+                else f"browser method {method} is unsupported by pinned rendering"
+            )
+            abort(route, reason)
             return
         try:
-            validate_url(url)
+            if policy is None:
+                validate_url(url)
+            else:
+                validate_url(url, policy=policy)
             if request_gate is not None:
                 request_gate()
             headers = {
@@ -252,8 +344,12 @@ def _pinned_browser_route(
                 if undecoded:
                     abort(
                         route,
-                        f"browser response content coding {undecoded} is undecodable "
-                        "by pinned rendering",
+                        (
+                            "browser response content coding is undecodable by pinned rendering"
+                            if policy is not None
+                            else f"browser response content coding {undecoded} is undecodable "
+                            "by pinned rendering"
+                        ),
                     )
                     return
                 # Decoded bytes, not transferred ones: this is the body Chromium
@@ -269,7 +365,7 @@ def _pinned_browser_route(
                     status=response.status_code, headers=response_headers, body=bytes(body)
                 )
         except Exception as exc:
-            abort(route, f"pinned browser request failed: {type(exc).__name__}: {exc}")
+            abort(route, f"pinned browser request failed: {_error_summary(exc, policy)}")
 
     return handler, limitations
 
@@ -310,6 +406,15 @@ def _redact_console(value: Any) -> str:
         r"(?i)(?:authorization|token|secret|password|cookie)\s*[:=]\s*[^\s,;]+", "[redacted]", text
     )
     return re.sub(r"https?://[^\s'\"]+", "[url]", text)
+
+
+def _error_summary(exc: Exception, policy: Any = None) -> str:
+    """Keep remote operational failures free of URLs, headers and browser data."""
+    if policy is not None or current_remote_policy() is not None:
+        if isinstance(exc, RemoteTargetError):
+            return exc.code
+        return "remote browser request failed"
+    return f"{type(exc).__name__}: {exc}"
 
 
 def _staged_screenshot_path(artifacts_dir: str, url: str) -> str:
@@ -710,6 +815,12 @@ def render_check(
     *,
     settle_ms: int = SETTLE_MS,
     request_gate: Callable[[], None] | None = None,
+    engine: str = "chromium",
+    viewport_size: dict[str, int] | None = None,
+    mobile_emulation: bool | None = None,
+    touch_emulation: bool | None = None,
+    transport_config: dict[str, str] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Compare a server response with the DOM produced after JavaScript executes.
 
@@ -737,6 +848,40 @@ def render_check(
     """
     if viewport not in VIEWPORT_PRESETS:
         return {"ok": False, "error": f"unknown viewport {viewport!r}"}
+    if engine not in BROWSER_ENGINES:
+        supported = ", ".join(sorted(BROWSER_ENGINES))
+        return {
+            "ok": False,
+            "error": f"unsupported rendering engine {engine!r}; supported engines: {supported}",
+        }
+    # ``None`` means the caller left the choice to the preset, exactly as
+    # before; an explicit flag lets crawl escalation match what its own
+    # settings say the render will do.
+    is_mobile = (viewport == "mobile") if mobile_emulation is None else bool(mobile_emulation)
+    has_touch = (viewport == "mobile") if touch_emulation is None else bool(touch_emulation)
+    # Only is_mobile is gated: Playwright documents it as unsupported on
+    # Firefox, while has_touch is a general context option every engine
+    # accepts, so a touch-only request is passed through to the launcher.
+    if not BROWSER_ENGINES[engine]["mobile_emulation"] and is_mobile:
+        return {
+            "ok": False,
+            "error": (
+                f"rendering engine {engine!r} cannot emulate a mobile viewport "
+                "(Playwright does not implement is_mobile for it); pick another "
+                "engine or a non-mobile viewport"
+            ),
+        }
+    if viewport_size is not None:
+        width = viewport_size.get("width")
+        height = viewport_size.get("height")
+        if type(width) is not int or type(height) is not int or width < 1 or height < 1:
+            return {
+                "ok": False,
+                "error": "viewport_size must carry positive integer width and height",
+            }
+        size = {"width": width, "height": height}
+    else:
+        size = dict(VIEWPORT_PRESETS[viewport])
     invalid_identity = {
         "ok": False,
         "error": "user_agent must be a single header line",
@@ -748,7 +893,6 @@ def render_check(
         ord(character) < 32 or ord(character) > 126 for character in selected_user_agent
     ):
         return invalid_identity
-    size = dict(VIEWPORT_PRESETS[viewport])
     if not url or not str(url).strip():
         return {"ok": False, "error": "URL is required"}
     target = normalize_url(str(url).strip())
@@ -756,10 +900,15 @@ def render_check(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        remote = (transport_config or {}).get("transport") == "remote"
         return {
             "ok": False,
             "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else f"pip install 'seohead[render]' && python -m playwright install {engine}"
+            ),
         }
     try:
         from playwright.sync_api import TimeoutError as navigation_timeout
@@ -770,18 +919,29 @@ def render_check(
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     try:
-        _refuse_if_root()
+        endpoint, transport_facts = prepare(transport_config)
+        transport_info = {"browser_transport": transport_facts} if endpoint is not None else {}
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
 
     # Fetch raw HTML with the regular client: this is what a non-rendering crawler receives.
+    from seohead.recon.net import crawl_transport_options
+
+    transport_options = crawl_transport_options(proxy_route)
     if request_gate is None:
-        client, _ = http_client(timeout, headers={"User-Agent": selected_user_agent})
+        client, _ = http_client(
+            timeout, headers={"User-Agent": selected_user_agent}, **transport_options
+        )
     else:
         client, _ = http_client(
             timeout,
             headers={"User-Agent": selected_user_agent},
             event_hooks={"request": [lambda _request: request_gate()]},
+            **transport_options,
         )
     try:
         resp = client.get(target)
@@ -791,7 +951,7 @@ def render_check(
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Raw HTML fetch failed: {type(exc).__name__}: {exc}",
+            "error": f"Raw HTML fetch failed: {_error_summary(exc)}",
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
@@ -803,10 +963,39 @@ def render_check(
     browser_client = None
     try:
         browser_client, _http2 = http_client(
-            timeout, follow_redirects=False, headers={"User-Agent": selected_user_agent}
+            timeout,
+            follow_redirects=False,
+            headers={"User-Agent": selected_user_agent},
+            **transport_options,
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            try:
+                browser = open_browser(
+                    getattr(pw, engine),
+                    endpoint,
+                    timeout_seconds=timeout,
+                    local_launch_options=(
+                        {
+                            **dict(BROWSER_ENGINES[engine]["launch_options"]),
+                            **_local_chromium_launch_options(),
+                        }
+                        if endpoint is None and engine == "chromium"
+                        else dict(BROWSER_ENGINES[engine]["launch_options"])
+                    ),
+                )
+            except Exception as exc:
+                if endpoint is None and _missing_browser_binary(exc):
+                    return {
+                        "ok": False,
+                        "url": target,
+                        "error": (
+                            f"the {engine!r} browser binary is not installed for this "
+                            f"Playwright ({type(exc).__name__})"
+                        ),
+                        "install": f"python -m playwright install {engine}",
+                    }
+                raise
+            context = None
             try:
                 # service_workers="block": a default-configuration service
                 # worker can serve requests the page.route() guard below never
@@ -817,13 +1006,18 @@ def render_check(
                 # JavaScript) looks indistinguishable from a page that genuinely needs a
                 # renderer -- issue #199. Matching identity removes that confound rather
                 # than trying to detect it after the fact.
-                context = browser.new_context(
-                    viewport=size,
-                    is_mobile=(viewport == "mobile"),
-                    has_touch=(viewport == "mobile"),
-                    service_workers="block",
-                    user_agent=selected_user_agent,
-                )
+                context_options: dict[str, Any] = {
+                    "viewport": size,
+                    "service_workers": "block",
+                    "user_agent": selected_user_agent,
+                }
+                # Passed only when set: engines without device emulation
+                # (Firefox) reject the key outright rather than ignore it.
+                if is_mobile:
+                    context_options["is_mobile"] = True
+                if has_touch:
+                    context_options["has_touch"] = True
+                context = open_context(browser, endpoint, context_options)
                 context.add_init_script(_CLS_INIT_JS)
                 route_handler, limitations = _pinned_browser_route(
                     browser_client, request_gate=request_gate
@@ -846,16 +1040,34 @@ def render_check(
                 if limitations:
                     raise RuntimeError("; ".join(limitations))
             finally:
-                browser.close()
+                if context is not None:
+                    try:
+                        context.close()
+                    finally:
+                        browser.close()
+    except BrowserTransportError as exc:
+        return {
+            "ok": False,
+            "reason": exc.code,
+            "error": str(exc),
+            "url": target,
+            **transport_info,
+        }
     except Exception as exc:
         return {
             "ok": False,
-            "error": f"Browser rendering failed: {type(exc).__name__}: {exc}",
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+            "error": (
+                "Remote browser rendering failed after connection"
+                if endpoint is not None
+                else f"Browser rendering failed: {_error_summary(exc)}"
+            ),
             "url": target,
             "viewport": viewport,
             "viewport_size": size,
             "user_agent": selected_user_agent,
             "raw": _snapshot(raw_html, final_url),
+            **transport_info,
         }
     finally:
         if browser_client is not None:
@@ -895,6 +1107,7 @@ def render_check(
             # Neither True nor False: this run does not know.
             "js_dependent": None,
             "metrics_lab": metrics,
+            **transport_info,
         }
     findings = compare(raw, rendered, raw_html, shell)
     # Keep the summary aligned with findings: five widget words do not make a
@@ -954,6 +1167,7 @@ def render_check(
         "metrics_lab": metrics,
         "findings": findings,
         "dual_crawl": dual_crawl,
+        **transport_info,
     }
 
 
@@ -963,6 +1177,8 @@ def rendered_html(
     wait: str = "load",
     *,
     request_gate: Callable[[], None] | None = None,
+    transport_config: dict[str, str] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Return rendered HTML for tools that require the final DOM.
 
@@ -972,10 +1188,15 @@ def rendered_html(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        remote = (transport_config or {}).get("transport") == "remote"
         return {
             "ok": False,
             "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else "pip install 'seohead[render]' && python -m playwright install chromium"
+            ),
         }
     target = normalize_url(str(url or "").strip())
     if not target:
@@ -985,18 +1206,39 @@ def rendered_html(
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     try:
-        _refuse_if_root()
+        endpoint, transport_facts = prepare(transport_config)
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
     browser_client = None
     try:
+        from seohead.recon.net import crawl_transport_options
+
         browser_client, _http2 = http_client(
-            timeout, follow_redirects=False, headers={"User-Agent": UA}
+            timeout,
+            follow_redirects=False,
+            headers={"User-Agent": UA},
+            **crawl_transport_options(proxy_route),
         )
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(chromium_sandbox=True)
+            browser = open_browser(
+                pw.chromium,
+                endpoint,
+                timeout_seconds=timeout,
+                local_launch_options=(
+                    _local_chromium_launch_options()
+                    if endpoint is None
+                    else {"chromium_sandbox": True}
+                ),
+            )
+            context = None
             try:
-                context = browser.new_context(service_workers="block", user_agent=UA)
+                context = open_context(
+                    browser, endpoint, {"service_workers": "block", "user_agent": UA}
+                )
                 try:
                     route_handler, limitations = _pinned_browser_route(
                         browser_client, request_gate=request_gate
@@ -1009,13 +1251,29 @@ def rendered_html(
                     page.goto(target, wait_until=wait, timeout=timeout * 1000)
                     if limitations:
                         raise RuntimeError("; ".join(limitations))
-                    return {"ok": True, "url": page.url, "html": page.content()}
+                    result = {"ok": True, "url": page.url, "html": page.content()}
+                    if endpoint is not None:
+                        result["browser_transport"] = transport_facts
+                    return result
                 finally:
                     context.close()
             finally:
-                browser.close()
+                if context is not None:
+                    browser.close()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
     except Exception as exc:
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "url": target}
+        error = (
+            "Remote browser rendering failed after connection"
+            if endpoint is not None
+            else _error_summary(exc)
+        )
+        return {
+            "ok": False,
+            "error": error,
+            "url": target,
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+        }
     finally:
         if browser_client is not None:
             browser_client.close()
@@ -1086,6 +1344,24 @@ def _safe_policy_facts(policy_facts: dict[str, Any] | None) -> dict[str, bool]:
     }
 
 
+def _local_chromium_launch_options() -> dict[str, Any]:
+    """Keep Chromium sandboxed and optionally select an installed local browser.
+
+    ``SEOHEAD_CHROME`` is an operator-controlled executable override. It applies
+    only to local Chromium launches; remote transport and other browser engines
+    do not consume it. An explicit but invalid path is an error rather than a
+    silent fallback to a different browser binary.
+    """
+    options: dict[str, Any] = {"chromium_sandbox": True}
+    executable = os.environ.get("SEOHEAD_CHROME")
+    if executable:
+        path = Path(executable).expanduser()
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise RuntimeError("SEOHEAD_CHROME must point to an executable local Chrome binary")
+        options["executable_path"] = str(path.resolve())
+    return options
+
+
 def render_document(
     url: str,
     rendering_config: dict[str, Any],
@@ -1096,6 +1372,7 @@ def render_document(
     max_html_bytes: int | None = None,
     policy_facts: dict[str, Any] | None = None,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Render one URL under the full crawler rendering configuration.
 
@@ -1110,47 +1387,64 @@ def render_document(
     re-fetch, so every setting #18 asked for is honoured: script timeout
     (how long JavaScript may keep running after load), viewport,
     resize-to-content with its cap, shadow-DOM and iframe flattening, device
-    pixel ratio, mobile/touch emulation, page-load strategy, and a persistent
-    profile that stays off unless a directory is explicitly named.
+    pixel ratio, mobile/touch emulation, page-load strategy, a persistent
+    profile that stays off unless a directory is explicitly named, and the
+    headless engine the crawl configuration selected.
     """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return {
-            "ok": False,
-            "error": "Playwright is required",
-            "install": "pip install 'seohead[render]' && python -m playwright install chromium",
-        }
     target = normalize_url(str(url or "").strip())
     if not target:
         return {"ok": False, "error": "URL is required"}
+    browser_cfg = rendering_config.get("browser", {})
+    artifacts_cfg = rendering_config.get("artifacts", {})
+    # Settings validation rejects an unknown engine before a crawl reaches
+    # here; the same check keeps a direct call honest too, and is deliberately
+    # distinct from a missing Playwright or a missing browser binary below.
+    engine = str(browser_cfg.get("engine") or "chromium")
+    capability = _engine_capability_error(engine, browser_cfg)
+    if capability:
+        return {"ok": False, "url": target, "error": capability}
     try:
-        validate_url(target)
+        viewport = resolve_viewport(browser_cfg)
     except ValueError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
-    try:
-        _refuse_if_root()
-    except RuntimeError as exc:
-        return {"ok": False, "url": target, "error": str(exc)}
-
-    if max_html_bytes is not None and (type(max_html_bytes) is not int or max_html_bytes < 0):
-        return {
-            "ok": False,
-            "url": target,
-            "error": "max_html_bytes must be a non-negative integer",
-        }
-    browser_cfg = rendering_config.get("browser", {})
     if browser_cfg.get("persistent_profile"):
         return {
             "ok": False,
             "url": target,
             "error": "persistent browser profiles are unavailable with pinned rendering until cookie continuity is verified",
         }
-    artifacts_cfg = rendering_config.get("artifacts", {})
-    preset = VIEWPORT_PRESETS.get(
-        browser_cfg.get("viewport", "desktop"), VIEWPORT_PRESETS["desktop"]
-    )
-    viewport = dict(preset)
+    if max_html_bytes is not None and (type(max_html_bytes) is not int or max_html_bytes < 0):
+        return {
+            "ok": False,
+            "url": target,
+            "error": "max_html_bytes must be a non-negative integer",
+        }
+    try:
+        validate_url(target)
+    except ValueError as exc:
+        return {"ok": False, "url": target, "error": str(exc)}
+    try:
+        endpoint, transport_facts = prepare(browser_cfg, embedded=True)
+        if endpoint is None:
+            _refuse_if_root()
+    except BrowserTransportError as exc:
+        return {"ok": False, "url": target, "reason": exc.code, "error": str(exc)}
+    except RuntimeError as exc:
+        return {"ok": False, "url": target, "error": str(exc)}
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        remote = browser_cfg.get("transport") == "remote"
+        return {
+            "ok": False,
+            "error": "Playwright is required",
+            "install": (
+                "pip install 'seohead[render]'"
+                if remote
+                else f"pip install 'seohead[render]' && python -m playwright install {engine}"
+            ),
+        }
+
     console_errors: list[str] = []
     console_errors_omitted = 0
     screenshot_path: str | None = None
@@ -1160,7 +1454,44 @@ def render_document(
     iframe_flattened = 0
     observed_policy = _safe_policy_facts(policy_facts)
     observed_policy["credentials_used"] |= bool(browser_cfg.get("persistent_profile"))
-    engine_version = "unknown"
+    # Built before launch so a failure -- a timeout, an aborted navigation,
+    # a missing binary -- still reports the requested engine and the effective
+    # viewport it was attempted under, without pretending a render happened.
+    renderer: dict[str, Any] = {
+        "engine": f"playwright-{engine}",
+        "engine_version": "unknown",
+        "navigation": {
+            "requested_url": target,
+            "final_url": None,
+            "wait_until": browser_cfg.get("wait_until", "load"),
+            "timeout_seconds": nav_timeout,
+        },
+        "settings": {
+            "viewport": viewport,
+            "device_pixel_ratio": float(browser_cfg.get("device_pixel_ratio", 1.0) or 1.0),
+            "mobile_emulation": bool(browser_cfg.get("mobile_emulation")),
+            "touch_emulation": bool(browser_cfg.get("touch_emulation")),
+            "script_timeout_seconds": float(browser_cfg.get("script_timeout_seconds", 0) or 0),
+            "resize_to_content": bool(browser_cfg.get("resize_to_content")),
+            "resize_to_content_max_height_px": int(
+                browser_cfg.get("resize_to_content_max_height_px", 15000)
+            ),
+            "persistent_profile": bool(browser_cfg.get("persistent_profile")),
+        },
+        "transforms": {
+            "flatten_shadow_dom_requested": bool(browser_cfg.get("flatten_shadow_dom")),
+            "flatten_shadow_dom_applied": 0,
+            "flatten_iframes_requested": bool(browser_cfg.get("flatten_iframes")),
+            "flatten_iframes_applied": 0,
+        },
+        "policy": observed_policy,
+        "console_error_count": 0,
+        # The run's render-page bound, recorded per page so a stored render
+        # can be read against the scheduling it was produced under.
+        "page_concurrency": int(browser_cfg.get("page_concurrency") or 1),
+    }
+    if endpoint is not None:
+        renderer["transport"] = transport_facts
     browser_limitations: list[str] = []
 
     # There is deliberately no request hook beside _capture_response. Reading the
@@ -1195,13 +1526,16 @@ def render_document(
     browser = None
     network_client = None
     try:
+        from seohead.recon.net import crawl_transport_options
+
         network_client, _http2 = http_client(
             nav_timeout,
             follow_redirects=False,
             headers={"User-Agent": user_agent or UA},
+            **crawl_transport_options(proxy_route),
         )
         with sync_playwright() as pw:
-            context_options = {
+            context_options: dict[str, Any] = {
                 "viewport": viewport,
                 # The same identity the static crawl presented, for the same
                 # reason #199 pinned it on the single-page probe: this fetch
@@ -1214,17 +1548,47 @@ def render_document(
                 # it serves the toolkit.
                 "user_agent": user_agent or UA,
                 "device_scale_factor": float(browser_cfg.get("device_pixel_ratio", 1.0) or 1.0),
-                "is_mobile": bool(browser_cfg.get("mobile_emulation")),
-                "has_touch": bool(browser_cfg.get("touch_emulation")),
                 # Blocks the default-configuration bypass named in #18's
                 # security section: a service worker can otherwise answer
                 # requests page.route() never sees.
                 "service_workers": "block",
             }
-            browser = pw.chromium.launch(chromium_sandbox=True)
-            context = browser.new_context(**context_options)
+            # Passed only when set: engines without device emulation
+            # (Firefox) reject the keys outright rather than ignore them.
+            if browser_cfg.get("mobile_emulation"):
+                context_options["is_mobile"] = True
+            if browser_cfg.get("touch_emulation"):
+                context_options["has_touch"] = True
+            try:
+                browser = open_browser(
+                    getattr(pw, engine),
+                    endpoint,
+                    timeout_seconds=nav_timeout,
+                    local_launch_options=(
+                        {
+                            **dict(BROWSER_ENGINES[engine]["launch_options"]),
+                            **_local_chromium_launch_options(),
+                        }
+                        if endpoint is None and engine == "chromium"
+                        else dict(BROWSER_ENGINES[engine]["launch_options"])
+                    ),
+                )
+            except Exception as exc:
+                if endpoint is None and _missing_browser_binary(exc):
+                    return {
+                        "ok": False,
+                        "url": target,
+                        "error": (
+                            f"the {engine!r} browser binary is not installed for this "
+                            f"Playwright ({type(exc).__name__})"
+                        ),
+                        "install": f"python -m playwright install {engine}",
+                        "renderer": renderer,
+                    }
+                raise
+            context = open_context(browser, endpoint, context_options)
             actual_browser = browser if browser is not None else getattr(context, "browser", None)
-            engine_version = str(getattr(actual_browser, "version", "unknown"))
+            renderer["engine_version"] = str(getattr(actual_browser, "version", "unknown"))
             try:
                 route_handler, browser_limitations = _pinned_browser_route(
                     network_client, request_gate=request_gate
@@ -1270,7 +1634,11 @@ def render_document(
                         screenshot_state = "staged"
                     except Exception as exc:
                         screenshot_state = "unavailable"
-                        screenshot_error = _redact_console(f"{type(exc).__name__}: {exc}")
+                        screenshot_error = (
+                            "browser screenshot failed"
+                            if current_remote_policy() is not None
+                            else _redact_console(f"{type(exc).__name__}: {exc}")
+                        )
                         with contextlib.suppress(OSError):
                             os.unlink(staged)
                 elif artifacts_cfg.get("screenshots"):
@@ -1279,45 +1647,40 @@ def render_document(
                 if browser_limitations:
                     raise RuntimeError("; ".join(browser_limitations))
             finally:
-                context.close()
-                if browser is not None:
-                    browser.close()
+                try:
+                    context.close()
+                finally:
+                    if browser is not None:
+                        browser.close()
+    except BrowserTransportError as exc:
+        return {
+            "ok": False,
+            "url": target,
+            "reason": exc.code,
+            "error": str(exc),
+            "renderer": renderer,
+        }
     except Exception as exc:
-        return {"ok": False, "url": target, "error": f"{type(exc).__name__}: {exc}"}
+        error = (
+            "Remote browser rendering failed after connection"
+            if endpoint is not None
+            else _error_summary(exc)
+        )
+        return {
+            "ok": False,
+            "url": target,
+            "error": error,
+            "renderer": renderer,
+            **({"reason": "remote_render_failed"} if endpoint is not None else {}),
+        }
     finally:
         if network_client is not None:
             network_client.close()
 
-    renderer = {
-        "engine": "playwright-chromium",
-        "engine_version": engine_version,
-        "navigation": {
-            "requested_url": target,
-            "final_url": final_url,
-            "wait_until": browser_cfg.get("wait_until", "load"),
-            "timeout_seconds": nav_timeout,
-        },
-        "settings": {
-            "viewport": viewport,
-            "device_pixel_ratio": float(browser_cfg.get("device_pixel_ratio", 1.0) or 1.0),
-            "mobile_emulation": bool(browser_cfg.get("mobile_emulation")),
-            "touch_emulation": bool(browser_cfg.get("touch_emulation")),
-            "script_timeout_seconds": float(browser_cfg.get("script_timeout_seconds", 0) or 0),
-            "resize_to_content": bool(browser_cfg.get("resize_to_content")),
-            "resize_to_content_max_height_px": int(
-                browser_cfg.get("resize_to_content_max_height_px", 15000)
-            ),
-            "persistent_profile": bool(browser_cfg.get("persistent_profile")),
-        },
-        "transforms": {
-            "flatten_shadow_dom_requested": bool(browser_cfg.get("flatten_shadow_dom")),
-            "flatten_shadow_dom_applied": shadow_flattened,
-            "flatten_iframes_requested": bool(browser_cfg.get("flatten_iframes")),
-            "flatten_iframes_applied": iframe_flattened,
-        },
-        "policy": observed_policy,
-        "console_error_count": len(console_errors) + console_errors_omitted,
-    }
+    renderer["navigation"]["final_url"] = final_url
+    renderer["transforms"]["flatten_shadow_dom_applied"] = shadow_flattened
+    renderer["transforms"]["flatten_iframes_applied"] = iframe_flattened
+    renderer["console_error_count"] = len(console_errors) + console_errors_omitted
     if not isinstance(dom, dict) or not dom.get("complete"):
         return {
             "ok": False,

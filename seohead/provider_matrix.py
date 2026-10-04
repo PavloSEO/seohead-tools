@@ -26,7 +26,8 @@ handlers call directly, bypassing the registry dispatch
 (``keywords-expand``/``keywords-seasonality``/``regions-tree``/``serp-fetch``
 reach ``seohead.data_sources.yandex_cloud``, ``keywords-exact`` reaches
 ``seohead.data_sources.arsenkin``, ``indexnow-submit`` reaches
-``seohead.data_sources.indexnow``, and ``google-keywords``/``google-serp``
+``seohead.data_sources.indexnow``, ``topvisor-read`` reaches
+``seohead.data_sources.topvisor``, and ``google-keywords``/``google-serp``
 reach ``seohead.data_sources.dataforseo`` — none of which is the
 ``dataforseo_backlinks`` registry entry); ``local`` references are in-process
 tools with no provider transport at all; ``declared`` references name a
@@ -270,14 +271,15 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
         workflow="field-vitals",
         use_case="Core Web Vitals as real users measured them — CrUX field data at origin or URL level",
         providers=(_reg("crux"),),
-        surface=("crux-report", "provider-collect"),
+        surface=("crux-report", "provider-collect", "site-audit"),
         status="supported",
         auth="Google Cloud API key",
         cost_quota="Free within Google API quotas",
         privacy="aggregate",
         limitations=(
-            "Field metrics exist only where Chrome has enough real-user traffic; a "
-            "target with too little data returns ok with empty metrics, not an error"
+            "Field p75 verdicts require an eligible CrUX current record and valid collection "
+            "period; no data or missing metrics are unavailable, not passing. Site-audit "
+            "consumes explicitly supplied evidence and never calls CrUX automatically"
         ),
         csv_fallback="no provider CSV join; CrUX has no user-export path here",
     ),
@@ -313,6 +315,23 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
             "list instead and is not a provider"
         ),
         csv_fallback="a supplied donor-page list is the input to backlinks-check; no provider CSV join",
+    ),
+    WorkflowRow(
+        workflow="rank-tracking",
+        use_case="Read existing Topvisor projects, keywords, competitors, recorded position history and summaries",
+        providers=(_ded("topvisor"),),
+        surface=("topvisor-read",),
+        status="supported",
+        auth="API token + user ID from the central credential files",
+        cost_quota="Reads within the existing Topvisor account; paid position-check launches are structurally unreachable",
+        privacy="restricted",
+        limitations=(
+            "One bounded page per call — the continuation signal is the provider's "
+            'nextOffset, not len(result) == limit; a "--" position is unavailable, '
+            "not rank 0; only fixed get endpoints are wired, so add/edit/del and "
+            "paid checker launches cannot be reached"
+        ),
+        csv_fallback="not applicable — Topvisor rows have no provider-join route",
     ),
     WorkflowRow(
         workflow="url-submission",
@@ -387,6 +406,11 @@ UNSUPPORTED_WORK: tuple[tuple[str, str], ...] = (
     (
         "competitor backlink discovery beyond backlinks_summary",
         "out of declared scope; backlinks-check covers a caller-supplied donor list only",
+    ),
+    (
+        "Topvisor mutations and paid position-check launches",
+        "topvisor-read wires only fixed read-only get endpoints; add/edit/del and "
+        "the paid checker stay unreachable by design",
     ),
 )
 

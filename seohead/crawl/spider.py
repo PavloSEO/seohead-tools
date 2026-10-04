@@ -26,6 +26,7 @@ from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
 
@@ -38,6 +39,7 @@ from seohead.crawl.collect import (
     _write,
     fetch_one,
 )
+from seohead.crawl.external import ExternalCheck, ExternalPolicy, run_external_checks
 from seohead.crawl.settings import (
     DEFAULT_SEGMENT,
     checked_url_budget,
@@ -47,6 +49,11 @@ from seohead.crawl.throttle import MAX_DELAY_S, DispatchGate, Throttle
 from seohead.models import ParsedRobots
 from seohead.recon.net import UA, http_client, normalize_url, registrable_domain
 from seohead.tools.robots import is_allowed, match_path, parse_robots, politeness_delay
+
+_MEDIA_TYPE_TOKEN = re.compile(r"[a-z0-9!#$%&'+\-.^_`|~]+\Z")
+_MEDIA_TYPE_FILTER_REASONS = frozenset(
+    {"excluded_by_media_type", "not_included_by_media_type", "media_type_unavailable"}
+)
 
 MAX_DEPTH_CEILING = 20
 ROBOTS_TOKEN = "SEOHEAD-Tools"
@@ -149,6 +156,23 @@ class SpiderResult(CrawlResult):
     # has no render to fall back on. Empty when the start page was not
     # (re-)fetched in this call, e.g. a resumed run that starts past depth 0.
     start_page_evidence: dict[str, Any] = field(default_factory=dict)
+    # The legacy output route may keep evidence in JSONL instead of duplicating
+    # it in these lists. Direct callers keep the original in-memory contract.
+    spooled_evidence: bool = False
+    page_count: int = 0
+    link_count: int = 0
+    form_count: int = 0
+
+    # Opt-in bounded check of recorded external destinations (see
+    # seohead.crawl.external — enabled by discovery.external.crawl). Empty
+    # unless that option ran: an absent check is itself a fact the summary
+    # below records, so "not checked" never masquerades as "checked clean".
+    external_checks: list[ExternalCheck] = field(default_factory=list)
+    # The external phase's own coverage statement — policy used, per-outcome
+    # counts, why it stopped — kept apart from the internal frontier's
+    # finish_reason/partial because internal completeness and external-check
+    # coverage are different measurements (#746).
+    external_summary: dict[str, Any] = field(default_factory=dict)
 
 
 def _canonical_key(url: str) -> str:
@@ -223,28 +247,33 @@ def _continues_failure_streak(record: PageRecord) -> bool:
 _PAGE_RECORD_FIELDS = {f.name for f in dataclasses.fields(PageRecord)}
 
 
+def _jsonl_rows(path: str):
+    """Read complete JSONL objects one at a time, ignoring a torn final line."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    raw = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(raw, dict):
+                    yield raw
+    except FileNotFoundError:
+        return
+
+
 def _read_pages_jsonl(path: str) -> list[PageRecord]:
     """Reconstruct previously fetched pages from a prior run's output.
 
     Unknown keys are dropped rather than rejected, so a state file written by
     an older build with fewer fields still resumes.
     """
-    try:
-        with open(path, encoding="utf-8") as handle:
-            lines = handle.readlines()
-    except FileNotFoundError:
-        return []
-    pages = []
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            raw = json.loads(line)
-        except ValueError:
-            continue  # a truncated final line must not discard the rest
-        if isinstance(raw, dict):
-            pages.append(PageRecord(**{k: v for k, v in raw.items() if k in _PAGE_RECORD_FIELDS}))
-    return pages
+    return [
+        PageRecord(**{k: v for k, v in raw.items() if k in _PAGE_RECORD_FIELDS})
+        for raw in _jsonl_rows(path)
+    ]
 
 
 _LINK_EDGE_FIELDS = {f.name for f in dataclasses.fields(LinkEdge)}
@@ -272,7 +301,7 @@ def _write_decision(handle, entry: dict[str, Any]) -> None:
     handle.flush()
 
 
-def _read_links_jsonl(path: str) -> list[LinkEdge]:
+def _iter_links_jsonl(path: str):
     """Reconstruct the link graph recorded before a checkpoint.
 
     Edges are appended to this sidecar as they are found (see ``_write_link``)
@@ -282,12 +311,35 @@ def _read_links_jsonl(path: str) -> list[LinkEdge]:
     save — only ever appending what is new. Unknown keys are dropped rather
     than rejected, so a file written by an older build still resumes.
     """
+    for raw in _jsonl_rows(path):
+        fields = {k: v for k, v in raw.items() if k in _LINK_EDGE_FIELDS}
+        # rel is a tuple in memory but a list once it has been through JSON.
+        if "rel" in fields:
+            fields["rel"] = tuple(fields["rel"] or ())
+        yield LinkEdge(**fields)
+
+
+def _read_links_jsonl(path: str) -> list[LinkEdge]:
+    return list(_iter_links_jsonl(path))
+
+
+def _read_forms_jsonl(path: str) -> list[FormEdge]:
+    return [FormEdge(**raw) for raw in _jsonl_rows(path)]
+
+
+def _read_external_jsonl(path: str) -> list[ExternalCheck]:
+    """Reconstruct the external-destination outcomes a prior run recorded.
+
+    Same append-only sidecar contract as ``links.jsonl``: a truncated final
+    line must not discard the rest, and a missing file just means the earlier
+    run stopped before its first check.
+    """
     try:
         with open(path, encoding="utf-8") as handle:
             lines = handle.readlines()
     except FileNotFoundError:
         return []
-    edges = []
+    records = []
     for line in lines:
         if not line.strip():
             continue
@@ -296,15 +348,8 @@ def _read_links_jsonl(path: str) -> list[LinkEdge]:
         except ValueError:
             continue  # a truncated final line must not discard the rest
         if isinstance(raw, dict):
-            fields = {k: v for k, v in raw.items() if k in _LINK_EDGE_FIELDS}
-            # rel is a tuple in memory but a list once it has been through JSON. Without
-            # this, a resumed crawl would hand callers a different type for the same field
-            # than an uninterrupted one -- and comparisons against ("nofollow",) would
-            # quietly stop matching.
-            if "rel" in fields:
-                fields["rel"] = tuple(fields["rel"] or ())
-            edges.append(LinkEdge(**fields))
-    return edges
+            records.append(ExternalCheck.from_dict(raw))
+    return records
 
 
 def form_edges(parsed: dict[str, Any] | None, source_url: str) -> tuple[list[FormEdge], int]:
@@ -430,6 +475,10 @@ class Scope:
     internal: str = "host"
     include_patterns: tuple[re.Pattern[str], ...] = ()
     exclude_patterns: tuple[re.Pattern[str], ...] = ()
+    include_extensions: frozenset[str] = frozenset()
+    exclude_extensions: frozenset[str] = frozenset()
+    include_media_types: tuple[str, ...] = ()
+    exclude_media_types: tuple[str, ...] = ()
     exclude_hosts: frozenset[str] = frozenset()
     segments: tuple[SegmentRule, ...] = ()
     segments_only: frozenset[str] = frozenset()
@@ -441,6 +490,18 @@ class Scope:
             internal=scope.get("internal", "host"),
             include_patterns=tuple(re.compile(p) for p in scope.get("include_patterns") or ()),
             exclude_patterns=tuple(re.compile(p) for p in scope.get("exclude_patterns") or ()),
+            include_extensions=frozenset(
+                value.removeprefix(".").lower() for value in scope.get("include_extensions") or ()
+            ),
+            exclude_extensions=frozenset(
+                value.removeprefix(".").lower() for value in scope.get("exclude_extensions") or ()
+            ),
+            include_media_types=tuple(
+                value.lower() for value in scope.get("include_media_types") or ()
+            ),
+            exclude_media_types=tuple(
+                value.lower() for value in scope.get("exclude_media_types") or ()
+            ),
             exclude_hosts=frozenset(
                 host.lower().lstrip(".") for host in scope.get("exclude_hosts") or ()
             ),
@@ -493,6 +554,42 @@ class Scope:
             return "not_included_by_pattern"
         if self.segments_only and self.segment_for(url) not in self.segments_only:
             return "outside_segment"
+        suffix = PurePosixPath(urlsplit(url).path).suffix
+        extension = suffix[1:].lower() if suffix else ""
+        if extension and extension in self.exclude_extensions:
+            return "excluded_by_extension"
+        if self.include_extensions and extension not in self.include_extensions:
+            return "not_included_by_extension"
+        return ""
+
+    def response_media_rejection(self, content_type: str) -> str:
+        """Return a body-filter reason for a response Content-Type, if any.
+
+        This is separate from ``rejection``: suffixes are checked before a
+        request, while a response media type exists only after the server
+        answers. Missing or malformed types remain eligible unless an
+        allowlist makes a positive type match necessary.
+        """
+        media_type = (content_type or "").split(";", 1)[0].strip().lower()
+        if not media_type or media_type.count("/") != 1:
+            return "media_type_unavailable" if self.include_media_types else ""
+        major, minor = media_type.split("/", 1)
+        if not _MEDIA_TYPE_TOKEN.fullmatch(major) or not _MEDIA_TYPE_TOKEN.fullmatch(minor):
+            return "media_type_unavailable" if self.include_media_types else ""
+
+        def matches(pattern: str) -> bool:
+            return (
+                media_type.startswith(pattern[:-1])
+                if pattern.endswith("/*")
+                else media_type == pattern
+            )
+
+        if any(matches(pattern) for pattern in self.exclude_media_types):
+            return "excluded_by_media_type"
+        if self.include_media_types and not any(
+            matches(pattern) for pattern in self.include_media_types
+        ):
+            return "not_included_by_media_type"
         return ""
 
 
@@ -617,6 +714,7 @@ def crawl_site(
     seed_urls: list[str] | None = None,
     out_path: str | None = None,
     links_path: str | None = None,
+    forms_path: str | None = None,
     decisions_path: str | None = None,
     state_path: str | None = None,
     config_fingerprint: str = "",
@@ -646,8 +744,13 @@ def crawl_site(
     store_external_links: bool = True,
     crawl_redirects: bool = True,
     capture_link_attributes: bool = False,
+    crawl_external_links: bool = False,
+    external_policy: dict[str, Any] | None = None,
+    external_path: str | None = None,
     dispatch_gate: DispatchGate | None = None,
     progress: Callable[[int, int], None] | None = None,
+    spool_evidence: bool = False,
+    proxy_route: Any = None,
 ) -> SpiderResult:
     """Crawl one host breadth-first from ``start_url``, within ``scope``.
 
@@ -718,6 +821,18 @@ def crawl_site(
     protocol-relative-link detection — the two findings that need them — report nothing
     rather than a false clean result. ``nofollow`` is unaffected either way: it is derived
     from rel at parse time regardless of this setting.
+    ``crawl_external_links`` opts into the bounded post-crawl check of recorded
+    external destinations (``seohead.crawl.external``): once the internal
+    frontier closes, each distinct off-host edge target is fetched once inside
+    ``external_policy``'s own target/host/request/depth/redirect budgets —
+    never recursed into an unrestricted crawl. ``external_path`` is the
+    append-only sidecar (``external_checks.jsonl``) each decided outcome is
+    written to, read back on resume the same way ``links_path`` rebuilds
+    ``result.links`` — resumed runs never re-request a destination already
+    decided, and the requests and hosts already spent count against the
+    budgets rather than reopening them. The phase needs recorded edges, so it
+    only has destinations to check when ``store_external_links`` kept them
+    (``settings.validate`` refuses ``crawl`` without ``store``).
     ``progress``, when given, is called with ``(fetched, queued)`` -- pages
     already recorded, and URLs discovered but not yet fetched -- once before the
     first request and again after every page (after every batch, when
@@ -735,6 +850,8 @@ def crawl_site(
         raise ValueError(f"not a crawlable URL: {start_url!r}")
     rules = scope if isinstance(scope, Scope) else Scope.from_config(scope)
     limit = checked_url_budget(max_urls)
+    if spool_evidence and not (out_path and links_path and forms_path and state_path):
+        raise ValueError("spooled evidence requires page, link, form and state paths")
     depth_limit = max(0, min(int(max_depth), MAX_DEPTH_CEILING))
     max_concurrency = max(1, int(concurrency))
     if state_path:
@@ -749,7 +866,7 @@ def crawl_site(
         else None
     )
 
-    result = SpiderResult()
+    result = SpiderResult(spooled_evidence=spool_evidence)
     if dispatch_gate is None:
         throttle = Throttle(
             min_delay=min_delay,
@@ -764,6 +881,7 @@ def crawl_site(
     # Distinct query strings already enqueued for a given path, so the Nth+1
     # facet/filter variant on the same path is excluded rather than fetched.
     query_budget: dict[str, set[str]] = {}
+    page_count = link_count = form_count = 0
     crawl_started = clock()
 
     def exclude(reason: str, url: str | None = None) -> None:
@@ -813,8 +931,13 @@ def crawl_site(
             # follow_redirects on, a 301 is recorded as a 200 carrying the
             # target's title and body, the Location is never seen, and redirect
             # auditing is impossible — the old and new URL become duplicates.
+            from seohead.recon.net import crawl_transport_options
+
             client, _ = http_client(
-                timeout, follow_redirects=False, headers={"User-Agent": user_agent or UA}
+                timeout,
+                follow_redirects=False,
+                headers={"User-Agent": user_agent or UA},
+                **crawl_transport_options(proxy_route),
             )
             stack.callback(client.close)
 
@@ -851,27 +974,63 @@ def crawl_site(
         loaded_state, resume_note = (
             crawl_state.load(state_path, start, config_fingerprint) if state_path else (None, "")
         )
+        if loaded_state and loaded_state.spooled_evidence:
+            if not spool_evidence:
+                raise ValueError("checkpoint requires spooled page, link and form evidence")
+            if not os.path.isfile(forms_path):
+                raise ValueError("checkpoint form evidence sidecar is missing")
         result.resume_note = resume_note
         result.resumed = loaded_state is not None
 
         handle = None
         if out_path:
             if loaded_state:
-                # Prior pages already live on disk; append rather than replace,
-                # and bring them back into this run's evidence.
-                result.pages.extend(_read_pages_jsonl(out_path))
+                if spool_evidence:
+                    page_count = sum(1 for _ in _jsonl_rows(out_path))
+                else:
+                    result.pages.extend(_read_pages_jsonl(out_path))
             mode = "a" if loaded_state else "w"
             handle = stack.enter_context(open(out_path, mode, encoding="utf-8"))
 
         links_handle = None
         if links_path:
             if loaded_state:
-                # Same move as pages above: prior edges live in the sidecar,
-                # not the checkpoint, so bring them back here rather than
-                # starting result.links at [].
-                result.links.extend(_read_links_jsonl(links_path))
+                if spool_evidence:
+                    link_count = sum(1 for _ in _jsonl_rows(links_path))
+                else:
+                    result.links.extend(_read_links_jsonl(links_path))
             mode = "a" if loaded_state else "w"
             links_handle = stack.enter_context(open(links_path, mode, encoding="utf-8"))
+
+        forms_handle = None
+        if spool_evidence and forms_path:
+            if loaded_state and not loaded_state.spooled_evidence:
+                if os.path.exists(forms_path):
+                    if list(_jsonl_rows(forms_path)) != loaded_state.forms:
+                        raise ValueError("checkpoint inline forms and form sidecar disagree")
+                else:
+                    with open(forms_path, "w", encoding="utf-8") as previous:
+                        for entry in loaded_state.forms:
+                            previous.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            if loaded_state:
+                form_count = sum(1 for _ in _jsonl_rows(forms_path))
+            forms_handle = stack.enter_context(
+                open(forms_path, "a" if loaded_state else "w", encoding="utf-8")
+            )
+            if loaded_state and loaded_state.evidence_counts is not None:
+                actual = {"pages": page_count, "links": link_count, "forms": form_count}
+                if actual != loaded_state.evidence_counts:
+                    raise ValueError("checkpoint evidence sidecar counts disagree")
+
+        external_handle = None
+        if external_path:
+            if loaded_state:
+                # Same move as links above: prior check outcomes live in the
+                # sidecar, not the checkpoint — and they are also the "done"
+                # set the resumed external phase must not re-request.
+                result.external_checks.extend(_read_external_jsonl(external_path))
+            mode = "a" if loaded_state else "w"
+            external_handle = stack.enter_context(open(external_path, mode, encoding="utf-8"))
 
         # Appended across a resume like links_handle above — a decision recorded
         # before a checkpoint is still a decision this run made — but never read
@@ -892,7 +1051,8 @@ def crawl_site(
             # resumed run would otherwise finish reporting fewer forms than the
             # interrupted one had already found, and would hand the rendering
             # gate an empty start page (issue #188).
-            result.forms.extend(FormEdge(**entry) for entry in loaded_state.forms)
+            if not spool_evidence:
+                result.forms.extend(FormEdge(**entry) for entry in loaded_state.forms)
             result.start_page_evidence = dict(loaded_state.start_page_evidence)
             # Crawl-wide evidence, not per-invocation data (issue #349): a
             # completed report-only audit needs every blocked URL ever seen,
@@ -991,7 +1151,11 @@ def crawl_site(
                 return None
 
             def record_edge(edge: LinkEdge) -> None:
-                result.links.append(edge)
+                nonlocal link_count
+                if spool_evidence:
+                    link_count += 1
+                else:
+                    result.links.append(edge)
                 _write_link(links_handle, edge)
 
             apply_document_links(
@@ -1013,8 +1177,17 @@ def crawl_site(
             )
 
         def handle_forms(parsed: dict[str, Any] | None, url: str) -> None:
+            nonlocal form_count
             forms, omitted = form_edges(parsed, url)
-            result.forms.extend(forms)
+            if spool_evidence:
+                form_count += len(forms)
+                for form in forms:
+                    forms_handle.write(
+                        json.dumps(dataclasses.asdict(form), ensure_ascii=False) + "\n"
+                    )
+                forms_handle.flush()
+            else:
+                result.forms.extend(forms)
             if omitted:
                 exclude("form_observations_limit")
 
@@ -1031,8 +1204,12 @@ def crawl_site(
             recorded but must not extend how many consecutive failures were
             tolerated, nor discover further URLs to chase.
             """
+            nonlocal page_count
             record.crawl_depth = depth
-            result.pages.append(record)
+            if spool_evidence:
+                page_count += 1
+            else:
+                result.pages.append(record)
             _write(handle, record)
             handle_forms(parsed, url)
 
@@ -1058,6 +1235,8 @@ def crawl_site(
         ) -> bool:
             """Bookkeeping shared by every fetched page. Returns True to stop the crawl."""
             nonlocal consecutive_timeouts, consecutive_server_errors
+            if record.body_unavailable in _MEDIA_TYPE_FILTER_REASONS:
+                exclude(record.body_unavailable, url)
             record_evidence(url, depth, record, parsed)
 
             consecutive_timeouts, consecutive_server_errors = _fold_failure_streaks(
@@ -1083,7 +1262,7 @@ def crawl_site(
         def report_progress() -> None:
             """Hand the caller the crawl's own counters, or do nothing when nobody asked."""
             if progress is not None:
-                progress(len(result.pages), len(queue))
+                progress(page_count if spool_evidence else len(result.pages), len(queue))
 
         stopped = False
         # Reported before the first request too: on a slow origin the operator
@@ -1096,7 +1275,7 @@ def crawl_site(
             # below so the common case (the default) carries zero concurrency
             # overhead and zero risk of it changing behaviour.
             while queue and not stopped:
-                if len(result.pages) >= limit:
+                if (page_count if spool_evidence else len(result.pages)) >= limit:
                     result.partial = True
                     result.stopped_reason = f"url limit reached ({limit})"
                     result.finish_reason = "url_limit"
@@ -1129,6 +1308,7 @@ def crawl_site(
                         parse_options=parse_options,
                         cache=cache,
                         wait=dispatch_gate.wait_turn,
+                        response_filter=rules.response_media_rejection,
                     )
                 except KeyboardInterrupt:
                     # Not processed: put it back so a resume retries it rather
@@ -1160,12 +1340,13 @@ def crawl_site(
                     parse_options=parse_options,
                     cache=cache,
                     wait=gate.wait_turn,
+                    response_filter=rules.response_media_rejection,
                 )
                 return url, depth, record, parsed
 
             with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
                 while queue and not stopped:
-                    if len(result.pages) >= limit:
+                    if (page_count if spool_evidence else len(result.pages)) >= limit:
                         result.partial = True
                         result.stopped_reason = f"url limit reached ({limit})"
                         result.finish_reason = "url_limit"
@@ -1194,7 +1375,7 @@ def crawl_site(
                     # concurrency or not: anything past the remaining budget
                     # goes back to the front of the queue rather than being
                     # dispatched.
-                    budget = limit - len(result.pages)
+                    budget = limit - (page_count if spool_evidence else len(result.pages))
                     if len(to_fetch) > budget:
                         overflow, to_fetch = to_fetch[budget:], to_fetch[:budget]
                         for item in reversed(overflow):
@@ -1287,8 +1468,103 @@ def crawl_site(
                     # frontier that never existed.
                     report_progress()
 
+        # Bounded check of recorded external destinations (#746). It runs only
+        # after the internal frontier has said its piece — a partially walked
+        # site still yields its recorded destinations for checking — and its
+        # own coverage is kept in external_summary rather than folded into
+        # finish_reason, because internal completeness and external-check
+        # coverage are different measurements.
+        external_finished = True
+        if crawl_external_links:
+            if result.finish_reason == "interrupted":
+                # A KeyboardInterrupt means stop now, not start a second phase;
+                # the destinations recorded so far are checked by the resumed
+                # run once the frontier actually closes.
+                result.external_summary = {
+                    "enabled": True,
+                    "ran": False,
+                    "reason": (
+                        "internal crawl interrupted; recorded destinations are "
+                        "checked once the internal frontier completes"
+                    ),
+                    "robots_policy": "not_evaluated",
+                }
+                external_finished = False
+            else:
+                policy = ExternalPolicy.from_config(external_policy)
+                # A gate of its own: the external phase is sequential, paced by
+                # the same delay policy, and spends a request budget the
+                # internal frontier never touches (external_checks.max_requests).
+                external_gate = DispatchGate(
+                    Throttle(
+                        min_delay=min_delay,
+                        max_delay=max_delay_seconds,
+                        max_concurrency=1,
+                        adaptive=adaptive,
+                    ),
+                    sleeper,
+                    clock=clock,
+                    max_requests=policy.max_requests,
+                )
+
+                def external_excluded(url: str) -> bool:
+                    # The same never-fetch rule the internal scope applies: an
+                    # operator-excluded host stays unfetched no matter what
+                    # links to it.
+                    h = (urlsplit(url).hostname or "").lower()
+                    return any(h == bad or h.endswith("." + bad) for bad in rules.exclude_hosts)
+
+                def emit_check(check: ExternalCheck) -> None:
+                    result.external_checks.append(check)
+                    _write(external_handle, check)
+
+                try:
+                    result.external_summary = run_external_checks(
+                        _iter_links_jsonl(links_path) if spool_evidence else result.links,
+                        policy=policy,
+                        is_internal=lambda url: rules.is_internal(url, host),
+                        emit=emit_check,
+                        excluded_host=external_excluded,
+                        done=result.external_checks,
+                        client=client,
+                        fetcher=fetcher,
+                        headers_for_url=_extra_headers_for,
+                        user_agent=user_agent,
+                        max_response_bytes=max_response_bytes,
+                        retry_on_timeout=retry_on_timeout,
+                        parse_options=parse_options,
+                        dispatch_gate=external_gate,
+                        time_exhausted=lambda: bool(
+                            max_seconds and (clock() - crawl_started) >= max_seconds
+                        ),
+                    )
+                except KeyboardInterrupt:
+                    result.external_summary = {
+                        "enabled": True,
+                        "ran": True,
+                        "policy": policy.as_dict(),
+                        "robots_policy": "not_evaluated",
+                        "finish_reason": "interrupted",
+                        "internal_finish_reason": result.finish_reason,
+                    }
+                    external_finished = False
+                    result.partial = True
+                    result.stopped_reason = (
+                        f"{result.stopped_reason}; external checks interrupted"
+                        if result.stopped_reason
+                        else "external checks interrupted"
+                    )
+                else:
+                    # The internal frontier's own verdict travels inside the
+                    # external summary, so one object tells both halves of the
+                    # coverage story without conflating them.
+                    result.external_summary["internal_finish_reason"] = result.finish_reason
+                    external_finished = result.external_summary["finish_reason"] == "finished"
+                    if not external_finished:
+                        result.partial = True
+
         if state_path:
-            if result.finish_reason == "finished":
+            if result.finish_reason == "finished" and external_finished:
                 # Nothing left to resume: a later call with the same path
                 # should crawl fresh, not "resume" into an empty frontier.
                 crawl_state.clear(state_path)
@@ -1309,14 +1585,25 @@ def crawl_site(
                             path_key: sorted(variants)
                             for path_key, variants in query_budget.items()
                         },
-                        forms=[dataclasses.asdict(form) for form in result.forms],
+                        forms=[]
+                        if spool_evidence
+                        else [dataclasses.asdict(form) for form in result.forms],
                         start_page_evidence=dict(result.start_page_evidence),
                         robots_blocked=list(result.robots_blocked),
                         accepted_seed_urls=list(result.seed_urls),
+                        spooled_evidence=spool_evidence,
+                        evidence_counts={
+                            "pages": page_count if spool_evidence else len(result.pages),
+                            "links": link_count if spool_evidence else len(result.links),
+                            "forms": form_count if spool_evidence else len(result.forms),
+                        },
                     ),
                 )
 
     result.excluded = excluded
+    result.page_count = page_count if spool_evidence else len(result.pages)
+    result.link_count = link_count if spool_evidence else len(result.links)
+    result.form_count = form_count if spool_evidence else len(result.forms)
     result.effective_delay = throttle.delay
     result.effective_concurrency = throttle.concurrency
     if cache is not None:

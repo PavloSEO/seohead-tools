@@ -92,9 +92,45 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("scan-reanalyze", "scan_reanalyze", _form("scan_artifact", "input_path")),
     _command("log-scan", "log_scan", _form("legacy_directory", "run")),
     _command(
+        "crawl-diagnose",
+        "crawl_diagnose",
+        _form("scan_artifact", "scan"),
+        _form("legacy_directory", "run"),
+        note="Choose one retained source; diagnosis is offline and read-only.",
+    ),
+    _command(
+        "crawl-diagnose-export",
+        "crawl_diagnose_export",
+        _form("scan_artifact", "scan", required_with=("export",)),
+        _form("legacy_directory", "run", required_with=("export",)),
+        _form("local_file", "export"),
+        note="Choose one retained source and a new redacted export destination; refuses overwrite.",
+    ),
+    _command(
         "compare-crawls",
         "compare_crawls",
         _form("audit_document", "before", "after", note="Each path may be audit JSON or scan.v1."),
+    ),
+    _command(
+        "verify-fixes",
+        "verify_fixes",
+        _form("audit_document", "baseline", required_with=("out_dir",)),
+        _form(
+            "audit_document",
+            "after",
+            required_with=("baseline", "out_dir"),
+            note="Offline verification without recrawling.",
+        ),
+        _form("selector", "finding_ids", required_with=("baseline", "out_dir")),
+        _form(
+            "local_file",
+            "view",
+            required_with=("baseline", "out_dir"),
+            note="Saved verification_view.v1 selection.",
+        ),
+        _form("url_list", "urls", required_with=("baseline", "out_dir")),
+        _form("local_file", "urls_file", required_with=("baseline", "out_dir")),
+        _form("local_config", "config", note="Required when the baseline redacted credentials."),
     ),
     _command(
         "crawl-enrich",
@@ -179,6 +215,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("scan_artifact", "scan"),
     ),
     _command(
+        "semantic-inputs",
+        "semantic_inputs",
+        _form("inline_corpus", "items"),
+        _form("scan_artifact", "scan"),
+    ),
+    _command(
         "social-meta-check",
         "social_meta_check",
         _form("live_url", "url"),
@@ -187,7 +229,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("soft404-check", "soft404_check", _form("live_url", "url")),
     _command("log-analyze", "log_analyze", _form("local_log", "path")),
     _command("regions-check", "regions_check", _form("live_url", "url")),
-    _command("render-check", "render_check", _form("live_url", "url")),
+    _command(
+        "render-check",
+        "render_check",
+        _form("live_url", "url"),
+        _form(
+            "inline_json",
+            "transport_config",
+            note="Optional local/remote Playwright transport selection; endpoint is named by environment variable.",
+        ),
+    ),
     _command("site-audit", "site_audit", _form("live_url", "url"), _form("url_list", "urls")),
     _command(
         "report-build",
@@ -196,8 +247,10 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "project_directory",
             "project",
-            note="Includes validated checklist coverage in human reports; JSON audit is unchanged.",
+            note="Includes validated checklist coverage and optionally applies a saved finding view.",
         ),
+        _form("selector", "view", note="Optional saved project finding view; requires project."),
+        _form("selector", "offset", note="Optional stable finding-view page offset."),
     ),
     _command("facts-export", "facts_export", _form("inline_json", "sites")),
     _command("keywords-expand", "keywords_expand", _form("provider_query", "phrase")),
@@ -234,6 +287,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("project_directory", "project"),
     ),
     _command("regions-tree", "regions_tree", _form("local_config")),
+    _command(
+        "topvisor-read",
+        "topvisor_read",
+        _form(
+            "inline_json",
+            "operation",
+            "params",
+            note="One bounded page of existing Topvisor data. Default operation is projects; other operations require params.project_id. Follow the provider's nextOffset for further pages. No paid checks or mutations.",
+        ),
+    ),
     _command("metrika-counters", "metrika_counters", _form("local_config")),
     _command("metrika-setup", "metrika_setup", _form("provider_query", "counter_id")),
     _command("metrika-report", "metrika_report", _form("provider_query", "counter_id")),
@@ -282,6 +345,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("project-open", "project_open", _form("project_directory", "directory")),
     _command("project-status", "project_status", _form("project_directory", "directory")),
     _command(
+        "project-progress",
+        "project_progress",
+        _form("project_directory", "directory"),
+        _form("inline_json", "limit", "offset", note="Optional bounded progress pagination."),
+    ),
+    _command(
         "project-facts",
         "project_facts",
         _form("project_directory", "directory"),
@@ -297,6 +366,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project_checklist_init",
         _form("project_directory", "directory"),
         _form("inline_json", "template", note="Optional reusable data-only checklist template."),
+        _form(
+            "inline_json",
+            "plan",
+            note="Optional agreed scope plan fixing the URL-population and task denominators.",
+        ),
     ),
     _command(
         "project-checklist-update",
@@ -312,8 +386,33 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "inline_json",
             "record",
-            note="Requires expected_revision; records supplied evidence only.",
+            note="Requires expected_revision; records supplied evidence only; "
+            "not_applicable needs reason, reviewer and an evidence basis.",
         ),
+    ),
+    _command("project-view-list", "project_view_list", _form("project_directory", "directory")),
+    _command(
+        "project-view-show",
+        "project_view_show",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+    ),
+    _command(
+        "project-view-save",
+        "project_view_save",
+        _form("project_directory", "directory"),
+        _form("inline_json", "view"),
+        _form("selector", "expected_revision", note="Required; use 0 for the first saved view."),
+    ),
+    _command(
+        "findings-view",
+        "findings_view",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+        _form(
+            "audit_document", "audit", note="Audit JSON, inline audit object, or retained scan.v1."
+        ),
+        _form("selector", "offset", note="Optional stable finding-view page offset."),
     ),
     _command(
         "project-priorities",
@@ -356,6 +455,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
     _command(
+        "provider-readiness",
+        "provider_readiness",
+        _form(
+            "inline_json",
+            "provider",
+            "operation",
+            note="Offline readiness and operation discovery; no provider requests.",
+        ),
+    ),
+    _command(
         "provider-verify",
         "provider_verify",
         _form("provider_identifier", "provider"),
@@ -375,6 +484,78 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("inline_json", "crawl_pages"),
         _form("inline_json", "evidence_rows"),
         _form("inline_json", "adjustments", note="Optional evidence-backed priority adjustments."),
+    ),
+    _command(
+        "evidence-normalize",
+        "evidence_normalize",
+        _form(
+            "local_file",
+            "file",
+            note="Supplied CSV/XLSX/JSON rows or a saved provider-evidence envelope; fully offline.",
+        ),
+        _form(
+            "inline_json",
+            "mapping",
+            note="Optional seohead.evidence-mapping.v1 manifest, inline or file path.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Optional restricted normalized artifact directory.",
+        ),
+    ),
+    _command(
+        "evidence-join",
+        "evidence_join",
+        _form(
+            "scan_artifact",
+            "scan",
+            note="Alternative crawl side; offline scan read like provider-replay.",
+        ),
+        _form("audit_document", "audit", note="Alternative crawl side."),
+        _form("inline_json", "pages", note="Alternative crawl side, page objects."),
+        _form(
+            "local_file",
+            "evidence",
+            "compare",
+            note="CSV/XLSX/JSON or saved provider envelope; inline JSON also accepted.",
+        ),
+        _form(
+            "inline_json",
+            "mapping",
+            "compare_mapping",
+            "policy",
+            note="Mapping manifests and the declared comparison policy, inline or file path.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Optional private join/compatibility artifact directory.",
+        ),
+    ),
+    _command(
+        "bi-export",
+        "bi_export",
+        _form("scan_artifact", "scan", note="Alternative validated scan.v1 source."),
+        _form("audit_document", "audit", note="Alternative supported audit JSON source."),
+        _form(
+            "local_file",
+            "provider_joins",
+            note="Optional saved issue #781 evidence-join/normalized-evidence JSON files; repeatable.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Required new local package directory; existing output is refused.",
+        ),
+        _form(
+            "inline_json",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            note="Optional positive partition and total-output bounds; exceeding a hard limit fails without publishing a package.",
+        ),
+        note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
     ),
     _command(
         "inspect-url",
@@ -400,9 +581,33 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("inline_text", "query", note="Optional bounded discovery query."),
     ),
     _command("scan-inspect", "scan_inspect", _form("scan_artifact", "input_path")),
+    _command(
+        "scan-link-inspect",
+        "scan_link_inspect",
+        _form(
+            "scan_artifact",
+            "input_path",
+            note="Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required.",
+        ),
+    ),
     _command("scan-status", "scan_status", _form("scan_artifact", "input_path")),
     _command("scan-rendered-routes", "scan_rendered_routes", _form("scan_artifact", "input_path")),
     _command("scan-snapshot", "scan_snapshot", _form("scan_artifact", "input_path")),
+    _command(
+        "scan-export",
+        "scan_export",
+        _form(
+            "scan_artifact",
+            "input_path",
+            note="Also accepts an SF Analyzer audit.json document; links are unavailable there.",
+        ),
+        _form(
+            "selector",
+            "records",
+            "fields",
+            note="Optional record-type and field projection validated before any file is written.",
+        ),
+    ),
     _command("scan-pin", "scan_pin", _form("scan_artifact", "input_path")),
     _command(
         "scan-prune",
@@ -441,6 +646,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             note="Closed declarative rules over retained complete bodies.",
         ),
         _form("selector", "url", note="Optional exact logical URL."),
+    ),
+    _command(
+        "scan-fragment-links",
+        "scan_fragment_links",
+        _form("scan_artifact", "input_path"),
+        _form(
+            "selector",
+            "state",
+            note="Optional resolved, missing, or skipped occurrence filter.",
+        ),
+        _form(
+            "selector",
+            "representation",
+            note="Optional static, rendered, or legacy_fragment source filter.",
+        ),
     ),
     _command(
         "scan-requeue",
@@ -552,6 +772,7 @@ def render_markdown() -> str:
     ]
     scan_commands = {
         "scan-inspect",
+        "scan-link-inspect",
         "scan-status",
         "scan-rendered-routes",
         "scan-snapshot",

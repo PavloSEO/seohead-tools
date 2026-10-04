@@ -102,10 +102,11 @@ def _scan_records(path):
                     "hreflang": "hreflang_json",
                     "heading_outline": "heading_outline_json",
                     "link_placement": "link_placement_json",
+                    "trust_signals": "trust_signals_json",
                     "canonical_chain": "canonical_chain_json",
                 }.get(field.name, field.name)
                 value = row[source]
-                if source == "link_placement_json":
+                if source in {"link_placement_json", "trust_signals_json"}:
                     # Nullable by design: a scan written before link placement
                     # was recorded measured none, which is not "found none".
                     value = json.loads(value) if value is not None else None

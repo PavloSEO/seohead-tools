@@ -33,6 +33,7 @@ import pytest
 
 from seohead.crawl import link_findings
 from seohead.servers import handlers
+from seohead.sf.core import eeat as eeat_module
 from seohead.sf.core import heuristics as heuristics_module
 from seohead.sf.core import inlinks as inlinks_module
 from seohead.sf.core import rules as rules_module
@@ -77,6 +78,10 @@ def _owning_spy(check_id: str, source: str, spies: dict[str, object]):
     of every string shape in the registry -- new sources fall through to ``run_rules``, which
     is exactly right for every check that reads ``internal_all`` columns directly.
     """
+    if check_id in eeat_module.EEAT_CHECK_IDS:
+        # The issue-#823 pass owns these regardless of their registry source
+        # labels: run_eeat is the only function that ever emits or skips them.
+        return spies["eeat"]
     if source.startswith("inlinks:"):
         return spies["inlinks"]
     if check_id == "NEAR_DUPLICATE":
@@ -133,6 +138,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         patch.object(
             sitemap_module, "run_sitemap", wraps=sitemap_module.run_sitemap
         ) as spy_sitemap,
+        patch.object(eeat_module, "run_eeat", wraps=eeat_module.run_eeat) as spy_eeat,
         patch.object(
             link_findings,
             "outlinks_to_localhost",
@@ -165,6 +171,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
     assert spy_inlinks.called, "run_inlinks must run on every native crawl (issue #128)"
     assert spy_heuristics.called, "run_heuristics must run on every native crawl (issue #165)"
     assert spy_sitemap.called, "run_sitemap must run on every native crawl (issue #165)"
+    assert spy_eeat.called, "run_eeat must run on every native crawl (issue #823)"
     # Proof the inline sitemap-reconciliation block ran, since SITEMAP_ORPHAN and
     # URL_NOT_IN_SITEMAP are added there directly rather than through a run_* function.
     assert result["summary"].get("sitemap"), "the sitemap block must run when sitemap= is given"
@@ -178,6 +185,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         "inlinks": spy_inlinks,
         "heuristics": spy_heuristics,
         "sitemap": spy_sitemap,
+        "eeat": spy_eeat,
         "OUTLINK_TO_LOCALHOST": spy_localhost,
         "FOLLOW_AND_NOFOLLOW_INLINKS": spy_follow_mix,
         "FORM_URL_INSECURE": spy_insecure_form,

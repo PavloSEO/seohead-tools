@@ -156,6 +156,7 @@ def _seed_urls_from_sitemap(
     request_gate: Callable[[], None] | None = None,
     robots_token: str = "*",
     throttle=None,
+    proxy_route=None,
 ) -> dict[str, Any]:
     """Resolve and expand the sitemap(s) that should seed a crawl, if any.
 
@@ -175,6 +176,8 @@ def _seed_urls_from_sitemap(
         from seohead.tools.robots import check_robots
 
         options = {"request_gate": request_gate} if request_gate is not None else {}
+        if proxy_route is not None:
+            options["proxy_route"] = proxy_route
         checked = check_robots(url, **options)
         targets = list(checked.get("sitemaps") or [])
         if throttle is not None and checked.get("ok") and isinstance(checked.get("groups"), list):
@@ -194,6 +197,8 @@ def _seed_urls_from_sitemap(
     seen: set[str] = set()
     for target in targets:
         options = {"request_gate": request_gate} if request_gate is not None else {}
+        if proxy_route is not None:
+            options["proxy_route"] = proxy_route
         expanded = sitemap_tool.crawl(target, **options)
         for entry in expanded.get("urls") or []:
             loc = entry.get("loc")
@@ -209,6 +214,7 @@ def _run_render_escalation(
     settings: dict[str, Any],
     *,
     request_gate: Callable[[], None] | None = None,
+    proxy_route=None,
 ) -> Any:
     """Bind the escalation orchestrator to a real probe and re-fetch.
 
@@ -239,14 +245,39 @@ def _run_render_escalation(
 
     if mode == "js":
         gate_kwargs = {"request_gate": request_gate} if request_gate is not None else {}
+        try:
+            effective_viewport = render_tool.resolve_viewport(browser_cfg)
+        except ValueError:
+            effective_viewport = None
+        probe_transport_kwargs = {}
+        if browser_cfg.get("transport", "local") == "remote":
+            probe_transport_kwargs["transport_config"] = {
+                name: browser_cfg[name]
+                for name in (
+                    "transport",
+                    "remote_protocol",
+                    "remote_endpoint_env",
+                    "remote_playwright_version",
+                )
+            }
+        if proxy_route is not None:
+            gate_kwargs["proxy_route"] = proxy_route
 
         def probe(target: str) -> dict[str, Any]:
+            # The probe launches the same engine, size and emulation the full
+            # render will use, so a pattern is not escalated by a browser that
+            # differs from the one producing its evidence.
             probed = render_tool.render_check(
                 target,
                 timeout=timeout,
                 wait=browser_cfg["wait_until"],
                 viewport=browser_cfg["viewport"],
+                engine=browser_cfg.get("engine", "chromium"),
+                viewport_size=effective_viewport,
+                mobile_emulation=bool(browser_cfg.get("mobile_emulation")),
+                touch_emulation=bool(browser_cfg.get("touch_emulation")),
                 **gate_kwargs,
+                **probe_transport_kwargs,
             )
             verdict = probed.get("js_dependent")
             if verdict is None and probed.get("ok"):
@@ -286,7 +317,9 @@ def _run_render_escalation(
             options = {}
             if request_gate is not None:
                 options["event_hooks"] = {"request": [lambda _request: request_gate()]}
-            client, _ = http_client(timeout, **options)
+            from seohead.recon.net import crawl_transport_options
+
+            client, _ = http_client(timeout, **crawl_transport_options(proxy_route), **options)
             try:
                 return client.get(target).text
             except Exception:
@@ -661,6 +694,24 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    # A storage-only synthetic capacity marker never enters a live crawl route.
+    from seohead.crawl.settings import checked_url_budget
+
+    if settings.get("storage", {}).get("capacity_profile", "stable") != "stable":
+        raise ValueError(
+            "experimental_synthetic capacity profile is storage-only, not a live crawl"
+        )
+    checked_url_budget(settings["limits"]["max_urls"])
+    # Check selectors refer to the SF finding registry. Validate them at this
+    # shared CLI/MCP boundary before the crawl can issue its first request.
+    from seohead.sf.config import load_config as load_audit_config
+    from seohead.sf.config import validate_config as validate_audit_config
+
+    audit_config = load_audit_config(None)
+    audit_config["finding_exclusions"] = settings["analysis"]["finding_exclusions"]
+    audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
+    validate_audit_config(audit_config)
+    proxy_route = crawl_config.resolve_proxy(settings)
     if project_root is not None:
         gate = admission(str(project_root), settings, approved=approve_large_crawl)
         if not gate["ok"]:
@@ -703,6 +754,23 @@ def crawl_site(
             f"cache.mode={settings['cache']['mode']!r} is unavailable for native SQLite capture; "
             "pass --out-dir for the legacy directory route"
         )
+    if scan_out and settings["discovery"]["external"]["crawl"]:
+        # External-destination checking is wired into the legacy directory
+        # route first (#746) — the same staged direction cache live/replay
+        # took. Refusing by name is better than silently dropping an option
+        # the operator asked for.
+        raise ValueError(
+            "discovery.external.crawl is unavailable for native SQLite capture; "
+            "pass --out-dir for the legacy directory route"
+        )
+    if not url and settings["discovery"]["external"]["crawl"]:
+        # The phase checks the edges a site crawl recorded; list mode keeps no
+        # link edges, so the option can never take effect there — refuse by
+        # name rather than silently dropping it (#746).
+        raise ValueError(
+            "discovery.external.crawl requires a site crawl (--url): "
+            "list mode keeps no external edges to check"
+        )
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -721,6 +789,7 @@ def crawl_site(
             sitemap=sitemap,
             producer_build=producer_build,
             progress=progress,
+            proxy_route=proxy_route,
         )
     dispatch_gate = None
     if url:
@@ -736,6 +805,14 @@ def crawl_site(
             throttle, time.sleep, max_requests=settings["limits"]["max_requests"]
         )
     out_dir = settings["output"]["dir"] or None
+    if (
+        proxy_route is not None
+        and out_dir
+        and os.path.exists(os.path.join(out_dir, "crawl_state.json"))
+    ):
+        raise ValueError(
+            "proxied legacy crawls cannot resume from a saved frontier; start with a new output directory"
+        )
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     # The human-readable export: absent whenever the operator turned it off. Only
@@ -770,6 +847,10 @@ def crawl_site(
         if out_dir and settings["output"]["write_decisions_jsonl"]
         else None
     )
+    # Tied to out_dir like links_path above: the external check's append-only
+    # record of per-destination outcomes — and what a resumed run reads back
+    # as its "already decided" set (#746).
+    external_checks_path = os.path.join(out_dir, "external_checks.jsonl") if out_dir else None
     max_seconds = settings["limits"]["max_crawl_seconds"]
     # One cache per run, shared by every worker thread a concurrent crawl starts — see
     # seohead.crawl.cache for the freshness policy and seohead.crawl.settings for cache.mode /
@@ -790,6 +871,7 @@ def crawl_site(
             request_gate=dispatch_gate.wait_turn,
             robots_token=settings["robots"]["user_agent_token"],
             throttle=throttle,
+            proxy_route=proxy_route,
         )
 
     if url:
@@ -806,6 +888,7 @@ def crawl_site(
             seed_urls=sitemap_seed["declared"] or None,
             out_path=pages_resume_path,
             links_path=links_path,
+            forms_path=os.path.join(out_dir, ".forms_resume.jsonl") if out_dir else None,
             decisions_path=decisions_path,
             credential_headers=settings["http"]["credential_headers"],
             # Checkpointed only when there is somewhere durable to put it; a
@@ -833,26 +916,23 @@ def crawl_site(
             store_external_links=settings["discovery"]["external"]["store"],
             crawl_redirects=settings["discovery"]["redirects"]["crawl"],
             capture_link_attributes=settings["link_attributes"]["capture"],
+            crawl_external_links=settings["discovery"]["external"]["crawl"],
+            external_policy=settings["external_checks"],
+            external_path=(
+                external_checks_path if settings["discovery"]["external"]["crawl"] else None
+            ),
             dispatch_gate=dispatch_gate,
             progress=progress,
+            spool_evidence=True,
+            proxy_route=proxy_route,
         )
-        # Nothing left to resume into, so the private sidecar (used only when the
-        # human-readable export was off) would otherwise linger as a hidden, ever
-        # more stale copy of pages.jsonl's data next to a finished run's output.
-        if (
-            pages_resume_path
-            and pages_resume_path != pages_export_path
-            and result.finish_reason == "finished"
-        ):
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(pages_resume_path)
         discovery = {
             "mode": "spider",
             # #332: named here too, matching list mode -- a robots-blocked count
             # without the policy that produced it is not self-explanatory.
             "directive_policy": settings["robots"]["policy"],
             "max_depth_reached": result.max_depth_reached,
-            "links_seen": len(result.links),
+            "links_seen": result.link_count if result.spooled_evidence else len(result.links),
             "excluded": result.excluded,
             "robots_note": result.robots_note,
             "robots_blocked": len(result.robots_blocked),
@@ -864,6 +944,11 @@ def crawl_site(
             "sitemap_urls": sitemap_seed["sitemap_urls"],
             "sitemap_seeded": len(result.seed_urls),
         }
+        if result.external_summary:
+            # The external phase's own coverage statement: policy used,
+            # per-outcome counts and why it stopped — kept distinct from the
+            # internal frontier's finish_reason above (#746).
+            discovery["external_checks"] = result.external_summary
         if settings["scope"]["segments_only"]:
             # #358's acceptance criterion: a crawl scoped to a segment must say so
             # in its own run output, not leave it to be inferred from which URLs
@@ -891,6 +976,7 @@ def crawl_site(
             robots_token=settings["robots"]["user_agent_token"],
             resolve_redirect_destination=settings["discovery"]["resolve_redirect_destination"],
             resolve_canonical_destination=settings["discovery"]["resolve_canonical_destination"],
+            proxy_route=proxy_route,
         )
         discovery = {
             "mode": "list",
@@ -903,6 +989,75 @@ def crawl_site(
             ],
         }
 
+    if url and result.spooled_evidence:
+        from seohead.crawl.spider import (
+            _read_forms_jsonl,
+            _read_links_jsonl,
+            _read_pages_jsonl,
+        )
+        from seohead.servers.scan_handlers import MAX_AUDIT_FORMS, MAX_AUDIT_PAGES
+
+        # The existing materialized audit is only admitted within explicit
+        # bounds. #816 owns its versioned streaming replacement.
+        max_legacy_audit_links = 1_500_000
+        if result.finish_reason == "robots_unavailable":
+            reason = (
+                "legacy audit unavailable: robots.txt could not be read; "
+                "any prior JSONL sidecars were not reconciled"
+            )
+        elif (
+            result.page_count > MAX_AUDIT_PAGES
+            or result.form_count > MAX_AUDIT_FORMS
+            or result.link_count > max_legacy_audit_links
+        ):
+            reason = (
+                "legacy audit materialization limit exceeded "
+                f"(pages={result.page_count}/{MAX_AUDIT_PAGES}, "
+                f"forms={result.form_count}/{MAX_AUDIT_FORMS}, "
+                f"links={result.link_count}/{max_legacy_audit_links}); "
+                "JSONL collection evidence is retained"
+            )
+        else:
+            reason = ""
+        if reason:
+            stale_reports = {}
+            for name in ("audit.json", "tasks.json", "tasks.md"):
+                previous = Path(out_dir) / name
+                if os.path.lexists(previous):
+                    retained = previous.with_name(f".{name}.stale-{time.time_ns()}")
+                    if os.path.lexists(retained):
+                        raise FileExistsError(
+                            f"stale report destination already exists: {retained}"
+                        )
+                    os.rename(previous, retained)
+                    stale_reports[name] = str(retained)
+            return {
+                "urls_collected": result.page_count,
+                "links_collected": result.link_count,
+                "forms_collected": result.form_count,
+                "audit_available": False,
+                "audit_reason": reason,
+                "partial": result.partial,
+                "stopped_reason": result.stopped_reason,
+                "finish_reason": result.finish_reason,
+                "resumed": result.resumed,
+                "discovery": discovery,
+                "limitations": result.limitations,
+                "out_dir": out_dir,
+                "cache_replay": result.cache_replay,
+                "cache_stats": result.cache_stats,
+                "stale_reports": stale_reports,
+            }
+        result.pages = _read_pages_jsonl(pages_resume_path)
+        result.links = _read_links_jsonl(links_path)
+        result.forms = _read_forms_jsonl(os.path.join(out_dir, ".forms_resume.jsonl"))
+        if (
+            len(result.pages),
+            len(result.links),
+            len(result.forms),
+        ) != (result.page_count, result.link_count, result.form_count):
+            raise ValueError("legacy evidence sidecar counts changed during audit preparation")
+
     response, _audit = _audit_crawl_result(
         result,
         settings=settings,
@@ -912,7 +1067,20 @@ def crawl_site(
         out_dir=out_dir,
         pages_resume_path=pages_resume_path,
         dispatch_gate=dispatch_gate,
+        proxy_route=proxy_route,
     )
+    if (
+        url
+        and result.spooled_evidence
+        and pages_resume_path
+        and pages_resume_path != pages_export_path
+        and result.finish_reason == "finished"
+    ):
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(pages_resume_path)
+    if url and result.spooled_evidence and result.finish_reason == "finished":
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(out_dir, ".forms_resume.jsonl"))
     return response
 
 
@@ -930,6 +1098,7 @@ def _audit_crawl_result(
     offline: bool = False,
     captured_render_summary: dict[str, Any] | None = None,
     dispatch_gate=None,
+    proxy_route=None,
 ):
     """Run the existing native analysis over a complete, admitted population."""
     import json
@@ -940,9 +1109,14 @@ def _audit_crawl_result(
     from seohead.crawl import settings as crawl_config
     from seohead.crawl.evidence import build_evidence
     from seohead.crawl.reconcile import reconcile_sitemap
-    from seohead.sf.config import load_config
+    from seohead.sf.config import load_config, validate_config
+
+    audit_config = load_config(None)
+    audit_config["finding_exclusions"] = settings.get("analysis", {}).get("finding_exclusions", [])
+    validate_config(audit_config)
     from seohead.sf.core.aggregate import aggregate
     from seohead.sf.core.context import AuditContext
+    from seohead.sf.core.eeat import run_eeat
     from seohead.sf.core.heuristics import run_heuristics
     from seohead.sf.core.inlinks import run_inlinks
     from seohead.sf.core.loader import LoadedExports
@@ -981,6 +1155,7 @@ def _audit_crawl_result(
                     rendering_config,
                     settings,
                     request_gate=dispatch_gate.wait_turn if dispatch_gate is not None else None,
+                    proxy_route=proxy_route,
                 )
                 render_escalation.apply_rendered_evidence(result.pages, result.links, escalation)
                 # The spider already streamed pages_resume_path during the crawl, before
@@ -1002,6 +1177,7 @@ def _audit_crawl_result(
                     result,
                     settings,
                     request_gate=dispatch_gate.wait_turn if dispatch_gate is not None else None,
+                    proxy_route=proxy_route,
                 )
                 if not offline:
                     from seohead.crawl.sqlite_resources import capture_resources
@@ -1012,7 +1188,9 @@ def _audit_crawl_result(
                             "throttle": dispatch_gate.throttle,
                             "dispatch_gate": dispatch_gate,
                         }
-                    capture_resources(stored_scan, settings, **resource_kwargs)
+                    capture_resources(
+                        stored_scan, settings, proxy_route=proxy_route, **resource_kwargs
+                    )
                 coverage = stored_scan.con.execute(
                     "SELECT crawl_partial,limitations_json FROM scan"
                 ).fetchone()
@@ -1036,6 +1214,12 @@ def _audit_crawl_result(
                 "patterns_partially_rendered": escalation.patterns_partially_rendered,
                 "patterns_unprobed": escalation.patterns_unprobed,
                 "patterns_unprobed_reasons": escalation.patterns_unprobed_reasons,
+                # The resolved browser-page bound the escalation ran under --
+                # read from settings rather than the aggregated result so a
+                # resumed scan's merged summary still reports it correctly.
+                "render_page_concurrency": int(
+                    settings["rendering"]["browser"].get("page_concurrency") or 1
+                ),
             }
 
         # Re-evaluated after escalation so a run that actually renders its
@@ -1085,12 +1269,39 @@ def _audit_crawl_result(
         evidence = build_evidence(
             result, inlink_counts=counts, stored_graph_available=stored_graph_available
         )
+        # A crawl may have parsed a response in memory while its body was too
+        # large to retain. The SF-shaped quality checks must not treat those
+        # volatile declarations as inspectable native evidence (#825).
+        if "all_hreflang" in evidence["frames"]:
+            complete_sources = {
+                row[0]
+                for row in stored_scan.con.execute(
+                    "SELECT u.url FROM pages p JOIN urls u USING(url_id) "
+                    "JOIN documents d ON d.document_id=p.document_id "
+                    "WHERE d.body_state='complete' AND d.body_sha256 IS NOT NULL"
+                )
+            }
+            frame = evidence["frames"]["all_hreflang"]
+            frame = frame[frame["Source"].isin(complete_sources)].copy()
+            if frame.empty:
+                evidence["frames"].pop("all_hreflang")
+                evidence["found"].remove("all_hreflang")
+                evidence["missing"].append("all_hreflang")
+            else:
+                evidence["frames"]["all_hreflang"] = frame
     exports = LoadedExports()
     exports.frames.update(evidence["frames"])
     exports.found = list(evidence["found"])
     exports.missing = list(evidence["missing"])
 
-    ctx = AuditContext(exports, load_config(None))
+    audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
+    ctx = AuditContext(exports, audit_config)
+    saved_corpus = None
+    if stored_scan is not None:
+        from seohead.sf.core.corpus_derivations import derive
+
+        saved_corpus = derive(stored_scan.con)
+        ctx.native_hreflang = saved_corpus["internationalization"]
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
     # 0 for every seeded URL, so the click-depth walk would start from an
@@ -1114,9 +1325,11 @@ def _audit_crawl_result(
         with AnalysisGraph(stored_scan.con, normalize=norm_url, site_host=_site_host(ctx)) as graph:
             ctx.graph_access = graph
             run_inlinks(ctx)
+            run_eeat(ctx)
         ctx.graph_access = None
     else:
         run_inlinks(ctx)
+        run_eeat(ctx)
     # Same gap, two more modules (issue #165): DOM size, HTML weight, templated
     # titles and the near-duplicate/exact-duplicate heuristic fallback all live in
     # heuristics.py and were never reached from a crawl either. DOM depth/nodes and
@@ -1154,6 +1367,8 @@ def _audit_crawl_result(
         sitemap_kwargs = {}
         if dispatch_gate is not None:
             sitemap_kwargs["request_gate"] = dispatch_gate.wait_turn
+        if proxy_route is not None:
+            sitemap_kwargs["proxy_route"] = proxy_route
         measured = run_sitemap(
             ctx,
             sitemap_url=sitemap_seed["sitemap_url"],
@@ -1371,6 +1586,61 @@ def _audit_crawl_result(
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
 
+    # A broken bookmark is not a link-status problem: the fragment resolves
+    # inside the retained destination document, which only a native scan keeps
+    # (issue #827). The evaluation is read-only and offline -- nothing is
+    # fetched to answer it, and missing or incomplete bodies stay skipped
+    # rather than becoming findings.
+    from seohead.storage import fragment_links
+
+    fragment_evaluation: dict[str, Any] | None = None
+    if stored_scan is not None:
+        storage = settings.get("storage")
+        body_limit = storage.get("max_body_bytes") if isinstance(storage, dict) else None
+        if type(body_limit) is not int or body_limit <= 0:
+            body_limit = fragment_links.DEFAULT_MAX_DECODED_BYTES
+        fragment_evaluation = fragment_links.evaluate(stored_scan.con, max_decoded_bytes=body_limit)
+        fragment_states = fragment_evaluation["states"]
+        if fragment_evaluation["coverage"]["source_documents_evaluated"]:
+            bookmark_findings = fragment_links.findings(fragment_evaluation)
+            for item in bookmark_findings:
+                ctx.add(
+                    "BROKEN_BOOKMARK",
+                    target_url=item["target_url"],
+                    occurrences_count=item["occurrences_count"],
+                    locations=item["locations"],
+                    details={
+                        "fragment": item["fragment"],
+                        "decoded_fragment": item["decoded_fragment"],
+                        "destination_representation": item["destination_representation"],
+                        "locations_omitted": item["locations_omitted"],
+                        "occurrences_skipped": fragment_states["skipped"],
+                        "coverage": fragment_evaluation["coverage"]["state"],
+                    },
+                )
+            if not bookmark_findings and fragment_evaluation["coverage"]["state"] != "complete":
+                # Evaluated sources but no finding to fire, while part of the
+                # anchors went unanswered (skipped destinations, unavailable
+                # lanes, unresolvable hrefs, capped or truncated inventories):
+                # silent here would read as a clean pass the partial evidence
+                # cannot support.
+                ctx.skip(
+                    "BROKEN_BOOKMARK",
+                    "fragment evidence is partial; summary.fragment_links names "
+                    "each skipped occurrence and unavailable source",
+                )
+        else:
+            ctx.skip(
+                "BROKEN_BOOKMARK",
+                "scan retains no complete HTML document for fragment resolution",
+            )
+    else:
+        ctx.skip(
+            "BROKEN_BOOKMARK",
+            "input retains no HTML/DOM bodies; fragment targets are measured "
+            "only from a native retained scan",
+        )
+
     audit = aggregate(
         ctx,
         {
@@ -1384,6 +1654,14 @@ def _audit_crawl_result(
             # only a sentence when something went wrong.
             "crawl_finish_reason": result.finish_reason,
             "crawl_resumed": result.resumed,
+            # The opt-in external-destination phase's own coverage statement
+            # (#746): policy used, per-outcome counts and its finish reason —
+            # null when the phase was off, so an audit reader can always tell
+            # "not checked" apart from "checked and clean".
+            # getattr rather than a plain attribute: list mode hands this a
+            # collect_urls CrawlResult, which has no external phase at all —
+            # None is the honest value there, not an AttributeError.
+            "external_checks": getattr(result, "external_summary", None) or None,
             # Resolved values of every setting that can change what was found.
             # Without these two reports on the same site are not comparable.
             "crawl_config": crawl_config.manifest(settings),
@@ -1414,6 +1692,12 @@ def _audit_crawl_result(
         if settings["scope"]["segments"] or analysis_segments
         else {}
     )
+    if fragment_evaluation is not None:
+        audit["summary"]["fragment_links"] = {
+            "analysis": fragment_evaluation["analysis"],
+            "states": fragment_evaluation["states"],
+            "coverage": fragment_evaluation["coverage"],
+        }
 
     if stored_scan is not None:
         from seohead.sf.core.evidence_contract import attach_contract, attach_saved_corpus
@@ -1422,7 +1706,7 @@ def _audit_crawl_result(
             "SELECT scan_uuid FROM scan WHERE singleton=1"
         ).fetchone()[0]
         audit = attach_contract(audit, scan_uuid=scan_identity, con=stored_scan.con)
-        audit = attach_saved_corpus(audit, stored_scan.con)
+        audit = attach_saved_corpus(audit, stored_scan.con, derived=saved_corpus)
 
     tasks_written: dict[str, str] = {}
     if out_dir:
@@ -1631,6 +1915,7 @@ def site_audit(
     concurrency: int = 5,
     render: bool = False,
     skip: list[str] | None = None,
+    crux_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not url:
         raise ValueError("url required (site home page)")
@@ -1644,6 +1929,7 @@ def site_audit(
         render=bool(render),
         skip=skip,
         tools=HANDLERS,
+        crux_evidence=crux_evidence,
     )
 
 
@@ -1652,12 +1938,17 @@ def report_build(
     fmt: str = "xlsx",
     out: str | None = None,
     project: str | None = None,
+    view: str | None = None,
+    offset: int = 0,
+    lang: str = "en",
 ) -> dict[str, Any]:
     if audit is None:
         raise ValueError("audit required: audit document or path to its JSON representation")
     from seohead.reports import build_report
 
-    return build_report(audit, fmt=fmt, path=out, project=project)
+    return build_report(
+        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang
+    )
 
 
 def facts_export(sites: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -1690,14 +1981,232 @@ def compare_crawls(before: Any = None, after: Any = None, force: bool = False) -
     dropped out of the crawl entirely. See seohead.sf.core.compare for why
     "fixed" and "no longer crawled" are kept apart rather than merged."""
     from seohead.sf.core.compare import compare
+    from seohead.storage.inputs import load_audit_source
 
     diagnostics: list[dict[str, str]] = []
-    before_doc = _load_audit(before, "before", diagnostics)
-    after_doc = _load_audit(after, "after", diagnostics)
-    result = compare(before_doc, after_doc, force=force)
+    before_doc = load_audit_source(before, "before", diagnostics)
+    after_doc = load_audit_source(after, "after", diagnostics)
+    try:
+        result = compare(before_doc, after_doc, force=force)
+    finally:
+        if not hasattr(before, "iter_collection") and hasattr(before_doc, "close"):
+            before_doc.close()
+        if (
+            not hasattr(after, "iter_collection")
+            and after_doc is not before_doc
+            and hasattr(after_doc, "close")
+        ):
+            after_doc.close()
     if diagnostics:
         result["input_diagnostics"] = diagnostics
     return result
+
+
+def verify_fixes(
+    baseline: Any = None,
+    finding_ids: list[str] | None = None,
+    view: Any = None,
+    urls: list[str] | None = None,
+    urls_file: str | None = None,
+    after: Any = None,
+    config: str | None = None,
+    out_dir: str | None = None,
+) -> dict[str, Any]:
+    """Recheck selected findings and save a separate, immutable verification.
+
+    An existing ``after`` audit provides an offline classification path. Otherwise
+    the selected baseline pages are fetched through the existing bounded crawler:
+    list mode for static evidence, or one URL per run for a recorded JS policy.
+    Results-affecting settings are replayed or checked before the first request.
+    """
+    import contextlib
+    import json
+    import os
+    import tempfile
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from seohead.crawl import settings as crawl_settings
+    from seohead.crawl.list_input import read_url_list
+    from seohead.verification import (
+        classify,
+        digest,
+        markdown,
+        offline_observation_gap,
+        scan_identity,
+        select,
+    )
+
+    if not out_dir:
+        raise ValueError("out_dir required: a new directory for immutable verification evidence")
+    baseline_doc = _load_audit(baseline, "baseline")
+    if baseline_doc.get("schema_version") != "2.0":
+        raise ValueError("baseline must be an audit.json schema_version 2.0 document")
+    if isinstance(view, (str, os.PathLike)):
+        saved_view = json.loads(Path(view).read_text(encoding="utf-8"))
+    else:
+        saved_view = view
+    requested_urls = list(urls or [])
+    if urls_file:
+        requested_urls.extend(read_url_list(urls_file))
+    selected, targets = select(
+        baseline_doc, finding_ids=finding_ids, urls=requested_urls, view=saved_view
+    )
+
+    destination = Path(out_dir).absolute()
+    if destination.exists():
+        raise FileExistsError(f"verification output already exists: {destination}")
+    destination.mkdir(parents=True)
+    observations: dict[str, dict[str, Any]] = {}
+    collection: dict[str, Any] = {"state": "offline" if after is not None else "not_run"}
+
+    if after is not None:
+        after_doc = _load_audit(after, "after")
+        gap = offline_observation_gap(baseline_doc, after_doc)
+        if gap is None:
+            observations = dict.fromkeys(targets, after_doc)
+        after_run = after_doc.get("run")
+        collection.update(
+            state="offline" if gap is None else "not_verifiable",
+            audit_sha256=digest(after_doc),
+            scan_uuid=scan_identity(after_doc),
+            generated_at=after_run.get("generated_at") if isinstance(after_run, dict) else None,
+        )
+        if gap is not None:
+            collection["reason"] = gap
+    elif targets:
+        recorded = (baseline_doc.get("run") or {}).get("crawl_config")
+        if not isinstance(recorded, dict):
+            collection["reason"] = "baseline has no recorded crawl configuration"
+        elif (
+            any(
+                value == "REDACTED"
+                for setting in ("http.headers", "http.credential_headers")
+                for value in _verification_values(recorded.get(setting))
+            )
+            and not config
+        ):
+            collection["reason"] = (
+                "baseline redacts authentication settings; provide the original config"
+            )
+        else:
+            try:
+                replay_overrides = dict(recorded)
+                proxy = replay_overrides.get("http.proxy")
+                if isinstance(proxy, dict):
+                    if proxy != {"mode": "direct", "endpoint": None, "authenticated": False}:
+                        if not config:
+                            raise ValueError(
+                                "baseline records a proxy; provide the original config"
+                            )
+                    else:
+                        replay_overrides["http.proxy"] = ""
+                settings = crawl_settings.load(
+                    config, overrides=None if config else replay_overrides
+                )
+                measured = crawl_settings.manifest(settings)
+                changed = sorted(
+                    key
+                    for key in set(recorded) | set(measured)
+                    if key not in {"limits.max_urls", "limits.max_depth"}
+                    and recorded.get(key) != measured.get(key)
+                )
+                if settings["cache"]["mode"] != "off":
+                    collection["reason"] = "fresh verification requires cache.mode=off"
+                elif changed:
+                    collection["reason"] = "recorded crawl policy differs: " + ", ".join(changed)
+                else:
+                    mode = settings["rendering"]["mode"]
+                    common = {"config": config, "overrides": None if config else replay_overrides}
+                    if mode == "raw":
+                        folder = destination / "recrawl"
+                        crawl_site(
+                            urls=targets, out_dir=str(folder), max_urls=len(targets), **common
+                        )
+                        audit = json.loads((folder / "audit.json").read_text(encoding="utf-8"))
+                        observations = dict.fromkeys(targets, audit)
+                        collection = {
+                            "state": "measured",
+                            "mode": "list",
+                            "audits": [{"path": "recrawl/audit.json", "sha256": digest(audit)}],
+                        }
+                    else:
+                        audits = []
+                        collection = {"state": "partial", "mode": mode, "audits": audits}
+                        for index, target in enumerate(targets):
+                            folder = destination / "recrawl" / f"url-{index + 1:04d}"
+                            crawl_site(url=target, out_dir=str(folder), max_urls=1, **common)
+                            audit = json.loads((folder / "audit.json").read_text(encoding="utf-8"))
+                            observations[target] = audit
+                            audits.append(
+                                {
+                                    "url": target,
+                                    "path": str((folder / "audit.json").relative_to(destination)),
+                                    "sha256": digest(audit),
+                                }
+                            )
+                        collection["state"] = "measured"
+            except (OSError, ValueError, RuntimeError) as exc:
+                collection["state"] = "partial" if observations else "not_run"
+                collection["reason"] = str(exc)
+
+    findings = classify(
+        baseline_doc,
+        selected,
+        observations,
+        missing_reason=collection.get("reason") or "selected URL was not recrawled",
+    )
+    summary = {
+        name: sum(item["status"] == name for item in findings)
+        for name in ("resolved", "persisting", "changed", "not_verifiable")
+    }
+    document = {
+        "schema_version": "verification.v1",
+        "observed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "baseline": {
+            "audit_sha256": digest(baseline_doc),
+            "scan_uuid": scan_identity(baseline_doc),
+            "generated_at": (
+                baseline_doc["run"].get("generated_at")
+                if isinstance(baseline_doc.get("run"), dict)
+                else None
+            ),
+        },
+        "selection": {"finding_ids": [item.get("id") for item in selected], "urls": targets},
+        "collection": collection,
+        "summary": summary,
+        "findings": findings,
+    }
+
+    def write_new(path: Path, data: str) -> None:
+        fd, temporary = tempfile.mkstemp(prefix=".verification-", dir=destination)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.link(temporary, path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temporary)
+
+    write_new(destination / "verification.json", json.dumps(document, ensure_ascii=False, indent=2))
+    write_new(destination / "verification.md", markdown(document))
+    return {
+        "ok": True,
+        "verification": str(destination / "verification.json"),
+        "report": str(destination / "verification.md"),
+        **document,
+    }
+
+
+def _verification_values(value: Any) -> list[Any]:
+    """Flatten recorded authentication metadata for redaction detection only."""
+    if isinstance(value, dict):
+        return [item for nested in value.values() for item in _verification_values(nested)]
+    if isinstance(value, list):
+        return [item for nested in value for item in _verification_values(nested)]
+    return [value]
 
 
 def crawl_import(manifest_path: str | None = None) -> dict[str, Any]:
@@ -1846,12 +2355,16 @@ def render_check(
     viewport: str = "desktop",
     wait: str = "load",
     user_agent: str | None = None,
+    transport_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not url:
         raise ValueError("url required")
     from seohead.tools import render as render_core
 
-    return render_core.render_check(url, viewport=viewport, wait=wait, user_agent=user_agent)
+    kwargs = {"transport_config": transport_config} if transport_config is not None else {}
+    return render_core.render_check(
+        url, viewport=viewport, wait=wait, user_agent=user_agent, **kwargs
+    )
 
 
 def backlinks_check(
@@ -2078,6 +2591,31 @@ def log_scan(
     return logscan.scan(artifacts, max_per_rule=max_per_rule)
 
 
+def crawl_diagnose(
+    scan: str | None = None,
+    run: str | None = None,
+    max_decisions: int = 20,
+) -> dict[str, Any]:
+    """Explain a native crawl from retained evidence without fetching the site."""
+    from seohead.crawl.diagnostics import diagnose
+
+    return diagnose(scan=scan, run=run, max_decisions=max_decisions)
+
+
+def crawl_diagnose_export(
+    scan: str | None = None,
+    run: str | None = None,
+    export: str | None = None,
+    max_decisions: int = 20,
+) -> dict[str, Any]:
+    """Write a new redacted diagnostic file only when its path was explicit."""
+    if not export:
+        raise ValueError("export path is required")
+    from seohead.crawl.diagnostics import diagnose
+
+    return diagnose(scan=scan, run=run, max_decisions=max_decisions, export=export)
+
+
 def boilerplate_report(pages: list[dict] | None = None, scan: str | None = None) -> dict[str, Any]:
     """Group a crawled corpus by header/nav/footer hash and report minority template groups.
 
@@ -2102,6 +2640,64 @@ def boilerplate_report(pages: list[dict] | None = None, scan: str | None = None)
     from seohead.tools import boilerplate_report as bp_core
 
     return bp_core.boilerplate_consistency_report(pages)
+
+
+def semantic_inputs(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    content_area: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the reproducible normalized-input manifest for semantic analysis.
+
+    Each document's entry names the retained body hash, the exact decoded
+    input hash, the normalized output hash, the content-area strategy, and the
+    language evidence — the normalized text itself stays inside the corpus
+    boundary for the analyzer that consumes it (issue #801).
+    """
+    if items is not None and scan is not None:
+        raise ValueError("items[] and scan are mutually exclusive")
+    from seohead.tools import text_normalize as norm_core
+
+    if scan is not None:
+        if content_area is not None:
+            raise ValueError("scan input uses the crawl's recorded content_area config")
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        documents = [norm_core.manifest_entry(item) for item in corpus["items"]]
+        return {
+            "ok": True,
+            "count": len(documents),
+            "documents": documents,
+            **corpus_public(corpus, analyzed=len(documents)),
+        }
+    if not items:
+        raise ValueError("items[] required (list of {url, html})")
+    prepared = norm_core.prepare_items(items, content_area=content_area)
+    documents = [norm_core.manifest_entry(item) for item in prepared]
+    unavailable = sum(1 for document in documents if document["state"] == "unavailable")
+    return {
+        "ok": True,
+        "count": len(documents),
+        "documents": documents,
+        "normalization": norm_core.normalization_policy(content_area),
+        "coverage": {
+            "state": "partial" if unavailable else "complete",
+            "reason": "items without a usable html body are unavailable" if unavailable else "",
+            "eligible_documents": len(items),
+            "prepared_documents": len(documents) - unavailable,
+            "analyzed_documents": len(documents) - unavailable,
+            "measured_empty_documents": sum(
+                1 for document in documents if document["state"] == "empty"
+            ),
+            "omitted_documents": unavailable,
+            "omission_reasons": (
+                {"item supplies no html body": unavailable} if unavailable else {}
+            ),
+        },
+    }
 
 
 def social_meta_check(
@@ -2420,6 +3016,19 @@ def google_serp(
     )
 
 
+def topvisor_read(
+    operation: str = "projects", params: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Read one bounded page of existing Topvisor data without launching paid checks."""
+    from seohead.data_sources.credentials import MissingCredential
+    from seohead.data_sources.topvisor import TopvisorError, fetch
+
+    try:
+        return fetch(operation, params)
+    except (MissingCredential, TopvisorError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def metrika_counters() -> dict[str, Any]:
     """List Metrika counters visible to the token and expose the ``counter_id`` required by reports."""
     from seohead.data_sources.credentials import MissingCredential
@@ -2500,7 +3109,13 @@ def metrika_report(
     ``metrics`` and ``dimensions`` are comma-separated API identifiers such as ``ym:s:visits`` and
     ``ym:s:startURL``. Dates also accept relative forms such as ``30daysAgo``. With
     ``paginate=true`` the client collects successive pages but stops at 100,000 rows and marks the
-    result as capped rather than implying that the dataset is complete.
+    result as capped rather than implying that the dataset is complete. A ``Query is too
+    complicated`` refusal is retried month by month and, if needed, at a sampled accuracy; the
+    answer then carries ``split`` and ``accuracy`` saying what was actually used. Only count
+    metrics that are additive over disjoint periods (``ym:s:visits``, ``ym:s:pageviews``)
+    merge this way — a query for unique-visitor, ratio, or average metrics fails rather
+    than return a summed value that would be wrong. ``sampled`` stays ``None`` when a
+    slice did not report its sampling state — unknown is not ``false``.
     """
     if not counter_id or not metrics:
         raise ValueError("counter_id and metrics required")
@@ -2527,6 +3142,14 @@ def metrika_report(
         "total_rows": body.get("total_rows"),
         "returned": len(body.get("data") or []),
         "capped": body.get("capped", False),
+        "incomplete": body.get("incomplete", False),
+        # ``sampled`` reports what the API did, not what was requested: a query degraded
+        # to accuracy=0.1 may still come back unsampled, and ``accuracy`` says what was
+        # actually used. A body that does not say stays ``None`` — unknown is not false.
+        "sampled": body.get("sampled"),
+        "sample_share": body.get("sample_share"),
+        "accuracy": body.get("accuracy_used") or (body.get("query") or {}).get("accuracy"),
+        "split": body.get("split"),
         "totals": body.get("totals"),
         "rows": rows_to_records(body),
     }
@@ -2783,8 +3406,12 @@ def gsc_query(
 def crux_report(
     url: str | None = None,
     origin: str | None = None,
+    urls: list[str] | None = None,
     form_factor: str | None = None,
     metrics: list[str] | None = None,
+    max_samples: int = 25,
+    cache_dir: str | None = None,
+    cache_max_age_hours: float = 24,
 ) -> dict[str, Any]:
     """Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the 75th
     percentile — the honest counterpart to a synthesized lab score (see `render-check` and
@@ -2792,6 +3419,18 @@ def crux_report(
     """
     from seohead.data_sources import crux as core
 
+    if urls is not None:
+        if url or origin or metrics:
+            raise ValueError("urls cannot be combined with url, origin, or metrics")
+        return core.sample_urls(
+            urls,
+            form_factor=form_factor,
+            max_samples=max_samples,
+            cache_dir=cache_dir,
+            cache_max_age_hours=cache_max_age_hours,
+        )
+    if cache_dir or max_samples != 25 or cache_max_age_hours != 24:
+        raise ValueError("sample budget and cache options require urls")
     return core.query(url=url, origin=origin, form_factor=form_factor, metrics=metrics)
 
 
@@ -2835,7 +3474,7 @@ def spend_report(since: str | None = None) -> dict[str, Any]:
 
 
 def sources_doctor() -> dict[str, Any]:
-    """Report provider readiness and credential locations without exposing secret values."""
+    """Report redacted credential references and readiness without verifying provider access."""
     from seohead.data_sources import credentials as creds
 
     checks = {
@@ -2973,6 +3612,46 @@ def scan_inspect(
     return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
 
 
+def scan_link_inspect(
+    input_path: str,
+    view: str = "path",
+    seed: str | None = None,
+    target: str | None = None,
+    representation: str = "all",
+    cursor: str | None = None,
+    link_id: int | None = None,
+    document_id: int | None = None,
+    offset: int = 0,
+    limit: int = 100,
+    max_bytes: int = 1_048_576,
+    max_body_bytes: int = 5 * 1024 * 1024,
+    max_nodes: int = 10_000,
+    max_edges: int = 200_000,
+    max_depth: int = 20,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    from seohead.servers.history_handlers import scan_link_inspect as core
+
+    return core(
+        input_path,
+        view=view,
+        seed=seed,
+        target=target,
+        representation=representation,
+        cursor=cursor,
+        link_id=link_id,
+        document_id=document_id,
+        offset=offset,
+        limit=limit,
+        max_bytes=max_bytes,
+        max_body_bytes=max_body_bytes,
+        max_nodes=max_nodes,
+        max_edges=max_edges,
+        max_depth=max_depth,
+        timeout_seconds=timeout_seconds,
+    )
+
+
 def scan_status(input_path: str) -> dict[str, Any]:
     from seohead.servers.history_handlers import scan_status as core
 
@@ -2989,6 +3668,19 @@ def scan_snapshot(input_path: str, out: str) -> dict[str, Any]:
     from seohead.servers.history_handlers import scan_snapshot as core
 
     return core(input_path, out)
+
+
+def scan_export(
+    input_path: str,
+    out: str,
+    format: str = "json",
+    records: Any = None,
+    fields: Any = None,
+) -> dict[str, Any]:
+    """Export retained scan data under the versioned ``scan_export.v1`` contract."""
+    from seohead.storage.scan_export import export_scan_data
+
+    return export_scan_data(input_path, out, fmt=format, records=records, fields=fields)
 
 
 def scan_pin(input_path: str, pinned: bool = True) -> dict[str, Any]:
@@ -3079,6 +3771,12 @@ def project_status(directory: str) -> dict[str, Any]:
     return project_basic_status(directory)
 
 
+def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_progress as core
+
+    return core(directory, limit=limit, offset=offset)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
@@ -3093,11 +3791,14 @@ def project_facts(
 
 
 def project_checklist_init(
-    directory: str, template: dict | None = None, expected_revision: int | None = None
+    directory: str,
+    template: dict | None = None,
+    expected_revision: int | None = None,
+    plan: dict | None = None,
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_checklist_init as core
 
-    return core(directory, template=template, expected_revision=expected_revision)
+    return core(directory, template=template, expected_revision=expected_revision, plan=plan)
 
 
 def project_checklist_update(directory: str, item: dict, expected_revision: int) -> dict[str, Any]:
@@ -3112,6 +3813,34 @@ def project_checklist_record(
     from seohead.servers.project_handlers import project_checklist_record as core
 
     return core(directory, item_id=item_id, record=record, expected_revision=expected_revision)
+
+
+def project_view_list(directory: str) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_view_list as core
+
+    return core(directory)
+
+
+def project_view_show(directory: str, name: str) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_view_show as core
+
+    return core(directory, name)
+
+
+def project_view_save(directory: str, view: dict, expected_revision: int) -> dict[str, Any]:
+    from seohead.servers.project_handlers import project_view_save as core
+
+    return core(directory, view, expected_revision)
+
+
+def findings_view(directory: str, name: str, audit: Any, offset: int = 0) -> dict[str, Any]:
+    from seohead.projects.finding_views import apply_view_to_audit
+    from seohead.storage.inputs import resolve_audit_input
+
+    document, diagnostics = resolve_audit_input(audit)
+    result = apply_view_to_audit(directory, name, document, offset=offset)
+    result["input_diagnostics"] = diagnostics
+    return result
 
 
 def project_priorities(
@@ -3234,6 +3963,12 @@ def provider_registry() -> dict[str, Any]:
     return core()
 
 
+def provider_readiness(provider: str | None = None, operation: str | None = None) -> dict[str, Any]:
+    from seohead.servers.provider_handlers import provider_readiness as core
+
+    return core(provider=provider, operation=operation)
+
+
 def provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
     from seohead.servers.provider_handlers import provider_verify as core
 
@@ -3262,6 +3997,282 @@ def provider_join(
         review_external_only=review_external_only,
         adjustments=adjustments,
     )
+
+
+def _json_or_path(value: Any, label: str) -> Any:
+    """Resolve one argument that accepts inline JSON text or a bounded JSON file path."""
+    import json
+    from pathlib import Path
+
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be JSON data or a file path")
+    text = value.strip()
+    if text[:1] in {"{", "["}:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} is not valid JSON: {exc}") from exc
+    path = Path(text)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
+        raise ValueError(f"{label} must be inline JSON or a bounded readable JSON file")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} is not valid JSON: {exc}") from exc
+
+
+def _evidence_document(
+    value: Any, *, mapping: Any = None, sheet: str | None = None, site_origin: str | None = None
+) -> dict[str, Any]:
+    """Resolve one evidence input into a normalized evidence document."""
+    from seohead.data_sources import evidence_import
+
+    if value is None:
+        raise ValueError("evidence source required")
+    manifest = _json_or_path(mapping, "mapping")
+    if isinstance(value, dict):
+        if value.get("format") == evidence_import.NORMALIZED_FORMAT:
+            return value
+        if isinstance(value.get("rows"), list):
+            return evidence_import.normalize_inline(
+                value["rows"], manifest=manifest or value.get("mapping")
+            )
+        raise ValueError("evidence must be a normalized document, a rows object, or a file path")
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in {"{", "["}:
+            import json
+
+            return _evidence_document(
+                json.loads(text), mapping=mapping, sheet=sheet, site_origin=site_origin
+            )
+        return evidence_import.normalize_file(
+            value, manifest=manifest, sheet=sheet, site_origin=site_origin
+        )
+    raise ValueError("evidence must be a normalized document, a rows object, or a file path")
+
+
+def evidence_normalize(
+    file: str | None = None,
+    mapping: Any = None,
+    sheet: str | None = None,
+    site_origin: str | None = None,
+    out_dir: str | None = None,
+) -> dict[str, Any]:
+    """Normalize one supplied CSV/XLSX/JSON or saved provider envelope, fully offline.
+
+    Restricted sources (saved provider evidence, or a manifest that declares
+    ``privacy: restricted``) report summary and redacted provenance only; their
+    normalized rows exist solely inside the optional restricted ``out_dir``
+    artifact. Supplied files return the full normalized document.
+    """
+    if not file:
+        raise ValueError("file required")
+    from seohead.data_sources import evidence_import
+    from seohead.data_sources.providers import _save_local_artifact
+
+    manifest = _json_or_path(mapping, "mapping")
+    document = evidence_import.normalize_file(
+        file, manifest=manifest, sheet=sheet, site_origin=site_origin
+    )
+    privacy = (document["mapping"].get("source") or {}).get("privacy") or "supplied"
+    artifact = _save_local_artifact(out_dir, document) if out_dir else None
+    result: dict[str, Any] = {
+        "ok": True,
+        "format": "seohead.evidence-normalize.v1",
+        "privacy": privacy,
+        "summary": document["summary"],
+        "artifact_reference": artifact,
+    }
+    if privacy == "restricted":
+        result["provenance"] = evidence_import.public_provenance(document["provenance"])
+        result["rows_redacted"] = True
+    else:
+        result["document"] = document
+    return result
+
+
+def evidence_join(
+    audit: Any = None,
+    scan: str | None = None,
+    pages: Any = None,
+    evidence: Any = None,
+    compare: Any = None,
+    mapping: Any = None,
+    compare_mapping: Any = None,
+    policy: Any = None,
+    sheet: str | None = None,
+    compare_sheet: str | None = None,
+    site_origin: str | None = None,
+    compare_site_origin: str | None = None,
+    ignore_query: bool = False,
+    ignore_scheme: bool = False,
+    casefold_path: bool = False,
+    out_dir: str | None = None,
+) -> dict[str, Any]:
+    """Join normalized analytics/search evidence to crawl pages, offline only.
+
+    One of ``pages``, ``scan`` or ``audit`` supplies the crawl side; ``evidence``
+    is a file or normalized document normalized through the shared
+    ``seohead.evidence-mapping.v1`` path. ``compare`` adds a pure
+    compatibility decision against a second source under a declared
+    ``policy``. Restricted sources keep every population inside the optional
+    private ``out_dir`` artifact and return counts, never row content.
+    """
+    from seohead.data_sources import evidence_join as join_core
+    from seohead.data_sources.providers import _save_local_artifact
+
+    document = _evidence_document(evidence, mapping=mapping, sheet=sheet, site_origin=site_origin)
+    compare_document = (
+        _evidence_document(
+            compare,
+            mapping=compare_mapping,
+            sheet=compare_sheet,
+            site_origin=compare_site_origin,
+        )
+        if compare is not None
+        else None
+    )
+    if sum(source is not None for source in (pages, scan, audit)) > 1:
+        raise ValueError("pages, scan and audit are alternative crawl inputs, not a set")
+    page_rows = None
+    crawl_context: dict[str, Any] = {}
+    if pages is not None:
+        page_rows = _json_or_path(pages, "pages")
+        if (
+            not isinstance(page_rows, list)
+            or len(page_rows) > 100_000
+            or any(not isinstance(page, dict) for page in page_rows)
+        ):
+            raise ValueError("pages must be a bounded list of page objects")
+        crawl_context = {"source": "pages"}
+    elif scan:
+        from seohead.storage import open_scan
+
+        con = open_scan(scan, require_audit=False)
+        try:
+            if con.execute("SELECT COUNT(*) FROM pages").fetchone()[0] > 100_000:
+                raise ValueError("saved scan exceeds the bounded join limit")
+            page_rows = [
+                dict(row)
+                for row in con.execute(
+                    "SELECT u.url,p.status_code FROM pages p JOIN urls u USING(url_id)"
+                    " ORDER BY p.url_id"
+                )
+            ]
+            scan_uuid = con.execute("SELECT scan_uuid FROM scan").fetchone()[0]
+            partial = None
+            audit_row = con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
+            if audit_row:
+                import json as _json
+
+                try:
+                    partial = bool(
+                        (_json.loads(audit_row[0]).get("run") or {}).get("crawl_partial")
+                    )
+                except (TypeError, ValueError):
+                    partial = None
+        finally:
+            con.close()
+        crawl_context = {"source": "scan", "scan_uuid": scan_uuid, "partial": partial}
+    elif audit is not None:
+        diagnostics: list[dict[str, str]] = []
+        audit_document = _load_audit(audit, "audit", diagnostics)
+        page_rows = audit_document.get("pages") or []
+        if len(page_rows) > 100_000:
+            raise ValueError("audit pages exceed the bounded join limit")
+        crawl_context = {
+            "source": "audit",
+            "partial": bool((audit_document.get("run") or {}).get("crawl_partial")),
+        }
+        if diagnostics:
+            crawl_context["input_diagnostics"] = diagnostics
+    if page_rows is None and compare_document is None:
+        raise ValueError(
+            "evidence_join needs a crawl input (pages, scan or audit) to join, "
+            "or a compare source for a compatibility-only decision"
+        )
+    join_result = (
+        join_core.join_evidence(
+            page_rows,
+            document,
+            url_policy={
+                "ignore_query": bool(ignore_query),
+                "ignore_scheme": bool(ignore_scheme),
+                "casefold_path": bool(casefold_path),
+            },
+            crawl=crawl_context,
+        )
+        if page_rows is not None
+        else None
+    )
+    compatibility = (
+        join_core.evidence_compatibility(
+            document, compare_document, policy=_json_or_path(policy, "policy")
+        )
+        if compare_document is not None
+        else None
+    )
+    restricted = any(
+        ((doc.get("mapping") or {}).get("source") or {}).get("privacy") == "restricted"
+        for doc in (document, compare_document)
+        if doc is not None
+    )
+    artifact = (
+        _save_local_artifact(out_dir, {"join": join_result, "compatibility": compatibility})
+        if out_dir
+        else None
+    )
+    response: dict[str, Any] = {
+        "ok": True,
+        "format": "seohead.evidence-join-result.v1",
+        "privacy": "restricted" if restricted else "supplied",
+        "artifact_reference": artifact,
+    }
+    if compatibility is not None:
+        response["compatibility"] = (
+            join_core.public_compatibility(compatibility) if restricted else compatibility
+        )
+    if restricted:
+        response["populations_redacted"] = True
+        if join_result is not None:
+            response["join"] = {
+                "format": join_result["format"],
+                "url_policy": join_result["url_policy"],
+                "crawl": join_result["crawl"],
+                "summary": join_result["summary"],
+            }
+    elif join_result is not None:
+        response["join"] = join_result
+    return response
+
+
+def bi_export(
+    scan: str | None = None,
+    audit: Any = None,
+    provider_joins: list[str] | None = None,
+    out_dir: str | None = None,
+    max_rows_per_file: int = 25_000,
+    max_bytes_per_file: int = 8 * 1024 * 1024,
+    max_output_bytes: int = 512 * 1024 * 1024,
+) -> dict[str, Any]:
+    """Write typed, partitioned BI datasets from saved local crawl evidence."""
+    from seohead.reports.bi import export_bi as core
+
+    return {
+        "ok": True,
+        **core(
+            scan=scan,
+            audit=audit,
+            provider_joins=provider_joins,
+            out_dir=out_dir,
+            max_rows_per_file=max_rows_per_file,
+            max_bytes_per_file=max_bytes_per_file,
+            max_output_bytes=max_output_bytes,
+        ),
+    }
 
 
 def inspect_url(url: str, checks: list[str] | None = None) -> dict[str, Any]:
@@ -3389,6 +4400,18 @@ def scan_extract(
     return core(input_path, rules, url=url, representation=representation, limit=limit)
 
 
+def scan_fragment_links(
+    input_path: str,
+    offset: int = 0,
+    limit: int = 100,
+    state: str | None = None,
+    representation: str | None = None,
+) -> dict[str, Any]:
+    from seohead.servers.evidence_handlers import scan_fragment_links as core
+
+    return core(input_path, offset=offset, limit=limit, state=state, representation=representation)
+
+
 def scan_requeue(
     input_path: str, where: str, backup_path: str, from_scan: str | None = None
 ) -> dict[str, Any]:
@@ -3409,6 +4432,7 @@ _RAW_HANDLERS = {
     "redirects_check": redirects_check,
     "sitemap_crawl": sitemap_crawl,
     "crawl_site": crawl_site,
+    "verify_fixes": verify_fixes,
     "crawl_describe_settings": crawl_describe_settings,
     "images_download": images_download,
     "images_optimize": images_optimize,
@@ -3432,7 +4456,10 @@ _RAW_HANDLERS = {
     "citability_check": citability_check,
     "markdown_extract": markdown_extract,
     "boilerplate_report": boilerplate_report,
+    "semantic_inputs": semantic_inputs,
     "log_scan": log_scan,
+    "crawl_diagnose": crawl_diagnose,
+    "crawl_diagnose_export": crawl_diagnose_export,
     "social_meta_check": social_meta_check,
     "soft404_check": soft404_check,
     "log_analyze": log_analyze,
@@ -3455,6 +4482,7 @@ _RAW_HANDLERS = {
     "sources_status": sources_status,
     "sources_export": sources_export,
     "regions_tree": regions_tree,
+    "topvisor_read": topvisor_read,
     "metrika_counters": metrika_counters,
     "metrika_setup": metrika_setup,
     "metrika_report": metrika_report,
@@ -3469,24 +4497,32 @@ _RAW_HANDLERS = {
     "scan_reanalyze": scan_reanalyze,
     "scan_list": scan_list,
     "scan_inspect": scan_inspect,
+    "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,
     "scan_evidence": scan_evidence,
     "scan_extract": scan_extract,
+    "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,
     "scan_import_urls": scan_import_urls,
     "scan_snapshot": scan_snapshot,
+    "scan_export": scan_export,
     "scan_pin": scan_pin,
     "scan_prune": scan_prune,
     "scan_body_diff": scan_body_diff,
     "project_new": project_new,
     "project_open": project_open,
     "project_status": project_status,
+    "project_progress": project_progress,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
     "project_checklist_update": project_checklist_update,
     "project_checklist_record": project_checklist_record,
     "project_priorities": project_priorities,
+    "project_view_list": project_view_list,
+    "project_view_show": project_view_show,
+    "project_view_save": project_view_save,
+    "findings_view": findings_view,
     "inspect_url": inspect_url,
     "audit_workflow": audit_workflow,
     "tool_catalog": tool_catalog,
@@ -3499,9 +4535,13 @@ _RAW_HANDLERS = {
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,
     "provider_registry": provider_registry,
+    "provider_readiness": provider_readiness,
     "provider_verify": provider_verify,
     "provider_collect": provider_collect,
     "provider_join": provider_join,
+    "evidence_normalize": evidence_normalize,
+    "evidence_join": evidence_join,
+    "bi_export": bi_export,
 }
 
 # Journaling sits here rather than in each interface: the CLI and the MCP server

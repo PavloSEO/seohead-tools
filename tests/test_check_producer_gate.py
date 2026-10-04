@@ -21,7 +21,7 @@ from __future__ import annotations
 import ast
 import pathlib
 
-from seohead.sf.core import aggregate, inlinks, rules
+from seohead.sf.core import aggregate, eeat, inlinks, rules
 from seohead.sf.core.registry import CHECKS
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -86,6 +86,7 @@ def _producer_map_ids() -> set[str]:
     ids.update(rules._SKELETON_CHECKS)
     ids.update(aggregate.UNLINKED_FINDING_CHECKS)
     ids.update(aggregate.GRAPH_WIDE_FINDING_CHECKS)
+    ids.update(eeat.TRUST_PAGE_CHECKS)
     return ids
 
 
@@ -152,6 +153,7 @@ DISPATCH_TARGETS: dict[pathlib.Path, tuple[str, str | None]] = {
     CORE / "rules.py": ("run_rules", "ALL_CHECKS"),
     CORE / "inlinks.py": ("run_inlinks", None),
     CORE / "heuristics.py": ("run_heuristics", None),
+    CORE / "eeat.py": ("run_eeat", None),
 }
 
 # Public check_* functions that exist but are deliberately not dispatched by

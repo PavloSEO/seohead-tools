@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-09-26T20:19:36Z",
+    "generated_at": "2026-10-04T09:08:17Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -99,6 +99,10 @@
         "reason": "missing export: sitemap_non_indexable"
       },
       {
+        "id": "BROKEN_BOOKMARK",
+        "reason": "export input retains no HTML/DOM bodies; fragment targets are measured only from a native retained scan"
+      },
+      {
         "id": "DESC_MULTIPLE",
         "reason": "no meta description count evidence (native crawl only)"
       },
@@ -133,6 +137,14 @@
       {
         "id": "META_KEYWORDS_PRESENT",
         "reason": "no Meta Keywords 1 column in Internal:All"
+      },
+      {
+        "id": "PAGINATION_CANONICAL_POLICY",
+        "reason": "no pagination canonical policy configured"
+      },
+      {
+        "id": "FILTER_CANONICAL_POLICY",
+        "reason": "no filters canonical policy configured"
       },
       {
         "id": "CONTENT_IN_IFRAME",
@@ -307,6 +319,10 @@
         "reason": "export inlinks_3xx not available"
       },
       {
+        "id": "HREFLANG_NOINDEX_TARGET",
+        "reason": "no all_hreflang declaration export"
+      },
+      {
         "id": "HREFLANG_INVALID_CODE",
         "reason": "no all_hreflang export (export Bulk Export -> Links -> All Hreflang)"
       },
@@ -371,6 +387,18 @@
         "reason": "no all_inlinks export (needed for the complete internal edge list)"
       },
       {
+        "id": "NO_AUTHOR_BYLINE",
+        "reason": "no Trust Signals column (native crawl or a same-named custom extraction) -- no author markup evidence at all"
+      },
+      {
+        "id": "NO_CONTENT_DATES",
+        "reason": "no Trust Signals column and no Last Modified column -- no date evidence at all"
+      },
+      {
+        "id": "FEW_CITATIONS",
+        "reason": "no External Outlinks column and no all_inlinks export -- nothing to count outbound citations from"
+      },
+      {
         "id": "DOM_TOO_DEEP",
         "reason": "no stored HTML (input.html_store_dir not set)"
       },
@@ -430,7 +458,7 @@
       "urls_crawled": 6,
       "html_pages": 4,
       "html_indexable": 4,
-      "issues_total": 21,
+      "issues_total": 25,
       "groups_total": 3,
       "pages_by_representation": {
         "static": 6
@@ -439,7 +467,7 @@
     "by_severity": {
       "critical": 3,
       "warning": 10,
-      "notice": 8
+      "notice": 12
     },
     "by_check": {
       "H2_DUPLICATE": 3,
@@ -455,6 +483,10 @@
       "HTML_BLOAT": 1,
       "LARGE_HTML": 1,
       "LOW_TEXT_RATIO": 1,
+      "MISSING_ABOUT_PAGE": 1,
+      "MISSING_CONTACT_PAGE": 1,
+      "MISSING_PRIVACY_POLICY": 1,
+      "MISSING_TERMS_PAGE": 1,
       "SLOW_RESPONSE": 1,
       "THIN_CONTENT": 1,
       "TITLE_MISSING": 1
@@ -468,20 +500,22 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 162,
-      "checks_fired": 16,
-      "checks_skipped": 92,
+      "checks_total": 176,
+      "checks_fired": 20,
+      "checks_skipped": 99,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 54,
+      "checks_silent": 57,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
         "CANONICALISED",
         "CANONICAL_CHAIN",
         "CANONICAL_FRAGMENT",
+        "CANONICAL_HOMEPAGE_GROUP",
         "CANONICAL_NON_INDEXABLE",
         "CANONICAL_RELATIVE",
+        "CANONICAL_TARGET_ERROR",
         "CANONICAL_TO_REDIRECT",
         "DEEP_CRAWL_DEPTH",
         "DESC_TOO_LONG",
@@ -528,15 +562,62 @@
         "URL_TOO_LONG",
         "URL_TRACKING_PARAMS",
         "URL_UNDERSCORES",
-        "URL_UPPERCASE"
+        "URL_UPPERCASE",
+        "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.432
+      "coverage": 0.438
     },
-    "health_score_reason": "only 70 of 162 checks could run (43% coverage); too little evidence to score",
-    "health_score_basis": "70 of 162 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 77 of 176 checks could run (44% coverage); too little evidence to score",
+    "health_score_basis": "77 of 176 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"
+    },
+    "trust_evidence": {
+      "scope": {
+        "indexable_html_pages": 4,
+        "crawl_pages": 6,
+        "basis": "declared article markers or conventional content-path segments"
+      },
+      "trust_pages": {
+        "about": {
+          "state": "not_discovered",
+          "url": null,
+          "status_code": null,
+          "indexability": null,
+          "evidence": [],
+          "matched": [],
+          "discovered_not_crawled": []
+        },
+        "contact": {
+          "state": "not_discovered",
+          "url": null,
+          "status_code": null,
+          "indexability": null,
+          "evidence": [],
+          "matched": [],
+          "discovered_not_crawled": []
+        },
+        "privacy": {
+          "state": "not_discovered",
+          "url": null,
+          "status_code": null,
+          "indexability": null,
+          "evidence": [],
+          "matched": [],
+          "discovered_not_crawled": []
+        },
+        "terms": {
+          "state": "not_discovered",
+          "url": null,
+          "status_code": null,
+          "indexability": null,
+          "evidence": [],
+          "matched": [],
+          "discovered_not_crawled": []
+        }
+      },
+      "anchor_evidence": "none"
     },
     "size_stats_bytes": {
       "count": 4,
@@ -899,6 +980,90 @@
     },
     {
       "id": "ISSUE-000020",
+      "fingerprint": "1f393f281e57",
+      "check": "MISSING_ABOUT_PAGE",
+      "severity": "notice",
+      "source": "SF-derived",
+      "message": "No indexable About page was found in the crawl's scope",
+      "target_url": null,
+      "status_code": null,
+      "occurrences_count": 1,
+      "details": {
+        "state": "not_discovered",
+        "crawl_pages": 6,
+        "vocabulary": "whole path segments and anchor texts from a fixed EN/RU list",
+        "matched": [],
+        "evidence": [],
+        "indexability": null,
+        "discovered_not_crawled": []
+      },
+      "fix_hint": "If an About page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all."
+    },
+    {
+      "id": "ISSUE-000021",
+      "fingerprint": "d29a63940840",
+      "check": "MISSING_CONTACT_PAGE",
+      "severity": "notice",
+      "source": "SF-derived",
+      "message": "No indexable Contact page was found in the crawl's scope",
+      "target_url": null,
+      "status_code": null,
+      "occurrences_count": 1,
+      "details": {
+        "state": "not_discovered",
+        "crawl_pages": 6,
+        "vocabulary": "whole path segments and anchor texts from a fixed EN/RU list",
+        "matched": [],
+        "evidence": [],
+        "indexability": null,
+        "discovered_not_crawled": []
+      },
+      "fix_hint": "If a Contact page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all."
+    },
+    {
+      "id": "ISSUE-000022",
+      "fingerprint": "dd21bf44c3b7",
+      "check": "MISSING_PRIVACY_POLICY",
+      "severity": "notice",
+      "source": "SF-derived",
+      "message": "No indexable privacy policy page was found in the crawl's scope",
+      "target_url": null,
+      "status_code": null,
+      "occurrences_count": 1,
+      "details": {
+        "state": "not_discovered",
+        "crawl_pages": 6,
+        "vocabulary": "whole path segments and anchor texts from a fixed EN/RU list",
+        "matched": [],
+        "evidence": [],
+        "indexability": null,
+        "discovered_not_crawled": []
+      },
+      "fix_hint": "If a privacy policy exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all."
+    },
+    {
+      "id": "ISSUE-000023",
+      "fingerprint": "e1161beb307e",
+      "check": "MISSING_TERMS_PAGE",
+      "severity": "notice",
+      "source": "SF-derived",
+      "message": "No indexable terms-of-use page was found in the crawl's scope",
+      "target_url": null,
+      "status_code": null,
+      "occurrences_count": 1,
+      "details": {
+        "state": "not_discovered",
+        "crawl_pages": 6,
+        "vocabulary": "whole path segments and anchor texts from a fixed EN/RU list",
+        "matched": [],
+        "evidence": [],
+        "indexability": null,
+        "discovered_not_crawled": []
+      },
+      "fix_hint": "If a terms page exists, make it reachable and indexable; the finding's state says whether it was found non-indexable, broken, linked but never crawled, or not discovered at all."
+    },
+    {
+      "id": "ISSUE-000024",
       "fingerprint": "75ca47c35a36",
       "check": "TITLE_TOO_SHORT",
       "severity": "notice",
@@ -915,7 +1080,7 @@
       "fix_hint": "Expand the title to an informative length without padding it with boilerplate."
     },
     {
-      "id": "ISSUE-000021",
+      "id": "ISSUE-000025",
       "fingerprint": "c84ae1ebeb61",
       "check": "TITLE_TOO_SHORT",
       "severity": "notice",
@@ -1029,7 +1194,7 @@
         "ISSUE-000012",
         "ISSUE-000014",
         "ISSUE-000017",
-        "ISSUE-000020"
+        "ISSUE-000024"
       ]
     },
     {
@@ -1083,7 +1248,7 @@
         "ISSUE-000013",
         "ISSUE-000018",
         "ISSUE-000019",
-        "ISSUE-000021"
+        "ISSUE-000025"
       ]
     },
     {

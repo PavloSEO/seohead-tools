@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from seohead.projects.coverage import initialize_coverage, record_execution, update_item
+from seohead.projects.progress import project_progress as _project_progress
 from seohead.projects.workspace import create_project, open_project, project_status
 
 
@@ -34,6 +35,11 @@ def project_basic_status(directory: str) -> dict[str, Any]:
     return project_status(directory)
 
 
+def project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    """Return a bounded project progress page without running or changing work."""
+    return _project_progress(directory, limit=limit, offset=offset)
+
+
 def project_facts(
     directory: str,
     facts: list[dict[str, Any]] | None = None,
@@ -48,10 +54,15 @@ def project_facts(
 
 
 def project_checklist_init(
-    directory: str, template: dict | None = None, expected_revision: int | None = None
+    directory: str,
+    template: dict | None = None,
+    expected_revision: int | None = None,
+    plan: dict | None = None,
 ) -> dict[str, Any]:
     """Create or reconcile a project's local checklist without running any item."""
-    return initialize_coverage(directory, template=template, expected_revision=expected_revision)
+    return initialize_coverage(
+        directory, template=template, expected_revision=expected_revision, plan=plan
+    )
 
 
 def project_checklist_update(directory: str, item: dict, expected_revision: int) -> dict[str, Any]:
@@ -74,6 +85,24 @@ def project_checklist_record(
     return record_execution(
         target, item_id=local_id, record=record, expected_revision=expected_revision
     )
+
+
+def project_view_list(directory: str) -> dict[str, Any]:
+    from seohead.projects.finding_views import list_views
+
+    return list_views(directory)
+
+
+def project_view_show(directory: str, name: str) -> dict[str, Any]:
+    from seohead.projects.finding_views import show_view
+
+    return show_view(directory, name)
+
+
+def project_view_save(directory: str, view: dict, expected_revision: int) -> dict[str, Any]:
+    from seohead.projects.finding_views import save_view
+
+    return save_view(directory, view, expected_revision=expected_revision)
 
 
 def project_priorities(

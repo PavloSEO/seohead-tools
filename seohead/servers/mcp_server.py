@@ -181,6 +181,14 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         change that one setting. ``seo_crawl_describe_settings`` lists the
         defaults each of them falls back to.
 
+        ``http.proxy`` in ``config`` or ``overrides`` selects an explicit HTTP
+        forward proxy for the entire native crawl, including sitemap, resource
+        and pinned browser requests. Credentials require an ``env:VARIABLE``
+        URL reference; ``http.proxy_allow_private`` authorizes only a private
+        proxy endpoint, not private targets. Ambient proxy variables are ignored.
+        Proxied runs require cache off and a fresh artifact; failures never
+        fall back to direct egress.
+
         A URL crawl with neither ``scan_out`` nor ``out_dir`` writes a collision-safe
         SQLite scan below the caller's ``scans/`` directory. ``scan_out`` overrides
         that destination; ``out_dir`` selects the explicit legacy directory route.
@@ -249,6 +257,36 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         recorded size be checked against the bytes on disk."""
         return _checked(
             handlers.log_scan(run=run, images_dir=images_dir, max_per_rule=max_per_rule)
+        )
+
+    @mcp.tool(annotations=pure, structured_output=True)
+    def seo_crawl_diagnose(
+        scan: str | None = None,
+        run: str | None = None,
+        max_decisions: int = 20,
+    ) -> dict[str, Any]:
+        """Explain a small or unfinished native crawl from retained scan or run evidence.
+        This MCP tool is read-only and makes no network request. To deliberately write a
+        new redacted JSON file, use ``seo_crawl_diagnose_export`` or the CLI's
+        ``crawl-diagnose-export --export`` command.
+        """
+        return _checked(handlers.crawl_diagnose(scan=scan, run=run, max_decisions=max_decisions))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_crawl_diagnose_export(
+        export: str,
+        scan: str | None = None,
+        run: str | None = None,
+        max_decisions: int = 20,
+    ) -> dict[str, Any]:
+        """Create one new redacted crawl-diagnostic JSON file from retained evidence.
+        This tool writes a file with no overwrite and makes no network request. Use the
+        read-only ``seo_crawl_diagnose`` when a file is not needed.
+        """
+        return _checked(
+            handlers.crawl_diagnose_export(
+                export=export, scan=scan, run=run, max_decisions=max_decisions
+            )
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
@@ -509,6 +547,28 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         16 MiB retained-input bound reports the exact partial coverage."""
         return _checked(handlers.boilerplate_report(pages=pages, scan=scan))
 
+    @mcp.tool(annotations=pure, structured_output=True)
+    def seo_semantic_inputs(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        content_area: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build the reproducible normalized-input manifest for semantic
+        analysis over retained page content. Each document entry names the
+        retained body hash, the exact decoded input hash, the normalized
+        output hash, the content-area strategy that was applied, and the
+        language evidence (the page's own <html lang> declaration plus
+        letter-script shares over the normalized text) — the normalized text
+        itself is never returned. Pass scan for a validated read-only scan.v1
+        corpus: it streams retained complete bodies offline with no refetch,
+        under the crawl's recorded content_area config, and a missing or
+        partial body stays an explicit omission — never an empty clean result.
+        Or pass items as a list of {"url", "html"} to normalize supplied
+        markup offline under an optional content_area config. The corpus is
+        capped at 10,000 documents and 16 MiB of normalized retained input;
+        reaching a bound reports the exact partial coverage."""
+        return _checked(handlers.semantic_inputs(items=items, scan=scan, content_area=content_area))
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
         url: str = "", og: dict | None = None, twitter: dict | None = None
@@ -564,6 +624,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         viewport: str = "desktop",
         wait: str = "load",
         user_agent: str | None = None,
+        transport_config: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Compare the raw server HTML with the DOM after JavaScript runs — the gap between
         them is what a non-rendering crawler loses. Reports an empty SPA shell
@@ -582,7 +643,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A requested wait milestone that times out (networkidle on a site with long-polling
         scripts) falls back to reading the DOM at domcontentloaded, recorded in
         wait_reached. `viewport="mobile"` uses a stable smartphone diagnostic identity;
-        user_agent overrides that identity for both requests."""
+        user_agent overrides that identity for both requests. `transport_config`
+        opts into an operator-supplied remote Playwright connection using
+        `transport=remote`, `remote_protocol=playwright`, `remote_endpoint_env`
+        and `remote_playwright_version`. It never provisions a server or falls
+        back to local launch after a remote failure."""
+        if transport_config is not None:
+            return _checked(
+                handlers.render_check(
+                    url=url,
+                    viewport=viewport,
+                    wait=wait,
+                    user_agent=user_agent,
+                    transport_config=transport_config,
+                )
+            )
         return _checked(
             handlers.render_check(url=url, viewport=viewport, wait=wait, user_agent=user_agent)
         )
@@ -595,6 +670,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         concurrency: int = 5,
         render: bool = False,
         skip: list[str] | None = None,
+        crux_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run the whole live toolkit over one site and return a single audit document
         (schema seohead.site-audit/1). Site-level tools run once (domain profile, CDN and
@@ -605,10 +681,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         document says so explicitly, because severity here is a rule, not a measurement.
         A tool that fails does NOT fail the audit: it lands in summary.tools_failed with
         its reason, so silence is never mistaken for a clean result. Feed the returned
-        document straight into seo_report_build."""
+        document straight into seo_report_build. Optional crux_evidence is an already
+        collected CrUX current record or bounded sample; no Google request occurs here.
+        URL and origin field scopes remain distinct from Lighthouse lab results."""
         return _checked(
             handlers.site_audit(
-                url=url, urls=urls, limit=limit, concurrency=concurrency, render=render, skip=skip
+                url=url,
+                urls=urls,
+                limit=limit,
+                concurrency=concurrency,
+                render=render,
+                skip=skip,
+                crux_evidence=crux_evidence,
             )
         )
 
@@ -618,20 +702,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         fmt: str = "xlsx",
         out: str | None = None,
         project: str | None = None,
+        view: str | None = None,
+        offset: int = 0,
+        lang: str = "en",
     ) -> dict[str, Any]:
-        """Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict
+        """Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict
         returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a
         path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit
         schemas are recognized and normalized before
         rendering. xlsx has four sheets with filters and a live Excel chart — for work;
         docx is prose with headings — for the client; csv writes separate findings,
         scope-evidence, and page tables for a tracker, listed under outputs;
-        md is for reading and for git. The generators compute nothing and reach no network:
+        md is for reading and for git; pdf is a localized offline Chromium printout (en or ru).
+        PDF requires the optional `pdf` dependencies and a local Chrome, Edge or Chromium.
+        The generators compute nothing and reach no network:
         what is not in the JSON does not appear in the report. A document matching neither
         schema is refused with ok: false naming the mismatch, never rendered as an empty report.
         Pass project to include validated checklist coverage, reasons, scope and measurements in a
-        human report; the original JSON audit remains unchanged. This never makes a network request."""
-        return _checked(handlers.report_build(audit=audit, fmt=fmt, out=out, project=project))
+        human report. Optional view applies one saved finding view; it leaves health, evidence,
+        coverage and source scan untouched. offset pages through the stable sorted view. This never
+        makes a network request."""
+        arguments = {"audit": audit, "fmt": fmt, "out": out, "project": project}
+        if view is not None:
+            arguments["view"] = view
+        if offset != 0:
+            arguments["offset"] = offset
+        if (fmt or "").lower().lstrip(".") == "pdf" or lang != "en":
+            arguments["lang"] = lang
+        return _checked(handlers.report_build(**arguments))
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_facts_export(sites: list[dict[str, Any]]) -> dict[str, Any]:
@@ -664,6 +762,41 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Refuses a known difference in results-affecting settings unless ``force`` is
         true; partial-crawl warnings remain attached to the historical result."""
         return _checked(handlers.compare_crawls(before=before, after=after, force=force))
+
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_verify_fixes(
+        baseline: Any,
+        out_dir: str,
+        finding_ids: list[str] | None = None,
+        view: Any = None,
+        urls: list[str] | None = None,
+        urls_file: str | None = None,
+        after: Any = None,
+        config: str | None = None,
+    ) -> dict[str, Any]:
+        """Recheck selected baseline findings in an explicit, bounded URL subset.
+
+        Select baseline finding IDs, a saved verification_view.v1 JSON view, or
+        affected URLs. With ``after`` the comparison is offline and requires a
+        distinct scan UUID plus a later observation time. Otherwise the
+        recorded HTTP/robots/render policy is verified before the existing crawler
+        fetches selected pages; JS baselines use one URL per rendered crawl. A new
+        directory receives the recrawl evidence and immutable verification JSON
+        and Markdown report. Unfetched, skipped, site-wide and incomparable
+        findings remain not_verifiable, never resolved.
+        """
+        return _checked(
+            handlers.verify_fixes(
+                baseline=baseline,
+                out_dir=out_dir,
+                finding_ids=finding_ids,
+                view=view,
+                urls=urls,
+                urls_file=urls_file,
+                after=after,
+                config=config,
+            )
+        )
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_crawl_enrich(
@@ -838,6 +971,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_topvisor_read(
+        operation: str = "projects", params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Read existing Topvisor projects, competitors, groups, keywords, history or summary.
+        Uses topvisor/access_token and topvisor/user_id under the central credential root
+        (or TOPVISOR_TOKEN and TOPVISOR_USER_ID). One page only: limit defaults to 100,
+        maximum 1000; the continuation signal is the provider's nextOffset — present on
+        non-final pages, absent on the last — not len(result) == limit. Provider total
+        and limitedBy pass through when sent, separate from the echoed request limit/offset.
+        projects/competitors/groups/keywords return arrays; history and summary return
+        objects (history rows at result.keywords; summary covers the two requested dates).
+        Non-project operations require project_id. History regions_indexes are project
+        region indexes (projects with show_searchers_and_regions:2), not geographic region
+        keys; summary takes the singular region_index. In positionsData, position is an
+        integer ordinal rank; "--" means the query had no position inside the checked
+        depth — unavailable, not rank 0 or 100 — and a requested date without an entry is
+        a missing observation. headers.dates lists dates actually returned; topsByDepth is
+        percent of queries in Top N; visitors, dynamics and tops are counts; avgs is an
+        average rank. Does not launch checks, add/edit/delete records, or authorize paid
+        operations. Transport redirects are refused and provider errors are redacted."""
+        return _checked(handlers.topvisor_read(operation=operation, params=params))
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_metrika_counters() -> dict[str, Any]:
         """List the Yandex Metrika counters this token can see (id, name, site). Start here to
         get the counter_id the report tools need. Requires a Metrika OAuth token."""
@@ -868,7 +1024,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         comma-separated in API notation (ym:s:visits, ym:s:startURL); dates accept relative
         forms like 30daysAgo. This is the missing half of an audit: a page can be technically
         perfect and get no visits at all. paginate=true walks every page but stops at
-        100 000 rows, and says so via "capped"."""
+        100 000 rows, and says so via "capped". A "Query is too complicated" refusal is
+        retried month by month and, when a month still refuses, at a sampled accuracy;
+        "split", "accuracy", "sampled" and "sample_share" in the answer say what was
+        actually used — a null "sampled" means the API did not report it, not "unsampled".
+        Only count metrics additive over disjoint periods (ym:s:visits, ym:s:pageviews)
+        can be merged — unique-visitor, ratio or average metrics fail rather than sum
+        wrong."""
         return _checked(
             handlers.metrika_report(
                 counter_id=counter_id,
@@ -1028,9 +1190,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_sources_doctor() -> dict[str, Any]:
-        """Which external data sources are ready to use: whether each secret is present,
-        where it is read from, and where the spend journal lives. Call this before planning
-        a paid run — a missing key is cheaper to find now than mid-collection."""
+        """Inspect redacted credential references, readiness and declared provider operations.
+
+        Configured credentials do not verify account or target permission. This local check makes
+        no provider requests; use seo_provider_verify for an explicit bounded read.
+        """
         return _checked(handlers.sources_doctor())
 
     @mcp.tool(annotations=fetch, structured_output=True)
@@ -1086,20 +1250,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
-    @mcp.tool(annotations=fetch, structured_output=True)
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_crux_report(
         url: str | None = None,
         origin: str | None = None,
+        urls: list[str] | None = None,
         form_factor: str | None = None,
         metrics: list[str] | None = None,
+        max_samples: int = 25,
+        cache_dir: str | None = None,
+        cache_max_age_hours: float = 24,
     ) -> dict[str, Any]:
         """Field Core Web Vitals (LCP, INP, CLS) as real Chrome users experienced them, at the
         75th percentile — the honest counterpart to seo_render_check's synthesized-score-free
         design (issue #59). Pass exactly one of url/origin. Requires a Chrome UX Report API key.
-        A target with too little real-user traffic is not an error; CrUX has nothing to report
-        for it, which comes back here as an empty metrics object."""
+        No eligible field record and missing metrics remain unavailable. Optional urls samples
+        at most 25 targets; cache_dir enables an explicit local cache. Never substitutes
+        Lighthouse lab metrics for CrUX field data."""
         return _checked(
-            handlers.crux_report(url=url, origin=origin, form_factor=form_factor, metrics=metrics)
+            handlers.crux_report(
+                url=url,
+                origin=origin,
+                urls=urls,
+                form_factor=form_factor,
+                metrics=metrics,
+                max_samples=max_samples,
+                cache_dir=cache_dir,
+                cache_max_age_hours=cache_max_age_hours,
+            )
         )
 
     @mcp.tool(annotations=submit, structured_output=True)
@@ -1145,6 +1323,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Show project scan history and named pending checklist/preparation states."""
         return _checked(handlers.project_status(directory=directory))
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_progress(directory: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+        """Show a compact, paginated project checklist view and its next actions.
+
+        The page contains at most 100 checklist items. Audit-task completion is a
+        percentage only when every included site has an explicit agreed plan and
+        the shared coverage axis has a measured, nonzero denominator. It is
+        explicitly task completion, not a site-health or remediation percentage.
+        """
+        return _checked(handlers.project_progress(directory=directory, limit=limit, offset=offset))
+
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_project_facts(
         directory: str,
@@ -1166,17 +1355,39 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_project_checklist_init(
-        directory: str, template: dict | None = None, expected_revision: int | None = None
+        directory: str,
+        template: dict | None = None,
+        expected_revision: int | None = None,
+        plan: dict | None = None,
     ) -> dict[str, Any]:
         """Initialize or reconcile a local checklist without executing a check, skill, or scenario.
 
-        template is an optional data-only ``seohead.checklist-template.v1`` document. The result
-        returns the current state, revision, counts, views and items; use that revision for a
-        later conditional write. This never makes a network request.
+        template is an optional data-only ``seohead.checklist-template.v1`` document. plan is an
+        optional agreed audit scope {reviewer, population, tasks}: population declares kind
+        (``complete_set``, ``sample`` or ``unknown``), size or enumerated urls, a provenance
+        ``source``, an optional ``name`` and ``reason``, and optional per-``templates``
+        populations; ``unknown`` keeps the URL denominator null with a reason. Template
+        populations are agreed sub-populations of the site population: enumerated
+        template URLs must belong to an enumerated site set, and declared template
+        membership can never exceed the agreed site size; incoherent plans are refused
+        rather than trimmed. tasks is
+        ``{kind: all_agreed}`` or a sourced ``{kind: selection, ids, source}`` naming the agreed
+        checklist items; items outside a selection stay visible as ``not_agreed`` outside every
+        denominator. A size-only population cannot verify measured-URL membership, so its
+        numerator counts only enumerated URLs. Recording a plan upgrades the checklist to
+        ``seohead.coverage.v3`` and appends to the retained plan history; an identical
+        agreement is an idempotent no-op, while a changed agreement starts a new revision and
+        stale-marks evidence recorded under an earlier agreement instead of shrinking
+        denominators. The result
+        returns the current state, revision, counts, coverage axes, views and items; use that
+        revision for a later conditional write. This never makes a network request.
         """
         return _checked(
             handlers.project_checklist_init(
-                directory=directory, template=template, expected_revision=expected_revision
+                directory=directory,
+                template=template,
+                expected_revision=expected_revision,
+                plan=plan,
             )
         )
 
@@ -1204,7 +1415,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
         expected_revision prevents an overwrite of newer checklist history. The record is
         validated against the item's scope and evidence contract, then the returned status names
-        remaining, blocked and manual-review work. This never makes a network request.
+        remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
+        exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
+        project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
+        ``pending_exclusion`` inside the denominator. This never makes a network request.
         """
         return _checked(
             handlers.project_checklist_record(
@@ -1213,6 +1427,44 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 record=record,
                 expected_revision=expected_revision,
             )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_view_list(directory: str) -> dict[str, Any]:
+        """List saved declarative finding views and the current project view-config revision."""
+        return _checked(handlers.project_view_list(directory=directory))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_view_show(directory: str, name: str) -> dict[str, Any]:
+        """Read one saved finding view with its stable identity, schema version and revision."""
+        return _checked(handlers.project_view_show(directory=directory, name=name))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_view_save(
+        directory: str, view: dict[str, Any], expected_revision: int
+    ) -> dict[str, Any]:
+        """Create or revise a bounded declarative finding view using an expected config revision.
+
+        Filters are closed severity/check/URL/segment selections. Sorting and column projection
+        use registered fields only; no SQL, code, or regular expressions are accepted. This
+        changes project view configuration only; it does not edit scans or affect scores/tasks."""
+        return _checked(
+            handlers.project_view_save(
+                directory=directory, view=view, expected_revision=expected_revision
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_findings_view(
+        directory: str, name: str, audit: dict | str, offset: int = 0
+    ) -> dict[str, Any]:
+        """Apply one saved view to an audit object, JSON file, or validated scan.v1 SQLite artifact.
+
+        Returns a deterministic projected page with total matches, missing-field counts,
+        truncation, source identity, and view/config revisions. Filtering never suppresses
+        findings or changes audit coverage/scoring; no crawl or provider call occurs."""
+        return _checked(
+            handlers.findings_view(directory=directory, name=name, audit=audit, offset=offset)
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
@@ -1348,6 +1600,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """List provider operations, credential components, quota and privacy boundaries."""
         return _checked(handlers.provider_registry())
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_provider_readiness(
+        provider: str | None = None, operation: str | None = None
+    ) -> dict[str, Any]:
+        """Inspect configured credential sources and declared operation routes offline.
+
+        Credential configuration never proves account or target permission. Use
+        seo_provider_verify for an explicit bounded read-only access check.
+        """
+        return _checked(handlers.provider_readiness(provider=provider, operation=operation))
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_provider_verify(provider: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
         """Explicitly verify bounded read-only account/target access; present credentials are not verification."""
@@ -1381,6 +1644,111 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 evidence_rows,
                 review_external_only=review_external_only,
                 adjustments=adjustments,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_evidence_normalize(
+        file: str,
+        mapping: Any = None,
+        sheet: str | None = None,
+        site_origin: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Normalize a supplied CSV/XLSX/JSON or saved provider envelope, fully offline.
+
+        Every row keeps its declared grain, provenance and availability state: a
+        measured zero stays zero while missing, null, blank, suppressed,
+        uncollected and failed inputs stay unavailable. Restricted sources
+        return counts and redacted provenance; normalized rows live only in an
+        explicit private ``out_dir`` artifact. No provider, DNS or page fetch
+        ever runs here.
+        """
+        return _checked(
+            handlers.evidence_normalize(
+                file=file,
+                mapping=mapping,
+                sheet=sheet,
+                site_origin=site_origin,
+                out_dir=out_dir,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_evidence_join(
+        evidence: Any,
+        audit: Any = None,
+        scan: str | None = None,
+        pages: Any = None,
+        compare: Any = None,
+        mapping: Any = None,
+        compare_mapping: Any = None,
+        policy: Any = None,
+        sheet: str | None = None,
+        compare_sheet: str | None = None,
+        site_origin: str | None = None,
+        compare_site_origin: str | None = None,
+        ignore_query: bool = False,
+        ignore_scheme: bool = False,
+        casefold_path: bool = False,
+        out_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Join normalized analytics/search evidence to crawl pages, offline only.
+
+        Retains matched, crawl-only, external-only and unkeyable populations
+        with per-field provenance, and reports key collisions instead of
+        multiplying rows. ``compare`` plus a declared ``policy`` yields a pure
+        compatible/incompatible/unknown decision across period, timezone,
+        identity, attribution, engine and grain; source metrics such as GSC
+        clicks and GA4 sessions stay distinct and are never summed. Restricted
+        inputs return counts only.
+        """
+        return _checked(
+            handlers.evidence_join(
+                audit=audit,
+                scan=scan,
+                pages=pages,
+                evidence=evidence,
+                compare=compare,
+                mapping=mapping,
+                compare_mapping=compare_mapping,
+                policy=policy,
+                sheet=sheet,
+                compare_sheet=compare_sheet,
+                site_origin=site_origin,
+                compare_site_origin=compare_site_origin,
+                ignore_query=ignore_query,
+                ignore_scheme=ignore_scheme,
+                casefold_path=casefold_path,
+                out_dir=out_dir,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_bi_export(
+        out_dir: str,
+        scan: str | None = None,
+        audit: Any = None,
+        provider_joins: list[str] | None = None,
+        max_rows_per_file: int = 25_000,
+        max_bytes_per_file: int = 8 * 1024 * 1024,
+        max_output_bytes: int = 512 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
+
+        Reads existing evidence only. CSVs are partitioned deterministically;
+        null values retain explicit states and reasons, and output limits fail
+        without publishing a partial package. No crawl or provider request runs.
+        """
+        return _checked(
+            handlers.bi_export(
+                scan=scan,
+                audit=audit,
+                provider_joins=provider_joins,
+                out_dir=out_dir,
+                max_rows_per_file=max_rows_per_file,
+                max_bytes_per_file=max_bytes_per_file,
+                max_output_bytes=max_output_bytes,
             )
         )
 
@@ -1468,6 +1836,31 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_fragment_links(
+        input_path: str,
+        state: Literal["resolved", "missing", "skipped"] | None = None,
+        representation: Literal["static", "rendered", "legacy_fragment"] | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Evaluate every retained fragment anchor offline and page the results.
+
+        Only complete retained HTML/DOM is measured: a missing, truncated,
+        unsupported, failed or budget-exhausted body is a named skipped
+        occurrence or unavailable source, never a broken fragment. Nothing is
+        fetched and the artifact is not modified.
+        """
+        return _checked(
+            handlers.scan_fragment_links(
+                input_path=input_path,
+                offset=offset,
+                limit=limit,
+                state=state,
+                representation=representation,
+            )
+        )
+
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_scan_requeue(
         input_path: str, where: str, backup_path: str, from_scan: str | None = None
@@ -1524,6 +1917,60 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_link_inspect(
+        input_path: str,
+        view: str = "path",
+        seed: str | None = None,
+        target: str | None = None,
+        representation: str = "all",
+        cursor: str | None = None,
+        link_id: int | None = None,
+        document_id: int | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        max_bytes: int = 1_048_576,
+        max_body_bytes: int = 5 * 1024 * 1024,
+        max_nodes: int = 10_000,
+        max_edges: int = 200_000,
+        max_depth: int = 20,
+        timeout_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        """Inspect saved shortest paths, reverse inlinks, or per-link DOM context offline.
+
+        Path hops and inlinks cite exact link IDs and scan identity; absence in a
+        partial graph is never a confirmed orphan. Inlinks use a cursor bound to
+        scan/revision/target/representation. Context requires link_id or
+        document_id, and missing retained bodies return unavailable evidence.
+        No network request or scan mutation occurs. Path defaults to 10,000
+        visited nodes, 200,000 examined edges, 20 hops and 15 seconds (hard
+        maxima 100,000/2,000,000/100/30). Inlinks page at most 500 rows; context
+        pages at most 500 rows and one document, with an 8 MiB body hard cap.
+        max_bytes bounds serialized item output (4 KiB..8 MiB); an over-budget
+        full response returns a named limit result. Invalid scans and URLs are
+        error results, not empty or clean graph evidence.
+        """
+        return _checked(
+            handlers.scan_link_inspect(
+                input_path=input_path,
+                view=view,
+                seed=seed,
+                target=target,
+                representation=representation,
+                cursor=cursor,
+                link_id=link_id,
+                document_id=document_id,
+                offset=offset,
+                limit=limit,
+                max_bytes=max_bytes,
+                max_body_bytes=max_body_bytes,
+                max_nodes=max_nodes,
+                max_edges=max_edges,
+                max_depth=max_depth,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_status(input_path: str) -> dict[str, Any]:
         """Summarize frontier work and committed page outcomes from one saved scan offline."""
         return _checked(handlers.scan_status(input_path=input_path))
@@ -1537,6 +1984,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_scan_snapshot(input_path: str, out: str) -> dict[str, Any]:
         """Create a consistent new SQLite snapshot without overwriting a destination."""
         return _checked(handlers.scan_snapshot(input_path=input_path, out=out))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_scan_export(
+        input_path: str,
+        out: str,
+        format: str = "json",
+        records: list[str] | None = None,
+        fields: dict[str, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        """Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML."""
+        return _checked(
+            handlers.scan_export(
+                input_path=input_path,
+                out=out,
+                format=format,
+                records=records,
+                fields=fields,
+            )
+        )
 
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_scan_pin(input_path: str, pinned: bool = True) -> dict[str, Any]:

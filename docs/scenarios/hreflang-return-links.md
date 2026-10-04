@@ -11,7 +11,7 @@ correct in isolation and useless as a pair.
 
 ## Covers
 
-- **Hreflang** — Missing Return Links · Inconsistent Language & Region Confirmation Links · Non-Canonical Return Links · Non-200 Hreflang URLs
+- **Hreflang** — Missing Return Links · Inconsistent Language & Region Confirmation Links · Non-Canonical Return Links · Non-200 Hreflang URLs · Noindex Returns Links
 
 ## The chain
 
@@ -31,11 +31,12 @@ targets answer, or whether they point back — those are questions about the oth
 seohead sf run --exports-dir ./exports --out report --tasks
 ```
 
-The graph checks read Screaming Frog's `Bulk Export -> Links -> All Hreflang` report: one row
-per source page, destination and language. Without it, `run.checks_skipped` names each of them
-with the export they need, rather than reporting a clean multilingual site nobody examined.
+For an SF export, the graph checks read `Bulk Export -> Links -> All Hreflang`: one row per
+source page, destination and language. A native retained scan uses its saved declarations and
+selected target documents instead. An uncrawled target, unavailable body or partial scan is
+named as unmeasured; it cannot become a missing return or a clean pass by assumption.
 
-**3. Read the four findings as four different jobs.**
+**3. Read the five findings as different jobs.**
 
 | Finding | What broke |
 |---|---|
@@ -43,13 +44,14 @@ with the export they need, rather than reporting a clean multilingual site nobod
 | `HREFLANG_INCONSISTENT_CONFIRMATION` | A calls B "fr"; B calls itself "de" |
 | `HREFLANG_NOT_CANONICAL` | the annotation points at a duplicate that canonicalises elsewhere |
 | `HREFLANG_BROKEN_TARGET` | the target answers 3xx, 4xx or 5xx |
+| `HREFLANG_NOINDEX_TARGET` | the observed alternate has a noindex directive |
 
 The first is a content-management problem, usually one language being published on a different
 schedule from the others. The second is the same pair being reciprocal and still discarded,
 because Google reads a pair as valid only when both sides name the same code — a counterpart's
 own self-referencing annotation is what it calls itself, and a counterpart that declares nothing
 about itself is passed over rather than guessed at. The third is an architecture problem. The
-fourth is a link that has simply rotted, and it is the cheapest of the four to fix.
+fourth is a link that has simply rotted; the fifth is an alternate excluded from indexing.
 
 **4. Confirm the targets are really what the audit thinks they are.**
 
@@ -97,9 +99,9 @@ seohead report-build --audit ./run/audit.json --format xlsx --out ./hreflang.xls
   declares about itself, so a counterpart carrying no self-referencing annotation has nothing to
   disagree with and is passed over here. `HREFLANG_MISSING_SELF_REFERENCE` names that page
   instead — see the [hreflang codes scenario](hreflang-codes.md).
-- **Whether an hreflang target is indexable.** The target's status is checked; its `noindex` is
-  not cross-referenced. A reciprocal, canonical, 200-answering annotation pointing at a page
-  nobody may index still reads clean here.
+- **Whether an unobserved target is indexable.** A saved noindex directive is reported, but a
+  cross-domain or uncrawled target, missing body, or ambiguous URL variant cannot be judged from
+  this artifact. `run.checks_skipped` and the native relationship coverage name that limit.
 - **Whether the annotations are in `<head>`, from the graph checks in this chain.** They read the
   export's annotation list, not the parse tree; `HREFLANG_OUTSIDE_HEAD` answers this instead, from
   a native crawl — see the [hreflang codes scenario](hreflang-codes.md).

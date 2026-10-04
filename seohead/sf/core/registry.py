@@ -265,6 +265,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Canonical points to a different URL",
         "fix": "Confirm that cross-canonicalization is intentional and that the target is the preferred version.",
     },
+    "PAGINATION_CANONICAL_POLICY": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Paginated URL canonical does not match the configured project policy",
+        "fix": "Review the canonical against the configured pagination policy; the expected target is included in the evidence.",
+    },
+    "FILTER_CANONICAL_POLICY": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Filtered URL canonical does not match the configured project policy",
+        "fix": "Review the canonical against the configured filter policy; the expected target is included in the evidence.",
+    },
     "CANONICAL_NON_INDEXABLE": {
         "severity": "warning",
         "source": "SF-derived",
@@ -673,6 +685,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Canonical points to a redirecting URL (3xx)",
         "fix": "Point the canonical to the final 200-status URL; otherwise search engines must resolve conflicting canonical signals.",
     },
+    "CANONICAL_TARGET_ERROR": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Canonical points to a URL returning 4xx or 5xx",
+        "fix": "Point the canonical to a fetched, successful URL; restore the target or redirect it to the intended canonical page.",
+    },
+    "CANONICAL_HOMEPAGE_GROUP": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Distinct indexable pages in multiple sections canonicalize to the homepage",
+        "fix": "Review each listed page's canonical. Use a self-canonical for distinct indexable content, or configure an explicit pagination/filter policy when a landing canonical is intentional.",
+    },
     "UNLINKED_CANONICAL": {
         "severity": "warning",
         "source": "SF-derived",
@@ -684,6 +708,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "source": "inlinks:All Hreflang",
         "message": "Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx)",
         "fix": "Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling.",
+    },
+    "HREFLANG_NOINDEX_TARGET": {
+        "severity": "warning",
+        "source": "crawl:hreflang graph / SF:All Hreflang + Internal:All",
+        "message": "Hreflang alternate points to an observed noindex page",
+        "fix": "Use an indexable alternate URL or remove the noindex directive if that page should appear in search.",
     },
     "HREFLANG_INVALID_CODE": {
         "severity": "warning",
@@ -1101,6 +1131,86 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Serve the page itself over HTTPS; an HTTPS form action does not protect "
         "input typed on an HTTP page.",
     },
+    "BROKEN_BOOKMARK": {
+        "severity": "warning",
+        "source": "crawl:fragment_links",
+        "message": "Link fragment identifies no element on the destination page",
+        "fix": "Point the href at an element id or <a name> that exists in the "
+        "destination document, or add the missing target; a different query "
+        "string is a different document.",
+    },
+    # Facts a crawl can observe: which machine-readable byline/date carriers a
+    # content-shaped page declared, the discovered-and-indexable state of the
+    # conventional trust pages, and where outbound links actually sit.
+    # Deliberately no E-E-A-T score and no trustworthiness verdict -- every
+    # finding quotes the carriers and the state it stands on so a specialist
+    # reviews facts.
+    # 9.C — objective trust & attribution evidence (issue #823)
+    "NO_AUTHOR_BYLINE": {
+        "severity": "notice",
+        "source": "crawl:trust_signals",
+        "message": "Content-shaped page declares no author or byline markup",
+        "fix": "If the page's authorship should be attributable, declare it with a "
+        "machine-readable carrier: meta author, rel=author, itemprop=author, or "
+        "a JSON-LD author property.",
+    },
+    "NO_CONTENT_DATES": {
+        "severity": "notice",
+        "source": "crawl:trust_signals",
+        "message": "Content-shaped page declares no publication or update date",
+        "fix": "If the page should be dated, declare it machine-readably: "
+        "article:published_time or datePublished markup, a <time datetime> "
+        "element, or a Last-Modified response header.",
+    },
+    "MISSING_ABOUT_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable About page was found in the crawl's scope",
+        "fix": "If an About page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_CONTACT_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable Contact page was found in the crawl's scope",
+        "fix": "If a Contact page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_PRIVACY_POLICY": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable privacy policy page was found in the crawl's scope",
+        "fix": "If a privacy policy exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "MISSING_TERMS_PAGE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "No indexable terms-of-use page was found in the crawl's scope",
+        "fix": "If a terms page exists, make it reachable and indexable; the "
+        "finding's state says whether it was found non-indexable, broken, "
+        "linked but never crawled, or not discovered at all.",
+    },
+    "FEW_CITATIONS": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Content-shaped page has no observable outbound reference in its body content",
+        "fix": "Review whether the page should cite its sources. An outbound link "
+        "inside the body copy is the only carrier a crawl can observe as a "
+        "citation; the finding never asserts that any link is authoritative.",
+    },
+    "YMYL_REVIEW_CANDIDATE": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "URL path or title matches a YMYL-adjacent keyword — a review "
+        "candidate only, not a classification",
+        "fix": "Have a specialist confirm whether the page genuinely covers "
+        "Your-Money-Your-Life topics; if it does, the attribution and "
+        "trust-page evidence above deserves a closer look.",
+    },
 }
 
 
@@ -1132,6 +1242,8 @@ def check_meta(check_id: str) -> dict[str, Any]:
 # covers the entries declared here. Checks absent from this map rely on their
 # own evidence guards; this map does not provide a universal inline-skip gate.
 CHECK_REQUIRES: dict[str, tuple[str, ...]] = {
+    "PAGINATION_CANONICAL_POLICY": ("internal_all",),
+    "FILTER_CANONICAL_POLICY": ("internal_all",),
     "IMG_MISSING_ALT": ("images_missing_alt",),
     "IMG_OVER_KB": ("images_over_kb",),
     "IMG_MISSING_DIMENSIONS": ("images_missing_size",),

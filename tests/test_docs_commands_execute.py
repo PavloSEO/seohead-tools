@@ -66,6 +66,9 @@ NEEDS_LIVE_INFRASTRUCTURE = {
     # PDF. Both are environment, not command, so the documented flags are parsed instead.
     "metrika-traffic-pdf",
     "regions-tree",
+    # Verification is an explicit provider read; documentation examples are
+    # syntax-checked here, never run against an account.
+    "provider-verify",
     "mcp",
 }
 
@@ -84,6 +87,16 @@ def _is_licensed_sf_mode(argv: list[str]) -> bool:
     if any(flag in argv for flag in ("--crawl", "--load-crawl")):
         return True
     return argv[1:2] and argv[1] in SF_SUBCOMMANDS_NEEDING_AN_INSTALL
+
+
+def _needs_pdf_runtime(argv: list[str]) -> bool:
+    """PDF printing needs the separate optional pypdf extra and local Chromium."""
+    for option in ("--format", "--report"):
+        if option in argv:
+            index = argv.index(option)
+            if argv[index + 1 : index + 2] == ["pdf"]:
+                return True
+    return False
 
 
 def _substitute(raw: str, base_url: str) -> str:
@@ -389,7 +402,11 @@ def test_documented_command_executes_or_at_least_still_parses(
     spellings = {argv[0]}
     if len(argv) > 1 and not argv[1].startswith("-"):
         spellings.add(f"{argv[0]}-{argv[1]}")
-    if spellings & NEEDS_LIVE_INFRASTRUCTURE or _is_licensed_sf_mode(argv):
+    if (
+        spellings & NEEDS_LIVE_INFRASTRUCTURE
+        or _is_licensed_sf_mode(argv)
+        or _needs_pdf_runtime(argv)
+    ):
         from seohead.cli import build_parser
         from seohead.sf.cli import build_parser as build_sf_parser
 
@@ -410,11 +427,15 @@ def test_documented_command_executes_or_at_least_still_parses(
     if argv[:1] == ["project"] and argv[1] in {
         "open",
         "status",
+        "progress",
         "facts",
         "checklist-init",
         "checklist-update",
         "checklist-record",
         "priorities",
+        "view-list",
+        "view-show",
+        "view-save",
     }:
         # Each documentation case runs independently; opening/status require the
         # project that the preceding creation command would have published. A line
@@ -428,6 +449,18 @@ def test_documented_command_executes_or_at_least_still_parses(
             from seohead.projects.coverage import initialize_coverage
 
             initialize_coverage(tmp_path / directory)
+        if argv[1] == "view-show":
+            from seohead.projects.finding_views import save_view
+
+            save_view(
+                tmp_path / directory,
+                {
+                    "name": argv[argv.index("--name") + 1],
+                    "filters": {"severity": ["critical"]},
+                    "columns": ["severity", "check", "url"],
+                },
+                expected_revision=0,
+            )
     if argv[:2] == ["project", "facts"] and "--detect" in argv:
         _seed_project_detection(monkeypatch)
     if argv[:2] == ["project", "prepare"]:
@@ -437,7 +470,10 @@ def test_documented_command_executes_or_at_least_still_parses(
         create_project(tmp_path / directory, "https://example.test/")
     if argv[:2] in (["project", "start"], ["project", "prepare"]):
         _seed_project_prepare(tmp_path, monkeypatch)
-    if argv[:1] in (["duplicate-check"], ["boilerplate-report"]) and "--scan" in argv:
+    if (
+        argv[:1] in (["duplicate-check"], ["boilerplate-report"], ["semantic-inputs"])
+        and "--scan" in argv
+    ):
         # Body consumers need a native retained corpus, including when they use
         # the same filename that report examples use for a saved audit.
         _seed_documented_body_scan(tmp_path, argv[argv.index("--scan") + 1])
@@ -457,9 +493,46 @@ def test_documented_command_executes_or_at_least_still_parses(
         from seohead.projects.workspace import create_project
 
         directory = argv[argv.index("--project") + 1]
-        create_project(tmp_path / directory, "https://example.com/")
+        create_project(
+            tmp_path / directory,
+            "https://example.test/" if "--view" in argv else "https://example.com/",
+        )
+    if argv[:2] == ["project", "view-save"] or argv[:1] == ["findings-view"]:
+        from seohead.projects.finding_views import save_view
+        from seohead.projects.workspace import create_project
+
+        directory = argv[argv.index("--directory") + 1]
+        project_path = tmp_path / directory
+        if not project_path.exists():
+            create_project(project_path, "https://example.test/")
+        if argv[:1] == ["findings-view"]:
+            save_view(
+                project_path,
+                {
+                    "name": argv[argv.index("--name") + 1],
+                    "filters": {"severity": ["critical"]},
+                    "columns": ["severity", "check", "url"],
+                },
+                expected_revision=0,
+            )
     if argv[:2] == ["scan", "reanalyze"] or argv[:1] == ["scan-reanalyze"]:
         _seed_reanalysis_input(tmp_path)
+    if argv[:1] == ["findings-view"] and "--audit" in argv:
+        _seed_documented_body_scan(tmp_path, argv[argv.index("--audit") + 1])
+    if argv[:1] == ["report-build"] and "--view" in argv and "--audit" in argv:
+        from seohead.projects.finding_views import save_view
+
+        directory = argv[argv.index("--project") + 1]
+        save_view(
+            tmp_path / directory,
+            {
+                "name": argv[argv.index("--view") + 1],
+                "filters": {"severity": ["critical"]},
+                "columns": ["severity", "check", "url"],
+            },
+            expected_revision=0,
+        )
+        _seed_documented_body_scan(tmp_path, argv[argv.index("--audit") + 1])
     if "--plan" in argv:
         _seed_prune_plan(tmp_path)
     if command.source.name == "robots-blocked.md":
@@ -468,6 +541,19 @@ def test_documented_command_executes_or_at_least_still_parses(
         )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_NETWORKS", "1")
+    if spellings & {"sources-doctor", "provider-readiness"}:
+        # Setup diagnostics are offline, but their normal credential root is the
+        # user's shared config directory. Keep documentation examples synthetic
+        # and prevent CI from even inspecting developer credentials.
+        from seohead.data_sources import credentials, oauth, providers
+
+        isolated_config = tmp_path / "config"
+        monkeypatch.setattr(credentials, "CONFIG_ROOT", isolated_config)
+        monkeypatch.setattr(oauth, "CONFIG_ROOT", isolated_config)
+        for component_sources in providers._CREDENTIAL_SOURCES.values():
+            for _path, env_var in component_sources.values():
+                monkeypatch.delenv(env_var, raising=False)
+        monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
     # A command with no explicit `echo ... |` payload still probes stdin for JSON
     # input; pytest's own captured stdin raises on read instead of giving EOF, so
     # every case (not only the piped ones) gets a real, harmless stream here.

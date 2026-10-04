@@ -133,6 +133,39 @@ class LinkPlacement(TypedDict):
     image_no_text_total: int
 
 
+class TrustSignal(TypedDict):
+    """One objective authorship/date markup observation (issue #823).
+
+    ``signal`` names the carrier exactly -- e.g. ``meta_author``,
+    ``jsonld_date:datePublished``, ``time_element``, ``url_path_date`` -- so an
+    auditor can review which markup produced the evidence rather than trusting a
+    blended verdict. ``confidence`` is ``high`` for an explicit machine-readable
+    declaration and ``medium`` for a conventional carrier (a ``byline`` class, a
+    ``<time>`` element, a date-shaped URL path). ``value`` is the declared
+    string the markup carried (an author name, a datetime, the matched path
+    fragment), truncated by the parser; ``""`` when the carrier holds no value.
+    """
+
+    signal: str
+    confidence: str
+    value: str
+
+
+class TrustSignals(TypedDict):
+    """A page's authorship/date/article-scope markup evidence (issue #823).
+
+    An empty list is a measured absence: the page was parsed and declared no
+    such signal. ``article`` holds the markers that place the page in the
+    authorship checks' scope (a JSON-LD article ``@type``, ``og:type=article``,
+    an ``<article>`` element) -- the page declaring itself content-shaped, which
+    is a fact about its markup, never a judgement about its quality.
+    """
+
+    author: list[TrustSignal]
+    dates: list[TrustSignal]
+    article: list[str]
+
+
 class FrameInfo(TypedDict):
     """One `<iframe>` extracted from a page (issue #360).
 
@@ -288,6 +321,11 @@ class ParsedPage(_ParsedPageOptional):
     # None when the heading carries text of its own. A logo inside a text H1
     # is not an image-only heading, which is why this is a value and not a flag.
     h1_alt_only_text: str | None
+    # The page's authorship/date/article-scope markup evidence (#823) — see
+    # TrustSignals. Always extracted like heading_outline: each list capped and
+    # empty on a measured absence, so an audit can review the signals behind a
+    # finding instead of trusting a blended verdict.
+    trust_signals: TrustSignals
     # How many live <meta name="description"> tags the document declares.
     meta_description_count: int
     # The <meta name="fragment"> content attribute exactly as written, "" when
