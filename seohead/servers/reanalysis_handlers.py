@@ -65,6 +65,20 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
             # as a SQLite view for audit assembly instead of duplicating every
             # PageRecord in memory before the analyzer projects its input.
             result = _rebuild_page_result(scan, page_view=True)
+            summary_row = None
+            if scan.con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='external_check_summary'"
+            ).fetchone():
+                summary_row = scan.con.execute(
+                    "SELECT payload_json FROM external_check_summary WHERE singleton=1"
+                ).fetchone()
+            # Reanalysis never repeats external requests.  It projects the
+            # immutable capture summary into the new audit header so readers
+            # retain the distinction between a disabled phase and a completed
+            # one without treating retained evidence as a new measurement.
+            result.external_summary = (
+                json.loads(summary_row[0]) if summary_row is not None else None
+            )
             provenance = json.loads(
                 scan.con.execute(
                     "SELECT payload_json FROM context_items WHERE kind='reanalysis_provenance' AND item_key='run'"

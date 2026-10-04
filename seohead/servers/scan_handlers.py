@@ -546,6 +546,11 @@ def crawl_site_scan(
         # disk instead of rebuilding a PageRecord list only for build_evidence
         # to immediately project it into the analyzer frame.
         result = _rebuild_page_result(scan, page_view=True)
+        # ``_rebuild_page_result`` deliberately reconstructs only crawl-page
+        # evidence.  The opt-in external phase is a separate, typed v2 table,
+        # so attach its just-captured coverage explicitly before the shared
+        # audit assembler writes the run header.
+        result.external_summary = external_summary
         result.start_page_evidence = dict(run.start_page_gate)
         result.resumed = getattr(run, "resumed", False)
         result.finish_reason = run.finish_reason
