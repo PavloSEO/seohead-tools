@@ -15,6 +15,7 @@ from seohead.reports.bi_destinations import (
     GoogleSheetsClient,
     apply_with_client,
     bigquery_plan,
+    destination_preview,
     filter_package,
     register_host_client,
     resolve_host_client,
@@ -114,6 +115,41 @@ def test_destination_preflight_streams_partitions_and_accepts_selected_projectio
     plan = sheets_plan(tmp_path / "filtered")
     assert [worksheet["worksheet"] for worksheet in plan["worksheets"]] == ["cohorts"]
     assert plan["worksheets"][0]["columns"] == 3
+
+
+def test_selected_projection_preview_uses_its_mapping_from_a_full_target_config(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    filter_package(
+        package,
+        dataset="cohorts",
+        out_dir=tmp_path / "filtered",
+        columns=["run_id", "cohort_id", "state"],
+    )
+    config = tmp_path / "bi-destinations.json"
+    config.write_text(
+        json.dumps(
+            {
+                "sheets": {
+                    "targets": {
+                        "reporting": {
+                            "enabled": True,
+                            "kind": "google_sheets_service_account",
+                            "spreadsheet_id": "1Qs8BdfxZXALh6vX4zrE7ZyGnR3h5k",
+                            "worksheets": _worksheet_mapping(package),
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("SEOHEAD_BI_DESTINATIONS_FILE", str(config))
+    preview = destination_preview(
+        tmp_path / "filtered", target="reporting", destination="sheets", operation="replace"
+    )
+    assert set(preview["resolved_target"]["worksheets"]) == {"cohorts"}
 
 
 def test_destination_preflight_rejects_manifest_type_or_csv_header_drift(tmp_path):

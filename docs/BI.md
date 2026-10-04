@@ -110,7 +110,8 @@ counts are streamed from disk; they never load a whole partition into memory. Th
 also accepts a local `seohead.bi-filter.v1` selected projection when its declared columns are a
 typed subset of the corresponding versioned BI dataset. Every row and remote JSON payload is
 bounded before transport; a too-wide row fails during preflight rather than constructing a giant
-request.
+request. A selected projection uses the matching dataset mapping from a normal complete target
+configuration; unrelated configured datasets are not sent.
 
 ## Publication cohorts
 

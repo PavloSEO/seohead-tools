@@ -46,13 +46,23 @@ def register_host_client(destination: str, target: str, client: Any) -> None:
 
 
 def _require_dataset_mapping(
-    supplied: Any, datasets: dict[str, Any], *, label: str, id_name: str
+    supplied: Any,
+    datasets: dict[str, Any],
+    *,
+    label: str,
+    id_name: str,
+    allow_extra: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Require one closed, host-owned mapping for every declared package dataset."""
-    if not isinstance(supplied, dict) or set(supplied) != set(datasets):
+    if (
+        not isinstance(supplied, dict)
+        or not set(datasets).issubset(supplied)
+        or (not allow_extra and set(supplied) != set(datasets))
+    ):
         raise BIDestinationError(f"{label} mapping must name every BI package dataset exactly once")
     mapped: dict[str, dict[str, Any]] = {}
-    for name, value in supplied.items():
+    for name in datasets:
+        value = supplied[name]
         if not isinstance(value, dict) or not isinstance(value.get(id_name), (str, int)):
             raise BIDestinationError(f"{label} mapping for {name!r} is invalid")
         mapped[name] = value
@@ -183,13 +193,18 @@ class GoogleSheetsClient(_GoogleRESTClient):
         schema_version: str,
         datasets: dict[str, Any],
         package_sha256: str,
+        selected_projection: bool = False,
     ):
         if operation != "replace":
             raise BIDestinationError(
                 "Google Sheets append is unavailable: use replace so every package is reconciled"
             )
         mapping = _require_dataset_mapping(
-            self.worksheets, datasets, label="Google Sheets worksheet", id_name="worksheet_id"
+            self.worksheets,
+            datasets,
+            label="Google Sheets worksheet",
+            id_name="worksheet_id",
+            allow_extra=selected_projection,
         )
         for name, value in mapping.items():
             if (
@@ -485,6 +500,7 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         schema_version: str,
         datasets: dict[str, Any],
         package_sha256: str,
+        selected_projection: bool = False,
     ) -> dict[str, Any]:
         if operation not in {"replace", "append"}:
             raise BIDestinationError("BigQuery operation must be replace or append")
@@ -493,7 +509,11 @@ class GoogleBigQueryClient(_GoogleRESTClient):
                 "BigQuery apply requires a host-owned cost_authorized=true for this project and dataset"
             )
         mapping = _require_dataset_mapping(
-            self.tables, datasets, label="BigQuery table", id_name="table_id"
+            self.tables,
+            datasets,
+            label="BigQuery table",
+            id_name="table_id",
+            allow_extra=selected_projection,
         )
         for name, table in mapping.items():
             if not isinstance(table.get("table_id"), str) or not table["table_id"]:
@@ -762,7 +782,7 @@ def _host_target_config(destination: str, target: str) -> dict[str, Any]:
 
 
 def _resolved_target_mapping(
-    destination: str, target: str, datasets: dict[str, Any]
+    destination: str, target: str, datasets: dict[str, Any], *, selected_projection: bool = False
 ) -> dict[str, Any]:
     """Return only the non-secret configured target mapping shown before apply."""
     target_config = _host_target_config(destination, target)
@@ -773,6 +793,7 @@ def _resolved_target_mapping(
             datasets,
             label="Google Sheets worksheet",
             id_name="worksheet_id",
+            allow_extra=selected_projection,
         )
         if not isinstance(spreadsheet_id, str) or not spreadsheet_id:
             raise BIDestinationError("Google Sheets target has no valid spreadsheet ID")
@@ -798,7 +819,11 @@ def _resolved_target_mapping(
         project_id = target_config.get("project_id")
         dataset_id = target_config.get("dataset_id")
         tables = _require_dataset_mapping(
-            target_config.get("tables"), datasets, label="BigQuery table", id_name="table_id"
+            target_config.get("tables"),
+            datasets,
+            label="BigQuery table",
+            id_name="table_id",
+            allow_extra=selected_projection,
         )
         location = target_config.get("location")
         if (
@@ -1149,7 +1174,12 @@ def destination_preview(
         raise BIDestinationError("an explicit destination target is required")
     root, manifest = _manifest(package)
     datasets = _verify_partitions(root, manifest)
-    resolved_target = _resolved_target_mapping(destination, target, manifest["datasets"])
+    resolved_target = _resolved_target_mapping(
+        destination,
+        target,
+        manifest["datasets"],
+        selected_projection=manifest.get("selected_projection") is True,
+    )
     return {
         "format": "seohead.bi-destination-preview.v1",
         "state": "ready_to_apply",
@@ -1198,6 +1228,7 @@ def apply_with_client(
         schema_version=BI_SCHEMA_VERSION,
         datasets=manifest["datasets"],
         package_sha256=manifest_sha256,
+        selected_projection=manifest.get("selected_projection") is True,
     )
     written = {}
     commit_started = False
