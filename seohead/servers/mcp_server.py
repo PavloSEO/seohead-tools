@@ -1526,9 +1526,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         consumes inbox entries; a consumer only receives its own unread summary.
         """
         return _checked(
-            handlers.project_observe(
-                directory=directory, consumer=consumer, scan_limit=scan_limit
-            )
+            handlers.project_observe(directory=directory, consumer=consumer, scan_limit=scan_limit)
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
