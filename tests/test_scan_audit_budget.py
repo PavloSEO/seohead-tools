@@ -11,7 +11,7 @@ from seohead import cli
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.sqlite_adapter import ScanRun
 from seohead.servers import handlers, scan_handlers
-from seohead.storage import MAX_JSON_BYTES
+from seohead.storage import MAX_JSON_BYTES, open_scan
 from seohead.storage.native_audit import AuditSizeError
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _link, _metadata, _runtime
@@ -191,7 +191,7 @@ def test_ordinary_audit_still_saves_after_preflight(bridge):
     assert scan.unavailable == []
 
 
-def test_small_budget_refuses_only_audit_document_and_keeps_native_rows(tmp_path, monkeypatch):
+def test_small_budget_moves_valid_audit_to_ordered_companion(tmp_path, monkeypatch):
     path = tmp_path / "capture.sqlite"
     with NativeScan.create(path, **_metadata()) as scan:
         scan.seed_frontier(
@@ -214,14 +214,40 @@ def test_small_budget_refuses_only_audit_document_and_keeps_native_rows(tmp_path
             links=[_link(lease.url, "https://example.test/next")],
             runtime=_runtime(),
         )
+        from tests.test_scan_history import _save_audit
+
         monkeypatch.setattr("seohead.storage.MAX_JSON_BYTES", 64)
-        with pytest.raises(AuditSizeError, match="capture evidence is retained"):
-            scan.save_audit({"oversized": "x" * 65})
+        _save_audit(scan)
         assert scan.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0] == 1
         assert scan.con.execute("SELECT COUNT(*) FROM links").fetchone()[0] == 1
         assert scan.con.execute("SELECT COUNT(*) FROM audit").fetchone()[0] == 0
+        from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
+
+        assert audit_v2_path(path).exists()
+        with AuditV2Reader(path) as audit:
+            assert audit.count("/pages") == 1
+        with open_scan(path) as con:
+            assert con.execute("SELECT COUNT(*) FROM audit").fetchone()[0] == 0
 
     assert MAX_JSON_BYTES == 64 * 1024 * 1024
+
+
+def test_audit_v2_parts_keep_nested_sitemap_rows_reiterable():
+    sitemap_rows = ["https://example.test/orphan"]
+    document = {
+        "issues": [{"id": "ISSUE-000001"}],
+        "pages": [{"url": "https://example.test/"}],
+        "groups": [],
+        "summary": {"sitemap": {"linked_not_in_sitemap": sitemap_rows}},
+    }
+
+    header, collections = NativeScan._audit_v2_parts(document)
+
+    assert header["issues"] == []
+    assert header["pages"] == []
+    assert header["groups"] == []
+    assert header["summary"]["sitemap"]["linked_not_in_sitemap"] == []
+    assert collections["/summary/sitemap/linked_not_in_sitemap"] is sitemap_rows
 
 
 def test_the_cli_exits_two_when_collection_survived_but_the_audit_did_not(monkeypatch):

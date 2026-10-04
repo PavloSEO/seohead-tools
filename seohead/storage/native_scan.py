@@ -2917,9 +2917,71 @@ class NativeScan:
         finally:
             self.con.execute(f"PRAGMA busy_timeout={prior_timeout}")
 
+    @staticmethod
+    def _audit_v2_parts(
+        document: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Iterable[Any]]]:
+        """Split top-level audit collections without copying their rows.
+
+        The analyzer still owns its result objects.  This writer only avoids a
+        second complete JSON document when the legacy audit slot is too small:
+        every named collection is consumed directly by ``audit.v2`` in its
+        original order. Lists nested in a collection item stay with that item,
+        which preserves its atomic JSON row boundary.
+        """
+        collections: dict[str, Iterable[Any]] = {}
+
+        def pointer(path: str, key: str) -> str:
+            return f"{path}/{key.replace('~', '~0').replace('/', '~1')}"
+
+        def split(value: Any, path: str) -> Any:
+            if not isinstance(value, dict):
+                return value
+            header: dict[str, Any] = {}
+            for key, child in value.items():
+                child_path = pointer(path, key)
+                if isinstance(child, list):
+                    header[key] = []
+                    collections[child_path] = child
+                else:
+                    header[key] = split(child, child_path)
+            return header
+
+        header = split(document, "")
+        if not collections:
+            raise ScanError("audit.v2 needs at least one ordered audit collection")
+        return header, collections
+
+    def _audit_binding(self) -> dict[str, Any]:
+        scan = dict(self.con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
+        return {
+            "scan_uuid": scan["scan_uuid"],
+            "evidence_revision": scan["evidence_revision"],
+            "analyzer_version": scan["writer_version"],
+            "analyzer_revision": scan["writer_revision"],
+        }
+
+    def _save_audit_v2(self, document: dict[str, Any]) -> None:
+        """Publish a validated audit.v2 companion and retire the legacy slot."""
+        from .audit_v2 import AuditV2Reader, write_audit_v2
+
+        header, collections = self._audit_v2_parts(document)
+        write_audit_v2(self.path, header, collections, self._audit_binding())
+        # Validate the newly published companion before making it the only
+        # current audit reference in the scan database.
+        with AuditV2Reader(self.path):
+            pass
+        self._begin()
+        try:
+            self.con.execute("DELETE FROM audit")
+            self.con.commit()
+        except BaseException:
+            self._rollback()
+            raise
+
     def save_audit(self, document: dict[str, Any]) -> None:
-        from . import MAX_JSON_BYTES, _audit, _sha
-        from .native_audit import AuditSizeError, validate_audit
+        from . import MAX_JSON_BYTES, _audit, _sha, _validate_audit_document
+        from .native_audit import validate_audit
 
         self._assert_mutable()
         # Check the exact serialized shape before allocating another complete
@@ -2930,10 +2992,14 @@ class NativeScan:
         ):
             encoded_bytes += len(part.encode("utf-8"))
             if encoded_bytes > MAX_JSON_BYTES:
-                raise AuditSizeError(
-                    f"complete audit exceeds the saved JSON limit ({MAX_JSON_BYTES} bytes); "
-                    "capture evidence is retained, but this audit cannot be saved"
-                )
+                # Validate before publishing the companion.  ``audit.v2`` is
+                # selected before constructing a second whole-document JSON
+                # string, so this branch does not turn a completed collection
+                # into an unavailable audit solely because the legacy slot is
+                # finite.
+                _validate_audit_document(document)
+                self._save_audit_v2(document)
+                return
         raw = json.dumps(document, ensure_ascii=False, allow_nan=False, indent=2)
         _audit(raw)
         self._begin()
