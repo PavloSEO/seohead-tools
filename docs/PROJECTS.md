@@ -1,5 +1,28 @@
 # Projects
 
+## Observation dashboard
+
+`seohead watch --project ./example-project` opens a local terminal dashboard.
+Wide windows keep a navigation sidebar; compact windows show numbered navigation
+in the footer. The overview displays retained URL and finding counts, discovered
+URL coverage, queued/in-flight URLs, sitemap evidence, declared scenario/skill
+completion, and, where space permits, severity bars, notes and competitors.
+
+Discovered URL coverage is `done / (done + queued + inflight)` and its denominator
+can grow during discovery. A URL-limit stop remains partial. Scenario and skill
+meters count declared checklist entries, not whole-site audit coverage. Missing
+sitemap observations and absent measurement denominators stay explicitly unknown.
+
+Use `1`–`8` to switch sections, arrows to browse, and Enter to inspect a scan,
+finding or saved view. Finding lists support `f` filter, `s` sort and `r` reverse;
+detail views support arrow/page scrolling. `n` opens a note and `g` a proposed
+goal; Enter saves that draft and Escape discards it. Other views only read data.
+
+Evidence refresh runs outside the keyboard loop. Bounded caches reuse unchanged
+scan evidence and invalidate when the scan, WAL, SHM, audit companion or retained
+configuration/state changes. The terminal uses an alternate screen and restores
+its input/output state on exit. It never starts or resumes a scan automatically.
+
 A project groups independent `scan.v1` files, reports and site facts in a portable
 local directory. Create it once, then keep successive scans and competitor scans
 under its `scans/` directory. Each scan keeps its own site, build and configuration.
