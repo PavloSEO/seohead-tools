@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from seohead.remote_api.contracts import (
+from seohead.job_contracts import (
     ArtifactReference,
     JobBackend,
     JobNotReady,
