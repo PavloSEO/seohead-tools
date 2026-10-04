@@ -54,11 +54,54 @@ def _catalogue_hash(item_id: str) -> str | None:
     return entry.get("definition_hash") if entry else None
 
 
-def _context(value: Any, project: dict[str, Any]) -> dict[str, Any]:
+def _accepted_goal(directory: str | Path, value: Any) -> dict[str, Any]:
+    """Resolve an already accepted inbox goal without copying its mutable text."""
+    goal_id = _text(value, "goal_id", 256)
+    from .inbox import list_entries
+
+    offset = 0
+    while True:
+        page = list_entries(
+            directory,
+            consumer="workflow-handoff",
+            offset=offset,
+            limit=100,
+        )
+        for entry in page["entries"]:
+            if entry["id"] != goal_id:
+                continue
+            if entry["kind"] != "proposed_goal" or entry["goal_state"] != "accepted":
+                raise ValueError("workflow goal_id must identify an accepted proposed goal")
+            return {"id": entry["id"], "references": entry["references"]}
+        next_offset = page["pagination"]["next_offset"]
+        if next_offset is None:
+            break
+        offset = next_offset
+    raise ValueError("workflow goal_id is not present in this project inbox")
+
+
+def _prompt_reference(value: Any) -> dict[str, str]:
+    prompt_id = _text(value, "prompt_reference", 512)
+    from .catalogue import load_catalogue
+
+    entry = load_catalogue().get(prompt_id)
+    if entry is None or entry["kind"] != "skill":
+        raise ValueError("prompt_reference must identify a registered skill")
+    return {"id": prompt_id, "definition_hash": entry["definition_hash"]}
+
+
+def _context(value: Any, directory: str | Path, project: dict[str, Any]) -> dict[str, Any]:
     if value is None:
-        value = {}
-    if not isinstance(value, dict) or set(value) - {"prompt_reference", "competitors", "phase"}:
+        raise ValueError("workflow context requires accepted goal_id and prompt_reference")
+    if not isinstance(value, dict) or set(value) - {
+        "goal_id",
+        "prompt_reference",
+        "competitors",
+        "phase",
+    }:
         raise ValueError("workflow context has unsupported fields")
+    if {"goal_id", "prompt_reference"} - set(value):
+        raise ValueError("workflow context requires accepted goal_id and prompt_reference")
     competitors = value.get("competitors", [])
     if (
         not isinstance(competitors, list)
@@ -70,10 +113,14 @@ def _context(value: Any, project: dict[str, Any]) -> dict[str, Any]:
         )
     ):
         raise ValueError("workflow competitors must be a unique bounded HTTP(S) list")
-    result = {"own_site": project["site"]["target"], "competitors": competitors}
-    for key, maximum in (("prompt_reference", 512), ("phase", 128)):
-        if key in value:
-            result[key] = _text(value[key], key, maximum)
+    result = {
+        "own_site": project["site"]["target"],
+        "competitors": competitors,
+        "goal": _accepted_goal(directory, value["goal_id"]),
+        "prompt": _prompt_reference(value["prompt_reference"]),
+    }
+    if "phase" in value:
+        result["phase"] = _text(value["phase"], "phase", 128)
     return result
 
 
@@ -94,6 +141,8 @@ def _evidence(records: list[dict] | None) -> list[dict]:
         ):
             raise ValueError("evidence sha256 must be a lowercase 64-character digest")
         result.append({"reference": reference, "sha256": digest})
+    if len({record["reference"] for record in result}) != len(result):
+        raise ValueError("evidence references must be unique within a checkpoint")
     return result
 
 
@@ -123,26 +172,90 @@ def _rows(root: Path) -> dict[str, dict[str, Any]]:
     return {row["id"]: row for row in items}
 
 
-def _public_run(run: dict[str, Any], rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    item = copy.deepcopy(run)
+def _stale_dependencies(
+    run: dict[str, Any], rows: dict[str, dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Return every changed dependency in deterministic recovery order."""
     stale: list[dict[str, str]] = []
-    scenario_hash = _catalogue_hash(item["scenario"]["id"])
-    if scenario_hash != item["scenario"].get("definition_hash"):
-        stale.append(
-            {"id": item["scenario"]["id"], "reason": "scenario or skill definition changed"}
-        )
-    for step in item["steps"]:
+    seen: set[str] = set()
+
+    def add(item_id: str, reason: str) -> None:
+        if item_id not in seen:
+            stale.append({"id": item_id, "reason": reason})
+            seen.add(item_id)
+
+    scenario_id = run["scenario"]["id"]
+    scenario = rows.get(scenario_id)
+    if scenario is None:
+        add(scenario_id, "registered scenario or skill was removed")
+    elif scenario["stale"]:
+        add(scenario_id, scenario["reason"])
+    elif _catalogue_hash(scenario_id) != run["scenario"].get("definition_hash"):
+        add(scenario_id, "scenario or skill definition changed")
+    prompt = run.get("context", {}).get("prompt")
+    if prompt is not None and _catalogue_hash(prompt["id"]) != prompt.get("definition_hash"):
+        add(prompt["id"], "registered prompt skill definition changed")
+    for step in run["steps"]:
         row = rows.get(step["id"])
         if row is None:
-            stale.append({"id": step["id"], "reason": "registered checklist step was removed"})
+            add(step["id"], "registered checklist step was removed")
         elif row["stale"]:
-            stale.append({"id": step["id"], "reason": row["reason"]})
+            add(step["id"], row["reason"])
         elif _catalogue_hash(step["id"]) != step.get("definition_hash"):
-            stale.append({"id": step["id"], "reason": "registered step definition changed"})
+            add(step["id"], "registered step definition changed")
+    return stale
+
+
+def _reopen_index(run: dict[str, Any], stale: list[dict[str, str]]) -> int | None:
+    """Find the first step whose result cannot remain valid after a change."""
+    if not stale:
+        return None
+    affected = {item["id"] for item in stale}
+    prompt = run.get("context", {}).get("prompt") or {}
+    if run["scenario"]["id"] in affected or prompt.get("id") in affected:
+        return 0
+    return next((index for index, step in enumerate(run["steps"]) if step["id"] in affected), 0)
+
+
+def _refresh_current_definition_hashes(
+    run: dict[str, Any], rows: dict[str, dict[str, Any]]
+) -> None:
+    """Bind an explicitly reopened run to current registered definitions.
+
+    A stale checklist row is deliberately not refreshed here: its own evidence
+    has to be reconciled through the checklist first.  A prompt or a catalogue
+    definition without a stale checklist row can be rebound only because the
+    recovery has already reset its affected steps to pending.
+    """
+    scenario = rows.get(run["scenario"]["id"])
+    if scenario is not None and not scenario["stale"]:
+        run["scenario"]["definition_hash"] = _catalogue_hash(run["scenario"]["id"])
+    prompt = run.get("context", {}).get("prompt")
+    if prompt is not None:
+        prompt["definition_hash"] = _catalogue_hash(prompt["id"])
+    for step in run["steps"]:
+        row = rows.get(step["id"])
+        if row is not None and not row["stale"]:
+            step["definition_hash"] = _catalogue_hash(step["id"])
+
+
+def _stale_checklist_dependency(run: dict[str, Any], rows: dict[str, dict[str, Any]]) -> bool:
+    """A stale checklist has to reconcile its own evidence before a workflow resumes."""
+    identities = [run["scenario"]["id"], *(step["id"] for step in run["steps"])]
+    return any(rows.get(item_id, {}).get("stale") for item_id in identities)
+
+
+def _public_run(run: dict[str, Any], rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    item = copy.deepcopy(run)
+    stale = _stale_dependencies(item, rows)
     item["stale_dependencies"] = stale
-    item["next_action"] = next(
-        (step["id"] for step in item["steps"] if step["state"] == "pending"), None
-    )
+    next_action = next((step["id"] for step in item["steps"] if step["state"] == "pending"), None)
+    reopened = _reopen_index(item, stale)
+    if reopened is not None:
+        item["recorded_state"] = item["state"]
+        item["state"] = "stale"
+        next_action = item["steps"][reopened]["id"]
+    item["next_action"] = next_action
     return item
 
 
@@ -176,12 +289,13 @@ def start(
         "attempt": 1
         + sum(existing["scenario"]["id"] == scenario_id for existing in document["runs"]),
         "scenario": {"id": scenario_id, "definition_hash": _catalogue_hash(scenario_id)},
-        "context": _context(context, project),
+        "context": _context(context, root, project),
         "phase": (context or {}).get("phase", "registered"),
         "steps": [
             {
                 "id": step,
                 "definition_hash": _catalogue_hash(step),
+                "kind": rows[step]["kind"],
                 "execution_kind": rows[step]["execution_kind"],
                 "state": "pending",
                 "evidence": [],
@@ -225,12 +339,18 @@ def checkpoint(
     if any(item["state"] == "pending" for item in run["steps"][: run["steps"].index(step)]):
         raise ValueError("workflow steps must be checkpointed in registered order")
     rows = _rows(root)
+    stale = _stale_dependencies(run, rows)
     current = rows.get(step_id)
-    if state == "succeeded" and (current is None or current["stale"] or current["blocked_by"]):
+    if state == "succeeded" and (
+        stale or current is None or current["stale"] or current["blocked_by"]
+    ):
         raise ValueError(
             "stale or blocked dependencies must be reconciled before a successful checkpoint"
         )
-    step.update(state=state, evidence=_evidence(evidence))
+    records = _evidence(evidence)
+    if state == "succeeded" and not records:
+        raise ValueError("successful workflow checkpoints require exact evidence")
+    step.update(state=state, evidence=records)
     approved = _review(review, step["execution_kind"], state)
     if approved:
         step["review"] = approved
@@ -256,17 +376,28 @@ def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dic
     if document["revision"] != expected_revision:
         raise ValueError("execution revision conflict")
     run = next((item for item in document["runs"] if item["id"] == run_id), None)
-    if run is None or run["state"] not in {"blocked", "interrupted"}:
+    if run is None or run["state"] not in {"blocked", "interrupted", "completed"}:
         raise ValueError("workflow run is not resumable")
     rows = _rows(root)
     public = _public_run(run, rows)
-    if public["stale_dependencies"]:
-        raise ValueError("reconcile stale dependencies before resuming workflow")
-    retry = next((step for step in run["steps"] if step["state"] != "succeeded"), None)
+    stale_index = _reopen_index(run, public["stale_dependencies"])
+    if stale_index is not None:
+        if _stale_checklist_dependency(run, rows):
+            raise ValueError("reconcile stale checklist dependencies before resuming workflow")
+        for step in run["steps"][stale_index:]:
+            if step["evidence"]:
+                step["stale_evidence"] = step["evidence"]
+            step.update(state="pending", evidence=[])
+            step.pop("review", None)
+        _refresh_current_definition_hashes(run, rows)
+        retry = run["steps"][stale_index]
+    else:
+        retry = next((step for step in run["steps"] if step["state"] != "succeeded"), None)
     if retry is None:
         raise ValueError("completed workflow run cannot be resumed")
-    retry.update(state="pending", evidence=[])
-    retry.pop("review", None)
+    if stale_index is None:
+        retry.update(state="pending", evidence=[])
+        retry.pop("review", None)
     run["state"] = "running"
     _save(root, document, expected_revision)
     return {
@@ -283,13 +414,18 @@ def status(directory: str | Path) -> dict[str, Any]:
     runs = [_public_run(run, rows) for run in document["runs"]]
     active = next((run for run in reversed(runs) if run["state"] == "running"), None)
     resumable = next(
-        (run for run in reversed(runs) if run["state"] in {"blocked", "interrupted"}), None
+        (run for run in reversed(runs) if run["state"] in {"blocked", "interrupted", "stale"}),
+        None,
     )
     return {
         "ok": True,
         "revision": document["revision"],
         "runs": runs,
-        "next_action": active["next_action"] if active else None,
+        "next_action": active["next_action"]
+        if active
+        else resumable["next_action"]
+        if resumable
+        else None,
         "resumable_run": resumable["id"] if resumable else None,
     }
 
