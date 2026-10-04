@@ -8,6 +8,7 @@ from contextlib import closing
 
 import pytest
 
+from seohead.sf.core.models import AuditResult, Group, Issue, Page
 from seohead.storage import open_scan
 from seohead.storage.audit_v2 import (
     AuditV2Error,
@@ -76,6 +77,29 @@ def test_audit_v2_reopens_ordered_collections_and_complete_document(tmp_path):
         assert document["groups"] == groups
         encoded = "".join(reader.document_chunks())
         assert json.loads(encoded) == document
+
+
+def test_native_scan_saves_audit_result_collections_without_legacy_document(tmp_path):
+    scan_path = tmp_path / "native.sqlite"
+    result = AuditResult(
+        run={"input_mode": "crawl", "generated_at": "2026-10-04T00:00:00Z"},
+        summary={"totals": {}, "by_severity": {}, "by_check": {}, "health_score": None},
+        issues=[Issue(check="TITLE_MISSING", severity="warning", source="fixture", message="x")],
+        pages=[Page(url="https://example.test/", metrics={"title": ""})],
+        groups=[
+            Group(group_id="GRP-TITLE-0001", check="TITLE_MISSING", value="", urls=[], count=0)
+        ],
+    )
+    expected = result.to_json()
+    with NativeScan.create(scan_path, **_metadata()) as scan:
+        header, collections = result.audit_v2_parts()
+        scan.save_audit_v2(header, collections)
+        assert scan.finish_without_audit("audit.v2 result")
+    with AuditV2Reader(scan_path) as reader:
+        assert reader.materialize_legacy() == expected
+        assert reader.count("/issues") == reader.count("/pages") == reader.count("/groups") == 1
+    with closing(open_scan(scan_path)) as con:
+        assert con.execute("SELECT COUNT(*) FROM audit").fetchone()[0] == 0
 
 
 def test_audit_v2_enforces_legacy_export_limit_while_streaming(tmp_path):

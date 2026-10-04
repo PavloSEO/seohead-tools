@@ -8,6 +8,7 @@ DataFrames the loader hands it.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -185,13 +186,14 @@ class AuditResult:
     disabled: list[SkippedCheck] = field(default_factory=list)
     suppressed_issues: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_json(self) -> dict[str, Any]:
+    def audit_v2_parts(self) -> tuple[dict[str, Any], dict[str, Iterable[Any]]]:
+        """Return a JSON header and ordered collections without a document list copy."""
         from .. import __version__
 
         run = dict(self.run)
         run["checks_skipped"] = [s.to_json() for s in self.skipped]
         run["checks_disabled"] = [d.to_json() for d in self.disabled]
-        document = {
+        header = {
             "schema_version": "2.0",
             "tool": {
                 "name": "SF Analyzer",
@@ -200,10 +202,23 @@ class AuditResult:
             },
             "run": run,
             "summary": self.summary,
-            "issues": [i.to_json() for i in self.issues],
-            "pages": [p.to_json() for p in self.pages],
-            "groups": [g.to_json() for g in self.groups],
+            "issues": [],
+            "pages": [],
+            "groups": [],
+        }
+        collections: dict[str, Iterable[Any]] = {
+            "/issues": (issue.to_json() for issue in self.issues),
+            "/pages": (page.to_json() for page in self.pages),
+            "/groups": (group.to_json() for group in self.groups),
         }
         if self.suppressed_issues:
-            document["suppressed_issues"] = self.suppressed_issues
+            header["suppressed_issues"] = []
+            collections["/suppressed_issues"] = iter(self.suppressed_issues)
+        return header, collections
+
+    def to_json(self) -> dict[str, Any]:
+        header, collections = self.audit_v2_parts()
+        document = dict(header)
+        for pointer, rows in collections.items():
+            document[pointer[1:]] = list(rows)
         return document

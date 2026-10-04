@@ -2963,9 +2963,14 @@ class NativeScan:
 
     def _save_audit_v2(self, document: dict[str, Any]) -> None:
         """Publish a validated audit.v2 companion and retire the legacy slot."""
+        header, collections = self._audit_v2_parts(document)
+        self.save_audit_v2(header, collections)
+
+    def save_audit_v2(self, header: dict[str, Any], collections: dict[str, Iterable[Any]]) -> None:
+        """Publish ordered audit collections without building a legacy JSON document."""
         from .audit_v2 import AuditV2Reader, write_audit_v2
 
-        header, collections = self._audit_v2_parts(document)
+        self._assert_mutable()
         write_audit_v2(self.path, header, collections, self._audit_binding())
         # Validate the newly published companion before making it the only
         # current audit reference in the scan database.
