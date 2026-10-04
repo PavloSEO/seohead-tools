@@ -143,3 +143,23 @@ def test_recovery_notices_use_the_same_authorized_receipt_path(tmp_path):
     )
     assert result["receipts"][0]["kind"] == "recovery"
     assert sent[0][1]["event"]["kind"] == "recovery"
+
+
+def test_quiet_retained_run_keeps_the_service_transport_unused(tmp_path):
+    project, configured, project_uuid = _project(tmp_path)
+    retained = run(
+        project,
+        "scan:quiet",
+        [{"url": "https://example.test/a", "changes": []}],
+        configured["revision"],
+    )
+    sent = []
+    result = deliver(
+        project,
+        scan_id="scan:quiet",
+        destination="service:test",
+        service=_service(tmp_path, project_uuid, sent),
+        expected_revision=retained["revision"],
+    )
+    assert result["delivery"] == "quiet"
+    assert sent == []
