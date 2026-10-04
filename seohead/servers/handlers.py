@@ -449,8 +449,8 @@ def _rewrite_pages_sidecar(path: str, pages: list[Any]) -> None:
 
 
 def _segment_counts(
-    pages: list[Any],
-    issues: list[dict[str, Any]],
+    pages,
+    issues,
     scope_config: dict[str, Any],
     analysis_segments: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, int]]:
@@ -517,14 +517,16 @@ def _segment_counts(
     # Pages decide segment membership first, so dependency rules see the full
     # collected population. An issue targeting a collected page reuses that
     # assignment below; an audit-only target is evaluated on its own evidence.
-    page_records = [record(page) for page in pages]
-    assignment = assign_segments(page_records, engine_segments)
     if analysis_segments:
-        for name in assignment["order"]:
+        for name in [item["name"] for item in engine_segments]:
             bucket(name)
-    page_primary = assignment["primary"]
-    for page_record in page_records:
-        bucket(page_primary.get(page_record["url"]))["pages"] += 1
+    page_primary: dict[str, str | None] = {}
+    for page in pages:
+        page_record = record(page)
+        assignment = assign_segments([page_record], engine_segments)
+        primary = assignment["primary"].get(page_record["url"])
+        page_primary[page_record["url"]] = primary
+        bucket(primary)["pages"] += 1
 
     for issue in issues:
         target = issue.get("target_url")
