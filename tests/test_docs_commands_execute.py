@@ -167,6 +167,36 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     workbook.save(tmp_path / "redirect-map.xlsx")
     (tmp_path / "gsc.csv").write_text(f"url,clicks\n{base_url}/page,10\n", encoding="utf-8")
     (tmp_path / "not-observed.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
+    # docs/BI.md's provider-backed cohort example is offline: materialize the
+    # two normalized sources it names, using the same loopback URL as its audit.
+    from seohead.data_sources.evidence_import import normalize_inline
+
+    def provider_fixture(provider: str, metric: str, value: int) -> dict:
+        return normalize_inline(
+            [{"url": f"{base_url}/page", metric: value}],
+            manifest={
+                "format": "seohead.evidence-mapping.v1",
+                "source": {
+                    "provider": provider,
+                    "operation": "synthetic",
+                    "privacy": "supplied",
+                    "timezone": "UTC",
+                },
+                "url": {"field": "url", "kind": "absolute"},
+                "row_shape": "flat",
+                "dimensions": [],
+                "metrics": [{"name": metric, "type": "number", "unit": "count"}],
+                "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
+                "collection": {"state": "complete"},
+            },
+        )
+
+    (tmp_path / "gsc.json").write_text(
+        json.dumps(provider_fixture("gsc", "clicks", 0)), encoding="utf-8"
+    )
+    (tmp_path / "ga4.json").write_text(
+        json.dumps(provider_fixture("ga4", "sessions", 2)), encoding="utf-8"
+    )
 
 
 def _seed_scan_inputs(tmp_path: Path) -> None:
