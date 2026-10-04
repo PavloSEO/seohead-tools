@@ -336,10 +336,14 @@ def test_remote_disconnect_is_redacted_and_closes_context(monkeypatch, fake_stac
 
     monkeypatch.setattr(fake_stack["page"], "goto", disconnect)
     result = render.render_document("https://example.com/", _rendering_config(**config))
-    assert result == {
-        "ok": False,
-        "url": "https://example.com/",
-        "error": "Remote browser rendering failed after connection",
-        "reason": "remote_render_failed",
-    }
+    assert result["ok"] is False
+    assert result["url"] == "https://example.com/"
+    assert result["reason"] == "remote_render_failed"
+    assert result["error"] == "Remote browser rendering failed after connection"
+    assert "synthetic" not in repr(result)
+    # A renderer may attach non-secret transport diagnostics on a failed
+    # capture. This contract verifies their safety rather than deleting them.
+    if "renderer" in result:
+        assert result["renderer"]["transport"]["mode"] == "remote"
     assert fake_stack["context"].closed and fake_stack["browser"].closed
+    assert fake_stack["chromium"].launch_calls == []
