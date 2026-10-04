@@ -445,7 +445,7 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
         },
     }
 
-    def evidence(provider, metric, value):
+    def evidence(provider, metric, value, *, timezone="UTC"):
         return normalize_inline(
             [{"url": "https://example.test/", metric: value}],
             manifest={
@@ -454,7 +454,7 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
                     "provider": provider,
                     "operation": "synthetic",
                     "privacy": "supplied",
-                    "timezone": "UTC",
+                    "timezone": timezone,
                 },
                 "url": {"field": "url", "kind": "absolute"},
                 "row_shape": "flat",
@@ -500,3 +500,35 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
     )
     assert missing["membership"] == "unclassified"
     assert missing["state"] == "not_configured"
+    inlinks = next(
+        row
+        for row in _csv_rows(
+            no_provider, json.loads((no_provider / "manifest.json").read_text()), "cohorts"
+        )
+        if row["cohort_id"] == "observed_unique_inlink_share"
+    )
+    assert inlinks["state"] == "unavailable"
+
+    mismatched = tmp_path / "ga4-mismatched.json"
+    mismatched.write_text(
+        json.dumps(evidence("ga4", "sessions", 2, timezone="America/New_York")),
+        encoding="utf-8",
+    )
+    incompatible_package = tmp_path / "cohort-incompatible"
+    export_bi(
+        audit=audit,
+        provider_joins=[gsc, mismatched],
+        out_dir=incompatible_package,
+        search_metric="clicks",
+    )
+    incompatible = next(
+        row
+        for row in _csv_rows(
+            incompatible_package,
+            json.loads((incompatible_package / "manifest.json").read_text()),
+            "cohorts",
+        )
+        if row["cohort_id"] == "search_visibility_vs_sessions"
+    )
+    assert incompatible["membership"] == "unclassified"
+    assert incompatible["state"] == "incomplete"
