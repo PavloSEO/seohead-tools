@@ -52,6 +52,7 @@ mcp = ["mcp>=1.29,<2"]
 remote = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 render = ["playwright>=1.48,<2"]
 reports = ["openpyxl>=3.1,<4", "python-docx>=1.1,<2"]
+pdf = ["pypdf>=5,<7"]
 cluster = ["scikit-learn>=1.4,<2", "numpy>=1.26,<3", "snowballstemmer>=2.2,<4"]
 gsc = ["google-auth[requests]>=2.0,<3"]
 dev = [

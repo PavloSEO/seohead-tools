@@ -38,7 +38,7 @@ from typing import Any
 
 from seohead.audit.site import SCHEMA as _SITE_AUDIT_SCHEMA
 
-FORMATS = ("xlsx", "docx", "csv", "md", "json")
+FORMATS = ("xlsx", "docx", "csv", "md", "json", "pdf")
 
 # The SF Analyzer audit.json contract's own version marker (seohead/sf/core/models.py
 # AuditResult.to_json). Only this exact value is accepted: a document declaring any
@@ -529,6 +529,7 @@ def build_report(
     project: str | None = None,
     view: str | None = None,
     offset: int = 0,
+    lang: str = "en",
 ) -> dict[str, Any]:
     """Render an audit document in the requested report format.
 
@@ -546,6 +547,10 @@ def build_report(
             "error": f"report format {fmt!r} is not supported; "
             f"available formats: {', '.join(FORMATS)}",
         }
+    if lang not in {"en", "ru"}:
+        return {"ok": False, "error": "report language must be 'en' or 'ru'"}
+    if fmt != "pdf" and lang != "en":
+        return {"ok": False, "error": "report language is only configurable for PDF output"}
     input_diagnostics: list[dict[str, str]] = []
     try:
         document = _load(data, input_diagnostics)
@@ -613,7 +618,12 @@ def build_report(
         }
         rendered = {**rendered, "summary": summary}
 
-    target = pathlib.Path(path or f"audit-{rendered.get('domain', 'site')}.{fmt}")
+    default_name = f"audit-{rendered.get('domain', 'site')}.{fmt}"
+    if fmt == "pdf" and path is None:
+        from seohead.tools.downloader import safe_segment
+
+        default_name = f"audit-{safe_segment(rendered.get('domain', 'site'))}.pdf"
+    target = pathlib.Path(path or default_name)
     from seohead.storage.inputs import protects_scan_input
 
     targets = (
@@ -639,6 +649,15 @@ def build_report(
     target.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        if fmt == "pdf":
+            from seohead.reports.pdf_model import build_pdf_model
+            from seohead.reports.pdf_output import write_pdf_report
+
+            model = build_pdf_model(filtered_document, project=project)
+            result = write_pdf_report(model, target, lang=lang)
+            if result.get("ok") and input_diagnostics:
+                result["input_diagnostics"] = input_diagnostics
+            return result
         if fmt == "json":
             json_document = document
             if view_result is not None:

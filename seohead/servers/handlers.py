@@ -1759,12 +1759,13 @@ def report_build(
     project: str | None = None,
     view: str | None = None,
     offset: int = 0,
+    lang: str = "en",
 ) -> dict[str, Any]:
     if audit is None:
         raise ValueError("audit required: audit document or path to its JSON representation")
     from seohead.reports import build_report
 
-    return build_report(audit, fmt=fmt, path=out, project=project, view=view, offset=offset)
+    return build_report(audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang)
 
 
 def facts_export(sites: list[dict[str, Any]] | None = None) -> dict[str, Any]:

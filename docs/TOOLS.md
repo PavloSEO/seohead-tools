@@ -193,10 +193,13 @@ because the rules could not be read, so the command never claims crawling is all
 seohead site-audit --url https://example.com --limit 50 --report xlsx --out audit.xlsx
 seohead report-build --audit audit.json --format docx --out client.docx
 seohead report-build --audit audit.json --format docx --out client.docx --project ./example-project
+seohead report-build --audit audit.json --format pdf --lang ru --out client.pdf
 seohead facts-export --input '{"sites": [{"label": "site-a.test", "crawl_audit": {"schema_version": "2.0", "run": {"source": "https://site-a.test/"}, "summary": {"totals": {"urls_crawled": 10}}, "issues": [], "pages": [], "groups": []}}]}'
 ```
 
 The document contract and skeletons to fill in — [`examples/reports/`](../examples/reports/README.md).
+PDF output uses the self-contained bilingual layout and local Chromium renderer; install
+`seohead-seotools[pdf]` and Chrome, Edge, or Chromium. Rendering makes no network requests.
 
 The finding level (`critical`/`warning`/`notice`) is assigned by **aggregator
 rules**, not measured by a tool; the document says so itself in

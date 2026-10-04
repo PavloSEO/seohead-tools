@@ -635,26 +635,32 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         project: str | None = None,
         view: str | None = None,
         offset: int = 0,
+        lang: str = "en",
     ) -> dict[str, Any]:
-        """Turn an audit document into a file: xlsx, docx, csv, md or json. Pass the dict
+        """Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict
         returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a
         path to either one's JSON, or a validated scan.v1 SQLite artifact) — both audit
         schemas are recognized and normalized before
         rendering. xlsx has four sheets with filters and a live Excel chart — for work;
         docx is prose with headings — for the client; csv writes separate findings,
         scope-evidence, and page tables for a tracker, listed under outputs;
-        md is for reading and for git. The generators compute nothing and reach no network:
+        md is for reading and for git; pdf is a localized offline Chromium printout (en or ru).
+        PDF requires the optional `pdf` dependencies and a local Chrome, Edge or Chromium.
+        The generators compute nothing and reach no network:
         what is not in the JSON does not appear in the report. A document matching neither
         schema is refused with ok: false naming the mismatch, never rendered as an empty report.
         Pass project to include validated checklist coverage, reasons, scope and measurements in a
         human report. Optional view applies one saved finding view; it leaves health, evidence,
         coverage and source scan untouched. offset pages through the stable sorted view. This never
         makes a network request."""
-        return _checked(
-            handlers.report_build(
-                audit=audit, fmt=fmt, out=out, project=project, view=view, offset=offset
-            )
-        )
+        arguments = {"audit": audit, "fmt": fmt, "out": out, "project": project}
+        if view is not None:
+            arguments["view"] = view
+        if offset != 0:
+            arguments["offset"] = offset
+        if (fmt or "").lower().lstrip(".") == "pdf" or lang != "en":
+            arguments["lang"] = lang
+        return _checked(handlers.report_build(**arguments))
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_facts_export(sites: list[dict[str, Any]]) -> dict[str, Any]:

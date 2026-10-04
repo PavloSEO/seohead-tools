@@ -545,6 +545,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["out"] = args.out
         if getattr(args, "project", None):
             kw["project"] = args.project
+        lang = getattr(args, "lang", "en")
+        if getattr(args, "format", None) == "pdf" or lang != "en":
+            kw["lang"] = lang
         if getattr(args, "view", None):
             kw["view"] = args.view
         if getattr(args, "offset", None) is not None:
@@ -1157,7 +1160,9 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--action", choices=("status", "start", "prepare", "report"))
         _source_flag(sub, "--target", help="target for a new project")
         sub.add_argument("--out")
-        sub.add_argument("--format", dest="fmt", choices=("md", "csv", "xlsx", "docx", "json"))
+        sub.add_argument(
+            "--format", dest="fmt", choices=("md", "csv", "xlsx", "docx", "json", "pdf")
+        )
     if cmd == "tool-catalog":
         sub.add_argument("--query")
         sub.add_argument("--limit", type=int)
@@ -1290,7 +1295,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--skip", help="comma-separated tools to skip")
         sub.add_argument(
             "--report",
-            choices=("xlsx", "docx", "csv", "md", "json"),
+            choices=("xlsx", "docx", "csv", "md", "json", "pdf"),
             help="build a report in this format after the audit",
         )
         sub.add_argument("--out", help="report output path")
@@ -1448,13 +1453,14 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument(
             "--format",
-            choices=("xlsx", "docx", "csv", "md", "json"),
+            choices=("xlsx", "docx", "csv", "md", "json", "pdf"),
             help="report format (default xlsx)",
         )
         sub.add_argument("--out", help="output file path")
         _source_flag(sub, "--project", help="validated local project workspace")
         sub.add_argument("--view", help="saved finding view to apply from the project")
         sub.add_argument("--offset", type=int, help="finding-view page offset")
+        sub.add_argument("--lang", choices=("en", "ru"), default="en", help="PDF language")
     if cmd == "log-scan":
         # Not `required=True`: that would reject a JSON-only `--input '{"run": ...}'` call before
         # _build_kwargs ever runs, since argparse enforces required flags ahead of dispatch. The
