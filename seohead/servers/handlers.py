@@ -1101,6 +1101,7 @@ def _audit_crawl_result(
     captured_render_summary: dict[str, Any] | None = None,
     dispatch_gate=None,
     proxy_route=None,
+    streaming: bool = False,
 ):
     """Run the existing native analysis over a complete, admitted population."""
     import json
@@ -1665,7 +1666,7 @@ def _audit_crawl_result(
             "only from a native retained scan",
         )
 
-    audit = aggregate(
+    audit_result = aggregate(
         ctx,
         {
             "input_mode": "crawl" if url else "crawl-list",
@@ -1707,7 +1708,34 @@ def _audit_crawl_result(
         },
         {},
         sitemap_summary,
-    ).to_json()
+    )
+    if streaming:
+        header, collections = audit_result.audit_v2_parts()
+        analysis_segments = settings["analysis"]["segments"]
+        header["segments"] = (
+            _segment_counts(result.pages, collections["/issues"], settings["scope"], analysis_segments)
+            if settings["scope"]["segments"] or analysis_segments
+            else {}
+        )
+        if fragment_evaluation is not None:
+            header["summary"]["fragment_links"] = {
+                "analysis": fragment_evaluation["analysis"],
+                "states": fragment_evaluation["states"],
+                "coverage": fragment_evaluation["coverage"],
+            }
+        if stored_scan is not None:
+            from seohead.sf.core.evidence_contract import (
+                attach_contract_parts,
+                attach_saved_corpus_header,
+            )
+
+            identity = stored_scan.con.execute("SELECT scan_uuid FROM scan WHERE singleton=1").fetchone()[0]
+            header, collections["/issues"] = attach_contract_parts(
+                header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
+            )
+            header = attach_saved_corpus_header(header, stored_scan.con, derived=saved_corpus)
+        return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
+    audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator
     # actually declared segments, so a plain crawl's audit.json is unchanged.
     analysis_segments = settings["analysis"]["segments"]

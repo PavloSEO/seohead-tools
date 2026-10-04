@@ -445,6 +445,7 @@ def crawl_site_scan(
                     if run.dispatch_gate is not None
                     else None,
                     proxy_route=proxy_route,
+                    streaming=True,
                 )
                 queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
             if not queued_before or run.partial:
@@ -557,7 +558,11 @@ def crawl_site_scan(
                     rendered_bodies=rendered_body_retention(scan.con),
                 )
 
-            scan.save_audit(audit)
+            if isinstance(audit, tuple):
+                header, collections = audit
+                scan.save_audit_v2(header, collections)
+            else:  # compatibility for injected audit bridges
+                scan.save_audit(audit)
         except AuditSizeError as exc:
             reason = str(exc)
             scan.note_audit_unavailable(reason)
