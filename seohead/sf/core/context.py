@@ -243,6 +243,39 @@ class _DiskIssues:
             os.unlink(self.path)
 
 
+class _DiskGroups:
+    """Ordered duplicate/content groups held on disk until report serialization."""
+
+    def __init__(self) -> None:
+        descriptor, name = tempfile.mkstemp(prefix="seohead-audit-groups-", suffix=".sqlite")
+        os.close(descriptor)
+        self.path, self.closed = name, False
+        self.con = sqlite3.connect(name)
+        self.con.execute("CREATE TABLE groups (ordinal INTEGER PRIMARY KEY, value_json TEXT)")
+
+    def append(self, group: Group) -> None:
+        ordinal = self.con.execute("SELECT COALESCE(MAX(ordinal) + 1, 0) FROM groups").fetchone()[0]
+        self.con.execute(
+            "INSERT INTO groups VALUES (?,?)",
+            (ordinal, json.dumps(group.__dict__, ensure_ascii=False)),
+        )
+
+    def __iter__(self) -> Iterator[Group]:
+        for row in self.con.execute("SELECT value_json FROM groups ORDER BY ordinal"):
+            yield Group(**json.loads(row[0]))
+
+    def __len__(self) -> int:
+        return self.con.execute("SELECT COUNT(*) FROM groups").fetchone()[0]
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.con.close()
+        with suppress(FileNotFoundError):
+            os.unlink(self.path)
+
+
 class _PageLookup(Mapping[str, Page]):
     def __init__(self, pages: _DiskPages, *, normalized: bool = False) -> None:
         self.pages, self.normalized = pages, normalized
@@ -342,7 +375,7 @@ class AuditContext:
         self.thresholds: dict[str, Any] = config.get("thresholds", {})
         self.requirements: dict[str, Any] = config.get("requirements", {})
         self.issues: Any = _DiskIssues() if disk_backed_pages else []
-        self.groups: list[Group] = []
+        self.groups: Any = _DiskGroups() if disk_backed_pages else []
         self.skipped: list[SkippedCheck] = []
         self._skipped_ids: set[str] = set()
         self._fired_ids: set[str] = set()
@@ -583,6 +616,8 @@ class AuditContext:
             self._disk_pages = None
         if isinstance(self.issues, _DiskIssues):
             self.issues.close()
+        if isinstance(self.groups, _DiskGroups):
+            self.groups.close()
 
     def __del__(self) -> None:
         self.close()
