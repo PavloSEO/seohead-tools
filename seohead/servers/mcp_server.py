@@ -2352,8 +2352,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         provider_joins: list[str] | None = None,
         max_rows_per_file: int = 25_000,
         max_bytes_per_file: int = 8 * 1024 * 1024,
-        max_output_bytes: int = 512 * 1024 * 1024,
+        max_output_bytes: int = 4 * 1024 * 1024 * 1024,
         search_metric: str | None = None,
+        xlsx_out: str | None = None,
+        xlsx_dataset: str | None = None,
+        xlsx_max_rows_per_sheet: int = 1_048_575,
     ) -> dict[str, Any]:
         """Project a saved scan or audit and optional issue #781 joins into a local typed BI package.
 
@@ -2371,6 +2374,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_bytes_per_file=max_bytes_per_file,
                 max_output_bytes=max_output_bytes,
                 search_metric=search_metric,
+                xlsx_out=xlsx_out,
+                xlsx_dataset=xlsx_dataset,
+                xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
             )
         )
 

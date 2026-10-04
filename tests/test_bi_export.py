@@ -599,3 +599,29 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
     )
     assert incompatible["membership"] == "unclassified"
     assert incompatible["state"] == "incomplete"
+
+
+def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
+    package = tmp_path / "bi"
+    workbook = tmp_path / "pages.xlsx"
+    assert (
+        cli.main(
+            [
+                "bi-export",
+                "--audit",
+                "examples/audit.json",
+                "--out-dir",
+                str(package),
+                "--xlsx-out",
+                str(workbook),
+                "--xlsx-dataset",
+                "pages",
+                "--xlsx-max-rows-per-sheet",
+                "2",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["xlsx"]["dataset"] == "pages"
+    assert workbook.is_file()

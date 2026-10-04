@@ -4938,25 +4938,39 @@ def bi_export(
     out_dir: str | None = None,
     max_rows_per_file: int = 25_000,
     max_bytes_per_file: int = 8 * 1024 * 1024,
-    max_output_bytes: int = 512 * 1024 * 1024,
+    max_output_bytes: int = 4 * 1024 * 1024 * 1024,
     search_metric: str | None = None,
+    xlsx_out: str | None = None,
+    xlsx_dataset: str | None = None,
+    xlsx_max_rows_per_sheet: int = 1_048_575,
 ) -> dict[str, Any]:
     """Write typed, partitioned BI datasets from saved local crawl evidence."""
     from seohead.reports.bi import export_bi as core
+    from seohead.reports.bi_destinations import export_bi_xlsx
 
-    return {
-        "ok": True,
-        **core(
-            scan=scan,
-            audit=audit,
-            provider_joins=provider_joins,
-            out_dir=out_dir,
-            max_rows_per_file=max_rows_per_file,
-            max_bytes_per_file=max_bytes_per_file,
-            max_output_bytes=max_output_bytes,
-            search_metric=search_metric,
-        ),
-    }
+    result = core(
+        scan=scan,
+        audit=audit,
+        provider_joins=provider_joins,
+        out_dir=out_dir,
+        max_rows_per_file=max_rows_per_file,
+        max_bytes_per_file=max_bytes_per_file,
+        max_output_bytes=max_output_bytes,
+        search_metric=search_metric,
+    )
+    if (xlsx_out is None) != (xlsx_dataset is None):
+        raise ValueError("xlsx_out and xlsx_dataset must be supplied together")
+    xlsx = (
+        export_bi_xlsx(
+            result["output_directory"],
+            dataset=xlsx_dataset,
+            out=xlsx_out,
+            max_rows_per_sheet=xlsx_max_rows_per_sheet,
+        )
+        if xlsx_out is not None
+        else None
+    )
+    return {"ok": True, **result, "xlsx": xlsx}
 
 
 def bi_sheets_plan(package: str, max_cells: int = 10_000_000) -> dict[str, Any]:

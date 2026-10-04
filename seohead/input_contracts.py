@@ -715,8 +715,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "max_bytes_per_file",
             "max_output_bytes",
             "search_metric",
+            "xlsx_max_rows_per_sheet",
             note="Optional positive partition/total-output bounds and explicit Search Console clicks or impressions axis; exceeding a hard limit fails without publishing a package.",
         ),
+        _form(
+            "local_file",
+            "xlsx_out",
+            required_with=("xlsx_dataset",),
+            note="Optional new split XLSX consumer output from one verified package dataset.",
+        ),
+        _form("selector", "xlsx_dataset", required_with=("xlsx_out",)),
         note="Reads saved artifacts only; no provider calls, crawl, or remote writes.",
     ),
     _command(

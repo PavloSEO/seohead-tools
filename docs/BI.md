@@ -122,6 +122,11 @@ partitions with `openpyxl` write-only worksheets, repeats the verified header on
 sheet, and splits before Excel's 1,048,576-row limit. The XLSX result reports exact source rows
 and sheet count; it does not aggregate or infer values.
 
+For an unfiltered dataset, the same consumer is available through the existing public export
+surface: `seohead bi-export --audit audit.json --out-dir ./bi --xlsx-out ./pages.xlsx
+--xlsx-dataset pages`. `--xlsx-out` and `--xlsx-dataset` are paired; add
+`--xlsx-max-rows-per-sheet` only to lower the split threshold for a specific review workflow.
+
 ## Publication cohorts
 
 `publication-cohorts` consumes `seohead.publication-cohort-input.v1` and

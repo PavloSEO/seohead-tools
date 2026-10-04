@@ -668,6 +668,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "max_bytes_per_file",
             "max_output_bytes",
             "search_metric",
+            "xlsx_out",
+            "xlsx_dataset",
+            "xlsx_max_rows_per_sheet",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2151,6 +2154,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--search-metric",
             choices=("clicks", "impressions"),
             help="explicit Search Console axis for complete compatible GA sessions quadrants",
+        )
+        _source_flag(sub, "--xlsx-out", help="optional new split XLSX consumer output")
+        sub.add_argument(
+            "--xlsx-dataset",
+            help="declared BI dataset to write to split XLSX worksheets",
+        )
+        sub.add_argument(
+            "--xlsx-max-rows-per-sheet",
+            type=int,
+            help="data rows per XLSX worksheet, below Excel's row limit",
         )
     if cmd == "bi-sheets-plan":
         _source_flag(sub, "--package", help="complete local BI package directory")
