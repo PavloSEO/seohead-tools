@@ -27,6 +27,7 @@ NAME = "run-observation.json"
 MAX_RUNS = 100
 MAX_EVENTS_PER_RUN = 200
 MAX_EVENT_MESSAGE = 240
+WRITE_ATTEMPTS = 5
 _KINDS = {"native", "screaming_frog"}
 _STATES = {"running", "finished", "partial", "failed", "cancelled"}
 _PHASES = {"admission", "collection", "render", "external", "analysis", "finalizing"}
@@ -234,6 +235,14 @@ def _save(root: Path, document: dict[str, Any]) -> None:
     write_document(root, NAME, document, expected_revision=expected)
 
 
+def _contention(exc: ValueError) -> bool:
+    return str(exc) in {"project document revision conflict", f"another writer owns {NAME}"}
+
+
+def _retry_delay(attempt: int) -> None:
+    time.sleep(0.01 * (attempt + 1))
+
+
 def start(
     directory: str | Path,
     *,
@@ -249,7 +258,6 @@ def start(
     counters: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     """Persist one project-bound local collector before it starts doing work."""
-    root, _project, document = _load(directory)
     if kind not in _KINDS or mode not in {"spider", "list", "sf_live", "sf_exports"}:
         raise ValueError("run kind or collector mode is invalid")
     _counter(max_urls, "max_urls")
@@ -263,43 +271,55 @@ def start(
         raise ValueError("max_requests_per_second must be a finite nonnegative float")
     if type(resumed) is not bool:
         raise ValueError("resumed must be boolean")
-    run = {
-        "id": uuid.uuid4().hex,
-        "kind": kind,
-        "state": "running",
-        "started_at": _now(),
-        "finished_at": None,
-        "pid": os.getpid(),
-        "controller_pid": os.getpid(),
-        "controller_start_identity": _process_identity(os.getpid()),
-        "collector_pid": None,
-        "collector_start_identity": None,
-        "collector_started_at": None,
-        "collector": {
-            "mode": mode,
-            "max_urls": max_urls,
-            "max_requests": max_requests,
-            "max_crawl_seconds": max_crawl_seconds,
-            "max_requests_per_second": max_requests_per_second,
-            "config_fingerprint": _text(config_fingerprint, "config fingerprint", 256),
-            "resumed": resumed,
-        },
-        "artifact": _relative_artifact(root, artifact),
-        "counters": {
-            **{
-                name: _optional_counter((counters or {}).get(name, 0), name)
-                for name in ("fetched", "queued", "inflight", "excluded")
+    run_id = uuid.uuid4().hex
+    started_at = _now()
+    controller_pid = os.getpid()
+    controller_identity = _process_identity(controller_pid)
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = {
+            "id": run_id,
+            "kind": kind,
+            "state": "running",
+            "started_at": started_at,
+            "finished_at": None,
+            "pid": controller_pid,
+            "controller_pid": controller_pid,
+            "controller_start_identity": controller_identity,
+            "collector_pid": None,
+            "collector_start_identity": None,
+            "collector_started_at": None,
+            "collector": {
+                "mode": mode,
+                "max_urls": max_urls,
+                "max_requests": max_requests,
+                "max_crawl_seconds": max_crawl_seconds,
+                "max_requests_per_second": max_requests_per_second,
+                "config_fingerprint": _text(config_fingerprint, "config fingerprint", 256),
+                "resumed": resumed,
             },
-            "rate_per_second": (counters or {}).get("rate_per_second"),
-        },
-        "finish_reason": None,
-        "events": [],
-    }
-    _event(run, "admission", "started")
-    document["runs"].append(run)
-    del document["runs"][:-MAX_RUNS]
-    _save(root, document)
-    return copy.deepcopy(run)
+            "artifact": _relative_artifact(root, artifact),
+            "counters": {
+                **{
+                    name: _optional_counter((counters or {}).get(name, 0), name)
+                    for name in ("fetched", "queued", "inflight", "excluded")
+                },
+                "rate_per_second": (counters or {}).get("rate_per_second"),
+            },
+            "finish_reason": None,
+            "events": [],
+        }
+        _event(run, "admission", "started")
+        document["runs"].append(run)
+        del document["runs"][:-MAX_RUNS]
+        try:
+            _save(root, document)
+            return copy.deepcopy(run)
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
+    raise AssertionError("unreachable")
 
 
 def phase(directory: str | Path, run_id: str, name: str, *, code: str = "entered") -> None:
@@ -313,17 +333,26 @@ def phase(directory: str | Path, run_id: str, name: str, *, code: str = "entered
 
 def collector_started(directory: str | Path, run_id: str, pid: int) -> None:
     """Bind an SF child PID after spawn; it is distinct from the controller PID."""
-    root, _project, document = _load(directory)
-    run = _find(document, run_id)
-    if run["state"] != "running":
-        return
     if type(pid) is not int or pid <= 0:
         raise ValueError("collector PID must be a positive integer")
-    run["collector_pid"] = pid
-    run["collector_start_identity"] = _process_identity(pid)
-    run["collector_started_at"] = _now()
-    _event(run, "collection", "collector_started")
-    _save(root, document)
+    identity = _process_identity(pid)
+    started_at = _now()
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = _find(document, run_id)
+        if run["state"] != "running":
+            return
+        run["collector_pid"] = pid
+        run["collector_start_identity"] = identity
+        run["collector_started_at"] = started_at
+        _event(run, "collection", "collector_started")
+        try:
+            _save(root, document)
+            return
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
 
 
 def progress(
@@ -367,23 +396,39 @@ def finish(
     reason: str,
     counters: dict[str, int | float | None] | None = None,
 ) -> None:
-    root, _project, document = _load(directory)
-    run = _find(document, run_id)
     if state not in _STATES - {"running"}:
         raise ValueError("run terminal state is invalid")
-    if counters is not None:
-        run["counters"] = {
+    normalized_counters = (
+        {
             **{
                 name: _optional_counter(counters.get(name, 0), name)
                 for name in ("fetched", "queued", "inflight", "excluded")
             },
             "rate_per_second": counters.get("rate_per_second"),
         }
-    run["state"] = state
-    run["finish_reason"] = _text(reason, "finish reason", 500)
-    run["finished_at"] = _now()
-    _event(run, "finalizing", "finished" if state == "finished" else state)
-    _save(root, document)
+        if counters is not None
+        else None
+    )
+    finish_reason = _text(reason, "finish reason", 500)
+    finished_at = _now()
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = _find(document, run_id)
+        if run["state"] != "running":
+            return
+        if normalized_counters is not None:
+            run["counters"] = normalized_counters
+        run["state"] = state
+        run["finish_reason"] = finish_reason
+        run["finished_at"] = finished_at
+        _event(run, "finalizing", "finished" if state == "finished" else state)
+        try:
+            _save(root, document)
+            return
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
 
 
 def _runtime_state(pid: int | None, identity: str | None, *, running: bool) -> str:
@@ -396,6 +441,8 @@ def _runtime_state(pid: int | None, identity: str | None, *, running: bool) -> s
     except ProcessLookupError:
         return "abandoned"
     except PermissionError:
+        return "unknown"
+    except (OSError, OverflowError, ValueError):
         return "unknown"
     current = _process_identity(pid)
     if identity is None or current is None:

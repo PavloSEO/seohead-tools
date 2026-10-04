@@ -33,6 +33,20 @@ def _start_in_child(directory: str, ready, release) -> None:
     release.wait(10)
 
 
+def _finish_in_child(directory: str, barrier, outcomes) -> None:
+    barrier.wait(10)
+    run = run_observation.start(
+        directory,
+        kind="native",
+        mode="spider",
+        max_urls=100,
+        config_fingerprint="synthetic",
+        artifact=Path(directory) / "scans" / f"{os.getpid()}.sqlite",
+    )
+    run_observation.finish(directory, run["id"], state="finished", reason="finished")
+    outcomes.put(run["id"])
+
+
 def test_project_run_records_real_counters_and_no_false_site_percentage(tmp_path):
     root = _project(tmp_path)
     run = run_observation.start(
@@ -212,3 +226,36 @@ def test_actual_collector_child_is_distinct_from_its_live_controller(tmp_path):
     finished_child = run_observation.status(root)["items"][0]
     assert finished_child["state"] == "running"
     assert finished_child["collector_runtime"]["state"] == "abandoned"
+
+
+def test_two_processes_keep_both_terminal_run_updates_after_revision_contention(tmp_path):
+    root = _project(tmp_path)
+    context = get_context("spawn")
+    barrier, outcomes = context.Barrier(2), context.Queue()
+    children = [
+        context.Process(target=_finish_in_child, args=(str(root), barrier, outcomes))
+        for _ in range(2)
+    ]
+    for child in children:
+        child.start()
+    for child in children:
+        child.join(timeout=20)
+    assert all(child.exitcode == 0 for child in children)
+    ids = {outcomes.get(timeout=2), outcomes.get(timeout=2)}
+    rows = run_observation.status(root)["items"]
+    assert {row["id"] for row in rows} == ids
+    assert {row["state"] for row in rows} == {"finished"}
+
+
+def test_out_of_range_collector_pid_is_unknown_not_an_observer_crash(tmp_path):
+    root = _project(tmp_path)
+    run = run_observation.start(
+        root,
+        kind="screaming_frog",
+        mode="sf_live",
+        max_urls=0,
+        config_fingerprint="synthetic",
+        artifact=root / "reports" / "sf",
+    )
+    run_observation.collector_started(root, run["id"], 10**100)
+    assert run_observation.status(root)["items"][0]["collector_runtime"]["state"] == "unknown"
