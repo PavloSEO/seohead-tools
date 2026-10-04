@@ -61,9 +61,16 @@ up to 16 GiB for that full local package. `bi-export` hashes a native scan in a 
 `--max-scan-bytes` streamed budget: the default is 8 GiB and the bounded maximum is 32 GiB, so a
 populated representative million-page database is not silently treated as a small 4 GiB source.
 Providers and total output retain separate hard budgets:
-for a large scan, normalized provider evidence must first be saved as an `evidence-join` artifact,
-so the BI exporter never materializes a million crawl pages to re-join it. This implementation does
-not demonstrate a copyable Looker Studio template.
+for a large scan, normalized provider evidence must first be saved with
+`evidence-join --scan ... --out-dir ./private-evidence`. The command writes a versioned
+`seohead.evidence-join-sqlite.v1` artifact in that directory and returns its filename and
+content hash. It stores page rows, provider rows, and each provider-row-to-URL provenance edge
+in separate SQLite tables; it never stores a full matched/crawl-only JSON population. Pass that
+artifact to `bi-export --provider-join`: its re-iterable cursors preserve the original URL/date/
+metric grain and exact population counts without loading a million crawl URLs or matched URLs into
+memory. Domain totals are never allocated across URLs; missing, partial, and ambiguous source rows
+keep their declared availability and grain. This implementation does not demonstrate a copyable
+Looker Studio template.
 
 ## Explicit Google destinations
 

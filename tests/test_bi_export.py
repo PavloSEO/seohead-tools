@@ -15,10 +15,12 @@ from seohead import cli
 from seohead.crawl import sqlite_adapter
 from seohead.data_sources.evidence_import import normalize_inline
 from seohead.data_sources.evidence_join import evidence_compatibility, join_evidence
+from seohead.data_sources.evidence_join_store import open_store
+from seohead.data_sources.evidence_join_store import write as write_join_store
 from seohead.reports import bi as bi_report
 from seohead.reports.bi import BIExportError, export_bi
 from seohead.servers import handlers
-from seohead.storage import open_scan
+from seohead.storage import open_scan, read_audit
 
 
 def _offline_fetch(url: str):
@@ -219,8 +221,8 @@ def test_scan_projection_conserves_pages_findings_links_and_provider_grain(tmp_p
     )
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
 
+    source_audit = read_audit(scan_path)
     with open_scan(scan_path) as con:
-        source_audit = json.loads(con.execute("SELECT document_json FROM audit").fetchone()[0])
         source_pages = con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
         source_links = con.execute("SELECT COUNT(*) FROM links").fetchone()[0]
 
@@ -289,6 +291,108 @@ def test_scan_projection_conserves_pages_findings_links_and_provider_grain(tmp_p
         max_rows_per_file=3,
     )
     assert _files(package) == _files(Path(repeated["output_directory"]))
+
+
+def test_audit_v2_page_overlay_is_keyed_not_positional(tmp_path, monkeypatch):
+    """A valid audit.v2 collection may be ordered independently from the crawl."""
+    from seohead.storage.audit_v2 import AuditV2Reader, _get_pointer, write_audit_v2
+
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    with AuditV2Reader(scan_path) as reader:
+        document = reader.materialize_legacy()
+        binding = reader.binding
+        pointers = tuple(reader.collections)
+    expected = {page["url"]: page.get("indexability") for page in document["pages"]}
+    write_audit_v2(
+        scan_path,
+        document,
+        {
+            pointer: reversed(_get_pointer(document, pointer))
+            if pointer == "/pages"
+            else _get_pointer(document, pointer)
+            for pointer in pointers
+        },
+        binding,
+    )
+
+    package = tmp_path / "shuffled-audit-v2-bi"
+    export_bi(scan=scan_path, out_dir=package)
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    pages = _csv_rows(package, manifest, "pages")
+    assert {row["url"]: row["indexability"] or None for row in pages} == expected
+
+
+def test_cursor_backed_join_store_preserves_grain_without_matched_url_lists(tmp_path, monkeypatch):
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    store_path = tmp_path / "evidence-join.sqlite"
+    metadata = write_join_store(scan_path, _provider_document(), store_path)
+    store = open_store(store_path)
+
+    observations = list(store.iter_observations())
+    assert len(observations) == metadata["summary"]["rows"] == 4
+    assert metadata["allocation_policy"]["domain_totals"] == "never_allocate_to_urls"
+    assert (
+        sum(item["matched_page_count"] for item in observations)
+        == metadata["summary"]["candidate_pairs"]
+    )
+    assert [item["url"] for item in store.iter_matches()] == ["https://example.test/"] * 2
+    assert list(store.iter_observations()) == observations, "store cursors must be re-iterable"
+
+    package = tmp_path / "cursor-backed-bi"
+    export_bi(scan=scan_path, provider_joins=[store_path], out_dir=package, max_rows_per_file=3)
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    metrics = _csv_rows(package, manifest, "metrics")
+    assert len(metrics) == len(observations) * 2
+    matched = next(row for row in metrics if row["population_state"] == "matched")
+    provenance = json.loads(matched["matched_page_urls_json"])
+    assert provenance["state"] == "cursor_backed"
+    assert matched["matched_page_count"] == "1"
+
+
+def test_cli_reaches_durable_join_store_for_a_large_scan_path(tmp_path, monkeypatch, capsys):
+    """The public CLI uses the same large-scan branch as local MCP."""
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    monkeypatch.setattr(handlers, "LARGE_EVIDENCE_JOIN_SCAN_PAGES", 1)
+    artifacts = tmp_path / "large-join-artifacts"
+
+    assert (
+        cli.main(
+            [
+                "evidence-join",
+                "--scan",
+                str(scan_path),
+                "--evidence",
+                json.dumps(_provider_document()),
+                "--out-dir",
+                str(artifacts),
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["join_store"]["format"] == "seohead.evidence-join-sqlite.v1"
+    assert len(list(artifacts.glob("*.sqlite"))) == 1
+
+
+def test_mcp_reaches_durable_join_store_for_a_large_scan_path(tmp_path, monkeypatch):
+    pytest.importorskip("mcp")
+    from seohead.servers.mcp_server import build_server
+
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    monkeypatch.setattr(handlers, "LARGE_EVIDENCE_JOIN_SCAN_PAGES", 1)
+    artifacts = tmp_path / "mcp-large-join-artifacts"
+
+    asyncio.run(
+        build_server().call_tool(
+            "seo_evidence_join",
+            {
+                "scan": str(scan_path),
+                "evidence": _provider_document(),
+                "out_dir": str(artifacts),
+            },
+        )
+    )
+    assert len(list(artifacts.glob("*.sqlite"))) == 1
 
 
 def test_site_audit_nulls_and_formula_cells_are_explicitly_safe(tmp_path):
@@ -465,8 +569,8 @@ def test_companion_audit_findings_are_projected_without_reading_empty_inline_slo
     from seohead.storage.audit_v2 import write_audit_v2
 
     scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    document = read_audit(scan_path)
     with open_scan(scan_path) as con:
-        document = json.loads(con.execute("SELECT document_json FROM audit").fetchone()[0])
         metadata = dict(con.execute("SELECT * FROM scan").fetchone())
     issues, pages, groups = (document.pop(key) for key in ("issues", "pages", "groups"))
     document.update(issues=[], pages=[], groups=[])

@@ -44,7 +44,7 @@ from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
 APPLICATION_ID = 1397051212  # ASCII SEOL; scan artifacts use SEOH (1397051208).
-USER_VERSION = 2
+USER_VERSION = 3
 FORMAT_VERSION = "ledger.v1"
 READ_TIMEOUT_SECONDS = 30
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -121,9 +121,21 @@ def _v2_schema() -> str:
     return files(__package__).joinpath("ledger_v2.sql").read_text(encoding="utf-8")
 
 
+def _v3_schema() -> str:
+    """The additive source-scope state used by remediation coverage."""
+    return files(__package__).joinpath("ledger_v3.sql").read_text(encoding="utf-8")
+
+
 def _apply_v2_schema(con: sqlite3.Connection) -> None:
     """Apply the v1 -> v2 DDL one statement at a time inside a transaction."""
     for piece in _v2_schema().split(";"):
+        statement = piece.strip()
+        if statement and not statement.startswith("--"):
+            con.execute(statement)
+
+
+def _apply_v3_schema(con: sqlite3.Connection) -> None:
+    for piece in _v3_schema().split(";"):
         statement = piece.strip()
         if statement and not statement.startswith("--"):
             con.execute(statement)
@@ -167,6 +179,7 @@ def _expected() -> list[tuple]:
     try:
         con.executescript(_schema())
         _apply_v2_schema(con)
+        _apply_v3_schema(con)
         return _objects(con)
     finally:
         con.close()
@@ -372,6 +385,11 @@ def _validate(con) -> None:
     ).fetchone():
         raise LedgerError("source scan binding has an invalid digest")
     if con.execute(
+        "SELECT 1 FROM source_scan WHERE group_memberships_state "
+        "NOT IN ('complete','partial','unavailable') LIMIT 1"
+    ).fetchone():
+        raise LedgerError("source scan has an invalid group-membership scope state")
+    if con.execute(
         "SELECT 1 FROM observation WHERE (observed_at IS NULL) != (observed_at_state='unknown') LIMIT 1"
     ).fetchone():
         raise LedgerError("observation time state disagrees with its stored value")
@@ -443,7 +461,21 @@ def _migrate_1_to_2(con: sqlite3.Connection) -> None:
     con.execute("PRAGMA user_version=2")
 
 
-_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2}
+def _migrate_2_to_3(con: sqlite3.Connection) -> None:
+    """Persist whether group members were fully retained by the source audit."""
+    _apply_v3_schema(con)
+    # v2 did not retain this state for streaming scan.v2 audit companions. A
+    # migration cannot reconstruct missing group members from their old ledger
+    # rows, so mark their full scope unavailable rather than backfilling a
+    # deceptively complete denominator. New v3 ingestion records it exactly.
+    con.execute(
+        "UPDATE source_scan SET group_memberships_state='unavailable' "
+        "WHERE format_version='scan.v2'"
+    )
+    con.execute("PRAGMA user_version=3")
+
+
+_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2, 2: _migrate_2_to_3}
 
 
 def _migrate(con: sqlite3.Connection) -> None:
@@ -540,7 +572,8 @@ def create_ledger(path: str | Path, *, project_dir: str | Path, producer_build: 
         con.row_factory = sqlite3.Row
         con.executescript(_schema())
         _apply_v2_schema(con)
-        con.execute("PRAGMA user_version=2")
+        _apply_v3_schema(con)
+        con.execute("PRAGMA user_version=3")
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA synchronous=FULL")
@@ -1193,6 +1226,7 @@ def _bind_source(
     scan: dict[str, Any],
     audit_row: dict[str, Any],
     file_sha256: str,
+    group_memberships_state: str,
     now: str,
 ) -> tuple[int, bool, bool, bool]:
     """Bind one validated source revision; refuse an inconsistent reused identity.
@@ -1228,6 +1262,7 @@ def _bind_source(
         "corpus_partial": int(bool(scan["corpus_partial"])),
         "artifact_state": "present",
         "missing_reason": "",
+        "group_memberships_state": group_memberships_state,
         "ingested_at": now,
     }
     if row is None:
@@ -1236,7 +1271,7 @@ def _bind_source(
             "evidence_revision,audit_sha256,audit_schema_version,audit_created_at,"
             "config_fingerprint,writer_version,writer_revision,analyzer_version,"
             "analyzer_revision,scan_sha256,crawl_partial,corpus_partial,artifact_state,"
-            "missing_reason,ingested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "missing_reason,group_memberships_state,ingested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 fields["site_id"],
                 fields["scan_uuid"],
@@ -1257,6 +1292,7 @@ def _bind_source(
                 fields["corpus_partial"],
                 fields["artifact_state"],
                 fields["missing_reason"],
+                fields["group_memberships_state"],
                 fields["ingested_at"],
             ),
         )
@@ -1276,6 +1312,7 @@ def _bind_source(
         "analyzer_revision",
         "crawl_partial",
         "corpus_partial",
+        "group_memberships_state",
     ):
         if stored[name] != fields[name]:
             raise LedgerError(
@@ -1311,6 +1348,8 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
     scan_con = open_scan(path)
     audit_reader = None
     streamed_issues = None
+    group_store = None
+    group_store_path = None
     group_memberships_state = "complete"
     try:
         scan_row = scan_con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
@@ -1359,9 +1398,26 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             by_url, doc_url = {}, {}
             raw_issues = None
             groups = None
-            group_memberships_state = (
-                "partial" if "/groups" in audit_reader.collections else "unavailable"
-            )
+            if "/groups" in audit_reader.collections:
+                fd, name = tempfile.mkstemp(
+                    prefix=".ledger-groups-", suffix=".sqlite", dir=path.parent
+                )
+                os.close(fd)
+                group_store_path = Path(name)
+                group_store = sqlite3.connect(group_store_path)
+                group_store.execute(
+                    "CREATE TABLE groups (group_ref TEXT PRIMARY KEY, payload_json TEXT NOT NULL)"
+                )
+                for group in audit_reader.iter_collection("/groups"):
+                    if isinstance(group, dict) and isinstance(group.get("group_id"), str):
+                        group_store.execute(
+                            "INSERT INTO groups VALUES(?,?)",
+                            (group["group_id"], _dump(group)),
+                        )
+                group_store.commit()
+                group_memberships_state = "complete"
+            else:
+                group_memberships_state = "unavailable"
     finally:
         scan_con.close()
     run = document.get("run") if isinstance(document.get("run"), dict) else {}
@@ -1414,6 +1470,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             scan=scan,
             audit_row=audit_row,
             file_sha256=digest,
+            group_memberships_state=group_memberships_state,
             now=now,
         )
         # Once a source revision is bound, a replay must reproduce its recorded
@@ -1504,8 +1561,20 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                 },
             )
             group_ref = projected_issue.get("group_id")
-            if isinstance(group_ref, str) and group_ref and groups is not None:
-                group = groups.get(group_ref) or {}
+            if (
+                isinstance(group_ref, str)
+                and group_ref
+                and (groups is not None or group_store is not None)
+            ):
+                group = groups.get(group_ref) if groups is not None else None
+                if group is None and group_store is not None:
+                    row = group_store.execute(
+                        "SELECT payload_json FROM groups WHERE group_ref=?", (group_ref,)
+                    ).fetchone()
+                    group = _loads(row[0], "audit.v2 group") if row is not None else None
+                if not isinstance(group, dict):
+                    group = {}
+                    group_memberships_state = "partial"
                 counts["group_memberships"] += _insert_group(
                     con,
                     finding_id=finding_id,
@@ -1599,6 +1668,10 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             con.close()
         if audit_reader is not None:
             audit_reader.close()
+        if group_store is not None:
+            group_store.close()
+        if group_store_path is not None:
+            group_store_path.unlink(missing_ok=True)
     return {
         "ok": True,
         "ledger_revision": int(revision),
@@ -2074,6 +2147,73 @@ def record_verification(
     }
 
 
+def _membership_scope(con: sqlite3.Connection, represented_occurrences: int) -> dict[str, Any]:
+    """Describe the boundary between represented cases and source group scope.
+
+    A group count can name a much larger population than the URLs retained in
+    its issue rows. Those missing members have no occurrence keys and cannot
+    be assigned an outcome. The scope is therefore evidence, not a guessed
+    denominator: any truncated or unavailable group withholds full-scope
+    percentages while preserving exact metrics for represented occurrences.
+    """
+    known_unrepresented = 0
+    unknown_groups = 0
+    incomplete_groups = 0
+    samples: list[dict[str, Any]] = []
+    for row in con.execute(
+        "SELECT fg.source_scan_id,fg.group_ref,MAX(fg.group_count) AS group_count,"
+        "COUNT(DISTINCT o.occurrence_id) AS represented "
+        "FROM finding_group fg LEFT JOIN occurrence o ON o.finding_id=fg.finding_id "
+        "GROUP BY fg.source_scan_id,fg.group_ref ORDER BY fg.source_scan_id,fg.group_ref"
+    ):
+        count = row["group_count"]
+        represented = int(row["represented"])
+        if type(count) is not int or count < represented:
+            unknown_groups += 1
+            incomplete_groups += 1
+            kind = "unknown"
+            missing = None
+        elif count > represented:
+            missing = count - represented
+            known_unrepresented += missing
+            incomplete_groups += 1
+            kind = "partial"
+        else:
+            continue
+        if len(samples) < 20:
+            samples.append(
+                {
+                    "source_scan_id": int(row["source_scan_id"]),
+                    "group_ref": row["group_ref"],
+                    "state": kind,
+                    "represented_members": represented,
+                    "known_unrepresented_members": missing,
+                }
+            )
+    source_states = [
+        row["group_memberships_state"]
+        for row in con.execute(
+            "SELECT group_memberships_state FROM source_scan "
+            "WHERE group_memberships_state!='complete'"
+        )
+    ]
+    incomplete_groups += len(source_states)
+    if unknown_groups or "unavailable" in source_states:
+        state = "unknown"
+    elif incomplete_groups:
+        state = "partial"
+    else:
+        state = "complete"
+    return {
+        "state": state,
+        "represented_occurrences": represented_occurrences,
+        "known_unrepresented_members": known_unrepresented,
+        "unknown_group_memberships": unknown_groups + len(source_states),
+        "incomplete_group_memberships": incomplete_groups,
+        "samples": samples,
+    }
+
+
 def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
     """Return case counts and explicitly named remediation/recheck denominators.
 
@@ -2095,6 +2235,12 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
         remediation_denominator = original - false_positive
         resolved = counts["resolved"]
         rechecked = resolved + counts["persisting"] + counts["regressed"]
+        scope = _membership_scope(con, original)
+        scope_complete = scope["state"] == "complete"
+        represented_resolved_percent = (
+            round(100 * resolved / remediation_denominator, 1) if remediation_denominator else None
+        )
+        represented_rechecked_percent = round(100 * rechecked / original, 1) if original else None
         task_counts: dict[str, dict[str, int]] = {}
         for row in con.execute(
             "SELECT o.current_state,COALESCE((SELECT va.task_id FROM decision d "
@@ -2125,6 +2271,8 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
                 status = "in_progress"
             else:
                 status = "complete"
+            if status == "complete" and not scope_complete:
+                status = "scope_incomplete"
             return {
                 "status": status,
                 "counts": task_counts,
@@ -2132,13 +2280,24 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
                     "verified_original_occurrences": task_original,
                     "remediation_cases": task_actionable,
                 },
-                "resolved_percent": (
+                "represented_resolved_percent": (
                     round(100 * task_counts["resolved"] / task_actionable, 1)
                     if task_actionable
                     else None
                 ),
-                "rechecked_percent": (
+                "represented_rechecked_percent": (
                     round(100 * task_rechecked / task_original, 1) if task_original else None
+                ),
+                "scope_state": scope["state"],
+                "resolved_percent": (
+                    round(100 * task_counts["resolved"] / task_actionable, 1)
+                    if scope_complete and task_actionable
+                    else None
+                ),
+                "rechecked_percent": (
+                    round(100 * task_rechecked / task_original, 1)
+                    if scope_complete and task_original
+                    else None
                 ),
             }
 
@@ -2152,12 +2311,11 @@ def remediation_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, An
                 "verified_original_occurrences": original,
                 "remediation_cases": remediation_denominator,
             },
-            "resolved_percent": (
-                round(100 * resolved / remediation_denominator, 1)
-                if remediation_denominator
-                else None
-            ),
-            "rechecked_percent": round(100 * rechecked / original, 1) if original else None,
+            "scope": scope,
+            "represented_resolved_percent": represented_resolved_percent,
+            "represented_rechecked_percent": represented_rechecked_percent,
+            "resolved_percent": represented_resolved_percent if scope_complete else None,
+            "rechecked_percent": represented_rechecked_percent if scope_complete else None,
             "tasks": {name: task_view(task_counts[name]) for name in sorted(task_counts)},
             "reason": None if original else "the ledger has no occurrence population",
         }
@@ -2275,12 +2433,25 @@ def remediation_markdown(document: dict[str, Any]) -> str:
                 if summary.get("resolved_percent") is not None
                 else "unavailable"
             ),
+            "Represented resolved percentage: "
+            + (
+                f"{summary['represented_resolved_percent']}%"
+                if summary.get("represented_resolved_percent") is not None
+                else "unavailable"
+            ),
             "Rechecked percentage: "
             + (
                 f"{summary['rechecked_percent']}%"
                 if summary.get("rechecked_percent") is not None
                 else "unavailable"
             ),
+            "Represented rechecked percentage: "
+            + (
+                f"{summary['represented_rechecked_percent']}%"
+                if summary.get("represented_rechecked_percent") is not None
+                else "unavailable"
+            ),
+            "Membership scope: " + str((summary.get("scope") or {}).get("state") or "unknown"),
             "",
         ]
     )
@@ -2290,8 +2461,8 @@ def remediation_markdown(document: dict[str, Any]) -> str:
             [
                 "## Task coverage",
                 "",
-                "| Task | Status | Resolved | Rechecked |",
-                "|---|---|---:|---:|",
+                "| Task | Status | Scope | Represented resolved | Full-scope resolved |",
+                "|---|---|---|---:|---:|",
             ]
         )
         for task_id in sorted(tasks):
@@ -2302,14 +2473,15 @@ def remediation_markdown(document: dict[str, Any]) -> str:
                     (
                         task_id,
                         str(task.get("status") or "unavailable"),
+                        str(task.get("scope_state") or "unknown"),
                         (
-                            f"{task.get('resolved_percent')}%"
-                            if task.get("resolved_percent") is not None
+                            f"{task.get('represented_resolved_percent')}%"
+                            if task.get("represented_resolved_percent") is not None
                             else "unavailable"
                         ),
                         (
-                            f"{task.get('rechecked_percent')}%"
-                            if task.get("rechecked_percent") is not None
+                            f"{task.get('resolved_percent')}%"
+                            if task.get("resolved_percent") is not None
                             else "unavailable"
                         ),
                     )

@@ -36,6 +36,8 @@ from seohead.tools import (
     robots as robots_core,
 )
 
+LARGE_EVIDENCE_JOIN_SCAN_PAGES = 100_000
+
 
 def handler_failed(result: Any) -> bool:
     """A handler reports its own failure to fetch, parse, or reach a provider via ``ok: False``
@@ -4820,6 +4822,7 @@ def evidence_join(
     if sum(source is not None for source in (pages, scan, audit)) > 1:
         raise ValueError("pages, scan and audit are alternative crawl inputs, not a set")
     page_rows = None
+    large_scan = False
     crawl_context: dict[str, Any] = {}
     if pages is not None:
         page_rows = _json_or_path(pages, "pages")
@@ -4835,15 +4838,18 @@ def evidence_join(
 
         con = open_scan(scan, require_audit=False)
         try:
-            if con.execute("SELECT COUNT(*) FROM pages").fetchone()[0] > 100_000:
-                raise ValueError("saved scan exceeds the bounded join limit")
-            page_rows = [
-                dict(row)
-                for row in con.execute(
-                    "SELECT u.url,p.status_code FROM pages p JOIN urls u USING(url_id)"
-                    " ORDER BY p.url_id"
-                )
-            ]
+            large_scan = (
+                con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+                > LARGE_EVIDENCE_JOIN_SCAN_PAGES
+            )
+            if not large_scan:
+                page_rows = [
+                    dict(row)
+                    for row in con.execute(
+                        "SELECT u.url,p.status_code FROM pages p JOIN urls u USING(url_id)"
+                        " ORDER BY p.url_id"
+                    )
+                ]
             scan_uuid = con.execute("SELECT scan_uuid FROM scan").fetchone()[0]
             partial = None
             audit_row = con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
@@ -4871,25 +4877,50 @@ def evidence_join(
         }
         if diagnostics:
             crawl_context["input_diagnostics"] = diagnostics
-    if page_rows is None and compare_document is None:
+    if page_rows is None and not large_scan and compare_document is None:
         raise ValueError(
             "evidence_join needs a crawl input (pages, scan or audit) to join, "
             "or a compare source for a compatibility-only decision"
         )
-    join_result = (
-        join_core.join_evidence(
-            page_rows,
-            document,
-            url_policy={
-                "ignore_query": bool(ignore_query),
-                "ignore_scheme": bool(ignore_scheme),
-                "casefold_path": bool(casefold_path),
-            },
-            crawl=crawl_context,
+    url_policy = {
+        "ignore_query": bool(ignore_query),
+        "ignore_scheme": bool(ignore_scheme),
+        "casefold_path": bool(casefold_path),
+    }
+    join_result = None
+    store_result = None
+    if large_scan:
+        if not out_dir:
+            raise ValueError(
+                f"a scan over {LARGE_EVIDENCE_JOIN_SCAN_PAGES} pages requires --out-dir "
+                "for its durable evidence-join store"
+            )
+        import hashlib
+        import json
+        import os
+
+        from seohead.data_sources import evidence_join_store
+
+        root = Path(out_dir)
+        if root.is_symlink():
+            raise ValueError("private join output directory must not be a symlink")
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        digest = hashlib.sha256(
+            json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        destination = root / f"evidence-join-{digest[:16]}.sqlite"
+        if destination.exists() or destination.is_symlink():
+            raise ValueError(
+                "durable evidence-join artifact already exists; choose a new output directory"
+            )
+        store_result = evidence_join_store.write(scan, document, destination, policy=url_policy)
+        os.chmod(root, 0o700)
+    elif page_rows is not None:
+        join_result = join_core.join_evidence(
+            page_rows, document, url_policy=url_policy, crawl=crawl_context
         )
-        if page_rows is not None
-        else None
-    )
     compatibility = (
         join_core.evidence_compatibility(
             document, compare_document, policy=_json_or_path(policy, "policy")
@@ -4903,7 +4934,9 @@ def evidence_join(
         if doc is not None
     )
     artifact = (
-        _save_local_artifact(out_dir, {"join": join_result, "compatibility": compatibility})
+        f"local-artifact:{store_result['content_sha256']}"
+        if store_result is not None
+        else _save_local_artifact(out_dir, {"join": join_result, "compatibility": compatibility})
         if out_dir
         else None
     )
@@ -4917,7 +4950,18 @@ def evidence_join(
         response["compatibility"] = (
             join_core.public_compatibility(compatibility) if restricted else compatibility
         )
-    if restricted:
+    if store_result is not None:
+        response["join_store"] = {
+            "format": store_result["format"],
+            "file_name": Path(store_result["path"]).name,
+            "url_policy": store_result["url_policy"],
+            "allocation_policy": store_result["allocation_policy"],
+            "crawl": store_result["crawl"],
+            "summary": store_result["summary"],
+            "content_sha256": store_result["content_sha256"],
+        }
+        response["populations_redacted"] = restricted
+    elif restricted:
         response["populations_redacted"] = True
         if join_result is not None:
             response["join"] = {

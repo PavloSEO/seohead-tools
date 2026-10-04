@@ -165,6 +165,18 @@ rows that share a key.
 seohead evidence-join --scan ./scans/audit.sqlite --evidence ./gsc.csv
 ```
 
+When the saved scan has more than 100,000 retained URLs, add an explicit private output directory:
+
+```bash
+seohead evidence-join --scan ./scans/audit.sqlite --evidence ./gsc.csv --out-dir ./private-evidence
+seohead bi-export --scan ./scans/audit.sqlite \
+  --provider-join ./private-evidence/evidence-join-<hash>.sqlite --out-dir ./bi-package
+```
+
+The durable join is a local `seohead.evidence-join-sqlite.v1` artifact. Its URL provenance is a
+cursor-backed edge table, so a provider row with many matching crawl URLs is not converted into a
+large JSON list. Keep the artifact beside the BI package for provenance review.
+
 `--compare` plus a declared `--policy` adds a pure compatibility decision
 (`compatible`, `incompatible` or `unknown`) across inclusive period, timezone
 boundary, reporting identity, attribution, search engine, and grain. GSC
