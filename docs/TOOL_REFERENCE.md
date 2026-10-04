@@ -532,6 +532,20 @@ Answer "is the boilerplate actually the same everywhere?" across a crawled corpu
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `semantic-inputs`
+
+MCP name: `seo_semantic_inputs`
+
+Build the reproducible normalized-input manifest for semantic analysis over retained page content. Each document entry names the retained body hash, the exact decoded input hash, the normalized output hash, the content-area strategy that was applied, and the language evidence (the page's own <html lang> declaration plus letter-script shares over the normalized text) — the normalized text itself is never returned. Pass scan for a validated read-only scan.v1 corpus: it streams retained complete bodies offline with no refetch, under the crawl's recorded content_area config, and a missing or partial body stays an explicit omission — never an empty clean result. Or pass items as a list of {"url", "html"} to normalize supplied markup offline under an optional content_area config. The corpus is capped at 10,000 documents and 16 MiB of normalized retained input; reaching a bound reports the exact partial coverage.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `content_area` | `dict[str, Any] | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `social-meta-check`
 
 MCP name: `seo_social_meta_check`

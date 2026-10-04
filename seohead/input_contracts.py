@@ -215,6 +215,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("scan_artifact", "scan"),
     ),
     _command(
+        "semantic-inputs",
+        "semantic_inputs",
+        _form("inline_corpus", "items"),
+        _form("scan_artifact", "scan"),
+    ),
+    _command(
         "social-meta-check",
         "social_meta_check",
         _form("live_url", "url"),

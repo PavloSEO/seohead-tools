@@ -470,7 +470,10 @@ def test_documented_command_executes_or_at_least_still_parses(
         create_project(tmp_path / directory, "https://example.test/")
     if argv[:2] in (["project", "start"], ["project", "prepare"]):
         _seed_project_prepare(tmp_path, monkeypatch)
-    if argv[:1] in (["duplicate-check"], ["boilerplate-report"]) and "--scan" in argv:
+    if (
+        argv[:1] in (["duplicate-check"], ["boilerplate-report"], ["semantic-inputs"])
+        and "--scan" in argv
+    ):
         # Body consumers need a native retained corpus, including when they use
         # the same filename that report examples use for a saved audit.
         _seed_documented_body_scan(tmp_path, argv[argv.index("--scan") + 1])

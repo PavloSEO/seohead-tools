@@ -61,6 +61,7 @@ and this decision makes no backend migration.
 | `citability-check` | Live URL (`url`)<br>Inline text (`text`) | — |
 | `markdown-extract` | Live URL (`url`)<br>Inline HTML (`html`) | — |
 | `boilerplate-report` | Inline corpus (`pages`)<br>Scan artifact (`scan`) | — |
+| `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |

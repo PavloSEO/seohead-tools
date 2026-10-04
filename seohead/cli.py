@@ -66,6 +66,7 @@ COMMANDS = (
     "citability-check",
     "markdown-extract",
     "boilerplate-report",
+    "semantic-inputs",
     "social-meta-check",
     "soft404-check",
     "log-analyze",
@@ -531,9 +532,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
-    elif cmd == "boilerplate-report":
+    elif cmd in {"boilerplate-report", "semantic-inputs"}:
         if getattr(args, "scan", None):
             kw["scan"] = args.scan
+        # items[]/pages[] and content_area are intentionally accepted through --input JSON.
     elif cmd == "log-analyze":
         if args.path:
             kw["path"] = args.path
@@ -1898,6 +1900,8 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "canonicalised twin is not a defect",
         )
     if cmd == "boilerplate-report":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+    if cmd == "semantic-inputs":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")

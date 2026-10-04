@@ -332,6 +332,7 @@ onto the handler's arguments. Frequent parameters are duplicated as flags:
 seohead duplicate-check --input '{"items":[{"id":"a","text":"..."},{"id":"b","text":"..."}],"threshold":0.9}'
 seohead duplicate-check --scan saved.sqlite
 seohead boilerplate-report --scan saved.sqlite
+seohead semantic-inputs --scan saved.sqlite
 echo '{"url": "https://example.com"}' | seohead parse          # stdin JSON also works
 ```
 
