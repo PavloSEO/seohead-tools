@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import pty
+import termios
 
 from rich.console import Console
 
@@ -10,7 +12,7 @@ from seohead import cli
 from seohead.projects.workspace import create_project
 from seohead.tui import theme
 from seohead.tui.app import MIN_HEIGHT, MIN_WIDTH, build_frame
-from seohead.tui.keys import read_key
+from seohead.tui.keys import raw_mode, read_key
 from seohead.tui.state import ShellState
 from tests.test_scan_history import _finished
 
@@ -59,6 +61,42 @@ def test_raw_key_reader_keeps_one_utf8_character_intact():
     finally:
         os.close(reader)
         os.close(writer)
+
+
+def test_raw_input_preserves_terminal_newline_output_and_restores_attributes():
+    master, slave = pty.openpty()
+    try:
+        original = termios.tcgetattr(slave)
+        with raw_mode(slave):
+            os.write(slave, b"first\nsecond\n")
+            assert os.read(master, 64) == b"first\r\nsecond\r\n"
+        restored = termios.tcgetattr(slave)
+        # The kernel can mark pending input after a mode change; compare
+        # configured flags rather than that transient status bit.
+        restored[3] &= ~getattr(termios, "PENDIN", 0)
+        original[3] &= ~getattr(termios, "PENDIN", 0)
+        assert restored == original
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_watch_frame_fits_viewport_with_long_evidence_rows(tmp_path):
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/" + "long/" * 80)
+    state = ShellState(commands=[], view="watch")
+    for width, height in [(116, 28), (76, 22), (50, 12)]:
+        console = Console(width=width, no_color=True)
+        frame = build_frame(
+            state,
+            width=width,
+            height=height,
+            palette=theme.resolve_palette(color=False),
+            project=str(root),
+        )
+        lines = console.render_lines(frame, console.options)
+        assert len(lines) <= height
+        assert all(sum(segment.cell_length for segment in line) <= width for line in lines)
 
 
 def test_watch_state_can_filter_sort_page_and_open_a_retained_finding():
