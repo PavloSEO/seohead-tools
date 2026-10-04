@@ -34,6 +34,13 @@ seohead report-build --audit native.sqlite --format md --out native-report.md --
 
 # if the crawl was interrupted, continue it from the artifact -- no other flag
 seohead crawl-site --resume native.sqlite
+
+# Explain a one-page or interrupted crawl from saved evidence; no new requests.
+seohead crawl-diagnose --scan native.sqlite
+seohead crawl-diagnose --run ./run --max-decisions 10
+
+# Optional redacted copy for sharing: creates a new file, never overwrites.
+seohead crawl-diagnose-export --scan native.sqlite --export diagnostic-redacted.json
 ```
 
 Save a reusable finding view and apply it to a retained scan and report:
