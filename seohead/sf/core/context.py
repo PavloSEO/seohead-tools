@@ -90,7 +90,7 @@ class _DiskPages:
         # hot repeated lookups without turning a million-page artifact back
         # into a million-page Python population.
         self._cache: OrderedDict[str, Page] = OrderedDict()
-        self._cache_limit = 4096
+        self._cache_limit = 16_384
         self.con.execute(
             "CREATE TABLE pages (ordinal INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, "
             "norm TEXT NOT NULL, status_code INTEGER, state_json TEXT NOT NULL)"
@@ -169,6 +169,26 @@ class _DiskPages:
         # The audit is one process-local transaction. Readers use this same
         # connection, so they see updates immediately; committing every metric
         # mutation would turn a large audit into thousands of fsyncs.
+
+    def attach_issue(self, url: str, check: str, issue_id: str, *, suppressed: bool = False) -> None:
+        """Attach one final finding with one JSON read/write for a disk page."""
+        row = self.con.execute("SELECT state_json FROM pages WHERE url=?", (url,)).fetchone()
+        if row is None:
+            return
+        state = json.loads(row["state_json"])
+        if suppressed:
+            state["suppressed_issue_ids"].append(issue_id)
+        else:
+            if check not in state["issues"]:
+                state["issues"].append(check)
+            state["issue_ids"].append(issue_id)
+        self.con.execute(
+            "UPDATE pages SET state_json=? WHERE url=?", (json.dumps(state, ensure_ascii=False), url)
+        )
+        # Cached Page instances wrap write-through lists.  Invalidate rather
+        # than mutating those wrappers, which would perform a second write and
+        # risk replacing the just-updated state with an older list snapshot.
+        self._cache.pop(url, None)
 
     def get(self, url: str) -> Page | None:
         cached = self._cache.get(url)
