@@ -244,28 +244,32 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         that frontier was built under, so no other crawl argument may accompany it.
         A scan written by a different producing build, for a different start URL,
         or already finished is refused by name before the first request."""
-        return _checked(
-            handlers.crawl_site(
-                url=url or None,
-                urls=urls,
-                urls_file=urls_file,
-                sitemap=sitemap,
-                config=config,
-                max_urls=max_urls,
-                max_depth=max_depth,
-                min_delay=min_delay,
-                robots=robots,
-                concurrency=concurrency,
-                out_dir=out_dir,
-                scan_out=scan_out,
-                producer_build=producer_build,
-                overrides=overrides,
-                resume=resume,
-                project=project,
-                approve_large_crawl=approve_large_crawl,
-                user_agent=user_agent,
-            )
+        result = handlers.crawl_site(
+            url=url or None,
+            urls=urls,
+            urls_file=urls_file,
+            sitemap=sitemap,
+            config=config,
+            max_urls=max_urls,
+            max_depth=max_depth,
+            min_delay=min_delay,
+            robots=robots,
+            concurrency=concurrency,
+            out_dir=out_dir,
+            scan_out=scan_out,
+            producer_build=producer_build,
+            overrides=overrides,
+            resume=resume,
+            project=project,
+            approve_large_crawl=approve_large_crawl,
+            user_agent=user_agent,
         )
+        # The crawler calls its workspace argument ``project`` while observer
+        # commands call it ``directory``.  Both identify the same local
+        # workspace, so a bound host must receive the same scoped summary.
+        if project is not None:
+            result = with_project_notice(result, project, None)
+        return _checked(result)
 
     @mcp.tool(annotations=pure, structured_output=True)
     def seo_crawl_describe_settings() -> dict[str, Any]:

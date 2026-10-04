@@ -42,6 +42,23 @@ def _bound_mcp_observer(directory: str, consumer: str, allowlist: str, queue) ->
     queue.put(result.get("inbox_unread"))
 
 
+def _synthetic_crawl(**_kwargs) -> dict:
+    """Keep MCP inbox tests offline and independent of a crawl target."""
+    return {"ok": True, "state": "synthetic"}
+
+
+def _bound_mcp_crawl(directory: str, consumer: str, allowlist: str, queue) -> None:
+    """Spawn target: a fresh MCP host binds crawl's project workspace too."""
+    os.environ["SEOHEAD_MCP_CONSUMER_ID"] = consumer
+    os.environ["SEOHEAD_MCP_PROJECT_ALLOWLIST"] = allowlist
+    from seohead.servers import handlers
+
+    handlers.crawl_site = _synthetic_crawl
+    server = build_server()
+    result = server._tool_manager.get_tool("seo_crawl_site").fn(project=directory)
+    queue.put(result.get("inbox_unread"))
+
+
 def test_note_read_ack_and_goal_transitions_are_explicit_and_durable(tmp_path):
     root = _project(tmp_path)
     note = submit(root, text="Review sitemap gap", references=["scan:synthetic-1"])["entry"]
@@ -127,6 +144,32 @@ def test_project_bound_mcp_work_call_gets_only_its_consumer_notice(tmp_path):
     assert result["inbox_unread"]["count"] == 1
     assert unread_summary(root, consumer="agent/other-session")["count"] == 1
     assert unread_summary(root, consumer="agent/session-a")["count"] == 1
+
+
+def test_project_bound_crawl_gets_host_notice_without_auto_acknowledgment(tmp_path, monkeypatch):
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    first = _project(tmp_path / "one")
+    second = _project(tmp_path / "two")
+    entry = submit(first, text="Check retained crawl evidence")["entry"]
+    submit(second, text="Keep this separate")
+
+    monkeypatch.setenv("SEOHEAD_MCP_CONSUMER_ID", "agent/crawl")
+    monkeypatch.setenv("SEOHEAD_MCP_PROJECT_ALLOWLIST", str(first))
+    monkeypatch.setattr("seohead.servers.handlers.crawl_site", _synthetic_crawl)
+    crawl = build_server()._tool_manager.get_tool("seo_crawl_site")
+
+    bound = crawl.fn(project=str(first))
+    outside = crawl.fn(project=str(second))
+
+    assert bound["inbox_unread"] == {
+        "count": 1,
+        "entries": [{"id": entry["id"], "kind": "note", "references": []}],
+        "truncated": False,
+    }
+    assert "inbox_unread" not in outside
+    assert unread_summary(first, consumer="agent/crawl")["count"] == 1
+    assert unread_summary(second, consumer="agent/crawl")["count"] == 1
 
 
 def test_observer_snapshot_keeps_missing_work_and_logs_visible(tmp_path):
@@ -249,3 +292,22 @@ def test_restart_isolation_keeps_each_host_bound_to_its_own_project(tmp_path):
     assert all(notice["count"] == 1 for notice in notices)
     assert unread_summary(first, consumer="agent/first-process")["count"] == 1
     assert unread_summary(second, consumer="agent/second-process")["count"] == 1
+
+
+def test_crawl_host_binding_survives_restart_without_consuming_inbox(tmp_path):
+    root = _project(tmp_path)
+    submit(root, text="Read on the next project call")
+    context = get_context("spawn")
+    queue = context.Queue()
+
+    for _ in range(2):
+        process = context.Process(
+            target=_bound_mcp_crawl,
+            args=(str(root), "agent/restarted-crawl", str(root), queue),
+        )
+        process.start()
+        process.join(timeout=20)
+        assert process.exitcode == 0
+        assert queue.get(timeout=5)["count"] == 1
+
+    assert unread_summary(root, consumer="agent/restarted-crawl")["count"] == 1
