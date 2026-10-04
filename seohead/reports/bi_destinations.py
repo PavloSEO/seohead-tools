@@ -895,6 +895,34 @@ def _dataset_hashes(manifest: dict[str, Any]) -> dict[str, str]:
     return hashes
 
 
+def destination_preview(
+    package: str | Path, *, target: str, destination: str, operation: str
+) -> dict[str, Any]:
+    """Show the exact local package, target and operation before an explicit write."""
+    if destination not in {"sheets", "bigquery"}:
+        raise BIDestinationError("destination must be 'sheets' or 'bigquery'")
+    if operation not in {"replace", "append"}:
+        raise BIDestinationError("operation must be 'replace' or 'append'")
+    if not isinstance(target, str) or not target:
+        raise BIDestinationError("an explicit destination target is required")
+    root, manifest = _manifest(package)
+    datasets = _verify_partitions(root, manifest)
+    return {
+        "format": "seohead.bi-destination-preview.v1",
+        "state": "ready_to_apply",
+        "destination": destination,
+        "target": target,
+        "operation": operation,
+        "package_schema_version": manifest["schema_version"],
+        "manifest_sha256": hashlib.sha256((root / "manifest.json").read_bytes()).hexdigest(),
+        "datasets": {
+            name: {"rows": info["rows"], "columns": info["fields"], "bytes": info["bytes"]}
+            for name, info in datasets.items()
+        },
+        "required_action": "rerun with apply=true after reviewing this exact target and operation",
+    }
+
+
 def apply_with_client(
     package: str | Path,
     *,

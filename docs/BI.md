@@ -67,6 +67,10 @@ spreadsheet IDs and table names never come from CLI or MCP input. The host confi
 path is `SEOHEAD_BI_DESTINATIONS_FILE` or the local credentials directory's
 `bi-destinations.json`. It is local-only and must not be committed.
 
+Call it once without `--apply` to obtain the immutable local manifest hash, per-dataset
+rows/columns/bytes, named target and requested operation. It makes no Google request. A second
+call with `--apply` is the explicit write authorization for that reviewed target and operation.
+
 Each configured Sheets target has `kind: google_sheets_service_account`, one
 `spreadsheet_id`, and an exact `worksheets` mapping for every package dataset:
 

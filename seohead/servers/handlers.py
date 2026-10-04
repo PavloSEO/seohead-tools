@@ -4876,7 +4876,19 @@ def bi_destination_apply(
     """Apply a verified local BI package through an injected authorized destination client."""
     if destination not in {"sheets", "bigquery"}:
         raise ValueError("destination must be 'sheets' or 'bigquery'")
-    from seohead.reports.bi_destinations import apply_with_client, resolve_host_client
+    from seohead.reports.bi_destinations import (
+        apply_with_client,
+        destination_preview,
+        resolve_host_client,
+    )
+
+    if not apply:
+        return {
+            "ok": True,
+            **destination_preview(
+                package, target=target, destination=destination, operation=operation
+            ),
+        }
 
     if client is None:
         client = resolve_host_client(destination, target)

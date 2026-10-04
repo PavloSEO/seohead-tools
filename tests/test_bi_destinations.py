@@ -143,6 +143,20 @@ def test_shared_handler_uses_exact_host_allowlist_and_registered_client(tmp_path
     assert hosted["rows"]["pages"] == 1
 
 
+def test_destination_preview_shows_the_target_and_operation_without_a_write(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    result = handlers.bi_destination_apply(
+        package=str(package),
+        target="reporting",
+        destination="sheets",
+        operation="replace",
+    )
+    assert result["state"] == "ready_to_apply"
+    assert result["target"] == "reporting" and result["operation"] == "replace"
+    assert result["datasets"]["pages"]["rows"] == 1
+
+
 def _worksheet_mapping(package):
     manifest = json.loads((package / "manifest.json").read_text())
     return {
