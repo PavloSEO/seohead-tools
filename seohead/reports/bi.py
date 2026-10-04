@@ -33,7 +33,8 @@ BI_SCHEMA_VERSION = "seohead.bi.v1"
 JOIN_FORMAT = "seohead.evidence-join.v1"
 NORMALIZED_FORMAT = "seohead.normalized-evidence.v1"
 MAX_AUDIT_BYTES = 64 * 1024 * 1024
-MAX_SCAN_BYTES = 4 * 1024 * 1024 * 1024
+MAX_SCAN_BYTES = 32 * 1024 * 1024 * 1024
+DEFAULT_MAX_SCAN_BYTES = 8 * 1024 * 1024 * 1024
 MAX_PROVIDER_JOIN_BYTES = 128 * 1024 * 1024
 MAX_PROVIDER_JOIN_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_PROVIDER_SOURCES = 8
@@ -970,9 +971,11 @@ def _check_coverage_rows(
     return rows
 
 
-def _scan_source(path_value: str | os.PathLike[str], con: sqlite3.Connection) -> _RunInput:
+def _scan_source(
+    path_value: str | os.PathLike[str], con: sqlite3.Connection, *, max_scan_bytes: int
+) -> _RunInput:
     path = Path(path_value)
-    scan_sha, scan_bytes = _sha256_path(path, MAX_SCAN_BYTES, "scan")
+    scan_sha, scan_bytes = _sha256_path(path, max_scan_bytes, "scan")
     row = con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
     if row is None:
         raise BIExportError("validated scan is missing its run manifest")
@@ -2728,7 +2731,7 @@ def _scan_run(
     except Exception as exc:
         raise BIExportError(f"scan input failed validation: {exc}") from exc
     with closing(con):
-        run = _scan_source(path, con)
+        run = _scan_source(path, con, max_scan_bytes=limits.pop("max_scan_bytes"))
         try:
             return _write_package(run, con, out_directory, providers, **limits)
         finally:
@@ -2741,6 +2744,7 @@ def _audit_run(
 ) -> dict[str, Any]:
     document, raw, name = _read_audit_input(value)
     run = _audit_source(document, raw, name)
+    limits.pop("max_scan_bytes", None)
     return _write_package(run, None, out_directory, providers, **limits)
 
 
@@ -2753,6 +2757,7 @@ def export_bi(
     max_rows_per_file: int = DEFAULT_ROWS_PER_PARTITION,
     max_bytes_per_file: int = DEFAULT_BYTES_PER_PARTITION,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    max_scan_bytes: int = DEFAULT_MAX_SCAN_BYTES,
     search_metric: str | None = None,
 ) -> dict[str, Any]:
     """Write a complete local BI package from one saved run and optional joins."""
@@ -2775,6 +2780,8 @@ def export_bi(
         raise BIExportError(
             f"max_output_bytes must be at least max_bytes_per_file and at most {MAX_OUTPUT_BYTES}"
         )
+    if type(max_scan_bytes) is not int or not 1 <= max_scan_bytes <= MAX_SCAN_BYTES:
+        raise BIExportError(f"max_scan_bytes must be 1..{MAX_SCAN_BYTES}")
     if search_metric is not None and search_metric not in {"clicks", "impressions"}:
         raise BIExportError("search_metric must be 'clicks', 'impressions', or null")
     provider_paths = list(provider_joins or [])
@@ -2806,6 +2813,7 @@ def export_bi(
         "max_rows_per_file": max_rows_per_file,
         "max_bytes_per_file": max_bytes_per_file,
         "max_output_bytes": max_output_bytes,
+        "max_scan_bytes": max_scan_bytes,
         "search_metric": search_metric,
     }
     if scan is not None:

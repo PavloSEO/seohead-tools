@@ -2203,6 +2203,7 @@ Project a saved scan or audit and optional issue #781 joins into a local typed B
 | `max_rows_per_file` | `int` | `25000` |
 | `max_bytes_per_file` | `int` | `8 * 1024 * 1024` |
 | `max_output_bytes` | `int` | `4 * 1024 * 1024 * 1024` |
+| `max_scan_bytes` | `int` | `8 * 1024 * 1024 * 1024` |
 | `search_metric` | `str | None` | `None` |
 | `xlsx_out` | `str | None` | `None` |
 | `xlsx_dataset` | `str | None` | `None` |

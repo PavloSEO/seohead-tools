@@ -4939,6 +4939,7 @@ def bi_export(
     max_rows_per_file: int = 25_000,
     max_bytes_per_file: int = 8 * 1024 * 1024,
     max_output_bytes: int = 4 * 1024 * 1024 * 1024,
+    max_scan_bytes: int = 8 * 1024 * 1024 * 1024,
     search_metric: str | None = None,
     xlsx_out: str | None = None,
     xlsx_dataset: str | None = None,
@@ -4956,6 +4957,7 @@ def bi_export(
         max_rows_per_file=max_rows_per_file,
         max_bytes_per_file=max_bytes_per_file,
         max_output_bytes=max_output_bytes,
+        max_scan_bytes=max_scan_bytes,
         search_metric=search_metric,
     )
     if (xlsx_out is None) != (xlsx_dataset is None):

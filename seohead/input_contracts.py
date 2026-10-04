@@ -714,6 +714,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "max_rows_per_file",
             "max_bytes_per_file",
             "max_output_bytes",
+            "max_scan_bytes",
             "search_metric",
             "xlsx_max_rows_per_sheet",
             note="Optional positive partition/total-output bounds and explicit Search Console clicks or impressions axis; exceeding a hard limit fails without publishing a package.",

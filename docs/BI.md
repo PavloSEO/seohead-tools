@@ -57,7 +57,10 @@ read with an explicit 64 MiB compatibility bound so their findings cannot silent
 vanish behind the inline slot. A native scan may contain up to 1,000,000 retained pages and
 is read through re-iterable SQLite cursors rather than a page list; pages and cohorts are written
 as partitioned streams with exact source-row conservation. The caller can raise the output budget
-up to 16 GiB for that full local package. Providers and total output retain separate hard budgets:
+up to 16 GiB for that full local package. `bi-export` hashes a native scan in a separately explicit
+`--max-scan-bytes` streamed budget: the default is 8 GiB and the bounded maximum is 32 GiB, so a
+populated representative million-page database is not silently treated as a small 4 GiB source.
+Providers and total output retain separate hard budgets:
 for a large scan, normalized provider evidence must first be saved as an `evidence-join` artifact,
 so the BI exporter never materializes a million crawl pages to re-join it. This implementation does
 not demonstrate a copyable Looker Studio template.
