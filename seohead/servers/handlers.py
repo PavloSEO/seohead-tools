@@ -1738,6 +1738,10 @@ def _audit_crawl_result(
                 header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
             )
             header = attach_saved_corpus_header(header, stored_scan.con, derived=saved_corpus)
+        # The lazy page/group factories retain the disk-backed context until
+        # the writer has consumed every collection.
+        for rows in collections.values():
+            setattr(rows, "_context_owner", ctx)
         return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
     audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator

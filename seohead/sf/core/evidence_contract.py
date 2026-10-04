@@ -588,7 +588,9 @@ def attach_contract_parts(header, issues, *, scan_uuid: str | None = None, con: 
             item["evidence"] = evidence
             yield item
 
-    return projected, rows()
+    from .models import _Rows
+
+    return projected, _Rows(rows)
 
 
 def attach_saved_corpus(
