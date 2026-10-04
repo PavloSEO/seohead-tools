@@ -218,11 +218,11 @@ def url_queries(
         not host_id
         or (url and url_contains)
         or type(max_urls) is not int
-        or not 1 <= max_urls <= 500
+        or not 1 <= max_urls <= MAX_ROWS
     ):
-        raise ValueError("host_id, one optional URL filter, and max_urls in 1..500 are required")
-    if type(max_queries_per_url) is not int or not 1 <= max_queries_per_url <= QUERY_ANALYTICS_PAGE:
-        raise ValueError("max_queries_per_url must be in 1..500")
+        raise ValueError("host_id, one optional URL filter, and max_urls in 1..50000 are required")
+    if type(max_queries_per_url) is not int or not 1 <= max_queries_per_url <= MAX_ROWS:
+        raise ValueError("max_queries_per_url must be in 1..50000")
     try:
         bearer = token or yandex_webmaster_token()
     except MissingCredential as exc:
@@ -232,53 +232,78 @@ def url_queries(
         user = user_id or resolve_user_id(bearer, send)
         endpoint = HOST + f"/user/{user}" + QUERY_ANALYTICS_PATH.replace("{host}", host_id)
 
-        def request(indicator: str, value: str | None, limit: int) -> dict[str, Any]:
+        def request(
+            indicator: str, value: str | None, cap: int
+        ) -> tuple[list[dict[str, Any]], bool]:
             operation = "TEXT_CONTAINS" if value == url_contains else "TEXT_MATCH"
             filters = (
                 []
                 if value is None
                 else [{"text_indicator": "URL", "operation": operation, "value": value}]
             )
-            body = {
-                "offset": 0,
-                "limit": limit,
-                "device_type_indicator": "ALL",
-                "text_indicator": indicator,
-                "filters": {"text_filters": filters},
-            }
-            raw = send("POST", endpoint, body, bearer)
-            parsed = json.loads(raw)
-            if not isinstance(parsed, dict):
-                raise ValueError("malformed Yandex Webmaster query analytics response")
-            return parsed
+            entries: list[dict[str, Any]] = []
+            offset = 0
+            total: int | None = None
+            while len(entries) < cap:
+                body = {
+                    "offset": offset,
+                    "limit": min(QUERY_ANALYTICS_PAGE, cap - len(entries)),
+                    "device_type_indicator": "ALL",
+                    "text_indicator": indicator,
+                    "filters": {"text_filters": filters},
+                }
+                parsed = json.loads(send("POST", endpoint, body, bearer))
+                chunk = (
+                    parsed.get("text_indicator_to_statistics") if isinstance(parsed, dict) else None
+                )
+                count = parsed.get("count") if isinstance(parsed, dict) else None
+                if not isinstance(chunk, list) or not all(isinstance(item, dict) for item in chunk):
+                    raise ValueError("malformed Yandex Webmaster query analytics response")
+                if count is not None and (type(count) is not int or count < offset + len(chunk)):
+                    raise ValueError("malformed Yandex Webmaster query analytics count")
+                total = count if isinstance(count, int) else total
+                entries.extend(chunk)
+                offset += len(chunk)
+                if (
+                    not chunk
+                    or (total is not None and offset >= total)
+                    or (total is None and len(chunk) < body["limit"])
+                ):
+                    break
+            return entries, (total is not None and len(entries) < total) or (
+                total is None and len(entries) >= cap
+            )
 
-        url_page = request("URL", url or url_contains, max_urls)
-        entries = url_page.get("text_indicator_to_statistics")
-        if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
-            raise ValueError("malformed Yandex Webmaster query analytics response")
+        entries, urls_truncated = request("URL", url or url_contains, max_urls)
         urls = [item.get("text_indicator", {}).get("value") for item in entries]
         if not all(isinstance(value, str) and value for value in urls):
             raise ValueError("malformed Yandex Webmaster URL result")
         rows: list[dict[str, Any]] = []
         for page in urls:
-            query_page = request("QUERY", page, max_queries_per_url)
-            queries = query_page.get("text_indicator_to_statistics")
-            if not isinstance(queries, list) or not all(isinstance(item, dict) for item in queries):
-                raise ValueError("malformed Yandex Webmaster query result")
+            queries, query_truncated = request("QUERY", page, max_queries_per_url)
             for item in queries:
                 query = item.get("text_indicator", {}).get("value")
                 statistics = item.get("statistics")
                 if not isinstance(query, str) or not isinstance(statistics, list):
                     raise ValueError("malformed Yandex Webmaster query result")
-                rows.append({"url": page, "query": query, "statistics": statistics})
+                rows.append(
+                    {
+                        "url": page,
+                        "query": query,
+                        "statistics": statistics,
+                        "truncated": query_truncated,
+                    }
+                )
         return {
             "ok": True,
-            "state": "partial" if len(entries) >= max_urls else "complete",
+            "state": "partial"
+            if urls_truncated or any(row["truncated"] for row in rows)
+            else "complete",
             "host_id": host_id,
             "rows": rows,
             "returned_urls": len(urls),
             "returned_queries": len(rows),
-            "truncated": len(entries) >= max_urls,
+            "truncated": urls_truncated or any(row["truncated"] for row in rows),
             "scope": "Yandex Webmaster query analytics; provider retention and metric attribution apply",
         }
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError):
