@@ -65,7 +65,10 @@ class MonitorServiceDelivery:
             raise DeliveryUnavailable("monitor service delivery is disabled")
         if destination not in self._destinations:
             raise PermissionError("destination is not authorized for monitor delivery")
-        if run.get("state") == "partial":
+        coverage = run.get("coverage")
+        if run.get("state") in {"partial", "failed"} or (
+            isinstance(coverage, dict) and not coverage.get("complete", False)
+        ):
             raise DeliveryUnavailable("partial monitor evidence is retained but is not deliverable")
         scan_id = run.get("scan_id")
         if not isinstance(scan_id, str) or not scan_id:

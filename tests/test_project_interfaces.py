@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from seohead import cli
+from seohead.projects.run_observation import status as run_status
 from seohead.projects.workspace import create_project
 from seohead.servers import handlers
 from seohead.servers.mcp_server import build_server
@@ -64,6 +65,49 @@ def test_project_crawl_defaults_and_explicit_output_precedence(tmp_path, monkeyp
     )
     assert captured["url"] == "https://competitor.test/"
     assert captured["scan_out"] == explicit
+
+
+def test_project_native_crawl_persists_live_phases_and_final_counters(tmp_path, monkeypatch):
+    project = tmp_path / "shop"
+    create_project(project, "https://example.test/")
+
+    def capture(_url, **kwargs):
+        kwargs["progress"](7, 11)
+        kwargs["observation"]("analysis")
+        return {
+            "ok": True,
+            "scan": kwargs["scan_out"],
+            "partial": True,
+            "finish_reason": "url_limit",
+        }
+
+    monkeypatch.setattr("seohead.servers.scan_handlers.crawl_site_scan", capture)
+    result = handlers.crawl_site(
+        project=str(project), producer_build="a" * 40, approve_large_crawl=True
+    )
+
+    run = run_status(project)["items"][0]
+    assert result["observer_run_id"] == run["id"]
+    assert run["state"] == "partial" and run["finish_reason"] == "url_limit"
+    assert run["artifact"].startswith("scans/")
+    assert run["collector"]["mode"] == "spider"
+    assert run["collector"]["max_urls"] == 200
+    assert run["collector"]["max_requests"] == 20_000
+    assert run["collector"]["max_crawl_seconds"] == 0
+    assert run["collector"]["max_requests_per_second"] == 2.0
+    assert run["counters"] == {
+        "fetched": 7,
+        "queued": 11,
+        "inflight": 0,
+        "excluded": 0,
+        "rate_per_second": None,
+    }
+    assert [event["phase"] for event in run["events"]] == [
+        "admission",
+        "collection",
+        "analysis",
+        "finalizing",
+    ]
 
 
 def test_project_resume_does_not_inject_new_crawl_arguments(tmp_path, monkeypatch):

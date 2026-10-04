@@ -132,6 +132,21 @@ quick-crawl and approval budgets, while project template/profile references iden
 the saved setup. Unknown or unavailable coverage remains named as such; it is never
 reported as a completed audit.
 
+Project-bound native crawls and optional `sf run --project DIRECTORY` attempts
+also retain a small live-run record. It shows the collector mode, the recorded
+URL budget, the current measured frontier counters when the collector exposes
+them, its retained request/time budgets and configured request-rate ceiling,
+the measured recent request rate when available, phase events, a
+project-relative artifact reference, and whether the
+launching controller and, for a live Screaming Frog run, its spawned collector
+PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
+The observer records a process-start identity where the OS exposes one, so a
+reused PID is never presented as the original collector. A crawler's discovered frontier and configured URL budget are separate
+values; neither is presented as a site-total percentage. Screaming Frog exposes
+no reliable live URL counter, so its counter fields stay unavailable while its
+collection/analysis phases remain observable. The observer only reads these
+records and never starts, cancels, resumes, or acknowledges a run.
+
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
 They accept ordinary terminal text, including OS dictation committed as text; no
 speech-recognition integration is involved. These are the only writes from the
@@ -139,6 +154,15 @@ observer. Reading a screen never marks an inbox entry read, acknowledged, or
 accepted. Agents receive a bounded unread summary only when their MCP process
 has an explicit consumer identity and a matching project allowlist; see
 [MCP_PROFILES.md](MCP_PROFILES.md) for the local stdio boundary.
+
+An agent controller records a processed specialist note with `project-inbox-triage`.
+The receipt names current `custom:` checklist tasks, a stored proposed goal, retained
+competitor candidates, or a specific blocked/rejected reason. It never parses note text
+into commands, accepts a goal, acknowledges a note, starts a crawl, or treats a candidate
+as a completed competitor audit. Before an execution workflow starts, its controller must
+create or update a current incomplete custom task and pass that task, its separately
+accepted goal, and the registered prompt through the workflow context. Record in-progress
+and completed task states only through the existing evidence and review contracts.
 
 ## Recording stack facts
 

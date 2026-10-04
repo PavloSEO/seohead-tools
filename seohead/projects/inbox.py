@@ -60,7 +60,7 @@ def _references(value: Any) -> list[str]:
 
 
 def _entry(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {
+    required = {
         "id",
         "kind",
         "text",
@@ -69,7 +69,12 @@ def _entry(value: Any) -> dict[str, Any]:
         "created_at",
         "delivery",
         "goal_state",
-    }:
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) - (required | {"triage"})
+        or not required <= set(value)
+    ):
         raise ValueError("project inbox entry has an unsupported shape")
     if type(value["id"]) is not str or not value["id"].startswith("inbox:"):
         raise ValueError("project inbox entry has an invalid id")
@@ -103,7 +108,67 @@ def _entry(value: Any) -> dict[str, Any]:
         for stamp in receipt.values():
             if type(stamp) is not str:
                 raise ValueError("project inbox delivery receipt is invalid")
+    triage = value.get("triage", [])
+    if not isinstance(triage, list) or len(triage) > 20:
+        raise ValueError("project inbox triage history is invalid")
+    for outcome in triage:
+        _triage_receipt(outcome)
     return copy.deepcopy(value)
+
+
+def _triage_receipt(value: Any) -> None:
+    required = {"kind", "reason", "actor", "recorded_at"}
+    optional = {"task_ids", "goal_id", "competitors"}
+    if (
+        not isinstance(value, dict)
+        or set(value) - (required | optional)
+        or not required <= set(value)
+    ):
+        raise ValueError("project inbox triage receipt has an unsupported shape")
+    if value["kind"] not in {"task", "goal", "competitor", "blocked", "rejected"}:
+        raise ValueError("project inbox triage receipt has an invalid kind")
+    _text(value["reason"], "triage reason", 512)
+    _text(value["actor"], "triage actor", 128)
+    if type(value["recorded_at"]) is not str:
+        raise ValueError("project inbox triage receipt has an invalid timestamp")
+    try:
+        timestamp = datetime.fromisoformat(value["recorded_at"].replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("project inbox triage receipt has an invalid timestamp") from exc
+    if timestamp.tzinfo is None or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp):
+        raise ValueError("project inbox triage receipt has an invalid timestamp")
+    task_ids = value.get("task_ids")
+    if task_ids is not None and (
+        not isinstance(task_ids, list)
+        or not task_ids
+        or len(task_ids) > 20
+        or len(task_ids) != len(set(task_ids))
+        or any(type(item) is not str or not item.startswith("custom:") for item in task_ids)
+    ):
+        raise ValueError("project inbox triage receipt has invalid task ids")
+    goal_id = value.get("goal_id")
+    if goal_id is not None and (type(goal_id) is not str or not goal_id.startswith("inbox:")):
+        raise ValueError("project inbox triage receipt has an invalid goal id")
+    competitors = value.get("competitors")
+    if competitors is not None and (
+        not isinstance(competitors, list)
+        or not competitors
+        or len(competitors) > 20
+        or len(competitors) != len(set(competitors))
+        or any(type(item) is not str for item in competitors)
+    ):
+        raise ValueError("project inbox triage receipt has invalid competitors")
+    expected_optional = (
+        {"task_ids"}
+        if value["kind"] == "task"
+        else {"goal_id"}
+        if value["kind"] == "goal"
+        else {"competitors"}
+        if value["kind"] == "competitor"
+        else set()
+    )
+    if {key for key in optional if key in value} != expected_optional:
+        raise ValueError("project inbox triage receipt does not match its kind")
 
 
 def _document(root: Path, project: dict[str, Any]) -> dict[str, Any]:
@@ -198,6 +263,7 @@ def _public(entry: dict[str, Any], consumer: str | None = None) -> dict[str, Any
         key: entry[key]
         for key in ("id", "kind", "text", "references", "author_role", "created_at", "goal_state")
     }
+    result["triage"] = copy.deepcopy(entry.get("triage", []))
     if consumer is not None:
         receipt = entry["delivery"].get(consumer, {})
         result["read_at"] = receipt.get("read_at")
@@ -229,6 +295,7 @@ def submit(
             "created_at": _now(),
             "delivery": {},
             "goal_state": "proposed" if kind == "proposed_goal" else None,
+            "triage": [],
         }
         document["entries"].append(entry)
         return {"ok": True, "revision": document["revision"] + 1, "entry": _public(entry)}
@@ -360,6 +427,86 @@ def set_goal_state(
             "revision": document["revision"] + int(changed),
             "entry": _public(entry),
         }
+
+
+def triage(
+    directory: str | Path,
+    *,
+    entry_id: str,
+    outcome: dict[str, Any],
+    actor: str,
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
+    """Append an explicit agent decision to a human note without starting work."""
+    entry_id = _text(entry_id, "entry_id", 256)
+    actor = _text(actor, "triage actor", 128)
+    if not isinstance(outcome, dict) or "kind" not in outcome:
+        raise ValueError("triage outcome must be an object with a kind")
+    kind = outcome.get("kind")
+    reason = _text(outcome.get("reason"), "triage reason", 512)
+    with _transaction(directory, expected_revision) as (root, document):
+        entry = next((item for item in document["entries"] if item["id"] == entry_id), None)
+        if entry is None or entry["kind"] != "note" or entry["author_role"] != "specialist":
+            raise ValueError("triage applies only to a specialist note")
+        receipt: dict[str, Any] = {
+            "kind": kind,
+            "reason": reason,
+            "actor": actor,
+            "recorded_at": _now(),
+        }
+        if kind == "task":
+            task_ids = outcome.get("task_ids")
+            if not isinstance(task_ids, list) or not task_ids or len(task_ids) > 20:
+                raise ValueError("task triage requires one or more custom task ids")
+            from .coverage import coverage_status
+
+            rows = {row["id"]: row for row in coverage_status(root).get("items", [])}
+            if len(task_ids) != len(set(task_ids)) or any(
+                type(task_id) is not str
+                or not task_id.startswith("custom:")
+                or task_id not in rows
+                or rows[task_id]["stale"]
+                or rows[task_id]["complete"]
+                for task_id in task_ids
+            ):
+                raise ValueError("task triage requires current incomplete custom checklist tasks")
+            receipt["task_ids"] = task_ids
+        elif kind == "goal":
+            goal_id = outcome.get("goal_id")
+            goal = next((item for item in document["entries"] if item["id"] == goal_id), None)
+            if (
+                goal is None
+                or goal["kind"] != "proposed_goal"
+                or goal["goal_state"] not in {"proposed", "accepted"}
+            ):
+                raise ValueError("goal triage requires a current stored proposed goal id")
+            receipt["goal_id"] = goal_id
+        elif kind == "competitor":
+            competitors = outcome.get("competitors")
+            if not isinstance(competitors, list) or not competitors or len(competitors) > 20:
+                raise ValueError("competitor triage requires one or more candidate URLs")
+            from .workspace import _load, _target
+
+            _, project = _load(root)
+            normalized = [_target(item) for item in competitors]
+            if len(normalized) != len(set(normalized)) or project["site"]["target"] in normalized:
+                raise ValueError("competitor candidates must be distinct non-primary sites")
+            receipt["competitors"] = normalized
+        elif kind not in {"blocked", "rejected"}:
+            raise ValueError("triage kind must be task, goal, competitor, blocked, or rejected")
+        if set(outcome) != {"kind", "reason"} | (
+            {"task_ids"}
+            if kind == "task"
+            else {"goal_id"}
+            if kind == "goal"
+            else {"competitors"}
+            if kind == "competitor"
+            else set()
+        ):
+            raise ValueError("triage outcome has unsupported fields")
+        entry.setdefault("triage", []).append(receipt)
+        _triage_receipt(receipt)
+        return {"ok": True, "revision": document["revision"] + 1, "entry": _public(entry)}
 
 
 def unread_summary(directory: str | Path, *, consumer: str, limit: int = 10) -> dict[str, Any]:

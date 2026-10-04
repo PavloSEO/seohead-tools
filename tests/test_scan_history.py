@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sqlite3
 import stat
@@ -26,6 +28,8 @@ from seohead.storage.history import (
     snapshot_scan,
 )
 from seohead.storage.native_scan import NativeScan
+from tests.test_scan_artifact import BUILD
+from tests.test_scan_artifact import legacy_run as legacy_run
 from tests.test_scan_native import _runtime
 
 UTC = timezone.utc
@@ -327,3 +331,78 @@ def test_default_name_and_history_warning_are_explicit(tmp_path):
     listing = list_scans(tmp_path)
     assert listing["history_warning_bytes"] == 20 * 1024 * 1024 * 1024
     assert listing["history_warning"] is False
+
+
+def test_imported_zero_history_threshold_is_visible_to_history_and_observer(legacy_run, tmp_path):
+    """A real offline legacy import has no history warning threshold by design."""
+    from seohead.projects.observer import observe
+    from seohead.projects.workspace import create_project
+    from seohead.storage import import_run
+
+    source_hashes = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(legacy_run.glob("*.json*"))
+    }
+    project = tmp_path / "project"
+    create_project(project, "https://example.com/")
+    scan = project / "scans" / "imported.sqlite"
+
+    import_run(legacy_run, scan, producer_build=BUILD)
+
+    assert source_hashes == {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(legacy_run.glob("*.json*"))
+    }
+    before_observe = scan.read_bytes()
+    listing = list_scans(project / "scans")
+    inspected = inspect_scan(scan, max_bytes=4096)
+    snapshot = observe(str(project))
+
+    assert listing["total"] == 1
+    assert listing["errors"] == []
+    assert listing["history_warning_bytes"] == 0
+    assert listing["history_warning"] is False
+    assert listing["items"][0]["source_kind"] == "legacy_import"
+    assert inspected["rows"]
+    assert snapshot["scans"]["total"] == 1
+    assert snapshot["scans"]["items"][0]["source_kind"] == "legacy_import"
+    assert scan.read_bytes() == before_observe
+
+
+def test_disabled_import_threshold_does_not_override_native_history_warning(tmp_path, legacy_run):
+    from seohead.storage import import_run
+
+    native = tmp_path / "native.sqlite"
+    metadata = _metadata()
+    metadata["config"]["storage"]["history_warning_bytes"] = 1
+    metadata["config_fingerprint"] = fingerprint(metadata["config"])
+    with NativeScan.create(native, **metadata) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        scan.commit_page(scan.claim(1)[0], _record("https://example.test/"), runtime=_runtime())
+        assert scan.finish_without_audit("history fixture")
+    import_run(legacy_run, tmp_path / "imported.sqlite", producer_build=BUILD)
+
+    listing = list_scans(tmp_path)
+
+    assert listing["total"] == 2
+    assert listing["history_warning_bytes"] == 1
+    assert listing["history_warning"] is True
+
+
+@pytest.mark.parametrize("value", [-1, False])
+def test_history_refuses_negative_or_boolean_warning_threshold(tmp_path, value):
+    path = tmp_path / "invalid.sqlite"
+    _finished(path, captured=False)
+    with sqlite3.connect(path) as con:
+        retention = json.loads(con.execute("SELECT retention_json FROM scan").fetchone()[0])
+        retention["history_warning_bytes"] = value
+        con.execute("UPDATE scan SET retention_json=?", (json.dumps(retention),))
+
+    listing = list_scans(tmp_path)
+
+    assert listing["total"] == 0
+    assert listing["history_warning_bytes"] == 20 * 1024 * 1024 * 1024
+    assert listing["history_warning"] is False
+    assert listing["errors"] == [
+        {"path": str(path), "reason": "invalid scan history metadata: invalid history warning size"}
+    ]

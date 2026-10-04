@@ -90,18 +90,39 @@ def _prompt_reference(value: Any) -> dict[str, str]:
     return {"id": prompt_id, "definition_hash": entry["definition_hash"]}
 
 
-def _context(value: Any, directory: str | Path, project: dict[str, Any]) -> dict[str, Any]:
+def _task_ids(value: Any, rows: dict[str, dict[str, Any]]) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or len(value) > 20
+        or len(value) != len(set(value))
+        or any(type(item) is not str or not item.startswith("custom:") for item in value)
+    ):
+        raise ValueError("workflow task_ids must be unique current custom checklist tasks")
+    if any(item not in rows or rows[item]["stale"] or rows[item]["complete"] for item in value):
+        raise ValueError("workflow task_ids must be current incomplete custom checklist tasks")
+    return value
+
+
+def _context(
+    value: Any, directory: str | Path, project: dict[str, Any], rows: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
     if value is None:
-        raise ValueError("workflow context requires accepted goal_id and prompt_reference")
+        raise ValueError(
+            "workflow context requires accepted goal_id, prompt_reference, and task_ids"
+        )
     if not isinstance(value, dict) or set(value) - {
         "goal_id",
         "prompt_reference",
+        "task_ids",
         "competitors",
         "phase",
     }:
         raise ValueError("workflow context has unsupported fields")
-    if {"goal_id", "prompt_reference"} - set(value):
-        raise ValueError("workflow context requires accepted goal_id and prompt_reference")
+    if {"goal_id", "prompt_reference", "task_ids"} - set(value):
+        raise ValueError(
+            "workflow context requires accepted goal_id, prompt_reference, and task_ids"
+        )
     competitors = value.get("competitors", [])
     if (
         not isinstance(competitors, list)
@@ -118,6 +139,7 @@ def _context(value: Any, directory: str | Path, project: dict[str, Any]) -> dict
         "competitors": competitors,
         "goal": _accepted_goal(directory, value["goal_id"]),
         "prompt": _prompt_reference(value["prompt_reference"]),
+        "task_ids": _task_ids(value["task_ids"], rows),
     }
     if "phase" in value:
         result["phase"] = _text(value["phase"], "phase", 128)
@@ -289,7 +311,7 @@ def start(
         "attempt": 1
         + sum(existing["scenario"]["id"] == scenario_id for existing in document["runs"]),
         "scenario": {"id": scenario_id, "definition_hash": _catalogue_hash(scenario_id)},
-        "context": _context(context, root, project),
+        "context": _context(context, root, project, rows),
         "phase": (context or {}).get("phase", "registered"),
         "steps": [
             {

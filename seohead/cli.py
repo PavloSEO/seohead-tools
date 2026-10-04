@@ -128,6 +128,7 @@ COMMANDS = (
     "project-inbox-read",
     "project-inbox-acknowledge",
     "project-inbox-goal",
+    "project-inbox-triage",
     "project-inbox-unread",
     "workflow-start",
     "workflow-checkpoint",
@@ -377,6 +378,13 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, flag, None)
             if value is not None:
                 kw[flag] = value
+    elif cmd == "project-inbox-triage":
+        for name in ("entry_id", "actor", "expected_revision"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "directory", None):
+            kw["directory"] = args.directory
     elif cmd in {
         "scan-evidence",
         "scan-extract",
@@ -686,6 +694,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "destination",
             "operation",
             "apply",
+            "reconcile",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -1946,6 +1955,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--entry-id", required=True)
         sub.add_argument("--state", required=True, choices=("accepted", "completed"))
         sub.add_argument("--expected-revision", type=int)
+    if cmd == "project-inbox-triage":
+        sub.add_argument("--entry-id", help="specialist note id")
+        sub.add_argument("--actor", help="stable controller identity")
+        sub.add_argument("--expected-revision", type=int)
     if cmd in {
         "workflow-start",
         "workflow-checkpoint",
@@ -2189,6 +2202,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--operation", choices=("replace", "append"), default="replace")
         sub.add_argument(
             "--apply", action="store_true", help="request an injected host-authorized write"
+        )
+        sub.add_argument(
+            "--reconcile",
+            action="store_true",
+            help="explicitly read/reconcile a prior uncertain destination request before retrying it",
         )
     if cmd in {"publication-cohorts", "gsc-progress"}:
         _source_flag(sub, "--file", help="versioned offline cohort input JSON")

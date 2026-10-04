@@ -22,6 +22,8 @@ WATCH_SECTIONS = (
     "views",
     "activity",
     "log",
+    "sf",
+    "inbox",
 )
 
 #: Commands offered next to the flat tool list. Grouped namespaces keep their
@@ -43,6 +45,10 @@ class ShellState:
     note_text: str = ""
     note_ready: bool = False
     note_kind: str = "note"
+    note_error: str = ""
+    note_limit: int = 8000
+    paste_active: bool = False
+    motion_enabled: bool = True
     watch_section: str = "overview"
     watch_index: int = 0
     watch_offset: int = 0
@@ -54,6 +60,7 @@ class ShellState:
     watch_detail_kind: str = "finding"
     watch_selected_scan_uuid: str | None = None
     watch_view_name: str | None = None
+    watch_inbox_entry_id: str | None = None
     _all: list[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -114,16 +121,36 @@ class ShellState:
         if key == "timeout":
             return
         if self.view == "note":
-            if key == "escape":
+            if key == "paste_start":
+                self.paste_active = True
+            elif key == "paste_end":
+                self.paste_active = False
+            elif key == "enter" and self.paste_active:
+                if len(self.note_text) <= self.note_limit:
+                    self.note_text += "\n"
+            elif key == "escape":
                 self.note_text = ""
+                self.note_error = ""
+                self.paste_active = False
                 self.view = "watch"
             elif key == "backspace":
                 self.note_text = self.note_text[:-1]
+                self.note_error = ""
             elif key == "enter" and self.note_text.strip():
-                self.note_ready = True
-                self.view = "watch"
+                if len(self.note_text) > self.note_limit:
+                    self.note_error = (
+                        f"Draft exceeds {self.note_limit:,} characters; shorten it before saving."
+                    )
+                else:
+                    self.note_ready = True
+                    self.view = "watch"
             elif key.startswith("char:") and key[5:].isprintable():
-                self.note_text += key[5:]
+                if len(self.note_text) <= self.note_limit:
+                    self.note_text += key[5:]
+                else:
+                    self.note_error = (
+                        f"Draft limit is {self.note_limit:,}; extra input was not added."
+                    )
             return
         if self.view == "watch_filter":
             if key == "escape":
@@ -149,12 +176,16 @@ class ShellState:
                 self.quit_requested = key == "ctrl_c"
             return
         if self.view == "watch":
-            if key == "char:n":
+            if key == "char:m":
+                self.motion_enabled = not self.motion_enabled
+            elif key == "char:n":
                 self.note_text = ""
+                self.note_error = ""
                 self.note_kind = "note"
                 self.view = "note"
             elif key == "char:g":
                 self.note_text = ""
+                self.note_error = ""
                 self.note_kind = "proposed_goal"
                 self.view = "note"
             elif key in {
@@ -166,6 +197,8 @@ class ShellState:
                 "char:6",
                 "char:7",
                 "char:8",
+                "char:9",
+                "char:0",
             }:
                 self.watch_section = {
                     "char:1": "overview",
@@ -176,6 +209,8 @@ class ShellState:
                     "char:6": "views",
                     "char:7": "activity",
                     "char:8": "log",
+                    "char:9": "sf",
+                    "char:0": "inbox",
                 }[key]
                 self.watch_index = 0
                 self.watch_offset = 0
@@ -206,12 +241,13 @@ class ShellState:
                 self.watch_descending = not self.watch_descending
                 self.watch_offset = 0
                 self.watch_index = 0
-            elif key == "enter" and self.watch_section in {"findings", "scans", "views"}:
+            elif key == "enter" and self.watch_section in {"findings", "scans", "views", "inbox"}:
                 self.watch_detail_offset = 0
                 self.watch_detail_kind = {
                     "findings": "finding",
                     "scans": "scan",
                     "views": "view",
+                    "inbox": "inbox",
                 }[self.watch_section]
                 self.view = "watch_detail"
             elif key in ("escape", "char:q", "ctrl_c"):

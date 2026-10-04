@@ -86,6 +86,15 @@ mapping (spreadsheet plus worksheet IDs/titles, or project/dataset/table IDs). I
 request or authentication call. A second call with `--apply` is the explicit write authorization
 for that reviewed target and operation.
 
+Before every remote request, the transport atomically saves a credential-free checkpoint in the
+local package's `.seohead-destination-state/` sidecar. It records the exact package hash, target,
+operation, completed chunk cursor and per-dataset input/written/skipped/failed counts. A normal
+restart resumes only chunks whose bounded write/readback completed. A timeout or interrupted
+request remains pending: it is never replayed automatically. Re-run the same reviewed command
+with `--apply --reconcile` to read the exact staged range or deterministic BigQuery job first;
+only a confirmed absent request can be sent again. An unresolved final Sheets switch remains
+`reconciliation_required` for operator review rather than being labelled committed.
+
 Each configured Sheets target has `kind: google_sheets_service_account`, one
 `spreadsheet_id`, and an exact `worksheets` mapping for every package dataset:
 
@@ -99,7 +108,7 @@ grid capacity, reads each bounded range back, then performs one Sheets
 `batchUpdate`: it clears only `userEnteredValue`, copies `PASTE_VALUES` into the original
 worksheet IDs and deletes the temporary sheets. Formatting, data-source references and worksheet
 configuration remain attached to the original IDs. A response timeout at this final request is
-reported as `commit_uncertain`, never as a successful publish. Sheets append is deliberately
+reported as `reconciliation_required`, never as a successful publish. Sheets append is deliberately
 refused because the API has no local idempotency ledger for an exact package replay.
 
 Each configured BigQuery target has `kind: google_bigquery_service_account`, a fixed

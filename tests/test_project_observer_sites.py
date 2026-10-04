@@ -9,7 +9,9 @@ from seohead.projects.observer import observe
 from seohead.projects.runtime import prepare_project
 from seohead.projects.workspace import create_project
 from seohead.servers.mcp_server import build_server
+from seohead.storage.native_scan import NativeScan
 from tests.test_scan_history import _finished
+from tests.test_scan_native import _metadata, _record, _runtime
 
 
 def _row(path: Path, *, fingerprint: str = "first") -> dict:
@@ -214,3 +216,40 @@ def test_retained_findings_cache_reuses_only_unchanged_artifact_state(tmp_path, 
     assert observer._retained_findings(row)["issues"][0]["id"] == "1"
     source.with_name(source.name + "-wal").write_bytes(b"new checkpoint")
     assert observer._retained_findings(row)["issues"][0]["id"] == "2"
+
+
+def test_observer_keeps_active_collection_counters_when_audit_is_not_ready(tmp_path):
+    """The collection is observable before the analyzer has written any findings."""
+    root = tmp_path / "owner"
+    create_project(root, "https://owner.example.test/")
+    scan_path = root / "scans" / "active.sqlite"
+    with NativeScan.create(scan_path, **_metadata()) as scan:
+        scan.enqueue(
+            [
+                ("https://example.test/", 0),
+                ("https://example.test/queued", 1),
+            ]
+        )
+        lease = scan.claim(1)[0]
+        record = _record(lease.url)
+        record["crawl_depth"] = lease.depth
+        scan.commit_page(lease, record, runtime=_runtime())
+
+    evidence = observe(str(root), scan_limit=1)["scans"]["items"][0]["evidence"]
+
+    assert evidence["state"] == "available"
+    assert evidence["frontier"]["counts"] == {
+        "queued": 1,
+        "inflight": 0,
+        "done": 1,
+        "excluded": 0,
+    }
+    assert evidence["findings"] == {
+        "state": "unavailable",
+        "reason": evidence["findings"]["reason"],
+        "total": None,
+        "by_severity": {},
+        "items": [],
+        "truncated": False,
+    }
+    assert evidence["skipped_checks"] is None

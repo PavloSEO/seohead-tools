@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from seohead.projects.coverage import initialize_coverage
+from seohead.projects.coverage import coverage_status, initialize_coverage, update_item
 from seohead.projects.execution import checkpoint, execute, resume, start, status
 from seohead.projects.inbox import set_goal_state, submit
 from seohead.projects.workspace import create_project
@@ -18,6 +18,14 @@ def _evidence(reference: str) -> list[dict[str, str]]:
 
 
 def _accepted_context(project) -> dict[str, object]:
+    task_id = "custom:controller-worklist"
+    current = coverage_status(project)
+    if not any(row["id"] == task_id for row in current["items"]):
+        update_item(
+            project,
+            {"id": task_id, "title": "Synthetic controller worklist"},
+            expected_revision=current["revision"],
+        )
     proposed = submit(
         project,
         text="Complete the recorded synthetic full audit.",
@@ -33,6 +41,7 @@ def _accepted_context(project) -> dict[str, object]:
     return {
         "goal_id": proposed["entry"]["id"],
         "prompt_reference": "skill:workflow/full-audit-v1",
+        "task_ids": [task_id],
         "competitors": ["https://competitor.test/"],
     }
 
@@ -237,11 +246,26 @@ def test_start_requires_an_accepted_goal_and_registered_prompt(tmp_path):
     project = tmp_path / "project"
     create_project(project, "https://example.test/")
     initialize_coverage(project)
-    with pytest.raises(ValueError, match="accepted goal_id and prompt_reference"):
+    with pytest.raises(ValueError, match="accepted goal_id, prompt_reference, and task_ids"):
         start(
             project,
             scenario_id="scenario:full-audit",
             steps=["check:TITLE_MISSING"],
+        )
+
+
+def test_start_requires_current_incomplete_custom_tasks(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    initialize_coverage(project)
+    context = _accepted_context(project)
+    context["task_ids"] = ["custom:missing-worklist"]
+    with pytest.raises(ValueError, match="current incomplete custom checklist tasks"):
+        start(
+            project,
+            scenario_id="scenario:full-audit",
+            steps=["check:TITLE_MISSING"],
+            context=context,
         )
 
 

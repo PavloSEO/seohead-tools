@@ -10,7 +10,7 @@ full-refresh policy observable and testable.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,15 @@ from .workspace import _load as _workspace_load
 FORMAT = "seohead.monitor.v1"
 NAME = "monitor.json"
 _SEVERITIES = ("notice", "warning", "critical")
-_QUALIFIERS = ("fresh", "revalidated", "stale", "unavailable", "partial")
+_QUALIFIERS = ("fresh", "revalidated", "stale", "unavailable", "partial", "failed")
+_CACHE_STATES = {
+    "fresh": {"fresh"},
+    "revalidated": {"revalidated"},
+    "stale": {"cached"},
+    "unavailable": {"unavailable"},
+    "partial": {"unavailable"},
+    "failed": {"unavailable"},
+}
 _TRACKED_FIELDS = ("status", "indexability", "canonical", "robots", "metadata", "content", "links")
 _DEFAULTS = {
     "interval_seconds": 3600,
@@ -34,6 +42,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _after_interval(interval_seconds: int) -> str:
+    """Return retained scheduler advice only; this module never starts a timer."""
+    current = _now()
+    parsed = datetime.fromisoformat(current.replace("Z", "+00:00"))
+    return (parsed + timedelta(seconds=interval_seconds)).isoformat().replace("+00:00", "Z")
+
+
 def _load(directory: str | Path) -> tuple[Path, dict[str, Any]]:
     root, project = _workspace_load(directory)
     document = read_document(root, NAME) or {
@@ -42,13 +57,14 @@ def _load(directory: str | Path) -> tuple[Path, dict[str, Any]]:
         "project_uuid": project["project_uuid"],
         "policy": None,
         "runs": [],
-        "runner": {"state": "idle", "runs_since_full_refresh": 0},
+        "runner": {"state": "idle", "runs_since_full_refresh": 0, "next_url_offset": 0},
     }
     if document.get("format") != FORMAT or document.get("project_uuid") != project["project_uuid"]:
         raise ValueError("monitor belongs to another project or format")
     if not isinstance(document.get("runs"), list) or len(document["runs"]) > 10_000:
         raise ValueError("monitor has invalid retained run history")
     document.setdefault("runner", {"state": "idle", "runs_since_full_refresh": 0})
+    document["runner"].setdefault("next_url_offset", 0)
     return root, document
 
 
@@ -104,13 +120,20 @@ def _due(document: dict[str, Any]) -> dict[str, Any]:
         not document["runs"]
         or runner.get("runs_since_full_refresh", 0) >= policy["full_refresh_every"]
     )
+    urls = policy["urls"]
+    offset = runner.get("next_url_offset", 0) % len(urls)
+    planned_urls = (
+        urls if full else [urls[(offset + item) % len(urls)] for item in range(policy["max_urls"])]
+    )
     return {
         "state": "due",
         "mode": "full" if full else "incremental",
-        "url_limit": len(policy["urls"]) if full else policy["max_urls"],
+        "url_limit": len(planned_urls),
+        "planned_urls": planned_urls,
         "request_budget": policy["max_requests"],
         "render_request_budget": policy["max_render_requests"],
         "interval_seconds": policy["interval_seconds"],
+        "next_due_at": runner.get("next_due_at"),
         "reason": "periodic full coverage refresh" if full else "bounded incremental refresh",
     }
 
@@ -124,7 +147,9 @@ def _planned_due(document: dict[str, Any]) -> dict[str, Any]:
     return _due(document)
 
 
-def configure(directory: str | Path, policy: dict, expected_revision: int = 0) -> dict[str, Any]:
+def configure(
+    directory: str | Path, policy: dict[str, Any], expected_revision: int = 0
+) -> dict[str, Any]:
     root, document = _load(directory)
     if document["revision"] != expected_revision:
         raise ValueError("monitor revision conflict")
@@ -161,6 +186,7 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "request_count",
         "render_request_count",
         "cache_state",
+        "failure_reason",
     }:
         raise ValueError("invalid scoped monitor observation")
     if item.get("url") not in policy["urls"] or not isinstance(item.get("changes"), list):
@@ -168,15 +194,26 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
     qualifier = item.get("qualifier", "fresh")
     if qualifier not in _QUALIFIERS:
         raise ValueError("monitor observation qualifier is invalid")
-    cache_state = item.get("cache_state", qualifier)
-    if cache_state not in {"fresh", "revalidated", "cached", "unavailable"}:
-        raise ValueError("monitor observation cache_state is invalid")
+    cache_state = item.get("cache_state")
+    if cache_state is None:
+        cache_state = next(iter(_CACHE_STATES[qualifier]))
+    if cache_state not in _CACHE_STATES[qualifier]:
+        raise ValueError("monitor observation qualifier and cache_state are inconsistent")
     request_count = item.get("request_count", 1)
     render_request_count = item.get("render_request_count", 0)
     if type(request_count) is not int or request_count < 0:
         raise ValueError("monitor observation request_count is invalid")
     if type(render_request_count) is not int or render_request_count < 0:
         raise ValueError("monitor observation render_request_count is invalid")
+    failure_reason = item.get("failure_reason")
+    if failure_reason is not None and (
+        not isinstance(failure_reason, str)
+        or not failure_reason.strip()
+        or len(failure_reason) > 512
+    ):
+        raise ValueError("monitor observation failure_reason is invalid")
+    if qualifier == "failed" and failure_reason is None:
+        raise ValueError("failed monitor observation requires failure_reason")
     measurement = item.get("measurement")
     if measurement is not None and (
         not isinstance(measurement, dict)
@@ -198,6 +235,7 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "request_count": request_count,
         "render_request_count": render_request_count,
         "cache_state": cache_state,
+        "failure_reason": failure_reason.strip() if isinstance(failure_reason, str) else None,
         "measured_at": _now(),
     }
 
@@ -205,16 +243,48 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
 def _previous_measurement(document: dict[str, Any], url: str) -> tuple[dict[str, Any], str] | None:
     for earlier in reversed(document["runs"]):
         for observation in reversed(earlier.get("observations", [])):
-            if observation.get("url") == url and isinstance(observation.get("measurement"), dict):
+            if (
+                observation.get("url") == url
+                and observation.get("qualifier") in {"fresh", "revalidated"}
+                and isinstance(observation.get("measurement"), dict)
+            ):
                 return observation["measurement"], earlier["scan_id"]
     return None
+
+
+def _active_alerts(document: dict[str, Any], url: str) -> dict[str, dict[str, Any]]:
+    """Return unresolved per-field alerts and their original measured value."""
+    active: dict[str, dict[str, Any]] = {}
+    for earlier in document["runs"]:
+        for alert in earlier.get("alerts", []):
+            if alert.get("url") != url:
+                continue
+            for change in alert.get("changes", []):
+                field = change.get("field")
+                if not isinstance(field, str):
+                    continue
+                existing = active.get(field)
+                active[field] = {
+                    "change": change,
+                    "original_before": (
+                        existing["original_before"]
+                        if existing is not None
+                        else change.get("before")
+                    ),
+                }
+        for recovery in earlier.get("recoveries", []):
+            if recovery.get("url") == url and isinstance(recovery.get("change"), dict):
+                field = recovery["change"].get("field")
+                if isinstance(field, str):
+                    active.pop(field, None)
+    return active
 
 
 def _measurement_changes(
     document: dict[str, Any], observation: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Compare only two measured values; omitted and unavailable fields stay unknown."""
-    if observation["qualifier"] in {"stale", "unavailable", "partial"}:
+    if observation["qualifier"] in {"stale", "unavailable", "partial", "failed"}:
         return []
     current = observation["measurement"]
     previous = _previous_measurement(document, observation["url"])
@@ -222,8 +292,23 @@ def _measurement_changes(
         return []
     baseline, baseline_scan_id = previous
     changes = []
+    active = _active_alerts(document, observation["url"])
     for field in _TRACKED_FIELDS:
         if field not in current or field not in baseline or current[field] == baseline[field]:
+            continue
+        prior = active.get(field)
+        if prior is not None and current[field] == prior["original_before"]:
+            changes.append(
+                {
+                    "kind": "recovered",
+                    "field": field,
+                    "before": baseline[field],
+                    "after": current[field],
+                    "baseline_scan_id": baseline_scan_id,
+                    "alert_baseline_scan_id": prior["change"].get("baseline_scan_id"),
+                    "severity": prior["change"].get("severity", "warning"),
+                }
+            )
             continue
         changes.append(
             {
@@ -242,16 +327,62 @@ def _measurement_changes(
 
 def _recent_alerts(document: dict[str, Any], suppression_runs: int) -> set[str]:
     """Suppress repeats for a bounded number of completed monitor passes only."""
+    completed = []
+    for earlier in reversed(document["runs"]):
+        coverage = earlier.get("coverage")
+        complete = (
+            coverage.get("complete")
+            if isinstance(coverage, dict)
+            else earlier.get("state") != "partial"
+        )
+        if complete and earlier.get("state") != "failed":
+            completed.append(earlier)
+        if len(completed) == suppression_runs:
+            break
     return {
         _change_key(change)
-        for earlier in document["runs"][-suppression_runs:]
+        for earlier in completed
         for alert in earlier.get("alerts", [])
         for change in alert.get("changes", [])
     }
 
 
+def _coverage(planned_urls: list[str], observations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Make missing and failed measurement evidence explicit instead of implicit deletion."""
+    observed_urls = [item["url"] for item in observations]
+    qualifier_counts = {qualifier: 0 for qualifier in _QUALIFIERS}
+    for observation in observations:
+        qualifier_counts[observation["qualifier"]] += 1
+    unobserved = [url for url in planned_urls if url not in set(observed_urls)]
+    failures = [
+        {"url": item["url"], "reason": item["failure_reason"]}
+        for item in observations
+        if item["qualifier"] == "failed"
+    ]
+    complete = not unobserved and not any(
+        qualifier_counts[qualifier] for qualifier in ("stale", "unavailable", "partial", "failed")
+    )
+    return {
+        "planned_url_count": len(planned_urls),
+        "observed_url_count": len(observations),
+        "unobserved_url_count": len(unobserved),
+        "unobserved_urls": unobserved,
+        "fresh_count": qualifier_counts["fresh"],
+        "revalidated_count": qualifier_counts["revalidated"],
+        "stale_count": qualifier_counts["stale"],
+        "unavailable_count": qualifier_counts["unavailable"],
+        "partial_count": qualifier_counts["partial"],
+        "failed_count": qualifier_counts["failed"],
+        "failures": failures,
+        "complete": complete,
+    }
+
+
 def run(
-    directory: str | Path, scan_id: str, observations: list[dict], expected_revision: int
+    directory: str | Path,
+    scan_id: str,
+    observations: list[dict[str, Any]],
+    expected_revision: int,
 ) -> dict[str, Any]:
     """Retain an already-collected bounded diff; no fetch, timer or delivery occurs."""
     root, document = _load(directory)
@@ -260,8 +391,12 @@ def run(
     policy = document["policy"]
     if not isinstance(scan_id, str) or not scan_id.strip() or len(scan_id) > 512:
         raise ValueError("scan_id required")
+    runner_state = document["runner"].get("state", "idle")
+    if runner_state in {"cancelled", "backoff", "interrupted"}:
+        raise ValueError("restart the monitor claim before retaining observations")
     due = _planned_due(document)
-    limit = len(policy["urls"]) if due.get("mode") == "full" else policy["max_urls"]
+    planned_urls = list(due.get("planned_urls", policy["urls"]))
+    limit = len(planned_urls) if due.get("state") == "due" else policy["max_urls"]
     if not isinstance(observations, list) or not observations or len(observations) > limit:
         raise ValueError("observations exceed configured incremental scope")
     normalized = [_observation(item, policy) for item in observations]
@@ -275,21 +410,23 @@ def run(
         raise ValueError("monitor observations exceed configured request budget")
     if sum(item["render_request_count"] for item in normalized) > policy["max_render_requests"]:
         raise ValueError("monitor observations exceed configured render request budget")
+    observed_urls = {item["url"] for item in normalized}
+    if due.get("state") == "due" and not observed_urls <= set(planned_urls):
+        raise ValueError("monitor observations are outside the planned bounded scope")
     if (
         due.get("state") == "due"
         and due.get("mode") == "full"
-        and set(item["url"] for item in normalized) != set(policy["urls"])
+        and observed_urls != set(planned_urls)
     ):
         raise ValueError(
             "periodic full refresh must retain an observation for every configured URL"
         )
+    coverage = _coverage(planned_urls, normalized)
     previous = _recent_alerts(document, policy["suppression_runs"])
     alerts: list[dict[str, Any]] = []
     recoveries: list[dict[str, Any]] = []
-    partial = False
     for item in normalized:
-        if item["qualifier"] in {"stale", "unavailable", "partial"}:
-            partial = True
+        if item["qualifier"] in {"stale", "unavailable", "partial", "failed"}:
             continue
         meaningful = [
             change
@@ -304,14 +441,23 @@ def run(
             for change in item["changes"]
             if change.get("kind") == "recovered" and _threshold(policy, change)
         )
-    full = due.get("mode") == "full" and not partial
-    state = "partial" if partial else "actionable" if alerts or recoveries else "quiet"
+    state = (
+        "failed"
+        if coverage["failed_count"] and not coverage["fresh_count"] + coverage["revalidated_count"]
+        else "partial"
+        if not coverage["complete"]
+        else "actionable"
+        if alerts or recoveries
+        else "quiet"
+    )
     retained = {
         "scan_id": scan_id.strip(),
         "recorded_at": _now(),
-        "mode": "full" if full else "incremental",
+        "mode": due.get("mode", "incremental"),
+        "planned_urls": planned_urls,
         "observations": normalized,
         "observed_urls": [item["url"] for item in normalized],
+        "coverage": coverage,
         "alerts": alerts,
         "recoveries": recoveries,
         "baseline": {"scan_id": scan_id.strip(), "observations": normalized},
@@ -319,16 +465,26 @@ def run(
         "notification": "none",
     }
     document["runs"].append(retained)
+    completed_full = due.get("mode") == "full" and coverage["complete"]
+    completed_incremental = due.get("mode") == "incremental" and coverage["complete"]
+    offset = document["runner"].get("next_url_offset", 0)
+    if completed_full:
+        offset = 0
+    elif completed_incremental:
+        offset = (offset + len(planned_urls)) % len(policy["urls"])
     document["runner"] = {
         "state": "idle",
         "runs_since_full_refresh": (
             0
-            if full
+            if completed_full
             else policy["full_refresh_every"]
             if due.get("mode") == "full"
-            else document["runner"].get("runs_since_full_refresh", 0) + 1
+            else document["runner"].get("runs_since_full_refresh", 0)
+            + (1 if completed_incremental else 0)
         ),
+        "next_url_offset": offset,
         "last_finished_at": retained["recorded_at"],
+        "next_due_at": _after_interval(policy["interval_seconds"]),
     }
     document["revision"] += 1
     write_document(root, NAME, document)
@@ -336,6 +492,7 @@ def run(
         "ok": True,
         "revision": document["revision"],
         "run": retained,
+        "coverage": coverage,
         "notification": "none",
         "due": _due(document),
     }
@@ -400,8 +557,6 @@ def deliver(
         raise ValueError("monitor revision conflict")
     if getattr(service, "project_uuid", None) != document["project_uuid"]:
         raise PermissionError("monitor service is not authorized for this project")
-    if document["runner"].get("state") in {"cancelled", "backoff"}:
-        raise ValueError("cancelled or backed-off monitor work is not deliverable")
     run = next(
         (item for item in reversed(document["runs"]) if item.get("scan_id") == scan_id), None
     )

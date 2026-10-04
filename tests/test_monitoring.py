@@ -114,7 +114,12 @@ def test_claimed_full_refresh_keeps_its_plan_and_enforces_request_budgets(tmp_pa
                 "qualifier": "revalidated",
                 "cache_state": "revalidated",
             },
-            {"url": "https://example.test/b", "changes": [], "cache_state": "cached"},
+            {
+                "url": "https://example.test/b",
+                "changes": [],
+                "qualifier": "stale",
+                "cache_state": "cached",
+            },
         ],
         claimed["revision"],
     )
@@ -228,3 +233,181 @@ def test_per_url_snapshots_compare_all_seo_monitoring_fields_with_provenance(tmp
     }
     assert {change["baseline_scan_id"] for change in changes} == {"scan:baseline"}
     assert changed["run"]["observations"][0]["measured_at"].endswith("Z")
+
+
+def test_cancelled_claim_rejects_observations_until_an_explicit_restart(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": True,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 2,
+        },
+    )
+    claimed = schedule(project, action="start", expected_revision=configured["revision"])
+    cancelled = schedule(project, action="cancel", expected_revision=claimed["revision"])
+    with pytest.raises(ValueError, match="restart"):
+        run(
+            project,
+            "cancelled-pass",
+            [{"url": "https://example.test/a", "changes": []}],
+            cancelled["revision"],
+        )
+    restarted = schedule(project, action="start", expected_revision=cancelled["revision"])
+    retained = run(
+        project,
+        "restarted-pass",
+        [{"url": "https://example.test/a", "changes": []}],
+        restarted["revision"],
+    )
+    assert retained["run"]["coverage"]["complete"] is True
+
+
+def test_incremental_cursor_retries_missing_urls_then_advances_and_records_next_due(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    monkeypatch.setattr("seohead.projects.monitoring._now", lambda: "2026-10-04T00:00:00Z")
+    configured = configure(
+        project,
+        {
+            "enabled": True,
+            "urls": [
+                "https://example.test/a",
+                "https://example.test/b",
+                "https://example.test/c",
+            ],
+            "max_urls": 2,
+            "max_requests": 3,
+            "full_refresh_every": 3,
+            "interval_seconds": 60,
+        },
+    )
+    full = run(
+        project,
+        "full",
+        [{"url": url, "changes": []} for url in configured["policy"]["urls"]],
+        configured["revision"],
+    )
+    assert full["due"]["planned_urls"] == ["https://example.test/a", "https://example.test/b"]
+    incomplete = run(
+        project,
+        "incomplete",
+        [{"url": "https://example.test/a", "changes": []}],
+        full["revision"],
+    )
+    assert incomplete["run"]["coverage"] == {
+        "planned_url_count": 2,
+        "observed_url_count": 1,
+        "unobserved_url_count": 1,
+        "unobserved_urls": ["https://example.test/b"],
+        "fresh_count": 1,
+        "revalidated_count": 0,
+        "stale_count": 0,
+        "unavailable_count": 0,
+        "partial_count": 0,
+        "failed_count": 0,
+        "failures": [],
+        "complete": False,
+    }
+    assert incomplete["run"]["state"] == "partial"
+    assert incomplete["due"]["planned_urls"] == ["https://example.test/a", "https://example.test/b"]
+    complete = run(
+        project,
+        "incremental",
+        [
+            {"url": "https://example.test/a", "changes": []},
+            {"url": "https://example.test/b", "changes": []},
+        ],
+        incomplete["revision"],
+    )
+    assert complete["due"]["planned_urls"] == ["https://example.test/c", "https://example.test/a"]
+    assert status(project)["runner"]["next_due_at"] == "2026-10-04T00:01:00Z"
+
+
+def test_cached_data_cannot_be_declared_fresh_and_failed_coverage_stays_explicit(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": False,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 2,
+        },
+    )
+    with pytest.raises(ValueError, match="inconsistent"):
+        run(
+            project,
+            "bad-cache",
+            [
+                {
+                    "url": "https://example.test/a",
+                    "changes": [],
+                    "qualifier": "fresh",
+                    "cache_state": "cached",
+                }
+            ],
+            configured["revision"],
+        )
+    failed = run(
+        project,
+        "failed",
+        [
+            {
+                "url": "https://example.test/a",
+                "changes": [],
+                "qualifier": "failed",
+                "failure_reason": "connection reset",
+            }
+        ],
+        configured["revision"],
+    )
+    assert failed["run"]["state"] == "failed"
+    assert failed["coverage"]["failures"] == [
+        {"url": "https://example.test/a", "reason": "connection reset"}
+    ]
+    assert failed["run"]["alerts"] == failed["run"]["recoveries"] == []
+
+
+def test_recovery_is_derived_only_from_a_fresh_measured_return(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    configured = configure(
+        project,
+        {
+            "enabled": False,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 2,
+        },
+    )
+    baseline = run(
+        project,
+        "baseline",
+        [{"url": "https://example.test/a", "changes": [], "measurement": {"status": 200}}],
+        configured["revision"],
+    )
+    broken = run(
+        project,
+        "broken",
+        [{"url": "https://example.test/a", "changes": [], "measurement": {"status": 500}}],
+        baseline["revision"],
+    )
+    recovered = run(
+        project,
+        "recovered",
+        [{"url": "https://example.test/a", "changes": [], "measurement": {"status": 200}}],
+        broken["revision"],
+    )
+    assert broken["run"]["alerts"][0]["changes"][0]["kind"] == "status_changed"
+    assert recovered["run"]["alerts"] == []
+    assert recovered["run"]["recoveries"][0]["change"]["kind"] == "recovered"

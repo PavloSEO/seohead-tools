@@ -7,6 +7,7 @@ artifact a future explicit apply operation must reconcile with the package.
 
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 import json
@@ -32,6 +33,8 @@ _GOOGLE_CHUNK_ROWS = 1_000
 _GOOGLE_REQUEST_BYTES = 4 * 1024 * 1024
 _GOOGLE_CHUNK_SOURCE_BYTES = _GOOGLE_REQUEST_BYTES // 2
 EXCEL_MAX_ROWS = 1_048_576
+DESTINATION_STATE_FORMAT = "seohead.bi-destination-state.v1"
+DESTINATION_STATE_DIRECTORY = ".seohead-destination-state"
 
 
 class BIDestinationError(ValueError):
@@ -40,6 +43,148 @@ class BIDestinationError(ValueError):
 
 class BIDestinationCommitUncertain(BIDestinationError):
     """Google may have committed a request after the client lost its response."""
+
+
+def _state_identity(*, destination: str, target: str, operation: str, manifest_sha256: str) -> str:
+    """Return a stable non-secret identity for one resumable destination attempt."""
+    encoded = json.dumps(
+        {
+            "destination": destination,
+            "target": target,
+            "operation": operation,
+            "manifest_sha256": manifest_sha256,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _state_path(
+    root: Path, *, destination: str, target: str, operation: str, manifest_sha256: str
+) -> Path:
+    """Keep durable progress beside the local package without altering its manifest."""
+    return (
+        root
+        / DESTINATION_STATE_DIRECTORY
+        / (
+            _state_identity(
+                destination=destination,
+                target=target,
+                operation=operation,
+                manifest_sha256=manifest_sha256,
+            )
+            + ".json"
+        )
+    )
+
+
+def _save_state(path: Path, state: dict[str, Any]) -> None:
+    """Atomically retain a restartable, credential-free publication checkpoint."""
+    try:
+        encoded = (json.dumps(state, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
+            "utf-8"
+        )
+    except (TypeError, ValueError) as exc:
+        raise BIDestinationError("destination transaction cannot be persisted safely") from exc
+    try:
+        path.parent.mkdir(mode=0o700, parents=False, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".state-", delete=False) as stream:
+            stream.write(encoded)
+            temporary = Path(stream.name)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except OSError as exc:
+        with suppress(UnboundLocalError, FileNotFoundError):
+            temporary.unlink()
+        raise BIDestinationError("destination progress state cannot be persisted") from exc
+
+
+def _load_state(path: Path, *, expected: dict[str, str]) -> dict[str, Any] | None:
+    """Load only the checkpoint belonging to this exact package and target."""
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise BIDestinationError("destination progress state is not a regular file")
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BIDestinationError("destination progress state is unreadable") from exc
+    if not isinstance(state, dict) or state.get("format") != DESTINATION_STATE_FORMAT:
+        raise BIDestinationError("destination progress state has an unsupported format")
+    if any(state.get(key) != value for key, value in expected.items()):
+        raise BIDestinationError("destination progress state belongs to another package or target")
+    if not isinstance(state.get("transaction"), (dict, str, int, float, list, type(None))):
+        raise BIDestinationError("destination progress state has an invalid transaction")
+    if not isinstance(state.get("datasets"), dict):
+        raise BIDestinationError("destination progress state has no dataset accounting")
+    return state
+
+
+def _new_state(
+    *,
+    destination: str,
+    target: str,
+    operation: str,
+    manifest_sha256: str,
+    datasets: dict[str, dict[str, Any]],
+    transaction: Any,
+) -> dict[str, Any]:
+    return {
+        "format": DESTINATION_STATE_FORMAT,
+        "destination": destination,
+        "target": target,
+        "operation": operation,
+        "manifest_sha256": manifest_sha256,
+        "status": "staging",
+        "transaction": transaction,
+        "pending": None,
+        "datasets": {
+            name: {
+                "input_rows": info["rows"],
+                "written_rows": 0,
+                "skipped_rows": 0,
+                "failed_rows": 0,
+                "next_chunk": 0,
+            }
+            for name, info in datasets.items()
+        },
+    }
+
+
+def _accounting(state: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """Return complete per-dataset counts without exposing internal cursor state."""
+    result: dict[str, dict[str, int]] = {}
+    for name, value in state["datasets"].items():
+        if not isinstance(value, dict):
+            raise BIDestinationError("destination progress state has an invalid dataset entry")
+        counts = {}
+        for key in ("input_rows", "written_rows", "skipped_rows", "failed_rows"):
+            number = value.get(key)
+            if type(number) is not int or number < 0:
+                raise BIDestinationError("destination progress state has invalid row accounting")
+            counts[key] = number
+        result[name] = counts
+    return result
+
+
+def _result_from_state(state: dict[str, Any], *, reason: str | None = None) -> dict[str, Any]:
+    """Expose restart-safe accounting for committed, failed and uncertain states."""
+    accounting = _accounting(state)
+    result: dict[str, Any] = {
+        "format": "seohead.bi-destination-apply.v1",
+        "target": state["target"],
+        "operation": state["operation"],
+        "state": state["status"],
+        "manifest_sha256": state["manifest_sha256"],
+        "rows": {name: values["written_rows"] for name, values in accounting.items()},
+        "input_rows": {name: values["input_rows"] for name, values in accounting.items()},
+        "skipped_rows": {name: values["skipped_rows"] for name, values in accounting.items()},
+        "failed_rows": {name: values["failed_rows"] for name, values in accounting.items()},
+    }
+    if reason:
+        result["reason"] = reason
+    return result
 
 
 def register_host_client(destination: str, target: str, client: Any) -> None:
@@ -182,6 +327,7 @@ class GoogleSheetsClient(_GoogleRESTClient):
         fetcher=None,
     ) -> None:
         super().__init__(token_supplier=token_supplier, fetcher=fetcher)
+        self.destination = "sheets"
         self.target, self.spreadsheet_id, self.worksheets = target, spreadsheet_id, worksheets
 
     def authorize_target(self, target: str) -> bool:
@@ -340,6 +486,82 @@ class GoogleSheetsClient(_GoogleRESTClient):
         if values != rows:
             raise BIDestinationError("Google Sheets staged-row readback does not conserve values")
 
+    def pending_write(
+        self, transaction: dict[str, Any], dataset: str, rows: list[list[str]], chunk: int
+    ) -> dict[str, Any]:
+        """Describe one fixed stage range before its idempotent bounded write."""
+        if dataset not in transaction["stages"] or not rows:
+            raise BIDestinationError("Google Sheets pending write is invalid")
+        header = transaction["headers"].get(dataset) or rows[0]
+        if any(len(row) != len(header) for row in rows):
+            raise BIDestinationError("Google Sheets row width differs from the declared header")
+        stage = transaction["stages"][dataset]
+        start = transaction["rows"][dataset] + 1
+        end = start + len(rows) - 1
+        return {
+            "kind": "sheets_write",
+            "dataset": dataset,
+            "chunk": chunk,
+            "start": start,
+            "end": end,
+            "width": _a1_column(len(header)),
+            "stage_title": stage["title"],
+            "rows_sha256": hashlib.sha256(
+                json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def reconcile_pending(
+        self, transaction: dict[str, Any], pending: dict[str, Any], rows: list[list[str]]
+    ) -> str:
+        """Read a previously uncertain stage range before any retry is allowed."""
+        if pending.get("kind") != "sheets_write":
+            raise BIDestinationCommitUncertain("Sheets pending operation requires operator review")
+        if pending.get("dataset") not in transaction["stages"] or not rows:
+            raise BIDestinationError(
+                "Sheets pending write does not match retained transaction state"
+            )
+        digest = hashlib.sha256(
+            json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if digest != pending.get("rows_sha256"):
+            raise BIDestinationError("Sheets pending write does not match the local package")
+        title = str(pending.get("stage_title", "")).replace("'", "''")
+        start, end, width = pending.get("start"), pending.get("end"), pending.get("width")
+        if type(start) is not int or type(end) is not int or not isinstance(width, str):
+            raise BIDestinationError("Sheets pending write has an invalid range")
+        readback = self._request(
+            "GET",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/'{title}'!A{start}:{width}{end}",
+            retryable=True,
+        )
+        if readback.get("values") != rows:
+            return "not_applied"
+        dataset = pending["dataset"]
+        if transaction["headers"].get(dataset) is None:
+            transaction["headers"][dataset] = rows[0]
+        transaction["rows"][dataset] += len(rows)
+        return "applied"
+
+    def reconcile_commit(self, transaction: dict[str, Any]) -> str:
+        """Only retry a timed-out atomic switch when every staged sheet still exists."""
+        metadata = self._request(
+            "GET",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}?fields=sheets.properties(sheetId,title)",
+            retryable=True,
+        )
+        present = {
+            (item.get("properties") or {}).get("sheetId")
+            for item in metadata.get("sheets", [])
+            if isinstance(item, dict) and isinstance(item.get("properties"), dict)
+        }
+        expected = {stage["sheetId"] for stage in transaction.get("stages", {}).values()}
+        if expected and expected.issubset(present):
+            return "not_applied"
+        raise BIDestinationCommitUncertain(
+            "Sheets final switch cannot be reconciled from retained staging sheets; operator review is required"
+        )
+
     def commit(self, transaction) -> dict[str, Any]:
         requests: list[dict[str, Any]] = []
         for name, stage in transaction["stages"].items():
@@ -475,6 +697,7 @@ class GoogleBigQueryClient(_GoogleRESTClient):
         fetcher=None,
     ) -> None:
         super().__init__(token_supplier=token_supplier, fetcher=fetcher)
+        self.destination = "bigquery"
         self.target = target
         self.project_id = project_id
         self.dataset_id = dataset_id
@@ -577,11 +800,23 @@ class GoogleBigQueryClient(_GoogleRESTClient):
             # jobs.insert is idempotent for a deterministic job ID.  An existing
             # job can be observed instead of blindly sending a second data load.
             if not any(
-                marker in str(exc).lower() for marker in ("alreadyexists", "duplicate", "http 409")
+                marker in str(exc).lower()
+                for marker in (
+                    "alreadyexists",
+                    "already exists",
+                    "duplicate",
+                    "http 409",
+                    "'code': 409",
+                )
             ):
                 raise
             result = {"jobReference": payload["jobReference"]}
-        return self._wait_job(result.get("jobReference", {}).get("jobId", job_id))
+        returned_job_id = result.get("jobReference", {}).get("jobId", job_id)
+        if returned_job_id != job_id:
+            raise BIDestinationError(
+                "BigQuery response did not preserve the deterministic job identity"
+            )
+        return self._wait_job(job_id)
 
     def _wait_job(self, job_id: str) -> dict[str, Any]:
         for attempt in range(_GOOGLE_RETRIES + 1):
@@ -667,6 +902,71 @@ class GoogleBigQueryClient(_GoogleRESTClient):
             raise BIDestinationError("BigQuery load acknowledgement does not conserve staged rows")
         transaction["rows"][dataset] += len(rows)
         transaction["load_parts"][dataset] += 1
+
+    def pending_write(
+        self, transaction: dict[str, Any], dataset: str, rows: list[list[str]], chunk: int
+    ) -> dict[str, Any]:
+        """Retain a deterministic job identity before sending a bounded load."""
+        if dataset not in transaction["datasets"] or not rows:
+            raise BIDestinationError("BigQuery pending write is invalid")
+        if transaction["headers"].get(dataset) is None:
+            return {"kind": "bigquery_header", "dataset": dataset, "chunk": chunk}
+        part = transaction["load_parts"][dataset]
+        return {
+            "kind": "bigquery_load",
+            "dataset": dataset,
+            "chunk": chunk,
+            "job_id": f"seohead_{transaction['token']}_{dataset}_{part}",
+            "rows": len(rows),
+            "rows_sha256": hashlib.sha256(
+                json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def reconcile_pending(
+        self, transaction: dict[str, Any], pending: dict[str, Any], rows: list[list[str]]
+    ) -> str:
+        """Observe an exact prior load job instead of submitting it a second time."""
+        kind = pending.get("kind")
+        if kind == "bigquery_header":
+            return "not_applied"
+        if kind != "bigquery_load" or pending.get("dataset") not in transaction["datasets"]:
+            raise BIDestinationCommitUncertain(
+                "BigQuery pending operation requires operator review"
+            )
+        digest = hashlib.sha256(
+            json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if digest != pending.get("rows_sha256"):
+            raise BIDestinationError("BigQuery pending load does not match the local package")
+        job_id = pending.get("job_id")
+        if not isinstance(job_id, str) or not job_id:
+            raise BIDestinationError("BigQuery pending load has no job identity")
+        result = self._wait_job(job_id)
+        output = ((result.get("statistics") or {}).get("load") or {}).get("outputRows")
+        if str(output) != str(pending.get("rows")):
+            raise BIDestinationError("BigQuery reconciled load does not conserve staged rows")
+        dataset = pending["dataset"]
+        transaction["rows"][dataset] += len(rows)
+        transaction["load_parts"][dataset] += 1
+        return "applied"
+
+    def reconcile_commit(self, transaction: dict[str, Any]) -> str:
+        """Observe deterministic copy jobs before retrying an uncertain final publish."""
+        absent = False
+        for name in transaction.get("stage_ids", {}):
+            job_id = (
+                f"seohead_{transaction['token']}_{name}_publish_"
+                f"{transaction['schema_version'].replace('.', '_')}"
+            )
+            try:
+                self._wait_job(job_id)
+            except BIDestinationError as exc:
+                if "HTTP 404" in str(exc):
+                    absent = True
+                    continue
+                raise
+        return "not_applied" if absent else "applied"
 
     def _table_rows(self, table_id: str) -> int:
         result = self._request(
@@ -1199,6 +1499,128 @@ def destination_preview(
     }
 
 
+def _rows_for_pending(
+    root: Path, dataset: dict[str, Any], pending: dict[str, Any]
+) -> list[list[str]]:
+    """Recreate precisely the one chunk whose remote outcome is uncertain."""
+    chunk = pending.get("chunk")
+    if type(chunk) is not int or chunk < 0:
+        raise BIDestinationError("destination pending state has an invalid chunk cursor")
+    for index, rows in enumerate(_csv_chunks(root, dataset, size=_GOOGLE_CHUNK_ROWS)):
+        if index == chunk:
+            return rows
+    raise BIDestinationError("destination pending chunk is absent from the verified package")
+
+
+def _pending_write(
+    client: Any, transaction: Any, dataset: str, rows: list[list[str]], chunk: int
+) -> dict[str, Any]:
+    describe = getattr(client, "pending_write", None)
+    if describe is not None:
+        pending = describe(transaction, dataset, rows, chunk)
+    else:
+        pending = {"kind": "generic_write", "dataset": dataset, "chunk": chunk}
+    if not isinstance(pending, dict) or pending.get("dataset") != dataset:
+        raise BIDestinationError("destination client returned an invalid pending write")
+    pending["data_rows"] = len(rows) - (1 if chunk == 0 else 0)
+    return pending
+
+
+def _advance_pending(state: dict[str, Any], pending: dict[str, Any]) -> None:
+    """Record a proven chunk exactly once after write or readback reconciliation."""
+    dataset = pending.get("dataset")
+    if not isinstance(dataset, str) or dataset not in state["datasets"]:
+        raise BIDestinationError("destination pending state names an unknown dataset")
+    entry = state["datasets"][dataset]
+    if pending.get("chunk") != entry.get("next_chunk"):
+        raise BIDestinationError("destination pending state has a non-monotonic cursor")
+    data_rows = pending.get("data_rows")
+    if type(data_rows) is not int or data_rows < 0:
+        raise BIDestinationError("destination pending state has invalid row accounting")
+    entry["written_rows"] += data_rows
+    entry["next_chunk"] += 1
+    state["pending"] = None
+    state["status"] = "staging"
+
+
+def _reconcile_pending(
+    *,
+    root: Path,
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    client: Any,
+    checkpoint: Path,
+    reconcile: bool,
+) -> dict[str, Any] | None:
+    """Require an explicit read reconciliation before an uncertain request can continue."""
+    pending = state.get("pending")
+    if pending is None:
+        return None
+    if not isinstance(pending, dict):
+        raise BIDestinationError("destination progress state has an invalid pending operation")
+    if not reconcile:
+        state["status"] = "reconciliation_required"
+        _save_state(checkpoint, state)
+        return _result_from_state(
+            state,
+            reason="a prior remote operation is uncertain; rerun with reconcile=true before any retry",
+        )
+    if pending.get("kind") == "commit":
+        reconcile_commit = getattr(client, "reconcile_commit", None)
+        if reconcile_commit is None:
+            state["status"] = "reconciliation_required"
+            _save_state(checkpoint, state)
+            return _result_from_state(
+                state, reason="destination client cannot reconcile an uncertain final publication"
+            )
+        outcome = reconcile_commit(state["transaction"])
+        if outcome == "applied":
+            state["pending"] = None
+            state["status"] = "committed"
+            _save_state(checkpoint, state)
+            result = _result_from_state(state)
+            result.update(
+                {
+                    "dataset_sha256": _dataset_hashes(manifest),
+                    "row_conservation": "verified",
+                    "publication": "reconciled_after_uncertain_commit",
+                }
+            )
+            return result
+        if outcome != "not_applied":
+            raise BIDestinationCommitUncertain(
+                "destination commit reconciliation did not reach a safe verdict"
+            )
+        state["pending"] = None
+        state["status"] = "staging"
+        _save_state(checkpoint, state)
+        return None
+    dataset = pending.get("dataset")
+    if not isinstance(dataset, str) or dataset not in manifest["datasets"]:
+        raise BIDestinationError("destination pending state names an unknown dataset")
+    rows = _rows_for_pending(root, manifest["datasets"][dataset], pending)
+    reconcile_write = getattr(client, "reconcile_pending", None)
+    if reconcile_write is None:
+        state["status"] = "reconciliation_required"
+        _save_state(checkpoint, state)
+        return _result_from_state(
+            state, reason="destination client cannot reconcile the uncertain bounded write"
+        )
+    outcome = reconcile_write(state["transaction"], pending, rows)
+    if outcome == "applied":
+        _advance_pending(state, pending)
+        _save_state(checkpoint, state)
+        return None
+    if outcome == "not_applied":
+        state["pending"] = None
+        state["status"] = "staging"
+        _save_state(checkpoint, state)
+        return None
+    raise BIDestinationCommitUncertain(
+        "destination write reconciliation did not reach a safe verdict"
+    )
+
+
 def apply_with_client(
     package: str | Path,
     *,
@@ -1206,12 +1628,14 @@ def apply_with_client(
     operation: str,
     client: Any,
     apply: bool = False,
+    reconcile: bool = False,
 ) -> dict[str, Any]:
-    """Stream a package through an injected, already-authorized transaction client.
+    """Stream a package through a checkpointed, explicitly authorized destination client.
 
-    A concrete Google client belongs outside this core.  It must implement
-    ``authorize_target``, ``begin``, ``write`` and ``commit``; an exception triggers
-    its optional ``abort`` hook, preserving the prior target until commit.
+    Every request is preceded by an atomic local checkpoint.  A restart resumes
+    known completed chunks.  A timeout or process loss leaves the affected
+    request pending and cannot replay it until an explicit reconciliation proves
+    that the fixed remote range/job was either applied or not applied.
     """
     if not apply:
         raise BIDestinationError("apply=True is required for a destination write")
@@ -1224,61 +1648,139 @@ def apply_with_client(
     if client.authorize_target(target) is not True:
         raise BIDestinationError("injected client did not authorize the requested target")
     manifest_sha256 = hashlib.sha256((root / "manifest.json").read_bytes()).hexdigest()
-    transaction = client.begin(
+    destination = getattr(client, "destination", client.__class__.__name__)
+    if not isinstance(destination, str) or not destination:
+        destination = client.__class__.__name__
+    checkpoint = _state_path(
+        root,
+        destination=destination,
         target=target,
         operation=operation,
-        schema_version=BI_SCHEMA_VERSION,
-        datasets=manifest["datasets"],
-        package_sha256=manifest_sha256,
-        selected_projection=manifest.get("selected_projection") is True,
+        manifest_sha256=manifest_sha256,
     )
-    written = {}
-    commit_started = False
-    try:
-        for name, info in datasets.items():
-            count = 0
-            first_chunk = True
-            for rows in _csv_chunks(root, manifest["datasets"][name], size=_GOOGLE_CHUNK_ROWS):
-                client.write(transaction, name, rows)
-                count += len(rows) - (1 if first_chunk else 0)
-                first_chunk = False
-            if count != info["rows"]:
-                raise BIDestinationError(f"destination row conservation failed for {name!r}")
-            written[name] = count
-        commit_started = True
-        publication = client.commit(transaction)
-    except BIDestinationCommitUncertain as exc:
-        if not commit_started:
-            abort = getattr(client, "abort", None)
-            if abort is not None:
-                abort(transaction)
-            raise
-        return {
-            "format": "seohead.bi-destination-apply.v1",
+    state = _load_state(
+        checkpoint,
+        expected={
+            "destination": destination,
             "target": target,
             "operation": operation,
-            "state": "commit_uncertain",
-            "reason": str(exc),
-            "rows": written,
-        }
+            "manifest_sha256": manifest_sha256,
+        },
+    )
+    if state is not None and state.get("status") == "committed":
+        result = _result_from_state(state)
+        result.update({"dataset_sha256": _dataset_hashes(manifest), "row_conservation": "verified"})
+        return result
+    if state is not None and state.get("status") == "failed":
+        return _result_from_state(state, reason=str(state.get("reason") or "prior write failed"))
+    if state is None:
+        transaction = client.begin(
+            target=target,
+            operation=operation,
+            schema_version=BI_SCHEMA_VERSION,
+            datasets=manifest["datasets"],
+            package_sha256=manifest_sha256,
+            selected_projection=manifest.get("selected_projection") is True,
+        )
+        state = _new_state(
+            destination=destination,
+            target=target,
+            operation=operation,
+            manifest_sha256=manifest_sha256,
+            datasets=datasets,
+            transaction=transaction,
+        )
+        _save_state(checkpoint, state)
+    try:
+        reconciled = _reconcile_pending(
+            root=root,
+            manifest=manifest,
+            state=state,
+            client=client,
+            checkpoint=checkpoint,
+            reconcile=reconcile,
+        )
+    except BIDestinationCommitUncertain as exc:
+        state["status"] = "reconciliation_required"
+        state["reason"] = str(exc)
+        _save_state(checkpoint, state)
+        return _result_from_state(state, reason=str(exc))
+    if reconciled is not None:
+        return reconciled
+    transaction = state["transaction"]
+    try:
+        for name, info in datasets.items():
+            entry = state["datasets"].get(name)
+            if not isinstance(entry, dict) or type(entry.get("next_chunk")) is not int:
+                raise BIDestinationError("destination progress state has an invalid chunk cursor")
+            for chunk, rows in enumerate(
+                _csv_chunks(root, manifest["datasets"][name], size=_GOOGLE_CHUNK_ROWS)
+            ):
+                if chunk < entry["next_chunk"]:
+                    continue
+                if chunk > entry["next_chunk"]:
+                    raise BIDestinationError("destination chunk cursor is not contiguous")
+                pending = _pending_write(client, transaction, name, rows, chunk)
+                state["pending"] = pending
+                state["status"] = "staging"
+                _save_state(checkpoint, state)
+                transaction_before_write = copy.deepcopy(transaction)
+                try:
+                    client.write(transaction, name, rows)
+                except BaseException:
+                    # The durable pre-request checkpoint is authoritative until a
+                    # read reconciliation proves that this exact range/job landed.
+                    state["transaction"] = transaction_before_write
+                    transaction = transaction_before_write
+                    raise
+                _advance_pending(state, pending)
+                _save_state(checkpoint, state)
+            if entry["written_rows"] != info["rows"]:
+                raise BIDestinationError(f"destination row conservation failed for {name!r}")
+        state["pending"] = {"kind": "commit"}
+        state["status"] = "commit_pending"
+        _save_state(checkpoint, state)
+        publication = client.commit(transaction)
+    except BIDestinationCommitUncertain as exc:
+        state["status"] = "reconciliation_required"
+        state["reason"] = str(exc)
+        _save_state(checkpoint, state)
+        return _result_from_state(state, reason=str(exc))
+    except (KeyboardInterrupt, SystemExit):
+        state["status"] = "interrupted"
+        _save_state(checkpoint, state)
+        raise
+    except BIDestinationError as exc:
+        pending = state.get("pending")
+        if isinstance(pending, dict) and type(pending.get("data_rows")) is int:
+            entry = state["datasets"].get(pending.get("dataset"))
+            if isinstance(entry, dict):
+                entry["failed_rows"] += pending["data_rows"]
+        state["status"] = "failed"
+        state["reason"] = str(exc)
+        _save_state(checkpoint, state)
+        abort = getattr(client, "abort", None)
+        if abort is not None:
+            abort(transaction)
+        return _result_from_state(state, reason=str(exc))
     except BaseException:
+        state["status"] = "failed"
+        state["reason"] = "unexpected destination client failure"
+        _save_state(checkpoint, state)
         abort = getattr(client, "abort", None)
         if abort is not None:
             abort(transaction)
         raise
-    result = {
-        "format": "seohead.bi-destination-apply.v1",
-        "target": target,
-        "operation": operation,
-        "state": "committed",
-        "manifest_sha256": manifest_sha256,
-        "dataset_sha256": _dataset_hashes(manifest),
-        "rows": written,
-        "input_rows": {name: info["rows"] for name, info in datasets.items()},
-        "skipped_rows": {name: 0 for name in datasets},
-        "failed_rows": {name: 0 for name in datasets},
-        "row_conservation": "verified",
-    }
+    state["pending"] = None
+    state["status"] = "committed"
+    _save_state(checkpoint, state)
+    result = _result_from_state(state)
+    result.update(
+        {
+            "dataset_sha256": _dataset_hashes(manifest),
+            "row_conservation": "verified",
+        }
+    )
     if isinstance(publication, dict):
         result.update(publication)
     return result

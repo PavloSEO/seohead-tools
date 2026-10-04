@@ -60,6 +60,32 @@ def test_parse_exports_routing_untouched(monkeypatch, tmp_path):
     assert "output_dir" not in calls[0]
 
 
+def test_project_bound_mcp_sf_run_records_a_read_only_observer_attempt(monkeypatch, tmp_path):
+    from seohead.projects.run_observation import status
+    from seohead.projects.workspace import create_project
+
+    root = tmp_path / "project"
+    create_project(root, "https://example.test/")
+    monkeypatch.setattr(
+        sf_mcp, "run_audit", lambda **_kwargs: type("Result", (), {"summary": {}})()
+    )
+    monkeypatch.setattr(sf_mcp, "write_json", lambda _result, path: path)
+    monkeypatch.setattr(sf_mcp, "write_markdown", lambda _result, path: path)
+
+    sf_mcp._do_run(
+        mode="parse-exports",
+        source=str(tmp_path / "exports"),
+        out=str(root / "reports" / "sf"),
+        project=str(root),
+    )
+
+    run = status(root)["items"][0]
+    assert run["kind"] == "screaming_frog"
+    assert run["collector"]["mode"] == "sf_exports"
+    assert run["state"] == "finished"
+    assert run["counters"]["fetched"] is None
+
+
 def test_gate_catches_a_core_only_mode_addition(monkeypatch):
     """Mutation test: a new live mode added only to the core's vocabulary.
 

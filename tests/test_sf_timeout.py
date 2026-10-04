@@ -122,6 +122,19 @@ def test_a_completed_run_returns_its_output(tmp_path):
     assert "hello" in done.stdout
 
 
+def test_watched_subprocess_reports_its_actual_collector_pid(tmp_path):
+    started: list[int] = []
+    done = runner._run_watched(
+        [sys.executable, "-c", "print('hello')"],
+        30.0,
+        str(tmp_path),
+        lambda _m: None,
+        on_started=started.append,
+    )
+    assert done.returncode == 0
+    assert len(started) == 1 and started[0] > 0
+
+
 # --- what the operator is told ----------------------------------------------
 def test_the_timeout_error_names_the_budget_and_the_crawler_s_fate(tmp_path, monkeypatch):
     monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_NETWORKS", "1")

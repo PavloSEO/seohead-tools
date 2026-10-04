@@ -123,6 +123,25 @@ def project_inbox_goal(
     )
 
 
+def project_inbox_triage(
+    directory: str,
+    entry_id: str,
+    outcome: dict[str, Any],
+    actor: str,
+    expected_revision: int | None = None,
+) -> dict[str, Any]:
+    """Append an explicit note outcome without accepting it or starting work."""
+    from seohead.projects.inbox import triage
+
+    return triage(
+        directory,
+        entry_id=entry_id,
+        outcome=outcome,
+        actor=actor,
+        expected_revision=expected_revision,
+    )
+
+
 def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict[str, Any]:
     from seohead.projects.inbox import unread_summary
 

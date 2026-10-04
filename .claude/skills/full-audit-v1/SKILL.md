@@ -55,6 +55,32 @@ solely for the observer. MCP agents can use `seo_project_observe` as the equival
 snapshot only after the same choice; a later project-bound call may receive configured unread inbox
 notices, but the observer does not inject a chat message or execute work automatically.
 
+## 1.5 Register controller work and triage human suggestions
+
+For an existing project workspace, read the controller's scoped unread summary on the next MCP
+project call only when its local stdio process has both `SEOHEAD_MCP_CONSUMER_ID` and a matching
+`SEOHEAD_MCP_PROJECT_ALLOWLIST`. A notice is neither a read receipt nor permission to act. Read a
+note explicitly, leave it unread until the controller has actually processed it, and never derive
+commands from its free text.
+
+Before any collection or method execution, the controller must create or update a durable
+`custom:` checklist task, record that task as `running` with its reason, then append one
+explicit `project-inbox-triage` receipt to each processed specialist note. A receipt can link the
+note to current custom task IDs, a stored proposed goal, retained competitor candidate URLs, or a
+specific blocked/rejected reason. It never starts a scan, accepts a goal, acknowledges a note, or
+turns a competitor candidate into a measured competitor.
+
+Use `project-inbox-goal` separately to accept a proposed goal only when authorized. A
+`workflow-start` context must carry that accepted goal ID, `workflow/full-audit-v1` as its
+registered prompt reference, and the current incomplete custom task IDs. The workflow refuses a
+run without those durable links. Checkpoint success still needs exact evidence; manual and
+deliverable tasks still need their explicit review gates.
+
+The checklist already has shipped applicability, denominator, stale-evidence, review and
+deliverable contracts. Use its named coverage axes as audit-task progress only; do not call them
+site health or remediation resolution, and do not shrink their denominators to make an audit look
+complete.
+
 ## 2. Inventory and reuse evidence
 
 Before collecting anything, inspect available `audit.json`, retained scan files, Screaming Frog
@@ -99,10 +125,9 @@ follow its own limits. Do not write one-off replacements for checks those method
 Do not treat `project-prepare` (also exposed as `seohead project prepare`) as a full audit. It
 creates a bounded preparation workspace and records preparation state; it does not execute every
 specialist method or prove full-site coverage. A prepared project can support an audit, but it is
-not the audit deliverable. The current project checklist has no shipped applicability and
-denominator contract: do not report checklist-completion percentages or mark excluded tasks as
-complete. Report the analyzer's own `check_coverage` separately from URL coverage and from any
-project preparation state.
+not the audit deliverable. Report the checklist's explicitly named audit-task, URL, manual-review,
+and deliverable axes separately from the analyzer's own `check_coverage` and from project
+preparation state.
 
 ## 4. Pass verification gates
 
