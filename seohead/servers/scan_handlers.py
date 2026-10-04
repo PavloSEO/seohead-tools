@@ -591,7 +591,10 @@ def crawl_site_scan(
                     stored_sitemap=reconciliation,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
-                    streaming=True,
+                    # Small audits retain the established scan.v1 document
+                    # surface.  At this threshold the audit collector switches
+                    # before final aggregation can re-materialize every row.
+                    streaming=run.pages >= 10_000,
                 )
 
             if settings.get("rendering", {}).get("mode", "raw") != "raw":
