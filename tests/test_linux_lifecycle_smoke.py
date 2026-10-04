@@ -163,3 +163,56 @@ def test_main_writes_metrics_artifact_when_installation_fails(tmp_path, monkeypa
         "message": "synthetic dependency installation failure",
     }
     assert not list(tmp_path.glob("seohead-linux-lifecycle-*"))
+
+
+@pytest.mark.parametrize("allow_newer", [False, True])
+def test_rollback_accepts_only_explicit_newer_schema_refusal(tmp_path, monkeypatch, allow_newer):
+    import subprocess
+
+    artifact = tmp_path / "candidate.sqlite"
+    artifact.write_bytes(b"synthetic retained artifact")
+
+    def refused(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1, ["seohead"], stderr="error: scan.v1 schema differs: missing/changed tables"
+        )
+
+    monkeypatch.setattr(smoke, "run", refused)
+    if not allow_newer:
+        with pytest.raises(subprocess.CalledProcessError):
+            smoke.rollback_scan_status(
+                tmp_path / "seohead", artifact, tmp_path, {}, allow_newer_schema=False
+            )
+    else:
+        result = smoke.rollback_scan_status(
+            tmp_path / "seohead", artifact, tmp_path, {}, allow_newer_schema=True
+        )
+        assert result["state"] == "unsupported_schema"
+        assert result["unchanged"] is True
+    assert artifact.read_bytes() == b"synthetic retained artifact"
+
+
+def test_rollback_rejects_unrelated_failures_and_artifact_mutation(tmp_path, monkeypatch):
+    import subprocess
+
+    artifact = tmp_path / "candidate.sqlite"
+    artifact.write_bytes(b"original")
+
+    def failed(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, ["seohead"], stderr="unrelated failure")
+
+    monkeypatch.setattr(smoke, "run", failed)
+    with pytest.raises(subprocess.CalledProcessError):
+        smoke.rollback_scan_status(
+            tmp_path / "seohead", artifact, tmp_path, {}, allow_newer_schema=True
+        )
+
+    def changed(*args, **kwargs):
+        artifact.write_bytes(b"changed")
+        return '{"ok":true}'
+
+    monkeypatch.setattr(smoke, "run", changed)
+    with pytest.raises(AssertionError, match="changed a retained scan"):
+        smoke.rollback_scan_status(
+            tmp_path / "seohead", artifact, tmp_path, {}, allow_newer_schema=True
+        )

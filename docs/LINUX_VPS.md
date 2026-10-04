@@ -246,3 +246,11 @@ install/upgrade/rollback sequence on a disposable GitHub Actions runner. Use the
 small workflow and to see the added cost of the optional browser. They do not estimate the RAM,
 disk, or runtime needed for an arbitrary site or a production VPS; record a workload-specific
 measurement before choosing host capacity.
+
+
+The lifecycle smoke records rollback artifact readability separately. The old release
+must still read its own scan. A newer prerelease `scan.v1` DDL may be explicitly
+refused by that old reader; the smoke accepts only that named schema refusal and
+verifies the artifact hash is unchanged. This is unavailable evidence, not a
+successful read. Use the recorded producer release to inspect that artifact or
+explicitly reimport its legacy source; rollback does not imply format migration.

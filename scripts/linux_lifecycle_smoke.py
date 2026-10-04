@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -345,6 +346,40 @@ def scan_once(
     return measurements
 
 
+def rollback_scan_status(
+    command: Path, scan: Path, project: Path, env: dict[str, str], *, allow_newer_schema: bool
+) -> dict[str, Any]:
+    """Read a supported scan or prove an explicit, non-mutating schema refusal."""
+    before = hashlib.sha256(scan.read_bytes()).hexdigest()
+    try:
+        status = json.loads(
+            run([str(command), "scan", "status", "--scan", str(scan)], cwd=project, env=env)
+        )
+    except subprocess.CalledProcessError as exc:
+        diagnostic = (exc.stdout or "") + (exc.stderr or "")
+        if (
+            not allow_newer_schema
+            or exc.returncode != 1
+            or "scan.v1 schema differs:" not in diagnostic
+        ):
+            raise
+        status = {
+            "ok": False,
+            "state": "unsupported_schema",
+            "reason": "rolled-back build explicitly refuses the newer prerelease schema",
+        }
+    after = hashlib.sha256(scan.read_bytes()).hexdigest()
+    if after != before:
+        raise AssertionError("rollback status changed a retained scan")
+    if status.get("ok") is not True and status.get("state") != "unsupported_schema":
+        raise AssertionError(f"rollback could not read a supported artifact: {status!r}")
+    return {
+        "state": "readable" if status.get("ok") else "unsupported_schema",
+        "sha256": after,
+        "unchanged": True,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -581,22 +616,16 @@ def main() -> int:
                 f"seohead {rollback_identity['version']}"
             ):
                 raise AssertionError("rollback CLI version does not match the prior build")
-            for name in ("base", "candidate"):
-                status = json.loads(
-                    run(
-                        [
-                            str(command),
-                            "scan",
-                            "status",
-                            "--scan",
-                            str(project / "scans" / f"{name}.sqlite"),
-                        ],
-                        cwd=project,
-                        env=rollback_env,
-                    )
+            metrics["rollback_artifact_readability"] = {
+                name: rollback_scan_status(
+                    command,
+                    project / "scans" / f"{name}.sqlite",
+                    project,
+                    rollback_env,
+                    allow_newer_schema=name == "candidate",
                 )
-                if status.get("ok") is not True:
-                    raise AssertionError(f"rollback could not read the {name} artifact: {status!r}")
+                for name in ("base", "candidate")
+            }
             metrics["rollback_revision"] = rollback_identity["revision"]
             metrics["workspace_bytes"] = directory_size(project)
             metrics["temporary_bytes"] = directory_size(project.parent.parent / "tmp")

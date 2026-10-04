@@ -626,6 +626,13 @@ def build_report(
             "source": view_result["source"],
         }
         rendered = {**rendered, "summary": summary}
+        filtered_document = {
+            **filtered_document,
+            "summary": {
+                **(filtered_document.get("summary") or {}),
+                "finding_view": summary["finding_view"],
+            },
+        }
 
     default_name = f"audit-{rendered.get('domain', 'site')}.{fmt}"
     if fmt == "pdf" and path is None:
@@ -664,6 +671,8 @@ def build_report(
 
             model = build_pdf_model(filtered_document, project=project)
             result = write_pdf_report(model, target, lang=lang)
+            if result.get("ok") and view_result is not None:
+                result["finding_view"] = rendered["summary"]["finding_view"]
             if result.get("ok") and input_diagnostics:
                 result["input_diagnostics"] = input_diagnostics
             return result

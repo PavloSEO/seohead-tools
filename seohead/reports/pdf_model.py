@@ -625,6 +625,8 @@ def build_pdf_model(data: Any, *, project: str | None = None) -> dict[str, Any]:
         scope["crawl_scope_note"] = deepcopy(summary["crawl_scope_note"])
     if "health_score_scope" in summary:
         scope["health_score_scope"] = deepcopy(summary["health_score_scope"])
+    if isinstance(summary.get("finding_view"), dict):
+        scope["finding_view"] = deepcopy(summary["finding_view"])
     if kind == "site-audit":
         scope["operation"] = "bounded_site_audit"
 

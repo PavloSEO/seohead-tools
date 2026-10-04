@@ -610,4 +610,6 @@ def test_pdf_build_uses_only_saved_view_selection(project, tmp_path, monkeypatch
     assert result["ok"] is True
     assert seen["lang"] == language
     assert seen["model"]["summary"]["counts"]["findings"]["projected_count"] == 2
+    assert seen["model"]["run"]["scope"]["finding_view"]["pagination"]["truncated"] is True
+    assert result["finding_view"]["name"] == "triage"
     assert "Synthetic broken URL" not in json.dumps(seen["model"])

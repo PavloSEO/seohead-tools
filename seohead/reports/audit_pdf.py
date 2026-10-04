@@ -500,6 +500,8 @@ def _scope_text(scope: Any, lang: str) -> Any:
         parts = []
         for key, value in scope.items():
             operation = _LABELS[lang].get(f"operation_{value}") if key == "operation" else None
+            if isinstance(value, (Mapping, list)):
+                value = _readable_record(value, lang)
             parts.append(f"{_key_title(key, lang)}: {operation or value}")
         return "; ".join(parts)
     if isinstance(scope, list):
