@@ -204,6 +204,36 @@ def test_offline_handler_writes_immutable_linked_json_and_focused_report(tmp_pat
     assert from_view["selection"]["finding_ids"] == ["ISSUE-000001"]
 
 
+def test_verification_artifact_does_not_change_the_remediation_ledger(tmp_path):
+    from seohead.projects.workspace import create_project
+    from seohead.storage.ledger import create_ledger, ingest_scan, ledger_summary
+    from tests.test_remediation_ledger import _issue as ledger_issue
+    from tests.test_remediation_ledger import _scan as create_source_scan
+
+    project = create_project(tmp_path / "project", "https://example.test/")
+    scan = project["path"] + "/scans/baseline.sqlite"
+    create_source_scan(Path(scan), issues=[ledger_issue("ISSUE-000001", "TITLE_MISSING", target=A)])
+    ledger = Path(project["path"]) / "scans" / "remediation.sqlite"
+    create_ledger(ledger, project_dir=project["path"], producer_build="a" * 40)
+    ingest_scan(ledger, scan)
+    ledger_before = ledger.read_bytes()
+    summary_before = ledger_summary(ledger)
+
+    baseline = _audit(
+        urls=(A,), issues=[_issue("ISSUE-000001", "TITLE_MISSING", A)], scan_uuid="before-scan"
+    )
+    after = _audit(urls=(A,), scan_uuid="after-scan", generated_at="2026-10-02T00:00:00Z")
+    out = tmp_path / "verification"
+    result = handlers.verify_fixes(
+        baseline=baseline, after=after, finding_ids=["ISSUE-000001"], out_dir=str(out)
+    )
+
+    assert result["summary"]["resolved"] == 1
+    assert (out / "verification.json").is_file()
+    assert ledger.read_bytes() == ledger_before
+    assert ledger_summary(ledger) == summary_before
+
+
 @pytest.mark.parametrize(
     "before_id,after_id,before_time,after_time,reason",
     [
