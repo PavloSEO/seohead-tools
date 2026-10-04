@@ -109,7 +109,7 @@ def test_partial_cancelled_and_quiet_runs_do_not_send(tmp_path):
         )
 
     cancelled = schedule(project, action="cancel", expected_revision=partial["revision"])
-    with pytest.raises(ValueError, match="cancelled"):
+    with pytest.raises(DeliveryUnavailable, match="partial"):
         deliver(
             project,
             scan_id="scan:partial",
@@ -163,3 +163,44 @@ def test_quiet_retained_run_keeps_the_service_transport_unused(tmp_path):
     )
     assert result["delivery"] == "quiet"
     assert sent == []
+
+
+def test_completed_event_remains_deliverable_after_a_later_claim_is_cancelled(tmp_path):
+    project, configured, project_uuid = _project(tmp_path)
+    retained = run(
+        project,
+        "scan:complete",
+        [
+            {
+                "url": "https://example.test/a",
+                "changes": [{"kind": "status_changed", "severity": "warning"}],
+            }
+        ],
+        configured["revision"],
+    )
+    # A later claim is a different pass. Its cancellation must not erase or
+    # invalidate the immutable completed event above.
+    # The policy is not embedded in a run, so reconfigure from the known bounded input.
+    configured_enabled = configure(
+        project,
+        {
+            "enabled": True,
+            "urls": ["https://example.test/a"],
+            "max_urls": 1,
+            "max_requests": 1,
+            "full_refresh_every": 7,
+        },
+        retained["revision"],
+    )
+    claimed = schedule(project, action="start", expected_revision=configured_enabled["revision"])
+    cancelled = schedule(project, action="cancel", expected_revision=claimed["revision"])
+    sent = []
+    result = deliver(
+        project,
+        scan_id="scan:complete",
+        destination="service:test",
+        service=_service(tmp_path, project_uuid, sent),
+        expected_revision=cancelled["revision"],
+    )
+    assert result["delivery"] == "sent"
+    assert len(sent) == 1
