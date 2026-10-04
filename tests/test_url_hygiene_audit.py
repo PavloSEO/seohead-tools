@@ -19,7 +19,9 @@ _COLUMNS = [
 ]
 
 
-def _row(url: str, *, status: int = 200, canonical: str = "", redirect: str = "") -> list[str]:
+def _row(
+    url: str, *, status: int = 200, canonical: str = "", redirect: str = "", title: str = "A useful title for the page"
+) -> list[str]:
     return [
         url,
         "text/html",
@@ -27,7 +29,7 @@ def _row(url: str, *, status: int = 200, canonical: str = "", redirect: str = ""
         "OK",
         "Indexable" if status == 200 else "Non-Indexable",
         "" if status == 200 else "Redirected",
-        "A useful title for the page",
+        title,
         "A sufficiently long description for the test page.",
         "Heading",
         canonical or url,
@@ -95,3 +97,21 @@ def test_case_sensitive_siblings_are_not_folded_into_a_slash_pair(tmp_path):
         [_row("https://example.com/Guide"), _row("https://example.com/guide/")],
     )
     assert "URL_TRAILING_SLASH_INCONSISTENT" not in {issue.check for issue in result.issues}
+
+
+def test_literal_template_markers_are_reported_but_ordinary_copy_is_not(tmp_path):
+    result = _audit(
+        tmp_path,
+        [
+            _row("https://example.com/draft", title="{{TODO}} final title"),
+            _row("https://example.com/roadmap", title="Coming soon: our product roadmap"),
+        ],
+    )
+    finding = next(issue for issue in result.issues if issue.check == "PLACEHOLDER_MARKER")
+    assert finding.target_url == "https://example.com/draft"
+    assert finding.details == {
+        "observed": [{"field": "title", "markers": ["{{TODO}}"], "value": "{{TODO}} final title"}]
+    }
+    assert "PLACEHOLDER_MARKER" not in {
+        issue.check for issue in result.issues if issue.target_url == "https://example.com/roadmap"
+    }

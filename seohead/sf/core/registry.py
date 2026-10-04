@@ -1169,6 +1169,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Comparable trailing-slash URL variants both serve as separate indexable pages",
         "fix": "Choose and implement a documented URL policy if both variants are not intentional; redirect or canonical convergence already observed is not reported.",
     },
+    "PLACEHOLDER_MARKER": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Page declaration contains a literal TODO, TBD, or placeholder template marker",
+        "fix": "Replace the observed marker with reviewed page-specific copy. This check only reports explicit bracketed template tokens, not ordinary wording such as 'coming soon'.",
+    },
     # Facts a crawl can observe: which machine-readable byline/date carriers a
     # content-shaped page declared, the discovered-and-indexable state of the
     # conventional trust pages, and where outbound links actually sit.
