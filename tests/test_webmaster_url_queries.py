@@ -12,6 +12,8 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
 
     def send(method, url, payload, token):
         calls.append((method, url, payload, token))
+        if method == "GET":
+            return json.dumps({"hosts": [{"host_id": "https:example.test:443"}]})
         if payload["text_indicator"] == "URL":
             return json.dumps(
                 {
@@ -43,9 +45,9 @@ def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
     )
     assert result["ok"] and result["rows"][0]["query"] == "pump"
     assert result["rows"][0]["daily"][0]["ctr"] == 0.25
-    assert [call[0] for call in calls] == ["POST", "POST"]
-    assert all("query-analytics/list" in call[1] for call in calls)
-    assert calls[0][2]["filters"]["text_filters"][0]["operation"] == "TEXT_MATCH"
+    assert [call[0] for call in calls] == ["GET", "POST", "POST"]
+    assert all("query-analytics/list" in call[1] for call in calls[1:])
+    assert calls[1][2]["filters"]["text_filters"][0]["operation"] == "TEXT_MATCH"
 
 
 def test_url_query_failures_do_not_echo_token():
@@ -55,6 +57,8 @@ def test_url_query_failures_do_not_echo_token():
 
 def test_url_queries_paginate_with_explicit_cap():
     def send(_method, _url, payload, _token):
+        if payload is None:
+            return json.dumps({"hosts": [{"host_id": "h"}]})
         if payload["text_indicator"] == "URL":
             return json.dumps(
                 {
@@ -85,6 +89,8 @@ def test_query_route_retries_rate_limits_and_returns_only_provider_error_code():
 
     def send(_method, _url, _payload, _token):
         nonlocal calls
+        if _payload is None:
+            return json.dumps({"hosts": [{"host_id": "h"}]})
         calls += 1
         if calls < 3:
             raise urllib.error.HTTPError("https://api.test", 429, "rate", {}, io.BytesIO(b"{}"))
@@ -123,6 +129,8 @@ def test_cli_url_query_flags_reach_the_shared_handler(monkeypatch):
 
 def test_local_date_filter_marks_unobserved_days_without_zero_filling():
     def send(_method, _url, payload, _token):
+        if payload is None:
+            return json.dumps({"hosts": [{"host_id": "h"}]})
         if payload["text_indicator"] == "URL":
             return json.dumps(
                 {
@@ -157,3 +165,10 @@ def test_local_date_filter_marks_unobserved_days_without_zero_filling():
         "unobserved_days": ["2026-10-01", "2026-10-03"],
         "state": "partial_or_unknown",
     }
+
+
+def test_unlisted_host_is_not_granted_without_query_request():
+    result = wm.url_queries(
+        "missing", token="t", user_id="7", transport=lambda *_args: json.dumps({"hosts": []})
+    )
+    assert result == {"ok": False, "state": "not_granted", "host_id": "missing"}

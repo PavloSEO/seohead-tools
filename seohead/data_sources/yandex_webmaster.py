@@ -287,6 +287,22 @@ def url_queries(
     send = transport or _default_transport
     try:
         user = user_id or resolve_user_id(bearer, send)
+        host_listing = collect("hosts", user_id=user, token=bearer, transport=send)
+        if not host_listing.get("ok"):
+            return {
+                "ok": False,
+                "state": "verification_failed",
+                "error": "Webmaster host verification failed",
+            }
+        hosts = host_listing.get("data", {}).get("hosts")
+        if not isinstance(hosts, list) or not all(isinstance(item, dict) for item in hosts):
+            return {
+                "ok": False,
+                "state": "verification_failed",
+                "error": "malformed Webmaster host list",
+            }
+        if host_id not in {item.get("host_id") for item in hosts}:
+            return {"ok": False, "state": "not_granted", "host_id": host_id}
         endpoint = HOST + f"/user/{user}" + QUERY_ANALYTICS_PATH.replace("{host}", host_id)
 
         def request(
@@ -373,6 +389,8 @@ def url_queries(
             if urls_truncated or any(row["truncated"] for row in rows)
             else "complete",
             "host_id": host_id,
+            "property_access": "verified",
+            "result_state": "empty" if not rows else "observed",
             "rows": rows,
             "returned_urls": len(urls),
             "returned_queries": len(rows),
