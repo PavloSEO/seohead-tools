@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 from collections import Counter
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -327,6 +328,39 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
         con.close()
 
 
+def benchmark_overrides(config: dict, profile: dict) -> dict:
+    """Freeze all declared defaults rather than inheriting ambient crawl settings."""
+    from seohead.crawl.settings import describe_settings
+
+    overrides = {row["path"]: row["default"] for row in describe_settings()}
+    overrides.update(
+        {
+            "limits.max_urls": config["pages"],
+            "limits.max_requests": config["pages"] * 8 + 100,
+            "speed.min_delay_seconds": 0,
+            "speed.concurrency": 1,
+            "speed.adaptive": False,
+            "link_position.classify": True,
+            "link_attributes.capture": True,
+            "http.timeout_seconds": 5,
+            "sitemaps.auto_discover": False,
+            "cache.mode": "off",
+            "storage.format_version": "scan.v2",
+            "storage.body_mode": "captured_entity_bytes",
+            "rendering.mode": "js" if config["mode"] == "javascript" else "raw",
+            "rendering.escalation.policy": "full",
+            "rendering.escalation.max_render_urls": config["render_limit"],
+            "rendering.escalation.max_render_seconds": profile["budgets"]["render_wall_seconds"],
+            "rendering.rendered_links.crawl": True,
+            "rendering.browser.page_concurrency": 1,
+            "rendering.browser.script_timeout_seconds": 0,
+            "rendering.artifacts.screenshots": False,
+            "rendering.artifacts.console_errors": False,
+        }
+    )
+    return overrides
+
+
 def worker(config: dict, output: Path) -> None:
     import resource
 
@@ -385,33 +419,14 @@ def worker(config: dict, output: Path) -> None:
                 raise GracefulPause("planned graceful pause after committed rendered document")
         return document
 
-    overrides = {
-        "limits.max_urls": config["pages"],
-        "limits.max_requests": config["pages"] * 8 + 100,
-        "speed.min_delay_seconds": 0,
-        "speed.concurrency": 1,
-        "speed.adaptive": False,
-        "link_position.classify": True,
-        "link_attributes.capture": True,
-        "http.timeout_seconds": 5,
-        "sitemaps.auto_discover": False,
-        "cache.mode": "off",
-        "storage.format_version": "scan.v2",
-        "storage.body_mode": "captured_entity_bytes",
-        "rendering.mode": "js" if config["mode"] == "javascript" else "raw",
-        "rendering.escalation.policy": "full",
-        "rendering.escalation.max_render_urls": config["render_limit"],
-        "rendering.escalation.max_render_seconds": profile["budgets"]["render_wall_seconds"],
-        "rendering.rendered_links.crawl": True,
-        "rendering.browser.page_concurrency": 1,
-        "rendering.browser.script_timeout_seconds": 0,
-        "rendering.artifacts.screenshots": False,
-        "rendering.artifacts.console_errors": False,
-    }
+    overrides = benchmark_overrides(config, profile)
     results = []
     # One fresh worker is one cold/warm pair; the origin stays identical.
     with (
-        patch.dict(os.environ, {"SEOHEAD_ALLOW_PRIVATE_HOSTS": "127.0.0.1"}),
+        patch.dict(
+            os.environ,
+            {"SEOHEAD_ALLOW_PRIVATE_HOSTS": "127.0.0.1", "SEOHEAD_ALLOW_PRIVATE_NETWORKS": ""},
+        ),
         Origin(
             config["pages"],
             config["links"],
@@ -860,7 +875,13 @@ def main(argv=None):
     identity["fixture_origin"] = f"http://127.0.0.1:{origin_port}"
     (args.out / "frozen-manifest.json").write_text(
         json.dumps(
-            {"profile": profile, "identity": identity, "approved_command": args.command}, indent=2
+            {
+                "profile": profile,
+                "identity": identity,
+                "approved_command": args.command,
+                "declared_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
         )
         + "\n"
     )

@@ -64,7 +64,7 @@ def test_missing_growth_measurements_cannot_be_called_passed():
 
 def test_versioned_matrix_covers_all_settings_and_resolves_evidence_paths():
     matrix = document()
-    assert OUT.read_text() == render()
+    assert OUT.read_text(encoding="utf-8") == render()
     assert {x["path"] for x in matrix["settings"]} == {x["path"] for x in describe_settings()}
     root = Path(__file__).resolve().parents[1]
     for row in matrix["settings"] + matrix["workflows"]:
@@ -91,3 +91,17 @@ def test_owned_origins_reuse_the_frozen_authority_between_pairs():
         port = first.server.server_port
     with Origin(2, 1, 2, "javascript", port=port) as second:
         assert second.url == authority
+
+
+def test_benchmark_freezes_every_default_before_environment_overrides(monkeypatch):
+    from scripts.benchmark_js_bridge import benchmark_overrides
+    from seohead.crawl.settings import load
+
+    monkeypatch.setenv("SEOHEAD_CRAWL_MAX_URLS", "9000")
+    case = {"pages": 2, "mode": "javascript", "render_limit": 2}
+    overrides = benchmark_overrides(case, json.loads(PROFILE.read_text()))
+    assert {row["path"] for row in describe_settings()} <= set(overrides)
+    resolved = load(overrides=overrides)
+    assert resolved["limits"]["max_urls"] == 2
+    assert resolved["rendering"]["browser"]["transport"] == "local"
+    assert resolved["http"]["credential_headers"] == []
