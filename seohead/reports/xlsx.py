@@ -429,9 +429,9 @@ def write(document: Any, path: pathlib.Path) -> None:
             sheet.column_dimensions[key] = copy(dimension)
         sheet.freeze_panes = source.freeze_panes
         sheet.auto_filter = copy(source.auto_filter)
+        count = 0
         if rows is not None:
             widths = [len(str(cell.value or "")) for cell in source[1]]
-            count = 0
             for values, _colour in rows():
                 count += 1
                 for index, value in enumerate(values):
@@ -448,6 +448,10 @@ def write(document: Any, path: pathlib.Path) -> None:
                 )
             if count:
                 sheet.auto_filter.ref = f"A1:{get_column_letter(len(widths))}{count + 1}"
+        # The write-only writer emits dimensions only when this hook exists.
+        # Width measurement already counted data rows; no cell collection is needed.
+        dimension = f"A1:{get_column_letter(source.max_column)}{source.max_row + count}"
+        sheet.calculate_dimension = lambda ref=dimension: ref
         for row in source.iter_rows():
             cells = []
             for original in row:
@@ -468,7 +472,15 @@ def write(document: Any, path: pathlib.Path) -> None:
                 sheet.append(cells)
         for chart in source._charts:
             sheet.add_chart(chart)
-    workbook.save(path)
+        # Finish XML before opening the archive: a bad output path must not
+        # leave active lxml generators to fail later during garbage collection.
+        sheet.close()
+    try:
+        workbook.save(path)
+    finally:
+        for sheet in workbook.worksheets:
+            if sheet._writer is not None and pathlib.Path(sheet._writer.out).exists():
+                sheet._writer.cleanup()
 
 
 write_stream = write
