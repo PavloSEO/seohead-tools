@@ -525,6 +525,18 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         audit_v2 = {pointer: reader.count(pointer) for pointer in reader.collections}
         if audit_v2.get("/pages") != 0 and audit_v2.get("/issues") is None:
             raise AssertionError("audit.v2 lacks its finding collection")
+        summary = reader.header["summary"]
+        health = {
+            "score": summary.get("health_score"),
+            "scope": summary.get("health_score_scope"),
+            "check_coverage": summary.get("check_coverage"),
+        }
+        coverage = health["check_coverage"]
+        if not isinstance(coverage, dict) or sum(
+            coverage.get(key, 0)
+            for key in ("checks_fired", "checks_silent", "checks_skipped", "checks_disabled")
+        ) != coverage.get("checks_total"):
+            raise AssertionError("retained check coverage denominator is not conserved")
     before_hash = _file_hash(scan)
     task_backlog = build_tasks_from_audit_v2(str(scan))
     export = handlers.scan_export(
@@ -545,6 +557,16 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
     reanalysis = handlers.scan_reanalyze(
         input_path=str(scan), out=str(output / "reanalysis.sqlite"), producer_build=revision
     )
+    comparison = handlers.compare_crawls(
+        before=str(scan),
+        after=str(output / "reanalysis.sqlite"),
+        out_dir=str(output / "comparison"),
+    )
+    if (
+        comparison.get("conservation", {}).get("state") != "complete"
+        or comparison["conservation"]["before_issues"] != audit_v2["/issues"]
+    ):
+        raise AssertionError(f"bounded comparison did not conserve source findings: {comparison!r}")
     recheck = _recheck_consumers(scan, output, revision, audit_v2["/pages"])
     after_hash = _file_hash(scan)
     if before_hash != after_hash:
@@ -561,6 +583,8 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         "source_sha256_before": before_hash,
         "source_sha256_after": after_hash,
         "tasks": task_backlog["summary"],
+        "health": health,
+        "comparison": comparison,
         "export": export,
         "report": report,
         "status": status,

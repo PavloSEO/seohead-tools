@@ -148,5 +148,10 @@ def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence
     assert consumers["source_sha256_before"] == consumers["source_sha256_after"]
     assert consumers["export"]["counts"]["pages"] == 32
     assert consumers["consistency"]["read"]["pages"] == 32
+    assert consumers["comparison"]["conservation"]["state"] == "complete"
+    assert (
+        consumers["comparison"]["conservation"]["before_issues"] == consumers["audit_v2"]["/issues"]
+    )
+    assert consumers["health"]["check_coverage"]["checks_total"] > 0
     assert consumers["recheck"]["same_observation"]["not_verifiable"] == 1
     assert consumers["recheck"]["fresh_observation"]["resolved"] == 1
