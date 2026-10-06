@@ -169,7 +169,7 @@ Chat/project authorization is checked again after rendering and immediately befo
 
 The adapter has no polling, webhook registration, secret provisioning,
 chat-reading, or deployment code. Telegram does not provide an upload
-idempotency key, so it does not retry an ambiguous `sendDocument` outcome;
+idempotency key, so it does not retry an ambiguous `sendDocument` outcome (including malformed or missing success confirmation);
 the durable core leaves a failed attempt pending for an explicit operator
 decision rather than claiming that a recipient has a report.
 

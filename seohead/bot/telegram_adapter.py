@@ -227,15 +227,20 @@ class TelegramBotClient:
             raise TelegramAmbiguous("Telegram Bot API delivery outcome is unknown") from exc
         except httpx.HTTPError as exc:
             raise TelegramUnavailable("configured Telegram Bot API is unavailable") from exc
+        uncertain = TelegramAmbiguous if method == "sendDocument" else TelegramUnavailable
         try:
             body = response.json()
         except json.JSONDecodeError as exc:
-            raise TelegramUnavailable("Telegram Bot API returned invalid JSON") from exc
-        if response.status_code != 200 or body.get("ok") is not True:
+            raise uncertain("Telegram Bot API returned invalid JSON") from exc
+        if not isinstance(body, dict):
+            raise uncertain("Telegram Bot API result has an unsupported shape")
+        if body.get("ok") is False:
             raise TelegramUnavailable("Telegram Bot API rejected the operation")
+        if response.status_code != 200 or body.get("ok") is not True:
+            raise uncertain("Telegram Bot API did not confirm the operation")
         result = body.get("result")
         if not isinstance(result, (dict, bool)):
-            raise TelegramUnavailable("Telegram Bot API result has an unsupported shape")
+            raise uncertain("Telegram Bot API result has an unsupported shape")
         return body
 
 
@@ -545,4 +550,4 @@ class TelegramDocumentTransport:
             raise DeliveryUnavailable(str(exc)) from exc
         result = body["result"]
         if not isinstance(result, dict) or not isinstance(result.get("message_id"), int):
-            raise DeliveryUnavailable("Telegram Bot API did not confirm a document message")
+            raise DeliveryAmbiguous("Telegram Bot API did not confirm a document message")

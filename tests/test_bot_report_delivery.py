@@ -437,3 +437,32 @@ def test_process_exit_during_upload_keeps_uncertain_claim(monkeypatch, tmp_path)
     with pytest.raises(DeliveryUnavailable, match="already in progress"):
         restarted.deliver("alpha", job_id, "requester", ReportProfile("json"))
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("body", [{"ok": True, "result": True}, {"ok": True}, []])
+def test_unconfirmed_document_response_is_never_replayed(monkeypatch, tmp_path, body):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "synthetic-token")
+    requests = []
+    client = TelegramBotClient(
+        TelegramBotConfig("env:SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "https://telegram.example.test"),
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: requests.append(request) or httpx.Response(200, json=body)
+            )
+        ),
+    )
+    chats = TelegramChatAuthorizationStore(tmp_path / "chats.sqlite")
+    chats.grant("telegram:7", "7")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"telegram:7"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        TelegramDocumentTransport(client, chats, "telegram:7").send,
+    )
+    with pytest.raises(DeliveryAmbiguous):
+        delivery.deliver("alpha", job_id, "telegram:7", ReportProfile("json"))
+    with pytest.raises(DeliveryUnavailable, match="already in progress"):
+        delivery.deliver("alpha", job_id, "telegram:7", ReportProfile("json"))
+    assert len(requests) == 1
