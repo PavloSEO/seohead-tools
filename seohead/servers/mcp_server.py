@@ -290,9 +290,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         to fire on, a finding about a URL the run never fetched, a summary that disagrees
         with its own rows. Not a second audit and not a threshold — only contradictions,
         each naming both values and where each came from, so a surprising number can be
-        traced instead of trusted. ``run`` is a directory holding audit.json and/or
-        pages.jsonl; ``images_dir`` is an images-download directory whose manifest lets a
-        recorded size be checked against the bytes on disk."""
+        traced instead of trusted. ``run`` is a native scan path, or a directory holding
+        scan.sqlite, audit.json or pages.jsonl. Native scans without retained decision
+        logs report those events as unavailable; none are invented. ``images_dir`` is
+        an images-download directory whose manifest lets a recorded size be checked
+        against the bytes on disk."""
         return _checked(
             handlers.log_scan(run=run, images_dir=images_dir, max_per_rule=max_per_rule)
         )
@@ -865,9 +867,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         subdomains of one registrable domain are allowed, only noted."""
         return _checked(handlers.facts_export(sites=sites))
 
-    @mcp.tool(annotations=pure, structured_output=True)
+    @mcp.tool(annotations=create_files, structured_output=True)
     def seo_compare_crawls(
-        before: Any, after: Any, force: bool = False, correspondence: Any = None
+        before: Any,
+        after: Any,
+        force: bool = False,
+        correspondence: Any = None,
+        out_dir: str | None = None,
     ) -> dict[str, Any]:
         """Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint
         sets per finding: entered (new problem on a page that existed before),
@@ -880,10 +886,21 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         it never infers pairs from titles or content and adds a release_review.v1
         facts/finding artifact. Refuses a known difference in results-affecting
         settings unless ``force`` is true; partial-crawl warnings remain attached
-        to the historical result."""
+        to the historical result.
+
+        With out_dir, writes a new compare.v2 package with partition manifests,
+        exact finding rows, checksums and before/after count conservation. Without
+        it, returns the small compare.v1 document; retained audit.v2 populations
+        above 10,000 pages or issues require explicit out_dir. Never overwrites
+        a package and never collects evidence or calls the network.
+        """
         return _checked(
             handlers.compare_crawls(
-                before=before, after=after, force=force, correspondence=correspondence
+                before=before,
+                after=after,
+                force=force,
+                correspondence=correspondence,
+                out_dir=out_dir,
             )
         )
 

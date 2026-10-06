@@ -837,6 +837,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value is not None:
                 kw[name] = value
     elif cmd == "compare-crawls":
+        if getattr(args, "out_dir", None) is not None:
+            kw["out_dir"] = args.out_dir
         if getattr(args, "before", None):
             kw["before"] = args.before
         if getattr(args, "after", None):
@@ -1590,6 +1592,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-depth", type=int, help=argparse.SUPPRESS)
         sub.add_argument("--min-delay", type=float, help=argparse.SUPPRESS)
     if cmd == "compare-crawls":
+        _source_flag(
+            sub,
+            "--out-dir",
+            help="new local compare.v2 package; required for large retained audits",
+        )
         sub.add_argument(
             "--correspondence",
             help="url-correspondence.v1 JSON file declaring origin and URL pairs",
@@ -1847,7 +1854,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         # Not `required=True`: that would reject a JSON-only `--input '{"run": ...}'` call before
         # _build_kwargs ever runs, since argparse enforces required flags ahead of dispatch. The
         # handler already raises a clear error when `run` is missing from both sources (#218).
-        _source_flag(sub, "--run", help="directory holding audit.json and/or pages.jsonl")
+        _source_flag(
+            sub,
+            "--run",
+            help="native scan path, or run directory with scan.sqlite, audit.json or pages.jsonl",
+        )
         sub.add_argument(
             "--images-dir",
             help="an images-download output directory, so a recorded size can be compared "

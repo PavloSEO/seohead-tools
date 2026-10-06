@@ -34,10 +34,10 @@ and this decision makes no backend migration.
 | `crawl-site` | Live URL (`url`)<br>URL list (`urls`)<br>Local file (`urls_file`)<br>Scan artifact (`resume`)<br>Local configuration (`config`)<br>Project directory (`project`) | TXT, CSV, XLSX, or XML URL input; Resumes retained crawl evidence and continues network collection.; Defaults the target and scans/ path; explicit paths, legacy output and resume keep their route. |
 | `crawl-describe-settings` | No direct input | — |
 | `scan-reanalyze` | Scan artifact (`scan`) | — |
-| `log-scan` | Local directory (`run`) | — |
+| `log-scan` | Local directory (`run`)<br>Scan artifact (`run`) | — |
 | `crawl-diagnose` | Scan artifact (`scan`)<br>Local directory (`run`) | Choose one retained source; diagnosis is offline and read-only. |
 | `crawl-diagnose-export` | Scan artifact (`scan`); requires `export`<br>Local directory (`run`); requires `export`<br>Local file (`export`) | Choose one retained source and a new redacted export destination; refuses overwrite. |
-| `compare-crawls` | Audit document (`before, after`)<br>Local file (`correspondence`) | Each path may be audit JSON or scan.v1.; Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default. |
+| `compare-crawls` | Audit document (`before, after`)<br>Local file (`correspondence`)<br>Local directory (`out_dir`) | Each path may be audit JSON or scan.v1.; Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default.; Optional new compare.v2 package; required for audit.v2 populations above 10,000 pages or issues. Refuses overwrite. |
 | `verify-fixes` | Audit document (`baseline`); requires `out_dir`<br>Audit document (`after`); requires `baseline, out_dir`<br>Selector (`finding_ids`); requires `baseline, out_dir`<br>Local file (`view`); requires `baseline, out_dir`<br>URL list (`urls`); requires `baseline, out_dir`<br>Local file (`urls_file`); requires `baseline, out_dir`<br>Local configuration (`config`) | Offline verification without recrawling.; Saved verification_view.v1 selection.; Required when the baseline redacted credentials. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
 | `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |

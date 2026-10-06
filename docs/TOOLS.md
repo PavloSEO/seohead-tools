@@ -56,6 +56,15 @@ and inputs remain in the nearby route sections and generated tool reference.
 `topvisor-read` · `verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` ·
 `workflow-execute` · `workflow-resume` · `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
+## Offline bounded comparison
+
+`compare-crawls --before before.sqlite --after after.sqlite --out-dir ./comparison`
+creates a new `compare.v2` manifest and NDJSON collections for exact finding changes,
+unchanged findings and per-check totals. Source identities, checksums and before/after
+conservation remain explicit. Existing destinations are refused. Small calls without
+`--out-dir` retain `compare.v1`; audit.v2 sources above 10,000 pages or issues require
+an explicit output directory. This workflow reads retained evidence without network calls.
+
 ## Offline BI projection
 
 `bi-filter` selects declared columns and exact field values from a verified local BI

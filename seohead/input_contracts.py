@@ -130,7 +130,9 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("crawl-describe-settings", "crawl_describe_settings", _form("no_input")),
     _command("scan-reanalyze", "scan_reanalyze", _form("scan_artifact", "input_path")),
-    _command("log-scan", "log_scan", _form("legacy_directory", "run")),
+    _command(
+        "log-scan", "log_scan", _form("legacy_directory", "run"), _form("scan_artifact", "run")
+    ),
     _command(
         "crawl-diagnose",
         "crawl_diagnose",
@@ -154,6 +156,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "local_file",
             "correspondence",
             note="Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Optional new compare.v2 package; required for audit.v2 populations above 10,000 pages or issues. Refuses overwrite.",
         ),
     ),
     _command(

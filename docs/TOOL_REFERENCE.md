@@ -180,7 +180,7 @@ Takes no arguments.
 
 MCP name: `seo_log_scan`
 
-Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit and not a threshold — only contradictions, each naming both values and where each came from, so a surprising number can be traced instead of trusted. ``run`` is a directory holding audit.json and/or pages.jsonl; ``images_dir`` is an images-download directory whose manifest lets a recorded size be checked against the bytes on disk.
+Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit and not a threshold — only contradictions, each naming both values and where each came from, so a surprising number can be traced instead of trusted. ``run`` is a native scan path, or a directory holding scan.sqlite, audit.json or pages.jsonl. Native scans without retained decision logs report those events as unavailable; none are invented. ``images_dir`` is an images-download directory whose manifest lets a recorded size be checked against the bytes on disk.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -745,8 +745,17 @@ Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four dis
 | `after` | `Any` | `required` |
 | `force` | `bool` | `False` |
 | `correspondence` | `Any` | `None` |
+| `out_dir` | `str | None` | `None` |
 
-**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With out_dir, writes a new compare.v2 package with partition manifests,
+exact finding rows, checksums and before/after count conservation. Without
+it, returns the small compare.v1 document; retained audit.v2 populations
+above 10,000 pages or issues require explicit out_dir. Never overwrites
+a package and never collects evidence or calls the network.
 
 ### `verify-fixes`
 
