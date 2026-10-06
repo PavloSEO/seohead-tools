@@ -62,7 +62,7 @@ RSS is reported separately. Phase events supply wall-time and self plus waited
 child CPU deltas; sampled child CPU is a lower bound while a child is alive.
 
 Frozen limits include 600 seconds for rendering, 1 GiB Python RSS, 2 GiB sampled
-process-tree RSS, 8 GiB retained files per pair, 16 GiB total retained benchmark
+process-tree RSS, 8 GiB retained files per case, 16 GiB total retained benchmark
 output and a 32 GiB free-disk reserve. The complete phase, CPU and growth limits
 are in the profile. Small-to-large phase RSS growth is checked at fixed mode,
 density, repetition and temperature; missing measurements cannot pass.

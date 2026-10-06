@@ -638,7 +638,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
                     failure = "Python RSS budget exceeded"
                 elif sum(cpu.values()) - cpu_starts[case] > budgets["cpu_seconds"]:
                     failure = "sampled CPU budget exceeded"
-                elif peak_disk > budgets["case_disk_mib"] * MIB:
+                elif disk_bytes(output / case) > budgets["case_disk_mib"] * MIB:
                     failure = "case retained output budget exceeded"
                 elif disk_bytes(suite_root) > budgets["total_outputs_mib"] * MIB:
                     failure = "total retained output budget exceeded"
@@ -798,6 +798,14 @@ def main(argv=None):
         parser.error("execution requires --execute, exact --source-revision and a clean checkout")
     if sys.platform not in {"darwin", "linux"} or shutil.which("ps") is None:
         parser.error("numeric process-tree measurement is unavailable on this platform")
+    if identity["playwright"] == "unavailable":
+        parser.error("Playwright is unavailable; no installation attempted")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as runtime:
+        executable = Path(os.environ.get("SEOHEAD_CHROME") or runtime.chromium.executable_path)
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        parser.error("Chromium is unavailable; select an installed executable with SEOHEAD_CHROME")
     if args.out.exists():
         parser.error(
             "output must be a new directory; existing benchmark evidence is never replaced"
