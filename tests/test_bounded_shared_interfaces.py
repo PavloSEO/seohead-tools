@@ -250,3 +250,47 @@ def test_failed_observed_sitemap_is_terminal(tmp_path, monkeypatch):
     row = run_observation.status(project)["items"][0]
     assert row["state"] == "failed"
     assert row["counters"]["fetched"] is None
+
+
+def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_path):
+    from tests.test_compare_bounded import _source
+    from tests.test_verify_fixes import A, B, _audit, _issue
+
+    before = _audit(issues=[_issue("before-a", "TITLE_MISSING", A)])
+    after = _audit(issues=[_issue("after-b", "DESC_MISSING", B)])
+    with _source(tmp_path, "before", before), _source(tmp_path, "after", after):
+        pass
+    sources = [tmp_path / "before.sqlite", tmp_path / "after.sqlite"]
+    original = [path.read_bytes() for path in sources]
+    left, right = tmp_path / "cli-compare", tmp_path / "mcp-compare"
+    a = _cli(
+        "compare-crawls",
+        "--before",
+        str(sources[0]),
+        "--after",
+        str(sources[1]),
+        "--out-dir",
+        str(left),
+    )
+    tool = build_server()._tool_manager.get_tool("seo_compare_crawls")
+    b = tool.fn(before=str(sources[0]), after=str(sources[1]), out_dir=str(right))
+    assert a["schema_version"] == b["schema_version"] == "compare.v2"
+    assert (
+        a["conservation"]
+        == b["conservation"]
+        == {
+            "before_issues": 1,
+            "after_issues": 1,
+            "before_accounted": 1,
+            "after_accounted": 1,
+            "state": "complete",
+        }
+    )
+    assert {p.name: p.read_bytes() for p in left.iterdir()} == {
+        p.name: p.read_bytes() for p in right.iterdir()
+    }
+    assert [path.read_bytes() for path in sources] == original
+    assert tool.annotations.readOnlyHint is False and tool.annotations.openWorldHint is False
+    legacy = handlers.compare_crawls(before, after)
+    assert legacy["schema_version"] == "compare.v1"
+    assert len(legacy["left"]) == 1 and len(legacy["entered"]) == 1
