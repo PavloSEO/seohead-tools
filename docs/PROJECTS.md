@@ -147,6 +147,23 @@ no reliable live URL counter, so its counter fields stay unavailable while its
 collection/analysis phases remain observable. The observer only reads these
 records and never starts, cancels, resumes, or acknowledges a run.
 
+## Explicit monitor collection
+
+A monitor policy is disabled until explicitly enabled and a `start` action
+claims one bounded pass. The stored claim fixes its URLs and request/render
+budgets and has a short local lease. `monitor_collect(..., apply=false)` only
+previews that claim. `apply=true` fetches only its undispatched URLs through the
+guarded HTTP cache, retains a body and validation artifact with verified hashes,
+and records a complete, partial, or unavailable result. A conditional `304`
+retains the cached effective representation and status; it is not recorded as a
+new site `304` result.
+
+The interval remains planning advice. This is an explicit one-shot collector,
+not a timer, daemon, background scheduler, crawl launcher, or notification
+service. An expired or interrupted claim is never replayed automatically: the
+operator must create a new claim. Local receipt recording is explicit and has no
+external destination or transport.
+
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
 They accept ordinary terminal text, including OS dictation committed as text; no
 speech-recognition integration is involved. These are the only writes from the
