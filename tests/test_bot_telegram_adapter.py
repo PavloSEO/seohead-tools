@@ -343,3 +343,36 @@ def test_durable_update_dedup_and_same_actor_other_chat_isolation(monkeypatch, t
         session._submitter.status(job)
     with pytest.raises(PermissionError, match="chat"):
         session._submitter.cancel(job)
+
+
+def test_confirmation_callbacks_are_bound_to_the_current_preview(monkeypatch, tmp_path):
+    sessions, _chats, _projects, subject = _authorized_sessions(tmp_path)
+    requests = []
+    adapter = sessions.adapter(_client(monkeypatch, requests))
+    session = sessions.session_for(subject, "-10042")
+    for text in ("https://example.com/", "alpha", "quick", "json"):
+        session.handle(Event(Action.ANSWER, text))
+    dispatch = session._dispatch_id
+
+    def callback(update_id, token):
+        return {
+            "update_id": update_id,
+            "callback_query": {
+                "id": str(update_id),
+                "from": {"id": 7},
+                "message": {"chat": {"id": -10042}},
+                "data": token,
+            },
+        }
+
+    reply = adapter.handle_update(callback(1, f"a:confirm:{dispatch}"))
+    assert reply.state == State.CONFIRMING
+    with pytest.raises(TelegramUnavailable, match="no longer current"):
+        adapter.handle_update(callback(2, f"a:confirm:{dispatch}"))
+    assert sessions.backend.list_jobs("alpha", 0, 10) == []
+    with pytest.raises(TelegramUnavailable, match="current preview"):
+        adapter.handle_update(callback(3, "a:start:old-dispatch"))
+    start = callback(4, f"a:start:{dispatch}")
+    assert adapter.handle_update(start).state == State.RUNNING
+    assert adapter.handle_update(start).state == State.RUNNING
+    assert len(sessions.backend.list_jobs("alpha", 0, 10)) == 1
