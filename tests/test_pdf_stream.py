@@ -14,7 +14,7 @@ from seohead.storage.audit_v2 import AuditV2Reader, write_audit_v2
 from tests.test_scan_audit_v2 import _scan
 
 
-def _fixture(tmp_path, count=40):
+def _fixture(tmp_path, count=40, *, summary_extra=None):
     scan = tmp_path / "scan.sqlite"
     binding = _scan(scan)
     issues = [
@@ -57,6 +57,7 @@ def _fixture(tmp_path, count=40):
         "groups": [],
         "suppressed_issues": [],
     }
+    header["summary"].update(summary_extra or {})
     collections = {
         "/issues": issues,
         "/pages": pages,
@@ -301,3 +302,62 @@ def test_relative_companion_links_escape_output_names(tmp_path, renderer):
         for annotation in PdfReader(target).pages[0]["/Annots"]
     ]
     assert "report%20%231.files/audit.json" in links
+
+
+def test_large_nested_summary_stays_complete_without_consuming_pdf_metadata_budget(
+    tmp_path, monkeypatch, renderer
+):
+    histogram = {str(index): index for index in range(2000)}
+    nested = {"click_depth": {"histogram": histogram, "max": 1999}}
+    scan, _ = _fixture(tmp_path, summary_extra={"internal_linking": nested})
+    monkeypatch.setattr(pdf_stream, "MAX_METADATA_BYTES", 4096)
+    result = build_report(scan, "pdf", str(tmp_path / "report.pdf"), pdf_policy="overview-v1")
+    assert result["ok"], result
+    document = json.loads((Path(result["manifest"]).parent / "audit.json").read_text())
+    assert document["summary"]["internal_linking"] == nested
+    assert renderer[0]["summary"]["source"]["internal_linking"] == {
+        "state": "retained_in_companion",
+        "reference": "audit.json#/summary/internal_linking",
+    }
+
+
+def test_portable_links_preserve_internal_destination_closure(tmp_path):
+    pytest.importorskip("pypdf")
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import (
+        ArrayObject,
+        DictionaryObject,
+        FloatObject,
+        NameObject,
+        TextStringObject,
+    )
+
+    from tests.test_pdf_validation import _write_text_pdf
+
+    path = tmp_path / "navigation.pdf"
+    _write_text_pdf(path, ["Navigation evidence"])
+    writer = PdfWriter()
+    writer.clone_document_from_reader(PdfReader(path))
+    writer.add_named_destination("evidence", 0)
+    writer.add_outline_item("Evidence", 0)
+    writer.add_annotation(
+        0,
+        DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Annot"),
+                NameObject("/Subtype"): NameObject("/Link"),
+                NameObject("/Rect"): ArrayObject([FloatObject(value) for value in (0, 0, 50, 10)]),
+                NameObject("/Dest"): TextStringObject("evidence"),
+            }
+        ),
+    )
+    writer.add_uri(0, pdf_stream.ARTIFACT_LINK_PREFIX + "audit.json", [0, 20, 50, 30])
+    with path.open("wb") as output:
+        writer.write(output)
+    pdf_stream._portable_links(path, "report.files", ["audit.json"])
+    reader = PdfReader(path)
+    assert reader.get_destination_page_number(reader.named_destinations["evidence"]) == 0
+    assert reader.get_destination_page_number(reader.outline[0]) == 0
+    annotations = [item.get_object() for item in reader.pages[0]["/Annots"]]
+    assert any(item.get("/Dest") == "evidence" for item in annotations)
+    assert any(item.get("/A", {}).get("/URI") == "report.files/audit.json" for item in annotations)

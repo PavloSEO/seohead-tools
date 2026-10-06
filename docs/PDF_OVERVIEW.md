@@ -20,8 +20,11 @@ the complete JSON instead of repeated in large PDF table cells.
   exceeding the byte budget; do not skip it and select a later record.
 - The projection records the zero-based first ordinal and exclusive end ordinal,
   exact source/displayed/omitted counts, displayed source bytes and both limits.
-- Complete coverage metadata is limited to 4 MiB before projection. An oversized
-  metadata block produces a named failure, not a shortened coverage claim.
+- Complete coverage and essential display metadata are limited to 4 MiB. Nested
+  summary populations, such as a per-depth histogram, are first replaced in the
+  display model with references to complete JSON; their size does not become a
+  lower crawl limit. Oversized essential metadata produces a named failure, not
+  a shortened coverage claim.
 - The PDF retains the existing 200-page and 25-MiB validation limits and the local
   Chromium timeout. Large individual records can still exceed renderer limits;
   failure does not publish a successful package or change the retained source.

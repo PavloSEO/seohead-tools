@@ -40,7 +40,28 @@ def build_overview_model(reader: Any) -> dict[str, Any]:
 
     projection = {}
     omissions = []
-    metadata_bytes = len(_json(reader.header).encode("utf-8"))
+    header = dict(reader.header)
+    # Large nested summary populations (for example one histogram bucket per
+    # depth) are complete companion data, not display metadata. Reference them
+    # before checking the PDF metadata budget rather than imposing a crawl cap.
+    required_summary = {
+        "totals",
+        "by_severity",
+        "by_check",
+        "check_coverage",
+        "evidence_contract",
+        "project_coverage",
+    }
+    header["summary"] = {
+        key: {
+            "state": "retained_in_companion",
+            "reference": "audit.json#/summary/" + key.replace("~", "~0").replace("/", "~1"),
+        }
+        if key not in required_summary and isinstance(value, (dict, list))
+        else value
+        for key, value in (reader.header.get("summary") or {}).items()
+    }
+    metadata_bytes = len(_json(header).encode("utf-8"))
     if metadata_bytes > MAX_METADATA_BYTES:
         raise ValueError(f"PDF overview metadata exceeds {MAX_METADATA_BYTES} bytes")
 
@@ -109,7 +130,7 @@ def build_overview_model(reader: Any) -> dict[str, Any]:
             return [restore(child) for child in value]
         return value
 
-    document = restore(reader.header)
+    document = restore(header)
     document.setdefault("groups", [])
     model = build_pdf_model(document)
     # Native audits retain per-check capability records in source evidence;
@@ -225,9 +246,7 @@ def _portable_links(path: Path, bundle_name: str, artifacts: list[str]) -> None:
                 action[NameObject("/URI")] = TextStringObject(links[action["/URI"]])
     if seen != set(links):
         raise ValueError("PDF overview did not retain every complete-companion link")
-    writer.append_pages_from_reader(reader)
-    if reader.metadata:
-        writer.add_metadata({key: str(value) for key, value in reader.metadata.items()})
+    writer.clone_document_from_reader(reader)
     replacement = path.with_suffix(".linked.pdf")
     with replacement.open("wb") as output:
         writer.write(output)
