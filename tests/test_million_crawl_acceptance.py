@@ -130,3 +130,23 @@ def test_density_fixture_declares_distinct_links_forms_and_body_padding():
     assert len({anchor["href"] for anchor in soup.find_all("a")}) == 8
     assert len(soup.find_all("form")) == 3
     assert "x" * 2048 in soup.get_text()
+
+
+def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence(
+    tmp_path, monkeypatch
+):
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    def refuse_materialization(*_args, **_kwargs):
+        raise AssertionError("consumer materialized the full audit")
+
+    monkeypatch.setattr(AuditV2Reader, "materialize_legacy", refuse_materialization)
+    outcome = run_stage(
+        tmp_path / "consumers", pages=32, shard_size=16, interrupt_after=8, consumers=True
+    )
+    consumers = outcome["consumers"]
+    assert consumers["source_sha256_before"] == consumers["source_sha256_after"]
+    assert consumers["export"]["counts"]["pages"] == 32
+    assert consumers["consistency"]["read"]["pages"] == 32
+    assert consumers["recheck"]["same_observation"]["not_verifiable"] == 1
+    assert consumers["recheck"]["fresh_observation"]["resolved"] == 1

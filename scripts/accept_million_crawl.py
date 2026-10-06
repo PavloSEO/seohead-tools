@@ -452,6 +452,69 @@ def _collector_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _recheck_consumers(scan: Path, output: Path, revision: str, pages: int) -> dict[str, Any]:
+    """Prove refusal for reused evidence and resolution from a fresh one-page capture."""
+    from datetime import datetime, timezone
+
+    from seohead.servers import handlers
+    from seohead.servers.scan_handlers import crawl_site_scan
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    with AuditV2Reader(scan) as reader:
+        finding_id = next(
+            item["id"]
+            for item in reader.iter_collection("/issues")
+            if item["check"] == "TITLE_MISSING" and item["target_url"] == START_URL
+        )
+        generated = reader.header["run"]["generated_at"]
+    negative = handlers.verify_fixes(
+        baseline=str(scan),
+        finding_ids=[finding_id],
+        after=str(scan),
+        out_dir=str(output / "same-observation"),
+    )
+    if [item["status"] for item in negative["findings"]] != ["not_verifiable"]:
+        raise AssertionError("same-observation recheck falsely verified a fix")
+
+    class FixedOrigin(SyntheticOrigin):
+        def _page(self, page):
+            return (
+                super()
+                ._page(page)
+                .replace(b"</head>", b"<title>Corrected synthetic page title</title></head>")
+            )
+
+    baseline_time = datetime.fromisoformat(generated.replace("Z", "+00:00")).timestamp()
+    delay = baseline_time + 1.01 - datetime.now(timezone.utc).timestamp()
+    if delay > 0:
+        time.sleep(delay)
+    settings = _settings(pages)
+    settings["limits"]["max_urls"] = 1
+    fresh_path = output / "fresh-observation.sqlite"
+    with _synthetic_transport(FixedOrigin(1, 1)):
+        fresh = crawl_site_scan(
+            START_URL, scan_out=str(fresh_path), settings=settings, producer_build=revision
+        )
+    if not fresh.get("audit_available") or not fresh.get("finalized") or fresh.get("partial"):
+        raise AssertionError("fresh bounded recheck observation did not complete")
+    positive = handlers.verify_fixes(
+        baseline=str(scan),
+        finding_ids=[finding_id],
+        after=str(fresh_path),
+        out_dir=str(output / "fresh-recheck"),
+    )
+    if [item["status"] for item in positive["findings"]] != ["resolved"]:
+        raise AssertionError(
+            f"fresh local title correction did not resolve selected finding: {positive['findings']!r}"
+        )
+    return {
+        "same_observation": negative["summary"],
+        "fresh_observation": positive["summary"],
+        "negative_path": negative["verification"],
+        "positive_path": positive["verification"],
+    }
+
+
 def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
     from seohead.servers import handlers
     from seohead.sf.tasks import build_tasks_from_audit_v2
@@ -474,9 +537,15 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
     report = handlers.report_build(audit=str(scan), fmt="csv", out=str(output / "audit-report.csv"))
     status = handlers.scan_status(input_path=str(scan))
     diagnosis = handlers.crawl_diagnose(scan=str(scan))
+    consistency = handlers.log_scan(run=str(scan))
+    if not consistency.get("ok") or consistency.get("read", {}).get("pages") != audit_v2["/pages"]:
+        raise AssertionError(
+            f"consistency consumer failed to read full population: {consistency!r}"
+        )
     reanalysis = handlers.scan_reanalyze(
         input_path=str(scan), out=str(output / "reanalysis.sqlite"), producer_build=revision
     )
+    recheck = _recheck_consumers(scan, output, revision, audit_v2["/pages"])
     after_hash = _file_hash(scan)
     if before_hash != after_hash:
         raise AssertionError("read-only consumers or reanalysis changed the source scan")
@@ -496,7 +565,9 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         "report": report,
         "status": status,
         "diagnosis_codes": [item["code"] for item in diagnosis.get("diagnoses", [])],
+        "consistency": consistency,
         "reanalysis": reanalysis,
+        "recheck": recheck,
     }
 
 
