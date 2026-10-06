@@ -133,9 +133,10 @@ Lighthouse integration, not home-grown. The pragmatic path is one external
 | 4.3 | SSR vs CSR detect | The site is fundamentally client-side rendered | medium | **DONE** in `render-check` (empty SPA shell) | id `CSR_ONLY` |
 | 4.4 | Render-blocking resources for bots | JS/CSS the bot cannot load to render | medium | B (`ROBOTS_BLOCKS_RESOURCES` exists; extend) | link with `ROBOTS_BLOCKS_RESOURCES` |
 
-**Context.** `render-check` covers 4.1–4.3 as a live tool with a quality
-verdict; formalizing them as registry ids with thresholds would make them
-part of the crawl audit document.
+**Context.** `render-check` compares title, H1, canonical, content and links,
+and reports an empty rendered shell. Description and meta-robots/noindex
+differences remain unmeasured. Formalizing the measured subset as registry
+ids with thresholds would make that subset part of the crawl audit document.
 
 ---
 
