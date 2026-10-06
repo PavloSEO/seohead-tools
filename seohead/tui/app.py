@@ -384,12 +384,16 @@ def _local_page(snapshot: dict, state: ShellState) -> tuple[list, str]:
     )
 
 
+def _rate_text(telemetry: dict) -> str:
+    rate = telemetry.get("current_rate_per_second")
+    unit = (
+        "URLs incl. resources" if telemetry.get("unit") == "urls_including_resources" else "pages"
+    )
+    return f"{rate:.2f} {unit}/s" if rate is not None else "rate unavailable"
+
+
 def _run_summary(item: dict) -> str:
     telemetry = item.get("telemetry", {})
-    rate = telemetry.get("current_rate_per_second")
-    speed = (
-        f"{rate:.2f} {telemetry.get('unit', 'pages')}/s" if rate is not None else "rate unavailable"
-    )
     title = item.get("scenario", {}).get("id") or human_label(item.get("kind"))
     mode = item.get("collector", {}).get("mode")
     return " · ".join(
@@ -402,7 +406,7 @@ def _run_summary(item: dict) -> str:
             ("Stale sample" if telemetry["state"] == "stale" else human_label(telemetry["state"]))
             if telemetry.get("state")
             else None,
-            speed,
+            _rate_text(telemetry),
             item.get("next_action"),
         )
         if value
@@ -468,12 +472,7 @@ def _watch_lines(
             else None
         )
         amount = str(fetched) if fetched is not None else "unknown"
-        speed = telemetry.get("current_rate_per_second")
-        speed_text = (
-            f"{speed:.2f} {telemetry.get('unit', 'pages')}/s"
-            if speed is not None
-            else "rate unavailable"
-        )
+        speed_text = _rate_text(telemetry)
         collected = (
             (
                 f"Collected {amount} / {total} discovered"
@@ -1251,7 +1250,7 @@ def _watch_dashboard(
         )
         content.split_column(
             Layout(name="metrics", size=4),
-            Layout(name="crawl", size=11 if native_run and height >= 32 else 8),
+            Layout(name="crawl", size=12 if native_run and height >= 32 else 8),
             Layout(name="evidence"),
         )
         content["metrics"].update(cards)
@@ -1284,12 +1283,11 @@ def _watch_dashboard(
         if native_run:
             collector = native_run["collector"]
             telemetry = native_run.get("telemetry", {})
-            rate = telemetry.get("current_rate_per_second")
             crawl_lines.insert(
                 1,
                 Text(
                     f"Mode {human_label(collector['mode'])} · {human_label(telemetry.get('state'))} · "
-                    f"{f'{rate:.2f} URLs/s' if rate is not None else 'speed unavailable'}"
+                    f"{_rate_text(telemetry)}"
                 ),
             )
             if height >= 32:
@@ -1331,10 +1329,9 @@ def _watch_dashboard(
             )
         meters.add_row(*meter_cells)
         checklist = [meters, Text("")]
-        items = snapshot.get("active_tasks", {}).get("items", snapshot["progress"]["items"])
-        custom = [item for item in items if str(item.get("id", "")).startswith("custom:")]
-        checklist.append(Text("AGENT TASKS" if custom else "NEXT ACTIONS", style=accent))
-        work_items = custom if custom else snapshot["progress"]["next_actions"]
+        active = snapshot.get("active_tasks", {}).get("items", [])
+        checklist.append(Text("CURRENT WORK" if active else "NEXT ACTIONS", style=accent))
+        work_items = active or snapshot["progress"]["next_actions"]
         for item in work_items[: max(3, height - 26)]:
             marker = "+" if item["state"] == "completed" else "-"
             checklist.append(

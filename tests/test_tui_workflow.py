@@ -14,6 +14,7 @@ from seohead.projects.workspace import create_project
 from seohead.tui.app import (
     _ObserverRefresh,
     _page_selection,
+    _rate_text,
     _read_view,
     _view_key,
     _watch_detail_lines,
@@ -397,6 +398,28 @@ def test_default_finding_scan_is_bound_before_publishing_its_ready_page(tmp_path
     assert state.watch_selected_scan_uuid == page["scan"]["uuid"]
     assert reader.page_for(state) is page
     assert reader.worker is None
+
+
+def test_wide_home_keeps_active_work_with_site_scoped_identifiers(tmp_path):
+    root = _project(tmp_path)
+    snapshot = observe(root)
+    active = snapshot["active_tasks"]["items"][0]
+    active["id"] = "site:00000000-0000-4000-8000-000000000001/custom:late"
+    text = _render(root, ShellState([], view="watch"), snapshot, width=140, height=40, data={})
+    assert "CURRENT WORK" in text
+    assert "Inspect the retained product sample" in text
+    assert "NEXT ACTIONS" not in text
+
+
+def test_sf_rate_names_its_measured_resource_population_without_a_machine_code():
+    assert (
+        _rate_text({"current_rate_per_second": 20.0, "unit": "urls_including_resources"})
+        == "20.00 URLs incl. resources/s"
+    )
+    assert (
+        _rate_text({"current_rate_per_second": None, "unit": "urls_including_resources"})
+        == "rate unavailable"
+    )
 
 
 def test_hyphenated_command_help_uses_shared_handler_description():
