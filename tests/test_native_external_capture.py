@@ -1,13 +1,29 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
 
 from seohead.crawl.settings import load
 from seohead.servers.reanalysis_handlers import reanalyze_scan
 from seohead.servers.scan_handlers import crawl_site_scan, resume_scan
 from seohead.storage import open_scan, read_audit
+
+
+@pytest.fixture(autouse=True)
+def owned_loopback_dns(monkeypatch):
+    """Keep the two owned virtual hosts independent of the OS resolver."""
+    original = socket.getaddrinfo
+
+    def resolve(host, port, *args, **kwargs):
+        if host in {"site.localhost", "outside.localhost"}:
+            host = "127.0.0.1"
+        return original(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
 
 
 class _Site(BaseHTTPRequestHandler):
