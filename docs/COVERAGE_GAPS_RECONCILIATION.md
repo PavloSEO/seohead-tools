@@ -3,7 +3,7 @@
 Generated from `docs/COVERAGE_GAPS.md` by `scripts/generate_coverage_gap_reconciliation.py`.
 A row is covered only when its actual Mode cell names a shipped check/tool; partial and out-of-scope are not readiness claims.
 
-**100 rows:** covered_registry_or_tool=54, missing=32, out_of_scope=9, partial=5.
+**100 rows:** covered_registry_or_tool=55, missing=31, out_of_scope=9, partial=5.
 
 | Row | Name | Reconciled state |
 |---|---|---|
@@ -34,7 +34,7 @@ A row is covered only when its actual Mode cell names a shipped check/tool; part
 | 4.2 | content/links diff | covered_registry_or_tool |
 | 4.3 | SSR vs CSR detect | covered_registry_or_tool |
 | 4.4 | Render-blocking resources for bots | missing |
-| 5.1 | JS redirect | missing |
+| 5.1 | JS redirect | covered_registry_or_tool |
 | 5.2 | URL case normalization | missing |
 | 5.3 | Soft 404 | covered_registry_or_tool |
 | 6.1 | Canonical chain | covered_registry_or_tool |
@@ -112,13 +112,13 @@ A row is covered only when its actual Mode cell names a shipped check/tool; part
 
 Rows below are generated from unresolved map rows: stated value first, then the declared B/B+/A feasibility, then row number. The order is a planning aid, not a product-readiness claim.
 
-1. JS redirect (5.1) — missing; A (HTML/render)
-2. Secrets leaked in HTML (14.6) — missing; A (HTML + regex)
-3. Required fields per type (13.1) — partial; **mostly DONE** in the live `schema-check` (vocabulary + Google rich-result eligibility per type); audit ids still absent
-4. Real Core Web Vitals (LCP/INP/CLS) (1.1) — partial; **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check
-5. YMYL detection (2.6) — partial; **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification
-6. Render-blocking resources for bots (4.4) — missing; B (`ROBOTS_BLOCKS_RESOURCES` exists; extend)
-7. Duplicate lang per target (7.9) — missing; B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang)
-8. Invalid rel=next/prev (12.1) — missing; B (Internal:All: rel_next/rel_prev)
-9. Canonical chain on pagination (12.2) — missing; B (canonical x rel_next graph)
-10. Pagination loop (12.3) — missing; B (graph)
+1. Secrets leaked in HTML (14.6) — missing; A (HTML + regex)
+2. Required fields per type (13.1) — partial; **mostly DONE** in the live `schema-check` (vocabulary + Google rich-result eligibility per type); audit ids still absent
+3. Real Core Web Vitals (LCP/INP/CLS) (1.1) — partial; **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check
+4. YMYL detection (2.6) — partial; **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification
+5. Render-blocking resources for bots (4.4) — missing; B (`ROBOTS_BLOCKS_RESOURCES` exists; extend)
+6. Duplicate lang per target (7.9) — missing; B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang)
+7. Invalid rel=next/prev (12.1) — missing; B (Internal:All: rel_next/rel_prev)
+8. Canonical chain on pagination (12.2) — missing; B (canonical x rel_next graph)
+9. Pagination loop (12.3) — missing; B (graph)
+10. Pagination orphan (12.5) — missing; B (Inlinks x rel_next)

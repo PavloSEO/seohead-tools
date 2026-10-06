@@ -24,13 +24,12 @@ def test_reconciliation_covers_every_canonical_gap_row_and_is_current():
 
 def test_reconciliation_uses_the_actual_mode_column_for_every_state():
     assert Counter(status(row) for row in rows()) == {
-        "covered_registry_or_tool": 54,
-        "missing": 32,
+        "covered_registry_or_tool": 55,
+        "missing": 31,
         "out_of_scope": 9,
         "partial": 5,
     }
     assert [row.row_id for row in priority_rows()] == [
-        "5.1",
         "14.6",
         "13.1",
         "1.1",
@@ -40,6 +39,7 @@ def test_reconciliation_uses_the_actual_mode_column_for_every_state():
         "12.1",
         "12.2",
         "12.3",
+        "12.5",
     ]
 
 
