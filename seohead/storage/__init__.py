@@ -867,12 +867,26 @@ def _read_deadline_seconds(path: Path) -> float:
     return max(READ_TIMEOUT_SECONDS, size / READ_TIMEOUT_BYTES_PER_SECOND)
 
 
-def open_scan(path: str | Path, *, require_audit: bool = True):
-    """Return a validated read-only connection; the caller must close it."""
+def open_scan(
+    path: str | Path, *, require_audit: bool = True, query_timeout_seconds: float | None = None
+):
+    """Return a validated read-only connection; the caller must close it.
+
+    Optional query budgets activate only after full artifact validation. They
+    measure each SQLite execute/fetch operation, excluding caller processing
+    between streamed rows; validation keeps its existing artifact-size budget.
+    """
     _runtime()
     con = None
     try:
-        con = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        from .read_budget import ReadConnection
+
+        con = sqlite3.connect(
+            Path(path).resolve().as_uri() + "?mode=ro",
+            uri=True,
+            timeout=5,
+            factory=ReadConnection if query_timeout_seconds is not None else sqlite3.Connection,
+        )
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA query_only=ON")
@@ -905,6 +919,8 @@ def open_scan(path: str | Path, *, require_audit: bool = True):
                     pass
         else:
             _validate(con, require_audit=require_audit)
+        if query_timeout_seconds is not None:
+            con.set_query_budget(query_timeout_seconds)
         return con
     except (OSError, sqlite3.Error, ValueError) as exc:
         if con is not None:

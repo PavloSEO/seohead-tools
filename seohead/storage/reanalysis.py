@@ -18,7 +18,7 @@ from typing import Any
 
 from seohead import filesystem
 
-from . import ScanError, _dump, _insert, open_scan
+from . import READ_TIMEOUT_SECONDS, ScanError, _dump, _insert, open_scan
 from .native_scan import (
     BACKUP_TIMEOUT_SECONDS,
     SNAPSHOT_RESERVE_BYTES,
@@ -200,7 +200,7 @@ def derived_scan(
     if os.path.lexists(target_audit):
         raise ScanError(f"derived reanalysis audit output already exists: {target_audit}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    source = open_scan(source_path, require_audit=False)
+    source = open_scan(source_path, require_audit=False, query_timeout_seconds=READ_TIMEOUT_SECONDS)
     fd, name = tempfile.mkstemp(prefix=".reanalysis-", suffix=".sqlite", dir=target.parent)
     os.close(fd)
     temporary = Path(name)
