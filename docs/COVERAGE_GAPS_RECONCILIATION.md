@@ -3,13 +3,13 @@
 Generated from `docs/COVERAGE_GAPS.md` by `scripts/generate_coverage_gap_reconciliation.py`.
 A row is covered only when its actual Mode cell names a shipped check/tool; partial and out-of-scope are not readiness claims.
 
-**100 rows:** covered_registry_or_tool=55, missing=31, out_of_scope=9, partial=5.
+**100 rows:** covered_registry_or_tool=55, missing=29, out_of_scope=8, partial=8.
 
 | Row | Name | Reconciled state |
 |---|---|---|
 | 1.1 | Real Core Web Vitals (LCP/INP/CLS) | partial |
-| 1.2 | TTFB separate from `response_time` | missing |
-| 1.3 | FCP / render speed | missing |
+| 1.2 | TTFB separate from `response_time` | partial |
+| 1.3 | FCP / render speed | partial |
 | 1.4 | Response compression (Brotli/gzip) | partial |
 | 1.5 | Cache-Control / cacheability | partial |
 | 1.6 | Render-blocking resources | covered_registry_or_tool |
@@ -30,7 +30,7 @@ A row is covered only when its actual Mode cell names a shipped check/tool; part
 | 3.7 | Link text (descriptive) | covered_registry_or_tool |
 | 3.8 | Touch-target size | out_of_scope |
 | 3.9 | Table headers | out_of_scope |
-| 4.1 | raw/render diff (title, desc, h1, canonical, noindex) | covered_registry_or_tool |
+| 4.1 | raw/render diff (title, desc, h1, canonical, noindex) | partial |
 | 4.2 | content/links diff | covered_registry_or_tool |
 | 4.3 | SSR vs CSR detect | covered_registry_or_tool |
 | 4.4 | Render-blocking resources for bots | missing |
@@ -56,7 +56,7 @@ A row is covered only when its actual Mode cell names a shipped check/tool; part
 | 7.9 | Duplicate lang per target | missing |
 | 7.10 | Duplicate lang per source | covered_registry_or_tool |
 | 7.11 | Malformed language/region code | covered_registry_or_tool |
-| 7.12 | Outside `<head>` | out_of_scope |
+| 7.12 | Outside `<head>` | covered_registry_or_tool |
 | 8.1 | follow/nofollow conflict per target | covered_registry_or_tool |
 | 8.2 | Nofollow onto an indexable page | covered_registry_or_tool |
 | 8.3 | External without nofollow | missing |
@@ -116,9 +116,9 @@ Rows below are generated from unresolved map rows: stated value first, then the 
 2. Required fields per type (13.1) — partial; **mostly DONE** in the live `schema-check` (vocabulary + Google rich-result eligibility per type); audit ids still absent
 3. Real Core Web Vitals (LCP/INP/CLS) (1.1) — partial; **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check
 4. YMYL detection (2.6) — partial; **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification
-5. Render-blocking resources for bots (4.4) — missing; B (`ROBOTS_BLOCKS_RESOURCES` exists; extend)
-6. Duplicate lang per target (7.9) — missing; B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang)
-7. Invalid rel=next/prev (12.1) — missing; B (Internal:All: rel_next/rel_prev)
-8. Canonical chain on pagination (12.2) — missing; B (canonical x rel_next graph)
-9. Pagination loop (12.3) — missing; B (graph)
-10. Pagination orphan (12.5) — missing; B (Inlinks x rel_next)
+5. raw/render diff (title, desc, h1, canonical, noindex) (4.1) — partial; **PARTIAL** — `render-check` compares title, h1 and canonical; description and meta-robots/noindex differences remain unmeasured
+6. Render-blocking resources for bots (4.4) — missing; B (`ROBOTS_BLOCKS_RESOURCES` exists; extend)
+7. Duplicate lang per target (7.9) — missing; B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang)
+8. Invalid rel=next/prev (12.1) — missing; B (Internal:All: rel_next/rel_prev)
+9. Canonical chain on pagination (12.2) — missing; B (canonical x rel_next graph)
+10. Pagination loop (12.3) — missing; B (graph)
