@@ -460,3 +460,8 @@ See [Terminal controls and observation](TERMINAL.md) for keyboard navigation,
 read cadence, task detail, and retained scan history. The same bounded reads are
 available through `project-activity`, `project-checklist-page`, `project-task-detail`,
 and `project-scans` in the CLI and MCP.
+
+Use `sitemap-crawl --url https://example.test/sitemap.xml --project ./project`
+to record a standalone sitemap observation explicitly. The URL must share the
+project origin and have no credentials, query or fragment. Counts distinguish
+parsed sitemap documents from declared page URLs; no HTML crawl is inferred.

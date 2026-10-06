@@ -478,6 +478,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if overrides:
             kw["overrides"] = overrides
     elif cmd == "sitemap-crawl":
+        if args.project is not None:
+            kw["project"] = args.project
         if args.url:
             kw["url"] = args.url
         if args.concurrency is not None:
@@ -2366,6 +2368,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--format", help="apache-rewrite-rule|apache-redirect|nginx|custom")
     if cmd == "sitemap-crawl":
         sub.add_argument("--concurrency", type=int, help="parallel fetches (default 3)")
+        _source_flag(sub, "--project", help="explicit local project for sitemap observation")
     if cmd == "images-download":
         sub.add_argument("--output-dir", help="download target directory")
     if cmd == "images-optimize":

@@ -327,11 +327,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
-    @mcp.tool(annotations=fetch, structured_output=True)
-    def seo_sitemap_crawl(url: str, concurrency: int = 3) -> dict[str, Any]:
-        """Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree,
-        with duplicate detection."""
-        return _checked(handlers.sitemap_crawl(url=url, concurrency=concurrency))
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_sitemap_crawl(
+        url: str, concurrency: int = 3, project: str | None = None
+    ) -> dict[str, Any]:
+        """Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree.
+
+        Fetches sitemap evidence. An explicit local project records an observation
+        for the same origin; otherwise no project files are written. Declared URLs
+        are not fetched HTML pages. Counters count parsed sitemap documents only.
+        """
+        return _checked(handlers.sitemap_crawl(url=url, concurrency=concurrency, project=project))
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_images_download(

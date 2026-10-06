@@ -138,7 +138,9 @@ def redirects_check(
     return {"chain": redirects_core.check_chain(url, options or {})}
 
 
-def sitemap_crawl(url: str | None = None, concurrency: int = 3) -> dict[str, Any]:
+def sitemap_crawl(
+    url: str | None = None, concurrency: int = 3, project: str | None = None
+) -> dict[str, Any]:
     """Expand one sitemap, or discover one from a site root through robots.txt.
 
     A root reads ``robots.txt`` first and uses its ``Sitemap:`` declarations;
@@ -148,7 +150,48 @@ def sitemap_crawl(url: str | None = None, concurrency: int = 3) -> dict[str, Any
     """
     if not url:
         raise ValueError("url required")
-    return sitemap.crawl(url, concurrency)
+    if project is None:
+        return sitemap.crawl(url, concurrency)
+    from hashlib import sha256
+    from json import dumps
+
+    from seohead.projects.run_observation import finish, finish_sitemap, start
+    from seohead.projects.workspace import open_project
+
+    opened = open_project(project)
+    source = urlsplit(url)
+    target = urlsplit(opened["project"]["site"]["target"])
+    if (
+        source.scheme not in {"http", "https"}
+        or source.username is not None
+        or source.password is not None
+        or source.query
+        or source.fragment
+        or (source.scheme, source.hostname, source.port)
+        != (target.scheme, target.hostname, target.port)
+    ):
+        raise ValueError(
+            "observed sitemap URL must share the project origin without credentials, query or fragment"
+        )
+    root = opened["path"]
+    run = start(
+        root,
+        kind="sitemap",
+        mode="sitemap",
+        max_urls=0,
+        config_fingerprint=sha256(
+            dumps({"url": url, "concurrency": concurrency}, sort_keys=True).encode()
+        ).hexdigest(),
+        artifact=None,
+        counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
+    )
+    try:
+        result = sitemap.crawl(url, concurrency)
+    except BaseException:
+        finish(root, run["id"], state="failed", reason="sitemap collection interrupted or failed")
+        raise
+    finish_sitemap(root, run["id"], result)
+    return result
 
 
 def _seed_urls_from_sitemap(

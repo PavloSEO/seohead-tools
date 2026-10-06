@@ -223,14 +223,21 @@ Create one new redacted crawl-diagnostic JSON file from retained evidence. This 
 
 MCP name: `seo_sitemap_crawl`
 
-Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree, with duplicate detection.
+Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree.
 
 | Argument | Type | Default |
 |---|---|---|
 | `url` | `str` | `required` |
 | `concurrency` | `int` | `3` |
+| `project` | `str | None` | `None` |
 
-**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Fetches sitemap evidence. An explicit local project records an observation
+for the same origin; otherwise no project files are written. Declared URLs
+are not fetched HTML pages. Counters count parsed sitemap documents only.
 
 ### `images-download`
 

@@ -195,7 +195,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("segment-diff", "segment_diff", _form("audit_document", "audit")),
     _command("redirects-generate", "redirects_generate", _form("inline_json", "redirects")),
     _command("redirects-check", "redirects_check", _form("live_url", "url")),
-    _command("sitemap-crawl", "sitemap_crawl", _form("live_url", "url")),
+    _command(
+        "sitemap-crawl",
+        "sitemap_crawl",
+        _form("live_url", "url"),
+        _form(
+            "project_directory",
+            "project",
+            note="Optional explicit local observation; same origin only. Declared URLs are not fetched HTML pages.",
+        ),
+    ),
     _command("images-download", "images_download", _form("url_list", "urls")),
     _command("images-optimize", "images_optimize", _form("local_file", "files")),
     _command("keywords-cluster", "keywords_cluster", _form("inline_json", "params")),

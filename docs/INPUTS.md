@@ -44,7 +44,7 @@ and this decision makes no backend migration.
 | `segment-diff` | Audit document (`audit`) | — |
 | `redirects-generate` | Inline JSON (`redirects`) | — |
 | `redirects-check` | Live URL (`url`) | — |
-| `sitemap-crawl` | Live URL (`url`) | — |
+| `sitemap-crawl` | Live URL (`url`)<br>Project directory (`project`) | Optional explicit local observation; same origin only. Declared URLs are not fetched HTML pages. |
 | `images-download` | URL list (`urls`) | — |
 | `images-optimize` | Local file (`files`) | — |
 | `keywords-cluster` | Inline JSON (`params`) | — |
