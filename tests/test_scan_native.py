@@ -47,6 +47,29 @@ def _runtime():
     }
 
 
+def test_resume_closes_credential_reader_before_returning_writer(tmp_path, monkeypatch):
+    import seohead.storage as storage
+
+    path = tmp_path / "native.sqlite"
+    metadata = _metadata()
+    with NativeScan.create(path, **metadata):
+        pass
+    readers = []
+    open_reader = storage.open_scan
+
+    def retained_reader(*args, **kwargs):
+        reader = open_reader(*args, **kwargs)
+        readers.append(reader)  # Do not let garbage collection mask a missing close.
+        return reader
+
+    monkeypatch.setattr(storage, "open_scan", retained_reader)
+    with NativeScan.open(path, expected_config=metadata["config"]) as writer:
+        assert len(readers) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            readers[0].execute("SELECT 1")
+        assert writer.finish_without_audit("empty resume fixture") is True
+
+
 def _record(url="https://example.test/"):
     return vars(
         PageRecord(

@@ -898,7 +898,7 @@ class NativeScan:
             if expected_config is not None:
                 from . import open_scan
 
-                with open_scan(path, require_audit=False) as reader:
+                with contextlib.closing(open_scan(path, require_audit=False)) as reader:
                     row = reader.execute(
                         "SELECT payload_json FROM context_items WHERE kind='credential_context' AND item_key='run'"
                     ).fetchone()
