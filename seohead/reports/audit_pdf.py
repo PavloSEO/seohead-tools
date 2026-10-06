@@ -18,7 +18,9 @@ _LABELS: dict[str, dict[str, str]] = {
     "en": {
         "report": "Technical SEO audit",
         "source_site_audit": "Site audit",
-        "source_sf_audit": "Screaming Frog audit",
+        "source_sf_audit": "Crawl audit · collector unknown",
+        "source_native": "SEOHEAD native crawl audit",
+        "source_screaming_frog": "Screaming Frog audit",
         "audit_for": "Audit for",
         "prepared": "Generated",
         "scope": "Run scope",
@@ -144,7 +146,9 @@ _LABELS: dict[str, dict[str, str]] = {
     "ru": {
         "report": "Технический SEO-аудит",
         "source_site_audit": "Аудит сайта",
-        "source_sf_audit": "Аудит Screaming Frog",
+        "source_sf_audit": "Аудит краула · сборщик неизвестен",
+        "source_native": "Аудит собственного краулера SEOHEAD",
+        "source_screaming_frog": "Аудит Screaming Frog",
         "audit_for": "Аудит сайта",
         "prepared": "Сформирован",
         "scope": "Объём проверки",
@@ -1116,6 +1120,14 @@ def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: 
         if isinstance(source_kind, str)
         else None
     )
+    if source_kind == "sf-audit":
+        collector = source.get("collector")
+        if collector == "seohead.crawl":
+            source_label = labels["source_native"]
+        elif collector in ("screaming-frog", "screaming_frog", "seohead.sf") or (
+            collector is None and source.get("input_mode") == "exports"
+        ):
+            source_label = labels["source_screaming_frog"]
     source_label = source_label or source_kind or source.get("schema") or labels["not_reported"]
 
     head = (

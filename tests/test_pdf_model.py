@@ -539,3 +539,44 @@ def test_unsupported_or_malformed_documents_are_rejected(document, message):
 def test_malformed_optional_coverage_containers_are_rejected(document, message):
     with pytest.raises(ValueError, match=message):
         build_pdf_model(document)
+
+
+@pytest.mark.parametrize(
+    "run, expected, unexpected",
+    [
+        (
+            {"collector": "seohead.crawl", "input_mode": "crawl"},
+            "SEOHEAD native crawl audit",
+            "Screaming Frog audit",
+        ),
+        (
+            {"collector": "seohead.crawl", "input_mode": "reanalysis"},
+            "SEOHEAD native crawl audit",
+            "Screaming Frog audit",
+        ),
+        ({"input_mode": "exports"}, "Screaming Frog audit", "SEOHEAD native crawl audit"),
+        (
+            {"collector": "screaming-frog", "input_mode": "crawl"},
+            "Screaming Frog audit",
+            "SEOHEAD native crawl audit",
+        ),
+        ({"input_mode": "crawl"}, "Crawl audit · collector unknown", "Screaming Frog audit"),
+        (
+            {"collector": "other", "input_mode": "exports"},
+            "Crawl audit · collector unknown",
+            "Screaming Frog audit",
+        ),
+        ({}, "Crawl audit · collector unknown", "Screaming Frog audit"),
+    ],
+)
+def test_pdf_branding_uses_collector_provenance_not_shared_schema(run, expected, unexpected):
+    from seohead.reports.audit_pdf import render_audit_pdf_html
+
+    document = _sf_audit()
+    document["run"].update(run)
+    model = build_pdf_model(document)
+    assert model["source"]["kind"] == "sf-audit"
+    assert model["source"]["collector"] == run.get("collector")
+    rendered = render_audit_pdf_html(model)
+    assert expected in rendered
+    assert unexpected not in rendered

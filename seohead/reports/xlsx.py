@@ -42,11 +42,10 @@ def _autofit(ws, limits: dict[int, int] | None = None) -> None:
         )
 
 
-def write(document: dict[str, Any], path: pathlib.Path) -> None:
+def _metadata_workbook(document: dict[str, Any]):
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, Reference
     from openpyxl.styles import Font
-    from openpyxl.utils import get_column_letter
 
     from seohead.reports import checks_completed_display, neutralize_formula
     from seohead.reports.client_findings import (
@@ -226,58 +225,14 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
             ]
         )
     _style_header(ws)
-    from seohead.reports import SEVERITY_TITLES
-
-    for finding in document.get("findings") or []:
-        if view_columns is not None:
-            values = finding.get("view_fields") or {}
-            ws.append([neutralize_formula(values.get(column, "")) for column in view_columns])
-            severity_column = (
-                view_columns.index("severity") + 1 if "severity" in view_columns else None
-            )
-        else:
-            ws.append(
-                [
-                    SEVERITY_TITLES.get(finding.get("severity"), finding.get("severity")),
-                    neutralize_formula(finding.get("url", "")),
-                    neutralize_formula(finding.get("client_title", "Audit finding")),
-                    neutralize_formula(finding.get("client_observation", "")),
-                    neutralize_formula(finding.get("client_reproduction", "")),
-                    finding.get("status_code", ""),
-                    finding.get("occurrences_count", ""),
-                    neutralize_formula("; ".join(finding.get("client_details") or [])),
-                    neutralize_formula("; ".join(finding.get("client_locations") or [])),
-                    neutralize_formula(finding.get("fix_hint", "")),
-                ]
-            )
-            severity_column = 1
-        colour = _HEAD.get(finding.get("severity"))
-        if colour and severity_column:
-            ws.cell(row=ws.max_row, column=severity_column).font = Font(bold=True, color=colour)
-    if ws.max_row > 1:
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(view_columns) if view_columns is not None else 10)}{ws.max_row}"
     _autofit(ws, {4: 100, 8: 100, 9: 60} if view_columns is None else {})
 
     # -- Pages ---------------------------------------------------------------
-    pages = document.get("pages") or []
     ws = wb.create_sheet("Pages")
     # description_length is part of the site-audit page contract (audit.site
     # emits it, csvfile.py already writes it) -- this sheet was the one place
     # it was silently dropped, making the XLSX working file unusable for the
     # meta-description-length scenario it is supposed to cover (#225).
-    columns = [
-        "url",
-        "status",
-        "title",
-        "title_length",
-        "description_length",
-        "h1",
-        "canonical",
-        "words",
-        "schema_types",
-        "schema_errors",
-        "social_missing",
-    ]
     titles = [
         "URL",
         "Status",
@@ -293,10 +248,6 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
     ]
     ws.append(titles)
     _style_header(ws)
-    for page in pages:
-        ws.append([neutralize_formula(page.get(c, "")) for c in columns])
-    if ws.max_row > 1:
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{ws.max_row}"
     _autofit(ws, {1: 70, 3: 60, 6: 40})  # URL, Title, H1 -- H1 shifted by the new column
 
     # -- Technologies and infrastructure ------------------------------------
@@ -393,216 +344,131 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
         evidence_sheet.append(["Kind", "Measurement", "State", "Scope or reason"])
         for row in evidence:
             evidence_sheet.append([neutralize_formula(value) for value in row])
-        evidence_sheet.freeze_panes = "A2"
+        _style_header(evidence_sheet)
+        _autofit(evidence_sheet, {2: 80, 4: 100})
         evidence_sheet.auto_filter.ref = evidence_sheet.dimensions
 
-    wb.save(path)
+    return wb
 
 
-def write_stream(document: Any, path: pathlib.Path) -> None:
-    """Write a streamed audit using openpyxl's bounded write-only worksheets."""
+def write(document: Any, path: pathlib.Path) -> None:
+    """Use one report layout and stream the two unbounded tables to worksheet XML."""
+    from copy import copy
+
     from openpyxl import Workbook
     from openpyxl.cell import WriteOnlyCell
-    from openpyxl.chart import BarChart, Reference
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
 
-    from seohead.reports import SEVERITY_TITLES, checks_completed_display, neutralize_formula
+    from seohead.reports import SEVERITY_TITLES, neutralize_formula
+    from seohead.reports.client_findings import finding_view_columns
 
+    # The small metadata sheets retain the established layout. Only findings and
+    # pages grow with the crawl; their rows are replayed to measure widths, then
+    # written directly to disk using openpyxl's write-only mode.
+    template = _metadata_workbook(
+        {
+            key: document.get(key)
+            for key in ("domain", "url", "generated_at", "summary", "site", "suppressed_issues")
+        }
+    )
     workbook = Workbook(write_only=True)
     summary = document.get("summary") or {}
-    summary_sheet = workbook.create_sheet("Summary")
-    summary_sheet.column_dimensions["A"].width = 36
-    summary_sheet.column_dimensions["B"].width = 70
-    summary_rows = 3
-    summary_sheet.append([f"SEO Audit: {document.get('domain', '')}"])
-    summary_sheet.append([document.get("url", "")])
-    summary_sheet.append([f"Generated: {document.get('generated_at', '')}"])
-    if summary.get("crawl_valid") is False:
-        summary_sheet.append(
-            ["Crawl failed — no health score", summary.get("crawl_invalid_reason")]
-        )
-        summary_rows += 1
-    if summary.get("crawl_partial"):
-        summary_sheet.append(["Partial crawl — scope is limited", summary.get("crawl_scope_note")])
-        summary_rows += 1
-    for item in summary.get("checks_disabled") or []:
-        summary_sheet.append(["Disabled check", item.get("id"), item.get("reason")])
-        summary_rows += 1
-    for item in summary.get("tools_failed") or []:
-        summary_sheet.append(["Unavailable check", item.get("tool"), item.get("error")])
-        summary_rows += 1
-    by_severity = summary.get("findings_by_severity") or {}
-    summary_header_row = summary_rows + 1
-    summary_sheet.append(["Metric", "Value"])
-    summary_rows += 1
-    for row in (
-        ("Pages checked", summary.get("pages_checked", document.page_count)),
-        ("Total findings", summary.get("findings_total", document.finding_count)),
-        ("Critical findings", by_severity.get("critical", 0)),
-        ("Warnings", by_severity.get("warning", 0)),
-        ("Notices", by_severity.get("notice", 0)),
-        ("Checks completed", checks_completed_display(summary)),
-        ("Checks unavailable", len(summary.get("tools_failed") or [])),
-    ):
-        summary_sheet.append(list(row))
-        summary_rows += 1
-    chart = BarChart()
-    chart.title = "Findings by Severity"
-    chart.y_axis.title = "Count"
-    chart.add_data(
-        Reference(
-            summary_sheet,
-            min_col=2,
-            min_row=summary_header_row + 3,
-            max_row=summary_header_row + 5,
-        ),
-        titles_from_data=False,
+    view_columns = finding_view_columns(summary)
+    severity_column = (
+        (view_columns.index("severity") if "severity" in view_columns else None)
+        if view_columns is not None
+        else 0
     )
-    chart.set_categories(
-        Reference(
-            summary_sheet,
-            min_col=1,
-            min_row=summary_header_row + 3,
-            max_row=summary_header_row + 5,
-        )
-    )
-    chart.legend = None
-    chart.height, chart.width = 7, 12
-    summary_sheet.add_chart(chart, f"D{summary_header_row}")
 
-    def add_header(sheet, values):
-        cells = []
-        for value in values:
-            cell = WriteOnlyCell(sheet, value=value)
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="1F3864")
-            cells.append(cell)
-        sheet.append(cells)
-        sheet.freeze_panes = "A2"
-
-    findings_sheet = workbook.create_sheet("Findings")
-    for column, width in {"A": 16, "B": 64, "C": 32, "D": 80, "E": 80, "H": 100, "I": 60}.items():
-        findings_sheet.column_dimensions[column].width = width
-    add_header(
-        findings_sheet,
-        [
-            "Severity",
-            "URL",
-            "Finding",
-            "Observation",
-            "Reproduction",
-            "Status",
-            "Occurrences",
-            "Evidence",
-            "Locations",
-            "Fix Hint",
-        ],
-    )
-    for finding in document.get("findings") or []:
-        values = [
-            SEVERITY_TITLES.get(finding.get("severity"), finding.get("severity")),
-            neutralize_formula(finding.get("url", "")),
-            neutralize_formula(finding.get("client_title", "Audit finding")),
-            neutralize_formula(finding.get("client_observation", "")),
-            neutralize_formula(finding.get("client_reproduction", "")),
-            finding.get("status_code", ""),
-            finding.get("occurrences_count", ""),
-            neutralize_formula("; ".join(finding.get("client_details") or [])),
-            neutralize_formula("; ".join(finding.get("client_locations") or [])),
-            neutralize_formula(finding.get("fix_hint", "")),
-        ]
-        cells = [WriteOnlyCell(findings_sheet, value=value) for value in values]
-        if colour := _HEAD.get(finding.get("severity")):
-            cells[0].font = Font(bold=True, color=colour)
-        findings_sheet.append(cells)
-    findings_sheet.auto_filter.ref = f"A1:J{document.finding_count + 1}"
-
-    pages_sheet = workbook.create_sheet("Pages")
-    pages_sheet.column_dimensions["A"].width = 70
-    pages_sheet.column_dimensions["C"].width = 60
-    pages_sheet.column_dimensions["F"].width = 40
-    columns = [
-        "url",
-        "status",
-        "title",
-        "title_length",
-        "description_length",
-        "h1",
-        "canonical",
-        "words",
-        "schema_types",
-        "schema_errors",
-        "social_missing",
-    ]
-    add_header(
-        pages_sheet,
-        [
-            "URL",
-            "Status",
-            "Title",
-            "Title Length",
-            "Description Length",
-            "H1",
-            "Canonical",
-            "Words",
-            "Schema Types",
-            "Schema Errors",
-            "Missing Social Tags",
-        ],
-    )
-    for page in document.get("pages") or []:
-        pages_sheet.append([neutralize_formula(page.get(column, "")) for column in columns])
-    pages_sheet.auto_filter.ref = f"A1:K{document.page_count + 1}"
-
-    coverage = summary.get("project_coverage")
-    if isinstance(coverage, dict):
-        from seohead.reports.project_coverage import value_text
-
-        project = coverage.get("project") or {}
-        checklist = coverage.get("status") or {}
-        coverage_sheet = workbook.create_sheet("Project Coverage")
-        coverage_sheet.append(["Project", neutralize_formula(project.get("site", ""))])
-        coverage_sheet.append(["Project UUID", neutralize_formula(project.get("uuid", ""))])
-        coverage_sheet.append(["Checklist state", neutralize_formula(checklist.get("state", ""))])
-        coverage_sheet.append(["Revision", checklist.get("revision", "")])
-        coverage_sheet.append(["Counts", neutralize_formula(value_text(checklist.get("counts")))])
-        add_header(
-            coverage_sheet,
-            [
-                "Item ID",
-                "Item",
-                "Kind",
-                "Execution",
-                "Priority",
-                "State",
-                "Attempt",
-                "Complete",
-                "Reason",
-            ],
-        )
-        for item in checklist.get("items") or []:
-            coverage_sheet.append(
-                [
-                    neutralize_formula(item.get("id", "")),
-                    neutralize_formula(item.get("title", "")),
-                    neutralize_formula(item.get("kind", "")),
-                    neutralize_formula(item.get("execution_kind", "")),
-                    neutralize_formula(item.get("priority", "")),
-                    neutralize_formula(item.get("state", "")),
-                    neutralize_formula(item.get("attempt_status", "")),
-                    item.get("complete", ""),
-                    neutralize_formula(item.get("reason", checklist.get("reason", ""))),
+    def finding_rows():
+        for finding in document.get("findings") or []:
+            if view_columns is not None:
+                fields = finding.get("view_fields") or {}
+                values = [neutralize_formula(fields.get(column, "")) for column in view_columns]
+            else:
+                values = [
+                    SEVERITY_TITLES.get(finding.get("severity"), finding.get("severity")),
+                    neutralize_formula(finding.get("url", "")),
+                    neutralize_formula(finding.get("client_title", "Audit finding")),
+                    neutralize_formula(finding.get("client_observation", "")),
+                    neutralize_formula(finding.get("client_reproduction", "")),
+                    finding.get("status_code", ""),
+                    finding.get("occurrences_count", ""),
+                    neutralize_formula("; ".join(finding.get("client_details") or [])),
+                    neutralize_formula("; ".join(finding.get("client_locations") or [])),
+                    neutralize_formula(finding.get("fix_hint", "")),
                 ]
+            yield values, _HEAD.get(finding.get("severity"))
+
+    def page_rows():
+        columns = (
+            "url",
+            "status",
+            "title",
+            "title_length",
+            "description_length",
+            "h1",
+            "canonical",
+            "words",
+            "schema_types",
+            "schema_errors",
+            "social_missing",
+        )
+        for page in document.get("pages") or []:
+            yield [neutralize_formula(page.get(column, "")) for column in columns], None
+
+    for source in template.worksheets:
+        sheet = workbook.create_sheet(source.title)
+        rows = (
+            finding_rows
+            if source.title == "Findings"
+            else (page_rows if source.title == "Pages" else None)
+        )
+        for key, dimension in source.column_dimensions.items():
+            sheet.column_dimensions[key] = copy(dimension)
+        sheet.freeze_panes = source.freeze_panes
+        sheet.auto_filter = copy(source.auto_filter)
+        if rows is not None:
+            widths = [len(str(cell.value or "")) for cell in source[1]]
+            count = 0
+            for values, _colour in rows():
+                count += 1
+                for index, value in enumerate(values):
+                    if value is not None:
+                        widths[index] = max(widths[index], len(str(value)))
+            limits = (
+                ({4: 100, 8: 100, 9: 60} if view_columns is None else {})
+                if (source.title == "Findings")
+                else {1: 70, 3: 60, 6: 40}
             )
-
-    technologies = workbook.create_sheet("Technologies")
-    add_header(technologies, ["Category", "Detected Technology", "Evidence"])
-    from seohead.reports.evidence_summary import rows as evidence_rows
-
-    evidence = evidence_rows(summary)
-    if evidence:
-        evidence_sheet = workbook.create_sheet("Evidence coverage")
-        add_header(evidence_sheet, ["Kind", "Measurement", "State", "Scope or reason"])
-        for row in evidence:
-            evidence_sheet.append([neutralize_formula(value) for value in row])
+            for index, width in enumerate(widths, 1):
+                sheet.column_dimensions[get_column_letter(index)].width = min(
+                    max(width + 2, 10), limits.get(index, 60)
+                )
+            if count:
+                sheet.auto_filter.ref = f"A1:{get_column_letter(len(widths))}{count + 1}"
+        for row in source.iter_rows():
+            cells = []
+            for original in row:
+                cell = WriteOnlyCell(sheet, value=original.value)
+                cell.font = copy(original.font)
+                cell.fill = copy(original.fill)
+                cell.border = copy(original.border)
+                cell.alignment = copy(original.alignment)
+                cell.number_format = original.number_format
+                cell.protection = copy(original.protection)
+                cells.append(cell)
+            sheet.append(cells)
+        if rows is not None:
+            for values, colour in rows():
+                cells = [WriteOnlyCell(sheet, value=value) for value in values]
+                if colour and severity_column is not None and source.title == "Findings":
+                    cells[severity_column].font = Font(bold=True, color=colour)
+                sheet.append(cells)
+        for chart in source._charts:
+            sheet.add_chart(chart)
     workbook.save(path)
+
+
+write_stream = write

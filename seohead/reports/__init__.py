@@ -34,6 +34,8 @@ from __future__ import annotations
 import json
 import pathlib
 from collections import Counter
+from collections.abc import Sequence
+from itertools import islice
 from typing import Any
 
 from seohead.audit.site import SCHEMA as _SITE_AUDIT_SCHEMA
@@ -358,6 +360,31 @@ def _normalize_sf_audit(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class _AuditV2Rows(Sequence):
+    """Replay a retained collection; bounded slices never materialize its tail."""
+
+    def __init__(self, reader: Any, pointer: str) -> None:
+        self.reader = reader
+        self.pointer = pointer
+
+    def __len__(self):
+        return self.reader.count(self.pointer)
+
+    def __iter__(self):
+        return self.reader.iter_collection(self.pointer)
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            start, stop, step = key.indices(len(self))
+            if step < 0:
+                raise ValueError("retained report rows support forward slices only")
+            return list(islice(iter(self), start, stop, step))
+        index = key if key >= 0 else len(self) + key
+        if not 0 <= index < len(self):
+            raise IndexError(key)
+        return next(islice(iter(self), index, index + 1))
+
+
 class _AuditV2ReportView:
     """Re-iterable display projection that never collects large audit rows."""
 
@@ -369,6 +396,11 @@ class _AuditV2ReportView:
         metadata["issues"] = []
         metadata["pages"] = []
         self.document = _normalize_sf_audit(metadata)
+        if "/suppressed_issues" in reader.collections:
+            self.document["suppressed_issues"] = _AuditV2Rows(reader, "/suppressed_issues")
+        if not self.document.get("url"):
+            first_page = next(reader.iter_collection("/pages"), {})
+            self.document["url"] = first_page.get("url", "")
         summary = self.document["summary"]
         source_summary = metadata.get("summary") or {}
         totals = source_summary.get("totals") or {}
