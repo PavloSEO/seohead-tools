@@ -112,8 +112,8 @@ silently accepted. The result is ordered by finish (or creation) time and includ
 the aggregate disk use and history warning threshold. `disk_bytes` includes any
 audit-v2 companion.
 
-`scan inspect` validates one artifact, then exposes a paginated read-only view of
-one whitelist table: `pages`, `links`, `forms`, `decisions`, `frontier`,
+`scan inspect` validates one scan.v1 or native scan.v2 artifact, then exposes a
+paginated read-only view of one whitelist table: `pages`, `links`, `forms`, `decisions`, `frontier`,
 `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or
 `audit`. It never exposes the `bodies` table. `limit` is at most 1,000; the
 serialized returned rows are also bounded by `max_bytes`, up to 8 MiB. When a row
