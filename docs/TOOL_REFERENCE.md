@@ -1384,7 +1384,7 @@ explicitly task completion, not a site-health or remediation percentage.
 
 MCP name: `seo_project_observe`
 
-Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary.
+Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary. Workflow/checklist receipt observations are metadata-only, not fresh byte verification. Missing historical receipts remain unverified. Explicit project-status and workflow-status retain byte verification by default.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -2319,7 +2319,9 @@ Read a bounded searchable page of project checklist evidence.
 
 **Behavior and failure modes**
 
-Reads saved local evidence only; does not collect, fetch or modify it.
+Reads saved local evidence with metadata-only receipt status; this is not
+fresh byte verification. Missing historical receipts remain unverified.
+Does not collect, fetch or modify evidence.
 
 ### `project-task-detail`
 
@@ -2336,7 +2338,9 @@ Read one project task definition, evidence and bounded history.
 
 **Behavior and failure modes**
 
-Reads saved local evidence only; does not collect, fetch or modify it.
+Reads saved local evidence with metadata-only receipt status; this is not
+fresh byte verification. Missing historical receipts remain unverified.
+Does not collect, fetch or modify evidence.
 
 ### `project-scans`
 

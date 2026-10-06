@@ -1606,6 +1606,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Read the bounded project observer snapshot: tasks, methods, competitors,
         retained scan state and the execution-log tail.  It never starts work or
         consumes inbox entries; a consumer only receives its own unread summary.
+        Workflow/checklist receipt observations are metadata-only, not fresh byte
+        verification. Missing historical receipts remain unverified. Explicit
+        project-status and workflow-status retain byte verification by default.
         """
         return _checked(
             handlers.project_observe(
@@ -2482,7 +2485,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     ) -> dict[str, Any]:
         """Read a bounded searchable page of project checklist evidence.
 
-        Reads saved local evidence only; does not collect, fetch or modify it.
+        Reads saved local evidence with metadata-only receipt status; this is not
+        fresh byte verification. Missing historical receipts remain unverified.
+        Does not collect, fetch or modify evidence.
         """
         return _checked(
             handlers.project_checklist_page(
@@ -2494,7 +2499,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_project_task_detail(directory: str, item_id: str) -> dict[str, Any]:
         """Read one project task definition, evidence and bounded history.
 
-        Reads saved local evidence only; does not collect, fetch or modify it.
+        Reads saved local evidence with metadata-only receipt status; this is not
+        fresh byte verification. Missing historical receipts remain unverified.
+        Does not collect, fetch or modify evidence.
         """
         return _checked(handlers.project_task_detail(directory=directory, item_id=item_id))
 
