@@ -131,6 +131,17 @@ class JobOwnershipStore:
             ).fetchall()
         return [ScanJobSpec(**json.loads(row[0])) for row in rows]
 
+    def latest_dispatch(self, subject: str, scope: str) -> tuple[ScanJobSpec, str] | None:
+        """Return the last confirmed owned dispatch for an exact actor/chat."""
+        with sqlite3.connect(self.path) as con:
+            row = con.execute(
+                """SELECT spec,job_id FROM dispatches
+                   WHERE subject=? AND scope=? AND job_id IS NOT NULL
+                   ORDER BY rowid DESC LIMIT 1""",
+                (subject, scope),
+            ).fetchone()
+        return (ScanJobSpec(**json.loads(row[0])), row[1]) if row is not None else None
+
     def in_scope(self, job_id: str, subject: str, scope: str) -> bool:
         with sqlite3.connect(self.path) as con:
             return (

@@ -454,18 +454,30 @@ class TelegramAuthorizedSessions:
             allow_new_project=False,
         )
         recovered = session._submitter.recover()
-        if recovered:
-            session.job_id = recovered[-1]
-            session.state = State.RUNNING
+        latest = self.ownership.latest_dispatch(subject, chat_id)
+        retained = None
+        if latest is not None:
+            spec, job_id = latest
+            retained = session._submitter.status(job_id)
+            if retained is not None:
+                state = (
+                    State.RUNNING
+                    if retained.state in {"queued", "running", "cancel_requested"}
+                    else State.CANCELLED
+                    if retained.state == "cancelled"
+                    else State.DONE
+                )
+                session.restore_confirmed(spec, job_id, state)
         self._sessions[key] = session
         self._session_projects[key] = projects
         if restarted and not access_changed:
             self._restart_notices[key] = (
                 "Service restarted; the unconfirmed draft was discarded. Retained jobs remain accessible by ID."
             )
-        if recovered:
+        if retained is not None:
             self._restart_notices[key] = (
-                "Recovered an already confirmed dispatch; no new scan was created."
+                f"Restored confirmed job {retained.job_id}: {retained.state}. No new scan was created."
+                + (" The pending ownership receipt was recovered." if recovered else "")
             )
         return session
 

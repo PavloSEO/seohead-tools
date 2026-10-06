@@ -158,7 +158,10 @@ Its binding store retains actor/chat bindings and exact update receipts. A dupli
 trusted `update_id` returns the same reply without advancing or sending twice; changed
 content under the same ID is refused. An interrupted update remains explicitly uncertain
 rather than being replayed. A restart discards unconfirmed drafts with a notice, while
-already confirmed pending dispatches recover their original queue job. `status()` and
+already confirmed pending dispatches recover their original queue job. The last confirmed
+job is restored to its live running or terminal state in the same actor/chat, so its cancel
+button still addresses the original job after restart. A completed rerun returns to preview
+and requires a new explicit confirmation. `status()` and
 `cancel()` accept an exact retained job ID and recheck actor/chat/project scope after
 restart. The same actor cannot use another enrolled chat to inspect or deliver that job.
 Preview confirmation and final start use different callback tokens, so duplicate preview

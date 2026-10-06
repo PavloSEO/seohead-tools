@@ -176,6 +176,27 @@ class WizardSession:
 
     # -- public surface -----------------------------------------------------
 
+    def restore_confirmed(self, spec: ScanJobSpec, job_id: str, state: State) -> None:
+        """Restore an already authorized retained job, never an unconfirmed draft."""
+        if state not in {State.RUNNING, State.DONE, State.CANCELLED}:
+            raise ValueError("retained jobs require a running or terminal conversation state")
+        if spec.contract_version != CONTRACT_VERSION:
+            raise ValueError("retained dispatch uses an unsupported wizard contract")
+        self.draft = {
+            "url": spec.url,
+            "project": spec.project,
+            "policy": spec.policy,
+            "report": dict(spec.report),
+        }
+        self._effective = {
+            "config": spec.config,
+            "manifest": spec.manifest,
+            "fingerprint": spec.fingerprint,
+        }
+        self._dispatch_id = spec.dispatch_id
+        self.job_id = job_id
+        self.state = state
+
     def handle(self, event: Event) -> Reply:
         """Advance the machine one step and return what to show."""
         expired = self._expired()

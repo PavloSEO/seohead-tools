@@ -376,3 +376,33 @@ def test_confirmation_callbacks_are_bound_to_the_current_preview(monkeypatch, tm
     assert adapter.handle_update(start).state == State.RUNNING
     assert adapter.handle_update(start).state == State.RUNNING
     assert len(sessions.backend.list_jobs("alpha", 0, 10)) == 1
+
+
+def test_restart_restores_confirmed_job_for_wire_cancel_without_requeue(monkeypatch, tmp_path):
+    sessions, chats, projects, subject = _authorized_sessions(tmp_path)
+    session = sessions.session_for(subject, "-10042")
+    for text in ("https://example.com/", "alpha", "quick", "xlsx"):
+        session.handle(Event(Action.ANSWER, text))
+    session.handle(Event(Action.CONFIRM))
+    session.handle(Event(Action.CONFIRM))
+    job_id = session.job_id
+    restarted = TelegramAuthorizedSessions(
+        sessions.backend, chats, projects, sessions.ownership, sessions.bindings
+    )
+    restored = restarted.session_for(subject, "-10042")
+    assert restored.state == State.RUNNING and restored.job_id == job_id
+    assert restored.draft == session.draft
+    assert "queued" in restarted.pop_restart_notice(subject, "-10042")
+    update = {
+        "update_id": 99,
+        "callback_query": {
+            "id": "cancel-after-restart",
+            "from": {"id": 7},
+            "message": {"chat": {"id": -10042}},
+            "data": "a:cancel",
+        },
+    }
+    reply = restarted.adapter(_client(monkeypatch, [])).handle_update(update)
+    assert reply.state == State.CANCELLED and reply.notice == "Cancellation requested."
+    assert sessions.backend.get_job("alpha", job_id).state == "cancelled"
+    assert len(sessions.backend.list_jobs("alpha", 0, 10)) == 1
