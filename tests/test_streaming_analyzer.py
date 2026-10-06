@@ -94,3 +94,88 @@ def test_nonempty_streamed_corpus_matches_legacy_and_lifts_all_collections(tmp_p
         from pathlib import Path
 
         assert not Path(path).exists()
+
+
+def test_native_streaming_writer_preserves_nonempty_collections_without_frames(
+    tmp_path, monkeypatch
+):
+    import pandas as pd
+
+    import tests.test_scan_hreflang_graph as fixture
+    from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
+    from seohead.crawl.sqlite_adapter import retained_start_gate
+    from seohead.servers.handlers import _audit_crawl_result
+    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.storage.audit_v2 import AuditV2Reader
+    from seohead.storage.native_scan import NativeScan
+
+    owners = []
+
+    def save_streaming(path, settings):
+        def no_frame(*_args, **_kwargs):
+            raise AssertionError("native streaming audit must not construct a DataFrame")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(pd, "DataFrame", no_frame)
+            with NativeScan.open(path) as scan:
+                result = _rebuild_page_result(scan, page_view=True)
+                result.start_page_evidence = retained_start_gate(scan, settings)
+                with prepare_sitemap_reconciliation(scan.con, start_url=BASE) as sitemap:
+                    _response, (header, collections) = _audit_crawl_result(
+                        result,
+                        settings=settings,
+                        url=BASE,
+                        sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
+                        discovery={
+                            "mode": "spider",
+                            "directive_policy": settings["robots"]["policy"],
+                            "robots_blocked": 0,
+                        },
+                        stored_scan=scan,
+                        stored_sitemap=sitemap,
+                        streaming=True,
+                        offline=True,
+                    )
+                    owners.extend({rows._context_owner for rows in collections.values()})
+                    assert (
+                        header["summary"]["saved_corpus_derivations"]["internationalization"][
+                            "declarations"
+                        ]
+                        == []
+                    )
+                    assert list(
+                        collections[
+                            "/summary/saved_corpus_derivations/internationalization/declarations"
+                        ]
+                    )
+                    scan.save_audit_v2(header, collections)
+                    for owner in owners:
+                        owner.close()
+                assert scan.finish_capture("streaming fixture complete")
+
+    monkeypatch.setattr(fixture, "_save_native_audit", save_streaming)
+    group = (("en", "/"), ("fr", "/fr/"))
+    audit = fixture._capture(
+        tmp_path,
+        {
+            BASE: _Response(
+                _html(
+                    *group, body='<main>Captured first fixture body</main><a href="/fr/">French</a>'
+                )
+            ),
+            BASE + "fr/": _Response(
+                _html(*group, body="<main>Captured second fixture body</main>")
+            ),
+        },
+    )
+    assert len(audit["pages"]) == 2
+    assert (
+        len(audit["summary"]["saved_corpus_derivations"]["internationalization"]["declarations"])
+        == 4
+    )
+    with AuditV2Reader(tmp_path / "scan.sqlite") as reader:
+        assert reader.count("/summary/saved_corpus_derivations/structured/items") == 2
+        assert (
+            reader.count("/summary/saved_corpus_derivations/internationalization/declarations") == 4
+        )
+    assert all(owner._saved_corpus is None and owner._disk_pages is None for owner in owners)
