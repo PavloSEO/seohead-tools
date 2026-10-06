@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from scripts.accept_million_crawl import run_stage
 from seohead.crawl.settings import MAX_REQUESTS_CEILING, MAX_URLS_CEILING, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
@@ -132,8 +134,9 @@ def test_density_fixture_declares_distinct_links_forms_and_body_padding():
     assert "x" * 2048 in soup.get_text()
 
 
+@pytest.mark.parametrize("comparison_compression", ["none", "gzip"])
 def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, comparison_compression
 ):
     from seohead.storage.audit_v2 import AuditV2Reader
 
@@ -142,7 +145,12 @@ def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence
 
     monkeypatch.setattr(AuditV2Reader, "materialize_legacy", refuse_materialization)
     outcome = run_stage(
-        tmp_path / "consumers", pages=32, shard_size=16, interrupt_after=8, consumers=True
+        tmp_path / "consumers",
+        pages=32,
+        shard_size=16,
+        interrupt_after=8,
+        consumers=True,
+        comparison_compression=comparison_compression,
     )
     consumers = outcome["consumers"]
     assert consumers["source_sha256_before"] == consumers["source_sha256_after"]
@@ -150,6 +158,13 @@ def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence
     assert consumers["export"]["counts"]["pages"] == 32
     assert consumers["consistency"]["read"]["pages"] == 32
     assert consumers["comparison"]["conservation"]["state"] == "complete"
+    assert consumers["comparison_roundtrip"] == {
+        name: item["rows"] for name, item in consumers["comparison"]["files"].items()
+    }
+    if comparison_compression == "gzip":
+        assert all(
+            item["compression"] == "gzip" for item in consumers["comparison"]["files"].values()
+        )
     assert (
         consumers["comparison"]["conservation"]["before_issues"] == consumers["audit_v2"]["/issues"]
     )

@@ -524,7 +524,9 @@ def _recheck_consumers(scan: Path, output: Path, revision: str, pages: int) -> d
     }
 
 
-def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
+def _consumers(
+    scan: Path, output: Path, revision: str, *, comparison_compression: str = "none"
+) -> dict[str, Any]:
     from seohead.servers import handlers
     from seohead.sf.tasks import build_tasks_from_audit_v2
     from seohead.storage.audit_v2 import AuditV2Reader
@@ -579,11 +581,25 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
     reanalysis = handlers.scan_reanalyze(
         input_path=str(scan), out=str(output / "reanalysis.sqlite"), producer_build=revision
     )
+    compare_options = (
+        {"compression": comparison_compression} if comparison_compression != "none" else {}
+    )
     comparison = handlers.compare_crawls(
         before=str(scan),
         after=str(output / "reanalysis.sqlite"),
         out_dir=str(output / "comparison"),
+        **compare_options,
     )
+    from seohead.sf.core.compare_store import iter_compare_rows
+
+    comparison_roundtrip = {
+        name: sum(1 for _ in iter_compare_rows(comparison["manifest"], name))
+        for name in comparison["files"]
+    }
+    if any(
+        comparison_roundtrip[name] != item["rows"] for name, item in comparison["files"].items()
+    ):
+        raise AssertionError("comparison package did not round-trip every retained row")
     if (
         comparison.get("conservation", {}).get("state") != "complete"
         or comparison["conservation"]["before_issues"] != audit_v2["/issues"]
@@ -611,6 +627,7 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         "tasks": task_backlog["summary"],
         "health": health,
         "comparison": comparison,
+        "comparison_roundtrip": comparison_roundtrip,
         "export": export,
         "report": report,
         "status": status,
@@ -631,6 +648,7 @@ def run_stage(
     links_per_page: int = 1,
     forms_per_page: int = 0,
     body_padding_bytes: int = 0,
+    comparison_compression: str = "none",
 ) -> dict[str, Any]:
     """Run one measured stage; exceptions intentionally make its status failed."""
     from seohead.servers.scan_handlers import crawl_site_scan
@@ -743,7 +761,9 @@ def run_stage(
     }
     record["capture_audit_seconds"] = record["elapsed_seconds"]
     if consumers:
-        record["consumers"] = _consumers(scan, output / "consumers", revision)
+        record["consumers"] = _consumers(
+            scan, output / "consumers", revision, comparison_compression=comparison_compression
+        )
     record["elapsed_seconds"] = round(time.monotonic() - started, 3)
     record["peak_rss_mib"] = _peak_rss_mib()
     (output / "result.json").write_text(
@@ -777,6 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--links-per-page", type=int, default=1)
     parser.add_argument("--forms-per-page", type=int, default=0)
     parser.add_argument("--body-padding-bytes", type=int, default=0)
+    parser.add_argument("--comparison-compression", choices=("none", "gzip"), default="none")
     args = parser.parse_args(argv)
     if args.interrupt_after < 1:
         parser.error("--interrupt-after must be positive")
@@ -806,6 +827,7 @@ def main(argv: list[str] | None = None) -> int:
                     links_per_page=args.links_per_page,
                     forms_per_page=args.forms_per_page,
                     body_padding_bytes=args.body_padding_bytes,
+                    comparison_compression=args.comparison_compression,
                 )
             )
         except BaseException as exc:
