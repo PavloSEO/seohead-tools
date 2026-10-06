@@ -69,7 +69,8 @@ def loopback(monkeypatch):
     thread.start()
     monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_NETWORKS", "1")
     try:
-        yield f"http://localhost:{server.server_port}/page"
+        # Match the IPv4-only listener regardless of localhost DNS address order.
+        yield f"http://127.0.0.1:{server.server_port}/page"
     finally:
         server.shutdown()
         thread.join()
