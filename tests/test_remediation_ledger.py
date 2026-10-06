@@ -1053,6 +1053,20 @@ def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
         assert _file_sha(ledger) == digest
 
 
+def test_canonical_audit_digest_rejects_nonhex_after_valid_prefix(tmp_path):
+    ledger = _ledger(tmp_path)
+    ingest_scan(
+        ledger,
+        _scan(tmp_path / "scan.sqlite", issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)]),
+    )
+    con = sqlite3.connect(ledger)
+    con.execute("UPDATE source_scan SET canonical_audit_sha256=?", ("aa" + "Z" * 62,))
+    con.commit()
+    con.close()
+    with pytest.raises(LedgerError, match="canonical audit digest"):
+        open_ledger(ledger)
+
+
 def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_path):
     """The additive verification tables do not make a read open mutate old evidence."""
     from seohead.storage import ledger as ledger_module

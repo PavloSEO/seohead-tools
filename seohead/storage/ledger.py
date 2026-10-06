@@ -400,7 +400,7 @@ def _validate(con) -> None:
         raise LedgerError("source scan binding has an invalid digest")
     if con.execute(
         "SELECT 1 FROM source_scan WHERE canonical_audit_sha256 IS NOT NULL AND "
-        "(canonical_audit_sha256 NOT GLOB '[0-9a-f][0-9a-f]*' OR "
+        "(canonical_audit_sha256 GLOB '*[^0-9a-f]*' OR "
         "length(canonical_audit_sha256)!=64) LIMIT 1"
     ).fetchone():
         raise LedgerError("source scan has an invalid canonical audit digest")
@@ -1799,7 +1799,7 @@ def occurrence_matches_baseline(
     ingestion, while audit.v2 uses its independently validated exact digest.
     Both routes require the originally recorded results-affecting policy.
     """
-    if not isinstance(occurrence_id, int) or occurrence_id < 1:
+    if type(occurrence_id) is not int or occurrence_id < 1:
         raise LedgerError("occurrence_id must be a positive integer")
     if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
         raise LedgerError("baseline audit_sha256 is invalid")
