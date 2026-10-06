@@ -1,9 +1,9 @@
 """Disabled-by-default local monitoring over immutable retained observations.
 
-This module deliberately plans and records local work only. It neither starts a
-timer nor fetches a URL: a caller supplies the bounded observations produced by
-an already-authorized collector. That keeps schedule activation and delivery
-outside a project file while still making restarts, overlap refusal, budgets and
+This module stores bounded caller-imported observations and provides one explicit
+one-shot HTTP collection path. It never starts a timer, daemon, background
+scheduler, or delivery transport. That keeps schedule activation outside a
+project file while still making restarts, overlap refusal, budgets and
 full-refresh policy observable and testable.
 """
 
@@ -685,10 +685,12 @@ def _source_artifacts(
         ).encode("utf-8")
     ).hexdigest()
     body_ref = body_hash = None
+    from seohead.crawl.cache import _parse_cache_control
+
     retain_body = (
         isinstance(body, str)
         and transport.get("status_code") in {200, 304}
-        and transport.get("cache_control") != "no-store"
+        and "no-store" not in _parse_cache_control(transport.get("cache_control") or "")
         and not transport.get("set_cookie")
     )
     if retain_body:
@@ -821,6 +823,8 @@ def collect_once(
     The policy interval remains scheduling advice. This performs no work unless
     an operator has separately created a current claim and sets ``apply=True``.
     """
+    if type(apply) is not bool:
+        raise ValueError("monitor apply must be a boolean")
     root, document = _load(directory)
     if document["revision"] != expected_revision:
         raise ValueError("monitor revision conflict")
@@ -901,6 +905,7 @@ def collect_once(
             expected_revision = document["revision"]
             transport.clear()
             client.cookies.clear()
+            requests_before = gate.requests_used
             record, parsed = fetch_one(
                 url,
                 client=client,
@@ -925,6 +930,8 @@ def collect_once(
                     else "cached"
                     if qualifier == "stale"
                     else "unavailable",
+                    "request_count": gate.requests_used - requests_before,
+                    "render_request_count": 0,
                     "failure_reason": failure_reason,
                     "source": source,
                 }

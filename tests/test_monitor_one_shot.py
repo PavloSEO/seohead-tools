@@ -103,6 +103,7 @@ def test_handler_one_shot_uses_loopback_cache_and_keeps_304_effective_evidence(t
     first = monitor_handlers.monitor_collect(str(project), claimed["revision"], apply=True)
     source = first["run"]["observations"][0]["source"]
     assert first["run"]["observations"][0]["cache_state"] == "fresh"
+    assert first["run"]["observations"][0]["request_count"] == 1
     assert all((project / ref).is_file() for ref in (source["body_ref"], source["validation_ref"]))
     assert (
         hashlib.sha256((project / source["body_ref"]).read_bytes()).hexdigest()
@@ -115,6 +116,7 @@ def test_handler_one_shot_uses_loopback_cache_and_keeps_304_effective_evidence(t
     validation = json.loads((project / observation["source"]["validation_ref"]).read_text())
     assert _Page.conditional == 1
     assert observation["cache_state"] == "revalidated"
+    assert observation["request_count"] == 1
     assert observation["measurement"]["status"] == validation["effective_status_code"] == 200
     assert validation["validators"]["etag"] == '"/one"'
 
@@ -163,6 +165,7 @@ def test_loopback_redirect_is_one_bounded_request_and_fresh_cache_hit_stays_part
     claimed = schedule(cached_project, action="start", expected_revision=first["revision"])
     cached = collect_once(cached_project, expected_revision=claimed["revision"], apply=True)
     assert cached["run"]["observations"][0]["cache_state"] == "cached"
+    assert cached["run"]["observations"][0]["request_count"] == 0
     assert cached["run"]["state"] == "partial"
     assert cached["run"]["recoveries"] == []
 
@@ -227,18 +230,21 @@ def test_same_count_different_link_destination_derives_link_change(tmp_path, loo
     assert validation["links_sha256"] == second["run"]["observations"][0]["source"]["links_sha256"]
 
 
-def test_cacheable_body_then_current_no_store_never_retains_new_body(tmp_path, loopback):
+@pytest.mark.parametrize("cache_control", ["private, no-store", "NO-STORE"])
+def test_cacheable_body_then_current_no_store_never_retains_new_body(
+    tmp_path, loopback, cache_control
+):
     project, configured = _project(tmp_path, loopback)
     claimed = schedule(project, action="start", expected_revision=configured["revision"])
     first = collect_once(project, expected_revision=claimed["revision"], apply=True)
-    _Page.cache_control = "no-store"
+    _Page.cache_control = cache_control
     _Page.link_href = "/new-no-store"
     claimed = schedule(project, action="start", expected_revision=first["revision"])
     second = collect_once(project, expected_revision=claimed["revision"], apply=True)
     source = second["run"]["observations"][0]["source"]
     validation = json.loads((project / source["validation_ref"]).read_text())
     assert source["body_ref"] is None
-    assert validation["transport"]["cache_control"] == "no-store"
+    assert validation["transport"]["cache_control"] == cache_control
     assert validation["transport"]["status_code"] == 200
     assert "PRIVATE-BODY" not in (project / source["validation_ref"]).read_text()
 
@@ -253,6 +259,14 @@ def test_tampered_claim_plan_is_rejected_before_http(tmp_path, loopback):
     write_document(project, "monitor.json", document, expected_revision=claimed["revision"])
     with pytest.raises(ValueError, match="claim id is invalid"):
         collect_once(project, expected_revision=document["revision"], apply=True)
+    assert _Page.requests == 0
+
+
+def test_non_boolean_apply_is_rejected_before_http(tmp_path, loopback):
+    project, configured = _project(tmp_path, loopback)
+    claimed = schedule(project, action="start", expected_revision=configured["revision"])
+    with pytest.raises(ValueError, match="apply must be a boolean"):
+        collect_once(project, expected_revision=claimed["revision"], apply="false")
     assert _Page.requests == 0
 
 
