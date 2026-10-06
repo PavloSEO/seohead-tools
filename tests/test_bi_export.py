@@ -777,7 +777,7 @@ def test_cohort_quadrants_refuse_normalized_url_key_collisions(tmp_path):
     assert all(row["value_label"] == "" for row in quadrants)
 
 
-def test_quadrant_pairing_refuses_cursor_backed_multi_page_match():
+def test_quadrant_pairing_refuses_cursor_backed_multi_page_match(tmp_path):
     """The durable store's matched_page_count has the same ambiguity gate."""
 
     def observation(metric, value):
@@ -804,17 +804,18 @@ def test_quadrant_pairing_refuses_cursor_backed_multi_page_match():
             },
         )
 
-    pairs, reason, blocked = bi_report._quadrant_candidates(
-        [source("gsc", "clicks", 0), source("ga4", "sessions", 2)], "clicks"
-    )
-    assert pairs == {}
-    assert reason is None
-    assert blocked == {
-        "https://example.test/a": (
+    from seohead.reports.bi_index import projection_index
+
+    with projection_index(tmp_path, 1024 * 1024) as con:
+        pairs, reason, blocked = bi_report._quadrant_candidates(
+            [source("gsc", "clicks", 0), source("ga4", "sessions", 2)], "clicks", con=con
+        )
+        assert pairs.get("https://example.test/a") is None
+        assert reason is None
+        assert blocked.get("https://example.test/a") == (
             "normalized URL key matches multiple retained crawl URLs; "
             "provider traffic cannot be attributed to one URL observation"
         )
-    }
 
 
 def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
@@ -848,3 +849,34 @@ def test_scan_hash_budget_refuses_before_writing_a_package(tmp_path, monkeypatch
     with pytest.raises(BIExportError, match="scan exceeds"):
         export_bi(scan=scan_path, out_dir=tmp_path / "bounded", max_scan_bytes=1)
     assert not (tmp_path / "bounded").exists()
+
+
+def test_retained_occurrence_share_and_typed_provider_dimensions_reach_destinations(
+    tmp_path, monkeypatch
+):
+    from seohead.reports.bi_destinations import bigquery_plan, filter_package, sheets_plan
+
+    scan = _crawl_with_audit(tmp_path, monkeypatch)
+    provider = tmp_path / "provider.json"
+    provider.write_text(json.dumps(_provider_document()))
+    package = tmp_path / "package"
+    export_bi(scan=scan, provider_joins=[provider], out_dir=package)
+    manifest = json.loads((package / "manifest.json").read_text())
+    shares = {
+        row["url"]: row
+        for row in _csv_rows(package, manifest, "cohorts")
+        if row["cohort_id"] == "observed_unique_inlink_share"
+    }
+    assert shares["https://example.test/child"]["numerator"] == "1"
+    assert shares["https://example.test/child"]["denominator"] == "2"
+    assert shares["https://example.test/child"]["value_number"] == "0.5"
+    assert sheets_plan(package)["state"] == "ready"
+    assert bigquery_plan(package, dataset="synthetic")["network"] is False
+    filtered = tmp_path / "metrics"
+    filter_package(
+        package,
+        dataset="metrics",
+        out_dir=filtered,
+        columns=["metric_name", "value_number", "dimension_query"],
+    )
+    assert sheets_plan(filtered)["worksheets"][0]["columns"] == 3

@@ -12,16 +12,37 @@ import csv
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import time
 import urllib.error
 import urllib.request
 import uuid
+from collections import Counter
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from seohead.reports.bi import BI_SCHEMA_VERSION, DATASET_SPECS, MANIFEST_FORMAT
+from seohead.reports.bi import (
+    BI_SCHEMA_VERSION,
+    DATASET_SPECS,
+    DEFAULT_BYTES_PER_PARTITION,
+    DEFAULT_MAX_OUTPUT_BYTES,
+    MANIFEST_FORMAT,
+    MAX_BYTES_PER_PARTITION,
+    MAX_CELL_BYTES,
+    MAX_MANIFEST_BYTES,
+    MAX_OUTPUT_BYTES,
+    MAX_OUTPUT_PARTITIONS,
+    MAX_ROWS_PER_PARTITION,
+    MIN_FREE_DISK_BYTES,
+    BIExportError,
+    Field,
+    _cell_text,
+    _OutputBudget,
+    _PartitionWriter,
+    _safe_dimension_fields,
+)
 
 SHEETS_MAX_CELLS = 10_000_000
 HOST_CONFIG_ENV = "SEOHEAD_BI_DESTINATIONS_FILE"
@@ -33,6 +54,8 @@ _GOOGLE_CHUNK_ROWS = 1_000
 _GOOGLE_REQUEST_BYTES = 4 * 1024 * 1024
 _GOOGLE_CHUNK_SOURCE_BYTES = _GOOGLE_REQUEST_BYTES // 2
 EXCEL_MAX_ROWS = 1_048_576
+EXCEL_MAX_CELL_CHARS = 32_767
+MAX_XLSX_SHEETS = 10_000
 DESTINATION_STATE_FORMAT = "seohead.bi-destination-state.v1"
 DESTINATION_STATE_DIRECTORY = ".seohead-destination-state"
 
@@ -1197,6 +1220,8 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
     path = root / "manifest.json"
     if path.is_symlink() or not path.is_file():
         raise BIDestinationError("package has no regular manifest.json")
+    if path.stat().st_size > MAX_MANIFEST_BYTES:
+        raise BIDestinationError("BI manifest exceeds its byte bound")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1223,7 +1248,7 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             or row_count < 0
         ):
             raise BIDestinationError("selected BI projection manifest is invalid")
-        expected = {field.name: field for field in DATASET_SPECS[name][0]}
+        expected = _fields_for_manifest(name, value.get("metrics_dimension_columns"))
         if (
             any(not isinstance(column, str) for column in columns)
             or len(set(columns)) != len(columns)
@@ -1239,8 +1264,13 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             "schema_version": BI_SCHEMA_VERSION,
             "source_package_format": "seohead.bi-filter.v1",
             "selected_projection": True,
+            "source": value.get("source"),
+            "source_coverage": value.get("source_coverage"),
+            "conservation": value.get("conservation"),
+            "metrics_dimension_columns": value.get("metrics_dimension_columns"),
             "datasets": {
                 name: {
+                    **(value.get("source_coverage") or {}),
                     "fields": fields,
                     "partitions": partitions,
                     "row_count": row_count,
@@ -1253,10 +1283,26 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
     raise BIDestinationError("package has an unsupported BI manifest/schema version")
 
 
-def _validated_fields(name: str, fields: Any, *, selected_projection: bool) -> list[str]:
+def _fields_for_manifest(name: str, dimensions: Any) -> dict[str, Field]:
+    expected = {field.name: field for field in DATASET_SPECS[name][0]}
+    if name == "metrics" and dimensions:
+        if (
+            not isinstance(dimensions, dict)
+            or len(dimensions) > 512
+            or any(not isinstance(key, str) or not key or len(key) > 1024 for key in dimensions)
+            or dimensions != _safe_dimension_fields(dimensions)
+        ):
+            raise BIDestinationError("metric dimension mapping differs from the BI schema")
+        expected.update({field: Field(field, "string", True) for field in dimensions.values()})
+    return expected
+
+
+def _validated_fields(
+    name: str, fields: Any, *, selected_projection: bool, dimensions: Any = None
+) -> list[str]:
     if name not in DATASET_SPECS or not isinstance(fields, list) or not fields:
         raise BIDestinationError(f"dataset {name!r} has no declared fields")
-    expected = {field.name: field for field in DATASET_SPECS[name][0]}
+    expected = _fields_for_manifest(name, dimensions)
     names: list[str] = []
     for value in fields:
         if not isinstance(value, dict) or not isinstance(value.get("name"), str):
@@ -1271,7 +1317,7 @@ def _validated_fields(name: str, fields: Any, *, selected_projection: bool) -> l
         names.append(field.name)
     if len(set(names)) != len(names):
         raise BIDestinationError(f"dataset {name!r} field names are duplicated")
-    if not selected_projection and names != [field.name for field in DATASET_SPECS[name][0]]:
+    if not selected_projection and names != list(expected):
         raise BIDestinationError(f"dataset {name!r} fields do not match the complete BI schema")
     return names
 
@@ -1317,6 +1363,7 @@ def _verify_partitions(root: Path, manifest: dict[str, Any]) -> dict[str, dict[s
             name,
             dataset.get("fields"),
             selected_projection=manifest.get("selected_projection") is True,
+            dimensions=manifest.get("metrics_dimension_columns"),
         )
         if type(dataset.get("row_count")) is not int or dataset["row_count"] < 0:
             raise BIDestinationError(f"dataset {name!r} row count is invalid")
@@ -1793,93 +1840,163 @@ def filter_package(
     out_dir: str | Path,
     where: dict[str, list[str]] | None = None,
     columns: list[str] | None = None,
-    max_rows_per_file: int = 250_000,
+    max_rows_per_file: int = MAX_ROWS_PER_PARTITION,
+    max_bytes_per_file: int = DEFAULT_BYTES_PER_PARTITION,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
 ) -> dict[str, Any]:
-    """Stream one exact-filtered BI dataset to a new local CSV package.
-
-    Predicates are closed equality sets over declared CSV fields; no SQL, regex,
-    formulas or inferred segment is accepted.  An empty result remains an
-    explicitly complete selected population, never an unavailable measurement.
-    """
-    if type(max_rows_per_file) is not int or max_rows_per_file < 1:
-        raise BIDestinationError("max_rows_per_file must be a positive integer")
+    """Publish an exact selected CSV view with source coverage and bounded output."""
+    if type(max_rows_per_file) is not int or not 1 <= max_rows_per_file <= MAX_ROWS_PER_PARTITION:
+        raise BIDestinationError(f"max_rows_per_file must be 1..{MAX_ROWS_PER_PARTITION}")
+    if (
+        type(max_bytes_per_file) is not int
+        or not 1024 <= max_bytes_per_file <= MAX_BYTES_PER_PARTITION
+    ):
+        raise BIDestinationError(f"max_bytes_per_file must be 1024..{MAX_BYTES_PER_PARTITION}")
+    if (
+        type(max_output_bytes) is not int
+        or not max_bytes_per_file <= max_output_bytes <= MAX_OUTPUT_BYTES
+    ):
+        raise BIDestinationError(
+            "max_output_bytes must cover one partition and stay within the hard bound"
+        )
     root, manifest = _manifest(package)
     datasets = _verify_partitions(root, manifest)
     if dataset not in datasets:
         raise BIDestinationError("dataset is not declared by the BI package")
-    declared = [field["name"] for field in manifest["datasets"][dataset]["fields"]]
-    selected = list(columns or declared)
-    if not selected or len(set(selected)) != len(selected) or set(selected) - set(declared):
+    source_dataset = manifest["datasets"][dataset]
+    declared = {field["name"]: field for field in source_dataset["fields"]}
+    selected = list(declared) if columns is None else columns
+    if (
+        not isinstance(selected, list)
+        or not selected
+        or any(not isinstance(item, str) for item in selected)
+        or len(set(selected)) != len(selected)
+        or set(selected) - set(declared)
+    ):
         raise BIDestinationError("columns must be a non-empty unique subset of declared fields")
-    predicates = where or {}
+    predicates = {} if where is None else where
     if not isinstance(predicates, dict) or set(predicates) - set(declared):
         raise BIDestinationError("where keys must be declared fields")
     if any(
-        not isinstance(values, list) or any(not isinstance(value, str) for value in values)
+        not isinstance(values, list)
+        or len(values) > 10_000
+        or any(
+            not isinstance(value, str) or len(value.encode("utf-8")) > MAX_CELL_BYTES
+            for value in values
+        )
         for values in predicates.values()
     ):
-        raise BIDestinationError("where values must be lists of exact string values")
+        raise BIDestinationError("where values must be bounded lists of exact strings")
+    if len(json.dumps(predicates, ensure_ascii=False).encode("utf-8")) > MAX_MANIFEST_BYTES:
+        raise BIDestinationError("where exceeds the bounded selection definition")
+    allowed_values = {key: set(values) for key, values in predicates.items()}
     destination = Path(out_dir).absolute()
-    if destination.is_symlink() or os.path.lexists(destination) or not destination.parent.is_dir():
+    if (
+        destination.is_symlink()
+        or os.path.lexists(destination)
+        or not destination.parent.is_dir()
+        or destination.parent.is_symlink()
+    ):
         raise BIDestinationError("out_dir must be a new child of an existing non-symlink directory")
-    output_parts = []
-    total = part_rows = 0
-    stream = writer = path = None
+    source_manifest_sha256 = _checksum_file(root / "manifest.json")
+    source_rows = 0
+    selected_states: Counter[str] = Counter()
+    source_states: Counter[str] = Counter()
     with tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent) as temp:
         stage = Path(temp)
-
-        def open_part():
-            nonlocal stream, writer, path, part_rows
-            path = stage / f"{dataset}-{len(output_parts) + 1:04d}.csv"
-            stream = path.open("w", encoding="utf-8", newline="")
-            writer = csv.DictWriter(stream, fieldnames=selected, lineterminator="\n")
-            writer.writeheader()
-            part_rows = 0
-
-        def close_part():
-            nonlocal stream
-            if stream is None:
-                return
-            stream.flush()
-            os.fsync(stream.fileno())
-            stream.close()
-            content = path.read_bytes()
-            output_parts.append(
-                {
-                    "path": path.name,
-                    "rows": part_rows,
-                    "bytes": len(content),
-                    "sha256": hashlib.sha256(content).hexdigest(),
-                }
-            )
-            stream = None
-
-        open_part()
-        for part in manifest["datasets"][dataset]["partitions"]:
-            with (root / part["path"]).open(encoding="utf-8", newline="") as source:
-                for row in csv.DictReader(source):
-                    if all(row[key] in allowed for key, allowed in predicates.items()):
-                        if part_rows >= max_rows_per_file:
-                            close_part()
-                            open_part()
-                        writer.writerow({key: row[key] for key in selected})
-                        part_rows += 1
-                        total += 1
-        close_part()
-        result = {
-            "format": "seohead.bi-filter.v1",
-            "source_schema_version": manifest["schema_version"],
-            "dataset": dataset,
-            "columns": selected,
-            "where": predicates,
-            "row_count": total,
-            "partitions": output_parts,
-        }
-        (stage / "manifest.json").write_text(
-            json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        budget = _OutputBudget(max_output_bytes)
+        writer = _PartitionWriter(
+            stage,
+            dataset,
+            tuple(
+                Field(name, declared[name]["type"], declared[name]["nullable"]) for name in selected
+            ),
+            max_rows_per_file=max_rows_per_file,
+            max_bytes_per_file=max_bytes_per_file,
+            budget=budget,
         )
-        os.replace(stage, destination)
+        try:
+            for part in source_dataset["partitions"]:
+                with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
+                    for row in csv.DictReader(stream):
+                        source_rows += 1
+                        state = row.get("state", "not_declared")
+                        source_states[state] += 1
+                        if all(row[key] in allowed for key, allowed in allowed_values.items()):
+                            selected_states[state] += 1
+                            values = [row[name] for name in selected]
+                            for index, name in enumerate(selected):
+                                if declared[name]["type"] == "string":
+                                    safe = _cell_text(values[index])
+                                    writer.neutralized_cells += int(safe != values[index])
+                                    values[index] = safe
+                            writer.write_cells(values)
+            output = writer.finish()
+            if source_rows != datasets[dataset]["rows"]:
+                raise BIDestinationError("source row conservation changed during selection")
+            # Recheck the retained package after streaming; never publish a view over changed bytes.
+            if (
+                _checksum_file(root / "manifest.json") != source_manifest_sha256
+                or _verify_partitions(root, manifest) != datasets
+            ):
+                raise BIDestinationError("source package changed during selection")
+            result = {
+                "format": "seohead.bi-filter.v1",
+                "source_schema_version": manifest["schema_version"],
+                "dataset": dataset,
+                "metrics_dimension_columns": manifest.get("metrics_dimension_columns"),
+                "columns": selected,
+                "where": predicates,
+                **output,
+                "selection_state": "complete",
+                "source_manifest_sha256": source_manifest_sha256,
+                "source": {
+                    key: manifest.get(key)
+                    for key in ("run", "input", "crawl_completeness", "provider_sources", "source")
+                },
+                "source_coverage": {
+                    key: source_dataset.get(key)
+                    for key in ("state", "reason", "source_population", "coverage")
+                },
+                "conservation": {
+                    "source_rows": source_rows,
+                    "selected_rows": output["row_count"],
+                    "omitted_rows": source_rows - output["row_count"],
+                    "source_states": dict(source_states),
+                    "selected_states": dict(selected_states),
+                    "omission_reason": "explicit exact-filter selection; not evidence of resolution",
+                },
+                "resource_bounds": {
+                    "max_rows_per_partition": max_rows_per_file,
+                    "max_bytes_per_partition": max_bytes_per_file,
+                    "max_output_bytes": max_output_bytes,
+                    "max_output_partitions": MAX_OUTPUT_PARTITIONS,
+                    "max_cell_bytes": MAX_CELL_BYTES,
+                    "min_free_disk_bytes": MIN_FREE_DISK_BYTES,
+                },
+            }
+            encoded = (
+                json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+            ).encode("utf-8")
+            if len(encoded) > MAX_MANIFEST_BYTES:
+                raise BIDestinationError("selected manifest exceeds its byte bound")
+            budget.reserve_bytes(len(encoded))
+            (stage / "manifest.json").write_bytes(encoded)
+            os.chmod(stage / "manifest.json", 0o600)
+            os.replace(stage, destination)
+        except BIExportError as exc:
+            raise BIDestinationError(str(exc)) from exc
+        finally:
+            writer.close()
     return {"ok": True, "output_directory": str(destination), **result}
+
+
+def _checksum_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while block := stream.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def export_bi_xlsx(
@@ -1888,43 +2005,70 @@ def export_bi_xlsx(
     dataset: str,
     out: str | Path,
     max_rows_per_sheet: int = EXCEL_MAX_ROWS - 1,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
 ) -> dict[str, Any]:
-    """Write one verified BI dataset to split, write-only Excel worksheets.
+    """Publish split worksheets and a durable CSV-range/worksheet index.
 
-    Use :func:`filter_package` first for a closed selected view.  Each output
-    worksheet repeats the exact CSV header; no aggregation, sampling or type
-    inference occurs while converting the partition stream.
+    The index is the completion marker. An interrupted workbook without its
+    index is incomplete; the immutable selected CSV package remains the fallback.
     """
     if type(max_rows_per_sheet) is not int or not 1 <= max_rows_per_sheet < EXCEL_MAX_ROWS:
         raise BIDestinationError(f"max_rows_per_sheet must be 1..{EXCEL_MAX_ROWS - 1}")
+    if type(max_output_bytes) is not int or not 1024 <= max_output_bytes <= MAX_OUTPUT_BYTES:
+        raise BIDestinationError("XLSX max_output_bytes is outside the supported bound")
     root, manifest = _manifest(package)
     datasets = _verify_partitions(root, manifest)
     if dataset not in datasets:
         raise BIDestinationError("dataset is not declared by the BI package")
+    if (datasets[dataset]["rows"] + max_rows_per_sheet - 1) // max_rows_per_sheet > MAX_XLSX_SHEETS:
+        raise BIDestinationError(
+            "XLSX worksheet count exceeds the bound; retain the complete CSV package"
+        )
     destination = Path(out).absolute()
+    index_path = destination.with_suffix(destination.suffix + ".index.json")
     if destination.suffix.casefold() != ".xlsx":
         raise BIDestinationError("out must end in .xlsx")
-    if destination.is_symlink() or os.path.lexists(destination) or not destination.parent.is_dir():
+    if (
+        any(path.is_symlink() or os.path.lexists(path) for path in (destination, index_path))
+        or not destination.parent.is_dir()
+        or destination.parent.is_symlink()
+    ):
         raise BIDestinationError(
-            "out must be a new XLSX file under an existing non-symlink directory"
+            "out and its index must be new files under an existing non-symlink directory"
         )
-    if destination.parent.is_symlink():
-        raise BIDestinationError("out parent must not be a symlink")
     try:
         from openpyxl import Workbook
     except ImportError as exc:
         raise BIDestinationError("BI XLSX export requires the reports extra (openpyxl)") from exc
+    source_manifest_sha256 = _checksum_file(root / "manifest.json")
     sheet_count = rows_written = rows_in_sheet = 0
     workbook = Workbook(write_only=True)
     sheet = None
     header: list[str] | None = None
+    ranges: list[dict[str, Any]] = []
     temporary = None
+    index_temporary = None
+    published = False
+
+    # UTF-8 CSV bytes understate XML escaping. Bound actual worksheet spool files
+    # at each batch and reject Excel's cell limit before openpyxl can truncate it.
+    def check_spool() -> None:
+        paths = [Path(item._writer.out) for item in workbook.worksheets if item._writer is not None]
+        total = sum(path.stat().st_size for path in paths if path.exists())
+        if total > max_output_bytes:
+            raise BIDestinationError(
+                "XLSX worksheet spool exceeds max_output_bytes; retain complete CSV"
+            )
+        if shutil.disk_usage(destination.parent).free < MIN_FREE_DISK_BYTES:
+            raise BIDestinationError("insufficient free disk for XLSX output; retain complete CSV")
+
     try:
         with tempfile.NamedTemporaryFile(
             prefix=".seohead-bi-xlsx-", suffix=".tmp", dir=destination.parent, delete=False
         ) as stream:
             temporary = Path(stream.name)
         for part in manifest["datasets"][dataset]["partitions"]:
+            current_range = None
             with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
                 reader = csv.reader(stream)
                 current_header = next(reader)
@@ -1932,15 +2076,43 @@ def export_bi_xlsx(
                     header = current_header
                 elif current_header != header:
                     raise BIDestinationError("dataset partition headers disagree")
-                for row in reader:
+                for part_row, row in enumerate(reader, 1):
+                    if any(len(value) > EXCEL_MAX_CELL_CHARS for value in row):
+                        raise BIDestinationError(
+                            "CSV cell exceeds Excel's 32767-character limit; retain complete CSV"
+                        )
                     if sheet is None or rows_in_sheet >= max_rows_per_sheet:
+                        if sheet is not None:
+                            sheet.close()
                         sheet_count += 1
                         sheet = workbook.create_sheet(f"{dataset}-{sheet_count:04d}")
                         sheet.append(header)
                         rows_in_sheet = 0
-                    sheet.append(row)
+                        current_range = None
+                    if current_range is None:
+                        current_range = {
+                            "partition": part["path"],
+                            "partition_sha256": part["sha256"],
+                            "source_row_start": part_row,
+                            "source_row_end": part_row,
+                            "worksheet": sheet.title,
+                            "worksheet_row_start": rows_in_sheet + 2,
+                            "worksheet_row_end": rows_in_sheet + 2,
+                        }
+                        if len(ranges) >= MAX_OUTPUT_PARTITIONS + MAX_XLSX_SHEETS:
+                            raise BIDestinationError(
+                                "XLSX range index exceeds its bound; retain complete CSV"
+                            )
+                        ranges.append(current_range)
+                    else:
+                        current_range["source_row_end"] = part_row
+                        current_range["worksheet_row_end"] = rows_in_sheet + 2
+                    # Strings remain text. No spreadsheet formula is evaluated.
+                    sheet.append([_cell_text(value) for value in row])
                     rows_in_sheet += 1
                     rows_written += 1
+                    if rows_written % 256 == 1:
+                        check_spool()
         if header is None:
             raise BIDestinationError("dataset has no CSV header")
         if rows_written != datasets[dataset]["rows"]:
@@ -1949,21 +2121,88 @@ def export_bi_xlsx(
             sheet_count = 1
             sheet = workbook.create_sheet(f"{dataset}-{sheet_count:04d}")
             sheet.append(header)
+        if not sheet.closed:
+            sheet.close()
+        check_spool()
         workbook.save(temporary)
+        if temporary.stat().st_size > max_output_bytes:
+            raise BIDestinationError("XLSX exceeds max_output_bytes; retain complete CSV")
+        if (
+            _checksum_file(root / "manifest.json") != source_manifest_sha256
+            or _verify_partitions(root, manifest) != datasets
+        ):
+            raise BIDestinationError("source package changed during XLSX export")
+        result = {
+            "format": "seohead.bi-xlsx.v1",
+            "dataset": dataset,
+            "rows": rows_written,
+            "worksheets": sheet_count,
+            "max_rows_per_sheet": max_rows_per_sheet,
+            "output": str(destination),
+            "source_schema_version": manifest["schema_version"],
+            "index": str(index_path),
+        }
+        index = {
+            "format": "seohead.bi-xlsx-index.v1",
+            "state": "complete",
+            "workbook": destination.name,
+            "workbook_sha256": _checksum_file(temporary),
+            "workbook_bytes": temporary.stat().st_size,
+            "dataset": dataset,
+            "source_manifest_sha256": source_manifest_sha256,
+            "source_schema_version": manifest["schema_version"],
+            "conservation": manifest.get("conservation")
+            or {"source_rows": rows_written, "selected_rows": rows_written, "omitted_rows": 0},
+            "source_coverage": manifest.get("source_coverage")
+            or {
+                key: manifest["datasets"][dataset].get(key)
+                for key in ("state", "reason", "coverage")
+            },
+            "rows": rows_written,
+            "worksheets": sheet_count,
+            "header_rows_per_sheet": 1,
+            "ranges": ranges,
+            "max_output_bytes": max_output_bytes,
+        }
+        encoded = (json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
+            "utf-8"
+        )
+        if (
+            len(encoded) > MAX_MANIFEST_BYTES
+            or temporary.stat().st_size + len(encoded) > max_output_bytes
+        ):
+            raise BIDestinationError("XLSX with its index exceeds the output byte bound")
+        with tempfile.NamedTemporaryFile(
+            prefix=".seohead-bi-xlsx-index-", dir=destination.parent, delete=False
+        ) as stream:
+            index_temporary = Path(stream.name)
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.chmod(temporary, 0o600)
+        os.chmod(index_temporary, 0o600)
         os.replace(temporary, destination)
         temporary = None
-    finally:
-        workbook.close()
-        if temporary is not None:
+        published = True
+        os.replace(index_temporary, index_path)
+        index_temporary = None
+        return result
+    except BaseException:
+        if published:
             with suppress(FileNotFoundError):
-                temporary.unlink()
-    return {
-        "format": "seohead.bi-xlsx.v1",
-        "dataset": dataset,
-        "rows": rows_written,
-        "worksheets": sheet_count,
-        "max_rows_per_sheet": max_rows_per_sheet,
-        "output": str(destination),
-        "source_schema_version": manifest["schema_version"],
-    }
+                destination.unlink()
+        raise
+    finally:
+        # Abort writers explicitly: workbook.close alone does not clean write-only spools.
+        for item in workbook.worksheets:
+            if item._writer is not None:
+                if not item.closed:
+                    with suppress(Exception):
+                        item.close()
+                with suppress(FileNotFoundError):
+                    item._writer.cleanup()
+        workbook.close()
+        for path in (temporary, index_temporary):
+            if path is not None:
+                with suppress(FileNotFoundError):
+                    path.unlink()

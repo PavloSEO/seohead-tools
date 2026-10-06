@@ -23,8 +23,10 @@ URL, normalized key, definition version, membership state, evidence state and re
 It has no site-wide or causal interpretation. The initial definitions are observed
 HTTP-status group, captured indexability, crawl-relative depth (deep is retained depth
 at least 3), and observed unique-inlink share. An inlink share names its numerator,
-denominator and link-extraction state. It is populated only when extraction is complete;
-partial or unavailable link evidence stays unclassified.
+denominator and link-extraction state. For retained scans, the denominator includes only in-scope pages with completed HTML link
+extraction, and the numerator counts each eligible linking page once. Partial crawl/extraction
+populations are labelled as observed eligible-page shares. An audit without retained occurrence
+evidence cannot establish that denominator and stays unclassified.
 
 Pass an explicit Search Console axis to add the traffic-versus-search quadrants:
 
@@ -135,12 +137,38 @@ bounded before transport; a too-wide row fails during preflight rather than cons
 request. A selected projection uses the matching dataset mapping from a normal complete target
 configuration; unrelated configured datasets are not sent.
 
-For a local spreadsheet review, apply `filter_package` with its closed equality predicates and
-declared column subset, then pass that selected package to `export_bi_xlsx`. It reads CSV
-partitions with `openpyxl` write-only worksheets, repeats the verified header on each numbered
-sheet, and splits before Excel's 1,048,576-row limit. The XLSX result reports exact source rows
-and sheet count; it does not aggregate or infer values.
+For a local spreadsheet review, `bi-filter` uses closed equality predicates on declared fields
+and a declared column subset. The shared Python adapter is `seohead.servers.bi_handlers.bi_filter`.
+Select severities/checks/URLs with fields such as `severity`, `check_id` and `url` in `findings`;
+select explicit segments with `cohort_id` in `cohorts`. Predicates never execute SQL or code.
+The selected manifest records source, selected and omitted rows, source coverage and state counts.
+A complete selection is not a claim that the underlying crawl or provider source is complete.
 
+CSV partitions use the same streamed byte/hash writer as the full package, with explicit row,
+partition-byte, total-byte, cell and free-disk limits. At most 10,000 partitions are published;
+choose a larger partition size if a requested split would exceed that bound. No partial package
+is published on interruption, overflow or low disk. Complete local CSV remains the fallback.
+
+Optional XLSX output uses write-only numbered worksheets. Cells over Excel's 32,767-character
+limit fail before the spreadsheet library can truncate them. The adjacent `.xlsx.index.json`
+is the completion marker: it records the source manifest hash, workbook hash/size, exact source
+CSV partition row ranges and worksheet row ranges, plus selection conservation and coverage.
+A workbook without its completed index after a process crash is incomplete. Caught failures
+remove newly published output; they never change the source package. Worksheets and spool bytes
+are bounded separately, and no external spreadsheet service is involved.
+
+Finding-group, provider-pair and eligible-inlink lookups use a disposable SQLite index with a
+2 MiB page cache and a 2 GiB main-file ceiling, not URL-sized Python dictionaries. The audit.v2
+page overlay is separately disk bounded. Individual source records and manifest/partition counts
+also have explicit limits. Exceeding any limit fails rather than sampling or claiming readiness.
+These are implementation bounds, not evidence of a million-URL end-to-end benchmark.
+
+Run `scripts/accept_bi_delivery.py` against a frozen, committed checkout and an explicitly supplied
+retained synthetic scan/audit plus optional provider joins. It verifies the actual imported source,
+unchanged retained-input hashes, all six local datasets, selected findings, split XLSX and offline
+Sheets/BigQuery plans. Its owner-review packet proposes concrete new synthetic Google artifacts;
+it performs no login, cloud write or sharing change. A native Looker report remains missing until
+its actual fresh-copy verification is recorded.
 For an unfiltered dataset, the same consumer is available through the existing public export
 surface: `seohead bi-export --audit audit.json --out-dir ./bi --xlsx-out ./pages.xlsx
 --xlsx-dataset pages`. `--xlsx-out` and `--xlsx-dataset` are paired; add

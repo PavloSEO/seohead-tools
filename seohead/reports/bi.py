@@ -15,10 +15,12 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -46,10 +48,14 @@ MAX_ROWS_PER_PARTITION = 250_000
 MAX_BYTES_PER_PARTITION = 64 * 1024 * 1024
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
 MAX_OUTPUT_ROWS = 10_000_000
+MAX_OUTPUT_PARTITIONS = 10_000
+MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_CELL_BYTES = 8 * 1024 * 1024
 DEFAULT_ROWS_PER_PARTITION = 25_000
 DEFAULT_BYTES_PER_PARTITION = 8 * 1024 * 1024
 DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024 * 1024
+MIN_FREE_DISK_BYTES = 16 * 1024 * 1024
+MAX_PROJECTION_INDEX_BYTES = 2 * 1024 * 1024 * 1024
 
 
 class BIExportError(ValueError):
@@ -555,6 +561,7 @@ class _PartitionWriter:
         self.budget = budget
         self.total_bytes = 0
         self.total_rows = 0
+        self._disk_check_at = 0
         self.neutralized_cells = 0
         self.partitions: list[dict[str, Any]] = []
         self._stream = None
@@ -572,6 +579,7 @@ class _PartitionWriter:
         return buffer.getvalue().encode("utf-8")
 
     def _open_partition(self) -> None:
+        self.budget.reserve_partition()
         index = len(self.partitions) + 1
         self._path = self.directory / f"{self.dataset}-{index:04d}.csv"
         self._stream = self._path.open("wb")
@@ -584,6 +592,12 @@ class _PartitionWriter:
         self._write_bytes(self._header)
 
     def _write_bytes(self, content: bytes) -> None:
+        if self.total_bytes >= self._disk_check_at or len(content) >= 1024 * 1024:
+            if shutil.disk_usage(self.directory).free < MIN_FREE_DISK_BYTES + len(content):
+                raise BIExportError(
+                    "insufficient free disk for BI output; no package was published"
+                )
+            self._disk_check_at = self.total_bytes + 1024 * 1024
         self.budget.reserve_bytes(len(content))
         self._stream.write(content)
         self._digest.update(content)
@@ -609,6 +623,16 @@ class _PartitionWriter:
                     f"{self.dataset}.{field.name} exceeds the {MAX_CELL_BYTES}-byte cell bound"
                 )
             values.append(cell)
+        self.write_cells(values)
+
+    def write_cells(self, values: list[str]) -> None:
+        """Write already serialized CSV values without reinterpreting their typed grain."""
+        if len(values) != len(self.fields):
+            raise BIExportError("CSV row width differs from the selected field schema")
+        if any(len(value.encode("utf-8")) > MAX_CELL_BYTES for value in values):
+            raise BIExportError(f"CSV value exceeds the {MAX_CELL_BYTES}-byte cell bound")
+        if self.total_rows >= MAX_OUTPUT_ROWS:
+            raise BIExportError("selected output exceeds the row bound")
         encoded = self._encode(values)
         if len(encoded) + len(self._header) > self.max_bytes_per_file:
             raise BIExportError(
@@ -642,6 +666,12 @@ class _PartitionWriter:
         self._digest = None
         self._path = None
 
+    def close(self) -> None:
+        """Release an interrupted writer without publishing metadata."""
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
+
     def finish(self) -> dict[str, Any]:
         if self._stream is None:
             self._open_partition()
@@ -659,6 +689,14 @@ class _OutputBudget:
     def __init__(self, max_bytes: int) -> None:
         self.max_bytes = max_bytes
         self.bytes = 0
+        self.partitions = 0
+
+    def reserve_partition(self) -> None:
+        if self.partitions >= MAX_OUTPUT_PARTITIONS:
+            raise BIExportError(
+                "too many CSV partitions; increase max_rows_per_file or max_bytes_per_file"
+            )
+        self.partitions += 1
 
     def reserve_bytes(self, amount: int) -> None:
         if self.bytes + amount > self.max_bytes:
@@ -681,7 +719,7 @@ class _RunInput:
     page_count: int
     findings_factory: Any
     finding_count: int
-    groups: list[dict[str, Any]]
+    groups: Iterable[dict[str, Any]]
     links_factory: Any
     links_source_state: str
     links_source_reason: str | None
@@ -987,7 +1025,11 @@ def _check_coverage_rows(
 
 
 def _scan_source(
-    path_value: str | os.PathLike[str], con: sqlite3.Connection, *, max_scan_bytes: int
+    path_value: str | os.PathLike[str],
+    con: sqlite3.Connection,
+    *,
+    max_scan_bytes: int,
+    index_parent: Path,
 ) -> _RunInput:
     path = Path(path_value)
     scan_sha, scan_bytes = _sha256_path(path, max_scan_bytes, "scan")
@@ -1035,7 +1077,9 @@ def _scan_source(
 
         finding_count = audit_reader.count("/issues")
         groups = (
-            list(audit_reader.iter_collection("/groups"))
+            _ObservationStream(
+                lambda: audit_reader.iter_collection("/groups"), audit_reader.count("/groups")
+            )
             if "/groups" in audit_reader.collections
             else []
         )
@@ -1068,30 +1112,30 @@ def _scan_source(
         # with the retained crawl's page ordinal.  A disk-backed URL index keeps
         # the projection re-iterable at one million pages without either a
         # positional zip or a million-entry Python dictionary.
-        audit_overlay_temp = tempfile.TemporaryDirectory(prefix=".seohead-bi-audit-pages-")
+        audit_overlay_temp = tempfile.TemporaryDirectory(
+            prefix=".seohead-bi-audit-pages-", dir=index_parent
+        )
         audit_overlay_path = Path(audit_overlay_temp.name) / "pages.sqlite"
         overlay_con = sqlite3.connect(audit_overlay_path)
         try:
+            overlay_con.execute("PRAGMA cache_size=-2048")
+            overlay_con.execute("PRAGMA journal_mode=OFF")
+            overlay_con.execute(f"PRAGMA max_page_count={MAX_PROJECTION_INDEX_BYTES // 4096}")
             overlay_con.execute(
                 "CREATE TABLE overlays (url TEXT PRIMARY KEY, indexability_json TEXT, "
                 "indexability_status_json TEXT)"
             )
-            batch: list[tuple[str, str, str]] = []
             for overlay in audit_reader.iter_collection("/pages"):
                 if not isinstance(overlay, dict) or not isinstance(overlay.get("url"), str):
                     raise BIExportError("saved audit page lacks a URL for streaming projection")
-                batch.append(
-                    (
-                        overlay["url"],
-                        _canonical_json(overlay.get("indexability")),
-                        _canonical_json(overlay.get("indexability_status")),
-                    )
+                values = (
+                    overlay["url"],
+                    _canonical_json(overlay.get("indexability")),
+                    _canonical_json(overlay.get("indexability_status")),
                 )
-                if len(batch) >= 10_000:
-                    overlay_con.executemany("INSERT INTO overlays VALUES (?,?,?)", batch)
-                    batch.clear()
-            if batch:
-                overlay_con.executemany("INSERT INTO overlays VALUES (?,?,?)", batch)
+                if any(len(value.encode("utf-8")) > MAX_CELL_BYTES for value in values):
+                    raise BIExportError("one audit page overlay exceeds the BI cell bound")
+                overlay_con.execute("INSERT INTO overlays VALUES (?,?,?)", values)
             overlay_con.commit()
         except sqlite3.IntegrityError as exc:
             raise BIExportError("saved audit has duplicate URL overlays") from exc
@@ -1616,7 +1660,7 @@ def _page_row(run: _RunInput, page: dict[str, Any], ordinal: int) -> dict[str, A
 
 
 def _finding_source(
-    run: _RunInput, finding: dict[str, Any], ordinal: int, group_map: dict[str, dict[str, Any]]
+    run: _RunInput, finding: dict[str, Any], ordinal: int, group_map: Any
 ) -> dict[str, Any]:
     if run.source_kind == "sf-audit":
         check_id = finding.get("check")
@@ -1746,17 +1790,6 @@ def _finding_source(
         "evidence_json": evidence if evidence is not None else {},
         "source_finding_json": finding,
     }
-
-
-def _group_map(groups: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    result = {}
-    for group in groups:
-        group_id = group.get("group_id") or group.get("id")
-        if isinstance(group_id, str) and group_id:
-            if group_id in result:
-                raise BIExportError(f"duplicate finding group id {group_id!r}")
-            result[group_id] = group
-    return result
 
 
 def _provider_file(path_value: str | os.PathLike[str]) -> _ProviderInput:
@@ -2432,7 +2465,9 @@ def _cohort_row(
 def _quadrant_candidates(
     sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
     search_metric: str | None,
-) -> tuple[dict[str, tuple[dict[str, Any], dict[str, Any]]], str | None, dict[str, str]]:
+    *,
+    con: sqlite3.Connection,
+) -> tuple[Any, str | None, Any]:
     """Return only one-to-one, complete, same-window search/session pairs.
 
     The normalized provider grain may include query/device dimensions.  Those
@@ -2441,9 +2476,18 @@ def _quadrant_candidates(
     """
     if search_metric not in {"clicks", "impressions"}:
         return {}, "choose search_metric 'clicks' or 'impressions' to enable quadrants", {}
-    search: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    sessions: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    blocked: dict[str, str] = {}
+    from seohead.reports.bi_index import QuadrantLookup
+
+    con.execute(
+        "CREATE TABLE candidates (url TEXT, start TEXT, end TEXT, timezone TEXT, "
+        "search_count INTEGER DEFAULT 0, sessions_count INTEGER DEFAULT 0, "
+        "search_json TEXT, sessions_json TEXT, PRIMARY KEY(url,start,end,timezone))"
+    )
+    con.execute("CREATE TABLE blocked (url TEXT PRIMARY KEY, reason TEXT)")
+
+    def block(key: str, reason: str) -> None:
+        con.execute("INSERT OR IGNORE INTO blocked VALUES (?,?)", (key, reason))
+
     for _provider, observations, info in sources:
         header = info["evidence"]
         provider_name = str(header.get("provider") or "").casefold()
@@ -2481,14 +2525,14 @@ def _quadrant_candidates(
             if type(matched_page_count) is not int or matched_page_count < 1:
                 raise BIExportError("matched provider observation has an invalid page-match count")
             if matched_page_count != 1:
-                blocked.setdefault(
+                block(
                     key,
                     "normalized URL key matches multiple retained crawl URLs; "
                     "provider traffic cannot be attributed to one URL observation",
                 )
                 continue
             if row.get("ambiguous"):
-                blocked.setdefault(
+                block(
                     key,
                     "provider source marks this normalized URL row as ambiguous",
                 )
@@ -2508,46 +2552,44 @@ def _quadrant_candidates(
                 provider_name in {"gsc", "google_search_console", "search_console"}
                 and metric.get("name") == search_metric
             ):
-                search[window].append(source)
+                axis = "search"
             elif (
                 provider_name in {"ga4", "google_analytics_4", "google_analytics"}
                 and metric.get("name") == "sessions"
             ):
-                sessions[window].append(source)
-    paired_by_url: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
-    for key, search_rows in search.items():
-        session_rows = sessions.get(key, [])
-        if len(search_rows) == 1 and len(session_rows) == 1:
-            paired_by_url[key[0]].append((search_rows[0], session_rows[0]))
-        elif len(search_rows) > 1 or len(session_rows) > 1:
-            blocked.setdefault(
-                key[0],
-                "more than one complete provider observation shares this normalized URL key and period",
+                axis = "sessions"
+            else:
+                continue
+            encoded = _canonical_json(source)
+            if len(encoded.encode("utf-8")) > MAX_CELL_BYTES:
+                raise BIExportError("one quadrant observation exceeds the BI cell bound")
+            # Only two fixed axis names reach this SQL; no user identifier is interpolated.
+            con.execute(
+                f"INSERT INTO candidates(url,start,end,timezone,{axis}_count,{axis}_json) "
+                f"VALUES (?,?,?,?,1,?) ON CONFLICT(url,start,end,timezone) DO UPDATE SET "
+                f"{axis}_count={axis}_count+1, {axis}_json=COALESCE({axis}_json,excluded.{axis}_json)",
+                (*window, encoded),
             )
-    # Two compatible windows for one URL are still not one selected reporting
-    # window. Keep the URL unclassified until the operator supplies one source
-    # period, rather than allowing iteration order to choose it.
-    for url, pairs in paired_by_url.items():
-        if len(pairs) != 1:
-            blocked.setdefault(
-                url,
-                "more than one compatible provider period is retained for this normalized URL key",
-            )
-    return (
-        {
-            url: pairs[0]
-            for url, pairs in paired_by_url.items()
-            if len(pairs) == 1 and url not in blocked
-        },
-        None,
-        blocked,
+    con.execute(
+        "INSERT OR IGNORE INTO blocked SELECT url,? FROM candidates "
+        "WHERE search_count>1 OR sessions_count>1",
+        ("more than one complete provider observation shares this normalized URL key and period",),
     )
+    con.execute(
+        "INSERT OR IGNORE INTO blocked SELECT url,? FROM candidates "
+        "WHERE search_count=1 AND sessions_count=1 GROUP BY url HAVING COUNT(*)>1",
+        ("more than one compatible provider period is retained for this normalized URL key",),
+    )
+    return QuadrantLookup(con), None, QuadrantLookup(con, blocked=True)
 
 
 def _cohort_rows(
     run: _RunInput,
     sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
     search_metric: str | None,
+    *,
+    index_con: sqlite3.Connection | None = None,
+    inlink_index: Any = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield transparent technical cohorts and optional provider quadrants."""
     definition_status = (
@@ -2558,16 +2600,28 @@ def _cohort_rows(
     )
     definition_depth = "Crawl-relative depth band; deep means retained crawl depth >= 3."
     definition_inlinks = (
-        "Observed unique in-scope linking-page share: numerator is retained unique inlinks; "
-        "denominator is retained crawl pages only when link extraction is complete."
+        "Observed eligible-page share: numerator is unique retained in-scope sources linking "
+        "to this target; denominator is in-scope pages with completed HTML link extraction. "
+        "Repeated occurrences count once per source. Partial scope is not the whole site."
     )
     definition_quadrant = (
         "Search Console {metric} and GA sessions are separate axes. A quadrant needs one measured "
         "dimensionless URL value from each complete source for the same inclusive local-date window "
         "and timezone; values are never summed."
     )
-    pairs, pair_reason, blocked_keys = _quadrant_candidates(sources, search_metric)
-    denominator = run.page_count
+    if search_metric is None:
+        pairs, pair_reason, blocked_keys = (
+            {},
+            "choose search_metric 'clicks' or 'impressions' to enable quadrants",
+            {},
+        )
+    else:
+        if index_con is None:
+            raise BIExportError("provider quadrant projection requires a bounded disk index")
+        pairs, pair_reason, blocked_keys = _quadrant_candidates(
+            sources, search_metric, con=index_con
+        )
+    denominator = inlink_index.denominator if inlink_index is not None else None
     for ordinal, page in enumerate(run.pages_factory()):
         projected = _page_row(run, page, ordinal)
         status = projected["status_code"]
@@ -2644,9 +2698,11 @@ def _cohort_rows(
                 reason=projected["crawl_depth_reason"],
                 threshold=3,
             )
-        inlinks = projected["unique_inlinks"]
-        link_state = projected["link_counts_state"]
-        if link_state == "measured" and type(inlinks) is int and denominator:
+        if inlink_index is not None and denominator:
+            numerator = inlink_index.numerator(projected["url"])
+            complete = (
+                denominator == run.page_count and run.run_metadata.get("crawl_state") == "complete"
+            )
             yield _cohort_row(
                 run,
                 page,
@@ -2654,11 +2710,17 @@ def _cohort_rows(
                 "observed_unique_inlink_share",
                 definition_inlinks,
                 membership="member",
-                state="available",
-                value_number=inlinks / denominator,
-                numerator=inlinks,
+                state="available" if complete else "partial",
+                reason=None
+                if complete
+                else "share of observed eligible pages; crawl or extraction coverage is partial",
+                value_number=numerator / denominator,
+                numerator=numerator,
                 denominator=denominator,
-                extraction_state="complete",
+                extraction_state="complete" if denominator == run.page_count else "partial",
+                extraction_reason=None
+                if denominator == run.page_count
+                else "failed, skipped or non-HTML sources excluded",
             )
         else:
             yield _cohort_row(
@@ -2668,10 +2730,9 @@ def _cohort_rows(
                 "observed_unique_inlink_share",
                 definition_inlinks,
                 membership="unclassified",
-                state="partial" if link_state == "partial" else "unavailable",
-                reason=projected["link_counts_reason"] or "complete link extraction is required",
-                extraction_state=link_state,
-                extraction_reason=projected["link_counts_reason"],
+                state="unavailable",
+                reason="retained occurrence evidence and completed source extraction are required",
+                extraction_state="unavailable",
             )
         key = projected["url_key"]
         pair = pairs.get(key) if isinstance(key, str) else None
@@ -2757,6 +2818,7 @@ def _coverage_rows(
     run: _RunInput,
     providers: list[_ProviderInput],
     dataset_results: dict[str, dict[str, Any]],
+    group_index: Any,
 ) -> Iterator[dict[str, Any]]:
     pages_result = dataset_results["pages"]
     findings_result = dataset_results["findings"]
@@ -2795,32 +2857,33 @@ def _coverage_rows(
             result.get("coverage") or {},
         )
     yield from run.coverage_rows
-    if run.groups:
-        linked_group_ids = {
-            finding.get("group_id")
-            for finding in run.findings_factory()
-            if isinstance(finding.get("group_id"), str)
-        }
-        all_group_ids = {
-            group.get("group_id") or group.get("id")
-            for group in run.groups
-            if isinstance(group.get("group_id") or group.get("id"), str)
-        }
-        unlinked_group_ids = sorted(all_group_ids - linked_group_ids)
+    if group_index.source_count:
+        total, linked = group_index.coverage()
         yield _coverage_row(
             run.run_id,
             "findings",
             "groups",
             "finding_groups",
-            "partial" if unlinked_group_ids else "represented",
-            "some source groups are not referenced by a finding row"
-            if unlinked_group_ids
-            else None,
-            len(run.groups),
-            len(all_group_ids) - len(unlinked_group_ids),
-            len(unlinked_group_ids),
-            {"unlinked_group_ids": unlinked_group_ids},
+            "partial" if total != linked else "represented",
+            "some source groups are not referenced by a finding row" if total != linked else None,
+            group_index.source_count,
+            linked,
+            total - linked,
+            {"unlinked_ids": "one exact finding_group row per unlinked group follows"},
         )
+        for group_id in group_index.unlinked():
+            yield _coverage_row(
+                run.run_id,
+                "findings",
+                group_id,
+                "finding_group",
+                "unrepresented",
+                "source group is not referenced by a finding row",
+                1,
+                0,
+                1,
+                {"group_id": group_id},
+            )
     if not providers:
         yield _coverage_row(
             run.run_id,
@@ -2975,7 +3038,12 @@ def _scan_run(
     except Exception as exc:
         raise BIExportError(f"scan input failed validation: {exc}") from exc
     with closing(con):
-        run = _scan_source(path, con, max_scan_bytes=limits.pop("max_scan_bytes"))
+        run = _scan_source(
+            path,
+            con,
+            max_scan_bytes=limits.pop("max_scan_bytes"),
+            index_parent=out_directory.parent,
+        )
         try:
             return _write_package(run, con, out_directory, providers, **limits)
         finally:
@@ -3098,7 +3166,6 @@ def _write_package(
         Field(field_name, "string", True, f"Provider dimension {dimension_name}.")
         for dimension_name, field_name in dimension_fields.items()
     )
-    group_map = _group_map(run.groups)
 
     def page_rows() -> Iterator[dict[str, Any]]:
         for ordinal, page in enumerate(run.pages_factory()):
@@ -3201,7 +3268,21 @@ def _write_package(
                 "source_link_json": payload,
             }
 
-    with tempfile.TemporaryDirectory(prefix=".seohead-bi-", dir=destination.parent) as temp:
+    from seohead.reports.bi_index import GroupIndex, InlinkIndex, projection_index
+
+    with ExitStack() as stack:
+        index_con = stack.enter_context(
+            projection_index(destination.parent, MAX_PROJECTION_INDEX_BYTES)
+        )
+        group_map = GroupIndex(index_con, run.groups)
+        inlink_index = (
+            InlinkIndex(index_con, run)
+            if run.source_kind == "scan" and run.links_source_state != "unavailable"
+            else None
+        )
+        temp = stack.enter_context(
+            tempfile.TemporaryDirectory(prefix=".seohead-bi-", dir=destination.parent)
+        )
         stage = Path(temp)
         os.chmod(stage, 0o700)
         budget = _OutputBudget(max_output_bytes)
@@ -3211,7 +3292,13 @@ def _write_package(
             "findings": finding_rows(),
             "metrics": (row for row in _metric_rows(run, provider_observations, dimension_fields)),
             "link_occurrences": link_rows(),
-            "cohorts": _cohort_rows(run, provider_observations, search_metric),
+            "cohorts": _cohort_rows(
+                run,
+                provider_observations,
+                search_metric,
+                index_con=index_con,
+                inlink_index=inlink_index,
+            ),
         }
         schemas = {
             "pages": PAGE_FIELDS,
@@ -3278,9 +3365,12 @@ def _write_package(
             )
             if name == "link_occurrences" and state == "unavailable":
                 row_sources[name] = iter(())
-            for row in row_sources[name]:
-                writer.write(row)
-            result = writer.finish()
+            try:
+                for row in row_sources[name]:
+                    writer.write(row)
+                result = writer.finish()
+            finally:
+                writer.close()
             expected = coverage.get("source_rows")
             if expected is not None and result["row_count"] != expected:
                 raise BIExportError(
@@ -3308,10 +3398,14 @@ def _write_package(
             max_bytes_per_file=max_bytes_per_file,
             budget=budget,
         )
-        for row in _coverage_rows(run, providers, dataset_outputs):
-            coverage_writer.write(row)
+        try:
+            for row in _coverage_rows(run, providers, dataset_outputs, group_map):
+                coverage_writer.write(row)
+            coverage_result = coverage_writer.finish()
+        finally:
+            coverage_writer.close()
         dataset_outputs["coverage"] = {
-            **coverage_writer.finish(),
+            **coverage_result,
             "state": "available",
             "reason": None,
             "source_population": "input artifact and declared check coverage",
@@ -3421,7 +3515,12 @@ def _write_package(
                 "max_rows_per_partition": max_rows_per_file,
                 "max_bytes_per_partition": max_bytes_per_file,
                 "max_output_bytes": max_output_bytes,
+                "max_output_partitions": MAX_OUTPUT_PARTITIONS,
+                "max_manifest_bytes": MAX_MANIFEST_BYTES,
                 "max_cell_bytes": MAX_CELL_BYTES,
+                "max_projection_index_bytes": MAX_PROJECTION_INDEX_BYTES,
+                "projection_index_cache_bytes": 2 * 1024 * 1024,
+                "min_free_disk_bytes": MIN_FREE_DISK_BYTES,
                 "overflow": "fail without publishing any complete package; no truncation or sampling",
             },
             "datasets": datasets,
@@ -3431,6 +3530,8 @@ def _write_package(
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
             + "\n"
         ).encode("utf-8")
+        if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+            raise BIExportError("BI manifest exceeds its byte bound")
         budget.reserve_bytes(len(manifest_bytes))
         manifest_path.write_bytes(manifest_bytes)
         os.chmod(manifest_path, 0o600)
