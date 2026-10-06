@@ -227,6 +227,35 @@ def test_same_count_different_link_destination_derives_link_change(tmp_path, loo
     assert validation["links_sha256"] == second["run"]["observations"][0]["source"]["links_sha256"]
 
 
+def test_cacheable_body_then_current_no_store_never_retains_new_body(tmp_path, loopback):
+    project, configured = _project(tmp_path, loopback)
+    claimed = schedule(project, action="start", expected_revision=configured["revision"])
+    first = collect_once(project, expected_revision=claimed["revision"], apply=True)
+    _Page.cache_control = "no-store"
+    _Page.link_href = "/new-no-store"
+    claimed = schedule(project, action="start", expected_revision=first["revision"])
+    second = collect_once(project, expected_revision=claimed["revision"], apply=True)
+    source = second["run"]["observations"][0]["source"]
+    validation = json.loads((project / source["validation_ref"]).read_text())
+    assert source["body_ref"] is None
+    assert validation["transport"]["cache_control"] == "no-store"
+    assert validation["transport"]["status_code"] == 200
+    assert "PRIVATE-BODY" not in (project / source["validation_ref"]).read_text()
+
+
+def test_tampered_claim_plan_is_rejected_before_http(tmp_path, loopback):
+    project, configured = _project(tmp_path, loopback)
+    claimed = schedule(project, action="start", expected_revision=configured["revision"])
+    document = read_document(project, "monitor.json")
+    document["runner"]["claim_id"] = "monitor:../escape"
+    document["runner"]["plan"]["planned_urls"] = ["https://outside.test/"]
+    document["revision"] += 1
+    write_document(project, "monitor.json", document, expected_revision=claimed["revision"])
+    with pytest.raises(ValueError, match="claim id is invalid"):
+        collect_once(project, expected_revision=document["revision"], apply=True)
+    assert _Page.requests == 0
+
+
 def test_same_revision_concurrent_apply_dispatches_at_most_one_url(tmp_path, loopback, monkeypatch):
     import seohead.projects.monitoring as monitoring
 

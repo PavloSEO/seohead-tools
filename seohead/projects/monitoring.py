@@ -660,7 +660,11 @@ def _new_report_target(reports: Path, name: str) -> Path:
 
 
 def _source_artifacts(
-    root: Path, claim_id: str, record: Any, parsed: dict[str, Any] | None, cache: Any
+    root: Path,
+    claim_id: str,
+    record: Any,
+    parsed: dict[str, Any] | None,
+    transport: dict[str, Any],
 ) -> dict[str, Any]:
     """Retain body and post-cache validation evidence under this project only."""
     token = hashlib.sha256(record.url.encode("utf-8")).hexdigest()
@@ -680,10 +684,12 @@ def _source_artifacts(
             links if isinstance(links, list) else [], sort_keys=True, ensure_ascii=False
         ).encode("utf-8")
     ).hexdigest()
-    entry = cache.decide(record.url, {"User-Agent": "SEOHEAD-monitor/1"}).entry
     body_ref = body_hash = None
     retain_body = (
-        isinstance(body, str) and entry is not None and not entry.headers.get("set-cookie")
+        isinstance(body, str)
+        and transport.get("status_code") in {200, 304}
+        and transport.get("cache_control") != "no-store"
+        and not transport.get("set_cookie")
     )
     if retain_body:
         body_ref, body_hash = _artifact(
@@ -695,9 +701,10 @@ def _source_artifacts(
         "url": record.url,
         "effective_status_code": record.status_code,
         "cache_status": record.cache_status,
+        "transport": transport,
         "validators": {
-            "etag": entry.etag if entry is not None else None,
-            "last_modified": entry.last_modified if entry is not None else None,
+            "etag": transport.get("etag"),
+            "last_modified": transport.get("last_modified"),
         },
         "body_ref": body_ref,
         "body_sha256": body_hash,
@@ -721,17 +728,17 @@ def _source_artifacts(
 def _measurement(record: Any, source: dict[str, Any]) -> tuple[dict[str, Any], str, str | None]:
     if record.error or record.status_code is None:
         return {}, "failed", record.error or "collector produced no HTTP status"
-    if record.body_unavailable or source["body_sha256"] is None:
-        return (
-            {"status": record.status_code},
-            "unavailable",
-            record.body_unavailable or "body unavailable",
-        )
     if record.cache_status == "hit":
         return (
             {"status": record.status_code},
             "stale",
             "fresh cache evidence was reused without a network revalidation",
+        )
+    if record.body_unavailable or source["body_sha256"] is None:
+        return (
+            {"status": record.status_code},
+            "unavailable",
+            record.body_unavailable or "body unavailable",
         )
     from seohead.tools.parser import robots_directives
 
@@ -762,17 +769,42 @@ def _claim_preview(document: dict[str, Any], stamp: str) -> dict[str, Any]:
     expiry = runner.get("lease_expires_at")
     if not isinstance(expiry, str):
         raise ValueError("monitor claim lacks a lease")
+    claim_id = runner.get("claim_id")
+    try:
+        valid_claim = f"monitor:{uuid.UUID(str(claim_id).removeprefix('monitor:'))}" == claim_id
+    except ValueError:
+        valid_claim = False
+    if not valid_claim:
+        raise ValueError("monitor claim id is invalid")
+    policy = _policy(document.get("policy"))
+    planned = plan.get("planned_urls")
+    dispatched = runner.get("dispatched_urls", [])
+    if (
+        plan.get("state") != "due"
+        or plan.get("mode") not in {"full", "incremental"}
+        or not isinstance(planned, list)
+        or not planned
+        or len(planned) != len(set(planned))
+        or not set(planned) <= set(policy["urls"])
+        or plan.get("url_limit") != len(planned)
+        or plan.get("request_budget") != policy["max_requests"]
+        or plan.get("render_request_budget") != policy["max_render_requests"]
+        or (plan["mode"] == "full" and planned != policy["urls"])
+        or (plan["mode"] == "incremental" and len(planned) > policy["max_urls"])
+        or not isinstance(dispatched, list)
+        or len(dispatched) != len(set(dispatched))
+        or not set(dispatched) <= set(planned)
+    ):
+        raise ValueError("monitor claim plan is invalid")
     expired = datetime.fromisoformat(stamp.replace("Z", "+00:00")) >= datetime.fromisoformat(
         expiry.replace("Z", "+00:00")
     )
-    dispatched = list(runner.get("dispatched_urls", []))
-    planned = list(plan.get("planned_urls", []))
     return {
-        "claim_id": runner.get("claim_id"),
+        "claim_id": claim_id,
         "lease_expires_at": expiry,
         "expired": expired,
         "plan": plan,
-        "dispatched_urls": dispatched,
+        "dispatched_urls": list(dispatched),
         "remaining_urls": [url for url in planned if url not in dispatched],
     }
 
@@ -822,7 +854,26 @@ def collect_once(
     cache = ResponseCache(_new_report_target(reports, "monitor-cache"))
     throttle = Throttle(start_delay=0.5, min_delay=0.5, max_concurrency=1)
     gate = DispatchGate(throttle, time.sleep, max_requests=document["policy"]["max_requests"])
-    client, _ = http_client(15, follow_redirects=False, **crawl_transport_options())
+    transport: dict[str, Any] = {}
+
+    def response_facts(response: Any) -> None:
+        headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+        transport.update(
+            {
+                "status_code": response.status_code,
+                "cache_control": headers.get("cache-control"),
+                "etag": headers.get("etag"),
+                "last_modified": headers.get("last-modified"),
+                "set_cookie": bool(headers.get("set-cookie")),
+            }
+        )
+
+    client, _ = http_client(
+        15,
+        follow_redirects=False,
+        event_hooks={"response": [response_facts]},
+        **crawl_transport_options(),
+    )
     observations = []
     try:
         for url in preview["remaining_urls"]:
@@ -848,6 +899,8 @@ def collect_once(
             document["revision"] += 1
             write_document(root, NAME, document, expected_revision=expected_revision)
             expected_revision = document["revision"]
+            transport.clear()
+            client.cookies.clear()
             record, parsed = fetch_one(
                 url,
                 client=client,
@@ -856,7 +909,7 @@ def collect_once(
                 wait=gate.wait_turn,
                 user_agent="SEOHEAD-monitor/1",
             )
-            source = _source_artifacts(root, preview["claim_id"], record, parsed, cache)
+            source = _source_artifacts(root, preview["claim_id"], record, parsed, transport)
             client.cookies.clear()
             measurement, qualifier, failure_reason = _measurement(record, source)
             observations.append(
