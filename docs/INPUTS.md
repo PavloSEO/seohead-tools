@@ -76,7 +76,7 @@ and this decision makes no backend migration.
 | `regions-check` | Live URL (`url`) | — |
 | `render-check` | Live URL (`url`)<br>Inline JSON (`transport_config`) | Optional local/remote Playwright transport selection; endpoint is named by environment variable. |
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
-| `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset. |
+| `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`)<br>Selector (`pdf_policy`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset.; Explicit overview-v1 for PDF + retained audit.v2 only: bounded PDF with complete mandatory JSON/CSV/manifest companions; never inferred. |
 | `facts-export` | Inline JSON (`sites`) | — |
 | `marketing-inventory` | Inline JSON (`documents`)<br>Selector (`cta_selector, form_selector, id_attributes, id_parameters`)<br>Local directory (`out_dir`) | — |
 | `keywords-expand` | Provider query (`phrase`) | — |

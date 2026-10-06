@@ -740,3 +740,13 @@ seohead mcp        # stdio
 ## Additional registered workflows
 
 `remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`. See the generated tool reference for exact inputs, limits and side effects.
+
+## Explicit retained-audit PDF overview
+
+`report-build --audit scan.sqlite --format pdf --pdf-policy overview-v1 --out report.pdf`
+creates a bounded PDF overview plus complete JSON, findings/pages/scope CSV files and a
+hashed manifest. The PDF states full, displayed and omitted counts; it is not an
+exhaustive listing or representative sample. Streamed audit.v2 PDF inputs require this
+explicit policy. Materialized inputs and other formats refuse it. Both the PDF and
+its companion directory must be new. See [PDF_OVERVIEW.md](PDF_OVERVIEW.md) for display,
+disk and publication limits.

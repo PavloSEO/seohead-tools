@@ -2197,13 +2197,15 @@ def report_build(
     view: str | None = None,
     offset: int = 0,
     lang: str = "en",
+    pdf_policy: str | None = None,
 ) -> dict[str, Any]:
     if audit is None:
         raise ValueError("audit required: audit document or path to its JSON representation")
     from seohead.reports import build_report
 
+    options = {"pdf_policy": pdf_policy} if pdf_policy is not None else {}
     return build_report(
-        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang
+        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang, **options
     )
 
 

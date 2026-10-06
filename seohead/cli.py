@@ -791,6 +791,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["_report"] = args.report
             kw["_out"] = getattr(args, "out", None)
     elif cmd == "report-build":
+        if getattr(args, "pdf_policy", None) is not None:
+            kw["pdf_policy"] = args.pdf_policy
         if getattr(args, "audit", None):
             kw["audit"] = args.audit
         if getattr(args, "format", None):
@@ -1844,6 +1846,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--out", help="new CSV with at most --limit matching rows; never overwrites"
         )
     if cmd == "report-build":
+        sub.add_argument(
+            "--pdf-policy",
+            choices=("overview-v1",),
+            help="explicit audit.v2 PDF overview with complete JSON/CSV companions",
+        )
         _source_flag(
             sub, "--audit", help="path to an audit JSON document or scan.v1 SQLite artifact"
         )

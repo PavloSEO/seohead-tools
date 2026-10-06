@@ -352,6 +352,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         ),
         _form("selector", "view", note="Optional saved project finding view; requires project."),
         _form("selector", "offset", note="Optional stable finding-view page offset."),
+        _form(
+            "selector",
+            "pdf_policy",
+            note="Explicit overview-v1 for PDF + retained audit.v2 only: bounded PDF with complete mandatory JSON/CSV/manifest companions; never inferred.",
+        ),
     ),
     _command("facts-export", "facts_export", _form("inline_json", "sites")),
     _command(

@@ -718,8 +718,17 @@ Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the d
 | `view` | `str | None` | `None` |
 | `offset` | `int` | `0` |
 | `lang` | `str` | `'en'` |
+| `pdf_policy` | `Literal['overview-v1'] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+For retained audit.v2 only, explicit pdf_policy='overview-v1' writes a bounded
+PDF overview with mandatory complete JSON/CSV companions and a hashed manifest.
+Exact source, displayed and omitted counts remain visible. No policy is chosen
+automatically; streamed PDF without this policy is refused. Other formats and
+materialized inputs reject the policy. PDF and companion directory must be new.
 
 ### `facts-export`
 

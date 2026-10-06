@@ -465,3 +465,20 @@ Use `sitemap-crawl --url https://example.test/sitemap.xml --project ./project`
 to record a standalone sitemap observation explicitly. The URL must share the
 project origin and have no credentials, query or fragment. Counts distinguish
 parsed sitemap documents from declared page URLs; no HTML crawl is inferred.
+
+### Evidence verification budgets
+
+A project policy may explicitly set `evidence_hash.max_bytes` and
+`evidence_hash.max_seconds`. Defaults are 1 GiB per artifact and 5 seconds per
+verification request; accepted ceilings are 64 GiB and 300 seconds. An explicit
+large-artifact profile can use 32 GiB and 120 seconds. Older policy documents
+without the field retain the defaults and are normalized only in memory.
+Exceeding a budget refuses verification; it never marks unread bytes verified.
+
+Successful workflow checkpoints validate retained project-contained artifact bytes
+against the supplied SHA-256 and preserve a verification receipt. Explicit
+`workflow-status` revalidates bytes. Passive workflow observations report
+`evidence_verification_mode="metadata_only"`: matching file metadata is a receipt
+observation, not a fresh byte verification. Changed metadata becomes stale; an old
+completion without a receipt remains unverified in that passive view. Other project
+coverage projections may still verify their own evidence separately.

@@ -1128,5 +1128,10 @@ replay remains unavailable; retained-evidence reanalysis is documented above.
 
 Saved finding views are currently unavailable for streamed audit.v2 report inputs.
 The report builder refuses that combination explicitly rather than silently ignoring
-the selected view. PDF and project coverage remain explicitly unavailable on the
+the selected view. Project coverage remains explicitly unavailable on the
 streaming path; bounded inline audit reports retain their view/language support.
+
+For streamed PDF output, explicitly pass `pdf_policy="overview-v1"` (CLI
+`--pdf-policy overview-v1`). It creates a bounded PDF view with complete JSON/CSV
+companions and a hashed manifest; no policy is selected by default. See
+[PDF_OVERVIEW.md](PDF_OVERVIEW.md) for counts, limits and publication guarantees.

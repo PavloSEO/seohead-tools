@@ -70,3 +70,13 @@ retains its documented filesystem durability boundary.
 The policy makes the PDF consumer usable without materializing a complete large audit.
 It does not itself prove one-million-URL producer or end-to-end capacity: those require
 the separate staged native-pipeline acceptance gate.
+
+## CLI and local MCP
+
+```bash
+seohead report-build --audit scan.sqlite --format pdf --pdf-policy overview-v1 --out report.pdf
+```
+
+The matching local tool is `seo_report_build` with `fmt="pdf"` and
+`pdf_policy="overview-v1"`. Both call the same report builder. Omitting the policy
+never silently selects a bounded PDF view.

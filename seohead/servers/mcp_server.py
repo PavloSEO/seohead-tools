@@ -821,6 +821,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         view: str | None = None,
         offset: int = 0,
         lang: str = "en",
+        pdf_policy: Literal["overview-v1"] | None = None,
     ) -> dict[str, Any]:
         """Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict
         returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a
@@ -837,8 +838,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Pass project to include validated checklist coverage, reasons, scope and measurements in a
         human report. Optional view applies one saved finding view; it leaves health, evidence,
         coverage and source scan untouched. offset pages through the stable sorted view. This never
-        makes a network request."""
+        makes a network request.
+
+        For retained audit.v2 only, explicit pdf_policy='overview-v1' writes a bounded
+        PDF overview with mandatory complete JSON/CSV companions and a hashed manifest.
+        Exact source, displayed and omitted counts remain visible. No policy is chosen
+        automatically; streamed PDF without this policy is refused. Other formats and
+        materialized inputs reject the policy. PDF and companion directory must be new.
+        """
         arguments = {"audit": audit, "fmt": fmt, "out": out, "project": project}
+        if pdf_policy is not None:
+            arguments["pdf_policy"] = pdf_policy
         if view is not None:
             arguments["view"] = view
         if offset != 0:

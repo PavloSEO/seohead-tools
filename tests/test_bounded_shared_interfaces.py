@@ -362,3 +362,48 @@ def test_inbox_submit_omitted_flags_keep_handler_defaults(tmp_path):
     create_project(project, "https://example.test/")
     entry = _cli("project-inbox-submit", "--directory", str(project), "--text", "A note")["entry"]
     assert entry["kind"] == "note" and entry["author_role"] == "specialist"
+
+
+def test_pdf_policy_cli_and_mcp_reach_same_builder(monkeypatch):
+    from seohead import reports
+
+    calls = []
+
+    def build(audit, **kwargs):
+        calls.append({"audit": audit, **kwargs})
+        return {"ok": True}
+
+    monkeypatch.setattr(reports, "build_report", build)
+    _cli(
+        "report-build",
+        "--audit",
+        "scan.sqlite",
+        "--format",
+        "pdf",
+        "--out",
+        "report.pdf",
+        "--pdf-policy",
+        "overview-v1",
+    )
+    tool = build_server()._tool_manager.get_tool("seo_report_build")
+    tool.fn(audit="scan.sqlite", fmt="pdf", out="report.pdf", pdf_policy="overview-v1")
+    assert calls[0] == calls[1]
+    assert calls[0]["pdf_policy"] == "overview-v1"
+    handlers.report_build(audit="audit.json", fmt="pdf", out="complete.pdf")
+    assert "pdf_policy" not in calls[-1]
+
+
+@pytest.mark.parametrize("fmt,audit_kind", [("xlsx", "stream"), ("pdf", "materialized")])
+def test_pdf_policy_rejects_incompatible_public_inputs_without_outputs(tmp_path, fmt, audit_kind):
+    from tests.test_pdf_stream import _fixture
+    from tests.test_verify_fixes import _audit
+
+    source, _ = _fixture(tmp_path, count=2)
+    destination = tmp_path / ("output." + fmt)
+    audit = str(source) if audit_kind == "stream" else _audit()
+    result = handlers.report_build(
+        audit=audit, fmt=fmt, out=str(destination), pdf_policy="overview-v1"
+    )
+    assert result["ok"] is False and "overview-v1" in result["error"]
+    assert not destination.exists()
+    assert not destination.with_suffix(".files").exists()
