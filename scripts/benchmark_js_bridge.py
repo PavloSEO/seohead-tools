@@ -782,6 +782,17 @@ def growth_gate(records: list[dict], profile: dict) -> dict:
     }
 
 
+def installed_browser() -> Path:
+    """An explicit executable needs no throwaway Playwright driver process."""
+    selected = os.environ.get("SEOHEAD_CHROME")
+    if selected:
+        return Path(selected).expanduser().resolve()
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as runtime:
+        return Path(runtime.chromium.executable_path).resolve()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "run", "page-cap", "smoke", "_worker"))
@@ -815,14 +826,7 @@ def main(argv=None):
         parser.error("numeric process-tree measurement is unavailable on this platform")
     if identity["playwright"] == "unavailable":
         parser.error("Playwright is unavailable; no installation attempted")
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as runtime:
-        executable = (
-            Path(os.environ.get("SEOHEAD_CHROME") or runtime.chromium.executable_path)
-            .expanduser()
-            .resolve()
-        )
+    executable = installed_browser()
     if not executable.is_file() or not os.access(executable, os.X_OK):
         parser.error("Chromium is unavailable; select an installed executable with SEOHEAD_CHROME")
     identity["browser_sha256"] = digest(executable)

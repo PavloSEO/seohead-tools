@@ -71,3 +71,15 @@ def test_versioned_matrix_covers_all_settings_and_resolves_evidence_paths():
         assert (root / row["implementation"]).is_file()
         assert (root / row["behavioral_test_reference"]).is_file()
         assert row["linked_acceptance_gaps"]
+
+
+def test_explicit_browser_preflight_does_not_start_playwright(monkeypatch, tmp_path):
+    import sys
+
+    from scripts.benchmark_js_bridge import installed_browser
+
+    executable = tmp_path / "owned-browser"
+    executable.write_text("fixture")
+    monkeypatch.setenv("SEOHEAD_CHROME", str(executable))
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
+    assert installed_browser() == executable.resolve()
