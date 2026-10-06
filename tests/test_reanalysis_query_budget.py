@@ -11,17 +11,45 @@ from seohead.storage.read_budget import ReadConnection
 def test_paused_python_consumer_gets_a_fresh_sql_step_budget(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr("seohead.storage.read_budget.time.monotonic", lambda: clock[0])
+    sql = (
+        "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<2000) "
+        "SELECT (SELECT SUM(x + outer_row.v) FROM n) "
+        "FROM (SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3) outer_row"
+    )
+    # Negative control: the former sticky connection deadline really fires on
+    # the expensive next row. A three-literal SELECT never exercises the VM guard.
+    sticky = sqlite3.connect(":memory:")
+    try:
+        sticky.set_progress_handler(lambda: int(clock[0] > 0.1), 1000)
+        rows = sticky.execute(sql)
+        clock[0] = 900
+        with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+            rows.fetchone()
+    finally:
+        sticky.close()
+    clock[0] = 0
     con = sqlite3.connect(":memory:", factory=ReadConnection)
     try:
         con.set_query_budget(0.1)
-        rows = con.execute("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3")
-        assert next(rows) == (1,)
-        clock[0] += 900  # Long parsing/writing work outside SQLite is not query time.
-        assert rows.fetchone() == (2,)
+        rows = con.execute(sql)
         clock[0] += 900
-        assert rows.fetchmany(1) == [(3,)]
+        assert next(rows) == (2003000,)
+        clock[0] += 900
+        assert rows.fetchone() == (2005000,)
+        clock[0] += 900
+        assert rows.fetchmany(1) == [(2007000,)]
         clock[0] += 900
         assert con.execute("SELECT 4").fetchall() == [(4,)]
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("seconds", [True, False, float("nan"), float("inf"), -1, 0])
+def test_invalid_query_budget_is_refused(seconds):
+    con = sqlite3.connect(":memory:", factory=ReadConnection)
+    try:
+        with pytest.raises(ValueError, match="finite positive"):
+            con.set_query_budget(seconds)
     finally:
         con.close()
 
