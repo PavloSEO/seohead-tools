@@ -746,6 +746,7 @@ Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four dis
 | `force` | `bool` | `False` |
 | `correspondence` | `Any` | `None` |
 | `out_dir` | `str | None` | `None` |
+| `compression` | `Literal['none', 'gzip']` | `'none'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -755,7 +756,10 @@ With out_dir, writes a new compare.v2 package with partition manifests,
 exact finding rows, checksums and before/after count conservation. Without
 it, returns the small compare.v1 document; retained audit.v2 populations
 above 10,000 pages or issues require explicit out_dir. Never overwrites
-a package and never collects evidence or calls the network.
+a package and never collects evidence or calls the network. Explicit
+compression='gzip' requires out_dir and preserves every row in deterministic
+.ndjson.gz files; manifests record compressed checksums and both byte counts.
+Default compression='none' keeps uncompressed output.
 
 ### `verify-fixes`
 

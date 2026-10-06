@@ -64,6 +64,9 @@ unchanged findings and per-check totals. Source identities, checksums and before
 conservation remain explicit. Existing destinations are refused. Small calls without
 `--out-dir` retain `compare.v1`; audit.v2 sources above 10,000 pages or issues require
 an explicit output directory. This workflow reads retained evidence without network calls.
+Add `--compression gzip` only when compressed NDJSON is wanted. Compression preserves
+all rows; manifests declare compressed checksums/bytes and uncompressed bytes. The
+default remains `none`; gzip requires an explicit output directory.
 
 ## Offline BI projection
 

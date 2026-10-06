@@ -874,6 +874,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         force: bool = False,
         correspondence: Any = None,
         out_dir: str | None = None,
+        compression: Literal["none", "gzip"] = "none",
     ) -> dict[str, Any]:
         """Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint
         sets per finding: entered (new problem on a page that existed before),
@@ -892,7 +893,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         exact finding rows, checksums and before/after count conservation. Without
         it, returns the small compare.v1 document; retained audit.v2 populations
         above 10,000 pages or issues require explicit out_dir. Never overwrites
-        a package and never collects evidence or calls the network.
+        a package and never collects evidence or calls the network. Explicit
+        compression='gzip' requires out_dir and preserves every row in deterministic
+        .ndjson.gz files; manifests record compressed checksums and both byte counts.
+        Default compression='none' keeps uncompressed output.
         """
         return _checked(
             handlers.compare_crawls(
@@ -901,6 +905,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 force=force,
                 correspondence=correspondence,
                 out_dir=out_dir,
+                compression=compression,
             )
         )
 

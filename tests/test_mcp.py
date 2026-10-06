@@ -263,6 +263,7 @@ def test_compare_crawls_mcp_forwards_declared_correspondence(monkeypatch):
                 "after": {"pages": [], "issues": []},
                 "correspondence": correspondence,
                 "out_dir": "compare-output",
+                "compression": "gzip",
             }
         )
     )
@@ -274,6 +275,7 @@ def test_compare_crawls_mcp_forwards_declared_correspondence(monkeypatch):
             "force": False,
             "correspondence": correspondence,
             "out_dir": "compare-output",
+            "compression": "gzip",
         }
     ]
 

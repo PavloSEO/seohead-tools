@@ -252,7 +252,8 @@ def test_failed_observed_sitemap_is_terminal(tmp_path, monkeypatch):
     assert row["counters"]["fetched"] is None
 
 
-def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_path):
+@pytest.mark.parametrize("compression", ["none", "gzip"])
+def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_path, compression):
     from tests.test_compare_bounded import _source
     from tests.test_verify_fixes import A, B, _audit, _issue
 
@@ -271,10 +272,18 @@ def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_pat
         str(sources[1]),
         "--out-dir",
         str(left),
+        "--compression",
+        compression,
     )
     tool = build_server()._tool_manager.get_tool("seo_compare_crawls")
-    b = tool.fn(before=str(sources[0]), after=str(sources[1]), out_dir=str(right))
+    b = tool.fn(
+        before=str(sources[0]), after=str(sources[1]), out_dir=str(right), compression=compression
+    )
     assert a["schema_version"] == b["schema_version"] == "compare.v2"
+    assert a["files"]["left"]["format"] == ("ndjson.gz" if compression == "gzip" else "ndjson")
+    if compression == "gzip":
+        assert (left / a["files"]["left"]["path"]).read_bytes().startswith(b"\x1f\x8b")
+        assert a["files"]["left"]["uncompressed_bytes"] > 0
     assert (
         a["conservation"]
         == b["conservation"]
@@ -294,3 +303,8 @@ def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_pat
     legacy = handlers.compare_crawls(before, after)
     assert legacy["schema_version"] == "compare.v1"
     assert len(legacy["left"]) == 1 and len(legacy["entered"]) == 1
+
+    from seohead.sf.core.compare_store import iter_compare_rows
+
+    assert len(list(iter_compare_rows(a["manifest"], "left"))) == 1
+    assert len(list(iter_compare_rows(a["manifest"], "entered"))) == 1

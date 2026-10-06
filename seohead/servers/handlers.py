@@ -2226,6 +2226,7 @@ def compare_crawls(
     force: bool = False,
     correspondence: Any = None,
     out_dir: str | None = None,
+    compression: str = "none",
 ) -> dict[str, Any]:
     """Diff two audits: which findings were fixed, which are new, which pages
     dropped out of the crawl entirely. See seohead.sf.core.compare for why
@@ -2238,7 +2239,12 @@ def compare_crawls(
     after_doc = load_audit_source(after, "after", diagnostics)
     try:
         result = compare(
-            before_doc, after_doc, force=force, correspondence=correspondence, out_dir=out_dir
+            before_doc,
+            after_doc,
+            force=force,
+            correspondence=correspondence,
+            out_dir=out_dir,
+            compression=compression,
         )
     finally:
         if not hasattr(before, "iter_collection") and hasattr(before_doc, "close"):

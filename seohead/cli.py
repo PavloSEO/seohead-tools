@@ -837,6 +837,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value is not None:
                 kw[name] = value
     elif cmd == "compare-crawls":
+        if getattr(args, "compression", None) is not None:
+            kw["compression"] = args.compression
         if getattr(args, "out_dir", None) is not None:
             kw["out_dir"] = args.out_dir
         if getattr(args, "before", None):
@@ -1592,6 +1594,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--max-depth", type=int, help=argparse.SUPPRESS)
         sub.add_argument("--min-delay", type=float, help=argparse.SUPPRESS)
     if cmd == "compare-crawls":
+        sub.add_argument(
+            "--compression",
+            choices=("none", "gzip"),
+            help="explicit NDJSON compression; gzip requires --out-dir",
+        )
         _source_flag(
             sub,
             "--out-dir",

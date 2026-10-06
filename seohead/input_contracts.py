@@ -162,6 +162,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "out_dir",
             note="Optional new compare.v2 package; required for audit.v2 populations above 10,000 pages or issues. Refuses overwrite.",
         ),
+        _form(
+            "selector",
+            "compression",
+            note="none (default) or explicit gzip with out_dir; every row is retained and compressed/uncompressed bytes are declared.",
+        ),
     ),
     _command(
         "verify-fixes",
