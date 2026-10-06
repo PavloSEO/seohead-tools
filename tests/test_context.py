@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import itertools
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,42 @@ def test_disk_page_cache_evicts_and_batched_findings_keep_persisted_state():
         assert reloaded.suppressed_issue_ids == ["ISSUE-3"]
     finally:
         store.close()
+
+
+def test_disk_page_cache_enforces_byte_budget_and_reweighs_mutations():
+    records = [{"url": f"https://example.test/{index}"} for index in range(3)]
+    store = _DiskPages(
+        records, lambda record: Page(**record, metrics={"nested": [{"text": "x" * 512}]})
+    )
+    try:
+        first = store.get(records[0]["url"])
+        weight = store._cache_bytes
+        assert weight > 512
+        store._cache_byte_limit = weight * 2 + 16
+        for record in records[1:]:
+            store.get(record["url"])
+        assert len(store._cache) == 2
+        assert records[0]["url"] not in store._cache
+        assert 0 < store._cache_bytes <= store._cache_byte_limit
+        # Existing retained bytes are no longer owned by the write callback.
+        for wrapped in (first.metrics, first.issues, first.issue_ids, first.suppressed_issue_ids):
+            assert all(
+                not isinstance(cell.cell_contents, sqlite3.Row)
+                for cell in wrapped._save.__closure__
+            )
+        page = store.get(records[-1]["url"])
+        page.metrics["large"] = "y" * (store._cache_byte_limit * 2)
+        assert page.url not in store._cache
+        reopened = store.get(page.url)
+        assert reopened.metrics["large"] == page.metrics["large"]
+        assert page.url not in store._cache  # Oversized rows remain readable, uncached.
+        assert store._cache_bytes == sum(store._cache_weights.values())
+        assert store._cache_bytes <= store._cache_byte_limit
+        store.attach_issue(records[1]["url"], "TITLE_MISSING", "ISSUE-1")
+        assert store._cache_bytes == sum(store._cache_weights.values())
+    finally:
+        store.close()
+    assert store._cache_bytes == 0
 
 
 @pytest.mark.parametrize("disk_backed", (False, True))

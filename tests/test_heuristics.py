@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 
+import pytest
+
 from seohead.sf.core import heuristics
 from seohead.sf.core.audit import run_audit
 from tests.conftest import issues_of
@@ -47,6 +49,50 @@ def test_large_html_outlier_flagged(result):
     assert issue.details["size_bytes"] == 300000
     assert issue.details["ratio"] > 3
     assert issue.details["rank"] == 1
+
+
+@pytest.mark.parametrize("disk_backed", (False, True))
+def test_weight_ranks_keep_ties_missing_sizes_and_all_flagged_urls(
+    tmp_path, monkeypatch, disk_backed
+):
+    import builtins
+
+    from seohead.sf.config import load_config
+    from seohead.sf.core.context import AuditContext
+    from seohead.sf.core.loader import load_exports
+    from seohead.sf.core.models import Page
+
+    values = [("z", 10000), ("a", 10000), ("missing", ""), ("zero", 0), ("b", 5000)]
+    with (tmp_path / "internal_all.csv").open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            ["Address", "Content Type", "Status Code", "Indexability", "Size (bytes)", "Word Count"]
+        )
+        writer.writerows(
+            [f"https://example.test/{name}", "text/html", 200, "Indexable", size, 100]
+            for name, size in values
+        )
+    config = load_config(None)
+    config["thresholds"]["large_html_abs_kb"] = 1
+    ctx = AuditContext(load_exports(str(tmp_path)), config, disk_backed_pages=disk_backed)
+
+    def scalar_sorted(items, *args, **kwargs):
+        result = builtins.sorted(items, *args, **kwargs)
+        assert not any(isinstance(item, Page) for item in result)
+        return result
+
+    monkeypatch.setattr(heuristics, "sorted", scalar_sorted, raising=False)
+    try:
+        stats = heuristics.check_html_weight(ctx)
+        assert stats["count"] == 3 and stats["median"] == 10000
+        findings = {issue.target_url: issue for issue in ctx.issues if issue.check == "LARGE_HTML"}
+        assert {
+            url.rsplit("/", 1)[-1]: issue.details["rank"] for url, issue in findings.items()
+        } == {"z": 1, "a": 2, "b": 3}
+        assert ctx.page_by_url["https://example.test/z"].metrics["bytes_per_word"] == 100
+        assert ctx.page_by_url["https://example.test/b"].metrics["size_vs_median_ratio"] == 0.5
+    finally:
+        ctx.close()
 
 
 def test_size_stats_in_summary(result):

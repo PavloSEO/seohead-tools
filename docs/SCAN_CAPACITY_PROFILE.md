@@ -161,3 +161,26 @@ readback, and crash/reopen recovery at one million records. It does **not**
 raise the public 50,000-URL crawl ceiling or establish one-million-page live
 crawling, link density, retained HTML/DOM, audit/report, or concurrent-reader
 capacity. Those claims remain separate acceptance work.
+
+## Native analyzer memory ownership
+
+The disk-backed analyzer page cache has two limits: 16,384 entries and 128 MiB
+of estimated retained Python objects. The byte estimate walks decoded page
+values and their write-through wrappers; it is not a process RSS limit and
+does not include every allocator or SQLite allocation. A page exceeding the
+cache budget is still decoded and processed, but is not cached. Supported
+write-through mutations invalidate the cached entry so its old byte estimate
+cannot survive a larger value. The next lookup measures the stored value again.
+Callbacks retain the page URL and shared store, not a second serialized copy
+of the entire page row.
+
+HTML weight ranking keeps scalar URL/size pairs with the same stable ordering
+for ties. It does not retain the full population of decoded page models while
+calculating per-page metrics. Rank maps, size distributions and some other
+analyzer vectors remain O(N) scalar data; the complete audit pipeline is not
+claimed to be constant-space. Dense metadata can substantially increase one
+decoded page's weight even when its encoded record is below the existing
+8 MiB native record limit. Measure process RSS, elapsed time and temporary
+disk use on the intended density and complete consumer path before admitting
+a larger profile. Small allocation probes establish ownership and regressions,
+not large-crawl acceptance.

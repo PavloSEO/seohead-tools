@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 from collections import OrderedDict
 from collections.abc import Iterable, Iterator, Mapping
@@ -91,6 +92,11 @@ class _DiskPages:
         # into a million-page Python population.
         self._cache: OrderedDict[str, Page] = OrderedDict()
         self._cache_limit = 16_384
+        # Account for decoded Python values as well as the entry count. This
+        # estimates retained cache objects, not allocator overhead or process RSS.
+        self._cache_byte_limit = 128 * 1024 * 1024
+        self._cache_bytes = 0
+        self._cache_weights: dict[str, int] = {}
         self.con.execute(
             "CREATE TABLE pages (ordinal INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, "
             "norm TEXT NOT NULL, status_code INTEGER, state_json TEXT NOT NULL)"
@@ -130,6 +136,8 @@ class _DiskPages:
             return
         self.closed = True
         self._cache.clear()
+        self._cache_weights.clear()
+        self._cache_bytes = 0
         self.con.close()
         with suppress(FileNotFoundError):
             os.unlink(self.path)
@@ -166,6 +174,9 @@ class _DiskPages:
             "UPDATE pages SET state_json=? WHERE url=?",
             (json.dumps(state, ensure_ascii=False), url),
         )
+        # Mutation may grow a nested record beyond its admission weight. A
+        # fresh lookup reweighs the stored state; no stale estimate survives.
+        self._drop_cached(url)
         # The audit is one process-local transaction. Readers use this same
         # connection, so they see updates immediately; committing every metric
         # mutation would turn a large audit into thousands of fsyncs.
@@ -191,7 +202,39 @@ class _DiskPages:
         # Cached Page instances wrap write-through lists.  Invalidate rather
         # than mutating those wrappers, which would perform a second write and
         # risk replacing the just-updated state with an older list snapshot.
+        self._drop_cached(url)
+
+    def _drop_cached(self, url: str) -> None:
         self._cache.pop(url, None)
+        self._cache_bytes -= self._cache_weights.pop(url, 0)
+
+    def _cache_weight(self, page: Page) -> int:
+        """Conservatively estimate one decoded page without following its store owner."""
+        total = 256  # Per-entry LRU/weight bookkeeping, apart from page values.
+        seen: set[int] = set()
+        pending: list[Any] = [page, vars(page)]
+        while pending:
+            value = pending.pop()
+            if id(value) in seen:
+                continue
+            seen.add(id(value))
+            total += sys.getsizeof(value)
+            if total > self._cache_byte_limit:
+                return total
+            if isinstance(value, dict):
+                pending.extend(value.keys())
+                pending.extend(value.values())
+            elif isinstance(value, (list, tuple)):
+                pending.extend(value)
+            if isinstance(value, (_StoredDict, _StoredList)):
+                pending.append(vars(value))
+            elif callable(value):
+                # The write-through callback holds only this page's URL and
+                # its shared store. Account for closure containers, never
+                # traverse the owner and thereby count the entire cache.
+                cells = value.__closure__ or ()
+                total += sys.getsizeof(cells) + sum(sys.getsizeof(cell) for cell in cells)
+        return total
 
     def get(self, url: str) -> Page | None:
         cached = self._cache.get(url)
@@ -204,31 +247,37 @@ class _DiskPages:
         if row is None:
             return None
         state = json.loads(row["state_json"])
+        row_url = row["url"]
         page = Page(
-            url=row["url"],
+            url=row_url,
             status_code=row["status_code"],
             status=state["status"],
             content_type=state["content_type"],
             indexability=state["indexability"],
             indexability_status=state["indexability_status"],
             metrics=_StoredDict(
-                state["metrics"], lambda value: self._write(row["url"], "metrics", value)
+                state["metrics"], lambda value: self._write(row_url, "metrics", value)
             ),
             issues=_StoredList(
-                state["issues"], lambda value: self._write(row["url"], "issues", value)
+                state["issues"], lambda value: self._write(row_url, "issues", value)
             ),
             issue_ids=_StoredList(
-                state["issue_ids"], lambda value: self._write(row["url"], "issue_ids", value)
+                state["issue_ids"], lambda value: self._write(row_url, "issue_ids", value)
             ),
             suppressed_issue_ids=_StoredList(
                 state["suppressed_issue_ids"],
-                lambda value: self._write(row["url"], "suppressed_issue_ids", value),
+                lambda value: self._write(row_url, "suppressed_issue_ids", value),
             ),
         )
+        weight = self._cache_weight(page)
+        if weight > self._cache_byte_limit:
+            return page
         self._cache[url] = page
+        self._cache_weights[url] = weight
+        self._cache_bytes += weight
         self._cache.move_to_end(url)
-        if len(self._cache) > self._cache_limit:
-            self._cache.popitem(last=False)
+        while len(self._cache) > self._cache_limit or self._cache_bytes > self._cache_byte_limit:
+            self._drop_cached(next(iter(self._cache)))
         return page
 
     def by_norm(self, norm: str) -> list[Page]:
