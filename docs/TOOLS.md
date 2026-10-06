@@ -68,6 +68,13 @@ an explicit output directory. This workflow reads retained evidence without netw
 Add `--compression gzip` only when compressed NDJSON is wanted. Compression preserves
 all rows; manifests declare compressed checksums/bytes and uncompressed bytes. The
 default remains `none`; gzip requires an explicit output directory.
+For audit.v2 inputs, the temporary comparison index stores exact keys and source
+ordinals, then reads complete rows from the validated SQLite read snapshot. It does
+not duplicate the audit payload; legacy document inputs retain their compatibility
+fallback. Snapshot readers remain open until comparison finishes. Output members
+are published with the manifest last, and failed publication removes only entries
+owned by that attempt. This is a manifest commit boundary, not atomic visibility
+of the whole directory.
 
 ## Offline BI projection
 

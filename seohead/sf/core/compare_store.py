@@ -15,10 +15,13 @@ import sqlite3
 import tempfile
 import zlib
 from collections.abc import Iterable, Mapping
-from contextlib import closing, nullcontext
+from contextlib import closing, nullcontext, suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+
+from seohead.filesystem import fsync_directory
+from seohead.storage.audit_v2 import AuditV2Reader
 
 from .compare import (
     CompareError,
@@ -45,16 +48,19 @@ def _json(value: Any) -> str:
 
 
 def _index(con: sqlite3.Connection, source: Any, side: int) -> None:
-    for page in _iter_rows(source, "pages"):
+    source_backed = isinstance(source, AuditV2Reader)
+    for ordinal, page in enumerate(_iter_rows(source, "pages")):
         if not isinstance(page, Mapping) or not isinstance(page.get("url"), str) or not page["url"]:
             raise CompareError("comparison page must contain a nonempty URL")
+        document = _json(page)  # Preserve strict JSON validation even for unexported pages.
         try:
             con.execute(
-                "INSERT INTO pages VALUES (?,?,?,?)", (side, page["url"], page["url"], _json(page))
+                "INSERT INTO pages VALUES (?,?,?,?,?)",
+                (side, page["url"], page["url"], ordinal, None if source_backed else document),
             )
         except sqlite3.IntegrityError as exc:
             raise CompareError(f"comparison has duplicate page URL {page['url']!r}") from exc
-    for issue in _iter_rows(source, "issues"):
+    for ordinal, issue in enumerate(_iter_rows(source, "issues")):
         if (
             not isinstance(issue, Mapping)
             or not isinstance(issue.get("check"), str)
@@ -64,12 +70,18 @@ def _index(con: sqlite3.Connection, source: Any, side: int) -> None:
         if issue.get("target_url") is not None and not isinstance(issue["target_url"], str):
             raise CompareError("comparison finding target_url must be a string or null")
         check, url = _key(issue)
+        document = _json(issue)
         try:
             con.execute(
-                "INSERT INTO issues VALUES (?,?,?,?,?)", (side, check, url, url, _json(issue))
+                "INSERT INTO issues VALUES (?,?,?,?,?,?)",
+                (side, check, url, url, ordinal, None if source_backed else document),
             )
         except sqlite3.IntegrityError as exc:
             raise CompareError(f"comparison has duplicate finding key {(check, url)!r}") from exc
+
+
+def _row(source: Any, name: str, ordinal: int, document: str | None) -> Any:
+    return json.loads(document) if document is not None else source.get_item(f"/{name}", ordinal)
 
 
 def _pair(before_url: str, after_url: str, kind: str, state: str) -> dict[str, Any]:
@@ -227,15 +239,16 @@ def iter_compare_rows(manifest_path: str | Path, name: str):
         raise CompareError(f"invalid comparison file {name!r}: {exc}") from exc
 
 
-def _facts(con: sqlite3.Connection):
-    for raw_pair, raw_before, raw_after in con.execute("""
-        SELECT pairs.document, b.document, a.document FROM pairs
+def _facts(con: sqlite3.Connection, before_source: Any, after_source: Any):
+    for raw_pair, before_ordinal, raw_before, after_ordinal, raw_after in con.execute("""
+        SELECT pairs.document, b.ordinal, b.document, a.ordinal, a.document FROM pairs
         JOIN pages b ON b.side=0 AND b.url=pairs.before_url
         JOIN pages a ON a.side=1 AND a.url=pairs.after_url
         WHERE pairs.state='matched' ORDER BY pairs.before_url
     """):
         pair = json.loads(raw_pair)
-        before, after = _page_facts(json.loads(raw_before)), _page_facts(json.loads(raw_after))
+        before = _page_facts(_row(before_source, "pages", before_ordinal, raw_before))
+        after = _page_facts(_row(after_source, "pages", after_ordinal, raw_after))
         yield {
             **{
                 key: pair[key]
@@ -245,6 +258,32 @@ def _facts(con: sqlite3.Connection):
             "after": after,
             "changed": sorted(name for name in before if before[name] != after[name]),
         }
+
+
+def _publish(root: Path, destination: Path) -> None:
+    """Publish manifest last; on failure remove only this attempt's owned entries."""
+    destination.mkdir()  # Exclusive creation; never adopt an existing directory.
+    directory = destination.lstat()
+    owned: dict[Path, os.stat_result] = {}
+    try:
+        for path in sorted(root.iterdir(), key=lambda path: path.name == "compare.json"):
+            target = destination / path.name
+            owned[target] = path.lstat()
+            # Hard-link publication refuses a raced-in file instead of overwriting it.
+            os.link(path, target, follow_symlinks=False)
+        fsync_directory(destination)
+        fsync_directory(destination.parent)
+    except BaseException:
+        # A replaced directory or member belongs to someone else; do not remove it.
+        with suppress(OSError):
+            if os.path.samestat(directory, destination.lstat()):
+                for path, info in reversed(owned.items()):
+                    with suppress(OSError):
+                        if os.path.samestat(info, path.lstat()):
+                            path.unlink()
+                with suppress(OSError):
+                    destination.rmdir()
+        raise
 
 
 def compare_to_files(
@@ -271,10 +310,10 @@ def compare_to_files(
             con.executescript("""
                 PRAGMA temp_store=FILE;
                 PRAGMA cache_size=-8192;
-                CREATE TABLE pages(side INTEGER, url TEXT, comparison_url TEXT, document TEXT, PRIMARY KEY(side,url));
-                CREATE TABLE issues(side INTEGER, check_key TEXT, url TEXT, comparison_url TEXT, document TEXT, PRIMARY KEY(side,check_key,url));
+                CREATE TABLE pages(side INTEGER, url TEXT, comparison_url TEXT, ordinal INTEGER, document TEXT, PRIMARY KEY(side,url));
+                CREATE TABLE issues(side INTEGER, check_key TEXT, url TEXT, comparison_url TEXT, ordinal INTEGER, document TEXT, PRIMARY KEY(side,check_key,url));
                 CREATE TABLE pairs(before_url TEXT PRIMARY KEY, after_url TEXT, state TEXT, document TEXT);
-                CREATE TABLE delta(bucket TEXT, check_key TEXT, url TEXT, document TEXT);
+                CREATE TABLE delta(bucket TEXT, check_key TEXT, url TEXT, issue_rowid INTEGER);
             """)
             _index(con, before, 0)
             _index(con, after, 1)
@@ -296,7 +335,7 @@ def compare_to_files(
                     """INSERT INTO delta
                     SELECT CASE WHEN i.comparison_url='' OR ? OR EXISTS (
                         SELECT 1 FROM pages p WHERE p.side=? AND p.comparison_url=i.comparison_url
-                    ) THEN ? ELSE ? END, i.check_key, i.url, i.document
+                    ) THEN ? ELSE ? END, i.check_key, i.url, i.rowid
                     FROM issues i WHERE i.side=? AND NOT EXISTS (
                         SELECT 1 FROM issues j WHERE j.side=? AND j.check_key=i.check_key
                         AND j.comparison_url=i.comparison_url)
@@ -314,9 +353,11 @@ def compare_to_files(
                     root,
                     bucket,
                     (
-                        json.loads(row[0])
+                        _row((before, after)[row[0]], "issues", row[1], row[2])
                         for row in con.execute(
-                            "SELECT document FROM delta WHERE bucket=? ORDER BY check_key,url",
+                            "SELECT i.side,i.ordinal,i.document FROM delta d "
+                            "JOIN issues i ON i.rowid=d.issue_rowid "
+                            "WHERE d.bucket=? ORDER BY d.check_key,d.url",
                             (bucket,),
                         )
                     ),
@@ -325,8 +366,11 @@ def compare_to_files(
                 root,
                 "unchanged",
                 (
-                    {"before": json.loads(row[0]), "after": json.loads(row[1])}
-                    for row in con.execute("""SELECT b.document,a.document FROM issues b JOIN issues a
+                    {
+                        "before": _row(before, "issues", row[0], row[1]),
+                        "after": _row(after, "issues", row[2], row[3]),
+                    }
+                    for row in con.execute("""SELECT b.ordinal,b.document,a.ordinal,a.document FROM issues b JOIN issues a
                     ON a.side=1 AND a.check_key=b.check_key AND a.comparison_url=b.comparison_url
                     WHERE b.side=0 ORDER BY b.check_key,b.url""")
                 ),
@@ -350,7 +394,7 @@ def compare_to_files(
                         for row in con.execute("SELECT document FROM pairs ORDER BY before_url")
                     ),
                 )
-                files["facts"] = export(root, "facts", _facts(con))
+                files["facts"] = export(root, "facts", _facts(con, before, after))
             counts = {bucket: files[bucket]["rows"] for bucket in _BUCKETS}
             totals = {}
             for side, label in ((0, "before"), (1, "after")):
@@ -408,7 +452,5 @@ def compare_to_files(
             os.fsync(stream.fileno())
         # Keep the temporary SQL index out of the retained artifact contract.
         (root / "index.sqlite").unlink()
-        destination.mkdir()  # exclusive publication; an existing output is never replaced
-        for path in sorted(root.iterdir(), key=lambda path: path.name == "compare.json"):
-            os.replace(path, destination / path.name)
+        _publish(root, destination)
     return {**result, "manifest": str(destination / "compare.json"), "out_dir": str(destination)}

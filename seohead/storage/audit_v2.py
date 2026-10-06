@@ -313,6 +313,8 @@ class AuditV2Reader:
             self.con.execute("PRAGMA query_only=ON")
             self.con.execute("PRAGMA cache_size=-8192")
             self.con.execute("PRAGMA temp_store=FILE")
+            # Validation and every later read must refer to the same generation.
+            self.con.execute("BEGIN")
             self._validate(verify_binding=verify_binding)
         except BaseException:
             if hasattr(self, "con"):
@@ -403,6 +405,19 @@ class AuditV2Reader:
         )
         for row in cursor:
             yield json.loads(row[0])
+
+    def get_item(self, pointer: str, ordinal: int) -> Any:
+        """Read one bounded row by its exact collection key in the validated snapshot."""
+        if not isinstance(pointer, str) or pointer not in self.collections:
+            raise AuditV2Error(f"audit.v2 collection does not exist: {pointer}")
+        if type(ordinal) is not int or not 0 <= ordinal < self.collections[pointer]:
+            raise AuditV2Error(f"audit.v2 collection ordinal is out of range: {ordinal}")
+        row = self.con.execute(
+            "SELECT value_json FROM items WHERE pointer=? AND ordinal=?", (pointer, ordinal)
+        ).fetchone()
+        if row is None:
+            raise AuditV2Error(f"audit.v2 collection row is missing: {pointer}[{ordinal}]")
+        return json.loads(row[0])
 
     def document_chunks(self, *, max_bytes: int | None = None) -> Iterator[str]:
         """Yield a compact, complete JSON document; optionally enforce a byte ceiling."""
