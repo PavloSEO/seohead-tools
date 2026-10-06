@@ -491,7 +491,8 @@ def _competitor_sites(
                 _site_projection(
                     child_root,
                     child_project,
-                    (coverage_views or {}).get(str(child_root)) or coverage_status(child_root),
+                    (coverage_views or {}).get(str(child_root))
+                    or coverage_status(child_root, _verify_evidence=False),
                     list_scans(child_root / "scans"),
                     role="competitor",
                     source=candidate.get("source"),
@@ -789,7 +790,7 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         raise ValueError("scan_limit must be from 1 to 100")
     root, project = _load(directory)
     coverage_views: dict = {}
-    status = project_status(root, _coverage_views=coverage_views)
+    status = project_status(root, _coverage_views=coverage_views, _verify_evidence=False)
     progress = project_progress(root, limit=100, _status=status, _coverage_views=coverage_views)
     from .execution import status as execution_status
     from .monitoring import status as monitor_status
@@ -938,7 +939,7 @@ def checklist_page(
         raise ValueError("checklist query must be text of at most 256 characters")
     if kind not in {None, "method", "schema", "check", "skill", "scenario", "custom"}:
         raise ValueError("unsupported checklist kind")
-    snapshot = project_status(directory)
+    snapshot = project_status(directory, _verify_evidence=False)
     checklist = snapshot["checklist"]
     rows = []
     needle = query.casefold().strip()
@@ -973,7 +974,7 @@ def task_detail(directory: str | Path, *, item_id: str) -> dict:
 
     scoped, local_id = resolve_item_scope(str(directory), item_id)
     root, project = _load(scoped)
-    view = coverage_status(root)
+    view = coverage_status(root, _verify_evidence=False)
     row = next((item for item in view.get("items", []) if item["id"] == local_id), None)
     if row is None:
         raise ValueError("checklist item is unavailable")

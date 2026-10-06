@@ -306,7 +306,9 @@ def open_project(directory: str | Path, *, expected_site: str | None = None) -> 
     }
 
 
-def project_status(directory: str | Path, *, _coverage_views: dict | None = None) -> dict[str, Any]:
+def project_status(
+    directory: str | Path, *, _coverage_views: dict | None = None, _verify_evidence: bool = True
+) -> dict[str, Any]:
     """Report scan history, per-site coverage and recorded preparation state."""
     from .coverage import coverage_status
     from .runtime import aggregate_coverage, preparation_status
@@ -314,7 +316,7 @@ def project_status(directory: str | Path, *, _coverage_views: dict | None = None
     root, document = _load(directory)
     views = {} if _coverage_views is None else _coverage_views
     if str(root) not in views:
-        views[str(root)] = coverage_status(root)
+        views[str(root)] = coverage_status(root, _verify_evidence=_verify_evidence)
     return {
         "ok": True,
         "project": {
@@ -323,6 +325,8 @@ def project_status(directory: str | Path, *, _coverage_views: dict | None = None
             "profile_references": document["profile_references"],
         },
         "scans": list_scans(root / "scans"),
-        "checklist": aggregate_coverage(str(root), views[str(root)], _coverage_views=views),
+        "checklist": aggregate_coverage(
+            str(root), views[str(root)], _coverage_views=views, _verify_evidence=_verify_evidence
+        ),
         "preparation": preparation_status(str(root)),
     }

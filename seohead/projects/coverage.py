@@ -577,6 +577,7 @@ def _record_shape(record: Any, definition_hashes: dict) -> None:
         "recorded_at",
         "evidence",
         "revision",
+        "artifact_verification",
     }
     if (
         not isinstance(record, dict)
@@ -615,6 +616,22 @@ def _record_shape(record: Any, definition_hashes: dict) -> None:
             "[a-f0-9]{64}", record["sha256"]
         ):
             raise ValueError("invalid evidence digest")
+    if "artifact_verification" in record:
+        receipt = record["artifact_verification"]
+        if (
+            "artifact" not in record
+            or not isinstance(receipt, dict)
+            or set(receipt) != {"sha256", "identity", "verified_at"}
+            or not isinstance(receipt["sha256"], str)
+            or not re.fullmatch("[a-f0-9]{64}", receipt["sha256"])
+            or not isinstance(receipt["identity"], list)
+            or len(receipt["identity"]) != 5
+            or any(type(value) is not int for value in receipt["identity"])
+        ):
+            raise ValueError("invalid artifact verification receipt")
+        _text(receipt["verified_at"], "artifact verification timestamp", 128)
+        if datetime.fromisoformat(receipt["verified_at"].replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("artifact verification timestamp must include timezone")
     if "operation" in record:
         _identifier(record["operation"])
         if not isinstance(record.get("operation_hash"), str) or not re.fullmatch(
@@ -1017,7 +1034,14 @@ def _url_axis(ordered: list[dict], plan: dict | None) -> dict:
     }
 
 
-def _status(root: Path, document: dict, catalogue: dict, project: dict | None = None) -> dict:
+def _status(
+    root: Path,
+    document: dict,
+    catalogue: dict,
+    project: dict | None = None,
+    *,
+    _verify_evidence: bool = True,
+) -> dict:
     from .evidence import evidence_stale
 
     document = copy.deepcopy(document)
@@ -1044,7 +1068,9 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
         if record and record["definition_hash"] != _completion_hash(definition):
             stale_reason = "item definition changed"
         elif record:
-            stale_reason = evidence_stale(root, record, catalogue, digests)
+            stale_reason = evidence_stale(
+                root, record, catalogue, digests, verify_bytes=_verify_evidence
+            )
         if (
             record
             and not stale_reason
@@ -1097,6 +1123,19 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
             "reason": stale_reason or record.get("reason") or "not attempted",
             "attempt_status": record.get("status", "not_run"),
             "measurement": record.get("measurement"),
+            "evidence_verification": {
+                "mode": "bytes" if _verify_evidence else "metadata_only",
+                "state": "unverified"
+                if "unverified:" in stale_reason
+                else "stale"
+                if stale_reason
+                else "verified"
+                if "artifact" in record and _verify_evidence
+                else "metadata_matches"
+                if "artifact" in record
+                else "not_applicable",
+                "verified_at": (record.get("artifact_verification") or {}).get("verified_at"),
+            },
             "blocked_by": [],
             "complete": state == "run"
             and applicability == "applicable"
@@ -1248,7 +1287,7 @@ def _status(root: Path, document: dict, catalogue: dict, project: dict | None = 
     }
 
 
-def coverage_status(directory: str | Path) -> dict:
+def coverage_status(directory: str | Path, *, _verify_evidence: bool = True) -> dict:
     """Read definitions and evidence without writes or network requests."""
     root, project = _load(directory)
     document = _read(root, project)
@@ -1257,4 +1296,4 @@ def coverage_status(directory: str | Path) -> dict:
             "state": "not_initialized",
             "reason": "coverage checklist is initialized by project checklist setup, not project creation",
         }
-    return _status(root, document, load_catalogue(), project)
+    return _status(root, document, load_catalogue(), project, _verify_evidence=_verify_evidence)

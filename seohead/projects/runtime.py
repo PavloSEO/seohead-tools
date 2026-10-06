@@ -541,7 +541,11 @@ def prepare_project(
 
 
 def aggregate_coverage(
-    directory: str, primary: dict, *, _coverage_views: dict | None = None
+    directory: str,
+    primary: dict,
+    *,
+    _coverage_views: dict | None = None,
+    _verify_evidence: bool = True,
 ) -> dict:
     """Combine declared site checklists without assigning another site's evidence to a row."""
     root, project = _load(directory)
@@ -582,7 +586,7 @@ def aggregate_coverage(
         seen.add(metadata["project_uuid"])
         child_key = str(path.resolve())
         if child_key not in views:
-            views[child_key] = coverage_status(path)
+            views[child_key] = coverage_status(path, _verify_evidence=_verify_evidence)
         sites.append(
             {
                 "directory": relative,
