@@ -234,18 +234,13 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
         assert reps.get("rendered", 0) == expected_rendered, reps
         hashes = {}
         for name, sql in {
-            "pages": "SELECT u.url,p.status_code,p.title,p.h1,p.representation FROM pages p JOIN urls u USING(url_id) ORDER BY u.url",
-            "links": "SELECT s.url,d.url,l.anchor,l.ordinal,l.evidence_representation,l.raw_href FROM links l JOIN urls s ON s.url_id=l.source_url_id JOIN urls d ON d.url_id=l.destination_url_id ORDER BY s.url,l.evidence_representation,l.ordinal,l.link_id",
+            "links": "SELECT s.url,d.url,l.anchor,l.ordinal,l.evidence_representation,l.raw_href,l.nofollow,l.position,l.rel_json,l.target FROM links l JOIN urls s ON s.url_id=l.source_url_id JOIN urls d ON d.url_id=l.destination_url_id ORDER BY s.url,l.evidence_representation,l.ordinal,l.link_id",
             "forms": "SELECT u.url,f.action,f.method,f.has_password,f.ordinal,f.evidence_representation FROM forms f JOIN urls u ON u.url_id=f.page_url_id ORDER BY u.url,f.evidence_representation,f.ordinal,f.form_id",
         }.items():
             h = hashlib.sha256()
             for row in con.execute(sql):
                 ordinal = int(urlsplit(row[0]).path.rsplit("/", 1)[-1])
-                if name == "pages":
-                    assert row[2] == f"Owned page {ordinal}"
-                    if row[4] == "rendered" or case["mode"] == "html":
-                        assert row[3] == f"Owned page {ordinal}"
-                elif name == "links":
+                if name == "links":
                     assert row[2] == f"Link {row[3]}"
                     assert urlsplit(row[1]).path == f"/p/{(ordinal + row[3]) % case['pages']}"
                     assert row[5] == f"/p/{(ordinal + row[3]) % case['pages']}#link-{row[3]}"
@@ -254,6 +249,19 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
                     assert urlsplit(row[1]).path == f"/submit/{ordinal}/{row[4]}"
                 h.update(json.dumps(tuple(row), ensure_ascii=False).encode() + b"\n")
             hashes[name] = h.hexdigest()
+        page_hash = hashlib.sha256()
+        for row in con.execute(
+            "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
+        ):
+            data = dict(row)
+            ordinal = int(urlsplit(data["url"]).path.rsplit("/", 1)[-1])
+            assert data["title"] == f"Owned page {ordinal}"
+            if data["representation"] == "rendered" or case["mode"] == "html":
+                assert data["h1"] == f"Owned page {ordinal}"
+            for key in ("url_id", "document_id", "response_time"):
+                data.pop(key, None)
+            page_hash.update(json.dumps(data, sort_keys=True, ensure_ascii=False).encode() + b"\n")
+        hashes["pages"] = page_hash.hexdigest()
         dom_hashes = []
         for row in con.execute(
             "SELECT d.document_id,u.url,d.body_sha256 FROM pages p JOIN documents d ON d.document_id=p.document_id JOIN urls u ON u.url_id=p.url_id WHERE p.representation='rendered' ORDER BY u.url"
