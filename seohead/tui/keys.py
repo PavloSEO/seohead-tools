@@ -2,15 +2,16 @@
 
 Deliberately stdlib-only: the shell's single third-party dependency is the
 renderer (``rich``), so keyboard input uses ``termios``/``tty`` plus a short
-``select`` window to disambiguate a lone Escape from an escape sequence.
+selector window to disambiguate a lone Escape from an escape sequence.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
-import select
+import selectors
 import termios
+import time
 import tty
 from collections.abc import Iterator
 
@@ -35,6 +36,7 @@ _SEQUENCES = {
     "[F": "end",
     "[5~": "page_up",
     "[6~": "page_down",
+    "[3~": "delete",
     "OA": "up",
     "OB": "down",
     "OH": "home",
@@ -47,6 +49,13 @@ _SEQUENCES = {
 #: key was a lone Escape. 50 ms is imperceptible interactively and generous
 #: enough for a PTY writing all three bytes in one call.
 ESCAPE_WINDOW_SECONDS = 0.05
+
+
+def _ready(fd: int, timeout: float) -> bool:
+    """Wait for terminal/pipe input without select's FD_SETSIZE ceiling."""
+    with selectors.DefaultSelector() as selector:
+        selector.register(fd, selectors.EVENT_READ)
+        return bool(selector.select(timeout))
 
 
 @contextlib.contextmanager
@@ -68,9 +77,9 @@ def raw_mode(fd: int) -> Iterator[None]:
 def _read_available(fd: int, budget: float) -> str:
     """Drain bytes already queued within ``budget`` seconds total."""
     chunk = ""
+    deadline = time.monotonic() + budget
     while True:
-        ready, _, _ = select.select([fd], [], [], budget)
-        if not ready:
+        if not _ready(fd, max(0.0, deadline - time.monotonic())):
             return chunk
         data = os.read(fd, 1).decode("utf-8", errors="replace")
         if not data:
@@ -78,17 +87,18 @@ def _read_available(fd: int, budget: float) -> str:
         chunk += data
         if chunk in _SEQUENCES:
             return chunk
-        if not any(seq.startswith(chunk) for seq in _SEQUENCES):
+        if chunk.startswith("[") and len(chunk) > 1 and "@" <= chunk[-1] <= "~":
             return chunk
-        budget = 0.0
+        if len(chunk) >= 64 or (
+            not chunk.startswith("[") and not any(seq.startswith(chunk) for seq in _SEQUENCES)
+        ):
+            return chunk
 
 
 def read_key(fd: int, timeout: float | None = None) -> str:
     """Read one keypress, or return ``timeout`` for a bounded observer refresh."""
-    if timeout is not None:
-        ready, _, _ = select.select([fd], [], [], timeout)
-        if not ready:
-            return "timeout"
+    if timeout is not None and not _ready(fd, timeout):
+        return "timeout"
     first_byte = os.read(fd, 1)
     if not first_byte:
         return "ctrl_d"
@@ -107,4 +117,4 @@ def read_key(fd: int, timeout: float | None = None) -> str:
     tail = _read_available(fd, ESCAPE_WINDOW_SECONDS)
     if not tail:
         return "escape"
-    return _SEQUENCES.get(tail, "escape")
+    return _SEQUENCES.get(tail, "unknown")

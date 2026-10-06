@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import pty
+import resource
 import termios
 import time
 from threading import Event
 
+import pytest
 from rich.console import Console
 
 from seohead import cli
@@ -86,6 +89,35 @@ def test_bracketed_paste_preserves_multiline_text_until_explicit_save():
         assert state.view == "note" and not state.note_ready
         state.handle_key(read_key(reader))
         assert state.note_ready
+    finally:
+        os.close(reader)
+        os.close(writer)
+
+
+def test_high_descriptor_keeps_timeout_unicode_and_bracketed_paste():
+    if resource.getrlimit(resource.RLIMIT_NOFILE)[0] <= 1024:
+        pytest.skip("host descriptor limit cannot exercise FD_SETSIZE")
+    reader, writer = os.pipe()
+    high = fcntl.fcntl(reader, fcntl.F_DUPFD, 1024)
+    try:
+        assert read_key(high, timeout=0) == "timeout"
+        os.write(writer, "\x1b[200~П\x1b[201~".encode())
+        assert [read_key(high) for _ in range(3)] == ["paste_start", "char:П", "paste_end"]
+    finally:
+        os.close(high)
+        os.close(reader)
+        os.close(writer)
+
+
+def test_delete_and_modified_arrows_do_not_cancel_or_pollute_note():
+    reader, writer = os.pipe()
+    try:
+        os.write(writer, b"\x1b[3~\x1b[1;5D\r")
+        state = ShellState(commands=[], view="note", note_text="retain this draft")
+        state.handle_key(read_key(reader))
+        state.handle_key(read_key(reader))
+        assert state.view == "note" and state.note_text == "retain this draft"
+        assert read_key(reader) == "enter"
     finally:
         os.close(reader)
         os.close(writer)
