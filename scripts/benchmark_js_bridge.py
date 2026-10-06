@@ -55,7 +55,16 @@ def source_identity() -> dict:
         playwright_version = importlib.metadata.version("playwright")
     except importlib.metadata.PackageNotFoundError:
         playwright_version = "unavailable"
+    try:
+        available_memory = os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        available_memory = None
+    chrome = Path(os.environ["SEOHEAD_CHROME"]) if os.environ.get("SEOHEAD_CHROME") else None
     return {
+        "browser_sha256": digest(chrome) if chrome is not None and chrome.is_file() else None,
+        "available_memory_bytes": available_memory,
+        "available_memory_note": "OS available-page estimate; unavailable on platforms without SC_AVPHYS_PAGES",
+        "load_average": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
         "revision": revision,
         "dirty": bool(dirty),
         "loaded_module": str(Path(seohead.__file__).resolve()),
@@ -318,6 +327,9 @@ def worker(config: dict, output: Path) -> None:
         or identity["dirty"]
     ):
         raise RuntimeError("benchmark source changed after freeze")
+    for key, expected in config.get("runtime_identity", {}).items():
+        if identity.get(key) != expected:
+            raise RuntimeError(f"benchmark runtime changed after freeze: {key}")
     events = output / "events.jsonl"
     phase = "setup"
     case_name = "setup"
@@ -579,7 +591,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
         process = subprocess.Popen(
             [sys.executable, str(Path(__file__).resolve()), "_worker", "--out", str(output)],
             cwd=ROOT,
-            env={**os.environ, "PYTHONPATH": str(ROOT)},
+            env={**os.environ, "PYTHONPATH": str(ROOT), "SEOHEAD_CHROME": config["browser_path"]},
             stdout=stdout,
             stderr=stderr,
             start_new_session=True,
@@ -806,6 +818,7 @@ def main(argv=None):
         executable = Path(os.environ.get("SEOHEAD_CHROME") or runtime.chromium.executable_path)
     if not executable.is_file() or not os.access(executable, os.X_OK):
         parser.error("Chromium is unavailable; select an installed executable with SEOHEAD_CHROME")
+    identity["browser_sha256"] = digest(executable)
     if args.out.exists():
         parser.error(
             "output must be a new directory; existing benchmark evidence is never replaced"
@@ -855,6 +868,19 @@ def main(argv=None):
     results = []
     for ordinal, case in enumerate(planned):
         case["source_revision"] = identity["revision"]
+        case["browser_path"] = str(executable)
+        case["runtime_identity"] = {
+            key: identity[key]
+            for key in (
+                "python",
+                "sqlite",
+                "playwright",
+                "browser_sha256",
+                "machine",
+                "physical_memory_bytes",
+                "logical_cpus",
+            )
+        }
         record = supervise(case, args.out / f"pair-{ordinal:02d}", args.out, profile)
         results.append(record)
         (args.out / "manifest.json").write_text(
