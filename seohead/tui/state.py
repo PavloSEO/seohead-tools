@@ -25,6 +25,7 @@ WATCH_SECTIONS = (
     "sf",
     "inbox",
     "schema",
+    "sites",
 )
 
 #: Commands offered next to the flat tool list. Grouped namespaces keep their
@@ -46,6 +47,7 @@ class ShellState:
     note_text: str = ""
     note_ready: bool = False
     note_kind: str = "note"
+    note_return_view: str = "watch"
     note_error: str = ""
     note_limit: int = 8000
     note_cursor: int | None = None
@@ -64,6 +66,9 @@ class ShellState:
     watch_detail_offset: int = 0
     watch_detail_kind: str = "finding"
     watch_selected_scan_uuid: str | None = None
+    watch_site_uuid: str | None = None
+    watch_site_detail_uuid: str | None = None
+    watch_site_openable: bool = False
     watch_view_name: str | None = None
     watch_view_offset: int = 0
     watch_view_next: int | None = None
@@ -147,6 +152,15 @@ class ShellState:
             if key in {"escape", "enter", "char:?"}:
                 self.view = self.watch_return_view
             return
+        if self.view in {"watch", "watch_detail"} and key in {"char:n", "char:g"}:
+            self.note_return_view = self.view
+            self.note_drafts[self.note_kind] = self.note_text
+            self.note_kind = "note" if key == "char:n" else "proposed_goal"
+            self.note_text = self.note_drafts.get(self.note_kind, "")
+            self.note_cursor = len(self.note_text)
+            self.note_error = ""
+            self.view = "note"
+            return
         if self.view == "note":
             cursor = len(self.note_text) if self.note_cursor is None else self.note_cursor
             if key == "paste_start":
@@ -159,7 +173,7 @@ class ShellState:
             elif key == "escape":
                 self.note_drafts[self.note_kind] = self.note_text
                 self.paste_active = False
-                self.view = "watch"
+                self.view = self.note_return_view
             elif key == "backspace":
                 self.note_text = self.note_text[: max(0, cursor - 1)] + self.note_text[cursor:]
                 self.note_cursor = max(0, cursor - 1)
@@ -199,7 +213,7 @@ class ShellState:
                     )
                 else:
                     self.note_ready = True
-                    self.view = "watch"
+                    self.view = self.note_return_view
             elif key.startswith("char:") and key[5:].isprintable():
                 self.note_text = self.note_text[:cursor] + key[5:] + self.note_text[cursor:]
                 self.note_cursor = cursor + len(key[5:])
@@ -220,6 +234,15 @@ class ShellState:
                 self.filter_draft += key[5:]
             return
         if self.view == "watch_detail":
+            if self.watch_detail_kind == "site" and key == "char:s" and self.watch_site_openable:
+                self.watch_site_uuid = self.watch_site_detail_uuid
+                self.watch_selected_scan_uuid = None
+                self.watch_section = "scans"
+                self.watch_index = 0
+                self.watch_offset = 0
+                self.watch_count = None
+                self.view = "watch"
+                return
             if self.watch_detail_kind == "view" and key in {"char:[", "char:]"}:
                 if key == "char:[":
                     self.watch_view_offset = max(
@@ -246,13 +269,6 @@ class ShellState:
         if self.view == "watch":
             if key == "char:m":
                 self.motion_enabled = not self.motion_enabled
-            elif key in {"char:n", "char:g"}:
-                self.note_drafts[self.note_kind] = self.note_text
-                self.note_kind = "note" if key == "char:n" else "proposed_goal"
-                self.note_text = self.note_drafts.get(self.note_kind, "")
-                self.note_cursor = len(self.note_text)
-                self.note_error = ""
-                self.view = "note"
             elif key == "char:?":
                 self.watch_return_view = self.view
                 self.view = "watch_help"
@@ -268,6 +284,7 @@ class ShellState:
                 "char:9",
                 "char:0",
                 "char:a",
+                "char:p",
             }:
                 self.watch_section = {
                     "char:1": "overview",
@@ -281,6 +298,7 @@ class ShellState:
                     "char:9": "sf",
                     "char:0": "inbox",
                     "char:a": "schema",
+                    "char:p": "sites",
                 }[key]
                 self.watch_index = 0
                 self.watch_offset = 0
@@ -361,6 +379,7 @@ class ShellState:
                     "tasks": "task",
                     "methods": "task",
                     "schema": "task",
+                    "sites": "site",
                 }.get(self.watch_section, self.watch_section)
                 self.view = "watch_detail"
             elif key in ("escape", "char:q", "ctrl_c"):

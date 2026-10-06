@@ -21,6 +21,7 @@ from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Thread
 from typing import TextIO
+from urllib.parse import urlsplit
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.layout import Layout
@@ -208,12 +209,14 @@ def _view_key(state: ShellState) -> tuple:
         state.watch_sort,
         state.watch_descending,
         state.watch_selected_scan_uuid,
+        state.watch_site_uuid,
         state.watch_detail_kind if detail else None,
         state.watch_detail_ordinal if detail else None,
         state.watch_item_id if detail else None,
         state.watch_inbox_entry_id if detail else None,
         state.watch_view_name if detail else None,
         state.watch_view_offset if detail else None,
+        state.watch_site_detail_uuid if detail else None,
     )
 
 
@@ -221,6 +224,24 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
     """Read one bounded page in the background, never during an interactive render."""
     from seohead.projects import observer
     from seohead.projects.inbox import list_entries
+
+    scan_project = project
+    if state.watch_site_uuid is not None and state.watch_section in {"scans", "findings", "views"}:
+        site = next(
+            (
+                item
+                for item in (snapshot or {}).get("sites", {}).get("items", [])
+                if item.get("project_uuid") == state.watch_site_uuid
+            ),
+            None,
+        )
+        if site is None or not site.get("directory"):
+            return {"error": "Selected site workspace is unavailable; choose another site with p."}
+        root = Path(project).resolve()
+        target = (root / site["directory"]).resolve()
+        if not target.is_relative_to(root):
+            return {"error": "Selected site workspace is outside this project."}
+        scan_project = str(target)
 
     if state.view == "watch_detail":
         if state.watch_detail_kind == "task":
@@ -231,7 +252,7 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
             if state.watch_detail_ordinal is None:
                 return {"error": "No finding selected."}
             return observer.finding_detail(
-                project,
+                scan_project,
                 scan_uuid=state.watch_selected_scan_uuid,
                 ordinal=state.watch_detail_ordinal,
             )
@@ -239,7 +260,7 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
             if state.watch_view_name is None:
                 return {"error": "No saved view selected."}
             return observer.saved_view_page(
-                project,
+                scan_project,
                 name=state.watch_view_name,
                 scan_uuid=state.watch_selected_scan_uuid,
                 offset=state.watch_view_offset,
@@ -256,7 +277,7 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
         )
     if section == "findings":
         return observer.findings_page(
-            project,
+            scan_project,
             scan_uuid=state.watch_selected_scan_uuid,
             offset=state.watch_offset,
             query=state.watch_query,
@@ -264,7 +285,11 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
             descending=state.watch_descending,
         )
     if section == "scans":
-        return observer.scans_page(project, offset=state.watch_offset, limit=50)
+        return observer.scans_page(scan_project, offset=state.watch_offset, limit=50)
+    if section == "views":
+        from seohead.projects.finding_views import list_views
+
+        return list_views(scan_project)
     if section == "inbox":
         return list_entries(project, consumer="observer/local", limit=50, offset=state.watch_offset)
     return {}
@@ -272,7 +297,13 @@ def _read_view(project: str, state: ShellState, snapshot: dict | None) -> dict:
 
 def _page_selection(state: ShellState, items: list, pagination: dict) -> str:
     identities = [
-        str(item.get("fingerprint") or item.get("uuid") or item.get("id") or item.get("name"))
+        str(
+            item.get("fingerprint")
+            or item.get("uuid")
+            or item.get("project_uuid")
+            or item.get("id")
+            or item.get("name")
+        )
         if isinstance(item, dict)
         else str(item)
         for item in items
@@ -297,6 +328,30 @@ def _page_selection(state: ShellState, items: list, pagination: dict) -> str:
 
 
 def _local_entries(snapshot: dict, section: str) -> list:
+    if section == "sites":
+        sites = list(snapshot.get("sites", {}).get("items", []))
+        for entry in snapshot.get("latest_inbox", snapshot["inbox"]).get("entries", []):
+            for outcome_index, outcome in enumerate(entry.get("triage", [])):
+                for ordinal, target in enumerate(outcome.get("competitors", [])):
+                    sites.append(
+                        {
+                            "project_uuid": f"proposal:{entry['id']}/{outcome_index}/{ordinal}",
+                            "site": {
+                                "target": target,
+                                "host": urlsplit(target).hostname,
+                                "label": None,
+                            },
+                            "role": "proposed_competitor",
+                            "source_note_id": entry["id"],
+                            "reason": outcome["reason"],
+                            "recorded_at": outcome["recorded_at"],
+                            "directory": None,
+                            "candidate": {"state": "Suggested; not prepared or analyzed"},
+                            "scans": {"total": None, "items": []},
+                            "methods": {"state": "unavailable"},
+                        }
+                    )
+        return sites
     if section == "activity":
         runs = [
             {**run, "site_label": site["site"].get("label") or site["site"].get("host")}
@@ -344,6 +399,9 @@ def _run_summary(item: dict) -> str:
             title,
             human_label(item.get("state")),
             human_label(mode) if mode else None,
+            ("Stale sample" if telemetry["state"] == "stale" else human_label(telemetry["state"]))
+            if telemetry.get("state")
+            else None,
             speed,
             item.get("next_action"),
         )
@@ -372,6 +430,15 @@ def _watch_lines(
     if data.get("loading") or data.get("error"):
         return [Text(data.get("error") or "Loading retained entries…")]
     site = snapshot["project"]["site"]
+    if state.watch_site_uuid and state.watch_section in {"scans", "findings", "views"}:
+        site = next(
+            (
+                item["site"]
+                for item in snapshot["sites"]["items"]
+                if item.get("project_uuid") == state.watch_site_uuid
+            ),
+            site,
+        )
     progress = snapshot["progress"]
     preparation = snapshot["preparation"]
     section = state.watch_section
@@ -384,38 +451,127 @@ def _watch_lines(
         Text(""),
     ]
     if section == "overview":
-        completion = progress["audit_task_completion"]
+        runs = snapshot.get("runs", {}).get("items", [])
+        run = next((item for item in runs if item["state"] == "running"), runs[0] if runs else {})
+        scans = snapshot["scans"]["items"]
+        latest = scans[0] if scans else {}
+        evidence = latest.get("evidence", {})
+        frontier = evidence.get("frontier", {}).get("counts") or {}
+        counts = run.get("counters") or {"fetched": frontier.get("done"), **frontier}
+        fetched, queued, inflight = (counts.get(key) for key in ("fetched", "queued", "inflight"))
+        telemetry = run.get("telemetry", {})
+        semantics = telemetry.get("queue_semantics", "separate" if frontier else "unknown")
+        population = [fetched, queued] + ([inflight] if semantics == "separate" else [])
+        total = (
+            sum(population)
+            if semantics != "unknown" and all(isinstance(v, int) for v in population)
+            else None
+        )
+        amount = str(fetched) if fetched is not None else "unknown"
+        speed = telemetry.get("current_rate_per_second")
+        speed_text = (
+            f"{speed:.2f} {telemetry.get('unit', 'pages')}/s"
+            if speed is not None
+            else "rate unavailable"
+        )
+        collected = (
+            (
+                f"Collected {amount} / {total} discovered"
+                + (f" ({fetched / total:.0%})" if total else "")
+            )
+            if total is not None
+            else f"Collected {amount}; discovered total unknown"
+        )
+        source = human_label(run.get("kind") or latest.get("source_kind"))
+        state_label = human_label(run.get("state") or latest.get("lifecycle"))
+        freshness = (
+            (
+                "Stale sample"
+                if telemetry.get("state") == "stale"
+                else human_label(telemetry.get("state"))
+            )
+            if telemetry
+            else "Retained evidence"
+        )
         lines.extend(
             [
+                Text(f"{source} · {state_label} · {freshness}"),
+                Text(f"{collected} · {speed_text}"),
                 Text(
-                    f"Preparation: {human_label(preparation['state'])} · {preparation.get('reason') or ''}"
+                    "Queue "
+                    + (str(queued) if queued is not None else "unknown")
+                    + " · In flight "
+                    + (str(inflight) if inflight is not None else "unknown")
+                    + " · Excluded "
+                    + (str(counts["excluded"]) if counts.get("excluded") is not None else "unknown")
                 ),
-                Text(
-                    f"Saved scans: {snapshot['scans']['total']} · Notes: {snapshot['inbox']['pagination']['total']}"
-                ),
-                Text(
-                    f"Agreed tasks complete: {str(completion['percent']) + '%' if completion['percent'] is not None else 'Not measured'}"
-                ),
-                Text(f"Competitors configured: {len(preparation['competitors'])}"),
-                Text(""),
-                Text("Current work · 2 opens task details"),
             ]
         )
-        active = snapshot.get("active_tasks", {}).get("items", [])
-        work = active or progress["next_actions"]
-        lines.extend(
+        sitemap = evidence.get("sitemaps", {}).get("fetch_summaries")
+        sitemap_step = preparation.get("steps", {}).get("sitemap", {})
+        lines.append(
             Text(
-                f"{item.get('title') or item.get('action') or item['id']} · {human_label(item.get('display_state', item['state']))}"
+                "Sitemap: "
+                + (
+                    " · ".join(value_lines(sitemap))
+                    if sitemap
+                    else human_label(sitemap_step.get("state"))
+                    if sitemap_step
+                    else "Not measured"
+                )
             )
-            for item in work[:5]
         )
+        completion = progress["audit_task_completion"]
+        completion_text = (
+            str(completion["percent"]) + "%"
+            if completion["percent"] is not None
+            else "scope not measured"
+        )
+        lines.append(
+            Text(f"Agreed tasks: {completion_text} · Saved scans: {snapshot['scans']['total']}")
+        )
+        methods = (
+            snapshot.get("sites", {}).get("items", [{}])[0].get("methods", {}).get("kinds", {})
+        )
+        parts = []
+        for kind in ("scenario", "skill"):
+            record = methods.get(kind, {})
+            expected = record.get("expected")
+            coverage = (
+                "scope unknown"
+                if expected is None
+                else "none agreed"
+                if expected == 0
+                else f"{record.get('completed', 0)}/{expected}"
+            )
+            parts.append(f"{kind.title()}s: {coverage}")
+        lines.append(Text(" · ".join(parts)))
+        work = snapshot.get("active_tasks", {}).get("items", []) or progress["next_actions"]
+        for item in work[:2]:
+            lines.append(
+                Text(
+                    f"Work: {item.get('title') or item.get('action') or item['id']} · {human_label(item.get('display_state', item['state']))}"
+                )
+            )
         if not work:
             lines.append(Text("No active task recorded."))
         latest_notes = snapshot.get("latest_inbox", snapshot["inbox"]).get("entries", [])
         if latest_notes:
-            lines.extend(
-                [Text(""), Text("Latest note: " + latest_notes[-1]["text"].replace("\n", " "))]
+            lines.append(Text("Latest note: " + latest_notes[-1]["text"].replace("\n", " ")))
+    elif section == "sites":
+        sites, hint = _local_page(snapshot, state)
+        selected = sites[state.watch_index] if sites else {}
+        state.watch_site_detail_uuid = selected.get("project_uuid")
+        state.watch_site_openable = bool(selected.get("directory"))
+        lines.append(Text(hint + " · configured sites + recent inbox proposals"))
+        entries = []
+        for item in sites:
+            total = item.get("scans", {}).get("total")
+            scans = f"{total} saved scans" if total is not None else "No scan measurement"
+            entries.append(
+                f"{human_label(item['role'])} · {item['site'].get('label') or item['site']['target']} · {scans}"
             )
+        lines.extend(_select(entries, state.watch_index, palette))
     elif section in {"tasks", "methods", "schema"}:
         progress = data
         items = progress["items"]
@@ -488,7 +644,7 @@ def _watch_lines(
                 )
             )
     elif section == "views":
-        views, page_hint = _local_page(snapshot, state)
+        views, page_hint = _local_page({**snapshot, "saved_views": data}, state)
         view_lines = [
             f"{item['name']} · revision {item['revision']} · {', '.join(item['definition']['columns'])}"
             for item in views
@@ -559,6 +715,46 @@ def _watch_detail_lines(
     if data.get("loading") or data.get("error"):
         return [Text(data.get("error") or "Loading retained details…")]
     kind = state.watch_detail_kind
+    if kind == "site":
+        site = next(
+            (
+                item
+                for item in _local_entries(snapshot, "sites")
+                if item.get("project_uuid") == state.watch_site_detail_uuid
+            ),
+            None,
+        )
+        if site is None:
+            return [Text("Selected site is unavailable; return and refresh.")]
+        state.watch_site_openable = bool(site.get("directory"))
+        lines = [
+            Text(
+                site["site"].get("label") or site["site"]["target"],
+                style=palette.title if palette.color else "",
+            ),
+            Text(human_label(site["role"])),
+            Text(
+                "s  Browse this site's complete scan history"
+                if state.watch_site_openable
+                else "Candidate suggestion only; no workspace or scan is implied."
+            ),
+            Text(""),
+        ]
+        for key in (
+            "project_uuid",
+            "directory",
+            "candidate",
+            "source_note_id",
+            "reason",
+            "recorded_at",
+            "coverage",
+            "methods",
+            "scans",
+            "runs",
+        ):
+            if key in site:
+                lines.extend(Text(line) for line in value_lines({key: site[key]}))
+        return lines
     if kind == "task":
         item = data["item"]
         lines = [
@@ -691,9 +887,13 @@ def _save_note(project: str, state: ShellState) -> str:
     from seohead.projects.inbox import submit
 
     references = [f"section:{state.watch_section}"]
+    if state.watch_site_uuid and state.watch_section in {"scans", "findings", "views"}:
+        references.append(f"section:site/{state.watch_site_uuid}")
+    elif state.watch_section == "sites" and state.watch_site_openable:
+        references.append(f"section:site/{state.watch_site_detail_uuid}")
     if state.watch_item_id and state.watch_section in {"tasks", "methods", "schema"}:
         references.append(f"task:{state.watch_item_id}")
-    if state.watch_selected_scan_uuid:
+    if state.watch_selected_scan_uuid and state.watch_section in {"scans", "findings", "views"}:
         references.append(f"scan:{state.watch_selected_scan_uuid}")
         if state.watch_detail_ordinal is not None:
             references.append(
@@ -833,9 +1033,23 @@ def _watch_dashboard(
         Layout(name="header", size=3), Layout(name="body"), Layout(name="footer", size=4)
     )
     site = snapshot["project"]["site"] if snapshot else {}
+    selected_site = None
+    if snapshot and state.watch_site_uuid and state.watch_section in {"scans", "findings", "views"}:
+        selected_site = next(
+            (
+                item
+                for item in snapshot["sites"]["items"]
+                if item.get("project_uuid") == state.watch_site_uuid
+            ),
+            None,
+        )
+        if selected_site:
+            site = selected_site["site"]
     header = Table.grid(expand=True)
-    header.add_column(ratio=1)
-    header.add_column(justify="right")
+    header.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    header.add_column(
+        justify="right", max_width=max(20, width // 2), no_wrap=True, overflow="ellipsis"
+    )
     header.add_row(
         Text("SEOHEAD  /  PROJECT OBSERVER", style=accent),
         Text(
@@ -847,19 +1061,30 @@ def _watch_dashboard(
         Text(f"{width + 4} x {height + 2}", style=muted),
     )
     if snapshot:
-        recent_run = next(iter(snapshot.get("runs", {}).get("items", [])), None)
+        recent_run = next(iter((selected_site or snapshot).get("runs", {}).get("items", [])), None)
         run_hint = "No project run recorded"
         if recent_run:
             last_phase = (
                 recent_run["events"][-1]["phase"] if recent_run["events"] else "unknown phase"
             )
             run_hint = f"{human_label(recent_run['kind'])} · {human_label(recent_run['state'])} · {human_label(last_phase)}"
+            sample_state = recent_run.get("telemetry", {}).get("state")
+            if sample_state:
+                run_hint = (
+                    ("Stale sample" if sample_state == "stale" else human_label(sample_state))
+                    + " · "
+                    + run_hint
+                )
             runtime = (
                 recent_run.get("collector_runtime")
                 if recent_run["kind"] == "screaming_frog"
                 else recent_run.get("controller")
             )
-            if recent_run["state"] == "running" and (runtime or {}).get("state") == "live":
+            if (
+                recent_run["state"] == "running"
+                and (runtime or {}).get("state") == "live"
+                and sample_state == "fresh"
+            ):
                 marker = (
                     "◐◓◑◒"[int(time.monotonic()) % 4]
                     if state.motion_enabled and palette.color
@@ -881,9 +1106,10 @@ def _watch_dashboard(
         nav = [Text("WORKSPACE", style=muted), Text("")]
         for index, section in enumerate(WATCH_SECTIONS, 1):
             selected = section == state.watch_section
+            shortcut = str(index % 10) if index <= 10 else {"schema": "a", "sites": "p"}[section]
             nav.append(
                 Text(
-                    f" {'>' if selected else ' '} {str(index % 10) if index < 11 else 'a'}  {'SF scans' if section == 'sf' else 'Schema' if section == 'schema' else human_label(section)}",
+                    f" {'>' if selected else ' '} {shortcut}  {'SF scans' if section == 'sf' else 'Schema' if section == 'schema' else human_label(section)}",
                     style=palette.highlight if selected and palette.color else "",
                 )
             )
@@ -912,7 +1138,8 @@ def _watch_dashboard(
         body = [
             Text(line)
             for line in (
-                "1-9 / 0  Switch section · a Structured data",
+                "1-9 / 0  Switch section · a Structured data · p Sites",
+                "Sites: Enter coverage/artifacts · s Browse site's scans from details",
                 "↑/↓  Select · Home/End  First/last row on page",
                 "PgUp/PgDn  Previous/next data page",
                 "Enter  Open details · Esc  Return from details",
@@ -1206,13 +1433,16 @@ def _watch_dashboard(
         footer.append("Type filter   Enter Apply   Esc Cancel", style=accent)
     elif state.view == "watch_detail":
         footer.append("↑ ↓ Scroll evidence   PgUp/PgDn Scroll page   Enter/Esc Back", style=accent)
+        footer.append("\nn Note / g Goal on this evidence", style=accent)
         if state.watch_detail_kind == "view":
             footer.append("\n[ Previous / ] Next result page", style=accent)
+        elif state.watch_detail_kind == "site" and state.watch_site_openable:
+            footer.append("\ns Browse this site's scan history", style=accent)
     elif state.view == "watch_help":
         footer.append("Enter/Esc Back\n", style=accent)
     elif not sidebar:
         footer.append(
-            "1 Home  2 Tasks  3 Methods  4 Scans  5 Findings\n6 Views  7 Activity  8 Log  9 SF  0 Inbox  a Schema\n",
+            "1 Home  2 Tasks  3 Methods  4 Scans  5 Findings\n6 Views  7 Activity  8 Log  9 SF  0 Inbox  a Schema  p Sites\n",
             style=muted,
         )
     elif state.watch_section == "findings":
@@ -1220,7 +1450,7 @@ def _watch_dashboard(
             "↑ ↓ Browse   Enter Evidence   PgUp/PgDn Page   f Filter   s Sort\n", style=muted
         )
     elif state.watch_section == "overview":
-        footer.append("2 Task details   3 Methods   a Structured data\n", style=muted)
+        footer.append("2 Task details   3 Methods   a Structured data   p Sites\n", style=muted)
     elif state.watch_section in {"tasks", "methods", "schema"}:
         footer.append(
             "↑ ↓ Browse   Enter Details   PgUp/PgDn Page   f Filter   t State\n", style=muted

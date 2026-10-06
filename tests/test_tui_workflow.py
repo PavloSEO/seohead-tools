@@ -16,6 +16,7 @@ from seohead.tui.app import (
     _page_selection,
     _read_view,
     _watch_detail_lines,
+    _watch_lines,
     build_frame,
 )
 from seohead.tui.state import ShellState
@@ -237,6 +238,115 @@ def test_note_from_task_context_saves_the_exact_selected_task_reference(tmp_path
     message = _save_note(str(root), state)
     assert "saved" in message and not state.note_error
     assert "task:custom:late" in list_entries(root, consumer="test")["entries"][0]["references"]
+
+
+def test_site_inventory_opens_competitor_scan_without_mixing_owner_artifacts(tmp_path):
+    from tests.test_project_observer_sites import _prepare_with_competitors
+    from tests.test_scan_history import _finished
+
+    root = tmp_path / "owner"
+    prepared = _prepare_with_competitors(root)
+    child = root / prepared["preparation"]["competitors"][0]["directory"]
+    _finished(root / "scans" / "owner.sqlite")
+    _finished(child / "scans" / "competitor.sqlite")
+    snapshot = observe(root)
+    state = ShellState([], view="watch", watch_section="sites", watch_index=1)
+    palette = resolve_palette(color=False)
+    _watch_lines(str(root), state, palette, None, snapshot=snapshot, data={})
+    state.handle_key("enter")
+    details = _watch_detail_lines(str(root), state, palette, snapshot=snapshot, data={})
+    assert "competitor-one.example.test" in "\n".join(line.plain for line in details)
+    state.handle_key("char:s")
+    scans = _read_view(str(root), state, snapshot)
+    assert state.watch_section == "scans"
+    assert len(scans["items"]) == 1 and scans["items"][0]["path"] == str(
+        child / "scans" / "competitor.sqlite"
+    )
+    _watch_lines(str(root), state, palette, None, snapshot=snapshot, data=scans)
+    state.handle_key("char:5")
+    findings = _read_view(str(root), state, snapshot)
+    assert findings["scan"]["path"] == str(child / "scans" / "competitor.sqlite")
+
+
+def test_inbox_competitor_proposal_is_visible_without_creating_a_workspace(tmp_path):
+    from seohead.projects.inbox import submit, triage
+
+    root = _project(tmp_path)
+    entry = submit(root, text="Consider the suggested competitor")["entry"]
+    triage(
+        root,
+        entry_id=entry["id"],
+        actor="agent/test",
+        outcome={
+            "kind": "competitor",
+            "reason": "Candidate retained for specialist review",
+            "competitors": ["https://suggested.example.test/"],
+        },
+    )
+    before = sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+    snapshot = observe(root)
+    state = ShellState([], view="watch", watch_section="sites", watch_index=1)
+    palette = resolve_palette(color=False)
+    lines = _watch_lines(str(root), state, palette, None, snapshot=snapshot, data={})
+    assert "Suggested competitor" in "\n".join(line.plain for line in lines)
+    state.handle_key("enter")
+    details = "\n".join(
+        line.plain
+        for line in _watch_detail_lines(str(root), state, palette, snapshot=snapshot, data={})
+    )
+    assert entry["id"] in details and "not prepared or analyzed" in details
+    state.handle_key("char:s")
+    assert state.view == "watch_detail" and state.watch_site_uuid is None
+    assert before == sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+
+
+def test_compact_home_keeps_collection_and_stale_state_visible(tmp_path):
+    from seohead.projects.run_observation import progress, start
+
+    root = _project(tmp_path)
+    run = start(
+        root,
+        kind="native",
+        mode="spider",
+        max_urls=100,
+        config_fingerprint="synthetic",
+        artifact=None,
+    )
+    progress(
+        root,
+        run["id"],
+        fetched=20,
+        queued=79,
+        inflight=1,
+        excluded=2,
+        rate_per_second=4.0,
+        rate_window_seconds=1.0,
+    )
+    snapshot = observe(root)
+    text = _render(root, ShellState([], view="watch"), snapshot, width=76, height=22, data={})
+    assert "20 / 100 discovered" in text and "4.00 pages/s" in text
+    assert "Queue 79" in text and "Sitemap:" in text and "Agreed tasks:" in text
+    snapshot["runs"]["items"][0]["telemetry"].update(state="stale", current_rate_per_second=None)
+    stale = _render(root, ShellState([], view="watch"), snapshot, width=76, height=22, data={})
+    assert "Stale" in stale and "observed active" not in stale and "4.00 pages/s" not in stale
+
+
+def test_note_can_start_from_evidence_detail_and_return_without_losing_context():
+    state = ShellState(
+        [],
+        view="watch_detail",
+        watch_section="findings",
+        watch_detail_ordinal=7,
+        watch_selected_scan_uuid="synthetic",
+    )
+    state.handle_key("char:n")
+    state.handle_key("char:X")
+    state.handle_key("escape")
+    assert state.view == "watch_detail" and state.note_text == "X"
+    state.handle_key("char:n")
+    state.handle_key("enter")
+    assert state.view == "watch_detail" and state.note_ready
+    assert state.watch_detail_ordinal == 7 and state.watch_selected_scan_uuid == "synthetic"
 
 
 def test_hyphenated_command_help_uses_shared_handler_description():

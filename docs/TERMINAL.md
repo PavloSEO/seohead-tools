@@ -11,11 +11,13 @@ or publication. `seohead tui` opens the command reference without a project.
 |---|---|
 | `1`–`9`, `0` | Overview, tasks, methods, scans, findings, saved views, activity, log, Screaming Frog, inbox |
 | `a` | Structured-data checks and methods |
+| `p` | Own site, configured competitors and recent triaged competitor suggestions |
 | Up / Down, Home / End | Select a row on the current page |
 | Page Up / Page Down | Previous / next data page; scroll inside details |
 | Enter | Open the selected task, method, scan, finding, saved view, run, log line, or inbox entry |
 | Escape / Enter in details | Return to the list |
 | `[` / `]` in saved-view details | Previous / next result page |
+| `s` in site details | Browse that site's complete scan history; Findings and Views retain its site identity |
 | `f`, `c` | Edit / clear the task, method, structured-data, or finding filter |
 | `t` in tasks or methods | Cycle all, in-progress, blocked, review, remaining, stale and completed states |
 | `s`, `r` in findings | Change sort field / reverse the order |
@@ -61,6 +63,15 @@ Home selects active/custom work independently of the current checklist page and
 shows the latest inbox entries. Current activity distinguishes primary and
 competitor sites. Historical rates are not displayed as current speed when the
 backend marks their sample stale or unavailable.
+
+Sites opens each declared site's actual and expected coverage, retained scan
+artifacts and source provenance. Recent inbox competitor-triage receipts appear
+as suggestions with their source note and reason; a suggestion has no implied
+workspace or completed analysis. The full proposal history remains in the paged
+Inbox. Site browsing and switching never prepare or scan a competitor. Notes
+started from evidence details retain that context and return to those details.
+Compact Home keeps the measured collection count/rate, queue, sitemap state and
+agreed task coverage visible. A stale live process does not animate as current work.
 
 Lists use bounded data pages. Detail scrolling does not silently shorten evidence
 values again; source-projection limits remain visible. The log browser covers the
