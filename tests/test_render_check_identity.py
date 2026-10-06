@@ -53,6 +53,9 @@ class _FakePage:
         self.load_states = []
         self.settled_ms = []
 
+    def on(self, event, handler):
+        pass
+
     def route(self, pattern, handler):
         self.routes.append((pattern, handler))
 

@@ -143,7 +143,7 @@ part of the crawl audit document.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 5.1 | JS redirect | A move via `location.href`/`location.replace` — not HTTP 3xx, not meta-refresh | **high** | A (HTML/render) | id `JS_REDIRECT` |
+| 5.1 | JS redirect | Observed script navigation, separate from HTTP 3xx, history and fragment changes | **high** | **DONE** — `render-check` and retained `scan-navigation` evidence; unknown causes remain partial | `docs/BROWSER_NAVIGATION.md`; no blanket defect verdict |
 | 5.2 | URL case normalization | The server silently redirects `/Foo` -> `/foo` (or vice versa) — a canonicalization signal | medium | A (live probe) | id `URL_CASE_REDIRECT` |
 | 5.3 | Soft 404 | The page answers 200 but the content is "not found" | **high** | **DONE** as the live `soft404-check` (two deterministic probes, strict verdict) | id `SOFT_404` if the audit needs it |
 
