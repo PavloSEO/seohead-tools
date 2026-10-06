@@ -28,6 +28,7 @@ from .compare import (
     _key,
     _load_correspondence,
     _mapped_url,
+    _measurement_gaps,
     _page_facts,
     _run,
     preflight,
@@ -392,6 +393,9 @@ def compare_to_files(
             },
             "files": files,
         }
+        gaps = _measurement_gaps(before, after)
+        if gaps:
+            result["measurement_gaps"] = gaps
         if declaration is not None:
             result["correspondence"] = {
                 "schema_version": "url-correspondence.v1",

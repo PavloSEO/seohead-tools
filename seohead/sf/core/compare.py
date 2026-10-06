@@ -396,6 +396,24 @@ def _run(audit: Any) -> dict[str, Any]:
     return _header(audit).get("run", {})
 
 
+def _measurement_gaps(before: Any, after: Any) -> list[dict[str, Any]]:
+    """Keep missing check execution distinct from a measured finding delta."""
+    gaps = []
+    for side, source in (("before", before), ("after", after)):
+        for field in ("checks_skipped", "checks_disabled"):
+            for item in _run(source).get(field) or []:
+                if isinstance(item, Mapping) and isinstance(item.get("id"), str):
+                    gaps.append(
+                        {
+                            "side": side,
+                            "check": item["id"],
+                            "state": field.removeprefix("checks_"),
+                            "reason": item.get("reason") or "no measurement available",
+                        }
+                    )
+    return gaps
+
+
 def preflight(before: Any, after: Any) -> list[str]:
     """Reasons a comparison would mislead, without refusing outright.
 
@@ -457,6 +475,11 @@ def preflight(before: Any, after: Any) -> list[str]:
             "SF export profile differs between the two runs "
             f"({before_profile!r} vs {after_profile!r}), so some of the difference may be "
             "the profile's check coverage rather than the site"
+        )
+    for gap in _measurement_gaps(before, after):
+        warnings.append(
+            f"{gap['side']} {gap['check']} was {gap['state']}: {gap['reason']}; "
+            "finding differences are unverified where this check was not measured"
         )
     return warnings
 
@@ -610,7 +633,7 @@ def compare(
     # callers.  The additive rows preserve the individual bases (scope,
     # configuration, representation, saved corpus and provider) so a report
     # cannot flatten an unknown basis into an apparent apples-to-apples diff.
-    from .evidence_contract import comparison_compatibility
+    from .evidence_contract import comparison_compatibility, comparison_warnings
 
     result = {
         "schema_version": "compare.v1",
@@ -622,7 +645,9 @@ def compare(
             "generated_at": _run(after_source).get("generated_at"),
             "urls_crawled": len(after_urls),
         },
-        "warnings": preflight(before, after),
+        "warnings": list(
+            dict.fromkeys(preflight(before, after) + comparison_warnings(before, after))
+        ),
         "compatibility": comparison_compatibility(before, after),
         "summary": {
             "entered": len(entered),
@@ -636,6 +661,9 @@ def compare(
         "appeared": _sort(appeared),
         "disappeared": _sort(disappeared),
     }
+    gaps = _measurement_gaps(before_source, after_source)
+    if gaps:
+        result["measurement_gaps"] = gaps
     if resolved is not None:
         result["release_review"] = _release_review(
             before_source, after_source, resolved, result, force

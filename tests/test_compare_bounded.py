@@ -329,3 +329,71 @@ def test_failed_gzip_export_never_publishes_a_partial_package(tmp_path, monkeypa
         compare(_audit(), _audit(), out_dir=tmp_path / "failed", compression="gzip")
     assert not (tmp_path / "failed").exists()
     assert not list(tmp_path.glob(".compare-*"))
+
+
+@pytest.mark.parametrize(
+    "partial, expected", [(None, "unknown"), (False, "compatible"), (True, "compatible")]
+)
+def test_corpus_completeness_unknown_is_not_equal_to_measured_complete(tmp_path, partial, expected):
+    from seohead.sf.core.evidence_contract import comparison_compatibility
+
+    before = _audit()
+    before["summary"]["saved_corpus_derivations"] = {"schema_version": "saved_corpus.v1"}
+    before["summary"]["evidence_contract"] = {"scan_identity_state": "measured"}
+    if partial is not None:
+        before["run"]["corpus_partial"] = partial
+    after = copy.deepcopy(before)
+    basis = next(row for row in comparison_compatibility(before, after) if row["basis"] == "corpus")
+    assert basis["state"] == expected
+    for result in (
+        compare(before, after),
+        compare(before, after, out_dir=tmp_path / "files", compression="gzip"),
+    ):
+        row = next(row for row in result["compatibility"] if row["basis"] == "corpus")
+        assert row["state"] == expected
+        corpus_warnings = [warning for warning in result["warnings"] if "corpus" in warning]
+        if partial is None:
+            assert any("unknown" in warning for warning in corpus_warnings)
+        elif partial:
+            assert any("partial" in warning for warning in corpus_warnings)
+        else:
+            assert not corpus_warnings
+
+
+def test_missing_corpus_flag_on_one_side_stays_unknown():
+    from seohead.sf.core.evidence_contract import comparison_compatibility
+
+    before = _audit()
+    before["summary"]["saved_corpus_derivations"] = {"schema_version": "saved_corpus.v1"}
+    after = copy.deepcopy(before)
+    after["run"]["corpus_partial"] = False
+    basis = next(row for row in comparison_compatibility(before, after) if row["basis"] == "corpus")
+    assert basis["state"] == "unknown"
+    assert basis["before"]["corpus_partial"] is None
+    assert basis["after"]["corpus_partial"] is False
+
+
+@pytest.mark.parametrize("field", ["checks_skipped", "checks_disabled"])
+def test_disappearing_skipped_check_is_an_unverified_delta_with_retained_reason(tmp_path, field):
+    before = _audit(issues=[_issue("stale", "SITEMAP_STALE_LASTMOD", A)])
+    after = _audit(urls=())
+    after["run"][field] = [
+        {"id": "SITEMAP_STALE_LASTMOD", "reason": "retained evidence unavailable"}
+    ]
+    for result in (
+        compare(before, after),
+        compare(before, after, out_dir=tmp_path / "qualified", compression="gzip"),
+    ):
+        assert result["summary"]["disappeared"] == 1
+        assert result["measurement_gaps"] == [
+            {
+                "side": "after",
+                "check": "SITEMAP_STALE_LASTMOD",
+                "state": field.removeprefix("checks_"),
+                "reason": "retained evidence unavailable",
+            }
+        ]
+        assert any(
+            "SITEMAP_STALE_LASTMOD" in warning and "unverified" in warning
+            for warning in result["warnings"]
+        )

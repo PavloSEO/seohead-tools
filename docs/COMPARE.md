@@ -51,6 +51,18 @@ unknown scope, configuration, representation, corpus and provider bases remain
 explicit in warnings and compatibility rows. Different recorded crawl settings
 still require `force=True`. Missing observations are not verified fixes.
 
+The corpus basis remains `unknown` if either audit lacks a boolean
+`run.corpus_partial`; two missing flags are not evidence of equal completeness.
+Known partial corpora remain warned even when both sides have the same partial
+state. Legacy inputs are never assigned `false` by the comparison consumer.
+
+`measurement_gaps` retains each side's skipped/disabled check ID and reason.
+The legacy four delta categories are still observational row differences:
+for example, an after-run that skipped `SITEMAP_STALE_LASTMOD` may put an old
+finding in `left` or `disappeared`, but its explicit unmeasured-check warning
+prevents interpreting that bucket as proof of a fix. Use targeted verification
+with measured clean check coverage for a remediation verdict.
+
 ## Optional lossless gzip
 
 Pass `compression="gzip"` with an explicit `out_dir` (`--compression gzip` in the

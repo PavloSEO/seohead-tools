@@ -723,6 +723,11 @@ def comparison_compatibility(
             value is not None for value in after_value.values()
         ):
             unknown = True
+        if key == "corpus" and any(
+            not isinstance(value, dict) or not isinstance(value.get("corpus_partial"), bool)
+            for value in (before_value, after_value)
+        ):
+            unknown = True
         if unknown:
             state = "unknown"
         elif before_value == after_value:
@@ -737,6 +742,13 @@ def comparison_warnings(before: Mapping[str, Any], after: Mapping[str, Any]) -> 
     """Render comparison bases as concise warnings for a caller's preflight."""
     warnings = []
     for row in comparison_compatibility(before, after):
+        if row["basis"] == "corpus":
+            for side in ("before", "after"):
+                value = row[side]
+                if isinstance(value, dict) and value.get("corpus_partial") is True:
+                    warnings.append(
+                        f"{side} saved corpus is partial; missing evidence is not a verified fix"
+                    )
         if row["state"] == "compatible":
             continue
         if row["state"] == "unknown":
