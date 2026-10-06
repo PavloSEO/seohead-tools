@@ -170,6 +170,10 @@ audit documents. A write open migrates an older ledger atomically; readers
 of an older artifact still refuse rather than changing it. A migrated v2
 `scan.v2` source is conservatively marked `unavailable` for group scope,
 because v2 did not persist enough information to reconstruct omitted members.
+The v3→v4 migration leaves a legacy source's canonical digest empty rather
+than reconstructing one without its retained audit; explicitly re-ingesting
+that original validated source can fill the digest and restore its canonical
+baseline bridge.
 
 `ledger.ledger_revision` counts committed write transactions that changed
 ledger content (reserved for optimistic concurrency in #789). It is
