@@ -8,11 +8,13 @@ destination URL, with every source as a location.
 
 from __future__ import annotations
 
+import json
 import re
 import statistics
 import urllib.parse
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Mapping
+from itertools import groupby
 from typing import Any
 
 from seohead.graph import InlinkCompositionRow
@@ -286,6 +288,55 @@ def check_anchor_text(ctx: AuditContext) -> None:
 # ---------------------------------------------------------------------------
 # hreflang -> broken target
 # ---------------------------------------------------------------------------
+def _native_hreflang_groups(ctx, key, predicate):
+    """Group native relation findings on disk and quote an explicitly bounded sample."""
+    con = ctx._disk_pages.con
+    con.execute(
+        "CREATE TEMP TABLE hreflang_findings(seq INTEGER PRIMARY KEY,group_key TEXT,value TEXT)"
+    )
+    try:
+        con.executemany(
+            "INSERT INTO hreflang_findings(group_key,value) VALUES(?,?)",
+            (
+                (item[key], json.dumps(item))
+                for item in ctx.native_hreflang["declarations"]
+                if predicate(item)
+            ),
+        )
+        con.execute("CREATE INDEX hreflang_findings_group ON hreflang_findings(group_key,seq)")
+        limit = ctx.config.get("output", {}).get("max_locations_per_issue", 200)
+        for group_key, count in con.execute(
+            "SELECT group_key,COUNT(*) FROM hreflang_findings GROUP BY group_key ORDER BY MIN(seq)"
+        ):
+            rows = [
+                json.loads(row[0])
+                for row in con.execute(
+                    "SELECT value FROM hreflang_findings WHERE group_key=? ORDER BY seq LIMIT ?",
+                    (group_key, limit),
+                )
+            ]
+            yield group_key, rows, count
+    finally:
+        con.execute("DROP TABLE hreflang_findings")
+
+
+def _native_sample_details(name, entries, count):
+    details = {name: entries}
+    if count > len(entries):
+        details.update(
+            sample_truncated=True,
+            omitted_relations=count - len(entries),
+            full_relations_collection="/summary/saved_corpus_derivations/internationalization/declarations",
+        )
+    return details
+
+
+def _active_declaration(item):
+    return (
+        item["source_representation_state"] == "active" and item["declaration_state"] == "declared"
+    )
+
+
 def check_hreflang_targets(ctx: AuditContext) -> None:
     """HREFLANG_BROKEN_TARGET — hreflang points at a 3xx/4xx/5xx URL.
 
@@ -299,40 +350,47 @@ def check_hreflang_targets(ctx: AuditContext) -> None:
     """
     native = ctx.native_hreflang
     if native is not None and native["declarations"]:
-        by_source: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
-        unmeasured = 0
-        for item in native["declarations"]:
-            if (
-                item["source_representation_state"] != "active"
-                or item["declaration_state"] != "declared"
-            ):
-                continue
+
+        def broken(item):
             target = item["target_observation"]
-            if target["state"] != "observed" or type(target.get("status_code")) is not int:
-                unmeasured += 1
-                continue
-            code = target["status_code"]
-            redirect = target["redirect_url"]
-            if 300 <= code < 400 or code >= 400 or redirect:
-                by_source.setdefault(item["source_url"], []).append(
-                    {
-                        "hreflang": item["lang"],
-                        "target_url": item["target"],
-                        "target_identity": item["target_identity"],
-                        "status_code": code,
-                        "redirect_url": redirect,
-                        "source_declaration_id": item["source_declaration_id"],
-                        "label_context": item["label_context"],
-                    }
-                )
-        for source, targets in by_source.items():
+            code = target.get("status_code")
+            return (
+                _active_declaration(item)
+                and target["state"] == "observed"
+                and type(code) is int
+                and (code >= 300 or target["redirect_url"])
+            )
+
+        fired = False
+        for source, rows, count in _native_hreflang_groups(ctx, "source_url", broken):
+            fired = True
+            targets = [
+                {
+                    "hreflang": item["lang"],
+                    "target_url": item["target"],
+                    "target_identity": item["target_identity"],
+                    "status_code": item["target_observation"]["status_code"],
+                    "redirect_url": item["target_observation"]["redirect_url"],
+                    "source_declaration_id": item["source_declaration_id"],
+                    "label_context": item["label_context"],
+                }
+                for item in rows
+            ]
             ctx.add(
                 "HREFLANG_BROKEN_TARGET",
                 target_url=source,
-                occurrences_count=len(targets),
-                details={"broken_targets": targets},
+                occurrences_count=count,
+                details=_native_sample_details("broken_targets", targets, count),
             )
-        if not by_source and (unmeasured or native["coverage"]["state"] != "complete"):
+        unmeasured = any(
+            _active_declaration(item)
+            and (
+                item["target_observation"]["state"] != "observed"
+                or type(item["target_observation"].get("status_code")) is not int
+            )
+            for item in native["declarations"]
+        )
+        if not fired and (unmeasured or native["coverage"]["state"] != "complete"):
             ctx.skip(
                 "HREFLANG_BROKEN_TARGET",
                 "one or more hreflang targets or the retained population were unmeasured",
@@ -407,6 +465,16 @@ _HREFLANG_QUALITY_CHECKS = (
 )
 
 
+def _native_source_groups(native):
+    # Context evidence is ordered by page/document identity; only the active
+    # document contributes, so one group is bounded by one captured payload.
+    active = (
+        item for item in native["declarations"] if item["source_representation_state"] == "active"
+    )
+    for source, rows in groupby(active, key=lambda item: item["source_url"]):
+        yield source, list(rows)
+
+
 def check_hreflang_quality(ctx: AuditContext) -> None:
     """Validate each page's own hreflang set: codes, duplicates, self, x-default, canonical.
 
@@ -419,6 +487,17 @@ def check_hreflang_quality(ctx: AuditContext) -> None:
     page's hreflang set. If the export is absent, all five checks skip
     honestly rather than emit dead zeros.
     """
+    native = ctx.native_hreflang
+    if native is not None and native["declarations"]:
+        for source, rows in _native_source_groups(native):
+            entries = [{"hreflang": row["lang"], "destination_url": row["target"]} for row in rows]
+            _check_invalid_codes(ctx, source, entries, {})
+            _check_duplicate_entries(ctx, source, entries, {})
+            targets = [row for row in entries if row["destination_url"]]
+            _check_self_reference(ctx, source, targets, {})
+            _check_xdefault(ctx, source, targets, {})
+            _check_not_canonical(ctx, source, targets, {})
+        return
     df = ctx.exports.get("all_hreflang")
     if df is None or df.empty:
         for check_id in _HREFLANG_QUALITY_CHECKS:
@@ -544,39 +623,41 @@ def check_hreflang_reciprocity(ctx: AuditContext) -> None:
     """
     native = ctx.native_hreflang
     if native is not None and native["declarations"]:
-        missing_by_target: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
-        for item in native["declarations"]:
-            if (
-                item["source_representation_state"] != "active"
-                or item["declaration_state"] != "declared"
-                or item["source_identity"] == item["target_identity"]
-                or item["reciprocity"]["state"] != "missing"
-            ):
-                continue
-            missing_by_target.setdefault(item["target_identity"], []).append(item)
-        for target_identity, entries in missing_by_target.items():
+
+        def missing(item):
+            return (
+                _active_declaration(item)
+                and item["source_identity"] != item["target_identity"]
+                and item["reciprocity"]["state"] == "missing"
+            )
+
+        fired = False
+        for target_identity, entries, count in _native_hreflang_groups(
+            ctx, "target_identity", missing
+        ):
+            fired = True
             target = ctx.page_by_norm.get(target_identity)
+            relations = [
+                {
+                    "source_url": item["source_url"],
+                    "source_identity": item["source_identity"],
+                    "target": item["target"],
+                    "target_identity": item["target_identity"],
+                    "hreflang": item["lang"],
+                    "source_declaration_id": item["source_declaration_id"],
+                    "label_context": item["label_context"],
+                }
+                for item in entries
+            ]
+            details = _native_sample_details("relations", relations, count)
+            details["expected_return_to"] = sorted({item["source_url"] for item in entries})
             ctx.add(
                 "HREFLANG_MISSING_RETURN_LINK",
                 target_url=target.url if target else entries[0]["target"],
-                occurrences_count=len(entries),
-                details={
-                    "expected_return_to": sorted({item["source_url"] for item in entries}),
-                    "relations": [
-                        {
-                            "source_url": item["source_url"],
-                            "source_identity": item["source_identity"],
-                            "target": item["target"],
-                            "target_identity": item["target_identity"],
-                            "hreflang": item["lang"],
-                            "source_declaration_id": item["source_declaration_id"],
-                            "label_context": item["label_context"],
-                        }
-                        for item in entries
-                    ],
-                },
+                occurrences_count=count,
+                details=details,
             )
-        if not missing_by_target and native["coverage"]["state"] != "complete":
+        if not fired and native["coverage"]["state"] != "complete":
             ctx.skip(
                 "HREFLANG_MISSING_RETURN_LINK",
                 "retained hreflang relationship coverage is incomplete: "
@@ -644,29 +725,48 @@ def check_hreflang_noindex_targets(ctx: AuditContext) -> None:
     by_source: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     unmeasured = 0
     if native is not None and native["declarations"]:
-        for item in native["declarations"]:
-            if (
-                item["source_representation_state"] != "active"
-                or item["declaration_state"] != "declared"
-            ):
-                continue
+
+        def noindex(item):
             target = item["target_observation"]
-            if target["state"] != "observed":
-                unmeasured += 1
-                continue
-            indexability = target["indexability"]
-            if indexability["state"] == "unmeasured":
-                unmeasured += 1
-            elif indexability["reason"] == "noindex directive":
-                by_source.setdefault(item["source_url"], []).append(
-                    {
-                        "hreflang": item["lang"],
-                        "target": item["target"],
-                        "target_identity": item["target_identity"],
-                        "source_declaration_id": item["source_declaration_id"],
-                        "label_context": item["label_context"],
-                    }
-                )
+            return (
+                _active_declaration(item)
+                and target["state"] == "observed"
+                and target["indexability"]["reason"] == "noindex directive"
+            )
+
+        fired = False
+        for source, rows, count in _native_hreflang_groups(ctx, "source_url", noindex):
+            fired = True
+            entries = [
+                {
+                    "hreflang": item["lang"],
+                    "target": item["target"],
+                    "target_identity": item["target_identity"],
+                    "source_declaration_id": item["source_declaration_id"],
+                    "label_context": item["label_context"],
+                }
+                for item in rows
+            ]
+            ctx.add(
+                "HREFLANG_NOINDEX_TARGET",
+                target_url=source,
+                occurrences_count=count,
+                details=_native_sample_details("noindex_targets", entries, count),
+            )
+        unmeasured = any(
+            _active_declaration(item)
+            and (
+                item["target_observation"]["state"] != "observed"
+                or item["target_observation"]["indexability"]["state"] == "unmeasured"
+            )
+            for item in native["declarations"]
+        )
+        if not fired and (unmeasured or native["coverage"]["state"] != "complete"):
+            ctx.skip(
+                "HREFLANG_NOINDEX_TARGET",
+                "one or more hreflang targets or the retained population were unmeasured",
+            )
+        return
     else:
         df = ctx.exports.get("all_hreflang")
         if df is None or df.empty:
@@ -750,6 +850,51 @@ def check_hreflang_confirmation_consistency(ctx: AuditContext) -> None:
     claimed for it, and the codes the counterpart confirms for itself, so the reader
     can see which of the two is wrong without opening both.
     """
+    native = ctx.native_hreflang
+    if native is not None and native["declarations"]:
+        if ctx._saved_corpus is not None:
+            confirmed_for = ctx._saved_corpus.owner.self_codes
+        else:
+            self_codes = {}
+            for item in native["declarations"]:
+                code = _hreflang_code(item["lang"])
+                if (
+                    item["source_representation_state"] == "active"
+                    and item["source_identity"] == item["target_identity"]
+                    and code
+                    and code != _XDEFAULT
+                ):
+                    self_codes.setdefault(item["source_identity"], set()).add(code)
+            confirmed_for = self_codes.get
+        for source, rows in _native_source_groups(native):
+            mismatched = []
+            for item in rows:
+                code = _hreflang_code(item["lang"])
+                if (
+                    not code
+                    or code == _XDEFAULT
+                    or item["source_identity"] == item["target_identity"]
+                ):
+                    continue
+                confirmed = confirmed_for(item["target_identity"])
+                target = ctx.page_by_norm.get(item["target_identity"])
+                if confirmed and code not in confirmed and target is not None:
+                    mismatched.append(
+                        {
+                            "counterpart": target.url,
+                            "declared_here": code,
+                            "confirmed_there": sorted(confirmed),
+                        }
+                    )
+            if mismatched:
+                page = ctx.page_by_norm.get(norm_url(source))
+                ctx.add(
+                    "HREFLANG_INCONSISTENT_CONFIRMATION",
+                    target_url=page.url if page else source,
+                    occurrences_count=len(mismatched),
+                    details={"inconsistent": mismatched},
+                )
+        return
     df = ctx.exports.get("all_hreflang")
     if df is None or df.empty:
         ctx.skip(

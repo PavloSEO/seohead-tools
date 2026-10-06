@@ -640,6 +640,7 @@ class AuditContext:
         self.redirect_map: dict[str, str] = {}
         self._disk_pages: _DiskPages | None = None
         self._disk_final_issues: _DiskIssueResults | None = None
+        self._saved_corpus = None
         self._html_pages: list[Page] | None = None
         self._indexable_html_pages: list[Page] | None = None
         self._build_pages(disk_backed_pages=disk_backed_pages)
@@ -869,6 +870,9 @@ class AuditContext:
         return self._indexable_html_pages
 
     def close(self) -> None:
+        if self._saved_corpus is not None:
+            self._saved_corpus.close()
+            self._saved_corpus = None
         if self._disk_pages is not None:
             self._disk_pages.close()
             self._disk_pages = None

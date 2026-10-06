@@ -7,6 +7,10 @@ target observation, and every unavailable relationship names that fact.
 
 from __future__ import annotations
 
+import json
+import os
+import sqlite3
+import tempfile
 from collections import Counter
 from typing import Any
 from urllib.parse import urlsplit
@@ -16,10 +20,8 @@ from seohead.tools.hreflang import code_error
 from seohead.tools.parser import robots_directives
 
 
-def _page_index(con: Any) -> tuple[dict[int, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+def _page_rows(con: Any):
     """Read only captured pages; ``urls`` alone never establishes an observation."""
-    by_id: dict[int, dict[str, Any]] = {}
-    by_normalized: dict[str, list[dict[str, Any]]] = {}
     query = (
         "SELECT p.url_id,u.url,p.document_id,p.status_code,p.redirect_url,p.canonical,p.meta_robots,p.x_robots,"
         "p.representation,p.hreflang_outside_head,d.body_state,d.body_sha256 "
@@ -51,9 +53,159 @@ def _page_index(con: Any) -> tuple[dict[int, dict[str, Any]], dict[str, list[dic
                 )
             )
         )
+        yield item
+
+
+def _page_index(con: Any) -> tuple[dict[int, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    by_id, by_normalized = {}, {}
+    for item in _page_rows(con):
         by_id[item["url_id"]] = item
         by_normalized.setdefault(norm_url(item["url"]), []).append(item)
     return by_id, by_normalized
+
+
+class _CorpusIndex:
+    """Indexed captured pages and language relations, never a full Python graph."""
+
+    def __init__(self, source, language):
+        descriptor, self.path = tempfile.mkstemp(prefix="seohead-corpus-", suffix=".sqlite")
+        os.close(descriptor)
+        self.con = sqlite3.connect(self.path)
+        self.closed = False
+        self.con.executescript(
+            "CREATE TABLE pages(id INTEGER PRIMARY KEY,url TEXT,norm TEXT,value TEXT);"
+            "CREATE INDEX page_norm ON pages(norm);"
+            "CREATE TABLE evidence(id INTEGER PRIMARY KEY,n INTEGER);"
+            "CREATE TABLE self_codes(target TEXT,lang TEXT,PRIMARY KEY(target,lang)) WITHOUT ROWID;"
+            "CREATE TABLE edges(representation TEXT,source TEXT,target TEXT,"
+            "PRIMARY KEY(representation,source,target)) WITHOUT ROWID;"
+        )
+        self.con.executemany(
+            "INSERT INTO pages VALUES(?,?,?,?)",
+            (
+                (row["url_id"], row["url"], norm_url(row["url"]), json.dumps(row))
+                for row in _page_rows(source)
+            ),
+        )
+        self.declaration_count = 0
+        for evidence in language:
+            declarations = evidence.get("declarations")
+            declarations = declarations if isinstance(declarations, list) else []
+            self.declaration_count += sum(isinstance(item, dict) for item in declarations)
+            page = self.get(evidence["page_url_id"])
+            if not _source_active(evidence, page):
+                continue
+            self.con.execute(
+                "INSERT INTO evidence VALUES(?,1) ON CONFLICT(id) DO UPDATE SET n=n+1",
+                (evidence["page_url_id"],),
+            )
+            for item in declarations:
+                if (
+                    isinstance(item, dict)
+                    and item.get("state") == "declared"
+                    and type(item.get("ordinal")) is int
+                    and item["ordinal"] >= 0
+                    and item.get("target")
+                    and page["url"]
+                ):
+                    self.con.execute(
+                        "INSERT OR IGNORE INTO edges VALUES(?,?,?)",
+                        (
+                            evidence["representation"],
+                            norm_url(page["url"]),
+                            norm_url(item["target"]),
+                        ),
+                    )
+                    code = str(item.get("lang") or "").strip().lower()
+                    if (
+                        norm_url(page["url"]) == norm_url(item["target"])
+                        and code
+                        and code != "x-default"
+                    ):
+                        self.con.execute(
+                            "INSERT OR IGNORE INTO self_codes VALUES(?,?)",
+                            (norm_url(page["url"]), code),
+                        )
+        self.con.commit()
+
+    def get(self, page_id, default=None):
+        row = self.con.execute("SELECT value FROM pages WHERE id=?", (page_id,)).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def candidates(self, key):
+        # The consumer only distinguishes zero, one, or ambiguous observations.
+        return [
+            json.loads(row[0])
+            for row in self.con.execute(
+                "SELECT value FROM pages WHERE norm=? ORDER BY id LIMIT 2", (key,)
+            )
+        ]
+
+    def evidence_count(self, page_id):
+        row = self.con.execute("SELECT n FROM evidence WHERE id=?", (page_id,)).fetchone()
+        return row[0] if row else 0
+
+    def has_edge(self, representation, source, target):
+        return (
+            self.con.execute(
+                "SELECT 1 FROM edges WHERE representation=? AND source=? AND target=?",
+                (representation, source, target),
+            ).fetchone()
+            is not None
+        )
+
+    def self_codes(self, target):
+        return {
+            row[0]
+            for row in self.con.execute("SELECT lang FROM self_codes WHERE target=?", (target,))
+        }
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        self.con.close()
+        os.unlink(self.path)
+
+    def __del__(self):
+        self.close()
+
+
+class _NormalizedPages:
+    def __init__(self, index):
+        self.index = index
+
+    def get(self, key, default=None):
+        return self.index.candidates(key) or default
+
+
+class _PageURLs:
+    def __init__(self, index):
+        self.index = index
+
+    def get(self, page_id, default=None):
+        page = self.index.get(page_id)
+        return page["url"] if page is not None else default
+
+
+class _DerivedCorpus(dict):
+    def __init__(self, value, owner):
+        super().__init__(value)
+        self.owner = owner
+
+    def close(self):
+        self.owner.close()
+
+
+def _source_active(evidence, source):
+    return bool(
+        source
+        and source.get("document_id") == evidence["source_document_id"]
+        and source.get("representation") == evidence["representation"]
+        and source.get("body_state") == "complete"
+        and source.get("body_sha256")
+        and evidence.get("state") in {"declared", "absent"}
+    )
 
 
 def _indexability(page: dict[str, Any]) -> dict[str, str]:
@@ -145,6 +297,8 @@ def _language_derivations(
     language: list[dict[str, Any]],
     by_id: dict[int, dict[str, Any]],
     by_normalized: dict[str, list[dict[str, Any]]],
+    *,
+    relations=None,
 ) -> list[dict[str, Any]]:
     """Validate saved declaration-to-target relations within retained representations."""
     rows: list[dict[str, Any]] = []
@@ -152,14 +306,7 @@ def _language_derivations(
     active_evidence: dict[int, list[dict[str, Any]]] = {}
     for evidence in language:
         source = by_id.get(evidence["page_url_id"])
-        source_active = bool(
-            source
-            and source.get("document_id") == evidence["source_document_id"]
-            and source.get("representation") == evidence["representation"]
-            and source.get("body_state") == "complete"
-            and source.get("body_sha256")
-            and evidence.get("state") in {"declared", "absent"}
-        )
+        source_active = _source_active(evidence, source)
         if source_active:
             active_evidence.setdefault(evidence["page_url_id"], []).append(evidence)
         declarations = (
@@ -256,12 +403,20 @@ def _language_derivations(
                     "state": "unmeasured",
                     "reason": "target representation differs from the declaring document",
                 }
-            elif len(active_evidence.get(item["target_observation"]["page_url_id"], [])) != 1:
+            elif (
+                relations.evidence_count(item["target_observation"]["page_url_id"])
+                if relations is not None
+                else len(active_evidence.get(item["target_observation"]["page_url_id"], []))
+            ) != 1:
                 item["reciprocity"] = {
                     "state": "unmeasured",
                     "reason": "target has no unambiguous complete language declaration evidence",
                 }
-            elif (item["representation"], target_key, source_key) in active_edges:
+            elif (
+                relations.has_edge(item["representation"], target_key, source_key)
+                if relations is not None
+                else (item["representation"], target_key, source_key) in active_edges
+            ):
                 item["reciprocity"] = {"state": "present", "reason": ""}
             else:
                 item["reciprocity"] = {
@@ -280,30 +435,57 @@ def _language_derivations(
     return rows
 
 
-def derive(con: Any, *, duplicate_threshold: float = 0.92) -> dict[str, Any]:
+def derive(
+    con: Any, *, duplicate_threshold: float = 0.92, streaming: bool = False
+) -> dict[str, Any]:
     """Return reproducible content/structured/i18n derivations from one scan connection."""
-    from seohead.storage.content_evidence import derive_duplicates
+    from seohead.storage.content_evidence import DerivedRows, derive_duplicates
     from seohead.storage.content_evidence import read as read_content
     from seohead.storage.structured_evidence import read as read_structured
 
-    content = read_content(con)
-    structured = read_structured(con)
-    by_id, by_normalized = _page_index(con)
+    content = read_content(con, streaming=True) if streaming else read_content(con)
+    structured = read_structured(con, streaming=True) if streaming else read_structured(con)
+    if streaming:
+        by_id = _CorpusIndex(con, structured["language"])
+        by_normalized = _NormalizedPages(by_id)
+        page_urls = _PageURLs(by_id)
+    else:
+        by_id, by_normalized = _page_index(con)
+        page_urls = {page_id: page["url"] for page_id, page in by_id.items()}
     duplicates = derive_duplicates(
         content["items"],
         threshold=duplicate_threshold,
-        page_urls={page_id: page["url"] for page_id, page in by_id.items()},
+        page_urls=page_urls,
+        **({"streaming": True} if streaming else {}),
     )
-    declarations = _language_derivations(structured["language"], by_id, by_normalized)
     scan = con.execute("SELECT crawl_partial,corpus_partial FROM scan WHERE singleton=1").fetchone()
     crawl_partial, corpus_partial = bool(scan[0]), bool(scan[1])
-    if crawl_partial or corpus_partial:
-        for declaration in declarations:
-            if declaration["reciprocity"]["state"] == "present":
-                declaration["reciprocity"] = {
-                    "state": "unmeasured",
-                    "reason": "the retained crawl or corpus is partial; a clean relationship is unproven",
-                }
+
+    def declaration_rows():
+        groups = (
+            (
+                _language_derivations([evidence], by_id, by_normalized, relations=by_id)
+                for evidence in structured["language"]
+            )
+            if streaming
+            else [_language_derivations(structured["language"], by_id, by_normalized)]
+        )
+        for group in groups:
+            for declaration in group:
+                if (crawl_partial or corpus_partial) and declaration["reciprocity"][
+                    "state"
+                ] == "present":
+                    declaration["reciprocity"] = {
+                        "state": "unmeasured",
+                        "reason": "the retained crawl or corpus is partial; a clean relationship is unproven",
+                    }
+                yield declaration
+
+    declarations = (
+        DerivedRows(declaration_rows, by_id.declaration_count)
+        if streaming
+        else list(declaration_rows())
+    )
     relation_states = dict(Counter(item["reciprocity"]["state"] for item in declarations))
     relation_coverage = {
         "state": "partial"
@@ -323,7 +505,7 @@ def derive(con: Any, *, duplicate_threshold: float = 0.92) -> dict[str, Any]:
         else "all saved declaration relations were measured",
     }
     structured_states = dict(Counter(item.get("state") for item in structured["structured"]))
-    return {
+    result = {
         "schema_version": "saved_corpus_derivations.v2",
         "duplicates": duplicates,
         "structured": {"states": structured_states, "items": structured["structured"]},
@@ -334,3 +516,5 @@ def derive(con: Any, *, duplicate_threshold: float = 0.92) -> dict[str, Any]:
             "target_population": "captured pages only; queued or linked URLs are unmeasured",
         },
     }
+
+    return _DerivedCorpus(result, by_id) if streaming else result

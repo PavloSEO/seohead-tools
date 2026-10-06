@@ -1421,59 +1421,54 @@ def _audit_crawl_result(
             )
             requires_rendering, requires_rendering_reason = gate.requires_rendering, gate.reason
 
+    # Keep scalar SQL lookups alive only while the native row stream is copied
+    # into the disk-backed analysis context. No full page frame or inlink map.
+    from contextlib import ExitStack
+
     stored_graph_available = False
-    if stored_scan is None:
-        evidence = build_evidence(result)
-    else:
-        from seohead.crawl.sql_graph import StoredGraph
+    with ExitStack() as evidence_stack:
+        if stored_scan is None:
+            evidence = build_evidence(result)
+        else:
+            from seohead.crawl.sql_graph import StoredGraph
 
-        stored_graph_available = (
-            stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
-        )
-        with StoredGraph(stored_scan.con) as graph:
-            counts = (
-                {
-                    item["url"]: (item["inlinks"], item["unique_inlinks"])
-                    for item in graph.iter_inlink_counts()
-                }
-                if stored_graph_available
-                else None
+            stored_graph_available = (
+                stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
             )
-        evidence = build_evidence(
-            result, inlink_counts=counts, stored_graph_available=stored_graph_available
-        )
-        # A crawl may have parsed a response in memory while its body was too
-        # large to retain. The SF-shaped quality checks must not treat those
-        # volatile declarations as inspectable native evidence (#825).
-        if "all_hreflang" in evidence["frames"]:
-            complete_sources = {
-                row[0]
-                for row in stored_scan.con.execute(
-                    "SELECT u.url FROM pages p JOIN urls u USING(url_id) "
-                    "JOIN documents d ON d.document_id=p.document_id "
-                    "WHERE d.body_state='complete' AND d.body_sha256 IS NOT NULL"
-                )
-            }
-            frame = evidence["frames"]["all_hreflang"]
-            frame = frame[frame["Source"].isin(complete_sources)].copy()
-            if frame.empty:
-                evidence["frames"].pop("all_hreflang")
-                evidence["found"].remove("all_hreflang")
-                evidence["missing"].append("all_hreflang")
-            else:
-                evidence["frames"]["all_hreflang"] = frame
-    exports = LoadedExports()
-    exports.frames.update(evidence["frames"])
-    exports.found = list(evidence["found"])
-    exports.missing = list(evidence["missing"])
+            graph = evidence_stack.enter_context(StoredGraph(stored_scan.con))
 
-    audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
-    ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
+            def is_robots_blocked(page_url):
+                return (
+                    stored_scan.con.execute(
+                        "SELECT 1 FROM urls u JOIN context_items c "
+                        "ON c.kind='robots_blocked_url' AND c.item_key='url:' || u.url_id "
+                        "WHERE u.url=? LIMIT 1",
+                        (page_url,),
+                    ).fetchone()
+                    is not None
+                )
+
+            evidence = build_evidence(
+                result,
+                inlink_counts=graph.inlink_counts() if stored_graph_available else None,
+                stored_graph_available=stored_graph_available,
+                streaming=True,
+                is_robots_blocked=is_robots_blocked,
+            )
+        exports = LoadedExports()
+        exports.frames.update(evidence["frames"])
+        exports.found = list(evidence["found"])
+        exports.missing = list(evidence["missing"])
+
+        audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
+        ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
 
-        saved_corpus = derive(stored_scan.con)
+        saved_corpus = derive(stored_scan.con, streaming=streaming)
+        if streaming:
+            ctx._saved_corpus = saved_corpus
         ctx.native_hreflang = saved_corpus["internationalization"]
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
@@ -1481,7 +1476,10 @@ def _audit_crawl_result(
     # arbitrary page (#634). A URL-list run has no start URL and must say so
     # rather than invent one.
     ctx.start_url = start_norm if url else None
-    ctx.skip_unsupported(set(exports.frames))
+    available_exports = set(exports.frames)
+    if ctx.native_hreflang is not None and ctx.native_hreflang["declarations"]:
+        available_exports.add("all_hreflang")
+    ctx.skip_unsupported(available_exports)
     run_rules(ctx)
     # Same pipeline the Screaming Frog export path runs (seohead/sf/core/audit.py)
     # -- omitting it here left every inlinks-derived check (anchor text, hreflang,
@@ -1918,7 +1916,9 @@ def _audit_crawl_result(
             header, collections["/issues"] = attach_contract_parts(
                 header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
             )
-            header = attach_saved_corpus_header(header, stored_scan.con, derived=saved_corpus)
+            header = attach_saved_corpus_header(
+                header, stored_scan.con, derived=saved_corpus, collections=collections
+            )
         # The lazy page/group factories retain the disk-backed context until
         # the writer has consumed every collection.
         for rows in collections.values():
