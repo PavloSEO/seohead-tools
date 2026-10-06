@@ -81,6 +81,7 @@ def test_observer_projects_scans_coverage_and_methods_per_declared_site(tmp_path
             "quick_crawl": {"pages": 50, "requests": 150, "seconds": 60},
             "crawl_overrides": {},
             "competitor_limit": 5,
+            "evidence_hash": {"max_bytes": 1073741824, "max_seconds": 5},
         },
     }
     assert snapshot["sites"]["total"] == 3

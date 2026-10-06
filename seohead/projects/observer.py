@@ -795,7 +795,7 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     from .monitoring import status as monitor_status
     from .runtime import project_policy
 
-    execution = execution_status(root, _coverage=coverage_views[str(root)])
+    execution = execution_status(root, _coverage=coverage_views[str(root)], _verify_evidence=False)
     monitor = monitor_status(root)
     preparation = status["preparation"]
     sites = [

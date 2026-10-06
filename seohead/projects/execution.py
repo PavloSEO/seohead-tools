@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -149,19 +150,91 @@ def _context(
     return result
 
 
+def _hash_limits(root: Path) -> dict:
+    from .runtime import project_policy
+
+    return project_policy(str(root))["policy"]["evidence_hash"]
+
+
+def _artifact_identity(root: Path, reference: str) -> tuple:
+    from .evidence import artifact_path
+
+    path = artifact_path(root, reference)
+    info = path.stat()
+    return (str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _verification_receipt(root: Path, records: list[dict], digests: dict) -> dict:
+    artifacts = []
+    for record in records:
+        identity = _artifact_identity(root, record["reference"])
+        if digests.get(identity) != record["sha256"]:
+            raise ValueError("evidence artifact changed before recording its verification receipt")
+        artifacts.append({**record, "identity": list(identity[1:])})
+    return {"verified_at": datetime.now(timezone.utc).isoformat(), "artifacts": artifacts}
+
+
+def _verify_receipt_metadata(root: Path, step: dict) -> None:
+    """A passive observer checks prior proof identity without claiming a fresh byte read."""
+    records = _evidence(step.get("evidence"))
+    receipt = step.get("evidence_verification")
+    if (
+        not records
+        or not isinstance(receipt, dict)
+        or not isinstance(receipt.get("verified_at"), str)
+        or not isinstance(receipt.get("artifacts"), list)
+    ):
+        raise ValueError("unverified: no retained byte-verification receipt")
+    try:
+        stamp = datetime.fromisoformat(receipt["verified_at"].replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("unverified: verification receipt timestamp is invalid") from exc
+    if stamp.tzinfo is None:
+        raise ValueError("unverified: verification receipt timestamp has no timezone")
+    saved = {}
+    for item in receipt["artifacts"]:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"reference", "sha256", "identity"}
+            or not isinstance(item["reference"], str)
+            or not isinstance(item["identity"], list)
+            or len(item["identity"]) != 5
+            or any(type(value) is not int for value in item["identity"])
+        ):
+            raise ValueError("unverified: verification receipt identity is invalid")
+        saved[item["reference"]] = item
+    if len(saved) != len(records):
+        raise ValueError("unverified: verification receipt does not cover the evidence")
+    for record in records:
+        prior = saved.get(record["reference"], {})
+        if prior.get("sha256") != record["sha256"] or prior.get("identity") != list(
+            _artifact_identity(root, record["reference"])[1:]
+        ):
+            raise ValueError(
+                "evidence artifact metadata changed; explicit byte verification required"
+            )
+
+
 def _evidence(
     records: list[dict] | None,
     *,
     root: Path | None = None,
     digests: dict | None = None,
     deadline: float | None = None,
+    max_bytes: int | None = None,
 ) -> list[dict]:
     records = records or []
     if not isinstance(records, list) or len(records) > 20:
         raise ValueError("evidence must be a list of at most 20 records")
     result = []
     digests = {} if digests is None else digests
-    deadline = time.monotonic() + EVIDENCE_HASH_SECONDS if deadline is None else deadline
+    limits = (
+        _hash_limits(root)
+        if root is not None and (deadline is None or max_bytes is None)
+        else {"max_seconds": EVIDENCE_HASH_SECONDS, "max_bytes": EVIDENCE_HASH_BYTES}
+    )
+    deadline = time.monotonic() + limits["max_seconds"] if deadline is None else deadline
+    max_bytes = limits["max_bytes"] if max_bytes is None else max_bytes
     for record in records:
         if not isinstance(record, dict) or set(record) != {"reference", "sha256"}:
             raise ValueError("evidence records require reference and sha256")
@@ -187,7 +260,7 @@ def _evidence(
                 before.st_ctime_ns,
             )
             if key not in digests:
-                measured = _digest(path, deadline=deadline, max_bytes=EVIDENCE_HASH_BYTES)
+                measured = _digest(path, deadline=deadline, max_bytes=max_bytes)
                 after = artifact_path(root, reference).stat()
                 if (
                     before.st_dev,
@@ -246,12 +319,20 @@ def _stale_dependencies(
     root: Path | None = None,
     digests: dict | None = None,
     deadline: float | None = None,
+    max_bytes: int | None = None,
+    verify_evidence: bool = True,
 ) -> list[dict[str, str]]:
     """Return every changed dependency in deterministic recovery order."""
     stale: list[dict[str, str]] = []
     seen: set[str] = set()
     digests = {} if digests is None else digests
-    deadline = time.monotonic() + EVIDENCE_HASH_SECONDS if deadline is None else deadline
+    limits = (
+        _hash_limits(root)
+        if root is not None and (deadline is None or max_bytes is None)
+        else {"max_seconds": EVIDENCE_HASH_SECONDS, "max_bytes": EVIDENCE_HASH_BYTES}
+    )
+    deadline = time.monotonic() + limits["max_seconds"] if deadline is None else deadline
+    max_bytes = limits["max_bytes"] if max_bytes is None else max_bytes
 
     def add(item_id: str, reason: str) -> None:
         if item_id not in seen:
@@ -272,11 +353,18 @@ def _stale_dependencies(
     for step in run["steps"]:
         if root is not None and step.get("state") == "succeeded":
             try:
-                records = _evidence(
-                    step.get("evidence"), root=root, digests=digests, deadline=deadline
-                )
-                if not records:
-                    raise ValueError("successful workflow checkpoint has no retained evidence")
+                if verify_evidence:
+                    records = _evidence(
+                        step.get("evidence"),
+                        root=root,
+                        digests=digests,
+                        deadline=deadline,
+                        max_bytes=max_bytes,
+                    )
+                    if not records:
+                        raise ValueError("successful workflow checkpoint has no retained evidence")
+                else:
+                    _verify_receipt_metadata(root, step)
             except (ValueError, OSError) as exc:
                 add(step["id"], f"retained evidence unavailable: {exc}")
         row = rows.get(step["id"])
@@ -335,10 +423,40 @@ def _public_run(
     root: Path | None = None,
     digests: dict | None = None,
     deadline: float | None = None,
+    max_bytes: int | None = None,
+    verify_evidence: bool = True,
 ) -> dict[str, Any]:
     item = copy.deepcopy(run)
-    stale = _stale_dependencies(item, rows, root=root, digests=digests, deadline=deadline)
+    stale = _stale_dependencies(
+        item,
+        rows,
+        root=root,
+        digests=digests,
+        deadline=deadline,
+        max_bytes=max_bytes,
+        verify_evidence=verify_evidence,
+    )
     item["stale_dependencies"] = stale
+    item["evidence_verification_mode"] = "bytes" if verify_evidence else "metadata_only"
+    for step in item["steps"]:
+        if step.get("state") == "succeeded":
+            failure = next((row["reason"] for row in stale if row["id"] == step["id"]), None)
+            step["evidence_status"] = {
+                "state": "unverified"
+                if failure and "unverified:" in failure
+                else "unavailable"
+                if failure and "budget" in failure
+                else "stale"
+                if failure
+                else "verified"
+                if verify_evidence
+                else "metadata_matches",
+                "verified_at": datetime.now(timezone.utc).isoformat()
+                if verify_evidence and not failure
+                else (step.get("evidence_verification") or {}).get("verified_at"),
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "reason": failure,
+            }
     next_action = next((step["id"] for step in item["steps"] if step["state"] == "pending"), None)
     reopened = _reopen_index(item, stale)
     if reopened is not None:
@@ -430,8 +548,11 @@ def checkpoint(
         raise ValueError("workflow steps must be checkpointed in registered order")
     rows = _rows(root)
     digests: dict = {}
-    deadline = time.monotonic() + EVIDENCE_HASH_SECONDS
-    stale = _stale_dependencies(run, rows, root=root, digests=digests, deadline=deadline)
+    limits = _hash_limits(root)
+    deadline = time.monotonic() + limits["max_seconds"]
+    stale = _stale_dependencies(
+        run, rows, root=root, digests=digests, deadline=deadline, max_bytes=limits["max_bytes"]
+    )
     current = rows.get(step_id)
     if state == "succeeded" and (
         stale or current is None or current["stale"] or current["blocked_by"]
@@ -440,11 +561,17 @@ def checkpoint(
             "stale or blocked dependencies must be reconciled before a successful checkpoint"
         )
     records = _evidence(
-        evidence, root=root if state == "succeeded" else None, digests=digests, deadline=deadline
+        evidence,
+        root=root if state == "succeeded" else None,
+        digests=digests,
+        deadline=deadline,
+        max_bytes=limits["max_bytes"],
     )
     if state == "succeeded" and not records:
         raise ValueError("successful workflow checkpoints require exact evidence")
     step.update(state=state, evidence=records)
+    if state == "succeeded":
+        step["evidence_verification"] = _verification_receipt(root, records, digests)
     approved = _review(review, step["execution_kind"], state)
     if approved:
         step["review"] = approved
@@ -455,7 +582,9 @@ def checkpoint(
     elif state != "succeeded":
         run["state"] = "interrupted" if state == "interrupted" else "blocked"
     _save(root, document, expected_revision)
-    public = _public_run(run, rows, root=root, digests=digests, deadline=deadline)
+    public = _public_run(
+        run, rows, root=root, digests=digests, deadline=deadline, max_bytes=limits["max_bytes"]
+    )
     return {
         "ok": True,
         "revision": document["revision"],
@@ -473,7 +602,12 @@ def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dic
     if run is None or run["state"] not in {"blocked", "interrupted", "completed"}:
         raise ValueError("workflow run is not resumable")
     rows = _rows(root)
-    public = _public_run(run, rows, root=root)
+    digests: dict = {}
+    limits = _hash_limits(root)
+    deadline = time.monotonic() + limits["max_seconds"]
+    public = _public_run(
+        run, rows, root=root, digests=digests, deadline=deadline, max_bytes=limits["max_bytes"]
+    )
     if any("budget" in item["reason"] for item in public["stale_dependencies"]):
         raise ValueError("workflow evidence verification budget exceeded; retry before resuming")
     stale_index = _reopen_index(run, public["stale_dependencies"])
@@ -485,6 +619,7 @@ def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dic
                 step["stale_evidence"] = step["evidence"]
             step.update(state="pending", evidence=[])
             step.pop("review", None)
+            step.pop("evidence_verification", None)
         _refresh_current_definition_hashes(run, rows)
         retry = run["steps"][stale_index]
     else:
@@ -494,23 +629,37 @@ def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dic
     if stale_index is None:
         retry.update(state="pending", evidence=[])
         retry.pop("review", None)
+        retry.pop("evidence_verification", None)
     run["state"] = "running"
     _save(root, document, expected_revision)
     return {
         "ok": True,
         "revision": document["revision"],
-        "run": _public_run(run, rows, root=root),
+        "run": _public_run(
+            run, rows, root=root, digests=digests, deadline=deadline, max_bytes=limits["max_bytes"]
+        ),
         "next_action": retry["id"],
     }
 
 
-def status(directory: str | Path, *, _coverage: dict | None = None) -> dict[str, Any]:
+def status(
+    directory: str | Path, *, _coverage: dict | None = None, _verify_evidence: bool = True
+) -> dict[str, Any]:
     root, _, document = _load(directory)
     rows = _rows(root, _coverage)
     digests: dict = {}
-    deadline = time.monotonic() + EVIDENCE_HASH_SECONDS
+    limits = _hash_limits(root)
+    deadline = time.monotonic() + limits["max_seconds"]
     runs = [
-        _public_run(run, rows, root=root, digests=digests, deadline=deadline)
+        _public_run(
+            run,
+            rows,
+            root=root,
+            digests=digests,
+            deadline=deadline,
+            max_bytes=limits["max_bytes"],
+            verify_evidence=_verify_evidence,
+        )
         for run in document["runs"]
     ]
     active = next((run for run in reversed(runs) if run["state"] == "running"), None)

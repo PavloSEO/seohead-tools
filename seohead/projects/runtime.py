@@ -20,6 +20,7 @@ from .workspace import _load, _target
 POLICY_FORMAT = "seohead.project-crawl-policy.v1"
 PREPARATION_FORMAT = "seohead.project-preparation.v1"
 DEFAULT_POLICY = {
+    "evidence_hash": {"max_bytes": 1024 * 1024 * 1024, "max_seconds": 5},
     "approval_thresholds": {"pages": 1000, "requests": 3000, "seconds": 600},
     "quick_crawl": {"pages": 50, "requests": 150, "seconds": 60},
     "crawl_overrides": {},
@@ -95,9 +96,19 @@ def _positive(value: Any, label: str) -> int:
 def validate_policy(policy: Any) -> dict:
     from seohead.crawl.settings import load
 
-    if not isinstance(policy, dict) or set(policy) != set(DEFAULT_POLICY):
+    if not isinstance(policy, dict) or set(policy) not in (
+        set(DEFAULT_POLICY),
+        set(DEFAULT_POLICY) - {"evidence_hash"},
+    ):
         raise ValueError("crawl policy has unsupported fields")
     result = copy.deepcopy(policy)
+    result.setdefault("evidence_hash", copy.deepcopy(DEFAULT_POLICY["evidence_hash"]))
+    hashing = result["evidence_hash"]
+    if not isinstance(hashing, dict) or set(hashing) != {"max_bytes", "max_seconds"}:
+        raise ValueError("evidence_hash requires max_bytes and max_seconds")
+    for name, ceiling in (("max_bytes", 64 * 1024 * 1024 * 1024), ("max_seconds", 300)):
+        if type(hashing[name]) is not int or not 1 <= hashing[name] <= ceiling:
+            raise ValueError(f"evidence_hash.{name} must be an integer from 1 to {ceiling}")
     for section in ("approval_thresholds", "quick_crawl"):
         if not isinstance(result[section], dict) or set(result[section]) != {
             "pages",
