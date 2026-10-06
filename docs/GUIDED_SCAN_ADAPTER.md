@@ -83,26 +83,37 @@ submit.
   When given the same `JobOwnershipStore` and subject as submission, delivery
   also rejects jobs owned by a different subject inside an otherwise shared
   project.
-- **Ownership survives restart.** An adapter that persists
-  `JobOwnershipStore` records only `(job_id, subject, project_id)`. On a later
-  status or cancellation request, it uses that mapping before asking the
-  queue. It therefore cannot enumerate another subject's jobs merely because
-  both subjects can use the same project. The store is private (`0700`
-  directory and `0600` database); it never holds a URL, settings, credentials,
-  or report content.
+- **Ownership and dispatch survive restart.** The private ownership store retains
+  `(job_id, subject, project_id)` plus confirmed specifications and permanent dispatch
+  receipts. Each preview has its own `dispatch_id`; retrying that dispatch reuses its
+  original queue key, while an intentional rerun receives a new ID even for identical
+  settings. Reusing an ID with changed settings, report profile, or chat is refused.
+  A confirmed submission is stored before queue acceptance. `recover()` replays only
+  pending confirmed submissions in the exact actor/chat scope, recovering the same job
+  after a crash between queue acceptance and ownership recording. It never replays an
+  uncertain worker execution. No credentials or report bytes are stored in this registry.
+  The old experimental fingerprint-only pending table is not interpreted as an exact
+  dispatch receipt; operators must inspect any such archived pending work explicitly.
 - **Enrollment is explicit and revocable.** `ProjectAuthorizationStore` is a
-  private subject/project allowlist. An adapter may use it to deny submission,
-  status, cancellation, and delivery until an operator has granted that exact
-  project, and to make a later revocation effective without restarting the
-  adapter. It records identifiers only; it is not an account or credential
-  store.
+  private subject/project allowlist. Supplying it to `AuthorizedJobSubmitter`
+  requires a `JobOwnershipStore`; construction otherwise fails, so an enrolled
+  actor cannot fall back to project-wide job lookup. `AuthorizedReportDelivery`
+  requires that same subject and ownership mapping with project authorization.
+  Submission, status, cancellation, and delivery are denied until an operator
+  has granted that exact project, and a later revocation is effective without
+  restarting the adapter. The store records identifiers only; it is not an
+  account or credential store.
 - **Profiles are derived from retained evidence.** `ReportProfile` supports
   a full retained JSON/Markdown artifact, or an offline regenerated PDF,
   XLSX, DOCX, CSV, Markdown, or JSON view. A findings-only profile can filter
   by severity and check while leaving the source audit's coverage and skipped
   checks intact. An empty filtered result is explicitly marked `empty`; it is
   never presented as an unrun audit. Render failures and delivery-size limits
-  are actionable failures, not successful delivery receipts.
+  are actionable failures, not successful delivery receipts. `preview()` returns a
+  `ReportPreview` with measured rendered size, source SHA-256, source and selected row
+  counts, empty/measured population, retained coverage/summary, and the exact profile.
+  Oversize source audits and unavailable renderers fail during preview; zero size is
+  never a placeholder for an unrendered report.
 
 ## Optional configured HTTP handoff
 
@@ -132,8 +143,29 @@ is an explicit private actor/chat allowlist. `TelegramGuidedAdapter` accepts
 one caller-provided update at a time, derives a stable `telegram:<user_id>`
 subject, verifies the chat grant, renders `Reply` buttons as inline keyboards,
 acknowledges callbacks, and sends worker-provided progress without inventing a
-total. `TelegramDocumentTransport` implements the report-delivery callback
-using `sendDocument` and requires the Bot API to confirm a message id.
+total. `TelegramDocumentTransport` is constructed with that same subject and
+chat store; it rechecks the destination chat grant immediately before
+`sendDocument`, so a revoked chat cannot receive an already-retained report.
+It also requires the Bot API to confirm a message id.
+
+For a guided scan service, construct `TelegramAuthorizedSessions` with the
+shared durable backend, the actor/chat store, `ProjectAuthorizationStore`,
+`JobOwnershipStore`, and `TelegramSessionBindingStore`, then use its
+`adapter(client)` method. The factory derives the subject from the trusted
+update path, reads only its current project grants, creates the matching
+ownership-backed submitter, and does not offer an ungranted "new" project.
+Its binding store retains actor/chat bindings and exact update receipts. A duplicate
+trusted `update_id` returns the same reply without advancing or sending twice; changed
+content under the same ID is refused. An interrupted update remains explicitly uncertain
+rather than being replayed. A restart discards unconfirmed drafts with a notice, while
+already confirmed pending dispatches recover their original queue job. `status()` and
+`cancel()` accept an exact retained job ID and recheck actor/chat/project scope after
+restart. The same actor cannot use another enrolled chat to inspect or deliver that job.
+Preview confirmation and final start use different callback tokens, so duplicate preview
+confirmation cannot authorize a start. The host must serialize different updates for one
+conversation; no listener or distributed conversation scheduler is provided here.
+`report_delivery(...)` constructs the corresponding same-subject, initiating-chat handoff.
+Chat/project authorization is checked again after rendering and immediately before sending.
 
 The adapter has no polling, webhook registration, secret provisioning,
 chat-reading, or deployment code. Telegram does not provide an upload

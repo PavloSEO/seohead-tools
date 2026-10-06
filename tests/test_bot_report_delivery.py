@@ -22,6 +22,7 @@ from seohead.bot import (
 from seohead.bot.telegram_adapter import (
     TelegramBotClient,
     TelegramBotConfig,
+    TelegramChatAuthorizationStore,
     TelegramDocumentTransport,
 )
 from seohead.recon import net
@@ -155,6 +156,9 @@ def test_profile_receipts_are_distinct_and_size_limit_is_honest(monkeypatch, tmp
     )
     with pytest.raises(DeliveryUnavailable, match="size limit"):
         delivery.deliver("alpha", job_id, "requester", ReportProfile("json", findings_only=True))
+    with pytest.raises(DeliveryUnavailable, match="size limit"):
+        delivery.preview("alpha", job_id, ReportProfile("json"))
+    delivery.max_file_bytes = 50 * 1024 * 1024
     full = delivery.preview("alpha", job_id, ReportProfile("json"))
     filtered = delivery.preview("alpha", job_id, ReportProfile("json", findings_only=True))
     assert full.artifact_id != filtered.artifact_id
@@ -173,7 +177,11 @@ def test_unavailable_pdf_renderer_never_marks_a_delivery_success(monkeypatch, tm
     )
     with pytest.raises(DeliveryUnavailable, match="renderer unavailable"):
         delivery.deliver("alpha", job_id, "requester", profile)
-    artifact = delivery.preview("alpha", job_id, profile)
+    with pytest.raises(DeliveryUnavailable, match="renderer unavailable"):
+        delivery.preview("alpha", job_id, profile)
+    result = backend.get_result("alpha", job_id)
+    source = delivery._source_artifact(result, "audit_json")
+    artifact = delivery._delivery_artifact(source, profile)
     _receipt, state = receipts.reserve(job_id, artifact.artifact_id, "requester")
     assert state == "claimed"
 
@@ -206,13 +214,15 @@ def test_ambiguous_telegram_upload_stays_pending_after_restart(monkeypatch, tmp_
             )
         ),
     )
+    chats = TelegramChatAuthorizationStore(tmp_path / "chats.sqlite")
+    chats.grant("telegram:42", "42")
     receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
     delivery = AuthorizedReportDelivery(
         backend,
         {"alpha"},
         {"telegram:42"},
         receipts,
-        TelegramDocumentTransport(client).send,
+        TelegramDocumentTransport(client, chats, "telegram:42").send,
     )
     with pytest.raises(DeliveryAmbiguous, match="outcome is unknown"):
         delivery.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
@@ -221,7 +231,7 @@ def test_ambiguous_telegram_upload_stays_pending_after_restart(monkeypatch, tmp_
         {"alpha"},
         {"telegram:42"},
         receipts,
-        TelegramDocumentTransport(client).send,
+        TelegramDocumentTransport(client, chats, "telegram:42").send,
     )
     with pytest.raises(DeliveryUnavailable, match="already in progress"):
         restarted.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
@@ -236,19 +246,59 @@ def test_explicit_telegram_denial_releases_a_receipt_for_manual_retry(monkeypatc
             transport=httpx.MockTransport(lambda _request: httpx.Response(400, json={"ok": False}))
         ),
     )
+    chats = TelegramChatAuthorizationStore(tmp_path / "chats.sqlite")
+    chats.grant("telegram:42", "42")
     receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
     delivery = AuthorizedReportDelivery(
         backend,
         {"alpha"},
         {"telegram:42"},
         receipts,
-        TelegramDocumentTransport(client).send,
+        TelegramDocumentTransport(client, chats, "telegram:42").send,
     )
     with pytest.raises(DeliveryUnavailable, match="rejected"):
         delivery.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
     artifact = delivery.preview("alpha", job_id, ReportProfile("json"))
     _receipt, state = receipts.reserve(job_id, artifact.artifact_id, "telegram:42")
     assert state == "claimed"
+
+
+def test_revoked_telegram_chat_cannot_receive_retained_report(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    requests = []
+    monkeypatch.setenv("SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "synthetic-token")
+    client = TelegramBotClient(
+        TelegramBotConfig("env:SEOHEAD_SYNTHETIC_TELEGRAM_TOKEN", "https://telegram.example.test"),
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: (
+                    requests.append(request)
+                    or httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+                )
+            )
+        ),
+    )
+    subject = "telegram:42"
+    ownership = JobOwnershipStore(tmp_path / "ownership.sqlite")
+    ownership.record(job_id, subject, "alpha")
+    projects = ProjectAuthorizationStore(tmp_path / "grants.sqlite")
+    projects.grant(subject, "alpha")
+    chats = TelegramChatAuthorizationStore(tmp_path / "chats.sqlite")
+    chats.grant(subject, "42")
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"telegram:42"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        TelegramDocumentTransport(client, chats, subject).send,
+        subject=subject,
+        ownership=ownership,
+        authorization=projects,
+    )
+    chats.revoke(subject, "42")
+    with pytest.raises(DeliveryUnavailable, match="chat is not authorized"):
+        delivery.deliver("alpha", job_id, "telegram:42", ReportProfile("json"))
+    assert requests == []
 
 
 def test_xlsx_profile_is_built_offline_from_the_retained_audit(monkeypatch, tmp_path):
@@ -321,3 +371,69 @@ def test_revoked_subject_cannot_deliver_a_previously_owned_job(monkeypatch, tmp_
     authorization.revoke("requester", "alpha")
     with pytest.raises(PermissionError, match="project is not authorized"):
         delivery.preview("alpha", job_id, ReportProfile("json"))
+
+
+def test_project_authorized_delivery_requires_durable_owner(monkeypatch, tmp_path):
+    backend, _job_id = _complete_job(monkeypatch, tmp_path)
+    authorization = ProjectAuthorizationStore(tmp_path / "grants.sqlite")
+    with pytest.raises(ValueError, match=r"durable.*ownership"):
+        AuthorizedReportDelivery(
+            backend,
+            {"alpha"},
+            {"requester"},
+            DeliveryReceipts(tmp_path / "receipts.sqlite"),
+            lambda *_: None,
+            subject="requester",
+            authorization=authorization,
+        )
+
+
+def test_preview_measures_exact_empty_population_and_preserves_source(monkeypatch, tmp_path):
+    import hashlib
+
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    delivery = AuthorizedReportDelivery(
+        backend,
+        {"alpha"},
+        {"requester"},
+        DeliveryReceipts(tmp_path / "receipts.sqlite"),
+        lambda *_: None,
+    )
+    source = next(
+        a for a in backend.get_result("alpha", job_id).artifacts if a.kind == "audit_json"
+    )
+    path = backend.artifact_path("alpha", job_id, source.artifact_id)
+    before = path.read_bytes()
+    profile = ReportProfile("json", checks=("no-such-synthetic-check",))
+    preview = delivery.preview("alpha", job_id, profile)
+    assert preview.source_sha256 == hashlib.sha256(before).hexdigest()
+    assert preview.selected_rows == 0 and preview.source_rows > 0
+    assert preview.population_state == "empty" and preview.coverage == "complete"
+    captured = []
+    delivery.send = lambda _to, opened, _receipt: captured.append(opened.handle.read())
+    delivery.deliver("alpha", job_id, "requester", profile)
+    assert len(captured[0]) == preview.size_bytes
+    assert json.loads(captured[0])["summary"]["finding_view"]["state"] == "empty"
+    assert path.read_bytes() == before
+
+
+def test_process_exit_during_upload_keeps_uncertain_claim(monkeypatch, tmp_path):
+    backend, job_id = _complete_job(monkeypatch, tmp_path)
+    calls = []
+
+    def exit_during_send(*_):
+        calls.append(True)
+        raise SystemExit("synthetic process death")
+
+    receipts = DeliveryReceipts(tmp_path / "receipts.sqlite")
+    delivery = AuthorizedReportDelivery(
+        backend, {"alpha"}, {"requester"}, receipts, exit_during_send
+    )
+    with pytest.raises(SystemExit):
+        delivery.deliver("alpha", job_id, "requester", ReportProfile("json"))
+    restarted = AuthorizedReportDelivery(
+        backend, {"alpha"}, {"requester"}, DeliveryReceipts(receipts.path), exit_during_send
+    )
+    with pytest.raises(DeliveryUnavailable, match="already in progress"):
+        restarted.deliver("alpha", job_id, "requester", ReportProfile("json"))
+    assert len(calls) == 1
