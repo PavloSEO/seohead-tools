@@ -208,7 +208,7 @@ def _view_key(state: ShellState) -> tuple:
         state.watch_status,
         state.watch_sort,
         state.watch_descending,
-        state.watch_selected_scan_uuid,
+        state.watch_selected_scan_uuid if state.watch_section in {"findings", "views"} else None,
         state.watch_site_uuid,
         state.watch_detail_kind if detail else None,
         state.watch_detail_ordinal if detail else None,
@@ -965,6 +965,15 @@ class _ObserverRefresh:
                 self.saving = False
                 continue
             _, key, result, page = event
+            if (
+                state is not None
+                and key == _view_key(state)
+                and state.watch_selected_scan_uuid is None
+            ):
+                resolved_scan = (page.get("scan") or {}).get("uuid") or page.get("scan_uuid")
+                if resolved_scan is not None:
+                    state.watch_selected_scan_uuid = resolved_scan
+                    key = _view_key(state)
             self.key, self.result, self.page = key, result, page
             self.updated_at = time.monotonic()
             self.next_refresh = self.updated_at + 0.5

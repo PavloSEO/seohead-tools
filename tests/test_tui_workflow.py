@@ -15,6 +15,7 @@ from seohead.tui.app import (
     _ObserverRefresh,
     _page_selection,
     _read_view,
+    _view_key,
     _watch_detail_lines,
     _watch_lines,
     build_frame,
@@ -361,6 +362,41 @@ def test_note_can_start_from_evidence_detail_and_return_without_losing_context()
     state.handle_key("enter")
     assert state.view == "watch_detail" and state.note_ready
     assert state.watch_detail_ordinal == 7 and state.watch_selected_scan_uuid == "synthetic"
+
+
+def test_visible_scan_page_stays_ready_when_render_selects_a_scan(tmp_path):
+    from tests.test_scan_history import _finished
+
+    root = _project(tmp_path)
+    _finished(root / "scans" / "retained.sqlite")
+    snapshot = observe(root)
+    state = ShellState([], view="watch", watch_section="scans")
+    reader = _ObserverRefresh(str(root))
+    reader.key = _view_key(state)
+    reader.page = _read_view(str(root), state, snapshot)
+    _watch_lines(
+        str(root), state, resolve_palette(color=False), None, snapshot=snapshot, data=reader.page
+    )
+    assert state.watch_selected_scan_uuid
+    assert reader.page_for(state) is reader.page
+    state.handle_key("enter")
+    assert state.view == "watch_detail"
+
+
+def test_default_finding_scan_is_bound_before_publishing_its_ready_page(tmp_path):
+    from tests.test_scan_history import _finished
+
+    root = _project(tmp_path)
+    _finished(root / "scans" / "retained.sqlite")
+    snapshot = observe(root)
+    state = ShellState([], view="watch", watch_section="findings")
+    page = _read_view(str(root), state, snapshot)
+    reader = _ObserverRefresh(str(root))
+    reader.queue.put(("read", _view_key(state), (snapshot, []), page))
+    reader.poll(state)
+    assert state.watch_selected_scan_uuid == page["scan"]["uuid"]
+    assert reader.page_for(state) is page
+    assert reader.worker is None
 
 
 def test_hyphenated_command_help_uses_shared_handler_description():
