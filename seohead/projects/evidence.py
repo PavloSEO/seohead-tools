@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -29,10 +30,22 @@ def artifact_path(root: Path, value: Any) -> Path:
     return current
 
 
-def _digest(path: Path) -> str:
+def _digest(path: Path, *, deadline: float | None = None, max_bytes: int | None = None) -> str:
+    """Hash in fixed-size blocks, optionally enforcing an explicit read budget."""
+    if max_bytes is not None and path.stat().st_size > max_bytes:
+        raise ValueError("evidence artifact exceeds the hashing byte budget")
     digest = hashlib.sha256()
+    used = 0
     with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
+        while True:
+            if deadline is not None and time.monotonic() > deadline:
+                raise ValueError("evidence hashing time budget exceeded")
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
+            used += len(block)
+            if max_bytes is not None and used > max_bytes:
+                raise ValueError("evidence artifact exceeds the hashing byte budget")
             digest.update(block)
     return digest.hexdigest()
 
