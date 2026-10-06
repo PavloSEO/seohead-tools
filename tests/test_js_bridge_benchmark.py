@@ -83,3 +83,11 @@ def test_explicit_browser_preflight_does_not_start_playwright(monkeypatch, tmp_p
     monkeypatch.setenv("SEOHEAD_CHROME", str(executable))
     monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
     assert installed_browser() == executable.resolve()
+
+
+def test_owned_origins_reuse_the_frozen_authority_between_pairs():
+    with Origin(2, 1, 2, "html") as first:
+        authority = first.url
+        port = first.server.server_port
+    with Origin(2, 1, 2, "javascript", port=port) as second:
+        assert second.url == authority

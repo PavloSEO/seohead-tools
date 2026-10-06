@@ -15,6 +15,7 @@ import os
 import platform
 import shutil
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -116,7 +117,16 @@ def cases(profile: dict) -> list[dict]:
 class Origin:
     """An owned HTTP origin; the JS version returns a shell, never a fake DOM."""
 
-    def __init__(self, pages: int, links: int, forms: int, mode: str, dom_bytes: int = 16384):
+    def __init__(
+        self,
+        pages: int,
+        links: int,
+        forms: int,
+        mode: str,
+        dom_bytes: int = 16384,
+        *,
+        port: int = 0,
+    ):
         if not 1 <= pages <= 10001 or not 0 <= links <= 64 or not 0 <= forms <= 128:
             raise ValueError("fixture dimensions exceed the approved bounds")
         self.pages, self.links, self.forms, self.mode, self.dom_bytes = (
@@ -126,6 +136,7 @@ class Origin:
             mode,
             dom_bytes,
         )
+        self.port = port
         self.requests = Counter()
         self.unexpected = Counter()
         self.server = None
@@ -201,7 +212,7 @@ class Origin:
             def log_message(self, *_args):
                 pass
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
@@ -401,7 +412,13 @@ def worker(config: dict, output: Path) -> None:
     # One fresh worker is one cold/warm pair; the origin stays identical.
     with (
         patch.dict(os.environ, {"SEOHEAD_ALLOW_PRIVATE_HOSTS": "127.0.0.1"}),
-        Origin(config["pages"], config["links"], config["forms"], config["mode"]) as origin,
+        Origin(
+            config["pages"],
+            config["links"],
+            config["forms"],
+            config["mode"],
+            port=config.get("origin_port", 0),
+        ) as origin,
         patch.object(scan_handlers, "crawl_site_scan", instrumented_crawl),
         patch.object(NativeScan, "commit_render", committed_render),
     ):
@@ -837,6 +854,10 @@ def main(argv=None):
     args.out.mkdir(parents=True)
     if shutil.disk_usage(args.out).free < profile["budgets"]["minimum_free_disk_mib"] * MIB:
         parser.error("free disk reserve is below the frozen minimum")
+    with socket.socket() as selection:
+        selection.bind(("127.0.0.1", 0))
+        origin_port = selection.getsockname()[1]
+    identity["fixture_origin"] = f"http://127.0.0.1:{origin_port}"
     (args.out / "frozen-manifest.json").write_text(
         json.dumps(
             {"profile": profile, "identity": identity, "approved_command": args.command}, indent=2
@@ -879,6 +900,7 @@ def main(argv=None):
     results = []
     for ordinal, case in enumerate(planned):
         case["source_revision"] = identity["revision"]
+        case["origin_port"] = origin_port
         case["browser_path"] = str(executable)
         case["runtime_identity"] = {
             key: identity[key]

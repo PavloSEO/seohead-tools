@@ -19,7 +19,9 @@ The harness verifies ordered page/link/form evidence, selected DOM hashes,
 retained counts, offline reanalysis equality, source immutability and bounded
 query/export consumers. Browser engine provenance remains in each retained DOM.
 
-Each cold/warm pair has a fresh Python worker. The cold case is unprimed; the
+One loopback port is selected and frozen for all pairs so repeated seeds keep
+the same URL identity. Each worker must successfully bind that owned port before
+collection; a port collision blocks the run. Each cold/warm pair has a fresh Python worker. The cold case is unprimed; the
 warm case immediately repeats the same fixture in that worker with a new output
 scan and fresh browser contexts. Native capture requires HTTP cache off, and
 persistent browser profiles are unavailable. Thus these labels describe worker
