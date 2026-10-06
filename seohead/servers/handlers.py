@@ -1845,9 +1845,21 @@ def _audit_crawl_result(
             "only from a native retained scan",
         )
 
+    native_run = {}
+    if stored_scan is not None:
+        retained = stored_scan.con.execute(
+            "SELECT scan_uuid,corpus_partial,source_kind,config_fingerprint FROM scan WHERE singleton=1"
+        ).fetchone()
+        native_run = {
+            "scan_uuid": retained["scan_uuid"],
+            "corpus_partial": bool(retained["corpus_partial"]),
+            "source_kind": retained["source_kind"],
+            "config_fingerprint": retained["config_fingerprint"],
+        }
     audit_result = aggregate(
         ctx,
         {
+            **native_run,
             "input_mode": "crawl" if url else "crawl-list",
             "source": url or "url-list",
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
