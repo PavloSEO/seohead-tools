@@ -92,7 +92,11 @@ def _load_correspondence(value: Any) -> dict[str, Any]:
     """
     if isinstance(value, (str, Path)):
         try:
-            raw = Path(value).read_text(encoding="utf-8")
+            with Path(value).open("rb") as stream:
+                content = stream.read(16 * 1024 * 1024 + 1)
+            if len(content) > 16 * 1024 * 1024:
+                raise CompareError("url correspondence exceeds the 16 MiB declaration limit")
+            raw = content.decode("utf-8")
             value = json.loads(raw, object_pairs_hook=_reject_duplicate_object_keys)
         except OSError as exc:
             raise CompareError(f"could not read url correspondence: {exc}") from exc
@@ -115,6 +119,8 @@ def _load_correspondence(value: Any) -> dict[str, Any]:
     raw_origins = value["origin_map"]
     if not isinstance(raw_origins, Mapping):
         raise CompareError("url correspondence origin_map must be an object")
+    if len(raw_origins) > 10_000:
+        raise CompareError("url correspondence exceeds 10000 origin declarations")
     origins: dict[str, str] = {}
     for before, after in raw_origins.items():
         if not isinstance(before, str) or not isinstance(after, str):
@@ -130,6 +136,10 @@ def _load_correspondence(value: Any) -> dict[str, Any]:
     raw_pairs = value["pairs"]
     if not isinstance(raw_pairs, list):
         raise CompareError("url correspondence pairs must be a list")
+    if len(raw_pairs) > 10_000:
+        raise CompareError(
+            "url correspondence exceeds 10000 explicit pairs; use origin_map for an origin migration"
+        )
     pairs: dict[str, str] = {}
     reverse_pairs: dict[str, str] = {}
     for index, raw_pair in enumerate(raw_pairs):
@@ -233,6 +243,8 @@ def _resolve_correspondence(
                 "state": "before_not_crawled",
             }
         )
+    if len({resolved.get(url, url) for url in before_pages}) != len(before_pages):
+        raise CompareError("url correspondence has a page collision with an unmapped baseline URL")
     return {
         "before_to_after": resolved,
         "origin_map": dict(declaration["origin_map"]),
@@ -348,7 +360,13 @@ def _key(issue: dict[str, Any]) -> tuple[str, str]:
 
 
 def _crawled_urls(audit: dict[str, Any]) -> set[str]:
-    return {p["url"] for p in _iter_rows(audit, "pages") if p.get("url")}
+    urls: set[str] = set()
+    for page in _iter_rows(audit, "pages"):
+        if page.get("url"):
+            if page["url"] in urls:
+                raise CompareError(f"comparison has duplicate page URL {page['url']!r}")
+            urls.add(page["url"])
+    return urls
 
 
 def _by_key(audit: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -358,7 +376,7 @@ def _by_key(audit: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
     vanish from every bucket and the summary; compare must account for a
     finding it was actually given, not just the ones that name a page.
     """
-    return {_key(issue): issue for issue in _iter_rows(audit, "issues")}
+    return _mapped_issues(audit)
 
 
 def _header(audit: Any) -> dict[str, Any]:
@@ -444,7 +462,12 @@ def preflight(before: Any, after: Any) -> list[str]:
 
 
 def compare(
-    before: Any, after: Any, *, force: bool = False, correspondence: Any = None
+    before: Any,
+    after: Any,
+    *,
+    force: bool = False,
+    correspondence: Any = None,
+    out_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Diff two audit.json documents into the four sets, per check.
 
@@ -477,6 +500,24 @@ def compare(
             "results-affecting settings differ between the two runs: "
             f"{', '.join(changed)}; pass force=True only when this comparison is intended"
         )
+
+    if out_dir is not None:
+        from .compare_store import compare_to_files
+
+        return compare_to_files(
+            before_source,
+            after_source,
+            out_dir=out_dir,
+            force=force,
+            correspondence=correspondence,
+        )
+    for source in (before_source, after_source):
+        if hasattr(source, "iter_collection") and any(
+            source.collections.get(f"/{name}", 0) > 10_000 for name in ("pages", "issues")
+        ):
+            raise CompareError(
+                "large audit.v2 comparison requires out_dir for complete file output"
+            )
 
     resolved: dict[str, Any] | None = None
     if correspondence is None:
