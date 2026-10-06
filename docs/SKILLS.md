@@ -38,7 +38,11 @@ is what lets the next run catch one in minutes instead of an afternoon.
 `seohead skill-list` returns both `workflow/` technical/controller playbooks and the packaged
 `general/` SEO/content methods. Retrieve one with `seohead skill-show --name workflow/control`;
 use `scenario-show` for a concrete sequence. These calls return guidance, not execution.
-An installed wheel reads the generated catalogue, so no repository `.claude` directory is needed.
+An installed wheel reads entry playbooks and scenarios from the generated catalogue. Supporting
+files linked by a playbook (such as `control/subskills/scoping.md`) are currently checkout-only:
+open them from a matching repository revision. `skill-show` does not retrieve arbitrary reference
+paths. If that checkout is unavailable, state the missing guidance and use the available full-audit
+contract within its explicit scope; do not pretend the supporting reference was read.
 
 A skill is useful when it makes a decision the command schema cannot: scope, reuse, interpretation,
 review or handoff. The generated "commands not named" inventory below measures text references,

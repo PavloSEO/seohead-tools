@@ -22,9 +22,9 @@ and a second call turns it into a file.
 - A full site crawl is needed (arbitrary depth, all internal links, not just the
   sitemap), or the full-audit scope is unstated — use `control`, which selects the native
   collector by default and an SF path only when that input is requested/available.
-- The deliverable is a Screaming-Frog-derived issue backlog or a topical/silo
-  verdict — those are `sf-tasks` and `silo-audit`, both built on an SF crawl, not
-  on this skill's site-level + per-page checks. Native audit evidence also feeds `sf-tasks`.
+- A grouped developer backlog is wanted — use `sf-tasks` on a native/SF audit.
+  A topical/silo verdict instead uses `silo-audit` with the evidence its method requires;
+  this formatter adds neither interpretation.
 - Only a `robots.txt` directive review is wanted — use `robots-audit`; this skill
   treats `robots.txt` only as the place it reads the sitemap URL from, it does not
   analyze the directives themselves.
@@ -32,9 +32,10 @@ and a second call turns it into a file.
   use `compare-crawls` for supported compatible audits; the report formatter itself produces no diff.
 
 ## Preconditions
-- [ ] The domain resolves and either serves a discoverable sitemap via
-  `robots.txt`, or a custom `--urls` list is supplied instead.
-- [ ] `--limit`/`--concurrency` have been considered for the site's size — the
+- [ ] For formatting, a supported saved audit or scan is readable; no live target is required.
+- [ ] Only for new collection: the authorized domain resolves and serves a discoverable
+  sitemap via `robots.txt`, or an explicit `--urls` list is supplied.
+- [ ] For new collection, `--limit`/`--concurrency` fit the agreed scope — the
   default 25-page limit under-samples a large site, and raising it multiplies
   request volume by N×3 (see the Flags table below).
 - [ ] The output format(s) actually needed are decided up front (xlsx/docx/csv/md)

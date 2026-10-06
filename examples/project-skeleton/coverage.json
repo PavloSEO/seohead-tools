@@ -12029,7 +12029,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "939751563b35118dbf68c01efaa3f4703f5a10b637b5504e2ed5767fa0e19a4b",
+        "source_hash": "e554fc5f795b3fc7f7fb93cd3da75593f49cd5ac430bc2bafe716b5471efad0a",
         "title": "site-report"
       },
       "definitions": [
@@ -12049,7 +12049,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "939751563b35118dbf68c01efaa3f4703f5a10b637b5504e2ed5767fa0e19a4b",
+            "source_hash": "e554fc5f795b3fc7f7fb93cd3da75593f49cd5ac430bc2bafe716b5471efad0a",
             "title": "site-report"
           },
           "observed_at": "2026-09-09T00:00:00Z"
