@@ -120,8 +120,9 @@ def test_owned_loopback_transport_smoke_uses_real_network_guarded_collector(tmp_
 
 
 def test_density_fixture_declares_distinct_links_forms_and_body_padding():
-    from scripts.accept_million_crawl import SyntheticOrigin
     from bs4 import BeautifulSoup
+
+    from scripts.accept_million_crawl import SyntheticOrigin
 
     origin = SyntheticOrigin(20, 10, links_per_page=8, forms_per_page=3, body_padding_bytes=2048)
     html = origin._page(1)
