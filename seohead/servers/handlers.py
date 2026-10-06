@@ -2448,6 +2448,7 @@ def verify_fixes(
             "audit_sha256": baseline_identity["audit_sha256"],
             "scan_uuid": baseline_identity["scan_uuid"],
             "generated_at": baseline_identity["generated_at"],
+            "results_policy_fingerprint": baseline_identity["results_policy_fingerprint"],
         },
         "selection": {"finding_ids": [item.get("id") for item in selected], "urls": targets},
         "collection": collection,
@@ -4483,14 +4484,20 @@ def remediation_recheck(
 ) -> dict[str, Any]:
     """Run the guarded bounded verifier for exact pending ledger cases.
 
-    The supplied baseline must be byte-identical to the retained source audit
-    for every selected target occurrence.  This keeps a finding-key recheck
+    The supplied baseline must match the retained raw or canonical audit digest
+    and original results policy for every selected target occurrence.  This keeps a finding-key recheck
     from silently selecting another revision or widening into a whole-site
     crawl.  The verifier writes its immutable evidence first; only then does
     the ledger atomically bind typed outcomes to that evidence.
     """
     from seohead.storage.inputs import load_audit_source
-    from seohead.storage.ledger import LedgerError, canonical_url, open_ledger, record_verification
+    from seohead.storage.ledger import (
+        LedgerError,
+        canonical_url,
+        occurrence_matches_baseline,
+        open_ledger,
+        record_verification,
+    )
     from seohead.verification import source_identity
 
     if not isinstance(occurrence_keys, list) or not occurrence_keys:
@@ -4498,46 +4505,49 @@ def remediation_recheck(
     if len(occurrence_keys) > 5_000 or len(set(occurrence_keys)) != len(occurrence_keys):
         raise ValueError("occurrence_keys must be a distinct bounded case selection")
     baseline_source = load_audit_source(baseline, "baseline")
-    baseline_identity = source_identity(baseline_source)
-    baseline_sha = baseline_identity["audit_sha256"]
-    baseline_scan_uuid = baseline_identity["scan_uuid"]
-
-    con = open_ledger(ledger)
     try:
-        revision = int(
-            con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
-        )
-        if revision != expected_revision:
-            raise LedgerError("ledger revision changed; reread cases before starting a recheck")
-        bindings: dict[str, tuple[str, str, str]] = {}
-        for key in occurrence_keys:
-            row = con.execute(
-                "SELECT o.occurrence_key,o.current_state,o.subject_value,c.check_key,ob.issue_ordinal "
-                "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
-                "JOIN observation ob ON ob.occurrence_id=o.occurrence_id "
-                "JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
-                "WHERE o.occurrence_key=? AND o.subject_type='url' AND ob.role='target' "
-                "AND (s.audit_sha256=? OR s.scan_uuid=?)",
-                (key, baseline_sha, baseline_scan_uuid or ""),
-            ).fetchall()
-            if len(row) != 1:
-                raise LedgerError(
-                    "selected case does not map to exactly one retained target occurrence in this baseline"
-                )
-            case = row[0]
-            if case["current_state"] != "recheck_pending":
-                raise LedgerError("selected case must be recheck_pending before execution")
-            if str(case["issue_ordinal"]) in bindings:
-                raise LedgerError("selected cases map to the same baseline finding ordinal")
-            bindings[str(case["issue_ordinal"])] = (
-                case["occurrence_key"],
-                case["check_key"],
-                case["subject_value"],
+        baseline_identity = source_identity(baseline_source)
+        baseline_sha = baseline_identity["audit_sha256"]
+        baseline_policy = baseline_identity["results_policy_fingerprint"]
+        with contextlib.closing(open_ledger(ledger)) as con:
+            revision = int(
+                con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
             )
-    finally:
-        con.close()
-
-    try:
+            if revision != expected_revision:
+                raise LedgerError("ledger revision changed; reread cases before starting a recheck")
+            bindings: dict[str, tuple[str, str, str]] = {}
+            for key in occurrence_keys:
+                rows = con.execute(
+                    "SELECT o.occurrence_id,o.occurrence_key,o.current_state,o.subject_value,"
+                    "c.check_key,ob.issue_ordinal "
+                    "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
+                    "JOIN observation ob ON ob.occurrence_id=o.occurrence_id "
+                    "JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
+                    "WHERE o.occurrence_key=? AND o.subject_type='url' AND ob.role='target' "
+                    "AND (s.audit_sha256=? OR s.canonical_audit_sha256=?) "
+                    "AND s.config_fingerprint=?",
+                    (key, baseline_sha, baseline_sha, baseline_policy),
+                ).fetchall()
+                if len(rows) != 1 or not occurrence_matches_baseline(
+                    con,
+                    rows[0]["occurrence_id"],
+                    audit_sha256=baseline_sha,
+                    results_policy_fingerprint=baseline_policy,
+                ):
+                    raise LedgerError(
+                        "selected case does not map to exactly one retained target occurrence "
+                        "with this baseline digest and results policy"
+                    )
+                case = rows[0]
+                if case["current_state"] != "recheck_pending":
+                    raise LedgerError("selected case must be recheck_pending before execution")
+                if str(case["issue_ordinal"]) in bindings:
+                    raise LedgerError("selected cases map to the same baseline finding ordinal")
+                bindings[str(case["issue_ordinal"])] = (
+                    case["occurrence_key"],
+                    case["check_key"],
+                    case["subject_value"],
+                )
         verified = verify_fixes(
             baseline=baseline_source,
             finding_ids=list(bindings),

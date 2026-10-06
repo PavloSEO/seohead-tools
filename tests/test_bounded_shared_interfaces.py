@@ -480,3 +480,37 @@ def test_monitor_apply_json_is_preserved_until_an_explicit_flag(
         *flags,
     )
     assert calls == [{"directory": "project", "expected_revision": 3, "apply": expected}]
+
+
+@pytest.mark.parametrize("failure", ["identity", "revision"])
+def test_remediation_preflight_closes_retained_reader_on_failure(tmp_path, monkeypatch, failure):
+    import sqlite3
+
+    from seohead import verification
+    from seohead.storage import inputs
+    from seohead.storage.ledger import LedgerError
+    from tests.test_compare_bounded import _source
+    from tests.test_remediation_ledger import _ledger
+    from tests.test_verify_fixes import _audit
+
+    reader = _source(tmp_path, "baseline-reader", _audit())
+    ledger = _ledger(tmp_path)
+    monkeypatch.setattr(inputs, "load_audit_source", lambda *a, **k: reader)
+    if failure == "identity":
+
+        def reject_identity(_source):
+            raise ValueError("synthetic identity mismatch")
+
+        monkeypatch.setattr(verification, "source_identity", reject_identity)
+    with pytest.raises((ValueError, LedgerError)):
+        handlers.remediation_recheck(
+            ledger=str(ledger),
+            baseline="baseline",
+            occurrence_keys=["selected"],
+            actor="reviewer",
+            expected_revision=-1,
+            out_dir=str(tmp_path / "verification"),
+        )
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        reader.con.execute("SELECT 1")
+    assert not (tmp_path / "verification").exists()
