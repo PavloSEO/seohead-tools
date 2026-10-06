@@ -718,6 +718,15 @@ def _consumers(
         )
     with _consumer_phase(output, phases, "status"):
         status = handlers.scan_status(input_path=str(scan))
+    with _consumer_phase(output, phases, "inspect"):
+        inspection = handlers.scan_inspect(
+            input_path=str(scan), offset=audit_v2["/pages"] - 1, limit=1
+        )
+        if (
+            len(inspection["rows"]) != 1
+            or inspection["rows"][0]["url"] != f"https://{HOST}/p/{audit_v2['/pages'] - 1}"
+        ):
+            raise AssertionError("bounded inspection did not recover the final retained page")
     with _consumer_phase(output, phases, "diagnosis"):
         diagnosis = handlers.crawl_diagnose(scan=str(scan))
     with _consumer_phase(output, phases, "log_scan"):
@@ -782,6 +791,12 @@ def _consumers(
         "export": export,
         "report": report,
         "status": status,
+        "inspection": {
+            "offset": inspection["offset"],
+            "rows": len(inspection["rows"]),
+            "last_url": inspection["rows"][0]["url"],
+            "has_more": inspection["has_more"],
+        },
         "diagnosis_codes": [item["code"] for item in diagnosis.get("diagnoses", [])],
         "consistency": consistency,
         "reanalysis": reanalysis,
