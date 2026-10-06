@@ -630,3 +630,67 @@ def test_concurrent_rendered_route_admission_dedupes_through_the_frontier(monkey
 
     assert escalation.render_requests == 3
     assert [tuple(row) for row in rows] == [("https://example.test/new-route", "queued")]
+
+
+def test_graceful_cancel_preserves_observed_render_counts_and_elapsed_on_resume(
+    monkeypatch, tmp_path
+):
+    from seohead.servers.scan_handlers import _StoredPages
+    from seohead.tools import render as render_tool
+    from tests.test_native_capture import _claim, _event
+    from tests.test_scan_native import _metadata, _record, _runtime
+
+    options = {
+        "rendering.mode": "js",
+        "rendering.escalation.policy": "full",
+        "rendering.escalation.max_render_urls": 2,
+        "rendering.escalation.max_render_seconds": 600,
+        "storage.body_mode": "captured_entity_bytes",
+    }
+    config = _settings(**options)
+    path = tmp_path / "resume-js.sqlite"
+    seen = []
+
+    def render(url, *_args, **_kwargs):
+        seen.append(url)
+        return {
+            "ok": True,
+            "url": url,
+            "final_url": url,
+            "html": "<html><head><title>DOM title</title></head><body><h1>Observed DOM</h1></body></html>",
+            "renderer": _renderer(url),
+        }
+
+    monkeypatch.setattr(render_tool, "render_document", render)
+    with NativeScan.create(path, **_metadata(**options)) as scan:
+        for url in ("https://example.test/p/1", "https://example.test/p/2"):
+            lease = _claim(scan, url)
+            record = _record(url)
+            record["status_code"] = 200
+            scan.commit_page(lease, record, captures=[_event(url)], runtime=_runtime())
+        original = scan.commit_render
+
+        def pause(*args, **kwargs):
+            original(*args, **kwargs)
+            raise KeyboardInterrupt("owned graceful interruption after commit")
+
+        monkeypatch.setattr(scan, "commit_render", pause)
+        with pytest.raises(KeyboardInterrupt):
+            run_render_escalation(
+                scan, SimpleNamespace(pages=_StoredPages(scan.con), links=[]), config
+            )
+        elapsed = scan.read_context("render_elapsed")
+        assert elapsed["active"] is False and elapsed["seconds"] > 0
+        saved = scan.con.execute(
+            "SELECT payload_json FROM context_items WHERE kind='render_phase_summary'"
+        ).fetchone()
+        assert json.loads(saved[0])["render_requests"] == 1
+    with NativeScan.open(path) as scan:
+        outcome = run_render_escalation(
+            scan, SimpleNamespace(pages=_StoredPages(scan.con), links=[]), config
+        )
+        assert outcome.render_requests == 2
+        assert sum(outcome.render_counts.values()) == 2
+        assert scan.read_context("render_elapsed")["seconds"] >= elapsed["seconds"]
+        assert scan.read_context("render_elapsed")["active"] is False
+    assert seen == ["https://example.test/p/1", "https://example.test/p/2"]

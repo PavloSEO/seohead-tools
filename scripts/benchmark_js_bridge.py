@@ -208,6 +208,7 @@ class GracefulPause(KeyboardInterrupt):
 def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
     """Stream exact typed observations and selected DOM hashes, not timing fields."""
     from seohead.storage import open_scan
+    from seohead.storage.audit_v2 import AuditV2Reader
     from seohead.storage.bodies import read_document
     from seohead.tools.parser import parse_html
 
@@ -266,7 +267,13 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
         render_row = con.execute(
             "SELECT payload_json FROM context_items WHERE kind='render_elapsed' AND item_key='run'"
         ).fetchone()
+        with AuditV2Reader(path) as audit:
+            render_summary = audit.header["run"].get("render_escalation", {})
+        if case["mode"] == "javascript":
+            assert render_summary.get("render_requests") == expected_rendered, render_summary
+            assert sum(render_summary.get("render_counts", {}).values()) == expected_rendered
         return {
+            "render_summary": render_summary,
             "counts": counts,
             "representations": reps,
             "ordered_evidence_sha256": hashes,
@@ -453,6 +460,7 @@ def worker(config: dict, output: Path) -> None:
                 assert measured["render_elapsed"]["active"] is False
                 assert measured["ordered_evidence_sha256"] == reference["ordered_evidence_sha256"]
                 assert measured["selected_dom_sha256"] == reference["selected_dom_sha256"]
+                assert measured["render_summary"] == reference["render_summary"]
                 assert committed == config["pages"], (
                     "resume rerendered or omitted committed documents"
                 )

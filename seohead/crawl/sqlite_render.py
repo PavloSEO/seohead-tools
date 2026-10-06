@@ -805,6 +805,16 @@ def run_render_escalation(
                 probe_apply=probe_apply if mode == "js" else None,
                 render_prepare=render_prepare,
             )
+        except KeyboardInterrupt as exc:
+            interrupted_outcome = getattr(exc, "render_outcome", None)
+            if getattr(scan, "con", None) is not None and isinstance(
+                interrupted_outcome, render_escalation.EscalationResult
+            ):
+                from seohead.storage import render_summary
+
+                if interrupted_outcome.probe_requests or interrupted_outcome.render_requests:
+                    render_summary.record(scan, interrupted_outcome)
+            raise
         finally:
             save_render_elapsed(False)
     if (
