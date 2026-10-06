@@ -627,3 +627,28 @@ def test_streamed_evidence_hash_deadline_and_reuse_are_explicit(tmp_path, monkey
     with pytest.raises(ValueError, match="does not match"):
         execution._evidence(records, root=project, digests=digests)
     assert len(calls) == 2
+
+
+def test_success_checkpoint_reuses_one_hash_for_the_response_projection(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    original = evidence_core._digest
+    deadlines = []
+
+    def counted(path, **kwargs):
+        deadlines.append(kwargs["deadline"])
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(evidence_core, "_digest", counted)
+    result = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    assert result["run"]["state"] == "completed"
+    assert len(deadlines) == 1

@@ -429,7 +429,9 @@ def checkpoint(
     if any(item["state"] == "pending" for item in run["steps"][: run["steps"].index(step)]):
         raise ValueError("workflow steps must be checkpointed in registered order")
     rows = _rows(root)
-    stale = _stale_dependencies(run, rows, root=root)
+    digests: dict = {}
+    deadline = time.monotonic() + EVIDENCE_HASH_SECONDS
+    stale = _stale_dependencies(run, rows, root=root, digests=digests, deadline=deadline)
     current = rows.get(step_id)
     if state == "succeeded" and (
         stale or current is None or current["stale"] or current["blocked_by"]
@@ -437,7 +439,9 @@ def checkpoint(
         raise ValueError(
             "stale or blocked dependencies must be reconciled before a successful checkpoint"
         )
-    records = _evidence(evidence, root=root if state == "succeeded" else None)
+    records = _evidence(
+        evidence, root=root if state == "succeeded" else None, digests=digests, deadline=deadline
+    )
     if state == "succeeded" and not records:
         raise ValueError("successful workflow checkpoints require exact evidence")
     step.update(state=state, evidence=records)
@@ -451,7 +455,7 @@ def checkpoint(
     elif state != "succeeded":
         run["state"] = "interrupted" if state == "interrupted" else "blocked"
     _save(root, document, expected_revision)
-    public = _public_run(run, rows, root=root)
+    public = _public_run(run, rows, root=root, digests=digests, deadline=deadline)
     return {
         "ok": True,
         "revision": document["revision"],
