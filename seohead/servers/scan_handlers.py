@@ -17,6 +17,7 @@ from typing import Any
 from seohead import __version__
 from seohead.build_provenance import BuildProvenanceError, packaged_provenance
 
+# Legacy directory materialization only; native audit.v2 has no population bridge cap.
 MAX_AUDIT_PAGES = 10_000
 MAX_AUDIT_FORMS = 20_000
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -127,23 +128,12 @@ def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
         if page_view
         else [PageRecord(**page) for page in _page_rows(scan.con)]
     )
-    context = [
-        (row["kind"], json.loads(row["payload_json"]))
-        for row in scan.con.execute(
-            "SELECT kind,payload_json FROM context_items WHERE kind IN ('robots_blocked_url','seed_url','robots_summary') ORDER BY kind,item_key"
-        )
-    ]
-    result.robots_blocked = [
-        scan.con.execute("SELECT url FROM urls WHERE url_id=?", (item["url_id"],)).fetchone()[0]
-        for kind, item in context
-        if kind == "robots_blocked_url"
-    ]
-    result.seed_urls = [
-        scan.con.execute("SELECT url FROM urls WHERE url_id=?", (item["url_id"],)).fetchone()[0]
-        for kind, item in context
-        if kind == "seed_url"
-    ]
-    robots_summary = next((item for kind, item in context if kind == "robots_summary"), None)
+    result.robots_blocked = _StoredContextURLs(scan.con, "robots_blocked_url")
+    result.seed_urls = _StoredContextURLs(scan.con, "seed_url")
+    summary_row = scan.con.execute(
+        "SELECT payload_json FROM context_items WHERE kind='robots_summary' AND item_key='run'"
+    ).fetchone()
+    robots_summary = json.loads(summary_row[0]) if summary_row else None
     result.robots_note = robots_summary["note"] if robots_summary is not None else ""
     snapshot = scan.resume_snapshot()
     result.partial = bool(snapshot["scan"]["crawl_partial"])
@@ -155,6 +145,25 @@ def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
     result.effective_concurrency = snapshot["runtime"]["throttle"]["concurrency"]
     result.limitations = json.loads(snapshot["scan"]["limitations_json"])
     return result
+
+
+class _StoredContextURLs:
+    """Count or iterate retained discovery identities without materializing them."""
+
+    def __init__(self, con, kind):
+        self.con, self.kind = con, kind
+
+    def __len__(self):
+        return self.con.execute(
+            "SELECT COUNT(*) FROM context_items WHERE kind=?", (self.kind,)
+        ).fetchone()[0]
+
+    def __iter__(self):
+        for row in self.con.execute(
+            "SELECT u.url FROM context_items c JOIN urls u ON u.url_id=json_extract(c.payload_json,'$.url_id') WHERE c.kind=? ORDER BY c.item_key",
+            (self.kind,),
+        ):
+            yield row[0]
 
 
 class _StoredPages:
@@ -187,6 +196,7 @@ def _response(run, *, audit_available: bool, audit_reason: str, finalized: bool)
         "links_collected": run.links,
         "forms_collected": run.forms,
         "partial": run.partial,
+        "resumed": getattr(run, "resumed", False),
         "finish_reason": run.finish_reason,
         "audit_available": audit_available,
         "audit_reason": audit_reason,
@@ -206,12 +216,6 @@ def _response(run, *, audit_available: bool, audit_reason: str, finalized: bool)
 
 
 def _bridge_reason(counts: dict[str, int], start_page_gate: dict[str, Any] | None) -> str | None:
-    if counts["pages"] > MAX_AUDIT_PAGES or counts["forms"] > MAX_AUDIT_FORMS:
-        return (
-            "materialized audit population limit exceeded "
-            f"(pages={counts['pages']}/{MAX_AUDIT_PAGES}, "
-            f"forms={counts['forms']}/{MAX_AUDIT_FORMS})"
-        )
     if start_page_gate is None:
         return (
             "start-page raw evidence was not retained; audit cannot reconstruct its rendering gate"
@@ -327,6 +331,7 @@ def resume_scan(
     url: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Continue an interrupted native scan from its stored frontier and throttle state.
@@ -358,6 +363,7 @@ def resume_scan(
         settings=inputs["settings"],
         producer_build=revision,
         progress=progress,
+        progress_snapshot=progress_snapshot,
         observation=observation,
     )
 
@@ -370,6 +376,7 @@ def crawl_site_scan(
     sitemap: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
     proxy_route=None,
 ) -> dict[str, Any]:
@@ -434,6 +441,7 @@ def crawl_site_scan(
         initial_sitemaps=initial_sitemaps(sitemap),
         seed_loader=seed_loader,
         progress=progress,
+        progress_snapshot=progress_snapshot,
         proxy_route=proxy_route,
     )
     external_summary = None
@@ -514,7 +522,6 @@ def crawl_site_scan(
                     if run.dispatch_gate is not None
                     else None,
                     proxy_route=proxy_route,
-                    streaming=True,
                 )
                 queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
             if not queued_before or run.partial:
@@ -528,6 +535,7 @@ def crawl_site_scan(
                 producer_revision=producer_revision,
                 runtime_versions=runtime_versions,
                 progress=progress,
+                progress_snapshot=progress_snapshot,
                 proxy_route=proxy_route,
             )
             render_cycles += 1
@@ -615,10 +623,9 @@ def crawl_site_scan(
                     stored_sitemap=reconciliation,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
-                    # Small audits retain the established scan.v1 document
-                    # surface.  At this threshold the audit collector switches
-                    # before final aggregation can re-materialize every row.
-                    streaming=run.pages >= 10_000,
+                    # Finding density is independent of URL count. Keep every
+                    # retained-native audit streamed, including small dense scans.
+                    streaming=True,
                 )
 
             if settings.get("rendering", {}).get("mode", "raw") != "raw":

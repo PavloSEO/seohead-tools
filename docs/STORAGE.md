@@ -112,8 +112,8 @@ silently accepted. The result is ordered by finish (or creation) time and includ
 the aggregate disk use and history warning threshold. `disk_bytes` includes any
 audit-v2 companion.
 
-`scan inspect` validates one artifact, then exposes a paginated read-only view of
-one whitelist table: `pages`, `links`, `forms`, `decisions`, `frontier`,
+`scan inspect` validates one scan.v1 or native scan.v2 artifact, then exposes a
+paginated read-only view of one whitelist table: `pages`, `links`, `forms`, `decisions`, `frontier`,
 `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or
 `audit`. It never exposes the `bodies` table. `limit` is at most 1,000; the
 serialized returned rows are also bounded by `max_bytes`, up to 8 MiB. When a row
@@ -1128,5 +1128,10 @@ replay remains unavailable; retained-evidence reanalysis is documented above.
 
 Saved finding views are currently unavailable for streamed audit.v2 report inputs.
 The report builder refuses that combination explicitly rather than silently ignoring
-the selected view. PDF and project coverage remain explicitly unavailable on the
+the selected view. Project coverage remains explicitly unavailable on the
 streaming path; bounded inline audit reports retain their view/language support.
+
+For streamed PDF output, explicitly pass `pdf_policy="overview-v1"` (CLI
+`--pdf-policy overview-v1`). It creates a bounded PDF view with complete JSON/CSV
+companions and a hashed manifest; no policy is selected by default. See
+[PDF_OVERVIEW.md](PDF_OVERVIEW.md) for counts, limits and publication guarantees.

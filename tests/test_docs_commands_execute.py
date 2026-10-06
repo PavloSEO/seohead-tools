@@ -204,6 +204,44 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     (tmp_path / "ga4.json").write_text(
         json.dumps(provider_fixture("ga4", "sessions", 2)), encoding="utf-8"
     )
+    # The visited-page guide chains from a restricted provider artifact. Each
+    # documentation command runs independently, so seed that real envelope via
+    # the production collector with an explicit synthetic protocol transport.
+    from seohead.data_sources import providers
+
+    provider_dir = tmp_path / "provider-evidence"
+    providers.provider_collect(
+        "ga4",
+        "page_views",
+        {
+            "property_id": "123",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-03",
+            "site_origin": "https://example.test",
+            "token": "synthetic-doc-fixture",
+        },
+        artifact_dir=provider_dir,
+        transport=lambda *_: json.dumps(
+            {
+                "dimensionHeaders": [
+                    {"name": value} for value in ("date", "hostName", "pagePathPlusQueryString")
+                ],
+                "metricHeaders": [{"name": "screenPageViews", "type": "TYPE_INTEGER"}],
+                "rows": [
+                    {
+                        "dimensionValues": [
+                            {"value": value} for value in ("20261001", "example.test", "/")
+                        ],
+                        "metricValues": [{"value": "2"}],
+                    }
+                ],
+                "rowCount": 1,
+                "metadata": {"timeZone": "UTC"},
+            }
+        ),
+    )
+    artifact = next(provider_dir.glob("provider-*.json"))
+    shutil.copy2(artifact, provider_dir / "provider-example.json")
 
 
 def _seed_scan_inputs(tmp_path: Path) -> None:

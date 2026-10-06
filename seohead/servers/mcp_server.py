@@ -290,9 +290,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         to fire on, a finding about a URL the run never fetched, a summary that disagrees
         with its own rows. Not a second audit and not a threshold — only contradictions,
         each naming both values and where each came from, so a surprising number can be
-        traced instead of trusted. ``run`` is a directory holding audit.json and/or
-        pages.jsonl; ``images_dir`` is an images-download directory whose manifest lets a
-        recorded size be checked against the bytes on disk."""
+        traced instead of trusted. ``run`` is a native scan path, or a directory holding
+        scan.sqlite, audit.json or pages.jsonl. Native scans without retained decision
+        logs report those events as unavailable; none are invented. ``images_dir`` is
+        an images-download directory whose manifest lets a recorded size be checked
+        against the bytes on disk."""
         return _checked(
             handlers.log_scan(run=run, images_dir=images_dir, max_per_rule=max_per_rule)
         )
@@ -327,11 +329,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
-    @mcp.tool(annotations=fetch, structured_output=True)
-    def seo_sitemap_crawl(url: str, concurrency: int = 3) -> dict[str, Any]:
-        """Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree,
-        with duplicate detection."""
-        return _checked(handlers.sitemap_crawl(url=url, concurrency=concurrency))
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_sitemap_crawl(
+        url: str, concurrency: int = 3, project: str | None = None
+    ) -> dict[str, Any]:
+        """Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree.
+
+        Fetches sitemap evidence. An explicit local project records an observation
+        for the same origin; otherwise no project files are written. Declared URLs
+        are not fetched HTML pages. Counters count parsed sitemap documents only.
+        """
+        return _checked(handlers.sitemap_crawl(url=url, concurrency=concurrency, project=project))
 
     @mcp.tool(annotations=create_files_from_web, structured_output=True)
     def seo_images_download(
@@ -813,6 +821,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         view: str | None = None,
         offset: int = 0,
         lang: str = "en",
+        pdf_policy: Literal["overview-v1"] | None = None,
     ) -> dict[str, Any]:
         """Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the dict
         returned by seo_site_audit, an SF Analyzer audit.json from sf_audit_run (or a
@@ -829,8 +838,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Pass project to include validated checklist coverage, reasons, scope and measurements in a
         human report. Optional view applies one saved finding view; it leaves health, evidence,
         coverage and source scan untouched. offset pages through the stable sorted view. This never
-        makes a network request."""
+        makes a network request.
+
+        For retained audit.v2 only, explicit pdf_policy='overview-v1' writes a bounded
+        PDF overview with mandatory complete JSON/CSV companions and a hashed manifest.
+        Exact source, displayed and omitted counts remain visible. No policy is chosen
+        automatically; streamed PDF without this policy is refused. Other formats and
+        materialized inputs reject the policy. PDF and companion directory must be new.
+        """
         arguments = {"audit": audit, "fmt": fmt, "out": out, "project": project}
+        if pdf_policy is not None:
+            arguments["pdf_policy"] = pdf_policy
         if view is not None:
             arguments["view"] = view
         if offset != 0:
@@ -859,9 +877,14 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         subdomains of one registrable domain are allowed, only noted."""
         return _checked(handlers.facts_export(sites=sites))
 
-    @mcp.tool(annotations=pure, structured_output=True)
+    @mcp.tool(annotations=create_files, structured_output=True)
     def seo_compare_crawls(
-        before: Any, after: Any, force: bool = False, correspondence: Any = None
+        before: Any,
+        after: Any,
+        force: bool = False,
+        correspondence: Any = None,
+        out_dir: str | None = None,
+        compression: Literal["none", "gzip"] = "none",
     ) -> dict[str, Any]:
         """Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint
         sets per finding: entered (new problem on a page that existed before),
@@ -874,10 +897,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         it never infers pairs from titles or content and adds a release_review.v1
         facts/finding artifact. Refuses a known difference in results-affecting
         settings unless ``force`` is true; partial-crawl warnings remain attached
-        to the historical result."""
+        to the historical result.
+
+        With out_dir, writes a new compare.v2 package with partition manifests,
+        exact finding rows, checksums and before/after count conservation. Without
+        it, returns the small compare.v1 document; retained audit.v2 populations
+        above 10,000 pages or issues require explicit out_dir. Never overwrites
+        a package and never collects evidence or calls the network. Explicit
+        compression='gzip' requires out_dir and preserves every row in deterministic
+        .ndjson.gz files; manifests record compressed checksums and both byte counts.
+        Default compression='none' keeps uncompressed output.
+        """
         return _checked(
             handlers.compare_crawls(
-                before=before, after=after, force=force, correspondence=correspondence
+                before=before,
+                after=after,
+                force=force,
+                correspondence=correspondence,
+                out_dir=out_dir,
+                compression=compression,
             )
         )
 
@@ -1568,6 +1606,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Read the bounded project observer snapshot: tasks, methods, competitors,
         retained scan state and the execution-log tail.  It never starts work or
         consumes inbox entries; a consumer only receives its own unread summary.
+        Workflow/checklist receipt observations are metadata-only, not fresh byte
+        verification. Missing historical receipts remain unverified. Explicit
+        project-status and workflow-status retain byte verification by default.
         """
         return _checked(
             handlers.project_observe(
@@ -1792,6 +1833,38 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(
             with_project_notice(
                 handlers.monitor_schedule(directory, action, expected_revision), directory, consumer
+            )
+        )
+
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_monitor_collect(
+        directory: str, expected_revision: int, apply: bool = False
+    ) -> dict[str, Any]:
+        """Preview or explicitly collect one previously claimed bounded monitor plan.
+
+        The default preview makes no HTTP request. apply=true collects only the
+        validated claim, retains body/validation provenance within its bounds and
+        records failed, partial or complete outcomes. Expired or interrupted claims
+        require an explicit new start. No timer, background service or delivery starts.
+        """
+        return _checked(
+            handlers.monitor_collect(
+                directory=directory, expected_revision=expected_revision, apply=apply
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_local_deliver(
+        directory: str, scan_id: str, expected_revision: int
+    ) -> dict[str, Any]:
+        """Record a deduplicated local receipt for one retained monitoring run.
+
+        The destination is fixed to local:receipt. It uses no network or external
+        transport and does not claim that any recipient outside the project received it.
+        """
+        return _checked(
+            handlers.monitor_local_deliver(
+                directory=directory, scan_id=scan_id, expected_revision=expected_revision
             )
         )
 
@@ -2377,6 +2450,100 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 out_dir=out_dir,
             )
         )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_bi_filter(
+        package: str,
+        dataset: str,
+        out_dir: str,
+        where: dict[str, list[str]] | None = None,
+        columns: list[str] | None = None,
+        max_rows_per_file: int = 250_000,
+        max_bytes_per_file: int = 8_388_608,
+        max_output_bytes: int = 4_294_967_296,
+        xlsx_out: str | None = None,
+        xlsx_max_rows_per_sheet: int = 1_048_575,
+    ) -> dict[str, Any]:
+        """Filter a verified local BI package into a new typed package and optional XLSX.
+
+        Exact equality filters over declared fields only; source and selected row counts
+        and coverage are preserved. Creates new local outputs without network calls.
+        """
+        return _checked(
+            handlers.bi_filter(
+                package=package,
+                dataset=dataset,
+                out_dir=out_dir,
+                where=where,
+                columns=columns,
+                max_rows_per_file=max_rows_per_file,
+                max_bytes_per_file=max_bytes_per_file,
+                max_output_bytes=max_output_bytes,
+                xlsx_out=xlsx_out,
+                xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_navigation(
+        input_path: str, document_id: int | None = None, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Read bounded observed navigation evidence from a retained local scan.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(
+            handlers.scan_navigation(
+                input_path=input_path, document_id=document_id, limit=limit, offset=offset
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_activity(directory: str) -> dict[str, Any]:
+        """Read lightweight current activity for a local project and its sites.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(handlers.project_activity(directory=directory))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_checklist_page(
+        directory: str,
+        offset: int = 0,
+        limit: int = 50,
+        query: str = "",
+        kind: str | None = None,
+        state: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a bounded searchable page of project checklist evidence.
+
+        Reads saved local evidence with metadata-only receipt status; this is not
+        fresh byte verification. Missing historical receipts remain unverified.
+        Does not collect, fetch or modify evidence.
+        """
+        return _checked(
+            handlers.project_checklist_page(
+                directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_task_detail(directory: str, item_id: str) -> dict[str, Any]:
+        """Read one project task definition, evidence and bounded history.
+
+        Reads saved local evidence with metadata-only receipt status; this is not
+        fresh byte verification. Missing historical receipts remain unverified.
+        Does not collect, fetch or modify evidence.
+        """
+        return _checked(handlers.project_task_detail(directory=directory, item_id=item_id))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_scans(directory: str, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+        """Read a bounded page of retained project scans with evidence metadata.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(handlers.project_scans(directory=directory, offset=offset, limit=limit))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_bi_export(

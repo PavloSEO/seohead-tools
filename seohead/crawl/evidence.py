@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import urllib.parse
 from collections import Counter
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from seohead.tools.parser import robots_directives
@@ -132,7 +133,7 @@ def _indexability(record: Any, blocked_by_robots: bool = False) -> tuple[str, st
 def _row(
     record: Any,
     blocked_by_robots: bool = False,
-    inlink_counts: dict[str, tuple[int, int]] | None = None,
+    inlink_counts: Mapping[str, tuple[int, int]] | None = None,
 ) -> dict[str, Any]:
     indexability, reason = _indexability(record, blocked_by_robots)
     row = {
@@ -337,11 +338,35 @@ def _hreflang_frame(pages: list[Any]) -> Any:
     )
 
 
+class _PageEvidenceRows:
+    """Re-iterable native rows exposing the analyzer's column/tuple boundary."""
+
+    def __init__(self, pages, row_for: Callable) -> None:
+        self.pages, self.row_for = pages, row_for
+        first = next(iter(pages), None)
+        self.columns = tuple(row_for(first)) if first is not None else ()
+
+    def __len__(self):
+        return len(self.pages)
+
+    @property
+    def empty(self):
+        return not len(self)
+
+    def itertuples(self, *, index=False, name=None):
+        if index or name is not None:
+            raise ValueError("native evidence rows support only unnamed, unindexed tuples")
+        for page in self.pages:
+            yield tuple(self.row_for(page).values())
+
+
 def build_evidence(
     result: CrawlResult,
     *,
-    inlink_counts: dict[str, tuple[int, int]] | None = None,
+    inlink_counts: Mapping[str, tuple[int, int]] | None = None,
     stored_graph_available: bool | None = None,
+    streaming: bool = False,
+    is_robots_blocked: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Project a crawl into analyzer-shaped frames with its gaps declared.
 
@@ -364,10 +389,17 @@ def build_evidence(
     # Populated even under ``robots_policy="report_only"``, where a disallowed
     # URL is still fetched and gets an ordinary page row (#154) -- that row
     # must not read as indexable just because the fetch happened to succeed.
-    blocked = set(getattr(result, "robots_blocked", None) or [])
+    if is_robots_blocked is None:
+        blocked = set(getattr(result, "robots_blocked", None) or [])
+        is_robots_blocked = blocked.__contains__
 
-    frame = pd.DataFrame(
-        [_row(record, record.url in blocked, inlink_counts) for record in result.pages]
+    def row_for(record):
+        return _row(record, is_robots_blocked(record.url), inlink_counts)
+
+    frame = (
+        _PageEvidenceRows(result.pages, row_for)
+        if streaming
+        else pd.DataFrame([row_for(record) for record in result.pages])
     )
     frames: dict[str, Any] = {"internal_all": frame}
     found = ["internal_all"]
@@ -383,7 +415,10 @@ def build_evidence(
     # read as "this site has no hreflang errors" on a site that never claimed to
     # be localised at all, which is a clean bill of health nobody asked for and
     # nothing measured; absent, the checks skip and say why.
-    if any(record.hreflang for record in result.pages):
+    # Retained native hreflang is read from document-bound corpus derivations;
+    # copying volatile page declarations into a second frame would both grow
+    # with the full crawl and treat unretained bodies as inspectable evidence.
+    if not streaming and any(record.hreflang for record in result.pages):
         frames["all_hreflang"] = _hreflang_frame(result.pages)
         found.append("all_hreflang")
         missing.remove("all_hreflang")

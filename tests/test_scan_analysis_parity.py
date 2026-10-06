@@ -6,7 +6,7 @@ import copy
 
 import pytest
 
-from seohead.crawl.settings import load
+from seohead.crawl.settings import fingerprint, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
 from seohead.servers.handlers import _audit_crawl_result
 from seohead.servers.scan_handlers import _rebuild_page_result
@@ -183,7 +183,10 @@ def _drop_retained_only_checks(audit: dict) -> dict:
     return document
 
 
-def _outcome(audit):
+_RETAINED_RUN_FIELDS = {"scan_uuid", "config_fingerprint", "corpus_partial", "source_kind"}
+
+
+def _outcome(audit, *, retained_run=None):
     """The whole audit contract except the report clock and measured response durations.
 
     ``generated_at`` is a report wall clock.  Every ``response_time`` in this
@@ -192,6 +195,14 @@ def _outcome(audit):
     Missing or invalid duration values, plus all thresholds, counts, URLs, and
     findings, stay strict.
     """
+    # These fields describe the retained artifact, which the legacy graph has
+    # never created. Validate the raw values before excluding them from verdict
+    # parity; in particular corpus completeness is not crawl completeness.
+    if retained_run is not None:
+        assert set(retained_run) == _RETAINED_RUN_FIELDS
+        for key, expected in retained_run.items():
+            assert type(audit["run"].get(key)) is type(expected), key
+            assert audit["run"][key] == expected, key
     measured_duration_fields = {"response_time"}
 
     def normalize(value):
@@ -208,6 +219,8 @@ def _outcome(audit):
 
     result = _drop_retained_only_checks(semantic_audit(audit))
     result["run"].pop("generated_at")
+    for key in retained_run or {}:
+        result["run"].pop(key)
     return normalize(result)
 
 
@@ -265,6 +278,30 @@ def test_outcome_normalizes_measured_durations_but_keeps_issues_strict():
     right["issues"].append({"check": "UNEXPECTED_PARITY_BREAK", "details": {}})
     with pytest.raises(AssertionError):
         assert _outcome(left) == _outcome(right)
+
+
+@pytest.mark.parametrize("field", sorted(_RETAINED_RUN_FIELDS))
+def test_outcome_validates_retained_provenance_before_excluding_it(field):
+    provenance = {
+        "scan_uuid": "00000000-0000-4000-8000-000000000001",
+        "config_fingerprint": "a" * 16,
+        "corpus_partial": False,
+        "source_kind": "native",
+    }
+    legacy = {"run": {"generated_at": "2026-10-06T00:00:00Z", "crawl_partial": False}}
+    native = copy.deepcopy(legacy)
+    native["run"].update(provenance)
+    assert _outcome(native, retained_run=provenance) == _outcome(legacy)
+    changed = copy.deepcopy(native)
+    changed["run"][field] = True if field == "corpus_partial" else "wrong"
+    with pytest.raises(AssertionError, match=field):
+        _outcome(changed, retained_run=provenance)
+    changed = copy.deepcopy(native)
+    del changed["run"][field]
+    with pytest.raises(AssertionError, match=field):
+        _outcome(changed, retained_run=provenance)
+    native["run"]["crawl_partial"] = True
+    assert _outcome(native, retained_run=provenance) != _outcome(legacy)
 
 
 @pytest.mark.parametrize("mode", ("complete", "partial", "empty", "unclassified"))
@@ -339,8 +376,19 @@ def test_sql_graph_audit_matches_legacy_without_building_all_inlinks(
                 stored_sitemap=sitemap,
             )
             assert_saved_contract(sql_audit, scan.con)
+            retained_run = dict(
+                scan.con.execute(
+                    "SELECT scan_uuid,config_fingerprint,corpus_partial,source_kind "
+                    "FROM scan WHERE singleton=1"
+                ).fetchone()
+            )
+            retained_run["corpus_partial"] = bool(retained_run["corpus_partial"])
+            assert retained_run["config_fingerprint"] == fingerprint(settings)
+            assert retained_run["source_kind"] == "native"
+            assert retained_run["corpus_partial"] is run.corpus_partial
 
-    sql_outcome, legacy_outcome = _outcome(sql_audit), _outcome(legacy_audit)
+    sql_outcome = _outcome(sql_audit, retained_run=retained_run)
+    legacy_outcome = _outcome(legacy_audit)
     paths = _different_paths(sql_outcome, legacy_outcome)
     (tmp_path / "scan-analysis-parity-diff.txt").write_text("\n".join(paths) + "\n")
     assert sql_outcome == legacy_outcome, "\n".join(paths)
@@ -354,7 +402,8 @@ def test_sql_graph_audit_matches_legacy_without_building_all_inlinks(
     # Report writers receive the same semantic audit input. The saved-reference
     # contracts were independently validated above, and are deliberately local
     # to the scan rather than a renderer-parity dimension.
-    legacy_render_audit, sql_render_audit = _outcome(legacy_audit), _outcome(sql_audit)
+    legacy_render_audit = _outcome(legacy_audit)
+    sql_render_audit = _outcome(sql_audit, retained_run=retained_run)
     for audit in (legacy_render_audit, sql_render_audit):
         audit["run"]["generated_at"] = legacy_audit["run"]["generated_at"]
     from seohead.reports import build_report

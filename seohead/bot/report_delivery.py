@@ -96,6 +96,18 @@ class ReportProfile:
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:24]
 
 
+class ReportPreview(ArtifactReference):
+    """Measured render size and exact retained-source population for a profile."""
+
+    source_sha256: str
+    source_rows: int
+    selected_rows: int
+    population_state: str
+    coverage: str
+    audit_summary: dict[str, Any]
+    profile: dict[str, Any]
+
+
 class DeliveryReceipts:
     """Small private receipt store that survives adapter restart and retry."""
 
@@ -176,6 +188,8 @@ class AuthorizedReportDelivery:
     subject: str | None = None
     ownership: JobOwnershipStore | None = None
     authorization: ProjectAuthorizationStore | None = None
+    scope: str = ""
+    authorize: Callable[[], None] | None = None
     _projects: frozenset[str] = field(init=False, repr=False)
     _destinations: frozenset[str] = field(init=False, repr=False)
 
@@ -188,10 +202,20 @@ class AuthorizedReportDelivery:
             raise ValueError("max_file_bytes must be a positive bounded integer")
         if (self.subject is None) != (self.ownership is None):
             raise ValueError("durable delivery ownership requires both subject and ownership store")
-        if self.authorization is not None and self.subject is None:
-            raise ValueError("project authorization requires a delivery subject")
+        if self.authorization is not None and (self.subject is None or self.ownership is None):
+            raise ValueError(
+                "project authorization requires a delivery subject and durable job ownership"
+            )
 
     def _result(self, project_id: str, job_id: str) -> JobResult:
+        if self.authorize is not None:
+            self.authorize()
+        if self.scope and (
+            self.ownership is None
+            or self.subject is None
+            or not self.ownership.in_scope(job_id, self.subject, self.scope)
+        ):
+            raise PermissionError("job is not authorized for this delivery chat")
         if project_id not in self._projects:
             raise PermissionError("project is not authorized for delivery")
         if self.ownership is not None:
@@ -284,6 +308,10 @@ class AuthorizedReportDelivery:
             return
         try:
             with opened.handle:
+                if opened.size_bytes > self.max_file_bytes:
+                    raise DeliveryUnavailable(
+                        "source audit exceeds the configured delivery size limit"
+                    )
                 try:
                     document = json.load(opened.handle)
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -318,13 +346,49 @@ class AuthorizedReportDelivery:
                     media_type=self._delivery_artifact(source, profile).media_type,
                 )
 
-    def preview(self, project_id: str, job_id: str, profile: ReportProfile) -> ArtifactReference:
-        """Return the exact artifact that delivery would use, without a side effect."""
+    def preview(self, project_id: str, job_id: str, profile: ReportProfile) -> ReportPreview:
+        """Measure the requested report and expose its retained population and coverage."""
         result = self._result(project_id, job_id)
         source = self._source_artifact(
             result, "audit_json" if profile.needs_render else profile.artifact_kind()
         )
-        return self._delivery_artifact(source, profile)
+        audit_source = self._source_artifact(result, "audit_json")
+        opened = self.backend.open_artifact(project_id, job_id, audit_source.artifact_id)
+        if opened is None:
+            raise DeliveryUnavailable("the retained report artifact is missing or expired")
+        with opened.handle:
+            if opened.size_bytes > self.max_file_bytes:
+                raise DeliveryUnavailable("source audit exceeds the configured delivery size limit")
+            raw = opened.handle.read(self.max_file_bytes + 1)
+        if len(raw) > self.max_file_bytes:
+            raise DeliveryUnavailable("source audit exceeds the configured delivery size limit")
+        try:
+            document = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DeliveryUnavailable("retained audit JSON cannot be rendered") from exc
+        if not isinstance(document, dict):
+            raise DeliveryUnavailable("retained audit JSON must be an object")
+        selected = self._filtered_document(document, profile)
+        key = "findings" if isinstance(document.get("findings"), list) else "issues"
+        artifact = self._delivery_artifact(source, profile)
+        with self._opened_for_profile(project_id, job_id, source, profile) as rendered:
+            size = rendered.size_bytes
+        return ReportPreview(
+            **{**artifact.model_dump(), "size_bytes": size},
+            source_sha256=hashlib.sha256(raw).hexdigest(),
+            source_rows=len(document[key]),
+            selected_rows=len(selected[key]),
+            population_state="empty" if not selected[key] else "measured",
+            coverage=result.coverage,
+            audit_summary=document.get("summary") or {},
+            profile={
+                "format": profile.format,
+                "findings_only": profile.findings_only,
+                "severities": list(profile.severities),
+                "checks": list(profile.checks),
+                "language": profile.language,
+            },
+        )
 
     def deliver(
         self, project_id: str, job_id: str, destination: str, profile: ReportProfile
@@ -344,10 +408,11 @@ class AuthorizedReportDelivery:
                 result, "audit_json" if profile.needs_render else profile.artifact_kind()
             )
             with self._opened_for_profile(project_id, job_id, source, profile) as opened:
+                self._result(project_id, job_id)
                 self.send(destination, opened, receipt)
         except DeliveryAmbiguous:
             raise
-        except BaseException:
+        except Exception:
             self.receipts.retry(job_id, artifact.artifact_id, destination, receipt)
             raise
         self.receipts.delivered(job_id, artifact.artifact_id, destination, receipt)

@@ -44,7 +44,7 @@ from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
 APPLICATION_ID = 1397051212  # ASCII SEOL; scan artifacts use SEOH (1397051208).
-USER_VERSION = 3
+USER_VERSION = 4
 FORMAT_VERSION = "ledger.v1"
 READ_TIMEOUT_SECONDS = 30
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -57,6 +57,7 @@ _SCOPE_SUBJECT = "site"
 _KEY_FINDING = "seohead.ledger-finding.v1"
 _KEY_OCCURRENCE = "seohead.ledger-occurrence.v1"
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_FINGERPRINT = re.compile(r"[0-9a-f]{16}\Z")
 _REVISION = re.compile(r"[0-9a-f]{40}\Z")
 _UTC = timezone.utc
 
@@ -126,6 +127,11 @@ def _v3_schema() -> str:
     return files(__package__).joinpath("ledger_v3.sql").read_text(encoding="utf-8")
 
 
+def _v4_schema() -> str:
+    """Add canonical audit identity for safely bridged legacy audit documents."""
+    return files(__package__).joinpath("ledger_v4.sql").read_text(encoding="utf-8")
+
+
 def _apply_v2_schema(con: sqlite3.Connection) -> None:
     """Apply the v1 -> v2 DDL one statement at a time inside a transaction."""
     for piece in _v2_schema().split(";"):
@@ -136,6 +142,13 @@ def _apply_v2_schema(con: sqlite3.Connection) -> None:
 
 def _apply_v3_schema(con: sqlite3.Connection) -> None:
     for piece in _v3_schema().split(";"):
+        statement = piece.strip()
+        if statement and not statement.startswith("--"):
+            con.execute(statement)
+
+
+def _apply_v4_schema(con: sqlite3.Connection) -> None:
+    for piece in _v4_schema().split(";"):
         statement = piece.strip()
         if statement and not statement.startswith("--"):
             con.execute(statement)
@@ -180,6 +193,7 @@ def _expected() -> list[tuple]:
         con.executescript(_schema())
         _apply_v2_schema(con)
         _apply_v3_schema(con)
+        _apply_v4_schema(con)
         return _objects(con)
     finally:
         con.close()
@@ -385,6 +399,12 @@ def _validate(con) -> None:
     ).fetchone():
         raise LedgerError("source scan binding has an invalid digest")
     if con.execute(
+        "SELECT 1 FROM source_scan WHERE canonical_audit_sha256 IS NOT NULL AND "
+        "(canonical_audit_sha256 GLOB '*[^0-9a-f]*' OR "
+        "length(canonical_audit_sha256)!=64) LIMIT 1"
+    ).fetchone():
+        raise LedgerError("source scan has an invalid canonical audit digest")
+    if con.execute(
         "SELECT 1 FROM source_scan WHERE group_memberships_state "
         "NOT IN ('complete','partial','unavailable') LIMIT 1"
     ).fetchone():
@@ -475,7 +495,18 @@ def _migrate_2_to_3(con: sqlite3.Connection) -> None:
     con.execute("PRAGMA user_version=3")
 
 
-_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2, 2: _migrate_2_to_3}
+def _migrate_3_to_4(con: sqlite3.Connection) -> None:
+    """Reserve canonical audit identities without inventing them for old rows."""
+    _apply_v4_schema(con)
+    con.execute("PRAGMA user_version=4")
+
+
+_MIGRATIONS = {
+    0: _migrate_0_to_1,
+    1: _migrate_1_to_2,
+    2: _migrate_2_to_3,
+    3: _migrate_3_to_4,
+}
 
 
 def _migrate(con: sqlite3.Connection) -> None:
@@ -573,7 +604,8 @@ def create_ledger(path: str | Path, *, project_dir: str | Path, producer_build: 
         con.executescript(_schema())
         _apply_v2_schema(con)
         _apply_v3_schema(con)
-        con.execute("PRAGMA user_version=3")
+        _apply_v4_schema(con)
+        con.execute(f"PRAGMA user_version={USER_VERSION}")
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA synchronous=FULL")
@@ -1225,6 +1257,7 @@ def _bind_source(
     site_id: int,
     scan: dict[str, Any],
     audit_row: dict[str, Any],
+    canonical_audit_sha256: str | None,
     file_sha256: str,
     group_memberships_state: str,
     now: str,
@@ -1250,6 +1283,7 @@ def _bind_source(
         "lifecycle": scan["lifecycle"],
         "evidence_revision": scan["evidence_revision"],
         "audit_sha256": audit_row["sha256"],
+        "canonical_audit_sha256": canonical_audit_sha256,
         "audit_schema_version": audit_row["schema_version"],
         "audit_created_at": audit_row["created_at"],
         "config_fingerprint": scan["config_fingerprint"],
@@ -1268,10 +1302,10 @@ def _bind_source(
     if row is None:
         con.execute(
             "INSERT INTO source_scan(site_id,scan_uuid,format_version,source_kind,lifecycle,"
-            "evidence_revision,audit_sha256,audit_schema_version,audit_created_at,"
+            "evidence_revision,audit_sha256,canonical_audit_sha256,audit_schema_version,audit_created_at,"
             "config_fingerprint,writer_version,writer_revision,analyzer_version,"
             "analyzer_revision,scan_sha256,crawl_partial,corpus_partial,artifact_state,"
-            "missing_reason,group_memberships_state,ingested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "missing_reason,group_memberships_state,ingested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 fields["site_id"],
                 fields["scan_uuid"],
@@ -1280,6 +1314,7 @@ def _bind_source(
                 fields["lifecycle"],
                 fields["evidence_revision"],
                 fields["audit_sha256"],
+                fields["canonical_audit_sha256"],
                 fields["audit_schema_version"],
                 fields["audit_created_at"],
                 fields["config_fingerprint"],
@@ -1319,6 +1354,17 @@ def _bind_source(
                 f"source scan {scan['scan_uuid']} revision {scan['evidence_revision']} "
                 f"was already bound with different {name}; refusing alternate truth"
             )
+    stored_canonical = stored["canonical_audit_sha256"]
+    if stored_canonical is None and canonical_audit_sha256 is not None:
+        con.execute(
+            "UPDATE source_scan SET canonical_audit_sha256=? WHERE source_scan_id=?",
+            (canonical_audit_sha256, stored["source_scan_id"]),
+        )
+    elif stored_canonical != canonical_audit_sha256:
+        raise LedgerError(
+            f"source scan {scan['scan_uuid']} revision {scan['evidence_revision']} "
+            "was already bound with a different canonical audit digest; refusing alternate truth"
+        )
     restored = stored["artifact_state"] == "missing"
     if restored:
         con.execute(
@@ -1362,6 +1408,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
         if audit is not None:
             audit_row = dict(audit)
             document = _loads(audit_row["document_json"], "audit")
+            canonical_audit_sha256 = _json_sha256(document)
             projected = attach_contract(document, scan_uuid=scan["scan_uuid"], con=scan_con)
             representations = _representation_map(scan_con, document)
             by_url, doc_url = _observation_index(scan_con)
@@ -1394,6 +1441,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                 "analyzer_version": audit_reader.binding["analyzer_version"],
                 "analyzer_revision": audit_reader.binding["analyzer_revision"],
             }
+            canonical_audit_sha256 = None
             representations = {}
             by_url, doc_url = {}, {}
             raw_issues = None
@@ -1469,6 +1517,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             site_id=int(site["site_id"]),
             scan=scan,
             audit_row=audit_row,
+            canonical_audit_sha256=canonical_audit_sha256,
             file_sha256=digest,
             group_memberships_state=group_memberships_state,
             now=now,
@@ -1736,6 +1785,38 @@ def _lifecycle_text(value: Any, name: str, maximum: int) -> str:
     return value.strip()
 
 
+def occurrence_matches_baseline(
+    con: sqlite3.Connection,
+    occurrence_id: int,
+    *,
+    audit_sha256: str,
+    results_policy_fingerprint: str,
+) -> bool:
+    """Return whether one occurrence belongs to an equivalent retained baseline.
+
+    A scan UUID remains provenance only: it is reusable in copied or altered
+    documents.  Legacy audit JSON can use the canonical digest retained at
+    ingestion, while audit.v2 uses its independently validated exact digest.
+    Both routes require the originally recorded results-affecting policy.
+    """
+    if type(occurrence_id) is not int or occurrence_id < 1:
+        raise LedgerError("occurrence_id must be a positive integer")
+    if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
+        raise LedgerError("baseline audit_sha256 is invalid")
+    if not isinstance(results_policy_fingerprint, str) or not _FINGERPRINT.fullmatch(
+        results_policy_fingerprint
+    ):
+        raise LedgerError("baseline results_policy_fingerprint is invalid")
+    row = con.execute(
+        "SELECT 1 FROM observation ob JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
+        "WHERE ob.occurrence_id=? AND ob.role='target' "
+        "AND (s.audit_sha256=? OR s.canonical_audit_sha256=?) "
+        "AND s.config_fingerprint=? LIMIT 1",
+        (occurrence_id, audit_sha256, audit_sha256, results_policy_fingerprint),
+    ).fetchone()
+    return row is not None
+
+
 def _finding_state(con: sqlite3.Connection, finding_id: int) -> str:
     """Project exact occurrence states to one conservative finding state.
 
@@ -1950,6 +2031,9 @@ def record_verification(
     baseline_sha = baseline.get("audit_sha256")
     if not isinstance(baseline_sha, str) or not _SHA256.fullmatch(baseline_sha):
         raise LedgerError("verification artifact baseline audit_sha256 is invalid")
+    baseline_policy = baseline.get("results_policy_fingerprint")
+    if not isinstance(baseline_policy, str) or not _FINGERPRINT.fullmatch(baseline_policy):
+        raise LedgerError("verification artifact baseline results_policy_fingerprint is invalid")
     baseline_scan_uuid = baseline.get("scan_uuid")
     if baseline_scan_uuid is not None and (
         not isinstance(baseline_scan_uuid, str) or not baseline_scan_uuid
@@ -2031,13 +2115,12 @@ def record_verification(
                 )
             if occurrence["current_state"] != "recheck_pending":
                 raise LedgerError("verification result requires a recheck_pending occurrence")
-            source = con.execute(
-                "SELECT 1 FROM observation ob JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
-                "WHERE ob.occurrence_id=? AND ob.role='target' "
-                "AND (s.audit_sha256=? OR s.scan_uuid=?) LIMIT 1",
-                (occurrence["occurrence_id"], baseline_sha, baseline_scan_uuid or ""),
-            ).fetchone()
-            if source is None:
+            if not occurrence_matches_baseline(
+                con,
+                int(occurrence["occurrence_id"]),
+                audit_sha256=baseline_sha,
+                results_policy_fingerprint=baseline_policy,
+            ):
                 raise LedgerError(
                     "verification artifact baseline does not bind the selected ledger case"
                 )

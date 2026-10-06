@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -29,6 +30,7 @@ MAX_DUPLICATE_CANDIDATES = 10_000
 MAX_DUPLICATE_PAIRS = 50_000
 
 
+@cache
 def _implementation() -> dict[str, Any]:
     """Identify the exact extraction implementation without serializing a body."""
     root = Path(__file__).resolve().parents[1]
@@ -267,18 +269,55 @@ def validate_context(con: Any, item: dict[str, Any], payload: Any) -> None:
         raise ScanError("content evidence context references the wrong page or representation")
 
 
-def read(con: Any) -> dict[str, Any]:
-    """Read stored evidence without opening bodies or recalculating hashes."""
-    rows = []
-    for row in con.execute("SELECT * FROM context_items WHERE kind=? ORDER BY item_key", (KIND,)):
-        payload = json.loads(row["payload_json"])
-        rows.append(payload)
+class ContextRows:
+    """Re-iterable retained JSON payloads; the connection owns their lifetime."""
+
+    def __init__(self, con, kind, *, identity_order=False):
+        self.con, self.kind, self.identity_order = con, kind, identity_order
+
+    def __len__(self):
+        return self.con.execute(
+            "SELECT COUNT(*) FROM context_items WHERE kind=?", (self.kind,)
+        ).fetchone()[0]
+
+    def __iter__(self):
+        order = (
+            "json_extract(payload_json,'$.page_url_id'),json_extract(payload_json,'$.source_document_id'),item_key"
+            if self.identity_order
+            else "item_key"
+        )
+        for row in self.con.execute(
+            "SELECT payload_json FROM context_items WHERE kind=? ORDER BY " + order, (self.kind,)
+        ):
+            yield json.loads(row[0])
+
+    def ordered_for_duplicates(self):
+        return ContextRows(self.con, self.kind, identity_order=True)
+
+
+class DerivedRows:
+    """Re-iterate a deterministic bounded-memory derived collection."""
+
+    def __init__(self, factory, count):
+        self.factory, self.count = factory, count
+
+    def __len__(self):
+        return self.count
+
+    def __iter__(self):
+        return iter(self.factory())
+
+
+def read(con: Any, *, streaming: bool = False) -> dict[str, Any]:
+    """Read retained facts, optionally as a cursor-backed repeatable collection."""
+    rows = ContextRows(con, KIND)
+    count = len(rows)
     return {
         "schema_version": VERSION,
-        "items": rows,
+        "items": rows if streaming else list(rows),
         "coverage": (
-            {"state": "complete", "observed": len(rows)}
-            if rows
+            {"state": "complete", "observed": count}
+            if count
             else {"state": "unavailable", "reason": "content evidence was not stored in this scan"}
         ),
     }
@@ -293,6 +332,7 @@ def derive_duplicates(
     min_tokens: int = MIN_DUPLICATE_TOKENS,
     max_candidates: int = MAX_DUPLICATE_CANDIDATES,
     max_pairs: int = MAX_DUPLICATE_PAIRS,
+    streaming: bool = False,
 ) -> dict[str, Any]:
     """Derive reproducible duplicate witnesses from stored hashes/fingerprints only.
 
@@ -311,57 +351,72 @@ def derive_duplicates(
         or max_pairs < 1
     ):
         raise ValueError("duplicate analysis limits must be positive integers")
-    eligible, excluded, partial_reasons = [], [], []
-    for item in sorted(
-        items, key=lambda row: (row.get("page_url_id") or 0, row.get("source_document_id") or 0)
-    ):
-        page_url_id = item.get("page_url_id")
+    ordered = (
+        items.ordered_for_duplicates()
+        if hasattr(items, "ordered_for_duplicates")
+        else sorted(
+            items, key=lambda row: (row.get("page_url_id") or 0, row.get("source_document_id") or 0)
+        )
+    )
+
+    def exclusion_reason(item):
         if item.get("state") == "empty":
-            excluded.append({"page_url_id": page_url_id, "reason": "main content is empty"})
-        elif item.get("state") != "complete":
-            excluded.append({"page_url_id": item.get("page_url_id"), "reason": item.get("reason")})
-        elif type(item.get("content_tokens")) is not int:
-            excluded.append({"page_url_id": page_url_id, "reason": "content length is unavailable"})
-        elif item["content_tokens"] < min_tokens:
-            excluded.append({"page_url_id": page_url_id, "reason": "main content is too short"})
-        elif not include_nonindexable and item.get("indexable") is not True:
-            reason = (
+            return "main content is empty"
+        if item.get("state") != "complete":
+            return item.get("reason") or "content evidence is unavailable"
+        if type(item.get("content_tokens")) is not int:
+            return "content length is unavailable"
+        if item["content_tokens"] < min_tokens:
+            return "main content is too short"
+        if not include_nonindexable and item.get("indexable") is not True:
+            return (
                 "non-indexable" if item.get("indexable") is False else "indexability is unmeasured"
             )
-            excluded.append({"page_url_id": page_url_id, "reason": reason})
-        else:
-            canonical = item.get("canonical_target")
+        canonical = item.get("canonical_target")
+        if canonical:
             source_url = (
                 item.get("page_url")
                 if isinstance(item.get("page_url"), str)
-                else (page_urls or {}).get(page_url_id)
+                else (page_urls if page_urls is not None else {}).get(item.get("page_url_id"))
             )
-            if canonical:
-                source_identity, canonical_identity = (
-                    _url_identity(source_url),
-                    _url_identity(canonical),
-                )
-                if source_identity is None or canonical_identity is None:
-                    excluded.append(
-                        {
-                            "page_url_id": page_url_id,
-                            "reason": "canonical target identity is unknown",
-                        }
-                    )
-                elif source_identity != canonical_identity:
-                    excluded.append(
-                        {"page_url_id": page_url_id, "reason": "canonicalized to another target"}
-                    )
-                else:
-                    eligible.append(item)
-            else:
+            source_identity, canonical_identity = (
+                _url_identity(source_url),
+                _url_identity(canonical),
+            )
+            if source_identity is None or canonical_identity is None:
+                return "canonical target identity is unknown"
+            if source_identity != canonical_identity:
+                return "canonicalized to another target"
+        return None
+
+    def excluded_rows():
+        admitted = 0
+        for item in ordered:
+            reason = exclusion_reason(item)
+            if reason is None:
+                admitted += 1
+                if admitted > max_candidates:
+                    reason = "duplicate candidate cap reached"
+            if reason is not None:
+                yield {"page_url_id": item.get("page_url_id"), "reason": reason}
+
+    eligible, excluded, partial_reasons = [], [], []
+    excluded_count = 0
+    candidate_cap_reached = False
+    for item in ordered:
+        reason = exclusion_reason(item)
+        if reason is None:
+            if len(eligible) < max_candidates:
                 eligible.append(item)
-    if len(eligible) > max_candidates:
-        for item in eligible[max_candidates:]:
-            excluded.append(
-                {"page_url_id": item["page_url_id"], "reason": "duplicate candidate cap reached"}
-            )
-        eligible = eligible[:max_candidates]
+                continue
+            candidate_cap_reached = True
+            reason = "duplicate candidate cap reached"
+        excluded_count += 1
+        if not streaming:
+            excluded.append({"page_url_id": item.get("page_url_id"), "reason": reason})
+    if streaming:
+        excluded = DerivedRows(excluded_rows, excluded_count)
+    if candidate_cap_reached:
         partial_reasons.append(
             "candidate cap reached before all eligible content could be compared"
         )

@@ -1,0 +1,30 @@
+{
+  "schema": "seohead.js-bridge-benchmark-profile.v1",
+  "scope": "Owned synthetic HTML and actual JavaScript corpora; not general huge-site JS readiness",
+  "page_counts": [32, 80, 160],
+  "link_densities": [8, 64],
+  "forms_per_page": 128,
+  "rendered_dom_bytes": 16384,
+  "repetitions": 3,
+  "temperature": ["application_cold", "warmed_worker_repeat"],
+  "sample_interval_seconds": 0.1,
+  "budgets": {
+    "collection_wall_seconds": 120,
+    "render_wall_seconds": 600,
+    "audit_wall_seconds": 180,
+    "reanalysis_wall_seconds": 180,
+    "query_report_wall_seconds": 120,
+    "case_total_wall_seconds": 1200,
+    "cpu_seconds": 2400,
+    "python_rss_mib": 1024,
+    "process_tree_rss_mib": 2048,
+    "case_disk_mib": 8192,
+    "total_outputs_mib": 16384,
+    "minimum_free_disk_mib": 32768,
+    "growth_small_to_large_python_mib": 256,
+    "growth_small_to_large_process_tree_mib": 512
+  },
+  "recovery": "Graceful cancellation after 80 committed rendered documents at 160 pages; preserve finite 600-second internal elapsed budget and the cumulative external phase watchdog",
+  "page_cap_axis": "10001 real raw pages with 16 actually rendered pages, 9985 remain static; separate explicit execution",
+  "temperature_boundary": "Native capture requires HTTP cache off and fresh browser contexts. Cold means fresh worker without priming; warm means immediate repeat in the same worker, not a warm browser cache. OS caches are never flushed."
+}

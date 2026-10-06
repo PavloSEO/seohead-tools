@@ -406,21 +406,49 @@ def check_trust_pages(ctx: AuditContext) -> None:
     inlinks = _inlinks(ctx)
     trust_pages: dict[str, Any] = {}
     for check_id, cfg in _TRUST_PAGES.items():
-        candidates: dict[str, dict[str, Any]] = {}
+        # Candidate group order chooses the first representative, including a
+        # later indexable spelling of an earlier normalized URL. Keep that
+        # scalar order, but never retain the groups' full Page objects.
+        candidate_order: dict[str, int] = {}
+        first = first_indexable = None
+        indexable_order = None
+        has_2xx = False
+        evidence_kinds: set[str] = set()
+        matched: set[str] = set()
+
+        def remember(
+            key,
+            page,
+            evidence_kind,
+            matched_values,
+            *,
+            orders=candidate_order,
+            kinds=evidence_kinds,
+            matches=matched,
+        ):
+            nonlocal first, first_indexable, indexable_order, has_2xx
+            order = orders.setdefault(key, len(orders))
+            summary = (page.url, page.status_code, page.indexability)
+            if first is None:
+                first = summary
+            has_2xx = has_2xx or page.is_2xx
+            if (
+                page.is_2xx
+                and page.is_indexable
+                and (indexable_order is None or order < indexable_order)
+            ):
+                first_indexable, indexable_order = summary, order
+            kinds.add(evidence_kind)
+            matches.update(matched_values)
+
         for page in ctx.pages:
-            matched_paths = sorted(_path_segments(page.url) & cfg["paths"])
+            matched_paths = _path_segments(page.url) & cfg["paths"]
             if matched_paths:
-                entry = candidates.setdefault(
-                    norm_url(page.url), {"pages": [], "evidence": set(), "matched": set()}
-                )
-                entry["pages"].append(page)
-                entry["evidence"].add("url_path")
-                entry["matched"].update(matched_paths)
-        discovered_only: dict[str, set[str]] = {}
+                remember(norm_url(page.url), page, "url_path", matched_paths)
+        discovered_only: set[str] = set()
         if inlinks:
             for rec in inlinks:
-                anchor = rec.get("anchor") or ""
-                anchor = " ".join(anchor.split()).lower()
+                anchor = " ".join((rec.get("anchor") or "").split()).lower()
                 destination = rec.get("destination_url")
                 if not anchor or anchor not in cfg["anchors"] or not destination:
                     continue
@@ -428,57 +456,56 @@ def check_trust_pages(ctx: AuditContext) -> None:
                 if host.lower() != site_host:
                     continue
                 key = norm_url(destination)
-                if key in ctx.page_by_norm:
-                    entry = candidates.setdefault(
-                        key, {"pages": [], "evidence": set(), "matched": set()}
-                    )
-                    entry["pages"].append(ctx.page_by_norm[key])
-                    entry["evidence"].add("anchor")
-                    entry["matched"].add(anchor)
+                page = ctx.page_by_norm.get(key)
+                if page is not None:
+                    remember(key, page, "anchor", (anchor,))
                 else:
-                    discovered_only.setdefault(destination, set()).add(anchor)
+                    # Preserve exactly the existing lexicographically first
+                    # five URL examples, without retaining all other targets.
+                    discovered_only.add(destination)
+                    if len(discovered_only) > _MAX_DISCOVERED_URLS:
+                        discovered_only.remove(max(discovered_only))
         state = "not_discovered"
-        representative: Page | None = None
-        if candidates:
-            flat = [page for entry in candidates.values() for page in entry["pages"]]
-            indexable = [p for p in flat if p.is_2xx and p.is_indexable]
-            representative = (indexable or flat)[0]
-            if indexable:
+        representative = first_indexable or first
+        if first is not None:
+            if first_indexable is not None:
                 state = "found_indexable"
-            elif any(p.is_2xx for p in flat):
+            elif has_2xx:
                 state = "found_non_indexable"
             else:
                 state = "found_error"
         elif discovered_only:
             state = "discovered_not_crawled"
-            representative = None
-        evidence_kinds = sorted(
-            {kind for entry in candidates.values() for kind in entry["evidence"]}
+        representative_url, representative_status, representative_indexability = representative or (
+            None,
+            None,
+            None,
         )
-        matched = sorted({m for entry in candidates.values() for m in entry["matched"]})
+        evidence_kinds = sorted(evidence_kinds)
+        matched = sorted(matched)
         trust_pages[cfg["kind"]] = {
             "state": state,
-            "url": representative.url if representative else None,
-            "status_code": representative.status_code if representative else None,
-            "indexability": representative.indexability if representative else None,
+            "url": representative_url,
+            "status_code": representative_status,
+            "indexability": representative_indexability,
             "evidence": evidence_kinds,
             "matched": matched,
-            "discovered_not_crawled": sorted(discovered_only)[:_MAX_DISCOVERED_URLS],
+            "discovered_not_crawled": sorted(discovered_only),
         }
         if state == "found_indexable":
             continue
         ctx.add(
             check_id,
-            target_url=representative.url if representative else None,
-            status_code=representative.status_code if representative else None,
+            target_url=representative_url,
+            status_code=representative_status,
             details={
                 "state": state,
                 "crawl_pages": len(ctx.pages),
                 "vocabulary": "whole path segments and anchor texts from a fixed EN/RU list",
                 "matched": matched,
                 "evidence": evidence_kinds,
-                "indexability": representative.indexability if representative else None,
-                "discovered_not_crawled": sorted(discovered_only)[:_MAX_DISCOVERED_URLS],
+                "indexability": representative_indexability,
+                "discovered_not_crawled": sorted(discovered_only),
             },
         )
     ctx.trust_evidence["trust_pages"] = trust_pages

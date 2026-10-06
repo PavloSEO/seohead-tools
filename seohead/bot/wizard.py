@@ -22,8 +22,9 @@ Two invariants the acceptance of issue #769 depends on:
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from seohead.bot.contract import (
@@ -63,6 +64,7 @@ POLICY_PRESETS: dict[str, dict[str, Any]] = {
         "limits.max_crawl_seconds": 1800,
         "speed.min_delay_seconds": 0.5,
         "rendering.mode": "js",
+        "rendering.escalation.max_render_seconds": 300,
     },
 }
 
@@ -112,6 +114,7 @@ class ScanJobSpec:
     manifest: dict[str, Any]
     fingerprint: str
     contract_version: str = CONTRACT_VERSION
+    dispatch_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 class JobSubmitter(Protocol):
@@ -153,11 +156,13 @@ class WizardSession:
         submitter: JobSubmitter,
         *,
         projects: tuple[str, ...] = (),
+        allow_new_project: bool = True,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._submitter = submitter
         self._projects = tuple(projects)
+        self._allow_new_project = allow_new_project
         self._ttl = ttl_seconds
         self._clock = clock
         self._last_activity = clock()
@@ -167,8 +172,30 @@ class WizardSession:
         self.progress: str | None = None
         self._editing = False
         self._effective: dict[str, Any] | None = None
+        self._dispatch_id: str | None = None
 
     # -- public surface -----------------------------------------------------
+
+    def restore_confirmed(self, spec: ScanJobSpec, job_id: str, state: State) -> None:
+        """Restore an already authorized retained job, never an unconfirmed draft."""
+        if state not in {State.RUNNING, State.DONE, State.CANCELLED}:
+            raise ValueError("retained jobs require a running or terminal conversation state")
+        if spec.contract_version != CONTRACT_VERSION:
+            raise ValueError("retained dispatch uses an unsupported wizard contract")
+        self.draft = {
+            "url": spec.url,
+            "project": spec.project,
+            "policy": spec.policy,
+            "report": dict(spec.report),
+        }
+        self._effective = {
+            "config": spec.config,
+            "manifest": spec.manifest,
+            "fingerprint": spec.fingerprint,
+        }
+        self._dispatch_id = spec.dispatch_id
+        self.job_id = job_id
+        self.state = state
 
     def handle(self, event: Event) -> Reply:
         """Advance the machine one step and return what to show."""
@@ -241,10 +268,11 @@ class WizardSession:
                 return None
             return "That is not a usable site address."
         if self.state == State.AWAITING_PROJECT:
-            if text.lower() == "new":
+            if text.lower() == "new" and self._allow_new_project:
                 return None
             if self._projects and text not in self._projects:
-                return "Unknown project. Pick one of the buttons or 'new'."
+                suffix = " or 'new'" if self._allow_new_project else ""
+                return f"Unknown project. Pick one of the buttons{suffix}."
             return None if text else "Pick a project."
         if self.state == State.AWAITING_POLICY:
             return (
@@ -294,6 +322,7 @@ class WizardSession:
                 self._buttons(self.state),
                 notice=f"The {self.draft['policy']} policy does not resolve: {exc}",
             )
+        self._dispatch_id = uuid.uuid4().hex
         self._effective = {
             "config": config,
             "manifest": crawl_settings.manifest(config),
@@ -335,6 +364,7 @@ class WizardSession:
             config=self._effective["config"],
             manifest=self._effective["manifest"],
             fingerprint=self._effective["fingerprint"],
+            dispatch_id=self._dispatch_id or uuid.uuid4().hex,
         )
         self.job_id = self._submitter.submit(spec)
         self.state = State.RUNNING
@@ -396,7 +426,9 @@ class WizardSession:
     def _buttons(self, state: State) -> tuple[str, ...]:
         buttons: list[str] = []
         if state == State.AWAITING_PROJECT:
-            buttons.extend(self._projects or ("new",))
+            buttons.extend(self._projects)
+            if self._allow_new_project and not self._projects:
+                buttons.append("new")
         elif state == State.AWAITING_POLICY:
             buttons.extend(POLICY_PRESETS)
         elif state == State.AWAITING_REPORT:

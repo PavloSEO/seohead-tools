@@ -427,3 +427,157 @@ def test_removed_builtin_can_be_explicitly_disabled_without_losing_history(proje
     assert row(status, item_id)["applicability"] == "pending_exclusion"
     assert item_id in status["views"]["pending_exclusion"]
     assert status["counts"]["disabled"] == 1
+
+
+def test_passive_observer_does_not_rehash_large_retained_coverage_artifact(project, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects.observer import checklist_page, observe, task_detail
+
+    edit(project, id="custom:large-report", title="Review retained large report")
+    path = project / "reports" / "large-report.txt"
+    with path.open("wb") as stream:
+        for _ in range(32):
+            stream.write(b"x" * (1024 * 1024))
+    assert path.stat().st_size == 32 * 1024 * 1024
+    saved = record(
+        project,
+        "custom:large-report",
+        status="succeeded",
+        reason="Reviewed saved report",
+        reviewer="Synthetic reviewer",
+        review="approved",
+        artifact="reports/large-report.txt",
+    )
+    assert row(saved, "custom:large-report")["complete"]
+    coverage_before = (project / "coverage.json").read_bytes()
+    monkeypatch.setattr(
+        evidence_core,
+        "_digest",
+        lambda *args, **kwargs: pytest.fail("passive observer hashed artifact bytes"),
+    )
+    snapshot = observe(str(project))
+    assert snapshot["progress"]["state_counts"]["completed"] >= 1
+    listed = checklist_page(project, query="large report")["items"][0]
+    assert listed["complete"] and listed["evidence_verification"]["state"] == "metadata_matches"
+    assert task_detail(project, item_id="custom:large-report")["item"]["complete"]
+    assert (project / "coverage.json").read_bytes() == coverage_before
+    with path.open("ab") as stream:
+        stream.write(b"changed")
+    changed = checklist_page(project, query="large report")["items"][0]
+    assert not changed["complete"] and changed["stale"]
+    assert changed["evidence_verification"]["state"] == "stale"
+    path.rename(path.with_suffix(".moved"))
+    missing = task_detail(project, item_id="custom:large-report")["item"]
+    assert not missing["complete"] and "missing" in missing["reason"]
+
+
+def test_legacy_coverage_receipt_is_unverified_only_in_passive_mode(project):
+    edit(project, id="custom:review", title="Review existing report")
+    (project / "reports" / "review.md").write_text("Synthetic reviewed evidence")
+    record(
+        project,
+        "custom:review",
+        status="succeeded",
+        reason="Reviewed saved report",
+        reviewer="Synthetic reviewer",
+        review="approved",
+        artifact="reports/review.md",
+    )
+    path = project / "coverage.json"
+    document = json.loads(path.read_text())
+    del document["items"]["custom:review"]["records"][-1]["artifact_verification"]
+    path.write_text(json.dumps(document))
+    before = path.read_bytes()
+    passive = coverage_status(project, _verify_evidence=False)
+    assert not row(passive, "custom:review")["complete"]
+    assert row(passive, "custom:review")["evidence_verification"]["state"] == "unverified"
+    assert row(coverage_status(project), "custom:review")["complete"]
+    assert path.read_bytes() == before
+
+
+def test_passive_coverage_rejects_symlink_replacement_without_reading_it(
+    project, tmp_path, monkeypatch
+):
+    from seohead.projects import evidence as evidence_core
+
+    edit(project, id="custom:review", title="Review existing report")
+    artifact = project / "reports" / "review.md"
+    artifact.write_text("Synthetic reviewed evidence")
+    record(
+        project,
+        "custom:review",
+        status="succeeded",
+        reason="Reviewed saved report",
+        reviewer="Synthetic reviewer",
+        review="approved",
+        artifact="reports/review.md",
+    )
+    artifact.rename(artifact.with_suffix(".saved"))
+    outside = tmp_path / "outside.md"
+    outside.write_text("Outside project")
+    artifact.symlink_to(outside)
+    monkeypatch.setattr(
+        evidence_core, "_digest", lambda *args, **kwargs: pytest.fail("outside artifact read")
+    )
+    result = row(coverage_status(project, _verify_evidence=False), "custom:review")
+    assert result["stale"] and not result["complete"]
+
+
+def test_explicit_coverage_still_rehashes_changed_receipt(project, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+
+    edit(project, id="custom:review", title="Review existing report")
+    artifact = project / "reports" / "review.md"
+    artifact.write_text("Synthetic reviewed evidence")
+    record(
+        project,
+        "custom:review",
+        status="succeeded",
+        reason="Reviewed saved report",
+        reviewer="Synthetic reviewer",
+        review="approved",
+        artifact="reports/review.md",
+    )
+    artifact.write_text("Different retained evidence")
+    calls = []
+    original = evidence_core._digest
+
+    def counted(path, **kwargs):
+        calls.append(path)
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(evidence_core, "_digest", counted)
+    result = row(coverage_status(project), "custom:review")
+    assert calls == [artifact]
+    assert result["stale"] and not result["complete"]
+
+
+def test_scoped_competitor_task_detail_never_rehashes_any_site_artifact(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects.observer import task_detail
+    from tests.test_project_observer_sites import _prepare_with_competitors
+
+    root = tmp_path / "owner"
+    prepared = _prepare_with_competitors(root)["preparation"]
+    child = root / prepared["competitors"][0]["directory"]
+    for site in (root, child):
+        edit(site, id="custom:review", title="Review retained report")
+        (site / "reports" / "review.md").write_text("Synthetic retained report")
+        record(
+            site,
+            "custom:review",
+            status="succeeded",
+            reason="Reviewed",
+            reviewer="Synthetic reviewer",
+            review="approved",
+            artifact="reports/review.md",
+        )
+    monkeypatch.setattr(
+        evidence_core,
+        "_digest",
+        lambda *args, **kwargs: pytest.fail("scoped detail hashed a site artifact"),
+    )
+    identifier = "site:" + prepared["competitors"][0]["project_uuid"] + "/custom:review"
+    detail = task_detail(root, item_id=identifier)
+    assert detail["item"]["complete"]
+    assert detail["item"]["evidence_verification"]["state"] == "metadata_matches"

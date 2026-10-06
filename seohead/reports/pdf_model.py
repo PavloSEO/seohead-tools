@@ -680,6 +680,16 @@ def build_pdf_model(data: Any, *, project: str | None = None) -> dict[str, Any]:
         "schema": SCHEMA,
         "source": {
             "kind": kind,
+            # The audit schema is shared by native and SF collectors. Retain
+            # provenance separately rather than branding by schema name.
+            **(
+                {
+                    "collector": deepcopy(raw_run.get("collector")),
+                    "input_mode": deepcopy(raw_run.get("input_mode")),
+                }
+                if kind == "sf-audit"
+                else {}
+            ),
             "schema": source_schema,
             "domain": document.get("domain") or raw_run.get("project"),
             "url": document.get("url") or raw_run.get("source"),

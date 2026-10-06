@@ -346,3 +346,144 @@ def test_scan_stays_quiet_when_no_check_dominates(tmp_path):
     result = scan(run)
 
     assert not [a for a in result["anomalies"] if a["rule"] == "check_describes_most_of_the_site"]
+
+
+def test_native_audit_v2_streams_counts_without_materializing_legacy(tmp_path, monkeypatch):
+    from contextlib import closing
+    from pathlib import Path
+
+    from seohead.storage import open_scan
+    from seohead.storage.audit_v2 import AuditV2Reader, write_audit_v2
+    from tests.test_scan_hreflang_graph import BASE, _capture, _html, _Response
+
+    document = _capture(
+        tmp_path,
+        {
+            BASE: _Response(_html(body='<a href="/fr/">French</a>')),
+            BASE + "fr/": _Response(_html()),
+        },
+    )
+    path = tmp_path / "scan.sqlite"
+    with closing(open_scan(path)) as con:
+        scan = con.execute("SELECT * FROM scan").fetchone()
+        binding = {
+            "scan_uuid": scan["scan_uuid"],
+            "evidence_revision": scan["evidence_revision"],
+            "analyzer_version": scan["writer_version"],
+            "analyzer_revision": scan["writer_revision"],
+        }
+    header = {**document, "issues": [], "pages": [], "summary": {"by_check": {"TITLE_MISSING": 70}}}
+    write_audit_v2(
+        path,
+        header,
+        {
+            "/pages": document["pages"],
+            "/issues": (
+                {"check": "TITLE_MISSING", "target_url": f"{BASE}missing-{index // 2}"}
+                for index in range(70)
+            ),
+        },
+        binding,
+    )
+    monkeypatch.setattr(
+        AuditV2Reader,
+        "materialize_legacy",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy audit materialization")
+        ),
+    )
+    with logscan.load_run(str(path)) as artifacts:
+        index_path = Path(artifacts.pages.path)
+        assert not isinstance(artifacts.pages, list)
+        assert not isinstance(artifacts.audit["issues"], list)
+        result = logscan.scan(artifacts, max_per_rule=3)
+        assert result["read"]["pages"] == 2
+        assert result["read"]["audit"] is True
+        assert result["by_rule"]["findings_are_about_crawled_urls"] == 35
+        examples = [
+            item
+            for item in result["anomalies"]
+            if item["rule"] == "findings_are_about_crawled_urls"
+        ]
+        assert len(examples) == 3
+        assert "#pages" in examples[0]["sources"]["expected"]
+        assert "decisions.jsonl" in result["limitations"][0]
+        # Re-reading the source does not retain the previous rule's dedup set.
+        assert (
+            logscan.scan(artifacts, max_per_rule=0)["by_rule"]["findings_are_about_crawled_urls"]
+            == 35
+        )
+    assert not index_path.exists()
+    assert handlers.log_scan(run=str(tmp_path), max_per_rule=1)["read"]["pages"] == 2
+
+
+def test_site_lastmod_origin_is_not_a_missing_page_but_other_targets_still_are(tmp_path):
+    origin = "https://example.test"
+    measured = {"all_identical": True, "oldest": "2026-10-04"}
+    valid = {
+        "check": "SITEMAP_STALE_LASTMOD",
+        "source": "sitemap",
+        "target_url": origin,
+        "details": measured,
+    }
+    issues = [
+        valid,
+        {**valid, "target_url": origin + "/uncrawled"},
+        {**valid, "target_url": "https://other.test"},
+        {**valid, "source": "SF-derived"},
+        {**valid, "details": {"all_identical": False}},
+        {"check": "TITLE_MISSING", "target_url": origin},
+    ]
+    audit = {
+        "run": {"source": origin + "/p/0"},
+        "summary": {"sitemap": {"lastmod": measured}},
+        "issues": issues,
+    }
+    run = _write_run(tmp_path, [_page(origin + "/p/0")], audit)
+    findings = logscan.scan(logscan.load_run(run))
+    # Two invalid lastmod variants name the same target/check and deduplicate.
+    assert findings["by_rule"]["findings_are_about_crawled_urls"] == 4
+    valid_only = {**audit, "issues": [valid]}
+    _write_run(tmp_path, [_page(origin + "/p/0")], valid_only)
+    assert logscan.scan(logscan.load_run(run))["anomaly_count"] == 0
+    # Export input paths carry no origin; a measured page must establish it.
+    valid_only["run"]["source"] = str(tmp_path)
+    _write_run(tmp_path, [_page(origin + "/p/0")], valid_only)
+    assert logscan.scan(logscan.load_run(run))["anomaly_count"] == 0
+
+
+def test_native_v2_site_lastmod_exemption_preserves_a_real_missing_page_finding(tmp_path):
+    from contextlib import closing
+
+    from seohead.storage import open_scan, read_audit
+    from seohead.storage.audit_v2 import write_audit_v2
+    from tests.test_scan_reanalysis_integration import _source
+
+    path = tmp_path / "native.sqlite"
+    origin = "https://example.test"
+    _source(path, start_url=origin + "/p/0")
+    document = read_audit(path)
+    measured = {"all_identical": True, "oldest": "2026-10-04"}
+    document["summary"] = {"sitemap": {"lastmod": measured}}
+    document["issues"] = []
+    issues = [
+        {
+            "check": "SITEMAP_STALE_LASTMOD",
+            "source": "sitemap",
+            "target_url": origin,
+            "details": measured,
+        },
+        {"check": "TITLE_MISSING", "target_url": origin + "/never-captured"},
+    ]
+    with closing(open_scan(path)) as con:
+        scan = con.execute("SELECT * FROM scan").fetchone()
+        binding = {
+            "scan_uuid": scan["scan_uuid"],
+            "evidence_revision": scan["evidence_revision"],
+            "analyzer_version": scan["writer_version"],
+            "analyzer_revision": scan["writer_revision"],
+        }
+    write_audit_v2(path, document, {"/issues": issues}, binding)
+    result = handlers.log_scan(run=str(path))
+    assert result["anomaly_count"] == 1
+    assert result["anomalies"][0]["target"] == origin + "/never-captured"

@@ -61,7 +61,7 @@ _REGISTRY: dict[str, dict[str, Any]] = {
     "ga4": {
         "credential_components": ["oauth_bearer"],
         "access": "read_only",
-        "operations": ["landing_pages"],
+        "operations": ["landing_pages", "page_views"],
         "quota_mode": "GA4 Data API quota",
         "privacy_class": "restricted",
     },
@@ -157,7 +157,7 @@ _COLLECTABLE_OPERATIONS: dict[str, frozenset[str]] = {
     "gsc": frozenset({"verify", "properties", "search_analytics", "inspection", "sitemaps"}),
     "crux": frozenset({"current", "history"}),
     "pagespeed": frozenset({"mobile_samples", "desktop_samples"}),
-    "ga4": frozenset({"landing_pages"}),
+    "ga4": frozenset({"landing_pages", "page_views"}),
     "metrika": frozenset({"counters", "aggregate_report"}),
     "yandex_webmaster": frozenset(_WEBMASTER_OPERATIONS),
     "bing_webmaster": frozenset({"sites", "crawl", "links", "keywords", "search_performance"}),
@@ -464,14 +464,21 @@ def _evidence(
             "truncated": bool(result.get("truncated")),
         },
         "row_counts": {"returned": result.get("returned", len(rows))},
-        "sampling": result.get("sampling_or_thresholding") or result.get("sampling") or "unknown",
-        "privacy_thresholds": result.get("privacy_thresholds") or "unknown",
+        "sampling": result.get(
+            "sampled", result.get("sampling_or_thresholding", result.get("sampling", "unknown"))
+        ),
+        "privacy_thresholds": result.get(
+            "thresholded", result.get("privacy_thresholds", "unknown")
+        ),
+        "timezone": result.get("timezone"),
+        "attribution": result.get("attribution"),
         "quota_state": result.get("quota_mode") or _REGISTRY[provider]["quota_mode"],
         "status": state,
         "complete": state == "complete",
         "artifact_reference": artifact,
         "redaction": "target identifiers, filter values, and raw provider rows are restricted local artifacts by default",
         "error": result.get("error"),
+        "failure_kind": result.get("failure_kind"),
     }
 
 
@@ -691,7 +698,12 @@ def provider_collect(
     elif provider == "ga4":
         from seohead.data_sources import ga4
 
-        result = ga4.landing_pages(transport=transport, **request)
+        if operation == "page_views":
+            from seohead.data_sources.ga4_content import page_views
+
+            result = page_views(transport=transport, **request)
+        else:
+            result = ga4.landing_pages(transport=transport, **request)
     elif provider == "yandex_webmaster":
         from seohead.data_sources import yandex_webmaster
 

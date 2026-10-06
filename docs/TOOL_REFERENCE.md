@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**149 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 154 in total.
+**157 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 162 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -180,7 +180,7 @@ Takes no arguments.
 
 MCP name: `seo_log_scan`
 
-Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit and not a threshold — only contradictions, each naming both values and where each came from, so a surprising number can be traced instead of trusted. ``run`` is a directory holding audit.json and/or pages.jsonl; ``images_dir`` is an images-download directory whose manifest lets a recorded size be checked against the bytes on disk.
+Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit and not a threshold — only contradictions, each naming both values and where each came from, so a surprising number can be traced instead of trusted. ``run`` is a native scan path, or a directory holding scan.sqlite, audit.json or pages.jsonl. Native scans without retained decision logs report those events as unavailable; none are invented. ``images_dir`` is an images-download directory whose manifest lets a recorded size be checked against the bytes on disk.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -223,14 +223,21 @@ Create one new redacted crawl-diagnostic JSON file from retained evidence. This 
 
 MCP name: `seo_sitemap_crawl`
 
-Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree, with duplicate detection.
+Recursively parse a sitemap (index/urlset, gzip supported) into a URL tree.
 
 | Argument | Type | Default |
 |---|---|---|
 | `url` | `str` | `required` |
 | `concurrency` | `int` | `3` |
+| `project` | `str | None` | `None` |
 
-**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Fetches sitemap evidence. An explicit local project records an observation
+for the same origin; otherwise no project files are written. Declared URLs
+are not fetched HTML pages. Counters count parsed sitemap documents only.
 
 ### `images-download`
 
@@ -711,8 +718,17 @@ Turn an audit document into a file: xlsx, docx, csv, md, json or pdf. Pass the d
 | `view` | `str | None` | `None` |
 | `offset` | `int` | `0` |
 | `lang` | `str` | `'en'` |
+| `pdf_policy` | `Literal['overview-v1'] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+For retained audit.v2 only, explicit pdf_policy='overview-v1' writes a bounded
+PDF overview with mandatory complete JSON/CSV companions and a hashed manifest.
+Exact source, displayed and omitted counts remain visible. No policy is chosen
+automatically; streamed PDF without this policy is refused. Other formats and
+materialized inputs reject the policy. PDF and companion directory must be new.
 
 ### `facts-export`
 
@@ -738,8 +754,21 @@ Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four dis
 | `after` | `Any` | `required` |
 | `force` | `bool` | `False` |
 | `correspondence` | `Any` | `None` |
+| `out_dir` | `str | None` | `None` |
+| `compression` | `Literal['none', 'gzip']` | `'none'` |
 
-**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With out_dir, writes a new compare.v2 package with partition manifests,
+exact finding rows, checksums and before/after count conservation. Without
+it, returns the small compare.v1 document; retained audit.v2 populations
+above 10,000 pages or issues require explicit out_dir. Never overwrites
+a package and never collects evidence or calls the network. Explicit
+compression='gzip' requires out_dir and preserves every row in deterministic
+.ndjson.gz files; manifests record compressed checksums and both byte counts.
+Default compression='none' keeps uncompressed output.
 
 ### `verify-fixes`
 
@@ -1355,7 +1384,7 @@ explicitly task completion, not a site-health or remediation percentage.
 
 MCP name: `seo_project_observe`
 
-Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary.
+Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary. Workflow/checklist receipt observations are metadata-only, not fresh byte verification. Missing historical receipts remain unverified. Explicit project-status and workflow-status retain byte verification by default.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -1624,6 +1653,46 @@ Claim or recover a local run; no timer, crawl, or delivery starts here.
 | `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-collect`
+
+MCP name: `seo_monitor_collect`
+
+Preview or explicitly collect one previously claimed bounded monitor plan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `apply` | `bool` | `False` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+The default preview makes no HTTP request. apply=true collects only the
+validated claim, retains body/validation provenance within its bounds and
+records failed, partial or complete outcomes. Expired or interrupted claims
+require an explicit new start. No timer, background service or delivery starts.
+
+### `monitor-local-deliver`
+
+MCP name: `seo_monitor_local_deliver`
+
+Record a deduplicated local receipt for one retained monitoring run.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `scan_id` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+The destination is fixed to local:receipt. It uses no network or external
+transport and does not claim that any recipient outside the project received it.
 
 ### `monitor-status`
 
@@ -2209,6 +2278,127 @@ compatible/incompatible/unknown decision across period, timezone,
 identity, attribution, engine and grain; source metrics such as GSC
 clicks and GA4 sessions stay distinct and are never summed. Restricted
 inputs return counts only.
+
+### `bi-filter`
+
+MCP name: `seo_bi_filter`
+
+Filter a verified local BI package into a new typed package and optional XLSX.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `dataset` | `str` | `required` |
+| `out_dir` | `str` | `required` |
+| `where` | `dict[str, list[str]] | None` | `None` |
+| `columns` | `list[str] | None` | `None` |
+| `max_rows_per_file` | `int` | `250000` |
+| `max_bytes_per_file` | `int` | `8388608` |
+| `max_output_bytes` | `int` | `4294967296` |
+| `xlsx_out` | `str | None` | `None` |
+| `xlsx_max_rows_per_sheet` | `int` | `1048575` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Exact equality filters over declared fields only; source and selected row counts
+and coverage are preserved. Creates new local outputs without network calls.
+
+### `scan-navigation`
+
+MCP name: `seo_scan_navigation`
+
+Read bounded observed navigation evidence from a retained local scan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `document_id` | `int | None` | `None` |
+| `limit` | `int` | `100` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-activity`
+
+MCP name: `seo_project_activity`
+
+Read lightweight current activity for a local project and its sites.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-checklist-page`
+
+MCP name: `seo_project_checklist_page`
+
+Read a bounded searchable page of project checklist evidence.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `50` |
+| `query` | `str` | `''` |
+| `kind` | `str | None` | `None` |
+| `state` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence with metadata-only receipt status; this is not
+fresh byte verification. Missing historical receipts remain unverified.
+Does not collect, fetch or modify evidence.
+
+### `project-task-detail`
+
+MCP name: `seo_project_task_detail`
+
+Read one project task definition, evidence and bounded history.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `item_id` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence with metadata-only receipt status; this is not
+fresh byte verification. Missing historical receipts remain unverified.
+Does not collect, fetch or modify evidence.
+
+### `project-scans`
+
+MCP name: `seo_project_scans`
+
+Read a bounded page of retained project scans with evidence metadata.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `20` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
 
 ### `bi-export`
 

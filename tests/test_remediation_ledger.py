@@ -625,6 +625,9 @@ def test_remediation_report_writes_deterministic_review_files_without_mutating_l
 
 
 def test_retained_verification_artifact_records_pending_case_outcome_atomically(tmp_path):
+    from seohead.servers.handlers import _load_audit
+    from seohead.verification import source_identity
+
     ledger = _ledger(tmp_path)
     scan = _scan(
         tmp_path / "scan.sqlite",
@@ -632,6 +635,9 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
     )
     ingest_scan(ledger, scan)
     occurrence = _occurrences(read_cases(ledger))[0]
+    baseline = _load_audit(str(scan), "baseline")
+    identity = source_identity(baseline)
+    assert identity["audit_sha256"] != occurrence["observations"][0]["source_scan"]["audit_sha256"]
     revision = ledger_summary(ledger)["ledger_revision"]
     for state in ("verified", "fix_reported", "recheck_pending"):
         transition_occurrence(
@@ -649,8 +655,9 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
             {
                 "schema_version": "verification.v1",
                 "baseline": {
-                    "audit_sha256": occurrence["observations"][0]["source_scan"]["audit_sha256"],
-                    "scan_uuid": occurrence["observations"][0]["source_scan"]["scan_uuid"],
+                    "audit_sha256": identity["audit_sha256"],
+                    "scan_uuid": identity["scan_uuid"],
+                    "results_policy_fingerprint": identity["results_policy_fingerprint"],
                 },
                 "selection": {"finding_ids": ["ISSUE-000001"], "urls": [A]},
                 "collection": {"state": "measured", "audits": [{"sha256": "b" * 64}]},
@@ -681,10 +688,7 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
     assert stored["decisions"][-1]["observation_id"] is None
     assert binding["measured"] is True
     assert binding["artifact_sha256"] == recorded["verification_sha256"]
-    assert (
-        binding["baseline_audit_sha256"]
-        == occurrence["observations"][0]["source_scan"]["audit_sha256"]
-    )
+    assert binding["baseline_audit_sha256"] == identity["audit_sha256"]
     assert binding["scope_sha256"]
     report = remediation_report(ledger)
     assert report == remediation_report(ledger)
@@ -692,6 +696,73 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
         report["cases"][0]["decision"]["verification"]["artifact_sha256"]
         == recorded["verification_sha256"]
     )
+
+
+def test_verification_refuses_same_uuid_when_audit_or_policy_differs(tmp_path):
+    """Scan UUID is provenance, never authority to close an older ledger case."""
+    from seohead.servers.handlers import _load_audit
+    from seohead.verification import source_identity
+
+    ledger = _ledger(tmp_path)
+    scan = _scan(
+        tmp_path / "scan.sqlite",
+        issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)],
+    )
+    ingest_scan(ledger, scan)
+    occurrence = _occurrences(read_cases(ledger))[0]
+    identity = source_identity(_load_audit(str(scan), "baseline"))
+    revision = ledger_summary(ledger)["ledger_revision"]
+    for state in ("verified", "fix_reported", "recheck_pending"):
+        transition_occurrence(
+            ledger,
+            occurrence_key=occurrence["occurrence_key"],
+            state=state,
+            actor="reviewer",
+            reason=f"move to {state}",
+            expected_revision=revision,
+        )
+        revision += 1
+
+    def artifact(path, *, audit_sha256, policy):
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "verification.v1",
+                    "baseline": {
+                        "audit_sha256": audit_sha256,
+                        "scan_uuid": identity["scan_uuid"],
+                        "results_policy_fingerprint": policy,
+                    },
+                    "selection": {"finding_ids": ["ISSUE-000001"], "urls": [A]},
+                    "collection": {"state": "measured", "audits": [{"sha256": "b" * 64}]},
+                    "findings": [
+                        {
+                            "finding_id": "ISSUE-000001",
+                            "check": "CHECK_ONE",
+                            "url": A,
+                            "status": "resolved",
+                            "reason": "measured clean verdict",
+                            "before": {"id": "ISSUE-000001", "check": "CHECK_ONE", "target_url": A},
+                            "before_page": {"url": A, "status_code": 200},
+                            "after": None,
+                            "after_page": {"url": A, "status_code": 200},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    changed_audit = tmp_path / "changed-audit.json"
+    artifact(changed_audit, audit_sha256="f" * 64, policy=identity["results_policy_fingerprint"])
+    with pytest.raises(LedgerError, match="does not bind"):
+        record_verification(ledger, changed_audit, actor="reviewer", expected_revision=revision)
+
+    changed_policy = tmp_path / "changed-policy.json"
+    artifact(changed_policy, audit_sha256=identity["audit_sha256"], policy="0" * 16)
+    with pytest.raises(LedgerError, match="does not bind"):
+        record_verification(ledger, changed_policy, actor="reviewer", expected_revision=revision)
+    assert _occurrences(read_cases(ledger))[0]["current_state"] == "recheck_pending"
 
 
 def test_ordinal_reorder_and_group_change_preserve_identity_and_membership(tmp_path):
@@ -972,7 +1043,7 @@ def test_scan_without_audit_is_refused(tmp_path):
 def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
     ledger = _ledger(tmp_path)
     con = sqlite3.connect(ledger)
-    con.execute("PRAGMA user_version=4")
+    con.execute("PRAGMA user_version=5")
     con.commit()
     con.close()
     digest = _file_sha(ledger)
@@ -980,6 +1051,20 @@ def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
         with pytest.raises(LedgerError, match="user_version"):
             open_ledger(ledger, write=write)
         assert _file_sha(ledger) == digest
+
+
+def test_canonical_audit_digest_rejects_nonhex_after_valid_prefix(tmp_path):
+    ledger = _ledger(tmp_path)
+    ingest_scan(
+        ledger,
+        _scan(tmp_path / "scan.sqlite", issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)]),
+    )
+    con = sqlite3.connect(ledger)
+    con.execute("UPDATE source_scan SET canonical_audit_sha256=?", ("aa" + "Z" * 62,))
+    con.commit()
+    con.close()
+    with pytest.raises(LedgerError, match="canonical audit digest"):
+        open_ledger(ledger)
 
 
 def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_path):
@@ -1001,7 +1086,7 @@ def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_p
     assert _file_sha(path) == original
     upgraded = open_ledger(path, write=True)
     try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 4
         assert upgraded.execute("SELECT format_version FROM ledger").fetchone()[0] == "ledger.v1"
         assert upgraded.execute("SELECT COUNT(*) FROM verification_artifact").fetchone()[0] == 0
     finally:

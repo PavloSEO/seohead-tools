@@ -554,6 +554,14 @@ class NativeScan:
         self.failpoint: Callable[[str], None] | None = None
         self._event_sink = None
         self._sparse_summary: tuple[dict[str, Any], dict[str, str]] | None = None
+        self._stable_corpus_summary: tuple[dict[str, Any], dict[str, str] | None] | None = None
+        # Only this locked writer may add pages.  Seed the next ordinal lazily
+        # from the durable database and advance it only after a successful
+        # transaction commit; this avoids an O(n) COUNT/MAX query for every
+        # page without weakening retry or rollback semantics.
+        self._page_ordinal_next: int | None = None
+        self._page_columns = {column[1]: column for column in _expected()[1]["pages"]}
+        self._v2_pages = self.con.execute("PRAGMA user_version").fetchone()[0] == 2
         if self.con.execute("PRAGMA user_version").fetchone()[0] == 2:
             from seohead.crawl.events import MAX_EVENTS, EventSink
             from seohead.storage.events import append, ensure_schema
@@ -890,7 +898,7 @@ class NativeScan:
             if expected_config is not None:
                 from . import open_scan
 
-                with open_scan(path, require_audit=False) as reader:
+                with contextlib.closing(open_scan(path, require_audit=False)) as reader:
                     row = reader.execute(
                         "SELECT payload_json FROM context_items WHERE kind='credential_context' AND item_key='run'"
                     ).fetchone()
@@ -998,6 +1006,61 @@ class NativeScan:
         finally:
             if con is not None:
                 con.close()
+
+    @classmethod
+    def observe(cls, path: str | Path, *, timeout_seconds: float = 0.2) -> dict[str, Any]:
+        """Read bounded progress metadata, explicitly without validating evidence.
+
+        Callers use durable progress receipts for frequent ticks. This read-only
+        fallback is for missing receipts; it must never imply audit acceptance.
+        """
+        from .history import _regular
+
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 5:
+            raise ValueError("observation timeout must be positive and at most 5 seconds")
+        source = Path(path).absolute()
+        before = _regular(source)
+        con = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=timeout_seconds)
+        try:
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA trusted_schema=OFF")
+            con.execute("PRAGMA query_only=ON")
+            con.execute("PRAGMA cache_size=-2048")
+            deadline = time.monotonic() + timeout_seconds
+            con.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+            con.execute("BEGIN")
+            version = con.execute("PRAGMA user_version").fetchone()[0]
+            if con.execute("PRAGMA application_id").fetchone()[
+                0
+            ] != APPLICATION_ID or version not in {USER_VERSION, 2}:
+                raise ScanError("unsupported progress artifact identity")
+            columns = "scan_uuid,format_version,lifecycle,finish_reason,evidence_revision,crawl_partial,corpus_partial,start_url"
+            size = con.execute(
+                "SELECT "
+                + "+".join(
+                    f"COALESCE(length(CAST({name} AS BLOB)),0)" for name in columns.split(",")
+                )
+                + " FROM scan WHERE singleton=1"
+            ).fetchone()
+            if size is None or size[0] > MAX_RECORD_BYTES:
+                raise ScanError("progress header is missing or oversized")
+            header = dict(
+                con.execute("SELECT " + columns + " FROM scan WHERE singleton=1").fetchone()
+            )
+            if header["format_version"] != f"scan.v{version}":
+                raise ScanError("progress format header disagrees")
+            counts = {"pages": con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]}
+            counts.update(dict(con.execute("SELECT state,COUNT(*) FROM frontier GROUP BY state")))
+            for state in ("queued", "inflight", "done", "excluded"):
+                counts.setdefault(state, 0)
+            after = _regular(source)
+            if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+                raise ScanError("progress artifact identity changed")
+            return {"scan": header, "counts": counts, "validation": "metadata_only"}
+        except sqlite3.Error as exc:
+            raise ScanError(f"progress metadata unavailable within bounded read: {exc}") from exc
+        finally:
+            con.close()
 
     @staticmethod
     def _connect_writer(path: Path) -> sqlite3.Connection:
@@ -1498,6 +1561,40 @@ class NativeScan:
         if self.con.in_transaction:
             self.con.rollback()
 
+    def _ensure_resume_counts(self) -> None:
+        """Keep single-writer counts in SQLite's transaction/rollback domain.
+
+        TEMP triggers do not change the durable scan schema. Reopening rebuilds
+        counts from retained rows once; every later snapshot is constant-size.
+        """
+        if self.con.execute(
+            "SELECT 1 FROM sqlite_temp_master WHERE name='native_resume_counts'"
+        ).fetchone():
+            return
+        self.con.execute(
+            "CREATE TEMP TABLE native_resume_counts(name TEXT PRIMARY KEY,value INTEGER NOT NULL)"
+        )
+        self.con.execute("INSERT INTO native_resume_counts SELECT 'pages',COUNT(*) FROM pages")
+        for state in ("queued", "inflight", "done", "excluded"):
+            self.con.execute(
+                "INSERT INTO native_resume_counts SELECT ?,COUNT(*) FROM frontier WHERE state=?",
+                (state, state),
+            )
+        for table, name in (("pages", "'pages'"), ("frontier", "NEW.state")):
+            self.con.execute(
+                f"CREATE TEMP TRIGGER native_count_{table}_insert AFTER INSERT ON main.{table} "
+                f"BEGIN UPDATE native_resume_counts SET value=value+1 WHERE name={name}; END"
+            )
+            self.con.execute(
+                f"CREATE TEMP TRIGGER native_count_{table}_delete AFTER DELETE ON main.{table} "
+                f"BEGIN UPDATE native_resume_counts SET value=value-1 WHERE name={name.replace('NEW.', 'OLD.')}; END"
+            )
+        self.con.execute(
+            "CREATE TEMP TRIGGER native_count_frontier_update AFTER UPDATE OF state ON main.frontier "
+            "BEGIN UPDATE native_resume_counts SET value=value-1 WHERE name=OLD.state; "
+            "UPDATE native_resume_counts SET value=value+1 WHERE name=NEW.state; END"
+        )
+
     def resume_snapshot(self, *, include_edges: bool = False) -> dict[str, Any]:
         """Read only scalar resume state; complete edge counts are opt-in."""
         scan = dict(self.con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
@@ -1508,15 +1605,8 @@ class NativeScan:
         runtime["throttle"] = throttle
         runtime.pop("singleton")
         runtime.pop("state_version")
-        counts = {"pages": self.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]}
-        counts.update(
-            {
-                row[0]: row[1]
-                for row in self.con.execute("SELECT state,COUNT(*) FROM frontier GROUP BY state")
-            }
-        )
-        for state in ("queued", "inflight", "done", "excluded"):
-            counts.setdefault(state, 0)
+        self._ensure_resume_counts()
+        counts = dict(self.con.execute("SELECT name,value FROM temp.native_resume_counts"))
         if include_edges:
             for table in ("links", "forms", "decisions"):
                 counts[table] = self.con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -1596,7 +1686,12 @@ class NativeScan:
             self._rollback()
             raise
 
-    def _sync_corpus(self) -> None:
+    def _sync_corpus(
+        self,
+        *,
+        committed_document_id: int | None = None,
+        resource_inventory_state: str | None = None,
+    ) -> None:
         """Update declared corpus availability in the evidence transaction."""
         from .corpus import corpus_summary
 
@@ -1615,7 +1710,24 @@ class NativeScan:
                 "OR EXISTS(SELECT 1 FROM bodies) OR EXISTS(SELECT 1 FROM resource_refs)"
             ).fetchone()[0]
         )
-        if sparse and self._sparse_summary is not None:
+        stable = self._stable_corpus_summary
+        if stable is not None and committed_document_id is not None:
+            document = self.con.execute(
+                "SELECT d.body_state,r.body_state FROM documents d "
+                "JOIN responses r ON r.response_id=d.source_response_id WHERE d.document_id=?",
+                (committed_document_id,),
+            ).fetchone()
+            if (
+                document is not None
+                and tuple(document) == ("complete", "complete")
+                and resource_inventory_state == "complete"
+            ):
+                summary, reanalysis = stable
+            else:
+                self._stable_corpus_summary = None
+                summary = corpus_summary(self.con, policy)
+                reanalysis = _reanalysis_capability(self.con) if row[2] == "native" else None
+        elif sparse and self._sparse_summary is not None:
             summary, reanalysis = self._sparse_summary
         else:
             summary = corpus_summary(self.con, policy)
@@ -1625,6 +1737,31 @@ class NativeScan:
                 # The first full calculation uses the existing contract; later
                 # commits reuse it only after checking the invariant in SQL.
                 self._sparse_summary = (summary, reanalysis)
+            # A normal static HTML page adds one complete response, document
+            # and resource inventory record atomically.  Once the complete
+            # state is reached it cannot regress on another such append, so
+            # retain its exact public summary and prove the next append's
+            # invariants with the small document lookup above instead of
+            # re-counting the entire growing corpus on every page.
+            summary_capabilities = summary["capabilities"]
+            resources = summary_capabilities.get("resource_refs")
+            resource_bodies = summary_capabilities.get("resource_bodies")
+            if (
+                not summary["corpus_partial"]
+                and summary_capabilities["responses"]["state"] == "complete"
+                and summary_capabilities["html_bodies"]["state"] == "complete"
+                and summary_capabilities["rendered_bodies"]["state"] == "unavailable"
+                and (resources is None or resources["state"] == "complete")
+                and (
+                    resource_bodies is None
+                    or (
+                        not config.get("resources", {}).get("fetch", False)
+                        and resource_bodies["state"] == "unavailable"
+                    )
+                )
+                and (reanalysis is None or reanalysis["state"] == "complete")
+            ):
+                self._stable_corpus_summary = (summary, reanalysis)
         capabilities.update(summary["capabilities"])
         if reanalysis is not None:
             capabilities["offline_reanalysis"] = reanalysis
@@ -2035,7 +2172,7 @@ class NativeScan:
             raise ScanError("page record URL differs from the claimed frontier lease")
         if record.get("crawl_depth") != lease.depth:
             raise ScanError("page record crawl depth differs from the claimed frontier lease")
-        columns = {column[1]: column for column in _expected()[1]["pages"]}
+        columns = self._page_columns
         source_names = {"url"}
         for name in columns:
             if name not in {"url_id", "page_ordinal", "document_id"}:
@@ -2056,11 +2193,14 @@ class NativeScan:
             "media_type_unavailable",
         }:
             raise ScanError("pages.body_unavailable has an unknown marker")
-        page_ordinal = self.con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
-        if self.con.execute("PRAGMA user_version").fetchone()[0] == 2:
+        if self._page_ordinal_next is None:
             page_ordinal = self.con.execute(
                 "SELECT COALESCE(MAX(page_ordinal)+1,0) FROM pages"
+                if self._v2_pages
+                else "SELECT COUNT(*) FROM pages"
             ).fetchone()[0]
+            self._page_ordinal_next = int(page_ordinal)
+        page_ordinal = self._page_ordinal_next
         row: dict[str, Any] = {
             "url_id": lease.url_id,
             "page_ordinal": page_ordinal,
@@ -2532,9 +2672,13 @@ class NativeScan:
             self.con.execute(
                 "UPDATE scan SET evidence_revision=evidence_revision+1 WHERE singleton=1"
             )
-            self._sync_corpus()
+            self._sync_corpus(
+                committed_document_id=document_id,
+                resource_inventory_state=resource_inventory_state,
+            )
             self._hit("before_commit")
             self.con.commit()
+            self._page_ordinal_next = page_row["page_ordinal"] + 1
             revision = self.con.execute(
                 "SELECT evidence_revision FROM scan WHERE singleton=1"
             ).fetchone()[0]

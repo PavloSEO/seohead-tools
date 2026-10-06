@@ -82,3 +82,16 @@ def test_a_tree_under_the_cap_is_collected_in_full(monkeypatch):
     assert result["truncated"] is False
     assert result["count"] == 8
     assert len(result["urls"]) == 8
+
+
+def test_exact_ceiling_is_complete_but_one_more_unique_url_is_partial(monkeypatch):
+    root = "https://example.com/sitemap.xml"
+    monkeypatch.setattr(S, "MAX_URLS", 5)
+    for streamed in (False, True):
+        for declared in (5, 6):
+            _install_fake_transport({root: _urlset(declared, "page")}, monkeypatch)
+            emitted = []
+            result = S.crawl(root, sink=emitted.append if streamed else None)
+            assert result["count"] == 5
+            assert result["truncated"] is (declared == 6)
+            assert len(emitted if streamed else result["urls"]) == 5

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import io
 import json
 
@@ -13,8 +14,11 @@ from seohead.projects.inbox import set_goal_state, submit
 from seohead.projects.workspace import create_project
 
 
-def _evidence(reference: str) -> list[dict[str, str]]:
-    return [{"reference": reference, "sha256": "a" * 64}]
+def _evidence(project, reference: str) -> list[dict[str, str]]:
+    path = project / reference
+    if not path.exists():
+        path.write_bytes(b'{"source":"synthetic workflow evidence"}')
+    return [{"reference": reference, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}]
 
 
 def _accepted_context(project) -> dict[str, object]:
@@ -74,7 +78,7 @@ def test_registered_steps_checkpoint_and_resume(tmp_path):
         run_id=run["run"]["id"],
         step_id=steps[0],
         state="succeeded",
-        evidence=_evidence("reports/title.json"),
+        evidence=_evidence(project, "reports/title.json"),
         expected_revision=run["revision"],
     )
     assert status(project)["next_action"] == steps[1]
@@ -83,7 +87,7 @@ def test_registered_steps_checkpoint_and_resume(tmp_path):
         run_id=run["run"]["id"],
         step_id=steps[1],
         state="succeeded",
-        evidence=_evidence("reports/description.json"),
+        evidence=_evidence(project, "reports/description.json"),
         expected_revision=first["revision"],
     )
     assert done["run"]["state"] == "completed"
@@ -108,7 +112,13 @@ def test_local_executor_records_each_registered_outcome(tmp_path):
         project,
         scenario_id="scenario:full-audit",
         steps=steps,
-        outcomes=[{"id": steps[0], "state": "succeeded", "evidence": _evidence("scan.sqlite")}],
+        outcomes=[
+            {
+                "id": steps[0],
+                "state": "succeeded",
+                "evidence": _evidence(project, "scans/scan.sqlite"),
+            }
+        ],
         context=_accepted_context(project),
     )
     assert result["run"]["state"] == "completed"
@@ -130,7 +140,7 @@ def test_second_session_resumes_only_the_interrupted_registered_step(tmp_path):
         run_id=started["run"]["id"],
         step_id=steps[0],
         state="succeeded",
-        evidence=_evidence("reports/own-site.json"),
+        evidence=_evidence(project, "reports/own-site.json"),
         phase="own-site-capture",
         expected_revision=started["revision"],
     )
@@ -171,7 +181,7 @@ def test_manual_step_needs_an_explicit_review_before_completion(tmp_path):
             run_id=started["run"]["id"],
             step_id="skill:workflow/control",
             state="succeeded",
-            evidence=_evidence("reports/review.md"),
+            evidence=_evidence(project, "reports/review.md"),
             expected_revision=started["revision"],
         )
 
@@ -204,7 +214,7 @@ def test_deliverable_step_needs_an_explicit_review_before_completion(tmp_path):
             run_id=started["run"]["id"],
             step_id="custom:deliverable",
             state="succeeded",
-            evidence=_evidence("reports/deliverable.pdf"),
+            evidence=_evidence(project, "reports/deliverable.pdf"),
             expected_revision=started["revision"],
         )
 
@@ -284,7 +294,7 @@ def test_stale_prompt_reopens_the_earliest_step_without_losing_prior_evidence(tm
         run_id=started["run"]["id"],
         step_id="check:TITLE_MISSING",
         state="succeeded",
-        evidence=_evidence("reports/title-before.json"),
+        evidence=_evidence(project, "reports/title-before.json"),
         expected_revision=started["revision"],
     )
     interrupted = checkpoint(
@@ -308,7 +318,9 @@ def test_stale_prompt_reopens_the_earliest_step_without_losing_prior_evidence(tm
     )
     assert recovered["run"]["state"] == "running"
     assert recovered["next_action"] == "check:TITLE_MISSING"
-    assert recovered["run"]["steps"][0]["stale_evidence"] == _evidence("reports/title-before.json")
+    assert recovered["run"]["steps"][0]["stale_evidence"] == _evidence(
+        project, "reports/title-before.json"
+    )
     assert recovered["run"]["steps"][1]["state"] == "pending"
 
 
@@ -373,7 +385,7 @@ def test_two_agent_cli_and_mcp_handoff_persists_goal_prompt_versions_and_evidenc
                 "run_id": agent_one["run"]["id"],
                 "step_id": steps[0],
                 "state": "succeeded",
-                "evidence": _evidence("reports/title-agent-two.json"),
+                "evidence": _evidence(project, "reports/title-agent-two.json"),
                 "phase": "own-site-capture",
                 "expected_revision": agent_one["revision"],
             },
@@ -405,7 +417,363 @@ def test_two_agent_cli_and_mcp_handoff_persists_goal_prompt_versions_and_evidenc
     )[1]
     assert resumed["next_action"] == steps[1]
     assert resumed["run"]["steps"][0]["state"] == "succeeded"
-    assert resumed["run"]["steps"][0]["evidence"] == _evidence("reports/title-agent-two.json")
+    assert resumed["run"]["steps"][0]["evidence"] == _evidence(
+        project, "reports/title-agent-two.json"
+    )
     assert resumed["run"]["context"]["goal"]["id"] == context["goal_id"]
     assert resumed["run"]["context"]["prompt"]["definition_hash"]
     assert resumed["run"]["scenario"]["definition_hash"]
+
+
+def _one_step_run(tmp_path, *, step="check:TITLE_MISSING"):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    initialize_coverage(project)
+    result = start(
+        project, scenario_id="scenario:full-audit", steps=[step], context=_accepted_context(project)
+    )
+    return project, result
+
+
+@pytest.mark.parametrize(
+    "reference", ["reports/missing.json", "../other/report.json", "/etc/passwd", "project.json"]
+)
+def test_success_refuses_missing_or_outside_evidence_without_changing_checkpoint(
+    tmp_path, reference
+):
+    project, started = _one_step_run(tmp_path)
+    before = (project / "execution.json").read_bytes()
+    with pytest.raises(ValueError, match=r"evidence|artifact"):
+        checkpoint(
+            project,
+            run_id=started["run"]["id"],
+            step_id="check:TITLE_MISSING",
+            state="succeeded",
+            evidence=[{"reference": reference, "sha256": "a" * 64}],
+            expected_revision=started["revision"],
+        )
+    assert (project / "execution.json").read_bytes() == before
+    assert status(project)["runs"][0]["state"] == "running"
+
+
+def test_success_rejects_mismatched_digest_and_symlink_target_before_read(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+
+    project, started = _one_step_run(tmp_path)
+    record = _evidence(project, "reports/measured.json")
+    record[0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="does not match"):
+        checkpoint(
+            project,
+            run_id=started["run"]["id"],
+            step_id="check:TITLE_MISSING",
+            state="succeeded",
+            evidence=record,
+            expected_revision=started["revision"],
+        )
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(b"outside")
+    (project / "reports" / "linked.json").symlink_to(outside)
+    monkeypatch.setattr(
+        evidence_core, "_digest", lambda *a, **k: pytest.fail("outside file was opened")
+    )
+    with pytest.raises(ValueError, match="symlinks"):
+        checkpoint(
+            project,
+            run_id=started["run"]["id"],
+            step_id="check:TITLE_MISSING",
+            state="succeeded",
+            evidence=[
+                {
+                    "reference": "reports/linked.json",
+                    "sha256": hashlib.sha256(b"outside").hexdigest(),
+                }
+            ],
+            expected_revision=started["revision"],
+        )
+
+
+@pytest.mark.parametrize("change", ["missing", "changed"])
+def test_completed_evidence_becomes_stale_and_resume_preserves_old_receipt(tmp_path, change):
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    completed = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    path = project / records[0]["reference"]
+    if change == "missing":
+        path.rename(path.with_suffix(".moved"))
+    else:
+        path.write_bytes(b"different measured bytes")
+    before = (project / "execution.json").read_bytes()
+    current = status(project)["runs"][0]
+    assert current["state"] == "stale" and current["recorded_state"] == "completed"
+    assert "retained evidence unavailable" in current["stale_dependencies"][0]["reason"]
+    assert (project / "execution.json").read_bytes() == before
+    recovered = resume(
+        project, run_id=started["run"]["id"], expected_revision=completed["revision"]
+    )
+    step = recovered["run"]["steps"][0]
+    assert step["state"] == "pending" and step["stale_evidence"] == records
+    assert recovered["run"]["state"] == "running"
+
+
+def test_manual_approval_does_not_authorize_phantom_artifact(tmp_path):
+    project, started = _one_step_run(tmp_path, step="skill:workflow/control")
+    with pytest.raises(ValueError, match="missing or unsafe"):
+        checkpoint(
+            project,
+            run_id=started["run"]["id"],
+            step_id="skill:workflow/control",
+            state="succeeded",
+            evidence=[{"reference": "reports/phantom.md", "sha256": "a" * 64}],
+            review={"actor": "Synthetic reviewer", "state": "approved", "reason": "Reviewed"},
+            expected_revision=started["revision"],
+        )
+
+
+@pytest.mark.parametrize("state", ["failed", "unavailable", "skipped", "interrupted"])
+def test_non_success_checkpoint_keeps_missing_evidence_semantics(tmp_path, state):
+    project, started = _one_step_run(tmp_path)
+    result = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state=state,
+        evidence=[{"reference": "reports/missing.json", "sha256": "a" * 64}],
+        expected_revision=started["revision"],
+    )
+    assert result["run"]["steps"][0]["state"] == state
+    assert result["run"]["state"] == ("interrupted" if state == "interrupted" else "blocked")
+
+
+def test_verification_budget_cannot_accept_or_reset_unverified_evidence(tmp_path, monkeypatch):
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    completed = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    before = (project / "execution.json").read_bytes()
+    from seohead.projects.runtime import project_policy
+
+    policy = project_policy(str(project))["policy"]
+    policy["evidence_hash"]["max_bytes"] = 1
+    project_policy(str(project), policy=policy, apply=True, expected_revision=0)
+    result = status(project)
+    assert result["runs"][0]["state"] == "stale"
+    assert "byte budget" in result["runs"][0]["stale_dependencies"][0]["reason"]
+    with pytest.raises(ValueError, match="verification budget"):
+        resume(project, run_id=started["run"]["id"], expected_revision=completed["revision"])
+    assert (project / "execution.json").read_bytes() == before
+
+
+def test_artifact_mutating_during_hash_cannot_complete(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    original = evidence_core._digest
+
+    def mutate(path, **kwargs):
+        digest = original(path, **kwargs)
+        path.write_bytes(b"replaced during read")
+        return digest
+
+    monkeypatch.setattr(evidence_core, "_digest", mutate)
+    with pytest.raises(ValueError, match="changed while hashing"):
+        checkpoint(
+            project,
+            run_id=started["run"]["id"],
+            step_id="check:TITLE_MISSING",
+            state="succeeded",
+            evidence=records,
+            expected_revision=started["revision"],
+        )
+    assert status(project)["runs"][0]["state"] == "running"
+
+
+def test_streamed_evidence_hash_deadline_and_reuse_are_explicit(tmp_path, monkeypatch):
+    import time
+
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects import execution
+
+    project, _started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    path = project / records[0]["reference"]
+    with pytest.raises(ValueError, match="time budget"):
+        evidence_core._digest(path, deadline=time.monotonic() - 1)
+    calls = []
+    original = evidence_core._digest
+
+    def counted(path, **kwargs):
+        calls.append(path)
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(evidence_core, "_digest", counted)
+    digests = {}
+    execution._evidence(records, root=project, digests=digests)
+    execution._evidence(records, root=project, digests=digests)
+    assert len(calls) == 1
+    path.write_bytes(b"replaced")
+    with pytest.raises(ValueError, match="does not match"):
+        execution._evidence(records, root=project, digests=digests)
+    assert len(calls) == 2
+
+
+def test_success_checkpoint_reuses_one_hash_for_the_response_projection(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    original = evidence_core._digest
+    deadlines = []
+
+    def counted(path, **kwargs):
+        deadlines.append(kwargs["deadline"])
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(evidence_core, "_digest", counted)
+    result = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    assert result["run"]["state"] == "completed"
+    assert len(deadlines) == 1
+
+
+def test_passive_observer_only_checks_retained_verification_metadata(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects.observer import observe
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    before = (project / "execution.json").read_bytes()
+    monkeypatch.setattr(
+        evidence_core, "_digest", lambda *a, **k: pytest.fail("passive workflow rehashed evidence")
+    )
+    run = observe(str(project))["execution"]["runs"][0]
+    assert run["state"] == "completed"
+    assert run["evidence_verification_mode"] == "metadata_only"
+    assert run["steps"][0]["evidence_status"]["state"] == "metadata_matches"
+    assert (project / "execution.json").read_bytes() == before
+    (project / records[0]["reference"]).write_bytes(b"changed retained evidence")
+    changed = observe(str(project))["execution"]["runs"][0]
+    assert changed["state"] == "stale"
+    assert changed["steps"][0]["evidence_status"]["state"] == "stale"
+
+
+def test_legacy_success_without_receipt_is_unverified_in_passive_view(tmp_path):
+    from seohead.projects.observer import observe
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    path = project / "execution.json"
+    saved = json.loads(path.read_text())
+    del saved["runs"][0]["steps"][0]["evidence_verification"]
+    path.write_text(json.dumps(saved))
+    passive = observe(str(project))["execution"]["runs"][0]
+    assert passive["state"] == "stale"
+    assert passive["steps"][0]["evidence_status"]["state"] == "unverified"
+    explicit = status(project)["runs"][0]
+    assert explicit["state"] == "completed" and explicit["evidence_verification_mode"] == "bytes"
+    assert explicit["steps"][0]["evidence_status"]["state"] == "verified"
+
+
+def test_old_project_policy_defaults_are_normalized_without_rewriting(tmp_path):
+    from seohead.projects.runtime import project_policy
+
+    project, _started = _one_step_run(tmp_path)
+    old = project_policy(str(project))["policy"]
+    del old["evidence_hash"]
+    project_policy(str(project), policy=old, apply=True, expected_revision=0)
+    path = project / "crawl-policy.json"
+    saved = json.loads(path.read_text())
+    del saved["policy"]["evidence_hash"]
+    path.write_text(json.dumps(saved))
+    before = path.read_bytes()
+    assert project_policy(str(project))["policy"]["evidence_hash"] == {
+        "max_bytes": 1073741824,
+        "max_seconds": 5,
+    }
+    assert path.read_bytes() == before
+
+
+def test_explicit_large_hash_policy_reaches_verifier_without_large_fixture(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects.runtime import project_policy
+
+    project, started = _one_step_run(tmp_path)
+    records = _evidence(project, "reports/checked.json")
+    policy = project_policy(str(project))["policy"]
+    policy["evidence_hash"] = {"max_bytes": 32 * 1024**3, "max_seconds": 120}
+    project_policy(str(project), policy=policy, apply=True, expected_revision=0)
+    original = evidence_core._digest
+    budgets = []
+
+    def measured(path, **kwargs):
+        budgets.append(kwargs["max_bytes"])
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(evidence_core, "_digest", measured)
+    result = checkpoint(
+        project,
+        run_id=started["run"]["id"],
+        step_id="check:TITLE_MISSING",
+        state="succeeded",
+        evidence=records,
+        expected_revision=started["revision"],
+    )
+    assert result["run"]["state"] == "completed"
+    assert budgets == [32 * 1024**3]
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("max_bytes", 0),
+        ("max_bytes", 64 * 1024**3 + 1),
+        ("max_bytes", True),
+        ("max_seconds", 301),
+        ("max_seconds", 0),
+    ],
+)
+def test_hash_policy_rejects_unbounded_or_ambiguous_limits(tmp_path, key, value):
+    from seohead.projects.runtime import project_policy
+
+    project, _started = _one_step_run(tmp_path)
+    policy = project_policy(str(project))["policy"]
+    policy["evidence_hash"][key] = value
+    with pytest.raises(ValueError, match="evidence_hash"):
+        project_policy(str(project), policy=policy, apply=True, expected_revision=0)

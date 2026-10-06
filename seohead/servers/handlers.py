@@ -138,7 +138,9 @@ def redirects_check(
     return {"chain": redirects_core.check_chain(url, options or {})}
 
 
-def sitemap_crawl(url: str | None = None, concurrency: int = 3) -> dict[str, Any]:
+def sitemap_crawl(
+    url: str | None = None, concurrency: int = 3, project: str | None = None
+) -> dict[str, Any]:
     """Expand one sitemap, or discover one from a site root through robots.txt.
 
     A root reads ``robots.txt`` first and uses its ``Sitemap:`` declarations;
@@ -148,7 +150,48 @@ def sitemap_crawl(url: str | None = None, concurrency: int = 3) -> dict[str, Any
     """
     if not url:
         raise ValueError("url required")
-    return sitemap.crawl(url, concurrency)
+    if project is None:
+        return sitemap.crawl(url, concurrency)
+    from hashlib import sha256
+    from json import dumps
+
+    from seohead.projects.run_observation import finish, finish_sitemap, start
+    from seohead.projects.workspace import open_project
+
+    opened = open_project(project)
+    source = urlsplit(url)
+    target = urlsplit(opened["project"]["site"]["target"])
+    if (
+        source.scheme not in {"http", "https"}
+        or source.username is not None
+        or source.password is not None
+        or source.query
+        or source.fragment
+        or (source.scheme, source.hostname, source.port)
+        != (target.scheme, target.hostname, target.port)
+    ):
+        raise ValueError(
+            "observed sitemap URL must share the project origin without credentials, query or fragment"
+        )
+    root = opened["path"]
+    run = start(
+        root,
+        kind="sitemap",
+        mode="sitemap",
+        max_urls=0,
+        config_fingerprint=sha256(
+            dumps({"url": url, "concurrency": concurrency}, sort_keys=True).encode()
+        ).hexdigest(),
+        artifact=None,
+        counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
+    )
+    try:
+        result = sitemap.crawl(url, concurrency)
+    except BaseException:
+        finish(root, run["id"], state="failed", reason="sitemap collection interrupted or failed")
+        raise
+    finish_sitemap(root, run["id"], result)
+    return result
 
 
 def _seed_urls_from_sitemap(
@@ -683,6 +726,7 @@ def crawl_site(
                         producer_build=producer_build,
                         progress=reporter,
                         observation=reporter.enter,
+                        progress_snapshot=reporter.observe_counts,
                     )
                 except BaseException as exc:
                     with contextlib.suppress(OSError, ValueError):
@@ -882,6 +926,7 @@ def crawl_site(
                 producer_build=producer_build,
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
+                progress_snapshot=reporter.observe_counts if reporter is not None else None,
                 proxy_route=proxy_route,
             )
         except BaseException as exc:
@@ -1376,59 +1421,54 @@ def _audit_crawl_result(
             )
             requires_rendering, requires_rendering_reason = gate.requires_rendering, gate.reason
 
+    # Keep scalar SQL lookups alive only while the native row stream is copied
+    # into the disk-backed analysis context. No full page frame or inlink map.
+    from contextlib import ExitStack
+
     stored_graph_available = False
-    if stored_scan is None:
-        evidence = build_evidence(result)
-    else:
-        from seohead.crawl.sql_graph import StoredGraph
+    with ExitStack() as evidence_stack:
+        if stored_scan is None:
+            evidence = build_evidence(result)
+        else:
+            from seohead.crawl.sql_graph import StoredGraph
 
-        stored_graph_available = (
-            stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
-        )
-        with StoredGraph(stored_scan.con) as graph:
-            counts = (
-                {
-                    item["url"]: (item["inlinks"], item["unique_inlinks"])
-                    for item in graph.iter_inlink_counts()
-                }
-                if stored_graph_available
-                else None
+            stored_graph_available = (
+                stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
             )
-        evidence = build_evidence(
-            result, inlink_counts=counts, stored_graph_available=stored_graph_available
-        )
-        # A crawl may have parsed a response in memory while its body was too
-        # large to retain. The SF-shaped quality checks must not treat those
-        # volatile declarations as inspectable native evidence (#825).
-        if "all_hreflang" in evidence["frames"]:
-            complete_sources = {
-                row[0]
-                for row in stored_scan.con.execute(
-                    "SELECT u.url FROM pages p JOIN urls u USING(url_id) "
-                    "JOIN documents d ON d.document_id=p.document_id "
-                    "WHERE d.body_state='complete' AND d.body_sha256 IS NOT NULL"
-                )
-            }
-            frame = evidence["frames"]["all_hreflang"]
-            frame = frame[frame["Source"].isin(complete_sources)].copy()
-            if frame.empty:
-                evidence["frames"].pop("all_hreflang")
-                evidence["found"].remove("all_hreflang")
-                evidence["missing"].append("all_hreflang")
-            else:
-                evidence["frames"]["all_hreflang"] = frame
-    exports = LoadedExports()
-    exports.frames.update(evidence["frames"])
-    exports.found = list(evidence["found"])
-    exports.missing = list(evidence["missing"])
+            graph = evidence_stack.enter_context(StoredGraph(stored_scan.con))
 
-    audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
-    ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
+            def is_robots_blocked(page_url):
+                return (
+                    stored_scan.con.execute(
+                        "SELECT 1 FROM urls u JOIN context_items c "
+                        "ON c.kind='robots_blocked_url' AND c.item_key='url:' || u.url_id "
+                        "WHERE u.url=? LIMIT 1",
+                        (page_url,),
+                    ).fetchone()
+                    is not None
+                )
+
+            evidence = build_evidence(
+                result,
+                inlink_counts=graph.inlink_counts() if stored_graph_available else None,
+                stored_graph_available=stored_graph_available,
+                streaming=True,
+                is_robots_blocked=is_robots_blocked,
+            )
+        exports = LoadedExports()
+        exports.frames.update(evidence["frames"])
+        exports.found = list(evidence["found"])
+        exports.missing = list(evidence["missing"])
+
+        audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
+        ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
 
-        saved_corpus = derive(stored_scan.con)
+        saved_corpus = derive(stored_scan.con, streaming=streaming)
+        if streaming:
+            ctx._saved_corpus = saved_corpus
         ctx.native_hreflang = saved_corpus["internationalization"]
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
@@ -1436,7 +1476,10 @@ def _audit_crawl_result(
     # arbitrary page (#634). A URL-list run has no start URL and must say so
     # rather than invent one.
     ctx.start_url = start_norm if url else None
-    ctx.skip_unsupported(set(exports.frames))
+    available_exports = set(exports.frames)
+    if ctx.native_hreflang is not None and ctx.native_hreflang["declarations"]:
+        available_exports.add("all_hreflang")
+    ctx.skip_unsupported(available_exports)
     run_rules(ctx)
     # Same pipeline the Screaming Frog export path runs (seohead/sf/core/audit.py)
     # -- omitting it here left every inlinks-derived check (anchor text, hreflang,
@@ -1802,9 +1845,21 @@ def _audit_crawl_result(
             "only from a native retained scan",
         )
 
+    native_run = {}
+    if stored_scan is not None:
+        retained = stored_scan.con.execute(
+            "SELECT scan_uuid,corpus_partial,source_kind,config_fingerprint FROM scan WHERE singleton=1"
+        ).fetchone()
+        native_run = {
+            "scan_uuid": retained["scan_uuid"],
+            "corpus_partial": bool(retained["corpus_partial"]),
+            "source_kind": retained["source_kind"],
+            "config_fingerprint": retained["config_fingerprint"],
+        }
     audit_result = aggregate(
         ctx,
         {
+            **native_run,
             "input_mode": "crawl" if url else "crawl-list",
             "source": url or "url-list",
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1873,12 +1928,20 @@ def _audit_crawl_result(
             header, collections["/issues"] = attach_contract_parts(
                 header, collections["/issues"], scan_uuid=identity, con=stored_scan.con
             )
-            header = attach_saved_corpus_header(header, stored_scan.con, derived=saved_corpus)
+            header = attach_saved_corpus_header(
+                header, stored_scan.con, derived=saved_corpus, collections=collections
+            )
         # The lazy page/group factories retain the disk-backed context until
         # the writer has consumed every collection.
         for rows in collections.values():
             rows._context_owner = ctx
-        return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
+        return {
+            "summary": header["summary"],
+            "segments": header["segments"],
+            "requires_rendering": requires_rendering,
+            "requires_rendering_reason": requires_rendering_reason,
+            "render_escalation": render_summary,
+        }, (header, collections)
     audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator
     # actually declared segments, so a plain crawl's audit.json is unchanged.
@@ -2140,13 +2203,15 @@ def report_build(
     view: str | None = None,
     offset: int = 0,
     lang: str = "en",
+    pdf_policy: str | None = None,
 ) -> dict[str, Any]:
     if audit is None:
         raise ValueError("audit required: audit document or path to its JSON representation")
     from seohead.reports import build_report
 
+    options = {"pdf_policy": pdf_policy} if pdf_policy is not None else {}
     return build_report(
-        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang
+        audit, fmt=fmt, path=out, project=project, view=view, offset=offset, lang=lang, **options
     )
 
 
@@ -2180,6 +2245,8 @@ def compare_crawls(
     after: Any = None,
     force: bool = False,
     correspondence: Any = None,
+    out_dir: str | None = None,
+    compression: str = "none",
 ) -> dict[str, Any]:
     """Diff two audits: which findings were fixed, which are new, which pages
     dropped out of the crawl entirely. See seohead.sf.core.compare for why
@@ -2191,7 +2258,14 @@ def compare_crawls(
     before_doc = load_audit_source(before, "before", diagnostics)
     after_doc = load_audit_source(after, "after", diagnostics)
     try:
-        result = compare(before_doc, after_doc, force=force, correspondence=correspondence)
+        result = compare(
+            before_doc,
+            after_doc,
+            force=force,
+            correspondence=correspondence,
+            out_dir=out_dir,
+            compression=compression,
+        )
     finally:
         if not hasattr(before, "iter_collection") and hasattr(before_doc, "close"):
             before_doc.close()
@@ -2380,6 +2454,7 @@ def verify_fixes(
             "audit_sha256": baseline_identity["audit_sha256"],
             "scan_uuid": baseline_identity["scan_uuid"],
             "generated_at": baseline_identity["generated_at"],
+            "results_policy_fingerprint": baseline_identity["results_policy_fingerprint"],
         },
         "selection": {"finding_ids": [item.get("id") for item in selected], "urls": targets},
         "collection": collection,
@@ -2772,7 +2847,7 @@ def log_scan(
 ) -> dict[str, Any]:
     """Report claims a finished run makes that cannot all be true at once.
 
-    ``run`` is a directory holding ``audit.json``, ``pages.jsonl`` and/or
+    ``run`` is a retained native scan path, or a directory holding ``audit.json``, ``pages.jsonl`` and/or
     ``decisions.jsonl`` — whatever ``crawl-site --out-dir`` or ``sf run --out`` wrote.
     ``decisions.jsonl`` (issue #134) is the per-URL exclusion log a native crawl writes
     beside ``pages.jsonl``; it lets a rule catch a contradiction that never survives into
@@ -2788,16 +2863,16 @@ def log_scan(
     from seohead.tools import logscan
 
     if not run:
-        raise ValueError("log_scan needs a run directory")
-    artifacts = logscan.load_run(run, images_dir)
-    if artifacts.audit is None and not artifacts.pages:
-        return {
-            "ok": False,
-            "error": f"no audit.json or pages.jsonl in {run}",
-            "anomalies": [],
-            "anomaly_count": 0,
-        }
-    return logscan.scan(artifacts, max_per_rule=max_per_rule)
+        raise ValueError("log_scan needs a run directory or native scan path")
+    with logscan.load_run(run, images_dir) as artifacts:
+        if artifacts.audit is None and not artifacts.pages:
+            return {
+                "ok": False,
+                "error": f"no audit.json or pages.jsonl or retained native evidence in {run}",
+                "anomalies": [],
+                "anomaly_count": 0,
+            }
+        return logscan.scan(artifacts, max_per_rule=max_per_rule)
 
 
 def crawl_diagnose(
@@ -4313,6 +4388,20 @@ def monitor_run(
     return run(directory, scan_id, observations, expected_revision)
 
 
+def monitor_collect(directory: str, expected_revision: int, apply: bool = False) -> dict[str, Any]:
+    """Preview or explicitly collect one existing bounded monitoring claim."""
+    from seohead.servers.monitor_handlers import monitor_collect as core
+
+    return core(directory=directory, expected_revision=expected_revision, apply=apply)
+
+
+def monitor_local_deliver(directory: str, scan_id: str, expected_revision: int) -> dict[str, Any]:
+    """Record a local monitoring receipt without an external transport."""
+    from seohead.servers.monitor_handlers import monitor_local_deliver as core
+
+    return core(directory=directory, scan_id=scan_id, expected_revision=expected_revision)
+
+
 def monitor_status(directory: str) -> dict[str, Any]:
     from seohead.projects.monitoring import status
 
@@ -4401,14 +4490,20 @@ def remediation_recheck(
 ) -> dict[str, Any]:
     """Run the guarded bounded verifier for exact pending ledger cases.
 
-    The supplied baseline must be byte-identical to the retained source audit
-    for every selected target occurrence.  This keeps a finding-key recheck
+    The supplied baseline must match the retained raw or canonical audit digest
+    and original results policy for every selected target occurrence.  This keeps a finding-key recheck
     from silently selecting another revision or widening into a whole-site
     crawl.  The verifier writes its immutable evidence first; only then does
     the ledger atomically bind typed outcomes to that evidence.
     """
     from seohead.storage.inputs import load_audit_source
-    from seohead.storage.ledger import LedgerError, canonical_url, open_ledger, record_verification
+    from seohead.storage.ledger import (
+        LedgerError,
+        canonical_url,
+        occurrence_matches_baseline,
+        open_ledger,
+        record_verification,
+    )
     from seohead.verification import source_identity
 
     if not isinstance(occurrence_keys, list) or not occurrence_keys:
@@ -4416,46 +4511,49 @@ def remediation_recheck(
     if len(occurrence_keys) > 5_000 or len(set(occurrence_keys)) != len(occurrence_keys):
         raise ValueError("occurrence_keys must be a distinct bounded case selection")
     baseline_source = load_audit_source(baseline, "baseline")
-    baseline_identity = source_identity(baseline_source)
-    baseline_sha = baseline_identity["audit_sha256"]
-    baseline_scan_uuid = baseline_identity["scan_uuid"]
-
-    con = open_ledger(ledger)
     try:
-        revision = int(
-            con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
-        )
-        if revision != expected_revision:
-            raise LedgerError("ledger revision changed; reread cases before starting a recheck")
-        bindings: dict[str, tuple[str, str, str]] = {}
-        for key in occurrence_keys:
-            row = con.execute(
-                "SELECT o.occurrence_key,o.current_state,o.subject_value,c.check_key,ob.issue_ordinal "
-                "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
-                "JOIN observation ob ON ob.occurrence_id=o.occurrence_id "
-                "JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
-                "WHERE o.occurrence_key=? AND o.subject_type='url' AND ob.role='target' "
-                "AND (s.audit_sha256=? OR s.scan_uuid=?)",
-                (key, baseline_sha, baseline_scan_uuid or ""),
-            ).fetchall()
-            if len(row) != 1:
-                raise LedgerError(
-                    "selected case does not map to exactly one retained target occurrence in this baseline"
-                )
-            case = row[0]
-            if case["current_state"] != "recheck_pending":
-                raise LedgerError("selected case must be recheck_pending before execution")
-            if str(case["issue_ordinal"]) in bindings:
-                raise LedgerError("selected cases map to the same baseline finding ordinal")
-            bindings[str(case["issue_ordinal"])] = (
-                case["occurrence_key"],
-                case["check_key"],
-                case["subject_value"],
+        baseline_identity = source_identity(baseline_source)
+        baseline_sha = baseline_identity["audit_sha256"]
+        baseline_policy = baseline_identity["results_policy_fingerprint"]
+        with contextlib.closing(open_ledger(ledger)) as con:
+            revision = int(
+                con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
             )
-    finally:
-        con.close()
-
-    try:
+            if revision != expected_revision:
+                raise LedgerError("ledger revision changed; reread cases before starting a recheck")
+            bindings: dict[str, tuple[str, str, str]] = {}
+            for key in occurrence_keys:
+                rows = con.execute(
+                    "SELECT o.occurrence_id,o.occurrence_key,o.current_state,o.subject_value,"
+                    "c.check_key,ob.issue_ordinal "
+                    "FROM occurrence o JOIN check_def c ON c.check_id=o.check_id "
+                    "JOIN observation ob ON ob.occurrence_id=o.occurrence_id "
+                    "JOIN source_scan s ON s.source_scan_id=ob.source_scan_id "
+                    "WHERE o.occurrence_key=? AND o.subject_type='url' AND ob.role='target' "
+                    "AND (s.audit_sha256=? OR s.canonical_audit_sha256=?) "
+                    "AND s.config_fingerprint=?",
+                    (key, baseline_sha, baseline_sha, baseline_policy),
+                ).fetchall()
+                if len(rows) != 1 or not occurrence_matches_baseline(
+                    con,
+                    rows[0]["occurrence_id"],
+                    audit_sha256=baseline_sha,
+                    results_policy_fingerprint=baseline_policy,
+                ):
+                    raise LedgerError(
+                        "selected case does not map to exactly one retained target occurrence "
+                        "with this baseline digest and results policy"
+                    )
+                case = rows[0]
+                if case["current_state"] != "recheck_pending":
+                    raise LedgerError("selected case must be recheck_pending before execution")
+                if str(case["issue_ordinal"]) in bindings:
+                    raise LedgerError("selected cases map to the same baseline finding ordinal")
+                bindings[str(case["issue_ordinal"])] = (
+                    case["occurrence_key"],
+                    case["check_key"],
+                    case["subject_value"],
+                )
         verified = verify_fixes(
             baseline=baseline_source,
             finding_ids=list(bindings),
@@ -5116,6 +5214,81 @@ def evidence_join(
     return response
 
 
+def bi_filter(
+    package: str,
+    dataset: str,
+    out_dir: str,
+    where: dict[str, list[str]] | None = None,
+    columns: list[str] | None = None,
+    max_rows_per_file: int = 250_000,
+    max_bytes_per_file: int = 8_388_608,
+    max_output_bytes: int = 4_294_967_296,
+    xlsx_out: str | None = None,
+    xlsx_max_rows_per_sheet: int = 1_048_575,
+) -> dict[str, Any]:
+    """Filter a verified local BI package into a new typed package and optional XLSX."""
+    from seohead.servers.bi_handlers import bi_filter as core
+
+    return core(
+        package=package,
+        dataset=dataset,
+        out_dir=out_dir,
+        where=where,
+        columns=columns,
+        max_rows_per_file=max_rows_per_file,
+        max_bytes_per_file=max_bytes_per_file,
+        max_output_bytes=max_output_bytes,
+        xlsx_out=xlsx_out,
+        xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
+    )
+
+
+def scan_navigation(
+    input_path: str, document_id: int | None = None, limit: int = 100, offset: int = 0
+) -> dict[str, Any]:
+    """Read bounded observed navigation evidence from a retained local scan."""
+    from seohead.servers.navigation_handlers import scan_navigation as core
+
+    return core(input_path=input_path, document_id=document_id, limit=limit, offset=offset)
+
+
+def project_activity(directory: str) -> dict[str, Any]:
+    """Read lightweight current activity for a local project and its sites."""
+    from seohead.projects.observer import observe_activity as core
+
+    return core(directory=directory)
+
+
+def project_checklist_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    query: str = "",
+    kind: str | None = None,
+    state: str | None = None,
+) -> dict[str, Any]:
+    """Read a bounded searchable page of project checklist evidence."""
+    from seohead.projects.observer import checklist_page as core
+
+    return core(
+        directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+    )
+
+
+def project_task_detail(directory: str, item_id: str) -> dict[str, Any]:
+    """Read one project task definition, evidence and bounded history."""
+    from seohead.projects.observer import task_detail as core
+
+    return core(directory=directory, item_id=item_id)
+
+
+def project_scans(directory: str, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+    """Read a bounded page of retained project scans with evidence metadata."""
+    from seohead.projects.observer import scans_page as core
+
+    return core(directory=directory, offset=offset, limit=limit)
+
+
 def bi_export(
     scan: str | None = None,
     audit: Any = None,
@@ -5512,6 +5685,8 @@ _RAW_HANDLERS = {
     "workflow_resume": workflow_resume,
     "monitor_configure": monitor_configure,
     "monitor_run": monitor_run,
+    "monitor_collect": monitor_collect,
+    "monitor_local_deliver": monitor_local_deliver,
     "monitor_status": monitor_status,
     "monitor_schedule": monitor_schedule,
     "remediation_cases": remediation_cases,
@@ -5555,6 +5730,12 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "bi_filter": bi_filter,
+    "scan_navigation": scan_navigation,
+    "project_activity": project_activity,
+    "project_checklist_page": project_checklist_page,
+    "project_task_detail": project_task_detail,
+    "project_scans": project_scans,
     "publication_cohorts": publication_cohorts,
     "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,

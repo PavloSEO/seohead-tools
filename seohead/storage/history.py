@@ -23,6 +23,7 @@ from seohead import filesystem
 from . import (
     APPLICATION_ID,
     MAX_RECORD_BYTES,
+    READ_TIMEOUT_SECONDS,
     USER_VERSION,
     ScanError,
     _expected,
@@ -127,7 +128,7 @@ def _regular(path: Path) -> os.stat_result:
     return info
 
 
-def _metadata_connection(path: Path) -> sqlite3.Connection:
+def _metadata_connection(path: Path, *, allow_native_v2: bool = False) -> sqlite3.Connection:
     """Validate identity/schema and bound metadata work without reading bodies."""
     _runtime()
     before = _regular(path)
@@ -143,7 +144,15 @@ def _metadata_connection(path: Path) -> sqlite3.Connection:
         con.execute("BEGIN")
         if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise ScanError("foreign application_id")
-        if con.execute("PRAGMA user_version").fetchone()[0] != USER_VERSION:
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+        if version == 2 and allow_native_v2:
+            con.close()
+            con = open_scan(path, require_audit=False, query_timeout_seconds=READ_TIMEOUT_SECONDS)
+            after = _regular(path)
+            if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+                raise ScanError("scan identity changed while opening")
+            return con
+        if version != USER_VERSION:
             raise ScanError("unsupported scan user_version; no automatic migration")
         expected = _expected()[0]
         objects = [
@@ -343,7 +352,9 @@ def inspect_scan(
     _pagination(offset, limit)
     if type(max_bytes) is not int or not 1 <= max_bytes <= MAX_RECORD_BYTES:
         raise ValueError("max_bytes must be within 1..8 MiB")
-    with contextlib.closing(_metadata_connection(Path(path).absolute())) as con:
+    with contextlib.closing(
+        _metadata_connection(Path(path).absolute(), allow_native_v2=True)
+    ) as con:
         if table == "pages":
             base = "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
         elif table == "links":

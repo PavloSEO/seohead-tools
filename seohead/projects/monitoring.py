@@ -1,15 +1,23 @@
 """Disabled-by-default local monitoring over immutable retained observations.
 
-This module deliberately plans and records local work only. It neither starts a
-timer nor fetches a URL: a caller supplies the bounded observations produced by
-an already-authorized collector. That keeps schedule activation and delivery
-outside a project file while still making restarts, overlap refusal, budgets and
+This module stores bounded caller-imported observations and provides one explicit
+one-shot HTTP collection path. It never starts a timer, daemon, background
+scheduler, or delivery transport. That keeps schedule activation outside a
+project file while still making restarts, overlap refusal, budgets and
 full-refresh policy observable and testable.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import json
+import os
+import re
+import tempfile
+import time
+import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -36,6 +44,7 @@ _DEFAULTS = {
     "suppression_runs": 1,
     "severity_threshold": "warning",
 }
+_DEFAULT_LEASE_SECONDS = 300
 
 
 def _now() -> str:
@@ -47,6 +56,11 @@ def _after_interval(interval_seconds: int) -> str:
     current = _now()
     parsed = datetime.fromisoformat(current.replace("Z", "+00:00"))
     return (parsed + timedelta(seconds=interval_seconds)).isoformat().replace("+00:00", "Z")
+
+
+def _expiry(stamp: str, seconds: int) -> str:
+    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return (parsed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
 
 
 def _load(directory: str | Path) -> tuple[Path, dict[str, Any]]:
@@ -157,7 +171,7 @@ def configure(
         raise ValueError("cancel the active local runner before changing its policy")
     document["policy"] = _policy(policy)
     document["revision"] += 1
-    write_document(root, NAME, document)
+    write_document(root, NAME, document, expected_revision=expected_revision)
     return {
         "ok": True,
         "revision": document["revision"],
@@ -177,7 +191,49 @@ def _threshold(policy: dict[str, Any], change: dict[str, Any]) -> bool:
     )
 
 
-def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
+def _source(value: Any, root: Path) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {
+        "body_ref",
+        "body_sha256",
+        "validation_ref",
+        "validation_sha256",
+        "links_sha256",
+    }:
+        raise ValueError("monitor source provenance is invalid")
+    for ref_key, hash_key in (("body_ref", "body_sha256"), ("validation_ref", "validation_sha256")):
+        reference, digest = value[ref_key], value[hash_key]
+        if reference is None and digest is None and ref_key == "body_ref":
+            continue
+        if (
+            not isinstance(reference, str)
+            or not reference.startswith("reports/monitor/")
+            or ".." in Path(reference).parts
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            raise ValueError("monitor source provenance is invalid")
+        from .evidence import _digest, artifact_path
+        from .runtime import project_policy
+
+        path = artifact_path(root, reference)
+        budget = project_policy(str(root))["policy"]["evidence_hash"]
+        actual = _digest(
+            path,
+            max_bytes=budget["max_bytes"],
+            deadline=time.monotonic() + budget["max_seconds"],
+        )
+        if actual != digest:
+            raise ValueError("monitor source provenance does not match retained bytes")
+    if not isinstance(value["links_sha256"], str) or not re.fullmatch(
+        r"[0-9a-f]{64}", value["links_sha256"]
+    ):
+        raise ValueError("monitor source provenance is invalid")
+    return value
+
+
+def _observation(item: Any, policy: dict[str, Any], root: Path) -> dict[str, Any]:
     if not isinstance(item, dict) or set(item) - {
         "url",
         "changes",
@@ -187,6 +243,7 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "render_request_count",
         "cache_state",
         "failure_reason",
+        "source",
     }:
         raise ValueError("invalid scoped monitor observation")
     if item.get("url") not in policy["urls"] or not isinstance(item.get("changes"), list):
@@ -236,6 +293,7 @@ def _observation(item: Any, policy: dict[str, Any]) -> dict[str, Any]:
         "render_request_count": render_request_count,
         "cache_state": cache_state,
         "failure_reason": failure_reason.strip() if isinstance(failure_reason, str) else None,
+        "source": _source(item.get("source"), root),
         "measured_at": _now(),
     }
 
@@ -399,7 +457,7 @@ def run(
     limit = len(planned_urls) if due.get("state") == "due" else policy["max_urls"]
     if not isinstance(observations, list) or not observations or len(observations) > limit:
         raise ValueError("observations exceed configured incremental scope")
-    normalized = [_observation(item, policy) for item in observations]
+    normalized = [_observation(item, policy, root) for item in observations]
     for item in normalized:
         derived = _measurement_changes(document, item)
         seen = {_change_key(change) for change in item["changes"]}
@@ -487,7 +545,7 @@ def run(
         "next_due_at": _after_interval(policy["interval_seconds"]),
     }
     document["revision"] += 1
-    write_document(root, NAME, document)
+    write_document(root, NAME, document, expected_revision=expected_revision)
     return {
         "ok": True,
         "revision": document["revision"],
@@ -498,24 +556,36 @@ def run(
     }
 
 
-def schedule(directory: str | Path, *, action: str, expected_revision: int) -> dict[str, Any]:
+def schedule(
+    directory: str | Path,
+    *,
+    action: str,
+    expected_revision: int,
+    lease_seconds: int = _DEFAULT_LEASE_SECONDS,
+) -> dict[str, Any]:
     """Claim, cancel, back off or recover a local runner without starting a timer."""
     root, document = _load(directory)
     if document["revision"] != expected_revision or document["policy"] is None:
         raise ValueError("monitor revision conflict or missing policy")
     if action not in {"start", "cancel", "backoff", "recover"}:
         raise ValueError("schedule action must be start, cancel, backoff or recover")
+    if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
+        raise ValueError("monitor lease_seconds must be an integer from 1 to 3600")
     current = document["runner"].get("state", "idle")
     if action == "start":
         if not document["policy"]["enabled"]:
             raise ValueError("monitor policy is disabled; explicit enablement is required")
         if current == "running":
             raise ValueError("monitor runner already active; overlapping schedules are refused")
+        claimed_at = _now()
         runner = {
             **document["runner"],
             "state": "running",
-            "claimed_at": _now(),
+            "claimed_at": claimed_at,
+            "claim_id": f"monitor:{uuid.uuid4()}",
+            "lease_expires_at": _expiry(claimed_at, lease_seconds),
             "plan": _due(document),
+            "dispatched_urls": [],
         }
     elif action == "recover":
         if current != "running":
@@ -529,7 +599,7 @@ def schedule(directory: str | Path, *, action: str, expected_revision: int) -> d
         }
     document["runner"] = runner
     document["revision"] += 1
-    write_document(root, NAME, document)
+    write_document(root, NAME, document, expected_revision=expected_revision)
     return {
         "ok": True,
         "revision": document["revision"],
@@ -537,6 +607,378 @@ def schedule(directory: str | Path, *, action: str, expected_revision: int) -> d
         "scheduled": False,
         "due": _due(document),
     }
+
+
+def _artifact(root: Path, relative: str, payload: bytes) -> tuple[str, str]:
+    path = root / relative
+    if (
+        path.is_symlink()
+        or not path.parent.is_dir()
+        or not path.parent.resolve().is_relative_to(root.resolve())
+    ):
+        raise ValueError("monitor artifact path is unsafe")
+    descriptor, staged = tempfile.mkstemp(prefix=".monitor-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(staged, path)
+        from seohead.filesystem import fsync_directory
+
+        fsync_directory(path.parent)
+    finally:
+        Path(staged).unlink(missing_ok=True)
+    from .evidence import _digest
+
+    digest = _digest(path, max_bytes=len(payload), deadline=time.monotonic() + 5)
+    if digest != hashlib.sha256(payload).hexdigest():
+        raise ValueError("monitor artifact hash verification failed")
+    return relative, digest
+
+
+def _reports_root(root: Path) -> Path:
+    reports = root / "reports"
+    if (
+        reports.is_symlink()
+        or not reports.is_dir()
+        or not reports.resolve().is_relative_to(root.resolve())
+    ):
+        raise ValueError("project reports directory is unsafe")
+    return reports
+
+
+def _new_report_target(reports: Path, name: str) -> Path:
+    target = reports / name
+    if os.path.lexists(target):
+        expected = target.is_dir() if name.endswith("-cache") else target.is_file()
+        if target.is_symlink() or not expected:
+            raise ValueError("monitor report target is unsafe")
+    if not target.parent.resolve().is_relative_to(reports.resolve()):
+        raise ValueError("monitor report target is unsafe")
+    return target
+
+
+def _source_artifacts(
+    root: Path,
+    claim_id: str,
+    record: Any,
+    parsed: dict[str, Any] | None,
+    transport: dict[str, Any],
+) -> dict[str, Any]:
+    """Retain body and post-cache validation evidence under this project only."""
+    token = hashlib.sha256(record.url.encode("utf-8")).hexdigest()
+    reports_root = _reports_root(root)
+    monitor_root = reports_root / "monitor"
+    if monitor_root.exists() and (monitor_root.is_symlink() or not monitor_root.is_dir()):
+        raise ValueError("monitor artifact directory is unsafe")
+    monitor_root.mkdir(mode=0o700, exist_ok=True)
+    directory = monitor_root / claim_id.removeprefix("monitor:")
+    if directory.is_symlink() or not directory.resolve().is_relative_to(root.resolve()):
+        raise ValueError("monitor artifact directory is unsafe")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    body = parsed.get("_raw_html") if isinstance(parsed, dict) else None
+    links = parsed.get("links") if isinstance(parsed, dict) else []
+    link_digest = hashlib.sha256(
+        json.dumps(
+            links if isinstance(links, list) else [], sort_keys=True, ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    body_ref = body_hash = None
+    from seohead.crawl.cache import _parse_cache_control
+
+    retain_body = (
+        isinstance(body, str)
+        and transport.get("status_code") in {200, 304}
+        and "no-store" not in _parse_cache_control(transport.get("cache_control") or "")
+        and not transport.get("set_cookie")
+    )
+    if retain_body:
+        body_ref, body_hash = _artifact(
+            root,
+            str(directory.relative_to(root) / f"{token}.body.html"),
+            body.encode("utf-8"),
+        )
+    validation = {
+        "url": record.url,
+        "effective_status_code": record.status_code,
+        "cache_status": record.cache_status,
+        "transport": transport,
+        "validators": {
+            "etag": transport.get("etag"),
+            "last_modified": transport.get("last_modified"),
+        },
+        "body_ref": body_ref,
+        "body_sha256": body_hash,
+        "links_sha256": link_digest,
+        "record": dataclasses.asdict(record),
+    }
+    validation_ref, validation_hash = _artifact(
+        root,
+        str(directory.relative_to(root) / f"{token}.validation.json"),
+        (json.dumps(validation, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    return {
+        "body_ref": body_ref,
+        "body_sha256": body_hash,
+        "validation_ref": validation_ref,
+        "validation_sha256": validation_hash,
+        "links_sha256": link_digest,
+    }
+
+
+def _measurement(record: Any, source: dict[str, Any]) -> tuple[dict[str, Any], str, str | None]:
+    if record.error or record.status_code is None:
+        return {}, "failed", record.error or "collector produced no HTTP status"
+    if record.cache_status == "hit":
+        return (
+            {"status": record.status_code},
+            "stale",
+            "fresh cache evidence was reused without a network revalidation",
+        )
+    if record.body_unavailable or source["body_sha256"] is None:
+        return (
+            {"status": record.status_code},
+            "unavailable",
+            record.body_unavailable or "body unavailable",
+        )
+    from seohead.tools.parser import robots_directives
+
+    directives = robots_directives(record.meta_robots, record.x_robots)
+    return (
+        {
+            "status": record.status_code,
+            "indexability": "noindex" if "noindex" in directives else "indexable",
+            "canonical": record.canonical,
+            "robots": ",".join(sorted(directives)),
+            "metadata": {"title": record.title, "description": record.meta_description},
+            "content": source["body_sha256"],
+            "links": {
+                "internal": max(record.outlinks - record.external_outlinks, 0),
+                "sha256": source["links_sha256"],
+            },
+        },
+        "revalidated" if record.cache_status == "revalidated" else "fresh",
+        None,
+    )
+
+
+def _claim_preview(document: dict[str, Any], stamp: str) -> dict[str, Any]:
+    runner = document["runner"]
+    plan = runner.get("plan")
+    if runner.get("state") != "running" or not isinstance(plan, dict):
+        raise ValueError("an explicit active monitor claim is required")
+    expiry = runner.get("lease_expires_at")
+    if not isinstance(expiry, str):
+        raise ValueError("monitor claim lacks a lease")
+    claim_id = runner.get("claim_id")
+    try:
+        valid_claim = f"monitor:{uuid.UUID(str(claim_id).removeprefix('monitor:'))}" == claim_id
+    except ValueError:
+        valid_claim = False
+    if not valid_claim:
+        raise ValueError("monitor claim id is invalid")
+    policy = _policy(document.get("policy"))
+    planned = plan.get("planned_urls")
+    dispatched = runner.get("dispatched_urls", [])
+    if (
+        plan.get("state") != "due"
+        or plan.get("mode") not in {"full", "incremental"}
+        or not isinstance(planned, list)
+        or not planned
+        or len(planned) != len(set(planned))
+        or not set(planned) <= set(policy["urls"])
+        or plan.get("url_limit") != len(planned)
+        or plan.get("request_budget") != policy["max_requests"]
+        or plan.get("render_request_budget") != policy["max_render_requests"]
+        or (plan["mode"] == "full" and planned != policy["urls"])
+        or (plan["mode"] == "incremental" and len(planned) > policy["max_urls"])
+        or not isinstance(dispatched, list)
+        or len(dispatched) != len(set(dispatched))
+        or not set(dispatched) <= set(planned)
+    ):
+        raise ValueError("monitor claim plan is invalid")
+    expired = datetime.fromisoformat(stamp.replace("Z", "+00:00")) >= datetime.fromisoformat(
+        expiry.replace("Z", "+00:00")
+    )
+    return {
+        "claim_id": claim_id,
+        "lease_expires_at": expiry,
+        "expired": expired,
+        "plan": plan,
+        "dispatched_urls": list(dispatched),
+        "remaining_urls": [url for url in planned if url not in dispatched],
+    }
+
+
+def collect_once(
+    directory: str | Path,
+    *,
+    expected_revision: int,
+    apply: bool = False,
+    now: Callable[[], str] | None = None,
+) -> dict[str, Any]:
+    """Preview or execute one claimed bounded HTTP/cache collection pass.
+
+    The policy interval remains scheduling advice. This performs no work unless
+    an operator has separately created a current claim and sets ``apply=True``.
+    """
+    if type(apply) is not bool:
+        raise ValueError("monitor apply must be a boolean")
+    root, document = _load(directory)
+    if document["revision"] != expected_revision:
+        raise ValueError("monitor revision conflict")
+    stamp = (now or _now)()
+    preview = _claim_preview(document, stamp)
+    if not apply:
+        return {"ok": True, "applied": False, "revision": document["revision"], "preview": preview}
+    if preview["expired"]:
+        document["runner"] = {
+            **document["runner"],
+            "state": "interrupted",
+            "interrupted_at": stamp,
+            "reason": "monitor claim lease expired before collection",
+        }
+        document["revision"] += 1
+        write_document(root, NAME, document, expected_revision=expected_revision)
+        raise ValueError("monitor claim lease expired; explicitly start a new claim")
+    if preview["dispatched_urls"]:
+        raise ValueError(
+            "monitor claim was interrupted after dispatch; explicitly start a new claim"
+        )
+    if not preview["remaining_urls"]:
+        raise ValueError("monitor claim has no undispatched URLs; explicitly start a new claim")
+
+    from seohead.crawl.cache import ResponseCache
+    from seohead.crawl.collect import fetch_one
+    from seohead.crawl.throttle import DispatchGate, Throttle
+    from seohead.recon.net import crawl_transport_options, http_client
+
+    reports = _reports_root(root)
+    cache = ResponseCache(_new_report_target(reports, "monitor-cache"))
+    throttle = Throttle(start_delay=0.5, min_delay=0.5, max_concurrency=1)
+    gate = DispatchGate(throttle, time.sleep, max_requests=document["policy"]["max_requests"])
+    transport: dict[str, Any] = {}
+
+    def response_facts(response: Any) -> None:
+        headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+        transport.update(
+            {
+                "status_code": response.status_code,
+                "cache_control": headers.get("cache-control"),
+                "etag": headers.get("etag"),
+                "last_modified": headers.get("last-modified"),
+                "set_cookie": bool(headers.get("set-cookie")),
+            }
+        )
+
+    client, _ = http_client(
+        15,
+        follow_redirects=False,
+        event_hooks={"response": [response_facts]},
+        **crawl_transport_options(),
+    )
+    observations = []
+    try:
+        for url in preview["remaining_urls"]:
+            # Write before dispatch: a crashed process leaves unknown work instead of replaying it.
+            root, document = _load(directory)
+            if document["revision"] != expected_revision:
+                raise ValueError("monitor revision conflict")
+            current = _claim_preview(document, (now or _now)())
+            if current["claim_id"] != preview["claim_id"]:
+                raise ValueError("monitor claim changed before collection")
+            if current["expired"]:
+                document["runner"] = {
+                    **document["runner"],
+                    "state": "interrupted",
+                    "interrupted_at": (now or _now)(),
+                    "reason": "monitor claim lease expired during collection",
+                }
+                document["revision"] += 1
+                write_document(root, NAME, document, expected_revision=expected_revision)
+                raise ValueError("monitor claim lease expired; explicitly start a new claim")
+            runner = document["runner"]
+            runner["dispatched_urls"] = [*runner.get("dispatched_urls", []), url]
+            document["revision"] += 1
+            write_document(root, NAME, document, expected_revision=expected_revision)
+            expected_revision = document["revision"]
+            transport.clear()
+            client.cookies.clear()
+            requests_before = gate.requests_used
+            record, parsed = fetch_one(
+                url,
+                client=client,
+                cache=cache,
+                throttle=throttle,
+                wait=gate.wait_turn,
+                user_agent="SEOHEAD-monitor/1",
+            )
+            source = _source_artifacts(root, preview["claim_id"], record, parsed, transport)
+            client.cookies.clear()
+            measurement, qualifier, failure_reason = _measurement(record, source)
+            observations.append(
+                {
+                    "url": url,
+                    "changes": [],
+                    "qualifier": qualifier,
+                    "measurement": measurement or None,
+                    "cache_state": "revalidated"
+                    if qualifier == "revalidated"
+                    else "fresh"
+                    if qualifier == "fresh"
+                    else "cached"
+                    if qualifier == "stale"
+                    else "unavailable",
+                    "request_count": gate.requests_used - requests_before,
+                    "render_request_count": 0,
+                    "failure_reason": failure_reason,
+                    "source": source,
+                }
+            )
+    finally:
+        client.close()
+    root, document = _load(directory)
+    if document["revision"] != expected_revision:
+        raise ValueError("monitor revision conflict")
+    current = _claim_preview(document, (now or _now)())
+    if current["claim_id"] != preview["claim_id"]:
+        raise ValueError("monitor claim changed before completion")
+    if current["expired"]:
+        document["runner"] = {
+            **document["runner"],
+            "state": "interrupted",
+            "interrupted_at": (now or _now)(),
+            "reason": "monitor claim lease expired before completion",
+        }
+        document["revision"] += 1
+        write_document(root, NAME, document, expected_revision=expected_revision)
+        raise ValueError("monitor claim lease expired; explicitly start a new claim")
+    retained = run(directory, str(preview["claim_id"]), observations, expected_revision)
+    return {"ok": True, "applied": True, "preview": preview, **retained}
+
+
+def local_deliver(directory: str | Path, *, scan_id: str, expected_revision: int) -> dict[str, Any]:
+    """Record one authorized local receipt without a network destination."""
+    root, project = _workspace_load(directory)
+    from seohead.bot.report_delivery import DeliveryReceipts
+    from seohead.projects.service_delivery import MonitorServiceDelivery
+
+    receipt_path = _new_report_target(_reports_root(root), "monitor-delivery-receipts.sqlite")
+    service = MonitorServiceDelivery(
+        project_uuid=project["project_uuid"],
+        allowed_destinations={"local:receipt"},
+        receipts=DeliveryReceipts(receipt_path),
+        send=lambda _destination, _payload, _receipt: None,
+        enabled=True,
+    )
+    return deliver(
+        directory,
+        scan_id=scan_id,
+        destination="local:receipt",
+        service=service,
+        expected_revision=expected_revision,
+    )
 
 
 def deliver(
@@ -571,7 +1013,7 @@ def deliver(
             {"destination": destination, **receipt} for receipt in newly_sent
         )
         document["revision"] += 1
-        write_document(root, NAME, document)
+        write_document(root, NAME, document, expected_revision=expected_revision)
     return {"ok": True, "revision": document["revision"], **result}
 
 

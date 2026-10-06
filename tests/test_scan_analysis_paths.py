@@ -108,3 +108,26 @@ def test_close_keeps_caller_topology_and_removes_only_session_state():
     }
     assert names == {"p_topology"}
     con.close()
+
+
+def test_depth_lookup_never_materializes_a_route_or_all_depths(monkeypatch):
+    con, session = _session([(str(index), str(index + 1)) for index in range(200)], seed="0")
+    assert session is not None
+    try:
+
+        def forbidden(*_args):
+            raise AssertionError("depth lookup must not materialize routes")
+
+        monkeypatch.setattr(session, "_materialize", forbidden)
+        assert session.depth_for("200") == 200
+        assert session.depth_for("10") == 10
+        assert session.depth_for("missing") is None
+        assert dict(session.iter_depths())["200"] == 200
+        plan = con.execute(
+            "EXPLAIN QUERY PLAN SELECT key FROM p_path_frontier "
+            "WHERE done=0 ORDER BY queue_order LIMIT 1"
+        ).fetchall()
+        assert any("p_path_pending" in row[3] for row in plan)
+    finally:
+        session.close()
+        con.close()

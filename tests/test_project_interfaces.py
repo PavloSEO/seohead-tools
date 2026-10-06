@@ -98,8 +98,8 @@ def test_project_native_crawl_persists_live_phases_and_final_counters(tmp_path, 
     assert run["counters"] == {
         "fetched": 7,
         "queued": 11,
-        "inflight": 0,
-        "excluded": 0,
+        "inflight": None,
+        "excluded": None,
         "rate_per_second": None,
     }
     assert [event["phase"] for event in run["events"]] == [

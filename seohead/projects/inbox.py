@@ -49,12 +49,34 @@ def _consumer(value: Any) -> str:
     return value
 
 
+def _reference(value: Any) -> bool:
+    if type(value) is not str:
+        return False
+    if _REFERENCE.fullmatch(value):
+        return True
+    if not value.startswith("task:") or len(value) > 256:
+        return False
+    from .coverage import _identifier
+
+    item_id = value.removeprefix("task:")
+    try:
+        if item_id.startswith("site:"):
+            scope, separator, item_id = item_id.partition("/")
+            site_id = scope.removeprefix("site:")
+            if not separator or str(uuid.UUID(site_id)) != site_id:
+                return False
+        _identifier(item_id)
+    except ValueError:
+        return False
+    return True
+
+
 def _references(value: Any) -> list[str]:
     if value is None:
         return []
     if not isinstance(value, list) or len(value) > 20:
         raise ValueError("references must be a list of at most 20 stable project references")
-    if any(type(item) is not str or not _REFERENCE.fullmatch(item) for item in value):
+    if any(not _reference(item) for item in value):
         raise ValueError("references contain an invalid project reference")
     return list(dict.fromkeys(value))
 

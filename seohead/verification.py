@@ -57,6 +57,16 @@ def digest(value: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def results_policy_fingerprint(document: Mapping[str, Any]) -> str | None:
+    """Return the stored results-affecting crawl-policy identity, if complete."""
+    run = document.get("run")
+    config = run.get("crawl_config") if isinstance(run, Mapping) else None
+    if not isinstance(config, Mapping):
+        return None
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 def scan_identity(document: Mapping[str, Any]) -> str | None:
     """The retained scan identity, when an audit actually records one."""
     summary = document.get("summary")
@@ -100,6 +110,8 @@ def _strings(value: Any, label: str) -> list[str]:
         return []
     if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
         raise ValueError(f"{label} must be a list of nonempty strings")
+    if len(value) > MAX_FINDINGS:
+        raise ValueError(f"{label} exceeds {MAX_FINDINGS} selectors")
     return list(dict.fromkeys(value))
 
 
@@ -179,6 +191,12 @@ def select(
     )
     if len(targets) > MAX_URLS:
         raise ValueError(f"selection exceeds {MAX_URLS} URLs")
+    _unique_rows(chosen, "finding")
+    target_set = set(targets)
+    _unique_rows(
+        [page for page in pages if isinstance(page, dict) and page.get("url") in target_set],
+        "page",
+    )
     return chosen, targets
 
 
@@ -200,16 +218,11 @@ def select_source(
             raise ValueError("baseline must be an audit document or audit.v2 reader")
         document = dict(source)
         selected, targets = select(document, finding_ids=finding_ids, urls=urls, view=view)
-        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
         return (
             document,
             selected,
             targets,
-            {
-                "audit_sha256": digest(document),
-                "scan_uuid": scan_identity(document),
-                "generated_at": run.get("generated_at"),
-            },
+            source_identity(document),
         )
 
     header = getattr(source, "header", None)
@@ -275,10 +288,13 @@ def select_source(
         item["target_url"] for item in chosen if isinstance(item.get("target_url"), str)
     }
     needed_pages = wanted_urls | selected_page_urls
+    _unique_rows(chosen, "finding")
     pages: list[dict[str, Any]] = []
     seen_pages: set[str] = set()
     for page in source.iter_collection("/pages"):
         if isinstance(page, dict) and page.get("url") in needed_pages:
+            if page["url"] in seen_pages:
+                raise ValueError("selected baseline has duplicate page URLs")
             pages.append(page)
             seen_pages.add(page["url"])
     missing_urls = wanted_urls - seen_pages
@@ -290,22 +306,9 @@ def select_source(
     compact = deepcopy(dict(header))
     compact["issues"] = chosen
     compact["pages"] = pages
-    run = compact.get("run") if isinstance(compact.get("run"), Mapping) else {}
-    audit_sha256 = getattr(source, "sha256", None)
-    if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
-        raise ValueError("audit.v2 source has no valid content hash")
-    binding = getattr(source, "binding", {})
-    scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
-    return (
-        compact,
-        chosen,
-        targets,
-        {
-            "audit_sha256": audit_sha256,
-            "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(compact),
-            "generated_at": run.get("generated_at"),
-        },
-    )
+    identity = source_identity(source)
+    compact.setdefault("run", {}).setdefault("scan_uuid", identity["scan_uuid"])
+    return compact, chosen, targets, identity
 
 
 def source_identity(source: Any) -> dict[str, Any]:
@@ -320,10 +323,22 @@ def source_identity(source: Any) -> dict[str, Any]:
         binding = getattr(source, "binding", {})
         scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
         run = header.get("run") if isinstance(header.get("run"), Mapping) else {}
+        summary = header.get("summary") if isinstance(header.get("summary"), Mapping) else {}
+        contract = (
+            summary.get("evidence_contract")
+            if isinstance(summary.get("evidence_contract"), Mapping)
+            else {}
+        )
+        if scan_uuid and any(
+            value and value != scan_uuid
+            for value in (run.get("scan_uuid"), contract.get("scan_uuid"))
+        ):
+            raise ValueError("audit.v2 header scan identity differs from its validated binding")
         return {
             "audit_sha256": audit_sha256,
             "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(header),
             "generated_at": run.get("generated_at"),
+            "results_policy_fingerprint": results_policy_fingerprint(header),
         }
     if not isinstance(source, Mapping):
         raise ValueError("audit must be an audit document or audit.v2 reader")
@@ -332,6 +347,7 @@ def source_identity(source: Any) -> dict[str, Any]:
         "audit_sha256": digest(source),
         "scan_uuid": scan_identity(source),
         "generated_at": run.get("generated_at"),
+        "results_policy_fingerprint": results_policy_fingerprint(source),
     }
 
 
@@ -340,16 +356,14 @@ def compact_after_source(
     selected: list[Mapping[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Retain only after rows that can affect the selected recheck verdicts."""
+    if len(selected) > MAX_FINDINGS:
+        raise ValueError(f"selection exceeds {MAX_FINDINGS} findings")
+    _unique_rows(selected, "finding")
     if not hasattr(source, "iter_collection"):
         if not isinstance(source, Mapping):
             raise ValueError("after must be an audit document or audit.v2 reader")
         document = dict(source)
-        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
-        return document, {
-            "audit_sha256": digest(document),
-            "scan_uuid": scan_identity(document),
-            "generated_at": run.get("generated_at"),
-        }
+        return document, source_identity(document)
     pairs = {
         (item.get("check"), item.get("target_url"))
         for item in selected
@@ -362,30 +376,47 @@ def compact_after_source(
         raise ValueError("after audit.v2 source has no validated header/collection index")
     if "/issues" not in collections or "/pages" not in collections:
         raise ValueError("after audit.v2 source lacks required /issues or /pages collections")
-    issues = [
-        item
-        for item in source.iter_collection("/issues")
-        if isinstance(item, dict) and (item.get("check"), item.get("target_url")) in pairs
-    ]
-    pages = [
-        page
-        for page in source.iter_collection("/pages")
-        if isinstance(page, dict) and page.get("url") in wanted_urls
-    ]
+    issues = []
+    issue_keys = set()
+    for item in source.iter_collection("/issues"):
+        if not isinstance(item, dict):
+            raise ValueError("after issue collection contains a non-object")
+        key = (item.get("check"), item.get("target_url"))
+        if key in pairs:
+            if key in issue_keys:
+                raise ValueError("selected after audit has duplicate finding keys")
+            issue_keys.add(key)
+            issues.append(item)
+    pages = []
+    page_urls = set()
+    for page in source.iter_collection("/pages"):
+        if not isinstance(page, dict):
+            raise ValueError("after page collection contains a non-object")
+        if page.get("url") in wanted_urls:
+            if page["url"] in page_urls:
+                raise ValueError("selected after audit has duplicate page URLs")
+            page_urls.add(page["url"])
+            pages.append(page)
     compact = deepcopy(dict(header))
     compact["issues"] = issues
     compact["pages"] = pages
-    run = compact.get("run") if isinstance(compact.get("run"), Mapping) else {}
-    audit_sha256 = getattr(source, "sha256", None)
-    if not isinstance(audit_sha256, str) or not _SHA256.fullmatch(audit_sha256):
-        raise ValueError("after audit.v2 source has no valid content hash")
-    binding = getattr(source, "binding", {})
-    scan_uuid = binding.get("scan_uuid") if isinstance(binding, Mapping) else None
-    return compact, {
-        "audit_sha256": audit_sha256,
-        "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(compact),
-        "generated_at": run.get("generated_at"),
-    }
+    identity = source_identity(source)
+    compact.setdefault("run", {}).setdefault("scan_uuid", identity["scan_uuid"])
+    return compact, identity
+
+
+def _unique_rows(rows: list, kind: str) -> None:
+    keys = set()
+    ids = set()
+    for row in rows:
+        key = row.get("url") if kind == "page" else (row.get("check"), row.get("target_url"))
+        if key in keys:
+            raise ValueError(f"selected audit has duplicate {kind} keys")
+        keys.add(key)
+        if kind == "finding" and row.get("id"):
+            if row["id"] in ids:
+                raise ValueError("selected audit has duplicate finding IDs")
+            ids.add(row["id"])
 
 
 def _issue_signature(issue: Mapping[str, Any]) -> str:
@@ -422,6 +453,8 @@ def _policy_gap(before: Mapping[str, Any], after: Mapping[str, Any]) -> str | No
     )
     if changed:
         return "results-affecting settings changed: " + ", ".join(changed)
+    if (after.get("run") or {}).get("crawl_valid") is False:
+        return "recrawl is marked invalid; no usable measurement is proven"
     if (after.get("run") or {}).get("cache_replay"):
         return "recrawl reused cached responses rather than measuring the page now"
     return None
@@ -453,6 +486,16 @@ def classify(
     missing_reason: str = "selected URL was not recrawled",
 ) -> list[dict[str, Any]]:
     """Classify each selected baseline finding with its URL's after audit."""
+    _unique_rows(selected, "finding")
+    selected_urls = {issue.get("target_url") for issue in selected}
+    _unique_rows(
+        [
+            page
+            for page in baseline.get("pages") or []
+            if isinstance(page, dict) and page.get("url") in selected_urls
+        ],
+        "page",
+    )
     old_pages = {
         page.get("url"): page
         for page in baseline.get("pages") or []
@@ -482,6 +525,24 @@ def classify(
         ) is not None:
             reason = gap
         else:
+            _unique_rows(
+                [
+                    page
+                    for page in after.get("pages") or []
+                    if isinstance(page, dict) and page.get("url") == url
+                ],
+                "page",
+            )
+            _unique_rows(
+                [
+                    item
+                    for item in after.get("issues") or []
+                    if isinstance(item, dict)
+                    and item.get("target_url") == url
+                    and item.get("check") == check
+                ],
+                "finding",
+            )
             after_pages = {
                 page.get("url"): page
                 for page in after.get("pages") or []

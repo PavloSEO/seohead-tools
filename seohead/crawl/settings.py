@@ -71,14 +71,13 @@ from typing import Any
 # above may approach 12,200 bytes/page with rich attribution markup (about
 # 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
 # allocations and are not a full-run memory guarantee.
-# The current release ceiling remains 50,000 until collector/analyzer capacity
-# is proved together; this is not a permanent product limit. Higher requests
-# are refused instead of silently reducing the requested scope (#356).
+# Stable public admission remains 50,000 until the larger producer/consumer
+# capacity gate passes. Higher requests are refused, never silently clamped.
 MAX_URLS_CEILING = 50_000
-# Direct NativeScan capacity experiments may record a larger declared population.
-# This is admission for synthetic storage measurement, not a crawler budget:
-# checked_url_budget() continues to refuse every real collector above 50,000.
+# Preserve the existing direct-storage synthetic profile; live collectors reject it.
 MAX_EXPERIMENTAL_URLS = 1_000_000
+# Robots, redirects and retries have a separate explicit request budget.
+MAX_REQUESTS_CEILING = 2_000_000
 
 
 def checked_url_budget(max_urls: int) -> int:
@@ -94,7 +93,7 @@ def checked_url_budget(max_urls: int) -> int:
     if budget > MAX_URLS_CEILING:
         raise ValueError(
             f"max_urls is {budget:,}, above this crawler's ceiling of {MAX_URLS_CEILING:,}; "
-            "narrow the scope rather than raising the budget"
+            "narrow the scope or split the work into resumable scans"
         )
     return budget
 
@@ -1140,9 +1139,7 @@ def validate(config: dict[str, Any]) -> None:
     ):
         raise ConfigError(
             f"limits.max_urls is {limits['max_urls']:,}, above this crawler's ceiling of "
-            f"{MAX_URLS_CEILING:,}. A larger number would have been silently reduced to the "
-            f"ceiling and the crawl reported as complete; crawl a narrower scope "
-            f"(scope.include_patterns / scope.exclude_patterns) instead."
+            f"{MAX_URLS_CEILING:,}; narrow the scope or split the work into resumable scans."
         )
     if limits["max_urls"] > MAX_EXPERIMENTAL_URLS:
         raise ConfigError(
@@ -1153,6 +1150,11 @@ def validate(config: dict[str, Any]) -> None:
         raise ConfigError("limits.max_depth cannot be negative")
     if type(limits["max_requests"]) is not int or limits["max_requests"] < 0:
         raise ConfigError("limits.max_requests must be a nonnegative integer")
+    if limits["max_requests"] > MAX_REQUESTS_CEILING:
+        raise ConfigError(
+            f"limits.max_requests is above the crawler request ceiling of "
+            f"{MAX_REQUESTS_CEILING:,}; split the work into resumable scans instead"
+        )
     if limits["max_query_variants_per_path"] < 0:
         # 0 is the crawler's own "unlimited" (see spider.py's truthy check on this
         # value); a negative number is not a smaller budget, it makes every

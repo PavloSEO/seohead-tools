@@ -55,6 +55,7 @@ class StoredGraph:
     def __init__(self, con: Any) -> None:
         self.con = con
         self._population_ready = False
+        self._inlink_counts_ready = False
         self._query_only_before: int | None = None
 
     def __enter__(self) -> StoredGraph:
@@ -65,15 +66,21 @@ class StoredGraph:
 
     def close(self) -> None:
         """Remove temporary eligibility state and restore the caller's pragma."""
-        if not self._population_ready and self._query_only_before is None:
+        if (
+            not self._population_ready
+            and not self._inlink_counts_ready
+            and self._query_only_before is None
+        ):
             return
         try:
+            self.con.execute("DROP TABLE IF EXISTS temp.e_graph_inlink_counts")
             self.con.execute("DROP TABLE IF EXISTS temp.e_graph_destination_ids")
             self.con.execute("DROP TABLE IF EXISTS temp.e_graph_page_keys")
         finally:
             if self._query_only_before is not None:
                 self.con.execute(f"PRAGMA query_only={self._query_only_before}")
             self._population_ready = False
+            self._inlink_counts_ready = False
             self._query_only_before = None
 
     def _ensure_composition_population(self) -> None:
@@ -84,7 +91,8 @@ class StoredGraph:
         """
         if self._population_ready:
             return
-        self._query_only_before = self.con.execute("PRAGMA query_only").fetchone()[0]
+        if self._query_only_before is None:
+            self._query_only_before = self.con.execute("PRAGMA query_only").fetchone()[0]
         if self._query_only_before:
             self.con.execute("PRAGMA query_only=OFF")
         try:
@@ -170,6 +178,30 @@ class StoredGraph:
                 "inlinks": row["inlinks"],
                 "unique_inlinks": row["unique_inlinks"],
             }
+
+    def inlink_counts(self):
+        """Return a bounded indexed lookup valid until this graph is closed."""
+        if not self._inlink_counts_ready:
+            if self._query_only_before is None:
+                self._query_only_before = self.con.execute("PRAGMA query_only").fetchone()[0]
+            if self._query_only_before:
+                self.con.execute("PRAGMA query_only=OFF")
+            try:
+                self.con.execute(
+                    "CREATE TEMP TABLE e_graph_inlink_counts(url TEXT PRIMARY KEY,total INTEGER,unique_sources INTEGER) WITHOUT ROWID"
+                )
+                self.con.execute(
+                    "INSERT INTO e_graph_inlink_counts "
+                    + selected_links_cte("l")
+                    + "SELECT dst.url,COUNT(*),COUNT(DISTINCT l.source_url_id) "
+                    "FROM l JOIN pages p ON p.url_id=l.destination_url_id "
+                    "JOIN urls dst ON dst.url_id=l.destination_url_id GROUP BY l.destination_url_id,dst.url"
+                )
+                self._inlink_counts_ready = True
+            except BaseException:
+                self.close()
+                raise
+        return _InlinkCounts(self.con)
 
     def composition_metadata(self) -> CompositionMetadata:
         self._ensure_composition_population()
@@ -297,3 +329,14 @@ class StoredGraph:
     def iter_password_forms_on_http(self) -> Iterator[dict[str, Any]]:
         for form in self.iter_forms():
             yield from link_findings.forms_on_http_pages_with_password([form])
+
+
+class _InlinkCounts:
+    def __init__(self, con):
+        self.con = con
+
+    def get(self, url, default=None):
+        row = self.con.execute(
+            "SELECT total,unique_sources FROM temp.e_graph_inlink_counts WHERE url=?", (url,)
+        ).fetchone()
+        return tuple(row) if row else default

@@ -20,6 +20,7 @@ from .workspace import _load, _target
 POLICY_FORMAT = "seohead.project-crawl-policy.v1"
 PREPARATION_FORMAT = "seohead.project-preparation.v1"
 DEFAULT_POLICY = {
+    "evidence_hash": {"max_bytes": 1024 * 1024 * 1024, "max_seconds": 5},
     "approval_thresholds": {"pages": 1000, "requests": 3000, "seconds": 600},
     "quick_crawl": {"pages": 50, "requests": 150, "seconds": 60},
     "crawl_overrides": {},
@@ -95,9 +96,19 @@ def _positive(value: Any, label: str) -> int:
 def validate_policy(policy: Any) -> dict:
     from seohead.crawl.settings import load
 
-    if not isinstance(policy, dict) or set(policy) != set(DEFAULT_POLICY):
+    if not isinstance(policy, dict) or set(policy) not in (
+        set(DEFAULT_POLICY),
+        set(DEFAULT_POLICY) - {"evidence_hash"},
+    ):
         raise ValueError("crawl policy has unsupported fields")
     result = copy.deepcopy(policy)
+    result.setdefault("evidence_hash", copy.deepcopy(DEFAULT_POLICY["evidence_hash"]))
+    hashing = result["evidence_hash"]
+    if not isinstance(hashing, dict) or set(hashing) != {"max_bytes", "max_seconds"}:
+        raise ValueError("evidence_hash requires max_bytes and max_seconds")
+    for name, ceiling in (("max_bytes", 64 * 1024 * 1024 * 1024), ("max_seconds", 300)):
+        if type(hashing[name]) is not int or not 1 <= hashing[name] <= ceiling:
+            raise ValueError(f"evidence_hash.{name} must be an integer from 1 to {ceiling}")
     for section in ("approval_thresholds", "quick_crawl"):
         if not isinstance(result[section], dict) or set(result[section]) != {
             "pages",
@@ -529,9 +540,17 @@ def prepare_project(
         lock.unlink(missing_ok=True)
 
 
-def aggregate_coverage(directory: str, primary: dict) -> dict:
+def aggregate_coverage(
+    directory: str,
+    primary: dict,
+    *,
+    _coverage_views: dict | None = None,
+    _verify_evidence: bool = True,
+) -> dict:
     """Combine declared site checklists without assigning another site's evidence to a row."""
     root, project = _load(directory)
+    views = {} if _coverage_views is None else _coverage_views
+    views[str(root)] = primary
     preparation = preparation_status(directory)
     children = preparation.get("competitors", [])
     if not children:
@@ -565,12 +584,15 @@ def aggregate_coverage(directory: str, primary: dict) -> dict:
         ):
             raise ValueError("competitor project identity mismatch")
         seen.add(metadata["project_uuid"])
+        child_key = str(path.resolve())
+        if child_key not in views:
+            views[child_key] = coverage_status(path, _verify_evidence=_verify_evidence)
         sites.append(
             {
                 "directory": relative,
                 "project_uuid": metadata["project_uuid"],
                 "site": metadata["site"]["target"],
-                "checklist": coverage_status(path),
+                "checklist": views[child_key],
             }
         )
     result = copy.deepcopy(primary)
@@ -662,7 +684,9 @@ def aggregate_coverage(directory: str, primary: dict) -> dict:
     return result
 
 
-def resolve_item_scope(directory: str, item_id: str) -> tuple[str, str]:
+def resolve_item_scope(
+    directory: str, item_id: str, *, _verify_evidence: bool = True
+) -> tuple[str, str]:
     """Resolve only declared qualified site rows; unqualified IDs keep their local scope."""
     if not isinstance(item_id, str) or not item_id.startswith("site:"):
         return directory, item_id
@@ -676,6 +700,10 @@ def resolve_item_scope(directory: str, item_id: str) -> tuple[str, str]:
     for child in preparation_status(directory).get("competitors", []):
         if child.get("project_uuid") == requested:
             # Reuse the complete validation before resolving a writable child.
-            aggregate_coverage(directory, coverage_status(root))
+            aggregate_coverage(
+                directory,
+                coverage_status(root, _verify_evidence=_verify_evidence),
+                _verify_evidence=_verify_evidence,
+            )
             return str(root / child["directory"]), local_id
     raise ValueError("item belongs to an undeclared project scope")

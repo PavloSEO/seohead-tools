@@ -278,12 +278,13 @@ def test_seo_crawl_site_forwards_sitemap_urls_and_config_to_the_handler():
 
 # ── the core/interface boundary, with no hand-written list of directories ────
 
-# The two packages that are allowed to compose everything else. Everything under
+# Interface packages are allowed to compose everything else. Everything under
 # seohead/ that is not one of these is core, whether or not it existed when this
 # test was written.
 # Both interfaces compose the Python core. The optional remote adapter may
 # reuse shared handlers, but core crawler/analyzer modules may not import it.
-INTERFACE_PACKAGES = {"servers", "remote_api"}
+# The terminal is a CLI presentation adapter, not crawler/analyzer core.
+INTERFACE_PACKAGES = {"servers", "remote_api", "tui"}
 INTERFACE_MODULES = {"cli.py", "__main__.py"}
 
 
@@ -317,11 +318,22 @@ def _imports_the_interface(source: str) -> list[str]:
     """
     found: list[str] = []
     tree = ast.parse(source)
-    forbidden = (["seohead", "servers"], ["seohead", "remote_api"], ["seohead", "cli"])
+    forbidden = (
+        ["seohead", "servers"],
+        ["seohead", "remote_api"],
+        ["seohead", "cli"],
+        ["seohead", "tui"],
+    )
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             if node.module.split(".")[:2] in forbidden:
                 found.append(node.module)
+            elif node.module == "seohead":
+                found.extend(
+                    "seohead." + alias.name
+                    for alias in node.names
+                    if ["seohead", alias.name] in forbidden
+                )
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.split(".")[:2] in forbidden:
@@ -356,3 +368,16 @@ def test_the_discovery_actually_sees_every_core_directory():
     }
     for expected in ("audit", "crawl", "data_sources", "recon", "reports", "sf", "tools"):
         assert expected in found, f"boundary check no longer looks at seohead/{expected}/"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from seohead.tui import app",
+        "import seohead.tui.app",
+        "from seohead import tui",
+        "def deferred():\n    from seohead.tui.state import ShellState",
+    ],
+)
+def test_core_boundary_rejects_terminal_imports_including_deferred_forms(source):
+    assert _imports_the_interface(source)

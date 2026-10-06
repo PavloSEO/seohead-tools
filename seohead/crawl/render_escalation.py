@@ -499,6 +499,11 @@ def escalate(
         if not time_left():
             result.time_budget_exhausted = True
         return result
+    except KeyboardInterrupt as exc:
+        # Preserve observed counters for a retained caller before unwinding.
+        # The caller still records elapsed time and re-raises the cancellation.
+        exc.render_outcome = result
+        raise
     finally:
         # Deterministic teardown: in-flight jobs are waited out (each fetch
         # closes its own page/context/browser/client), jobs never started are

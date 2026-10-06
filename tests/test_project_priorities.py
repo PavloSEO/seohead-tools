@@ -257,3 +257,98 @@ def test_packaged_policy_uses_saved_php_cms_and_publisher_facts(tmp_path, fact, 
     )
 
     assert decision["after"] == {"priority": "P0", "priority_origin": "policy"}
+
+
+def test_prepared_project_accepts_new_task_without_rebinding_historical_priority_scope(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from seohead.projects.observer import checklist_page, observe, task_detail
+    from seohead.projects.workspace import project_status
+    from tests.test_project_observer_sites import _prepare_with_competitors
+
+    root = tmp_path / "project"
+    _prepare_with_competitors(root)
+    initialize_coverage(root)
+    saved = json.loads((root / "coverage.json").read_text())
+    historical = saved["priority_policy"]["applications"]
+    assert historical
+    updated = update_item(
+        root,
+        {"id": "custom:observe", "title": "Observe prepared project", "order": 999},
+        coverage_status(root)["revision"],
+    )
+    item = next(row for row in updated["items"] if row["id"] == "custom:observe")
+    assert item["priority"] == "P1" and item["priority_origin"] == "default"
+    assert item["attempt_status"] == "not_run" and not item["complete"]
+    assert (
+        json.loads((root / "coverage.json").read_text())["priority_policy"]["applications"]
+        == historical
+    )
+    assert project_status(root)["checklist"]["state"] == "initialized"
+    assert checklist_page(root, query="Observe prepared project")["pagination"]["total"] == 1
+    assert (
+        task_detail(root, item_id="custom:observe")["item"]["title"] == "Observe prepared project"
+    )
+    assert any(
+        row["id"].endswith("custom:observe") for row in observe(str(root))["active_tasks"]["items"]
+    )
+    script = "from seohead.projects.coverage import coverage_status; import json,sys; print(json.dumps(coverage_status(sys.argv[1])['state']))"
+    reopened = subprocess.check_output(
+        [sys.executable, "-c", script, str(root)],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+    )
+    assert json.loads(reopened) == "initialized"
+
+
+def test_legacy_priority_receipt_stays_readable_after_addition(project):
+    project_priorities(
+        str(project), apply=True, expected_revision=coverage_status(project)["revision"]
+    )
+    path = project / "coverage.json"
+    saved = json.loads(path.read_text())
+    for application in saved["priority_policy"]["applications"]:
+        application["receipt"].pop("item_ids", None)
+    historical = saved["priority_policy"]["applications"]
+    path.write_text(json.dumps(saved))
+    update_item(
+        project, {"id": "custom:later", "title": "Later task"}, coverage_status(project)["revision"]
+    )
+    assert json.loads(path.read_text())["priority_policy"]["applications"] == historical
+    assert any(row["id"] == "custom:later" for row in coverage_status(project)["items"])
+
+
+def test_receipt_declared_scope_detects_removed_historical_decision(project):
+    from seohead.projects.coverage import _receipt_fingerprint
+
+    project_priorities(
+        str(project), apply=True, expected_revision=coverage_status(project)["revision"]
+    )
+    path = project / "coverage.json"
+    saved = json.loads(path.read_text())
+    receipt = saved["priority_policy"]["applications"][-1]["receipt"]
+    receipt["decisions"].pop()
+    receipt["decision_fingerprint"] = _receipt_fingerprint(receipt["decisions"])
+    path.write_text(json.dumps(saved))
+    with pytest.raises(ValueError, match="historical item scope"):
+        coverage_status(project)
+
+
+def test_transaction_rejects_invalid_candidate_before_atomic_publication(project):
+    from seohead.projects.coverage import _transaction
+
+    project_priorities(
+        str(project), apply=True, expected_revision=coverage_status(project)["revision"]
+    )
+    path = project / "coverage.json"
+    before = path.read_bytes()
+    with (
+        pytest.raises(ValueError, match="invalid priority policy receipt"),
+        _transaction(project, coverage_status(project)["revision"]) as (_, _, document),
+    ):
+        document["priority_policy"]["applications"][-1]["receipt"]["policy_hash"] = "0" * 64
+    assert path.read_bytes() == before
+    assert coverage_status(project)["state"] == "initialized"
+    assert not (project / ".coverage.lock").exists()

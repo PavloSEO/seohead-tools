@@ -18,7 +18,7 @@ from typing import Any
 
 from seohead import filesystem
 
-from . import ScanError, _dump, _insert, open_scan
+from . import READ_TIMEOUT_SECONDS, ScanError, _dump, _insert, open_scan
 from .native_scan import (
     BACKUP_TIMEOUT_SECONDS,
     SNAPSHOT_RESERVE_BYTES,
@@ -200,7 +200,7 @@ def derived_scan(
     if os.path.lexists(target_audit):
         raise ScanError(f"derived reanalysis audit output already exists: {target_audit}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    source = open_scan(source_path, require_audit=False)
+    source = open_scan(source_path, require_audit=False, query_timeout_seconds=READ_TIMEOUT_SECONDS)
     fd, name = tempfile.mkstemp(prefix=".reanalysis-", suffix=".sqlite", dir=target.parent)
     os.close(fd)
     temporary = Path(name)
@@ -352,7 +352,13 @@ def replace_reparsed_page(scan: NativeScan, replay: Any) -> None:
                     (*observation, row[0]),
                 )
             scan._partial_reasons(facts["partial_reasons"])
-        scan._sync_corpus()
+        selected_representation = page["representation"]
+        scan._sync_corpus(
+            committed_document_id=replay.selected_document_id,
+            resource_inventory_state=replay.representation_facts[selected_representation][
+                "resource_inventory_state"
+            ],
+        )
         scan.con.commit()
     except BaseException:
         scan._rollback()

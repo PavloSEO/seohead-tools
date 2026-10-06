@@ -30,7 +30,6 @@ import json
 import os
 import re
 import tempfile
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -47,8 +46,7 @@ from seohead.tools.browser_transport import (
     open_context,
     prepare,
 )
-
-_NAVIGATION_EVENT_CAP = 32
+from seohead.tools.navigation import NavigationCapture
 
 # Two fixed profiles rather than a free-form width/height: a responsive page
 # renders a different DOM at different widths, so comparing two runs requires
@@ -440,7 +438,10 @@ _TLS_VERIFICATION_FAILURE = (
 
 def _network_error_summary(exc: Exception, policy: Any = None) -> str:
     """Name certificate failures without exposing transport detail or credentials."""
-    if "certificate_verify_failed" in str(exc).lower():
+    if any(
+        marker in str(exc).lower()
+        for marker in ("certificate_verify_failed", "proxied origin tls verification failed")
+    ):
         return _TLS_VERIFICATION_FAILURE
     return _error_summary(exc, policy)
 
@@ -956,6 +957,10 @@ def render_check(
     except RuntimeError as exc:
         return {"ok": False, "url": target, "error": str(exc)}
 
+    navigation = NavigationCapture(target, wait, timeout)
+    transport_info["navigation"] = navigation.data
+    render_completed = False
+
     # Fetch raw HTML with the regular client: this is what a non-rendering crawler receives.
     from seohead.recon.net import crawl_transport_options
 
@@ -1058,11 +1063,13 @@ def render_check(
                     "**/*", lambda ws_route: _guard_websocket_route(ws_route, limitations)
                 )
                 page = context.new_page()
+                navigation.attach(context, page)
                 wait_reached = _capture_dom(
                     page, target, wait, timeout, settle_ms, navigation_timeout
                 )
                 rendered_html = page.content()
                 rendered_url = page.url
+                navigation.data["final_url"] = rendered_url
                 metrics = page.evaluate(_METRICS_JS)
                 computed_backgrounds = page.evaluate(_BACKGROUND_IMAGES_JS)
                 if limitations:
@@ -1075,6 +1082,7 @@ def render_check(
                             **transport_info,
                         }
                     raise RuntimeError("; ".join(limitations))
+                render_completed = wait_reached == wait
             finally:
                 if context is not None:
                     try:
@@ -1106,6 +1114,7 @@ def render_check(
             **transport_info,
         }
     finally:
+        navigation.finish(success=render_completed)
         if browser_client is not None:
             browser_client.close()
 
@@ -1503,15 +1512,7 @@ def render_document(
     renderer: dict[str, Any] = {
         "engine": f"playwright-{engine}",
         "engine_version": "unknown",
-        "navigation": {
-            "requested_url": target,
-            "final_url": None,
-            "wait_until": browser_cfg.get("wait_until", "load"),
-            "timeout_seconds": nav_timeout,
-            "interaction_policy": "no_clicks",
-            "events": [],
-            "events_omitted": 0,
-        },
+        "navigation": {},
         "settings": {
             "viewport": viewport,
             "device_pixel_ratio": float(browser_cfg.get("device_pixel_ratio", 1.0) or 1.0),
@@ -1539,49 +1540,9 @@ def render_document(
     if endpoint is not None:
         renderer["transport"] = transport_facts
     browser_limitations: list[str] = []
-    navigation_started = time.monotonic()
-    navigation_events: list[dict[str, Any]] = []
-    navigation_events_omitted = 0
-    main_document_requests: set[str] = set()
-
-    def _on_frame_navigated(frame: Any) -> None:
-        nonlocal navigation_events_omitted
-        # Iframes navigate independently; issue #826 is about the inspected
-        # document's route and must not infer a page redirect from an embed.
-        if frame is not getattr(page, "main_frame", None):
-            return
-        destination = str(getattr(frame, "url", ""))
-        if not destination:
-            return
-        if len(navigation_events) >= _NAVIGATION_EVENT_CAP:
-            navigation_events_omitted += 1
-            return
-        source = navigation_events[-1]["destination"] if navigation_events else target
-        navigation_events.append(
-            {
-                "source": source,
-                "destination": destination,
-                "elapsed_ms": round((time.monotonic() - navigation_started) * 1000),
-                "kind": (
-                    "initial_http_navigation"
-                    if not navigation_events
-                    else "script_navigation"
-                    if destination in main_document_requests
-                    else "spa_history_change"
-                ),
-                "user_click": False,
-            }
-        )
-
-    def _on_request(request: Any) -> None:
-        """Remember navigation identity only; never inspect wire headers (#656)."""
-        is_navigation = getattr(request, "is_navigation_request", None)
-        if not callable(is_navigation) or not is_navigation():
-            return
-        if getattr(request, "frame", None) is getattr(page, "main_frame", None):
-            url = getattr(request, "url", None)
-            if isinstance(url, str):
-                main_document_requests.add(url)
+    navigation = NavigationCapture(target, browser_cfg.get("wait_until", "load"), nav_timeout)
+    renderer["navigation"] = navigation.data
+    render_completed = False
 
     # There is deliberately no request hook beside _capture_response. Reading the
     # browser's own wire headers upgraded credentials_used the moment any request
@@ -1688,8 +1649,7 @@ def render_document(
                     lambda ws_route: _guard_websocket_route(ws_route, browser_limitations),
                 )
                 page = context.new_page()
-                page.on("framenavigated", _on_frame_navigated)
-                page.on("request", _on_request)
+                navigation.attach(context, page)
                 if max_html_bytes is not None:
                     page.on("response", _capture_response)
                 page.on("console", _on_console)
@@ -1717,6 +1677,7 @@ def render_document(
                 else:
                     dom = page.evaluate(_bounded_dom_script(max_html_bytes))
                 final_url = page.url
+                navigation.data["final_url"] = final_url
                 if artifacts_cfg.get("screenshots") and artifacts_dir:
                     staged = _staged_screenshot_path(artifacts_dir, target)
                     try:
@@ -1742,8 +1703,10 @@ def render_document(
                             "url": target,
                             "reason": "render_cancelled",
                             "error": _RENDER_CANCELLED,
+                            "renderer": renderer,
                         }
                     raise RuntimeError("; ".join(browser_limitations))
+                render_completed = True
             finally:
                 try:
                     context.close()
@@ -1772,12 +1735,11 @@ def render_document(
             **({"reason": "remote_render_failed"} if endpoint is not None else {}),
         }
     finally:
+        navigation.finish(success=render_completed)
         if network_client is not None:
             network_client.close()
 
     renderer["navigation"]["final_url"] = final_url
-    renderer["navigation"]["events"] = navigation_events
-    renderer["navigation"]["events_omitted"] = navigation_events_omitted
     renderer["transforms"]["flatten_shadow_dom_applied"] = shadow_flattened
     renderer["transforms"]["flatten_iframes_applied"] = iframe_flattened
     renderer["console_error_count"] = len(console_errors) + console_errors_omitted

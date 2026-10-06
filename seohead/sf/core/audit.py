@@ -90,6 +90,7 @@ def run_audit(
     output_dir: str | None = None,
     log: Callable[[str], None] = print,
     on_started: Callable[[int], None] | None = None,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> AuditResult:
     cfg = config if config is not None else load_config(config_path)
     # Apply targeted CLI overrides, such as an SF authentication profile.
@@ -137,6 +138,7 @@ def run_audit(
             log=log,
             run_info=sf_run_info,
             on_started=on_started,
+            **({"on_progress": on_progress} if on_progress is not None else {}),
         )
         if sf_version is None:
             sf_version = (sf_run_info.get("sf_capability") or {}).get("version")

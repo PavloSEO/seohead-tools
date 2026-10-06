@@ -9,6 +9,8 @@ from __future__ import annotations
 import copy
 import json
 from collections import OrderedDict
+from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -97,16 +99,29 @@ def _cache_put(key: tuple[Any, ...], value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_retained_findings(row: dict[str, Any]) -> dict[str, Any]:
-    """Materialise only the audit fields observer summary/detail views need."""
+    """Read only findings, bounding their bytes before constructing a cache entry."""
     from seohead.storage import read_audit
+    from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
-    audit = read_audit(row["path"])
-    issues = audit.get("issues")
+    if audit_v2_path(row["path"]).exists():
+        with AuditV2Reader(row["path"]) as reader:
+            size = reader.con.execute(
+                "SELECT COALESCE(SUM(length(CAST(value_json AS BLOB))),0) FROM items WHERE pointer='/issues'"
+            ).fetchone()[0]
+            if size > _FINDINGS_CACHE_MAX_BYTES:
+                raise ValueError(
+                    "finding collection exceeds the in-memory cache; use bounded finding pages"
+                )
+            audit = reader.header
+            issues = list(reader.iter_collection("/issues"))
+    else:
+        audit = read_audit(row["path"])
+        issues = audit.get("issues")
     if not isinstance(issues, list) or any(not isinstance(item, dict) for item in issues):
         raise ValueError("retained scan audit has no readable finding list")
     run = audit.get("run")
     return {
-        "issues": tuple(copy.deepcopy(issues)),
+        "issues": tuple(issues),
         "skipped_checks": copy.deepcopy(run.get("checks_skipped", []))
         if isinstance(run, dict)
         else [],
@@ -156,9 +171,49 @@ def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
     from seohead.storage.status import scan_status
 
     path = row["path"]
+    from seohead.storage.native_scan import NativeScan
+
+    light_reader = getattr(NativeScan, "observe", None)
+    if (
+        row.get("source_kind") == "native"
+        and row.get("lifecycle") == "running"
+        and callable(light_reader)
+    ):
+        try:
+            live = light_reader(path)
+        except (OSError, ValueError) as exc:
+            return {"state": "unavailable", "reason": str(exc)}
+        return {
+            "state": "available",
+            "validation": live["validation"],
+            "frontier": {
+                "state": "available",
+                "reason": "committed metadata snapshot",
+                "counts": {
+                    name: live["counts"][name]
+                    for name in ("queued", "inflight", "done", "excluded")
+                },
+            },
+            "committed_page_outcomes": None,
+            "committed_pages": live["counts"]["pages"],
+            "sitemaps": {
+                "fetch_summaries": {},
+                "state": "unavailable",
+                "reason": "not in lightweight collection snapshot",
+            },
+            "findings": {
+                "state": "unavailable",
+                "reason": "collection still running; no current finalized audit projected",
+                "total": None,
+                "by_severity": {},
+                "items": [],
+                "truncated": False,
+            },
+            "skipped_checks": None,
+        }
     try:
         status = scan_status(path)
-        with open_scan(path, require_audit=False) as con:
+        with closing(open_scan(path, require_audit=False)) as con:
             sitemap_rows = con.execute(
                 "SELECT completeness,COUNT(*) FROM context_items "
                 "WHERE kind='sitemap_fetch_summary' GROUP BY completeness"
@@ -173,6 +228,41 @@ def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
     }
     try:
+        from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
+
+        if audit_v2_path(path).exists():
+            with AuditV2Reader(path) as reader:
+                total = reader.count("/issues")
+                severity = {
+                    key: count
+                    for key, count in reader.con.execute(
+                        "SELECT json_extract(value_json,'$.severity'),COUNT(*) FROM items "
+                        "WHERE pointer='/issues' GROUP BY json_extract(value_json,'$.severity')"
+                    )
+                    if isinstance(key, str)
+                }
+                first = reader.con.execute(
+                    "SELECT value_json FROM items WHERE pointer='/issues' ORDER BY ordinal LIMIT 20"
+                )
+                first = [
+                    _finding_summary(json.loads(item[0]), ordinal)
+                    for ordinal, item in enumerate(first)
+                ]
+                skipped = reader.header.get("run", {}).get("checks_skipped", [])
+                if "/run/checks_skipped" in reader.collections:
+                    skipped = list(reader.iter_collection("/run/checks_skipped"))
+                evidence.update(
+                    findings={
+                        "state": "available",
+                        "reason": None,
+                        "total": total,
+                        "by_severity": severity,
+                        "items": first,
+                        "truncated": total > len(first),
+                    },
+                    skipped_checks=skipped,
+                )
+                return evidence
         retained = _retained_findings(row)
     except (OSError, ValueError, KeyError) as exc:
         evidence.update(
@@ -288,14 +378,24 @@ def _method_coverage(checklist: dict[str, Any]) -> dict[str, Any]:
         }
     kinds: dict[str, dict[str, Any]] = {}
     for kind in ("scenario", "skill"):
-        rows = [item for item in checklist.get("items", []) if item.get("kind") == kind]
+        rows = [
+            item
+            for item in checklist.get("items", [])
+            if item.get("kind") == kind
+            and item.get("enabled", True)
+            and item.get("applicability") == "applicable"
+        ]
         states: dict[str, int] = {}
         for row in rows:
             value = row.get("state")
             if isinstance(value, str):
                 states[value] = states.get(value, 0) + 1
         kinds[kind] = {
-            "expected": len(rows),
+            "expected": len(rows) if checklist.get("plan") is not None else None,
+            "applicable": len(rows),
+            "basis": "agreed applicable methods"
+            if checklist.get("plan") is not None
+            else "audit plan not recorded",
             "completed": sum(1 for row in rows if row.get("complete") is True),
             "states": states,
         }
@@ -346,6 +446,8 @@ def _site_projection(
     scan_limit: int,
 ) -> dict[str, Any]:
     """Build one read-only own-site or competitor observation row."""
+    from .run_observation import status as run_status
+
     return {
         "role": role,
         "project_uuid": project["project_uuid"],
@@ -361,10 +463,13 @@ def _site_projection(
         "coverage": _coverage_summary(checklist),
         "methods": _method_coverage(checklist),
         "scans": _site_scans(root, scans, limit=scan_limit),
+        "runs": run_status(root),
     }
 
 
-def _competitor_sites(root: Path, preparation: dict[str, Any], *, scan_limit: int) -> list[dict]:
+def _competitor_sites(
+    root: Path, preparation: dict[str, Any], *, scan_limit: int, coverage_views: dict | None = None
+) -> list[dict]:
     """Read declared competitor workspaces only; absent or damaged work stays explicit."""
     from seohead.storage.history import list_scans
 
@@ -386,7 +491,8 @@ def _competitor_sites(root: Path, preparation: dict[str, Any], *, scan_limit: in
                 _site_projection(
                     child_root,
                     child_project,
-                    coverage_status(child_root),
+                    (coverage_views or {}).get(str(child_root))
+                    or coverage_status(child_root, _verify_evidence=False),
                     list_scans(child_root / "scans"),
                     role="competitor",
                     source=candidate.get("source"),
@@ -434,8 +540,10 @@ def _competitor_sites(root: Path, preparation: dict[str, Any], *, scan_limit: in
 
 def _scan_row(directory: str | Path, scan_uuid: str | None) -> dict[str, Any]:
     """Resolve one retained scan through the project history, never a caller path."""
-    status = project_status(directory)
-    rows = status["scans"]["items"]
+    from seohead.storage.history import _catalog
+
+    root, _project = _load(directory)
+    rows, _errors = _catalog(root / "scans")
     if not rows:
         raise ValueError("project has no retained scans")
     if scan_uuid is None:
@@ -447,8 +555,10 @@ def _scan_row(directory: str | Path, scan_uuid: str | None) -> dict[str, Any]:
 
 
 def _finding_summary(issue: dict[str, Any], ordinal: int) -> dict[str, Any]:
-    """Keep a browse page small while retaining a stable ordinal for its detail page."""
-    return {
+    """Keep a browse page small; full original evidence stays in the retained artifact."""
+    if not isinstance(issue, dict):
+        raise ValueError("retained finding is not an object")
+    result = {
         "ordinal": ordinal,
         "id": issue.get("id"),
         "check": issue.get("check"),
@@ -457,6 +567,14 @@ def _finding_summary(issue: dict[str, Any], ordinal: int) -> dict[str, Any]:
         "message": issue.get("message") or issue.get("text"),
         "fingerprint": issue.get("fingerprint"),
     }
+    truncated = list(issue.get("truncated_fields", []))
+    for key, value in result.items():
+        if isinstance(value, str) and len(value) > 4096:
+            result[key] = value[:4096] + "…"
+            truncated.append(key)
+    if truncated:
+        result["truncated_fields"] = sorted(set(truncated))
+    return result
 
 
 def _bounded_value(value: Any, *, depth: int = 0) -> Any:
@@ -475,6 +593,72 @@ def _bounded_value(value: Any, *, depth: int = 0) -> Any:
             for key, item in list(value.items())[:40]
         }
     return str(value)[:1024]
+
+
+def _projection_truncated(value: Any, *, depth: int = 0) -> bool:
+    """Name every omission made by the bounded detail projection."""
+    if depth >= 3:
+        return True
+    if isinstance(value, str):
+        return len(value) > 4096
+    if isinstance(value, list):
+        return len(value) > 20 or any(
+            _projection_truncated(item, depth=depth + 1) for item in value
+        )
+    if isinstance(value, dict):
+        return len(value) > 40 or any(
+            len(str(key)) > 128 or _projection_truncated(item, depth=depth + 1)
+            for key, item in value.items()
+        )
+    return False
+
+
+def _v2_findings_page(row, *, offset, limit, query, sort, descending):
+    """Let SQLite bound sorting/paging; never materialize unrelated audit collections."""
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    fields = ("id", "check", "severity", "target_url", "url", "message", "text")
+    with AuditV2Reader(row["path"]) as reader:
+        reader.con.create_function("casefold", 1, lambda value: str(value or "").casefold())
+        expression = " || ' ' || ".join(
+            f"COALESCE(json_extract(value_json,'$.{field}'),'')" for field in fields
+        )
+        predicate = "pointer='/issues' AND instr(casefold(" + expression + "),?)>0"
+        needle = query.casefold().strip()
+        matched = reader.con.execute(
+            "SELECT COUNT(*) FROM items WHERE " + predicate, (needle,)
+        ).fetchone()[0]
+        value = f"json_extract(value_json,'$.{sort}')"
+        if sort == "target_url":
+            value = "COALESCE(NULLIF(" + value + ",''),json_extract(value_json,'$.url'))"
+        if sort == "severity":
+            value = (
+                "CASE casefold("
+                + value
+                + ") "
+                + " ".join(f"WHEN '{name}' THEN {rank}" for name, rank in _SEVERITY_RANK.items())
+                + " ELSE 99 END"
+            )
+            order = value
+        else:
+            order = f"({value} IS NULL OR {value}=''),casefold({value})"
+        direction = " DESC" if descending else " ASC"
+        order = (
+            order.replace(",casefold", direction + ",casefold") + direction + ",ordinal" + direction
+        )
+        selected = reader.con.execute(
+            "SELECT ordinal,value_json FROM items WHERE "
+            + predicate
+            + " ORDER BY "
+            + order
+            + " LIMIT ? OFFSET ?",
+            (needle, limit, offset),
+        )
+        return (
+            reader.count("/issues"),
+            matched,
+            [(item[0], _finding_summary(json.loads(item[1]), item[0])) for item in selected],
+        )
 
 
 def findings_page(
@@ -502,6 +686,15 @@ def findings_page(
     if sort not in _FINDING_SORTS:
         raise ValueError("finding sort must be severity, check, target_url or id")
     row = _scan_row(directory, scan_uuid)
+    from seohead.storage.audit_v2 import audit_v2_path
+
+    if audit_v2_path(row["path"]).exists():
+        source_count, matched_count, selected = _v2_findings_page(
+            row, offset=offset, limit=limit, query=query, sort=sort, descending=descending
+        )
+        return _finding_page_result(
+            row, query, sort, descending, source_count, matched_count, selected, offset, limit
+        )
     issues = _retained_findings(row)["issues"]
     needle = query.casefold().strip()
     indexed = list(enumerate(issues))
@@ -528,6 +721,14 @@ def findings_page(
 
     indexed.sort(key=sort_key, reverse=descending)
     selected = indexed[offset : offset + limit]
+    return _finding_page_result(
+        row, query, sort, descending, len(issues), len(indexed), selected, offset, limit
+    )
+
+
+def _finding_page_result(
+    row, query, sort, descending, source_count, matched_count, selected, offset, limit
+):
     return {
         "ok": True,
         "scan": {
@@ -536,15 +737,15 @@ def findings_page(
         },
         "query": query,
         "sort": {"field": sort, "direction": "desc" if descending else "asc"},
-        "counts": {"source": len(issues), "matched": len(indexed), "returned": len(selected)},
+        "counts": {"source": source_count, "matched": matched_count, "returned": len(selected)},
         "pagination": {
             "offset": offset,
             "limit": limit,
             "next_offset": offset + len(selected)
-            if offset + len(selected) < len(indexed)
+            if offset + len(selected) < matched_count
             else None,
             "previous_offset": max(0, offset - limit) if offset else None,
-            "truncated": offset + len(selected) < len(indexed),
+            "truncated": offset + len(selected) < matched_count,
         },
         "items": [_finding_summary(issue, ordinal) for ordinal, issue in selected],
     }
@@ -557,16 +758,39 @@ def finding_detail(
     if type(ordinal) is not int or ordinal < 0:
         raise ValueError("finding ordinal must be non-negative")
     row = _scan_row(directory, scan_uuid)
-    retained = _retained_findings(row)
-    issues = retained["issues"]
-    if ordinal >= len(issues):
-        raise ValueError("retained finding ordinal is unavailable")
-    issue = issues[ordinal]
+    from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
+
+    if audit_v2_path(row["path"]).exists():
+        with AuditV2Reader(row["path"]) as reader:
+            saved = reader.con.execute(
+                "SELECT value_json FROM items WHERE pointer='/issues' AND ordinal=?", (ordinal,)
+            ).fetchone()
+            if saved is None:
+                raise ValueError("retained finding ordinal is unavailable")
+            issue = json.loads(saved[0])
+            retained = {
+                "schema_version": reader.header.get("schema_version"),
+                "generated_at": reader.header.get("run", {}).get("generated_at"),
+            }
+    else:
+        retained = _retained_findings(row)
+        issues = retained["issues"]
+        if ordinal >= len(issues):
+            raise ValueError("retained finding ordinal is unavailable")
+        issue = issues[ordinal]
     return {
         "ok": True,
         "scan_uuid": row["uuid"],
         "finding": _finding_summary(issue, ordinal),
         "evidence": _bounded_value(issue),
+        "projection_limits": {
+            "string_chars": 4096,
+            "list_items": 20,
+            "object_fields": 40,
+            "max_depth": 3,
+            "source_path": row["path"],
+        },
+        "evidence_truncated": _projection_truncated(issue),
         "audit": {
             "schema_version": retained["schema_version"],
             "generated_at": retained["generated_at"],
@@ -591,28 +815,29 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
     if type(scan_limit) is not int or not 1 <= scan_limit <= 100:
         raise ValueError("scan_limit must be from 1 to 100")
     root, project = _load(directory)
-    status = project_status(root)
-    progress = project_progress(root, limit=100)
-    from .coverage import coverage_status
+    coverage_views: dict = {}
+    status = project_status(root, _coverage_views=coverage_views, _verify_evidence=False)
+    progress = project_progress(root, limit=100, _status=status, _coverage_views=coverage_views)
     from .execution import status as execution_status
     from .monitoring import status as monitor_status
-    from .run_observation import status as run_status
     from .runtime import project_policy
 
-    execution = execution_status(root)
+    execution = execution_status(root, _coverage=coverage_views[str(root)], _verify_evidence=False)
     monitor = monitor_status(root)
     preparation = status["preparation"]
     sites = [
         _site_projection(
             root,
             project,
-            coverage_status(root),
+            coverage_views[str(root)],
             status["scans"],
             role="primary",
             scan_limit=scan_limit,
         )
     ]
-    sites.extend(_competitor_sites(root, preparation, scan_limit=scan_limit))
+    sites.extend(
+        _competitor_sites(root, preparation, scan_limit=scan_limit, coverage_views=coverage_views)
+    )
     site_identities = {
         item["project_uuid"]: {"role": item["role"], "target": item["site"]["target"]}
         for item in sites
@@ -648,7 +873,8 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         "progress": progress,
         "execution": execution,
         "monitor": monitor,
-        "runs": run_status(root),
+        "runs": sites[0]["runs"],
+        "observed_at": datetime.now(timezone.utc).isoformat(),
         "policy": project_policy(str(root)),
         "sites": {
             "total": len(sites),
@@ -673,10 +899,9 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         # the observer must never acknowledge an agent's work by looking at it.
         "inbox": list_entries(root, consumer=consumer or "observer/local", limit=100),
     }
-    from .coverage import coverage_status
     from .finding_views import list_views
 
-    coverage = coverage_status(root)
+    coverage = coverage_views[str(root)]
     snapshot["review"] = {
         "state": coverage.get("state"),
         "manual_waiting": (coverage.get("views") or {}).get("waiting_for_manual_review", []),
@@ -684,6 +909,190 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
         "plan": coverage.get("plan"),
     }
     snapshot["saved_views"] = list_views(root)
+    from .progress import _item_state
+
+    active = [
+        dict(item, display_state=_item_state(item))
+        for item in checks
+        if item.get("attempt_status") == "running"
+        or (
+            item.get("kind") == "custom"
+            and item.get("applicability") == "applicable"
+            and not item.get("complete")
+        )
+    ]
+    active.sort(key=lambda item: item.get("attempt_status") != "running")
+    snapshot["active_tasks"] = {
+        "items": active[:100],
+        "total": len(active),
+        "has_more": len(active) > 100,
+    }
+    total_inbox = snapshot["inbox"]["pagination"]["total"]
+    snapshot["latest_inbox"] = list_entries(
+        root, consumer=consumer or "observer/local", limit=100, offset=max(0, total_inbox - 100)
+    )
     if consumer is not None:
         snapshot["inbox_unread"] = unread_summary(root, consumer=consumer)
     return snapshot
+
+
+def _pagination(total: int, offset: int, limit: int) -> dict:
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("offset must be nonnegative and limit must be 1..100")
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "next_offset": offset + limit if offset + limit < total else None,
+        "previous_offset": max(0, offset - limit) if offset else None,
+    }
+
+
+def checklist_page(
+    directory: str | Path,
+    *,
+    offset: int = 0,
+    limit: int = 50,
+    query: str = "",
+    kind: str | None = None,
+    state: str | None = None,
+) -> dict:
+    """Filter before paging; keep rich checklist evidence and source-specific identities."""
+    from .progress import _item_state
+
+    _pagination(0, offset, limit)
+    if not isinstance(query, str) or len(query) > 256:
+        raise ValueError("checklist query must be text of at most 256 characters")
+    if kind not in {None, "method", "schema", "check", "skill", "scenario", "custom"}:
+        raise ValueError("unsupported checklist kind")
+    snapshot = project_status(directory, _verify_evidence=False)
+    checklist = snapshot["checklist"]
+    rows = []
+    needle = query.casefold().strip()
+    for item in checklist.get("items", []):
+        text = " ".join(str(item.get(key) or "") for key in ("id", "title", "reason")).casefold()
+        if kind == "method" and item.get("kind") not in {"scenario", "skill"}:
+            continue
+        if kind == "schema" and not any(
+            word in text for word in ("schema", "structured data", "json-ld")
+        ):
+            continue
+        if kind not in {None, "method", "schema"} and item.get("kind") != kind:
+            continue
+        display = _item_state(item)
+        if needle not in text or (state is not None and state != display):
+            continue
+        rows.append(dict(item, display_state=display))
+    return {
+        "ok": True,
+        "revision": checklist.get("revision"),
+        "items": rows[offset : offset + limit],
+        "pagination": _pagination(len(rows), offset, limit),
+    }
+
+
+def task_detail(directory: str | Path, *, item_id: str) -> dict:
+    """Resolve the declared site then expose a bounded task/history/catalogue detail."""
+    from .catalogue import load_catalogue
+    from .coverage import _read, coverage_status
+    from .progress import _item_state
+    from .runtime import resolve_item_scope
+
+    scoped, local_id = resolve_item_scope(str(directory), item_id, _verify_evidence=False)
+    root, project = _load(scoped)
+    view = coverage_status(root, _verify_evidence=False)
+    row = next((item for item in view.get("items", []) if item["id"] == local_id), None)
+    if row is None:
+        raise ValueError("checklist item is unavailable")
+    document = _read(root, project)
+    saved = (document or {}).get("items", {}).get(local_id, {})
+    records = saved.get("records", [])
+    item = dict(
+        row,
+        id=item_id,
+        item_id=local_id,
+        display_state=_item_state(row),
+        definition=saved.get("definition"),
+        history=records[-20:],
+        history_total=len(records),
+        history_truncated=len(records) > 20,
+        catalogue=load_catalogue().get(local_id),
+    )
+    return {"ok": True, "revision": view.get("revision"), "item": item}
+
+
+checklist_detail = task_detail
+
+
+def scans_page(directory: str | Path, *, offset: int = 0, limit: int = 20) -> dict:
+    """Browse every retained scan without recomputing checklist coverage."""
+    from seohead.storage.history import list_scans
+
+    _pagination(0, offset, limit)
+    root, _project = _load(directory)
+    page = list_scans(root / "scans", offset=offset, limit=limit)
+    return {
+        "ok": True,
+        "total": page["total"],
+        "errors": page["errors"],
+        "items": [dict(row, evidence=_scan_evidence(row)) for row in page["items"]],
+        "pagination": _pagination(page["total"], offset, limit),
+    }
+
+
+def observe_activity(directory: str | Path) -> dict:
+    """Cheap collector telemetry; never open retained scans or compute task coverage."""
+    from .run_observation import status as run_status
+    from .runtime import preparation_status
+
+    root, project = _load(directory)
+    sites = [
+        {
+            "project_uuid": project["project_uuid"],
+            "site": project["site"],
+            "role": "primary",
+            "directory": ".",
+            "runs": run_status(root),
+        }
+    ]
+    for candidate in preparation_status(str(root)).get("competitors", []):
+        relative = candidate.get("directory")
+        try:
+            if (
+                not isinstance(relative, str)
+                or not relative.startswith("competitors/")
+                or ".." in Path(relative).parts
+            ):
+                raise ValueError("unsafe competitor project reference")
+            child = root / relative
+            if child.is_symlink() or not child.resolve().is_relative_to(root):
+                raise ValueError("unsafe competitor project reference")
+            child_root, metadata = _load(child)
+            if metadata["project_uuid"] != candidate.get("project_uuid") or metadata["site"][
+                "target"
+            ] != candidate.get("url"):
+                raise ValueError("competitor project identity mismatch")
+            sites.append(
+                {
+                    "project_uuid": metadata["project_uuid"],
+                    "site": metadata["site"],
+                    "role": "competitor",
+                    "directory": relative,
+                    "runs": run_status(child_root),
+                }
+            )
+        except (OSError, ValueError) as exc:
+            sites.append(
+                {
+                    "project_uuid": candidate.get("project_uuid"),
+                    "site": {"target": candidate.get("url")},
+                    "role": "competitor",
+                    "directory": relative,
+                    "runs": {"state": "unavailable", "reason": str(exc), "items": []},
+                }
+            )
+    return {
+        "ok": True,
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+        "sites": {"total": len(sites), "items": sites},
+    }

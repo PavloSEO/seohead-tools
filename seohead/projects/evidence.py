@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -29,12 +31,47 @@ def artifact_path(root: Path, value: Any) -> Path:
     return current
 
 
-def _digest(path: Path) -> str:
+def _digest(path: Path, *, deadline: float | None = None, max_bytes: int | None = None) -> str:
+    """Hash in fixed-size blocks, optionally enforcing an explicit read budget."""
+    if max_bytes is not None and path.stat().st_size > max_bytes:
+        raise ValueError("evidence artifact exceeds the hashing byte budget")
     digest = hashlib.sha256()
+    used = 0
     with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
+        while True:
+            if deadline is not None and time.monotonic() > deadline:
+                raise ValueError("evidence hashing time budget exceeded")
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
+            used += len(block)
+            if max_bytes is not None and used > max_bytes:
+                raise ValueError("evidence artifact exceeds the hashing byte budget")
             digest.update(block)
     return digest.hexdigest()
+
+
+def artifact_identity(path: Path) -> list[int]:
+    """Capture cheap replacement/change identity; this is not a content digest."""
+    info = path.stat()
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def _artifact_receipt(root: Path, reference: str) -> dict:
+    path = artifact_path(root, reference)
+    before = artifact_identity(path)
+    digest = _digest(path)
+    if artifact_identity(artifact_path(root, reference)) != before:
+        raise ValueError("evidence changed while it was being recorded")
+    return {
+        "artifact": reference,
+        "sha256": digest,
+        "artifact_verification": {
+            "sha256": digest,
+            "identity": before,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
 
 
 def _saved_check(root: Path, definition: dict, value: Any) -> dict:
@@ -44,6 +81,7 @@ def _saved_check(root: Path, definition: dict, value: Any) -> dict:
     from .catalogue import load_catalogue
 
     path = artifact_path(root, value)
+    before_identity = artifact_identity(path)
     before = _digest(path)
     con = open_scan(path)
     try:
@@ -125,8 +163,13 @@ def _saved_check(root: Path, definition: dict, value: Any) -> dict:
         }
     finally:
         con.close()
-    if _digest(path) != before:
+    if _digest(path) != before or artifact_identity(artifact_path(root, value)) != before_identity:
         raise ValueError("evidence changed while it was being recorded")
+    result["artifact_verification"] = {
+        "sha256": before,
+        "identity": before_identity,
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
     return result
 
 
@@ -165,7 +208,7 @@ def validate_record(root: Path, definition: dict, record: Any) -> dict:
             path = artifact_path(root, record["artifact"])
             if path.stat().st_size == 0:
                 raise ValueError("empty artifact cannot support an applicability decision")
-            result.update(artifact=record["artifact"], sha256=_digest(path))
+            result.update(_artifact_receipt(root, record["artifact"]))
         if "evidence" in record:
             result["evidence"] = _text(record["evidence"], "exclusion evidence", 512)
         if "artifact" not in result and "evidence" not in result:
@@ -190,7 +233,7 @@ def validate_record(root: Path, definition: dict, record: Any) -> dict:
             path = artifact_path(root, record.get("artifact"))
             if path.stat().st_size == 0:
                 raise ValueError("empty artifact cannot complete a review")
-            result.update(artifact=record["artifact"], sha256=_digest(path), review="approved")
+            result.update(_artifact_receipt(root, record["artifact"]), review="approved")
         result["scope"] = definition["scope"]
         result["measurement"] = {
             "state": "not_measured",
@@ -199,14 +242,29 @@ def validate_record(root: Path, definition: dict, record: Any) -> dict:
     return result
 
 
-def evidence_stale(root: Path, record: dict, catalogue: dict, digests: dict) -> str:
+def evidence_stale(
+    root: Path, record: dict, catalogue: dict, digests: dict, *, verify_bytes: bool = True
+) -> str:
     if "artifact" in record:
         try:
             artifact = record["artifact"]
-            if artifact not in digests:
-                digests[artifact] = _digest(artifact_path(root, artifact))
-            if digests[artifact] != record["sha256"]:
-                return "evidence artifact changed"
+            path = artifact_path(root, artifact)
+            identity = artifact_identity(path)
+            if verify_bytes:
+                key = (artifact, *identity)
+                if key not in digests:
+                    digests[key] = _digest(path)
+                if (
+                    digests[key] != record["sha256"]
+                    or artifact_identity(artifact_path(root, artifact)) != identity
+                ):
+                    return "evidence artifact changed"
+            else:
+                receipt = record.get("artifact_verification")
+                if not isinstance(receipt, dict):
+                    return "evidence unverified: no retained byte-verification metadata"
+                if receipt.get("sha256") != record["sha256"] or receipt.get("identity") != identity:
+                    return "evidence artifact metadata changed; explicit byte verification required"
         except (ValueError, OSError):
             return "evidence artifact is missing or unsafe"
     if "operation" in record:

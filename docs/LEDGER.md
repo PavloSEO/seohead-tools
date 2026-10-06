@@ -44,7 +44,8 @@ ledger              singleton header: ledger_uuid, format_version, created_at,
 site                project_uuid + normalized target/host/netloc + role
 source_scan         one row per bound source revision: site_id, scan_uuid,
                     format_version (scan.v1|scan.v2), source_kind, lifecycle,
-                    evidence_revision, audit_sha256, audit_schema_version,
+                    evidence_revision, audit_sha256, canonical_audit_sha256,
+                    audit_schema_version,
                     audit_created_at, config_fingerprint, writer + analyzer
                     identity, first-seen container digest, crawl/corpus
                     partial flags, artifact_state, ingested_at
@@ -106,7 +107,8 @@ count, occurrence count and distinct affected-URL count remain independent.
 ## Source scan binding
 
 Each ingested source revision is bound by `(scan_uuid, evidence_revision)`
-plus its audit SHA-256, audit schema version, configuration fingerprint and
+plus its audit SHA-256, canonical legacy-audit SHA-256 when available, audit
+schema version, configuration fingerprint and
 writer/analyzer identity. Re-ingesting the exact same revision is idempotent:
 no new rows, no new observation, no new timestamp, no ledger revision bump.
 A new scan UUID or a bumped `evidence_revision` binds a new row and appends
@@ -163,10 +165,15 @@ materializes the full schema plus the header and primary site row from that
 marker. `create_ledger` itself always writes a complete validated
 `ledger.v1`. Version 2 adds immutable `verification_artifact` and
 `verification_result` bindings; version 3 records whether group membership
-was fully retained. A write open migrates an older ledger atomically; readers
+was fully retained; version 4 records a canonical audit digest for legacy
+audit documents. A write open migrates an older ledger atomically; readers
 of an older artifact still refuse rather than changing it. A migrated v2
 `scan.v2` source is conservatively marked `unavailable` for group scope,
 because v2 did not persist enough information to reconstruct omitted members.
+The v3→v4 migration leaves a legacy source's canonical digest empty rather
+than reconstructing one without its retained audit; explicitly re-ingesting
+that original validated source can fill the digest and restore its canonical
+baseline bridge.
 
 `ledger.ledger_revision` counts committed write transactions that changed
 ledger content (reserved for optimistic concurrency in #789). It is
@@ -201,6 +208,12 @@ is retained as its own state and is excluded from the remediation denominator,
 never counted as a fix. Targeted recrawl selection and writing a new
 verification artifact remain separate workflow work: an omission from a later
 partial scan still has no lifecycle effect.
+
+A verification artifact binds its pending case to either the exact stored audit
+digest or the stored canonical digest for a legacy audit document, and also to
+the original results-affecting crawl-policy fingerprint. A matching scan UUID
+is retained as provenance only; it never authorizes a different audit or policy
+to resolve an older case.
 
 `remediation_summary` exposes distinct original-case, remediation and recheck
 denominators. `represented_resolved_percent` keeps unverifiable represented

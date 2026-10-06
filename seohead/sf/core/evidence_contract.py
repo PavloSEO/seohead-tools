@@ -626,7 +626,9 @@ def attach_saved_corpus(
     return projected
 
 
-def attach_saved_corpus_header(header, con: Any, *, derived: Mapping[str, Any] | None = None):
+def attach_saved_corpus_header(
+    header, con: Any, *, derived: Mapping[str, Any] | None = None, collections=None
+):
     """Attach corpus derivations to an audit header without reading collections."""
     projected = copy.deepcopy(dict(header))
     if projected.get("schema_version") != AUDIT_SCHEMA_VERSION:
@@ -638,6 +640,21 @@ def attach_saved_corpus_header(header, con: Any, *, derived: Mapping[str, Any] |
     payload = dict(derived) if derived is not None else derive_corpus(con)
     if payload.get("schema_version") != SAVED_CORPUS_VERSION:
         raise ValueError("saved corpus derivation has an unsupported schema version")
+    if collections is not None:
+        from .models import _Rows
+
+        for section, names in {
+            "duplicates": ("exact_groups", "near_witnesses", "excluded"),
+            "structured": ("items",),
+            "internationalization": ("items", "declarations"),
+        }.items():
+            block = dict(payload[section])
+            payload[section] = block
+            for name in names:
+                rows = block[name]
+                pointer = f"/summary/saved_corpus_derivations/{section}/{name}"
+                collections[pointer] = _Rows(lambda rows=rows: iter(rows))
+                block[name] = []
     summary["saved_corpus_derivations"] = payload
     return projected
 
@@ -706,6 +723,11 @@ def comparison_compatibility(
             value is not None for value in after_value.values()
         ):
             unknown = True
+        if key == "corpus" and any(
+            not isinstance(value, dict) or not isinstance(value.get("corpus_partial"), bool)
+            for value in (before_value, after_value)
+        ):
+            unknown = True
         if unknown:
             state = "unknown"
         elif before_value == after_value:
@@ -720,6 +742,13 @@ def comparison_warnings(before: Mapping[str, Any], after: Mapping[str, Any]) -> 
     """Render comparison bases as concise warnings for a caller's preflight."""
     warnings = []
     for row in comparison_compatibility(before, after):
+        if row["basis"] == "corpus":
+            for side in ("before", "after"):
+                value = row[side]
+                if isinstance(value, dict) and value.get("corpus_partial") is True:
+                    warnings.append(
+                        f"{side} saved corpus is partial; missing evidence is not a verified fix"
+                    )
         if row["state"] == "compatible":
             continue
         if row["state"] == "unknown":

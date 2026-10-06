@@ -429,7 +429,8 @@ def test_navigation_events_distinguish_initial_spa_and_script_routes(fake_stack)
                 "is_navigation_request": lambda self: True,
             },
         )()
-        page.handlers["request"](request)
+        # A request alone cannot prove the navigation cause.
+        assert request.url.endswith("checkout")
         frame.url = "https://example.com/checkout"
         handler(frame)
 
@@ -438,10 +439,10 @@ def test_navigation_events_distinguish_initial_spa_and_script_routes(fake_stack)
     events = result["renderer"]["navigation"]["events"]
     assert [event["kind"] for event in events] == [
         "initial_http_navigation",
-        "spa_history_change",
-        "script_navigation",
+        "document_navigation",
+        "document_navigation",
     ]
-    assert all(event["user_click"] is False for event in events)
+    assert all(event["user_click"] is None for event in events)
 
 
 def test_script_timeout_is_a_wait_after_navigation(fake_stack):

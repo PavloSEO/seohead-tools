@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import sqlite3
+import zlib
 from collections.abc import Iterator, Mapping
 from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 
 from . import ScanError
-from .bodies import read_body
 
 _SENSITIVE_HEADERS = {"authorization", "cookie", "set-cookie", "proxy-authorization"}
 _OMITTED = {
@@ -22,6 +24,7 @@ _OMITTED = {
     "resource_budget_exhausted",
 }
 _UNAVAILABLE = {"not_fetched", "not_in_corpus", "legacy_not_retained", "fetch_failed"}
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def _iter_rows(con: sqlite3.Connection, sql: str) -> Iterator[dict[str, Any]]:
@@ -113,6 +116,57 @@ def _state(row: Mapping[str, Any], *, document: bool) -> None:
         raise ScanError("unknown corpus body state")
 
 
+def _decode_body_row(row: Mapping[str, Any], *, max_decoded_bytes: int) -> bytes:
+    """Validate and decode one selected ``bodies`` row without a second lookup.
+
+    ``validate_corpus`` already performs a full scan.  Keeping the BLOB with
+    its metadata in that scan preserves ``read_body``'s byte-level checks while
+    avoiding two indexed point queries per retained body during resume.
+    """
+    sha256 = row["sha256"]
+    codec = row["codec"]
+    decoded_bytes = row["decoded_bytes"]
+    stored_bytes = row["stored_bytes"]
+    actual_size = row["actual_size"]
+    data = row["data"]
+    if (
+        not isinstance(sha256, str)
+        or _SHA256.fullmatch(sha256) is None
+        or type(codec) is not str
+        or type(decoded_bytes) is not int
+        or type(stored_bytes) is not int
+        or type(actual_size) is not int
+        or type(data) is not bytes
+        or decoded_bytes < 0
+        or stored_bytes < 0
+        or stored_bytes != actual_size
+    ):
+        raise ScanError("body metadata or stored length is invalid")
+    if decoded_bytes > max_decoded_bytes:
+        raise ScanError("body unavailable: decoded byte limit exceeded")
+    if stored_bytes > decoded_bytes:
+        raise ScanError("body stored size exceeds its decoded-byte declaration")
+    if codec == "identity":
+        raw = data
+        if len(raw) != decoded_bytes:
+            raise ScanError("identity body decoded length disagrees")
+    elif codec == "zlib":
+        decoder = zlib.decompressobj()
+        try:
+            raw = decoder.decompress(data, max_decoded_bytes + 1)
+        except zlib.error as exc:
+            raise ScanError("compressed body has an invalid zlib stream") from exc
+        if len(raw) > max_decoded_bytes or decoder.unconsumed_tail:
+            raise ScanError("compressed body exceeds decoded byte limit")
+        if not decoder.eof or decoder.unused_data or len(raw) != decoded_bytes:
+            raise ScanError("compressed body is truncated, trailing, or length-mismatched")
+    else:
+        raise ScanError("body codec is unsupported")
+    if hashlib.sha256(raw).hexdigest() != sha256:
+        raise ScanError("body SHA-256 disagrees with decoded bytes")
+    return raw
+
+
 def validate_corpus(
     con: sqlite3.Connection,
     scan: Mapping[str, Any],
@@ -145,7 +199,11 @@ def validate_corpus(
         raise ScanError("retained body bytes exceed the recorded store budget")
     for body in _iter_rows(
         con,
-        "SELECT sha256,codec,decoded_bytes,stored_bytes,length(data) AS actual_size FROM bodies",
+        "WITH serialized_dom AS (SELECT body_sha256 FROM documents "
+        "WHERE fidelity='serialized_dom' AND body_sha256 IS NOT NULL GROUP BY body_sha256) "
+        "SELECT b.sha256,b.codec,b.decoded_bytes,b.stored_bytes,length(data) AS actual_size,b.data,"
+        "s.body_sha256 IS NOT NULL AS serialized_dom FROM bodies b "
+        "LEFT JOIN serialized_dom s ON s.body_sha256=b.sha256",
     ):
         if (
             body["codec"] not in {"identity", "zlib"}
@@ -156,11 +214,8 @@ def validate_corpus(
         ):
             raise ScanError("body metadata exceeds policy or disagrees with stored size")
         if verify_bodies:
-            raw = read_body(con, body["sha256"], max_decoded_bytes=min(cap, 64 * 1024 * 1024))
-            if con.execute(
-                "SELECT 1 FROM documents WHERE body_sha256=? AND fidelity='serialized_dom' LIMIT 1",
-                (body["sha256"],),
-            ).fetchone():
+            raw = _decode_body_row(body, max_decoded_bytes=min(cap, 64 * 1024 * 1024))
+            if body["serialized_dom"]:
                 try:
                     raw.decode("utf-8", errors="strict")
                 except UnicodeError as exc:
@@ -175,7 +230,15 @@ def validate_corpus(
         and isinstance(config.get("evidence"), dict)
         and config["evidence"].get("retain_no_store_acknowledged") is True
     )
-    for row in _iter_rows(con, "SELECT * FROM responses"):
+    for row in _iter_rows(
+        con,
+        "SELECT r.*,p.request_ordinal AS source_request_ordinal,p.body_sha256 AS source_body_sha256,"
+        "p.request_url_id AS source_request_url_id,p.variant_key AS source_variant_key,"
+        "p.method AS source_method,p.body_state AS source_body_state,"
+        "p.body_fidelity AS source_body_fidelity,p.effective_url_id AS source_effective_url_id,"
+        "p.effective_status_code AS source_effective_status_code "
+        "FROM responses r LEFT JOIN responses p ON p.response_id=r.source_response_id",
+    ):
         _timestamp(row["requested_at"], "response requested_at")
         _timestamp(row["received_at"], "response received_at", nullable=True)
         _headers(row["request_headers_redacted_json"], "request headers")
@@ -203,30 +266,25 @@ def validate_corpus(
         source = row["source_response_id"]
         if row["status_code"] == 304 and row["body_state"] == "complete" and source is None:
             raise ScanError("complete 304 response requires a source response")
-        if source is not None:
-            cursor = con.execute("SELECT * FROM responses WHERE response_id=?", (source,))
-            item = cursor.fetchone()
-            names = [column[0] for column in cursor.description or ()]
-            previous = dict(zip(names, item, strict=True)) if item is not None else None
-            if (
-                previous is None
-                or previous["request_ordinal"] >= row["request_ordinal"]
-                or row["status_code"] != 304
-                or previous["body_sha256"] != row["body_sha256"]
-                or previous["request_url_id"] != row["request_url_id"]
-                or previous["variant_key"] != row["variant_key"]
-                or previous["method"] != row["method"]
-                or (
-                    row["body_state"] == "complete"
-                    and (
-                        previous["body_state"] != "complete"
-                        or previous["body_fidelity"] != row["body_fidelity"]
-                        or previous["effective_url_id"] != row["effective_url_id"]
-                        or previous["effective_status_code"] != row["effective_status_code"]
-                    )
+        if source is not None and (
+            row["source_request_ordinal"] is None
+            or row["source_request_ordinal"] >= row["request_ordinal"]
+            or row["status_code"] != 304
+            or row["source_body_sha256"] != row["body_sha256"]
+            or row["source_request_url_id"] != row["request_url_id"]
+            or row["source_variant_key"] != row["variant_key"]
+            or row["source_method"] != row["method"]
+            or (
+                row["body_state"] == "complete"
+                and (
+                    row["source_body_state"] != "complete"
+                    or row["source_body_fidelity"] != row["body_fidelity"]
+                    or row["source_effective_url_id"] != row["effective_url_id"]
+                    or row["source_effective_status_code"] != row["effective_status_code"]
                 )
-            ):
-                raise ScanError("304 response source ordering or body lineage disagrees")
+            )
+        ):
+            raise ScanError("304 response source ordering or body lineage disagrees")
         chain = _json(row["redirect_chain_json"], "response redirect chain")
         if not isinstance(chain, list):
             raise ScanError("response redirect chain must be an ordered list")
@@ -267,7 +325,14 @@ def validate_corpus(
         if row["body_state"] == "complete" and current != row["effective_url_id"]:
             raise ScanError("complete response effective URL disagrees with redirect chain")
 
-    for row in _iter_rows(con, "SELECT * FROM documents"):
+    for row in _iter_rows(
+        con,
+        "SELECT d.*,r.content_type AS response_content_type,r.request_url_id AS response_request_url_id,"
+        "r.effective_url_id AS response_effective_url_id,r.effective_status_code AS response_effective_status_code,"
+        "r.body_sha256 AS response_body_sha256,r.body_state AS response_body_state,"
+        "r.body_fidelity AS response_body_fidelity "
+        "FROM documents d LEFT JOIN responses r ON r.response_id=d.source_response_id",
+    ):
         _timestamp(row["captured_at"], "document captured_at")
         _state(row, document=True)
         from .bodies import _renderer as validate_renderer
@@ -281,13 +346,9 @@ def validate_corpus(
         elif row["fidelity"] == "reencoded_text":
             expected_decoder = ("scan_decoder.v1", "legacy_unknown", "unknown", "unknown")
         else:
-            response_type = con.execute(
-                "SELECT content_type FROM responses WHERE response_id=?",
-                (row["source_response_id"],),
-            ).fetchone()
-            if response_type is None:
+            if row["response_content_type"] is None:
                 raise ScanError("entity document has no source response")
-            _, decoder = decode_entity(b"", response_type[0])
+            _, decoder = decode_entity(b"", row["response_content_type"])
             expected_decoder = tuple(decoder.values())
         if (
             tuple(
@@ -302,17 +363,19 @@ def validate_corpus(
             != expected_decoder
         ):
             raise ScanError("document decoder metadata is inconsistent with its fidelity")
-        if row["source_response_id"] is not None and renderer:
-            navigation = con.execute(
-                "SELECT request_url_id,effective_url_id FROM responses WHERE response_id=?",
-                (row["source_response_id"],),
-            ).fetchone()
-            if (
-                navigation is None
-                or navigation[0] != renderer["navigation_url_id"]
-                or (row["body_state"] == "complete" and navigation[1] != renderer["final_url_id"])
-            ):
-                raise ScanError("renderer navigation disagrees with its source response")
+        if (
+            row["source_response_id"] is not None
+            and renderer
+            and (
+                row["response_request_url_id"] is None
+                or row["response_request_url_id"] != renderer["navigation_url_id"]
+                or (
+                    row["body_state"] == "complete"
+                    and row["response_effective_url_id"] != renderer["final_url_id"]
+                )
+            )
+        ):
+            raise ScanError("renderer navigation disagrees with its source response")
         if (
             row["fidelity"] in {"entity_bytes", "reencoded_text"}
             and row["body_state"] == "complete"
@@ -323,48 +386,38 @@ def validate_corpus(
                 expected_request_url = renderer["navigation_url_id"]
                 if type(expected_request_url) is not int:
                     raise ScanError("legacy fragment navigation URL provenance is invalid")
-            cursor = con.execute(
-                "SELECT * FROM responses WHERE response_id=?", (row["source_response_id"],)
-            )
-            item = cursor.fetchone()
-            names = [column[0] for column in cursor.description or ()]
-            response = dict(zip(names, item, strict=True)) if item is not None else None
             if (
-                response is None
-                or response["request_url_id"] != expected_request_url
-                or response["body_sha256"] != row["body_sha256"]
-                or response["body_state"] != "complete"
+                row["response_request_url_id"] != expected_request_url
+                or row["response_body_sha256"] != row["body_sha256"]
+                or row["response_body_state"] != "complete"
             ):
                 raise ScanError("document response URL, state, or hash lineage disagrees")
-    for page in _iter_rows(con, "SELECT * FROM pages"):
-        if page["document_id"] is not None:
-            cursor = con.execute(
-                "SELECT * FROM documents WHERE document_id=?", (page["document_id"],)
-            )
-            item = cursor.fetchone()
-            names = [column[0] for column in cursor.description or ()]
-            document = dict(zip(names, item, strict=True)) if item is not None else None
-            if (
-                document is None
-                or document["url_id"] != page["url_id"]
-                or document["representation"] != page["representation"]
-            ):
-                raise ScanError("selected page document URL or representation disagrees")
+    for page in _iter_rows(
+        con,
+        "SELECT p.url_id,p.representation,p.document_id,d.document_id AS selected_document_id,"
+        "d.url_id AS selected_url_id,d.representation AS selected_representation "
+        "FROM pages p LEFT JOIN documents d ON d.document_id=p.document_id",
+    ):
+        if page["document_id"] is not None and (
+            page["selected_document_id"] is None
+            or page["selected_url_id"] != page["url_id"]
+            or page["selected_representation"] != page["representation"]
+        ):
+            raise ScanError("selected page document URL or representation disagrees")
     for table, page_column, representation_column in (
         ("links", "source_url_id", "evidence_representation"),
         ("forms", "page_url_id", "evidence_representation"),
     ):
-        for row in _iter_rows(con, f"SELECT * FROM {table}"):
-            if row["source_document_id"] is not None:
-                cursor = con.execute(
-                    "SELECT * FROM documents WHERE document_id=?", (row["source_document_id"],)
-                )
-                item = cursor.fetchone()
-                names = [column[0] for column in cursor.description or ()]
-                document = dict(zip(names, item, strict=True)) if item is not None else None
-                if (
-                    document is None
-                    or document["url_id"] != row[page_column]
-                    or document["representation"] != row[representation_column]
-                ):
-                    raise ScanError(f"{table} source document representation disagrees")
+        for row in _iter_rows(
+            con,
+            f"SELECT t.{page_column},t.evidence_representation,t.source_document_id,"
+            "d.document_id AS source_document_exists,d.url_id AS source_document_url_id,"
+            "d.representation AS source_document_representation "
+            f"FROM {table} t LEFT JOIN documents d ON d.document_id=t.source_document_id",
+        ):
+            if row["source_document_id"] is not None and (
+                row["source_document_exists"] is None
+                or row["source_document_url_id"] != row[page_column]
+                or row["source_document_representation"] != row[representation_column]
+            ):
+                raise ScanError(f"{table} source document representation disagrees")

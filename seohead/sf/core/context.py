@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import tempfile
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import suppress
 from typing import Any
@@ -84,6 +86,17 @@ class _DiskPages:
         self.closed = False
         self.con = sqlite3.connect(name)
         self.con.row_factory = sqlite3.Row
+        # Rules repeatedly resolve the same normalized nodes while walking a
+        # graph.  Keep a bounded working set: it removes JSON decoding from
+        # hot repeated lookups without turning a million-page artifact back
+        # into a million-page Python population.
+        self._cache: OrderedDict[str, Page] = OrderedDict()
+        self._cache_limit = 16_384
+        # Account for decoded Python values as well as the entry count. This
+        # estimates retained cache objects, not allocator overhead or process RSS.
+        self._cache_byte_limit = 128 * 1024 * 1024
+        self._cache_bytes = 0
+        self._cache_weights: dict[str, int] = {}
         self.con.execute(
             "CREATE TABLE pages (ordinal INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, "
             "norm TEXT NOT NULL, status_code INTEGER, state_json TEXT NOT NULL)"
@@ -122,6 +135,9 @@ class _DiskPages:
         if self.closed:
             return
         self.closed = True
+        self._cache.clear()
+        self._cache_weights.clear()
+        self._cache_bytes = 0
         self.con.close()
         with suppress(FileNotFoundError):
             os.unlink(self.path)
@@ -158,38 +174,111 @@ class _DiskPages:
             "UPDATE pages SET state_json=? WHERE url=?",
             (json.dumps(state, ensure_ascii=False), url),
         )
+        # Mutation may grow a nested record beyond its admission weight. A
+        # fresh lookup reweighs the stored state; no stale estimate survives.
+        self._drop_cached(url)
         # The audit is one process-local transaction. Readers use this same
         # connection, so they see updates immediately; committing every metric
         # mutation would turn a large audit into thousands of fsyncs.
 
+    def attach_issue(
+        self, url: str, check: str, issue_id: str, *, suppressed: bool = False
+    ) -> None:
+        """Attach one final finding with one JSON read/write for a disk page."""
+        row = self.con.execute("SELECT state_json FROM pages WHERE url=?", (url,)).fetchone()
+        if row is None:
+            return
+        state = json.loads(row["state_json"])
+        if suppressed:
+            state["suppressed_issue_ids"].append(issue_id)
+        else:
+            if check not in state["issues"]:
+                state["issues"].append(check)
+            state["issue_ids"].append(issue_id)
+        self.con.execute(
+            "UPDATE pages SET state_json=? WHERE url=?",
+            (json.dumps(state, ensure_ascii=False), url),
+        )
+        # Cached Page instances wrap write-through lists.  Invalidate rather
+        # than mutating those wrappers, which would perform a second write and
+        # risk replacing the just-updated state with an older list snapshot.
+        self._drop_cached(url)
+
+    def _drop_cached(self, url: str) -> None:
+        self._cache.pop(url, None)
+        self._cache_bytes -= self._cache_weights.pop(url, 0)
+
+    def _cache_weight(self, page: Page) -> int:
+        """Conservatively estimate one decoded page without following its store owner."""
+        total = 256  # Per-entry LRU/weight bookkeeping, apart from page values.
+        seen: set[int] = set()
+        pending: list[Any] = [page, vars(page)]
+        while pending:
+            value = pending.pop()
+            if id(value) in seen:
+                continue
+            seen.add(id(value))
+            total += sys.getsizeof(value)
+            if total > self._cache_byte_limit:
+                return total
+            if isinstance(value, dict):
+                pending.extend(value.keys())
+                pending.extend(value.values())
+            elif isinstance(value, (list, tuple)):
+                pending.extend(value)
+            if isinstance(value, (_StoredDict, _StoredList)):
+                pending.append(vars(value))
+            elif callable(value):
+                # The write-through callback holds only this page's URL and
+                # its shared store. Account for closure containers, never
+                # traverse the owner and thereby count the entire cache.
+                cells = value.__closure__ or ()
+                total += sys.getsizeof(cells) + sum(sys.getsizeof(cell) for cell in cells)
+        return total
+
     def get(self, url: str) -> Page | None:
+        cached = self._cache.get(url)
+        if cached is not None:
+            self._cache.move_to_end(url)
+            return cached
         row = self.con.execute(
             "SELECT url,status_code,state_json FROM pages WHERE url=?", (url,)
         ).fetchone()
         if row is None:
             return None
         state = json.loads(row["state_json"])
-        return Page(
-            url=row["url"],
+        row_url = row["url"]
+        page = Page(
+            url=row_url,
             status_code=row["status_code"],
             status=state["status"],
             content_type=state["content_type"],
             indexability=state["indexability"],
             indexability_status=state["indexability_status"],
             metrics=_StoredDict(
-                state["metrics"], lambda value: self._write(row["url"], "metrics", value)
+                state["metrics"], lambda value: self._write(row_url, "metrics", value)
             ),
             issues=_StoredList(
-                state["issues"], lambda value: self._write(row["url"], "issues", value)
+                state["issues"], lambda value: self._write(row_url, "issues", value)
             ),
             issue_ids=_StoredList(
-                state["issue_ids"], lambda value: self._write(row["url"], "issue_ids", value)
+                state["issue_ids"], lambda value: self._write(row_url, "issue_ids", value)
             ),
             suppressed_issue_ids=_StoredList(
                 state["suppressed_issue_ids"],
-                lambda value: self._write(row["url"], "suppressed_issue_ids", value),
+                lambda value: self._write(row_url, "suppressed_issue_ids", value),
             ),
         )
+        weight = self._cache_weight(page)
+        if weight > self._cache_byte_limit:
+            return page
+        self._cache[url] = page
+        self._cache_weights[url] = weight
+        self._cache_bytes += weight
+        self._cache.move_to_end(url)
+        while len(self._cache) > self._cache_limit or self._cache_bytes > self._cache_byte_limit:
+            self._drop_cached(next(iter(self._cache)))
+        return page
 
     def by_norm(self, norm: str) -> list[Page]:
         return [
@@ -200,8 +289,15 @@ class _DiskPages:
         ]
 
     def representative(self, norm: str) -> Page | None:
-        pages = self.by_norm(norm)
-        return _representative(pages) if pages else None
+        # Most normalized keys resolve to one row.  Let SQLite choose the
+        # existing 2xx preference instead of decoding every sibling merely to
+        # discard it, which is decisive for graph-wide rules.
+        row = self.con.execute(
+            "SELECT url FROM pages WHERE norm=? "
+            "ORDER BY CASE WHEN status_code BETWEEN 200 AND 299 THEN 0 ELSE 1 END, ordinal LIMIT 1",
+            (norm,),
+        ).fetchone()
+        return self.get(row["url"]) if row is not None else None
 
 
 class _DiskIssues:
@@ -593,6 +689,7 @@ class AuditContext:
         self.redirect_map: dict[str, str] = {}
         self._disk_pages: _DiskPages | None = None
         self._disk_final_issues: _DiskIssueResults | None = None
+        self._saved_corpus = None
         self._html_pages: list[Page] | None = None
         self._indexable_html_pages: list[Page] | None = None
         self._build_pages(disk_backed_pages=disk_backed_pages)
@@ -783,6 +880,18 @@ class AuditContext:
         self.skipped.append(SkippedCheck(id=check_id, reason=reason))
 
     # -- convenience views --------------------------------------------------
+    def html_page_keys(self) -> Iterable[str]:
+        """Unique normalized fetched HTML keys, streamed for a disk-backed audit."""
+        if self._disk_pages is not None:
+            return (
+                row[0]
+                for row in self._disk_pages.con.execute(
+                    "SELECT DISTINCT norm FROM pages WHERE status_code BETWEEN 200 AND 299 "
+                    "AND lower(json_extract(state_json, '$.content_type')) LIKE '%html%' ORDER BY norm"
+                )
+            )
+        return sorted({_norm_url(page.url) for page in self.html_pages()})
+
     def html_pages(self) -> Any:
         """ "HTML pages" per populations.md: fetched, 2xx, HTML by its own Content-Type.
 
@@ -810,6 +919,9 @@ class AuditContext:
         return self._indexable_html_pages
 
     def close(self) -> None:
+        if self._saved_corpus is not None:
+            self._saved_corpus.close()
+            self._saved_corpus = None
         if self._disk_pages is not None:
             self._disk_pages.close()
             self._disk_pages = None

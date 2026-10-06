@@ -52,7 +52,10 @@ __all__ = [
 
 # ── Limits ──────────────────────────────────────────────────────────────────
 MAX_SITEMAPS = 5000
-MAX_URLS = 300_000
+# Native crawl admission is one million URLs.  A sitemap index may distribute
+# that population across protocol-valid 50,000-URL child documents; this is a
+# crawler-wide retained-member ceiling, not a per-file sitemap protocol limit.
+MAX_URLS = 1_000_000
 MAX_XML_BYTES = 12 * 1024 * 1024
 TIMEOUT_S = 25.0
 MAX_REDIRECTS = 8
@@ -602,12 +605,17 @@ def crawl(
                         except ValueError:
                             continue
                         if streaming is not None:
+                            if (
+                                streaming.count >= MAX_URLS
+                                and not streaming._con.execute(
+                                    "SELECT 1 FROM keys WHERE normalized=?", (norm_loc,)
+                                ).fetchone()
+                            ):
+                                truncated = True
+                                break
                             if not streaming.add(entry, norm_loc):
                                 continue
                             added += 1
-                            if streaming.count >= MAX_URLS:
-                                truncated = True
-                                break
                             continue
                         if norm_loc in seen_locs:
                             duplicates.append(norm_loc)
@@ -615,6 +623,9 @@ def crawl(
                             if target not in sources:
                                 sources.append(target)
                             continue
+                        if len(all_urls) >= MAX_URLS:
+                            truncated = True
+                            break
                         seen_locs[norm_loc] = target
                         all_urls.append(
                             {
@@ -633,9 +644,6 @@ def crawl(
                             }
                         )
                         added += 1
-                        if len(all_urls) >= MAX_URLS:
-                            truncated = True
-                            break
                     sitemaps.append(
                         {
                             "url": target,

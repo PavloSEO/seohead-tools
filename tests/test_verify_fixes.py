@@ -12,7 +12,7 @@ import pytest
 
 from seohead.crawl import settings
 from seohead.servers import handlers
-from seohead.verification import classify, select
+from seohead.verification import classify, results_policy_fingerprint, select, source_identity
 
 A = "https://example.test/a"
 B = "https://example.test/b"
@@ -82,6 +82,16 @@ def test_selection_accepts_ids_saved_view_and_supplied_urls():
         select(baseline, finding_ids=["ISSUE-999999"])
     with pytest.raises(ValueError, match="URLs are absent"):
         select(baseline, urls=["https://other.test/"])
+
+
+def test_source_identity_includes_results_affecting_policy_fingerprint():
+    baseline = _audit()
+    first = source_identity(baseline)
+    assert first["results_policy_fingerprint"] == settings.fingerprint(settings.load())
+    baseline["run"]["crawl_config"]["robots.policy"] = "ignore"
+    second = source_identity(baseline)
+    assert second["results_policy_fingerprint"] != first["results_policy_fingerprint"]
+    assert results_policy_fingerprint({"run": {}}) is None
 
 
 def test_four_outcomes_use_exact_page_and_finding_evidence():

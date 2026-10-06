@@ -48,6 +48,46 @@ def _command(
 # package runtime import either interface layer.
 COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command(
+        "bi-filter",
+        "bi_filter",
+        _form("local_directory", "package", "out_dir"),
+        _form("selector", "dataset", "columns"),
+        _form(
+            "inline_json",
+            "where",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            "xlsx_max_rows_per_sheet",
+        ),
+        _form("local_file", "xlsx_out"),
+    ),
+    _command(
+        "scan-navigation",
+        "scan_navigation",
+        _form("scan_artifact", "input_path"),
+        _form("selector", "document_id", "limit", "offset"),
+    ),
+    _command("project-activity", "project_activity", _form("project_directory", "directory")),
+    _command(
+        "project-checklist-page",
+        "project_checklist_page",
+        _form("project_directory", "directory"),
+        _form("selector", "offset", "limit", "query", "kind", "state"),
+    ),
+    _command(
+        "project-task-detail",
+        "project_task_detail",
+        _form("project_directory", "directory"),
+        _form("selector", "item_id"),
+    ),
+    _command(
+        "project-scans",
+        "project_scans",
+        _form("project_directory", "directory"),
+        _form("selector", "offset", "limit"),
+    ),
+    _command(
         "provider-auth",
         "provider_auth",
         _form(
@@ -90,7 +130,9 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("crawl-describe-settings", "crawl_describe_settings", _form("no_input")),
     _command("scan-reanalyze", "scan_reanalyze", _form("scan_artifact", "input_path")),
-    _command("log-scan", "log_scan", _form("legacy_directory", "run")),
+    _command(
+        "log-scan", "log_scan", _form("legacy_directory", "run"), _form("scan_artifact", "run")
+    ),
     _command(
         "crawl-diagnose",
         "crawl_diagnose",
@@ -114,6 +156,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "local_file",
             "correspondence",
             note="Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default.",
+        ),
+        _form(
+            "local_directory",
+            "out_dir",
+            note="Optional new compare.v2 package; required for audit.v2 populations above 10,000 pages or issues. Refuses overwrite.",
+        ),
+        _form(
+            "selector",
+            "compression",
+            note="none (default) or explicit gzip with out_dir; every row is retained and compressed/uncompressed bytes are declared.",
         ),
     ),
     _command(
@@ -155,7 +207,16 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command("segment-diff", "segment_diff", _form("audit_document", "audit")),
     _command("redirects-generate", "redirects_generate", _form("inline_json", "redirects")),
     _command("redirects-check", "redirects_check", _form("live_url", "url")),
-    _command("sitemap-crawl", "sitemap_crawl", _form("live_url", "url")),
+    _command(
+        "sitemap-crawl",
+        "sitemap_crawl",
+        _form("live_url", "url"),
+        _form(
+            "project_directory",
+            "project",
+            note="Optional explicit local observation; same origin only. Declared URLs are not fetched HTML pages.",
+        ),
+    ),
     _command("images-download", "images_download", _form("url_list", "urls")),
     _command("images-optimize", "images_optimize", _form("local_file", "files")),
     _command("keywords-cluster", "keywords_cluster", _form("inline_json", "params")),
@@ -291,6 +352,11 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         ),
         _form("selector", "view", note="Optional saved project finding view; requires project."),
         _form("selector", "offset", note="Optional stable finding-view page offset."),
+        _form(
+            "selector",
+            "pdf_policy",
+            note="Explicit overview-v1 for PDF + retained audit.v2 only: bounded PDF with complete mandatory JSON/CSV/manifest companions; never inferred.",
+        ),
     ),
     _command("facts-export", "facts_export", _form("inline_json", "sites")),
     _command(
@@ -852,6 +918,20 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             required_with=("scan_id", "observations", "expected_revision"),
         ),
         note="Records supplied retained-scan differences only; it starts no schedule or delivery.",
+    ),
+    _command(
+        "monitor-collect",
+        "monitor_collect",
+        _form("project_directory", "directory", required_with=("expected_revision",)),
+        _form("selector", "expected_revision", "apply"),
+        note="Preview by default; explicit apply collects only an existing validated bounded claim. No timer or delivery starts.",
+    ),
+    _command(
+        "monitor-local-deliver",
+        "monitor_local_deliver",
+        _form("project_directory", "directory", required_with=("scan_id", "expected_revision")),
+        _form("selector", "scan_id", "expected_revision"),
+        note="Records a local:receipt only; no network, external transport or recipient delivery claim.",
     ),
     _command(
         "monitor-schedule",

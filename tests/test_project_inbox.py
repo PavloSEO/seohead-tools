@@ -420,3 +420,52 @@ def test_crawl_host_binding_survives_restart_without_consuming_inbox(tmp_path):
         assert queue.get(timeout=5)["count"] == 1
 
     assert unread_summary(root, consumer="agent/restarted-crawl")["count"] == 1
+
+
+@pytest.mark.parametrize(
+    "item_id",
+    [
+        "custom:late",
+        "check:TITLE_MISSING",
+        "scenario:full-audit",
+        "skill:workflow/control",
+        "skill:general/seo-content",
+        "site:12345678-1234-4234-8234-123456789abc/custom:late",
+        "custom:" + "a" * 128,
+        "synthetic",
+    ],
+)
+def test_contextual_task_note_keeps_actual_identifier_through_durable_receipts(tmp_path, item_id):
+    root = _project(tmp_path)
+    reference = "task:" + item_id
+    submitted = submit(root, text="Review this exact task", references=[reference])["entry"]
+    entries = list_entries(root, consumer="agent/test")
+    assert entries["entries"][0]["references"] == [reference]
+    mark_read(root, consumer="agent/test", entry_ids=[submitted["id"]])
+    acknowledge(root, consumer="agent/test", entry_ids=[submitted["id"]])
+    assert list_entries(root, consumer="agent/test")["entries"][0]["references"] == [reference]
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "task:custom:../secret",
+        "task:custom:a:b",
+        "task:https://example.test/",
+        "task:unknown:value",
+        "task:site:invalid/custom:late",
+        "task:site:12345678-1234-4234-8234-123456789abc/../../secret",
+        "task:custom:" + "a" * 129,
+        "scan:custom:late",
+        "finding:https://example.test/",
+    ],
+)
+def test_task_note_namespace_does_not_admit_arbitrary_paths_or_other_namespace_uris(
+    tmp_path, reference
+):
+    root = _project(tmp_path)
+    submit(root, text="Existing note")
+    before = _files(root)
+    with pytest.raises(ValueError, match="invalid project reference"):
+        submit(root, text="Rejected reference", references=[reference])
+    assert _files(root) == before

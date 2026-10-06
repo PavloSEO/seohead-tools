@@ -12,6 +12,7 @@ import mimetypes
 import re
 import urllib.parse
 from collections import OrderedDict, defaultdict
+from collections.abc import Iterable
 from typing import Any
 
 from seohead.canonical_policy import matching_canonical_rule
@@ -110,7 +111,7 @@ def _body_unavailable(rec: dict[str, Any]) -> bool:
     return bool(rec.get("body_unavailable"))
 
 
-def _body_unavailable_reason(pages: list[Page]) -> str | None:
+def _body_unavailable_reason(pages: Iterable[Page]) -> str | None:
     reasons: dict[str, int] = {}
     for page in pages:
         reason = str(_rec(page).get("body_unavailable") or "")
@@ -258,8 +259,7 @@ def _declare_unparsed_body_skips(ctx: AuditContext) -> None:
         (_BODY_DERIVED_HTML_CHECKS, ctx.html_pages()),
     )
     for check_ids, pages in populations:
-        unparsed = [page for page in pages if _body_unavailable(_rec(page))]
-        reason = _body_unavailable_reason(unparsed)
+        reason = _body_unavailable_reason(pages)
         if reason:
             for check_id in check_ids:
                 if not ctx.enabled(check_id):
@@ -271,14 +271,12 @@ def _declare_unparsed_body_skips(ctx: AuditContext) -> None:
                 ):
                     continue
                 ctx.skip(check_id, reason)
-    charset_pages = [
+    charset_pages = (
         page
         for page in ctx.html_pages()
         if not (page.content_type and _CHARSET_IN_HEADER_RE.search(page.content_type))
-    ]
-    charset_reason = _body_unavailable_reason(
-        [page for page in charset_pages if _body_unavailable(_rec(page))]
     )
+    charset_reason = _body_unavailable_reason(charset_pages)
     if charset_reason and ctx.enabled("MISSING_CHARSET"):
         ctx.skip("MISSING_CHARSET", charset_reason)
 

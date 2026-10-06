@@ -137,6 +137,8 @@ COMMANDS = (
     "workflow-resume",
     "monitor-configure",
     "monitor-run",
+    "monitor-collect",
+    "monitor-local-deliver",
     "monitor-status",
     "monitor-schedule",
     "project-facts",
@@ -164,6 +166,12 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "bi-filter",
+    "scan-navigation",
+    "project-activity",
+    "project-checklist-page",
+    "project-task-detail",
+    "project-scans",
     "publication-cohorts",
     "gsc-progress",
     "bi-sheets-plan",
@@ -472,6 +480,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if overrides:
             kw["overrides"] = overrides
     elif cmd == "sitemap-crawl":
+        if args.project is not None:
+            kw["project"] = args.project
         if args.url:
             kw["url"] = args.url
         if args.concurrency is not None:
@@ -508,6 +518,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "all_pages", False):
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
+    elif cmd in {"monitor-collect", "monitor-local-deliver"}:
+        for name in ("directory", "expected_revision", "scan_id", "apply"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     elif cmd in {
         "workflow-start",
         "workflow-checkpoint",
@@ -667,6 +682,40 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
+    elif cmd in {
+        "project-activity",
+        "project-checklist-page",
+        "project-task-detail",
+        "project-scans",
+        "scan-navigation",
+        "bi-filter",
+    }:
+        for name in (
+            "directory",
+            "item_id",
+            "offset",
+            "limit",
+            "query",
+            "kind",
+            "state",
+            "input_path",
+            "document_id",
+            "package",
+            "dataset",
+            "out_dir",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            "xlsx_out",
+            "xlsx_max_rows_per_sheet",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "where", None) is not None:
+            kw["where"] = json.loads(args.where)
+        if getattr(args, "columns", None) is not None:
+            kw["columns"] = _split_list(args.columns)
     elif cmd == "bi-export":
         for name in (
             "scan",
@@ -749,6 +798,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["_report"] = args.report
             kw["_out"] = getattr(args, "out", None)
     elif cmd == "report-build":
+        if getattr(args, "pdf_policy", None) is not None:
+            kw["pdf_policy"] = args.pdf_policy
         if getattr(args, "audit", None):
             kw["audit"] = args.audit
         if getattr(args, "format", None):
@@ -795,6 +846,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value is not None:
                 kw[name] = value
     elif cmd == "compare-crawls":
+        if getattr(args, "compression", None) is not None:
+            kw["compression"] = args.compression
+        if getattr(args, "out_dir", None) is not None:
+            kw["out_dir"] = args.out_dir
         if getattr(args, "before", None):
             kw["before"] = args.before
         if getattr(args, "after", None):
@@ -1549,6 +1604,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--min-delay", type=float, help=argparse.SUPPRESS)
     if cmd == "compare-crawls":
         sub.add_argument(
+            "--compression",
+            choices=("none", "gzip"),
+            help="explicit NDJSON compression; gzip requires --out-dir",
+        )
+        _source_flag(
+            sub,
+            "--out-dir",
+            help="new local compare.v2 package; required for large retained audits",
+        )
+        sub.add_argument(
             "--correspondence",
             help="url-correspondence.v1 JSON file declaring origin and URL pairs",
         )
@@ -1788,6 +1853,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--out", help="new CSV with at most --limit matching rows; never overwrites"
         )
     if cmd == "report-build":
+        sub.add_argument(
+            "--pdf-policy",
+            choices=("overview-v1",),
+            help="explicit audit.v2 PDF overview with complete JSON/CSV companions",
+        )
         _source_flag(
             sub, "--audit", help="path to an audit JSON document or scan.v1 SQLite artifact"
         )
@@ -1805,7 +1875,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         # Not `required=True`: that would reject a JSON-only `--input '{"run": ...}'` call before
         # _build_kwargs ever runs, since argparse enforces required flags ahead of dispatch. The
         # handler already raises a clear error when `run` is missing from both sources (#218).
-        _source_flag(sub, "--run", help="directory holding audit.json and/or pages.jsonl")
+        _source_flag(
+            sub,
+            "--run",
+            help="native scan path, or run directory with scan.sqlite, audit.json or pages.jsonl",
+        )
         sub.add_argument(
             "--images-dir",
             help="an images-download output directory, so a recorded size can be compared "
@@ -1935,11 +2009,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--directory", help="validated local project workspace")
     if cmd == "project-inbox-submit":
         _source_flag(sub, "--text", help="specialist note or proposed goal text")
-        sub.add_argument("--kind", choices=("note", "proposed_goal"), default="note")
+        sub.add_argument(
+            "--kind", choices=("note", "proposed_goal"), help="entry kind (default: note)"
+        )
         sub.add_argument(
             "--references", help="comma-separated goal/task/scan/finding/section references"
         )
-        sub.add_argument("--author-role", choices=("specialist", "agent"), default="specialist")
+        sub.add_argument(
+            "--author-role",
+            choices=("specialist", "agent"),
+            help="entry author role (default: specialist)",
+        )
         sub.add_argument("--expected-revision", type=int)
     if cmd in {"project-inbox-list", "project-inbox-unread"}:
         sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")
@@ -1967,8 +2047,26 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "workflow-resume",
     }:
         _source_flag(sub, "--directory", help="project directory")
-    if cmd in {"monitor-configure", "monitor-run", "monitor-status", "monitor-schedule"}:
+    if cmd in {
+        "monitor-configure",
+        "monitor-run",
+        "monitor-status",
+        "monitor-schedule",
+        "monitor-collect",
+        "monitor-local-deliver",
+    }:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd in {"monitor-collect", "monitor-local-deliver"}:
+        sub.add_argument("--expected-revision", type=int, help="current monitoring revision")
+    if cmd == "monitor-collect":
+        sub.add_argument(
+            "--apply",
+            action="store_true",
+            default=None,
+            help="explicitly fetch the existing claimed plan; preview by default",
+        )
+    if cmd == "monitor-local-deliver":
+        sub.add_argument("--scan-id", help="retained monitor run identifier for a local receipt")
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
@@ -2150,6 +2248,40 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--ignore-scheme", action="store_true")
         sub.add_argument("--casefold-path", action="store_true")
         _source_flag(sub, "--out-dir", help="private local join output directory")
+    if cmd in {
+        "project-activity",
+        "project-checklist-page",
+        "project-task-detail",
+        "project-scans",
+    }:
+        _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd == "project-task-detail":
+        sub.add_argument("--item-id", help="exact checklist item identifier")
+    if cmd in {"project-checklist-page", "project-scans", "scan-navigation"}:
+        sub.add_argument("--limit", type=int, help="bounded page size")
+        sub.add_argument("--offset", type=int, help="zero-based item offset")
+    if cmd == "project-checklist-page":
+        sub.add_argument("--query", help="case-insensitive checklist search")
+        sub.add_argument(
+            "--kind", choices=("method", "schema", "check", "skill", "scenario", "custom")
+        )
+        sub.add_argument("--state", help="exact displayed checklist state")
+    if cmd == "scan-navigation":
+        _source_flag(sub, "--scan", dest="input_path", help="retained local scan artifact")
+        sub.add_argument("--document-id", type=int, help="exact retained document identifier")
+    if cmd == "bi-filter":
+        _source_flag(sub, "--package", help="verified local BI package directory")
+        sub.add_argument("--dataset", help="declared BI dataset")
+        _source_flag(sub, "--out-dir", help="new local filtered package directory")
+        sub.add_argument(
+            "--where", help='exact equality JSON object, e.g. {"severity":["warning"]}'
+        )
+        sub.add_argument("--columns", help="comma-separated declared fields")
+        sub.add_argument("--max-rows-per-file", type=int)
+        sub.add_argument("--max-bytes-per-file", type=int)
+        sub.add_argument("--max-output-bytes", type=int)
+        _source_flag(sub, "--xlsx-out", help="optional new split XLSX output")
+        sub.add_argument("--xlsx-max-rows-per-sheet", type=int)
     if cmd == "bi-export":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact")
         _source_flag(sub, "--audit", help="supported saved audit JSON document")
@@ -2292,6 +2424,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--format", help="apache-rewrite-rule|apache-redirect|nginx|custom")
     if cmd == "sitemap-crawl":
         sub.add_argument("--concurrency", type=int, help="parallel fetches (default 3)")
+        _source_flag(sub, "--project", help="explicit local project for sitemap observation")
     if cmd == "images-download":
         sub.add_argument("--output-dir", help="download target directory")
     if cmd == "images-optimize":
@@ -2386,6 +2519,7 @@ def build_parser() -> argparse.ArgumentParser:
         "link-inspect",
         "status",
         "rendered-routes",
+        "navigation",
         "snapshot",
         "export",
         "pin",
@@ -2408,6 +2542,10 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         "progress",
         "observe",
+        "activity",
+        "checklist-page",
+        "task-detail",
+        "scans",
         "inbox-submit",
         "inbox-list",
         "inbox-read",

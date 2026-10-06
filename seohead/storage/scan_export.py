@@ -272,7 +272,16 @@ def _capability_state(capabilities: Mapping[str, Any], name: str) -> dict[str, A
 
 
 def _sqlite_source(path: Path) -> _Source:
+    from .audit_v2 import AuditV2Reader, audit_v2_path
+
     con = open_scan(path, require_audit=False)
+    reader = None
+
+    def close():
+        con.close()
+        if reader is not None:
+            reader.close()
+
     try:
         header = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         audit_row = con.execute(
@@ -280,6 +289,24 @@ def _sqlite_source(path: Path) -> _Source:
             "FROM audit WHERE singleton=1"
         ).fetchone()
         document = _loads(audit_row["document_json"], "audit") if audit_row is not None else None
+        if audit_v2_path(path).exists():
+            reader = AuditV2Reader(path)
+            document = dict(reader.header)
+            # capability_rows needs only the finding-bearing check identities,
+            # never every finding payload. Keep this bounded by the check registry.
+            from seohead.sf.core.registry import CHECKS
+
+            fired = set()
+            for item in reader.iter_collection("/issues"):
+                check = item.get("check")
+                if check in CHECKS:
+                    fired.add(check)
+            document["issues"] = [{"check": check} for check in sorted(fired)]
+            audit_row = {
+                "schema_version": document["schema_version"],
+                "analyzer_version": header["writer_version"],
+                "created_at": document.get("run", {}).get("generated_at"),
+            }
         capabilities = _loads(header["capabilities_json"], "capabilities")
         limitations = _loads(header["limitations_json"], "limitations")
         page_count = con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
@@ -307,11 +334,15 @@ def _sqlite_source(path: Path) -> _Source:
                 }
             ),
         }
-        summary = document.get("summary") if isinstance(document.get("summary"), Mapping) else {}
+        summary = (
+            document.get("summary")
+            if isinstance(document, Mapping) and isinstance(document.get("summary"), Mapping)
+            else {}
+        )
         totals = summary.get("totals") if isinstance(summary.get("totals"), Mapping) else None
         return _Source(
             provenance={
-                "input_kind": "scan.v1",
+                "input_kind": header["format_version"],
                 "input": str(path),
                 "scan_uuid": header["scan_uuid"],
                 "format_version": header["format_version"],
@@ -362,17 +393,23 @@ def _sqlite_source(path: Path) -> _Source:
             counts={
                 "pages": page_count,
                 "links": link_count,
-                "findings": len(issues) if document is not None else None,
+                "findings": reader.count("/issues")
+                if reader is not None
+                else len(issues)
+                if document is not None
+                else None,
             },
             streams={
                 "pages": lambda: _page_rows(con),
                 "links": lambda: _link_rows(con),
-                "findings": lambda: iter(issues),
+                "findings": (lambda: reader.iter_collection("/issues"))
+                if reader is not None
+                else lambda: iter(issues),
             },
-            closer=con.close,
+            closer=close,
         )
     except Exception:
-        con.close()
+        close()
         raise
 
 

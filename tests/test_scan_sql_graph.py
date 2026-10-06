@@ -231,3 +231,28 @@ def test_streamed_link_and_form_predicates_match_existing_pure_functions(tmp_pat
         graph.iter_password_forms_on_http()
     ) == link_findings.forms_on_http_pages_with_password(forms)
     con.close()
+
+
+def test_indexed_inlink_lookup_matches_cursor_and_cleans_readonly_state(tmp_path):
+    con, page, link, _ = _graph(tmp_path)
+    source, target = "https://example.test/a", "https://example.test/b"
+    page(source)
+    page(target)
+    link(source, target)
+    link(source, target)
+    con.commit()
+    con.execute("PRAGMA query_only=ON")
+    with StoredGraph(con) as graph:
+        lookup = graph.inlink_counts()
+        assert lookup.get(target) == (2, 1)
+        assert lookup.get(source, (0, 0)) == (0, 0)
+        assert lookup.get("https://example.test/unfetched") is None
+        assert [(row["inlinks"], row["unique_inlinks"]) for row in graph.iter_inlink_counts()] == [
+            lookup.get(target)
+        ]
+        graph.composition_metadata()
+    assert con.execute("PRAGMA query_only").fetchone()[0] == 1
+    assert not con.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE name='e_graph_inlink_counts'"
+    ).fetchone()
+    con.close()

@@ -7,6 +7,7 @@ features). Builds the ``--export-tabs`` / ``--bulk-export`` /
 
 from __future__ import annotations
 
+import codecs
 import contextlib
 import glob
 import hashlib
@@ -20,6 +21,7 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from queue import Empty, Full, Queue
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -499,7 +501,7 @@ def _terminate_tree(proc: subprocess.Popen) -> str:
 
 
 def _run_watched(
-    cmd: list[str], timeout: float, output_folder: str, log, on_started=None
+    cmd: list[str], timeout: float, output_folder: str, log, on_started=None, on_progress=None
 ) -> subprocess.CompletedProcess:
     """Run the CLI to completion or to the deadline, reporting that it is alive.
 
@@ -522,38 +524,128 @@ def _run_watched(
     with _live_lock:
         _live_processes.add(proc)
     try:
-        return _watch(proc, cmd, timeout, output_folder, log)
+        return _watch(proc, cmd, timeout, output_folder, log, on_progress=on_progress)
     finally:
         with _live_lock:
             _live_processes.discard(proc)
 
 
-def _watch(
-    proc: subprocess.Popen,
-    cmd: list[str],
-    timeout: float,
-    output_folder: str,
-    log,
-) -> subprocess.CompletedProcess:
+SF_OUTPUT_TAIL_CHARS = 32 * 1024
+_SF_PROGRESS = re.compile(
+    r"\[mActive=(\d{1,18}), mCompleted=(\d{1,3}(?:,\d{3}){1,5}|\d{1,18}), "
+    r"mWaiting=(\d{1,18}), mCompleted=(\d{1,3}(?:[.,]\d{1,6})?)%\]"
+)
+
+
+def parse_sf_progress(line: str) -> dict[str, Any] | None:
+    """Parse the verified SF 19.8 counter record, never its scope-dependent percent."""
+    match = _SF_PROGRESS.search(line)
+    if match is None:
+        return None
+    active, completed, waiting, percent = match.groups()
+    if not 0 <= float(percent.replace(",", ".")) <= 100:
+        return None
+    return {
+        "fetched": int(completed.replace(",", "")),
+        "queued": int(waiting),
+        "inflight": int(active),
+        "excluded": None,
+        "source": "sf_stdout_19_8",
+        "unit": "urls_including_resources",
+    }
+
+
+def _watch(proc, cmd, timeout, output_folder, log, *, on_progress=None):
+    """Drain both pipes concurrently with bounded queues, fragments and diagnostic tails."""
     started = time.monotonic()
     next_report = started + PROGRESS_INTERVAL_SECONDS
-    while True:
-        remaining = timeout - (time.monotonic() - started)
-        if remaining <= 0:
-            outcome = _terminate_tree(proc)
-            raise subprocess.TimeoutExpired(cmd, timeout, output=outcome)
+    messages: Queue = Queue(maxsize=64)
+    stopping = threading.Event()
+
+    def send(value):
+        while not stopping.is_set():
+            try:
+                messages.put(value, timeout=0.1)
+                return
+            except Full:
+                continue
+
+    def drain(name, stream):
         try:
-            stdout, stderr = proc.communicate(timeout=min(remaining, PROGRESS_INTERVAL_SECONDS))
-        except subprocess.TimeoutExpired:
+            while not stopping.is_set():
+                data = os.read(stream.fileno(), 4096)
+                if not data:
+                    break
+                send((name, data))
+        finally:
+            send((name, None))
+
+    workers = [
+        threading.Thread(target=drain, args=(name, stream), daemon=True)
+        for name, stream in (("stdout", proc.stdout), ("stderr", proc.stderr))
+    ]
+    for worker in workers:
+        worker.start()
+    tails = {"stdout": "", "stderr": ""}
+    fragments = {"stdout": "", "stderr": ""}
+    decoders = {name: codecs.getincrementaldecoder("utf-8")("replace") for name in tails}
+    finished = set()
+    pending = None
+    last_sample = started - 0.5
+
+    def consume(name, text):
+        nonlocal pending
+        tails[name] = (tails[name] + text)[-SF_OUTPUT_TAIL_CHARS:]
+        lines = (fragments[name] + text).replace("\r", "\n").split("\n")
+        fragments[name] = lines.pop()[-8192:]
+        for line in lines:
+            sample = parse_sf_progress(line[-8192:])
+            if sample is not None:
+                pending = sample
+
+    try:
+        while len(finished) < 2 or proc.poll() is None:
             now = time.monotonic()
+            remaining = timeout - (now - started)
+            if remaining <= 0:
+                outcome = _terminate_tree(proc)
+                raise subprocess.TimeoutExpired(cmd, timeout, output=outcome)
+            try:
+                name, data = messages.get(timeout=min(remaining, 0.1))
+            except Empty:
+                pass
+            else:
+                consume(name, decoders[name].decode(data or b"", final=data is None))
+                if data is None:
+                    consume(name, "\n")
+                    finished.add(name)
+            now = time.monotonic()
+            if pending is not None and now - last_sample >= 0.5:
+                if on_progress is not None:
+                    with contextlib.suppress(OSError, ValueError):
+                        on_progress(pending)
+                pending = None
+                last_sample = now
             if now >= next_report:
                 next_report = now + PROGRESS_INTERVAL_SECONDS
                 log(
                     f"[runner] still crawling: {(now - started) / 60:.0f} min elapsed, "
                     f"{_output_size(output_folder)} in {output_folder}"
                 )
-            continue
-        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+        if pending is not None and on_progress is not None:
+            with contextlib.suppress(OSError, ValueError):
+                on_progress(dict(pending, final=True))
+        return subprocess.CompletedProcess(cmd, proc.returncode, tails["stdout"], tails["stderr"])
+    except BaseException:
+        if proc.poll() is None:
+            _terminate_tree(proc)
+        raise
+    finally:
+        stopping.set()
+        for worker in workers:
+            worker.join(timeout=1)
+        for stream in (proc.stdout, proc.stderr):
+            stream.close()
 
 
 def _output_size(folder: str) -> str:
@@ -614,6 +706,7 @@ def run_sf(
     log=print,
     run_info: dict[str, Any] | None = None,
     on_started=None,
+    on_progress=None,
 ) -> str:
     """Run SF headless and return the folder containing the fresh exports.
 
@@ -671,6 +764,8 @@ def run_sf(
 
     try:
         watched_kwargs = {"on_started": on_started} if on_started is not None else {}
+        if on_progress is not None:
+            watched_kwargs["on_progress"] = on_progress
         proc = _run_watched(cmd, timeout, output_folder, log, **watched_kwargs)
     except subprocess.TimeoutExpired as err:
         budget = f"{url_count} URLs at {rate}/s" if url_count and rate else "the crawl"

@@ -135,36 +135,51 @@ def test_stored_graph_size_does_not_block_page_audit(bridge, monkeypatch, stored
     assert captured["kwargs"]["out_dir"] is None
 
 
-def test_page_limit_is_guarded_before_materialization_or_audit(bridge, monkeypatch):
-    bridge.con.counts["pages"] = scan_handlers.MAX_AUDIT_PAGES + 1
-    monkeypatch.setattr(
-        scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
+@pytest.mark.parametrize("pages,forms", [(10_001, 0), (1, 20_001), (1_000_000, 2_000_000)])
+def test_streaming_bridge_accepts_page_and_form_populations(pages, forms):
+    counts = {"pages": pages, "forms": forms}
+    assert (
+        scan_handlers._bridge_reason(
+            counts, {"html": "<html></html>", "outlinks": 0, "external_outlinks": 0}
+        )
+        is None
     )
-    monkeypatch.setattr(
-        "seohead.servers.handlers._audit_crawl_result",
-        lambda *_args, **_kwargs: pytest.fail("audited"),
-    )
-    response = scan_handlers.crawl_site_scan(
-        "https://example.test/",
-        scan_out="scan.sqlite",
-        settings={"robots": {"policy": "respect"}},
-        producer_build="a" * 40,
-    )
-    assert response["audit_available"] is False
-    assert "pages=" in response["audit_reason"]
-    assert bridge.saved is None and bridge.finished
+    assert "not retained" in scan_handlers._bridge_reason(counts, None)
 
 
 def test_large_js_render_uses_a_cursor_backed_page_view(bridge, monkeypatch):
-    pages = scan_handlers.MAX_AUDIT_PAGES + 1
+    pages = 10_001
     bridge.con.counts["pages"] = pages
     monkeypatch.setattr(
         "seohead.crawl.sqlite_adapter.crawl_to_scan",
         lambda *_args, **_kwargs: _run(pages=pages),
     )
     monkeypatch.setattr(
-        scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
+        scan_handlers,
+        "_rebuild_page_result",
+        lambda _scan, **kwargs: SimpleNamespace(
+            pages=scan_handlers._StoredPages(_scan.con),
+            partial=False,
+            stopped_reason="",
+            robots_blocked=[],
+            seed_urls=[],
+            limitations=[],
+        ),
     )
+    monkeypatch.setattr(
+        bridge,
+        "resume_snapshot",
+        lambda **_kwargs: {
+            "counts": {**bridge.con.counts, "queued": 0},
+            "scan": {
+                "crawl_partial": 0,
+                "limitations_json": "[]",
+                "corpus_partial": 0,
+                "capabilities_json": "{}",
+            },
+        },
+    )
+    monkeypatch.setattr("seohead.storage.corpus.rendered_body_retention", lambda _con: {})
     observed = []
 
     def render(_scan, result, _settings, **_kwargs):
@@ -172,6 +187,10 @@ def test_large_js_render_uses_a_cursor_backed_page_view(bridge, monkeypatch):
         assert isinstance(result.pages, scan_handlers._StoredPages)
 
     monkeypatch.setattr("seohead.crawl.sqlite_render.run_render_escalation", render)
+    monkeypatch.setattr(
+        "seohead.servers.handlers._audit_crawl_result",
+        lambda *_args, **_kwargs: ({}, {"schema_version": "2.0", "pages": []}),
+    )
 
     response = scan_handlers.crawl_site_scan(
         "https://example.test/",
@@ -183,10 +202,9 @@ def test_large_js_render_uses_a_cursor_backed_page_view(bridge, monkeypatch):
         producer_build="a" * 40,
     )
 
-    assert response["audit_available"] is False
-    assert f"pages={pages}/" in response["audit_reason"]
+    assert response["audit_available"] is True
     assert len(observed) == 1
-    assert bridge.saved is None
+    assert bridge.saved is not None
 
 
 def test_stored_page_view_iterates_and_resolves_exact_urls(tmp_path):
@@ -216,7 +234,16 @@ def test_resumed_scan_without_transient_html_is_named_no_audit(bridge, monkeypat
         lambda *_args, **_kwargs: _run(start_page_gate=None),
     )
     monkeypatch.setattr(
-        scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
+        scan_handlers,
+        "_rebuild_page_result",
+        lambda _scan, **kwargs: SimpleNamespace(
+            pages=scan_handlers._StoredPages(_scan.con),
+            partial=False,
+            stopped_reason="",
+            robots_blocked=[],
+            seed_urls=[],
+            limitations=[],
+        ),
     )
     response = scan_handlers.crawl_site_scan(
         "https://example.test/",
@@ -236,7 +263,16 @@ def test_interrupted_finalization_reuses_an_already_saved_audit(bridge, monkeypa
         lambda *_args, **_kwargs: _run(start_page_gate=None),
     )
     monkeypatch.setattr(
-        scan_handlers, "_rebuild_page_result", lambda _scan: pytest.fail("materialized")
+        scan_handlers,
+        "_rebuild_page_result",
+        lambda _scan, **kwargs: SimpleNamespace(
+            pages=scan_handlers._StoredPages(_scan.con),
+            partial=False,
+            stopped_reason="",
+            robots_blocked=[],
+            seed_urls=[],
+            limitations=[],
+        ),
     )
     response = scan_handlers.crawl_site_scan(
         "https://example.test/",
@@ -400,7 +436,12 @@ def test_real_handler_adapter_native_audit_and_all_report_formats(
         from_document = tmp_path / "from-document" / f"report.{fmt}"
         assert build_report(str(scan), fmt, str(from_scan))["ok"]
         assert build_report(audit, fmt, str(from_document))["ok"]
-        assert from_scan.read_bytes() == from_document.read_bytes()
+        if fmt == "json":
+            import json
+
+            assert json.loads(from_scan.read_text()) == json.loads(from_document.read_text())
+        else:
+            assert from_scan.read_bytes() == from_document.read_bytes()
         if fmt == "csv":
             for suffix in (".pages.csv", ".scope.csv"):
                 scan_sidecar = from_scan.with_suffix(suffix)

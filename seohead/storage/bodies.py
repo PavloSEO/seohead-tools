@@ -18,6 +18,16 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _DECODER_VERSION = "scan_decoder.v1"
 
 
+def _navigation_evidence(renderer: dict):
+    """Read the compatible encoding or the earlier prerelease top-level form."""
+    settings = renderer["settings"]
+    if "navigation" in renderer and "navigation_evidence" in settings:
+        raise ScanError("rendered navigation evidence has conflicting encodings")
+    if "navigation_evidence" in settings:
+        return True, settings["navigation_evidence"]
+    return "navigation" in renderer, renderer.get("navigation")
+
+
 def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
     raw = document["renderer_json"]
     if not isinstance(raw, str):
@@ -47,7 +57,7 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
     }
     if (
         not isinstance(value, dict)
-        or set(value) not in (required, required | {"page_concurrency"})
+        or not required <= set(value) <= required | {"page_concurrency", "navigation"}
         or type(value["engine"]) is not str
         or type(value["engine_version"]) is not str
         or not isinstance(value["settings"], dict)
@@ -57,6 +67,22 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
         or value["navigation_transform"] not in {"direct", "legacy_escaped_fragment", "unknown"}
     ):
         raise ScanError("rendered document renderer provenance is invalid")
+    has_navigation, navigation = _navigation_evidence(value)
+    if has_navigation:
+        from seohead.tools.navigation import validate_navigation
+
+        def resolve_url(url_id):
+            row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
+            return row[0] if row else None
+
+        try:
+            validate_navigation(
+                navigation,
+                stored=True,
+                resolve_url=resolve_url if con is not None else None,
+            )
+        except ValueError as exc:
+            raise ScanError(f"rendered navigation evidence is invalid: {exc}") from exc
     if "page_concurrency" in value and (
         type(value["page_concurrency"]) is not int
         or not 1 <= value["page_concurrency"] <= MAX_RENDER_PAGE_CONCURRENCY
@@ -269,3 +295,47 @@ def read_document(con: sqlite3.Connection, document_id: int, *, max_decoded_byte
     if any(document[key] != value for key, value in decoder.items()):
         raise ScanError("document decoder metadata disagrees with stored bytes")
     return text
+
+
+def read_document_navigation(con, document_id: int) -> dict[str, object]:
+    """Read bounded navigation evidence without fetching or interpreting its cause."""
+    from seohead.tools.navigation import expand_navigation, retain_navigation
+
+    if type(document_id) is not int or document_id < 1:
+        raise ValueError("document_id must be a positive integer")
+    row = con.execute("SELECT * FROM documents WHERE document_id=?", (document_id,)).fetchone()
+    if row is None:
+        raise ScanError("navigation document is absent")
+    document = dict(row)
+    renderer = _renderer(document, con)
+    has_navigation, navigation = _navigation_evidence(renderer) if renderer else (False, None)
+    if not has_navigation:
+        navigation = retain_navigation({}, lambda url: None)
+
+    def resolve_url(url_id):
+        row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
+        return row[0] if row else None
+
+    public_renderer = {
+        key: renderer[key]
+        for key in ("engine", "engine_version", "settings", "navigation_transform")
+        if key in renderer
+    }
+    if "settings" in public_renderer:
+        public_renderer["settings"] = {
+            key: value
+            for key, value in public_renderer["settings"].items()
+            if key != "navigation_evidence"
+        }
+    return {
+        "document_id": document_id,
+        "representation": document["representation"],
+        "renderer": public_renderer,
+        "requested_url": resolve_url(renderer["navigation_url_id"])
+        if renderer.get("navigation_url_id")
+        else None,
+        "final_url": resolve_url(renderer["final_url_id"])
+        if renderer.get("final_url_id")
+        else None,
+        "navigation": expand_navigation(navigation, resolve_url),
+    }

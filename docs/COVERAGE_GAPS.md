@@ -70,8 +70,8 @@ The priority list below is therefore a backlog, not a product-capability claim.
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
 | 1.1 | Real Core Web Vitals (LCP/INP/CLS) | Field p75 vs official thresholds (LCP 2.5/4 s, INP 200/500 ms, CLS 0.1/0.25) | **high** | **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check | `data_sources/crux.py` + `cwv.py` (#822) |
-| 1.2 | TTFB separate from `response_time` | Time to first byte as its own metric (800/1800 ms), not overall response time | medium | B+ (SF "Response Time" ≈ TTFB only with a light body; exact TTFB is A/live) | extend `check_url_and_perf`, id `SLOW_TTFB` |
-| 1.3 | FCP / render speed | First Contentful Paint (1.8/3 s) | medium | A/live | `cwv.py` / PSI |
+| 1.2 | TTFB separate from `response_time` | Time to first byte as its own metric (800/1800 ms), not overall response time | medium | **PARTIAL** — `render-check` exposes lab `ttfb_ms`; no dedicated threshold finding or field-data coverage | extend `check_url_and_perf`, id `SLOW_TTFB` |
+| 1.3 | FCP / render speed | First Contentful Paint (1.8/3 s) | medium | **PARTIAL** — `render-check` exposes lab `first_contentful_paint_ms`; no dedicated threshold finding or field-data coverage | `cwv.py` / PSI |
 | 1.4 | Response compression (Brotli/gzip) | content-encoding on text responses | medium | **partially DONE** in the live `asset-weight-check` (CSS/JS only; the HTML response itself is still open) | id `NO_COMPRESSION` |
 | 1.5 | Cache-Control / cacheability | Presence and sanity of cache headers on static resources | medium | **partially DONE** in `asset-weight-check` (CSS/JS only; images/fonts still open) | id `WEAK_CACHE_POLICY` |
 | 1.6 | Render-blocking resources | CSS/JS in `<head>` blocking first paint | medium | **DONE** in the live `asset-weight-check` (no registry id) | id `RENDER_BLOCKING` |
@@ -85,7 +85,7 @@ unavailable. A one-run `render-check` result remains lab evidence.
 
 ---
 
-## 2. E-E-A-T (category missing entirely)
+## 2. E-E-A-T (objective observations and remaining review gaps)
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
@@ -97,10 +97,10 @@ unavailable. A one-run `render-check` result remains lab evidence.
 | 2.6 | YMYL detection | Deterministic review candidate by path/title vocabulary | **high** | **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification | `eeat.py` |
 | 2.7 | Trust signals / disclaimers | Disclaimer / editorial-policy markers | low | Missing | — |
 
-**Context.** The reference is 14 rules in this group in Lighthouse-class
-tools; we have zero. E-E-A-T is Google's quality frame, critical for YMYL
-niches. Part of it (about/contact/privacy) is detectable in mode B by plain
-URL search.
+**Context.** Rows 2.1–2.5 measure observed markup and discovered routes.
+They do not establish author expertise, content quality, trustworthiness or
+citation authority. Row 2.6 identifies review candidates only; row 2.7 remains
+missing. These observations support specialist review rather than an E-E-A-T score.
 
 ---
 
@@ -128,14 +128,15 @@ Lighthouse integration, not home-grown. The pragmatic path is one external
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 4.1 | raw/render diff (title, desc, h1, canonical, noindex) | SSR/CSR rewrites key tags after render | **high** | **DONE** as the live `render-check` (no registry id) | formalize into ids `RENDER_DIFF_TITLE` etc. if the audit needs them |
+| 4.1 | raw/render diff (title, desc, h1, canonical, noindex) | SSR/CSR rewrites key tags after render | **high** | **PARTIAL** — `render-check` compares title, h1 and canonical; description and meta-robots/noindex differences remain unmeasured | formalize into ids `RENDER_DIFF_TITLE` etc. if the audit needs them |
 | 4.2 | content/links diff | Text and links appearing only after JS | **high** | **DONE** in `render-check` (share of JS-only text/links) | id `RENDER_DIFF_CONTENT` / `RENDER_DIFF_LINKS` |
 | 4.3 | SSR vs CSR detect | The site is fundamentally client-side rendered | medium | **DONE** in `render-check` (empty SPA shell) | id `CSR_ONLY` |
 | 4.4 | Render-blocking resources for bots | JS/CSS the bot cannot load to render | medium | B (`ROBOTS_BLOCKS_RESOURCES` exists; extend) | link with `ROBOTS_BLOCKS_RESOURCES` |
 
-**Context.** `render-check` covers 4.1–4.3 as a live tool with a quality
-verdict; formalizing them as registry ids with thresholds would make them
-part of the crawl audit document.
+**Context.** `render-check` compares title, H1, canonical, content and links,
+and reports an empty rendered shell. Description and meta-robots/noindex
+differences remain unmeasured. Formalizing the measured subset as registry
+ids with thresholds would make that subset part of the crawl audit document.
 
 ---
 
@@ -143,7 +144,7 @@ part of the crawl audit document.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 5.1 | JS redirect | A move via `location.href`/`location.replace` — not HTTP 3xx, not meta-refresh | **high** | A (HTML/render) | id `JS_REDIRECT` |
+| 5.1 | JS redirect | Observed script navigation, separate from HTTP 3xx, history and fragment changes | **high** | **DONE** — `render-check` and retained `scan-navigation` evidence; unknown causes remain partial | `docs/BROWSER_NAVIGATION.md`; no blanket defect verdict |
 | 5.2 | URL case normalization | The server silently redirects `/Foo` -> `/foo` (or vice versa) — a canonicalization signal | medium | A (live probe) | id `URL_CASE_REDIRECT` |
 | 5.3 | Soft 404 | The page answers 200 but the content is "not found" | **high** | **DONE** as the live `soft404-check` (two deterministic probes, strict verdict) | id `SOFT_404` if the audit needs it |
 
@@ -189,13 +190,13 @@ measured relation and target defect actionable in the report.
 | 7.9 | Duplicate lang per target | One URL listed with different `lang`s from different sources | medium | B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang) | `HREFLANG_MULTI_LANG` |
 | 7.10 | Duplicate lang per source | One page declares the same hreflang value more than once | medium | **DONE** (issue #30) — `HREFLANG_MULTIPLE_ENTRIES` | `inlinks.py` |
 | 7.11 | Malformed language/region code | hreflang value fails ISO 639-1/3166-1 (e.g. `en-UK`) | medium | **DONE** (issue #30) — `HREFLANG_INVALID_CODE`, reusing `seohead/tools/hreflang.py`'s `code_error` | `inlinks.py` |
-| 7.12 | Outside `<head>` | The `<link rel=alternate hreflang>` tag is placed in `<body>` | medium | **A only** — not in the CSV columns SF's bulk hreflang export carries; needs a raw-HTML/DOM pass, out of scope for the registry as built (issue #30) | new live check |
+| 7.12 | Outside `<head>` | The `<link rel=alternate hreflang>` tag is placed in `<body>` | medium | **DONE** — `HREFLANG_OUTSIDE_HEAD` uses retained native element-position evidence and offline reanalysis; ordinary SF exports without that evidence stay skipped | `check_element_position` |
 
 **Context.** The live `seo_hreflang_check` (x-default, self-reference,
 duplicates, malformed codes) validates one URL's own markup by live fetch;
 7.1/7.2/7.5/7.6/7.7/7.10/7.11 above now cover the equivalent ground for a whole
 crawl from the bulk hreflang export, reusing that tool's ISO validator
-instead of re-implementing it (issues #30 and #825). 7.3/7.4/7.9/7.12 remain
+instead of re-implementing it (issues #30 and #825). 7.3/7.4/7.9 remain
 open.
 
 ---

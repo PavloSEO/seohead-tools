@@ -91,7 +91,19 @@ Returned fields:
 | `metrics_lab` | TTFB, FCP, **LCP**, **CLS**, load, and weight—**lab data**, not field data |
 | `wait` / `wait_reached` | the load milestone requested, and the one the snapshot actually came from — they differ when a requested `networkidle` timed out and the DOM was read at `domcontentloaded` instead |
 | `findings` | ready-to-use written conclusions |
+| `navigation` | schema `seohead.navigation.v1`: bounded observed main-document routes with source, destination, timing, cause, omissions and capture state |
 | `dual_crawl` | schema `dualcrawl.v1` — per-URL image/link evidence found by only the raw pass or only the rendered pass, so "this page changed" (the fields above) stays distinct from "raw and rendered disagree about what this page contains" |
+
+## Navigation evidence
+
+Read `navigation.state` and `events_omitted` before interpreting observed routes.
+HTTP 3xx, Chromium script navigation, History API and fragment changes are separate
+kinds. An anchor activation can be scripted: `user_click: null` never proves a
+human clicked. Unsupported cause observation and failed captures remain partial
+or unavailable. Capture covers the recorded wait window, not all future actions.
+Retained crawl documents expose the same evidence after reopening through
+`scan-navigation --scan scan.seohead` / `seo_scan_navigation`; use pagination and
+preserve the attached renderer provenance. See `docs/BROWSER_NAVIGATION.md`.
 
 ## How to Interpret Findings
 

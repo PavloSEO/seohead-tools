@@ -142,9 +142,10 @@ launching controller and, for a live Screaming Frog run, its spawned collector
 PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
 The observer records a process-start identity where the OS exposes one, so a
 reused PID is never presented as the original collector. A crawler's discovered frontier and configured URL budget are separate
-values; neither is presented as a site-total percentage. Screaming Frog exposes
-no reliable live URL counter, so its counter fields stay unavailable while its
-collection/analysis phases remain observable. The observer only reads these
+values; neither is presented as a site-total percentage. Screaming Frog counters
+are shown only when recognized collector progress output supplies them. Unsupported
+or missing output leaves counters unavailable while collection/analysis phases
+remain observable. The observer only reads these
 records and never starts, cancels, resumes, or acknowledges a run.
 
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
@@ -163,6 +164,29 @@ as a completed competitor audit. Before an execution workflow starts, its contro
 create or update a current incomplete custom task and pass that task, its separately
 accepted goal, and the registered prompt through the workflow context. Record in-progress
 and completed task states only through the existing evidence and review contracts.
+
+## Explicit monitor collection
+
+A monitor policy is disabled until explicitly enabled and a `start` action
+claims one bounded pass. The stored claim fixes its URLs and request/render
+budgets and has a short local lease. `monitor_collect(..., apply=false)` only
+previews that claim. `apply=true` fetches only its undispatched URLs through the
+guarded HTTP cache, retains a body and validation artifact with verified hashes,
+and records a complete, partial, or unavailable result. A conditional `304`
+retains the cached effective representation and status; it is not recorded as a
+new site `304` result.
+
+The interval remains planning advice. This is an explicit one-shot collector,
+not a timer, daemon, background scheduler, crawl launcher, or notification
+service. An expired or interrupted claim is never replayed automatically: the
+operator must create a new claim. Local receipt recording is explicit and has no
+external destination or transport.
+
+Use `monitor-configure`, then a `monitor-schedule` start action to create the claim.
+Pass its current revision to `monitor-collect`; add `--apply` only for the explicit
+collection call. After collection, pass the returned run identifier and current
+revision to `monitor-local-deliver`. The same operations are available as
+`seo_monitor_collect` and `seo_monitor_local_deliver` on the local MCP server.
 
 ## Recording stack facts
 
@@ -455,3 +479,35 @@ code, fetches a site, or contacts a provider.
 Status and human reports display the saved priority, origin and reason. A priority
 change does not complete work or invalidate a previously reviewed result; changes
 to the work definition or evidence still follow the normal stale-evidence rules.
+
+See [Terminal controls and observation](TERMINAL.md) for keyboard navigation,
+read cadence, task detail, and retained scan history. The same bounded reads are
+available through `project-activity`, `project-checklist-page`, `project-task-detail`,
+and `project-scans` in the CLI and MCP.
+
+Use `sitemap-crawl --url https://example.test/sitemap.xml --project ./project`
+to record a standalone sitemap observation explicitly. The URL must share the
+project origin and have no credentials, query or fragment. Counts distinguish
+parsed sitemap documents from declared page URLs; no HTML crawl is inferred.
+
+### Evidence verification budgets
+
+A project policy may explicitly set `evidence_hash.max_bytes` and
+`evidence_hash.max_seconds`. Defaults are 1 GiB per artifact and 5 seconds per
+verification request; accepted ceilings are 64 GiB and 300 seconds. An explicit
+large-artifact profile can use 32 GiB and 120 seconds. Older policy documents
+without the field retain the defaults and are normalized only in memory.
+Exceeding a budget refuses verification; it never marks unread bytes verified.
+
+Successful workflow checkpoints validate retained project-contained artifact bytes
+against the supplied SHA-256 and preserve a verification receipt. Explicit
+`workflow-status` revalidates bytes. Passive workflow observations report
+`evidence_verification_mode="metadata_only"`: matching file metadata is a receipt
+observation, not a fresh byte verification. Changed metadata becomes stale; an old
+completion without a receipt remains unverified in that passive view.
+
+Passive checklist rows likewise expose `evidence_verification` with their mode,
+state and verification time. `unverified`, `stale` and unavailable evidence never
+mean a measured zero or a freshly verified completion. Older records are not
+rewritten during reads; recording a new verification receipt is an explicit action.
+Explicit coverage/project status retains byte verification by default.

@@ -174,6 +174,26 @@ def test_deep_discovery_path_reports_the_actual_route(tmp_path):
     assert fired[deepest].details["hops"] == len(chain) - 1
 
 
+def test_long_deep_discovery_path_is_bounded_without_losing_its_hop_verdict(tmp_path):
+    chain = ["https://example.com/"] + [f"https://example.com/l{i}" for i in range(40)]
+    internal_rows = [
+        [url, "text/html", "200", "OK", "Indexable", str(index)] for index, url in enumerate(chain)
+    ]
+    inlink_rows = [
+        [chain[index - 1], chain[index], "Hyperlink", "true"] for index in range(1, len(chain))
+    ]
+    res = run_audit(
+        input_mode="parse-exports",
+        exports_dir=_write(tmp_path, internal_rows, inlink_rows),
+        log=lambda _message: None,
+    )
+    details = _fired(res, "DEEP_DISCOVERY_PATH")[chain[-1]].details
+    assert details["hops"] == 40
+    assert details["path_truncated"] is True
+    assert details["path_start"] == [chain[0]]
+    assert details["path_end"] == [chain[-1]]
+
+
 def test_insecure_subresource_fires_on_an_http_image_from_https(tmp_path):
     internal_rows = [
         ["https://example.com/", "text/html", "200", "OK", "Indexable", "0"],

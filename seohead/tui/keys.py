@@ -24,6 +24,7 @@ _SPECIAL = {
     "\x08": "backspace",
     "\x03": "ctrl_c",
     "\x04": "ctrl_d",
+    "\x18": "ctrl_x",
     "\t": "tab",
 }
 

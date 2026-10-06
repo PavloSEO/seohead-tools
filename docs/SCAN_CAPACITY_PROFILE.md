@@ -6,6 +6,22 @@ works. Run each stage in a fresh process; the reported peak RSS belongs to that
 stage's process. Use synthetic `example.test` URLs only. No socket, DNS, browser,
 provider or paid API is used.
 
+## Stable release gate
+
+The stable CLI/MCP crawler and remote submission schema share a **50,000-URL**
+ceiling. Larger live requests fail explicitly; scope is never silently reduced.
+The separate request ceiling remains 2,000,000, and operational remote project
+defaults remain 10,000 URLs and 20,000 requests.
+
+All bounded collector, storage, audit.v2, reanalysis and consumer implementations
+remain available. The existing `experimental_synthetic` marker still admits up to
+1,000,000 declared URLs for direct offline storage fixtures and remains forbidden
+in live collectors. Sparse storage admission is not end-to-end crawl acceptance.
+The retained one-million candidate source and frozen measurements remain separate
+from this stable release. Issue #818 still targets actual one-million-URL capture
+and consumers; that goal is not reduced to the stable release ceiling. A later
+admission increase requires its staged, source-bound acceptance evidence.
+
 ## Declared budgets and profiles
 
 Declare the budgets before a run and retain the command, JSON output, stderr,
@@ -161,3 +177,38 @@ readback, and crash/reopen recovery at one million records. It does **not**
 raise the public 50,000-URL crawl ceiling or establish one-million-page live
 crawling, link density, retained HTML/DOM, audit/report, or concurrent-reader
 capacity. Those claims remain separate acceptance work.
+
+## Native analyzer memory ownership
+
+The disk-backed analyzer page cache has two limits: 16,384 entries and 128 MiB
+of estimated retained Python objects. The byte estimate walks decoded page
+values and their write-through wrappers; it is not a process RSS limit and
+does not include every allocator or SQLite allocation. A page exceeding the
+cache budget is still decoded and processed, but is not cached. Supported
+write-through mutations invalidate the cached entry so its old byte estimate
+cannot survive a larger value. The next lookup measures the stored value again.
+Callbacks retain the page URL and shared store, not a second serialized copy
+of the entire page row.
+
+HTML weight ranking keeps scalar URL/size pairs with the same stable ordering
+for ties. It does not retain the full population of decoded page models while
+calculating per-page metrics. Rank maps, size distributions and some other
+analyzer vectors remain O(N) scalar data; the complete audit pipeline is not
+claimed to be constant-space. Dense metadata can substantially increase one
+decoded page's weight even when its encoded record is below the existing
+8 MiB native record limit. Measure process RSS, elapsed time and temporary
+disk use on the intended density and complete consumer path before admitting
+a larger profile. Small allocation probes establish ownership and regressions,
+not large-crawl acceptance.
+
+Unavailable-body and charset skip reasons count the complete page stream
+without retaining its Page models. Trust-page checks keep normalized URL group
+order and scalar representatives, preserving the preference for an indexable
+variant in the earliest discovered group. Their previously bounded discovered
+URL examples still select the same first five sorted URLs. The normalized-key
+order map remains O(N) scalar data. Stored-HTML DOM checks count matches against
+one fixed file index and then process every match in a second page pass; they
+do not hold a second complete Page population. The file index remains O(files),
+and individual legacy HTML files are still read in full. These changes do not
+silently truncate source evidence or introduce an unmeasured per-file size
+admission claim.

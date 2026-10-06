@@ -22,23 +22,29 @@ and this decision makes no backend migration.
 
 | Command | Accepted input forms | Notes |
 | --- | --- | --- |
+| `bi-filter` | Local directory (`package, out_dir`)<br>Selector (`dataset, columns`)<br>Inline JSON (`where, max_rows_per_file, max_bytes_per_file, max_output_bytes, xlsx_max_rows_per_sheet`)<br>Local file (`xlsx_out`) | — |
+| `scan-navigation` | Scan artifact (`input_path`)<br>Selector (`document_id, limit, offset`) | — |
+| `project-activity` | Project directory (`directory`) | — |
+| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state`) | — |
+| `project-task-detail` | Project directory (`directory`)<br>Selector (`item_id`) | — |
+| `project-scans` | Project directory (`directory`)<br>Selector (`offset, limit`) | — |
 | `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; confirmed disconnect or remote revoke. No secret values returned. |
 | `provider-replay` | Scan artifact (`input_path`); requires `evidence_file, out_dir` | Offline join with a private saved provider envelope; raw joins remain in restricted output. |
 | `parse` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `crawl-site` | Live URL (`url`)<br>URL list (`urls`)<br>Local file (`urls_file`)<br>Scan artifact (`resume`)<br>Local configuration (`config`)<br>Project directory (`project`) | TXT, CSV, XLSX, or XML URL input; Resumes retained crawl evidence and continues network collection.; Defaults the target and scans/ path; explicit paths, legacy output and resume keep their route. |
 | `crawl-describe-settings` | No direct input | — |
 | `scan-reanalyze` | Scan artifact (`scan`) | — |
-| `log-scan` | Local directory (`run`) | — |
+| `log-scan` | Local directory (`run`)<br>Scan artifact (`run`) | — |
 | `crawl-diagnose` | Scan artifact (`scan`)<br>Local directory (`run`) | Choose one retained source; diagnosis is offline and read-only. |
 | `crawl-diagnose-export` | Scan artifact (`scan`); requires `export`<br>Local directory (`run`); requires `export`<br>Local file (`export`) | Choose one retained source and a new redacted export destination; refuses overwrite. |
-| `compare-crawls` | Audit document (`before, after`)<br>Local file (`correspondence`) | Each path may be audit JSON or scan.v1.; Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default. |
+| `compare-crawls` | Audit document (`before, after`)<br>Local file (`correspondence`)<br>Local directory (`out_dir`)<br>Selector (`compression`) | Each path may be audit JSON or scan.v1.; Optional closed url-correspondence.v1 JSON declaration; exact URL comparison remains the default.; Optional new compare.v2 package; required for audit.v2 populations above 10,000 pages or issues. Refuses overwrite.; none (default) or explicit gzip with out_dir; every row is retained and compressed/uncompressed bytes are declared. |
 | `verify-fixes` | Audit document (`baseline`); requires `out_dir`<br>Audit document (`after`); requires `baseline, out_dir`<br>Selector (`finding_ids`); requires `baseline, out_dir`<br>Local file (`view`); requires `baseline, out_dir`<br>URL list (`urls`); requires `baseline, out_dir`<br>Local file (`urls_file`); requires `baseline, out_dir`<br>Local configuration (`config`) | Offline verification without recrawling.; Saved verification_view.v1 selection.; Required when the baseline redacted credentials. |
 | `crawl-enrich` | Audit document (`audit`); requires `external_csv`<br>Local file (`external_csv`); requires `audit` | — |
 | `crawl-import` | Local file (`manifest_path`) | third_party_crawl_manifest.v1 with manifest-relative CSV datasets; output remains foreign crawl evidence |
 | `segment-diff` | Audit document (`audit`) | — |
 | `redirects-generate` | Inline JSON (`redirects`) | — |
 | `redirects-check` | Live URL (`url`) | — |
-| `sitemap-crawl` | Live URL (`url`) | — |
+| `sitemap-crawl` | Live URL (`url`)<br>Project directory (`project`) | Optional explicit local observation; same origin only. Declared URLs are not fetched HTML pages. |
 | `images-download` | URL list (`urls`) | — |
 | `images-optimize` | Local file (`files`) | — |
 | `keywords-cluster` | Inline JSON (`params`) | — |
@@ -70,7 +76,7 @@ and this decision makes no backend migration.
 | `regions-check` | Live URL (`url`) | — |
 | `render-check` | Live URL (`url`)<br>Inline JSON (`transport_config`) | Optional local/remote Playwright transport selection; endpoint is named by environment variable. |
 | `site-audit` | Live URL (`url`)<br>URL list (`urls`) | — |
-| `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset. |
+| `report-build` | Audit document (`audit`)<br>Project directory (`project`)<br>Selector (`view`)<br>Selector (`offset`)<br>Selector (`pdf_policy`) | Audit JSON or a retained scan.v1 artifact.; Includes validated checklist coverage and optionally applies a saved finding view.; Optional saved project finding view; requires project.; Optional stable finding-view page offset.; Explicit overview-v1 for PDF + retained audit.v2 only: bounded PDF with complete mandatory JSON/CSV/manifest companions; never inferred. |
 | `facts-export` | Inline JSON (`sites`) | — |
 | `marketing-inventory` | Inline JSON (`documents`)<br>Selector (`cta_selector, form_selector, id_attributes, id_parameters`)<br>Local directory (`out_dir`) | — |
 | `keywords-expand` | Provider query (`phrase`) | — |
@@ -155,6 +161,8 @@ and this decision makes no backend migration.
 | `monitor-status` | Project directory (`directory`) | — |
 | `monitor-configure` | Project directory (`directory`); requires `policy` | — |
 | `monitor-run` | Project directory (`directory`); requires `scan_id, observations, expected_revision` | Records supplied retained-scan differences only; it starts no schedule or delivery. |
+| `monitor-collect` | Project directory (`directory`); requires `expected_revision`<br>Selector (`expected_revision, apply`) | Preview by default; explicit apply collects only an existing validated bounded claim. No timer or delivery starts. |
+| `monitor-local-deliver` | Project directory (`directory`); requires `scan_id, expected_revision`<br>Selector (`scan_id, expected_revision`) | Records a local:receipt only; no network, external transport or recipient delivery claim. |
 | `monitor-schedule` | Project directory (`directory`); requires `action, expected_revision` | Claims, cancels, backs off, or recovers a local bounded pass; it starts no timer. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |

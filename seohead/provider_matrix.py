@@ -248,7 +248,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
     ),
     WorkflowRow(
         workflow="traffic-analytics",
-        use_case="Counter configuration, aggregate reports, and landing-page evidence",
+        use_case="Counter configuration, aggregate reports, landing-page sessions and visited-page views",
         providers=(_reg("metrika"), _reg("ga4")),
         surface=(
             "metrika-counters",
@@ -262,8 +262,9 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
         cost_quota="Free within Metrika and GA4 Data API quotas",
         privacy="restricted — may contain personal identifiers; kept out of reports and commits",
         limitations=(
-            "Metrika raw Logs API is intentionally unreachable; GA4 ships only the "
-            "landing_pages operation and only via provider-collect"
+            "Metrika raw Logs API is intentionally unreachable; GA4 landing_pages and page_views "
+            "are read-only provider-collect operations. Visited-page views preserve date/host/path "
+            "grain and are not sessions; missing or incompatible evidence never becomes zero"
         ),
         csv_fallback="yes — URL-keyed analytics exports join via provider-join",
     ),

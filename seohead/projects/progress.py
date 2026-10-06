@@ -49,7 +49,7 @@ def _item_state(item: dict[str, Any]) -> str:
 
 
 def _has_explicit_plans(
-    directory: str | Path, checklist: dict[str, Any]
+    directory: str | Path, checklist: dict[str, Any], coverage_views: dict | None = None
 ) -> tuple[bool, str | None]:
     """Require an agreed plan at every site included in an aggregated checklist."""
     sites = checklist.get("sites")
@@ -78,7 +78,9 @@ def _has_explicit_plans(
             if not resolved.is_relative_to(root):
                 return False, "a site scope points outside the project"
             try:
-                current = coverage_status(resolved)
+                current = (coverage_views or {}).get(str(resolved))
+                if current is None:
+                    current = coverage_status(resolved)
             except (OSError, ValueError):
                 return False, "a declared site scope could not be read"
         if current.get("state") != "initialized" or current.get("plan") is None:
@@ -195,7 +197,12 @@ def _next_action(item: dict[str, Any], state: str) -> dict[str, Any] | None:
 
 
 def project_progress(
-    directory: str | Path, *, limit: int = DEFAULT_LIMIT, offset: int = 0
+    directory: str | Path,
+    *,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+    _status: dict | None = None,
+    _coverage_views: dict | None = None,
 ) -> dict[str, Any]:
     """Return a bounded project progress page using the project checklist's own coverage axes."""
     if type(limit) is not int or not 1 <= limit <= MAX_LIMIT:
@@ -205,10 +212,10 @@ def project_progress(
 
     from .workspace import project_status
 
-    status = project_status(directory)
+    status = project_status(directory) if _status is None else _status
     checklist = status["checklist"]
     rows = checklist.get("items", [])
-    explicit_scope, scope_reason = _has_explicit_plans(directory, checklist)
+    explicit_scope, scope_reason = _has_explicit_plans(directory, checklist, _coverage_views)
     states = [_item_state(item) for item in rows]
     state_counts = {name: sum(state == name for state in states) for name in _STATE_NAMES}
     counts = checklist.get("counts") or {}
