@@ -22,6 +22,12 @@ and this decision makes no backend migration.
 
 | Command | Accepted input forms | Notes |
 | --- | --- | --- |
+| `bi-filter` | Local directory (`package, out_dir`)<br>Selector (`dataset, columns`)<br>Inline JSON (`where, max_rows_per_file, max_bytes_per_file, max_output_bytes, xlsx_max_rows_per_sheet`)<br>Local file (`xlsx_out`) | — |
+| `scan-navigation` | Scan artifact (`input_path`)<br>Selector (`document_id, limit, offset`) | — |
+| `project-activity` | Project directory (`directory`) | — |
+| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state`) | — |
+| `project-task-detail` | Project directory (`directory`)<br>Selector (`item_id`) | — |
+| `project-scans` | Project directory (`directory`)<br>Selector (`offset, limit`) | — |
 | `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; confirmed disconnect or remote revoke. No secret values returned. |
 | `provider-replay` | Scan artifact (`input_path`); requires `evidence_file, out_dir` | Offline join with a private saved provider envelope; raw joins remain in restricted output. |
 | `parse` | Live URL (`url`)<br>URL list (`urls`) | — |

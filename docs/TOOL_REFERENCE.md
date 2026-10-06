@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**149 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 154 in total.
+**155 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 160 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2209,6 +2209,123 @@ compatible/incompatible/unknown decision across period, timezone,
 identity, attribution, engine and grain; source metrics such as GSC
 clicks and GA4 sessions stay distinct and are never summed. Restricted
 inputs return counts only.
+
+### `bi-filter`
+
+MCP name: `seo_bi_filter`
+
+Filter a verified local BI package into a new typed package and optional XLSX.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `dataset` | `str` | `required` |
+| `out_dir` | `str` | `required` |
+| `where` | `dict[str, list[str]] | None` | `None` |
+| `columns` | `list[str] | None` | `None` |
+| `max_rows_per_file` | `int` | `250000` |
+| `max_bytes_per_file` | `int` | `8388608` |
+| `max_output_bytes` | `int` | `4294967296` |
+| `xlsx_out` | `str | None` | `None` |
+| `xlsx_max_rows_per_sheet` | `int` | `1048575` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Exact equality filters over declared fields only; source and selected row counts
+and coverage are preserved. Creates new local outputs without network calls.
+
+### `scan-navigation`
+
+MCP name: `seo_scan_navigation`
+
+Read bounded observed navigation evidence from a retained local scan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `document_id` | `int | None` | `None` |
+| `limit` | `int` | `100` |
+| `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-activity`
+
+MCP name: `seo_project_activity`
+
+Read lightweight current activity for a local project and its sites.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-checklist-page`
+
+MCP name: `seo_project_checklist_page`
+
+Read a bounded searchable page of project checklist evidence.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `50` |
+| `query` | `str` | `''` |
+| `kind` | `str | None` | `None` |
+| `state` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-task-detail`
+
+MCP name: `seo_project_task_detail`
+
+Read one project task definition, evidence and bounded history.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `item_id` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
+
+### `project-scans`
+
+MCP name: `seo_project_scans`
+
+Read a bounded page of retained project scans with evidence metadata.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `20` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Reads saved local evidence only; does not collect, fetch or modify it.
 
 ### `bi-export`
 

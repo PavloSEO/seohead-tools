@@ -455,3 +455,8 @@ code, fetches a site, or contacts a provider.
 Status and human reports display the saved priority, origin and reason. A priority
 change does not complete work or invalidate a previously reviewed result; changes
 to the work definition or evidence still follow the normal stale-evidence rules.
+
+See [Terminal controls and observation](TERMINAL.md) for keyboard navigation,
+read cadence, task detail, and retained scan history. The same bounded reads are
+available through `project-activity`, `project-checklist-page`, `project-task-detail`,
+and `project-scans` in the CLI and MCP.

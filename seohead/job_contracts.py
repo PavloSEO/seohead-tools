@@ -27,9 +27,9 @@ class ScanOptions(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    max_urls: int = Field(default=200, ge=1, le=10_000)
+    max_urls: int = Field(default=200, ge=1, le=1_000_000)
     max_depth: int = Field(default=5, ge=0, le=20)
-    max_requests: int = Field(default=20_000, ge=1, le=100_000)
+    max_requests: int = Field(default=20_000, ge=1, le=2_000_000)
     max_crawl_seconds: int = Field(default=3_600, ge=1, le=86_400)
     concurrency: int = Field(default=1, ge=1, le=4)
     rendering_mode: Literal["raw", "js"] = "raw"

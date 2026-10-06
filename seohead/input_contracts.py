@@ -48,6 +48,46 @@ def _command(
 # package runtime import either interface layer.
 COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     _command(
+        "bi-filter",
+        "bi_filter",
+        _form("local_directory", "package", "out_dir"),
+        _form("selector", "dataset", "columns"),
+        _form(
+            "inline_json",
+            "where",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            "xlsx_max_rows_per_sheet",
+        ),
+        _form("local_file", "xlsx_out"),
+    ),
+    _command(
+        "scan-navigation",
+        "scan_navigation",
+        _form("scan_artifact", "input_path"),
+        _form("selector", "document_id", "limit", "offset"),
+    ),
+    _command("project-activity", "project_activity", _form("project_directory", "directory")),
+    _command(
+        "project-checklist-page",
+        "project_checklist_page",
+        _form("project_directory", "directory"),
+        _form("selector", "offset", "limit", "query", "kind", "state"),
+    ),
+    _command(
+        "project-task-detail",
+        "project_task_detail",
+        _form("project_directory", "directory"),
+        _form("selector", "item_id"),
+    ),
+    _command(
+        "project-scans",
+        "project_scans",
+        _form("project_directory", "directory"),
+        _form("selector", "offset", "limit"),
+    ),
+    _command(
         "provider-auth",
         "provider_auth",
         _form(

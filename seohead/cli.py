@@ -164,6 +164,12 @@ COMMANDS = (
     "evidence-normalize",
     "evidence-join",
     "bi-export",
+    "bi-filter",
+    "scan-navigation",
+    "project-activity",
+    "project-checklist-page",
+    "project-task-detail",
+    "project-scans",
     "publication-cohorts",
     "gsc-progress",
     "bi-sheets-plan",
@@ -667,6 +673,40 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("ignore_query", "ignore_scheme", "casefold_path"):
             if getattr(args, name, False):
                 kw[name] = True
+    elif cmd in {
+        "project-activity",
+        "project-checklist-page",
+        "project-task-detail",
+        "project-scans",
+        "scan-navigation",
+        "bi-filter",
+    }:
+        for name in (
+            "directory",
+            "item_id",
+            "offset",
+            "limit",
+            "query",
+            "kind",
+            "state",
+            "input_path",
+            "document_id",
+            "package",
+            "dataset",
+            "out_dir",
+            "max_rows_per_file",
+            "max_bytes_per_file",
+            "max_output_bytes",
+            "xlsx_out",
+            "xlsx_max_rows_per_sheet",
+        ):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        if getattr(args, "where", None) is not None:
+            kw["where"] = json.loads(args.where)
+        if getattr(args, "columns", None) is not None:
+            kw["columns"] = _split_list(args.columns)
     elif cmd == "bi-export":
         for name in (
             "scan",
@@ -2150,6 +2190,40 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--ignore-scheme", action="store_true")
         sub.add_argument("--casefold-path", action="store_true")
         _source_flag(sub, "--out-dir", help="private local join output directory")
+    if cmd in {
+        "project-activity",
+        "project-checklist-page",
+        "project-task-detail",
+        "project-scans",
+    }:
+        _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd == "project-task-detail":
+        sub.add_argument("--item-id", help="exact checklist item identifier")
+    if cmd in {"project-checklist-page", "project-scans", "scan-navigation"}:
+        sub.add_argument("--limit", type=int, help="bounded page size")
+        sub.add_argument("--offset", type=int, help="zero-based item offset")
+    if cmd == "project-checklist-page":
+        sub.add_argument("--query", help="case-insensitive checklist search")
+        sub.add_argument(
+            "--kind", choices=("method", "schema", "check", "skill", "scenario", "custom")
+        )
+        sub.add_argument("--state", help="exact displayed checklist state")
+    if cmd == "scan-navigation":
+        _source_flag(sub, "--scan", dest="input_path", help="retained local scan artifact")
+        sub.add_argument("--document-id", type=int, help="exact retained document identifier")
+    if cmd == "bi-filter":
+        _source_flag(sub, "--package", help="verified local BI package directory")
+        sub.add_argument("--dataset", help="declared BI dataset")
+        _source_flag(sub, "--out-dir", help="new local filtered package directory")
+        sub.add_argument(
+            "--where", help='exact equality JSON object, e.g. {"severity":["warning"]}'
+        )
+        sub.add_argument("--columns", help="comma-separated declared fields")
+        sub.add_argument("--max-rows-per-file", type=int)
+        sub.add_argument("--max-bytes-per-file", type=int)
+        sub.add_argument("--max-output-bytes", type=int)
+        _source_flag(sub, "--xlsx-out", help="optional new split XLSX output")
+        sub.add_argument("--xlsx-max-rows-per-sheet", type=int)
     if cmd == "bi-export":
         _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact")
         _source_flag(sub, "--audit", help="supported saved audit JSON document")
@@ -2386,6 +2460,7 @@ def build_parser() -> argparse.ArgumentParser:
         "link-inspect",
         "status",
         "rendered-routes",
+        "navigation",
         "snapshot",
         "export",
         "pin",
@@ -2408,6 +2483,10 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         "progress",
         "observe",
+        "activity",
+        "checklist-page",
+        "task-detail",
+        "scans",
         "inbox-submit",
         "inbox-list",
         "inbox-read",

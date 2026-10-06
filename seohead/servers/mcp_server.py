@@ -2379,6 +2379,96 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_bi_filter(
+        package: str,
+        dataset: str,
+        out_dir: str,
+        where: dict[str, list[str]] | None = None,
+        columns: list[str] | None = None,
+        max_rows_per_file: int = 250_000,
+        max_bytes_per_file: int = 8_388_608,
+        max_output_bytes: int = 4_294_967_296,
+        xlsx_out: str | None = None,
+        xlsx_max_rows_per_sheet: int = 1_048_575,
+    ) -> dict[str, Any]:
+        """Filter a verified local BI package into a new typed package and optional XLSX.
+
+        Exact equality filters over declared fields only; source and selected row counts
+        and coverage are preserved. Creates new local outputs without network calls.
+        """
+        return _checked(
+            handlers.bi_filter(
+                package=package,
+                dataset=dataset,
+                out_dir=out_dir,
+                where=where,
+                columns=columns,
+                max_rows_per_file=max_rows_per_file,
+                max_bytes_per_file=max_bytes_per_file,
+                max_output_bytes=max_output_bytes,
+                xlsx_out=xlsx_out,
+                xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_navigation(
+        input_path: str, document_id: int | None = None, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Read bounded observed navigation evidence from a retained local scan.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(
+            handlers.scan_navigation(
+                input_path=input_path, document_id=document_id, limit=limit, offset=offset
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_activity(directory: str) -> dict[str, Any]:
+        """Read lightweight current activity for a local project and its sites.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(handlers.project_activity(directory=directory))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_checklist_page(
+        directory: str,
+        offset: int = 0,
+        limit: int = 50,
+        query: str = "",
+        kind: str | None = None,
+        state: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a bounded searchable page of project checklist evidence.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(
+            handlers.project_checklist_page(
+                directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_task_detail(directory: str, item_id: str) -> dict[str, Any]:
+        """Read one project task definition, evidence and bounded history.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(handlers.project_task_detail(directory=directory, item_id=item_id))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_scans(directory: str, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+        """Read a bounded page of retained project scans with evidence metadata.
+
+        Reads saved local evidence only; does not collect, fetch or modify it.
+        """
+        return _checked(handlers.project_scans(directory=directory, offset=offset, limit=limit))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
     def seo_bi_export(
         out_dir: str,
         scan: str | None = None,

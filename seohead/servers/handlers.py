@@ -683,6 +683,7 @@ def crawl_site(
                         producer_build=producer_build,
                         progress=reporter,
                         observation=reporter.enter,
+                        progress_snapshot=reporter.observe_counts,
                     )
                 except BaseException as exc:
                     with contextlib.suppress(OSError, ValueError):
@@ -882,6 +883,7 @@ def crawl_site(
                 producer_build=producer_build,
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
+                progress_snapshot=reporter.observe_counts if reporter is not None else None,
                 proxy_route=proxy_route,
             )
         except BaseException as exc:
@@ -5116,6 +5118,81 @@ def evidence_join(
     return response
 
 
+def bi_filter(
+    package: str,
+    dataset: str,
+    out_dir: str,
+    where: dict[str, list[str]] | None = None,
+    columns: list[str] | None = None,
+    max_rows_per_file: int = 250_000,
+    max_bytes_per_file: int = 8_388_608,
+    max_output_bytes: int = 4_294_967_296,
+    xlsx_out: str | None = None,
+    xlsx_max_rows_per_sheet: int = 1_048_575,
+) -> dict[str, Any]:
+    """Filter a verified local BI package into a new typed package and optional XLSX."""
+    from seohead.servers.bi_handlers import bi_filter as core
+
+    return core(
+        package=package,
+        dataset=dataset,
+        out_dir=out_dir,
+        where=where,
+        columns=columns,
+        max_rows_per_file=max_rows_per_file,
+        max_bytes_per_file=max_bytes_per_file,
+        max_output_bytes=max_output_bytes,
+        xlsx_out=xlsx_out,
+        xlsx_max_rows_per_sheet=xlsx_max_rows_per_sheet,
+    )
+
+
+def scan_navigation(
+    input_path: str, document_id: int | None = None, limit: int = 100, offset: int = 0
+) -> dict[str, Any]:
+    """Read bounded observed navigation evidence from a retained local scan."""
+    from seohead.servers.navigation_handlers import scan_navigation as core
+
+    return core(input_path=input_path, document_id=document_id, limit=limit, offset=offset)
+
+
+def project_activity(directory: str) -> dict[str, Any]:
+    """Read lightweight current activity for a local project and its sites."""
+    from seohead.projects.observer import observe_activity as core
+
+    return core(directory=directory)
+
+
+def project_checklist_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    query: str = "",
+    kind: str | None = None,
+    state: str | None = None,
+) -> dict[str, Any]:
+    """Read a bounded searchable page of project checklist evidence."""
+    from seohead.projects.observer import checklist_page as core
+
+    return core(
+        directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+    )
+
+
+def project_task_detail(directory: str, item_id: str) -> dict[str, Any]:
+    """Read one project task definition, evidence and bounded history."""
+    from seohead.projects.observer import task_detail as core
+
+    return core(directory=directory, item_id=item_id)
+
+
+def project_scans(directory: str, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+    """Read a bounded page of retained project scans with evidence metadata."""
+    from seohead.projects.observer import scans_page as core
+
+    return core(directory=directory, offset=offset, limit=limit)
+
+
 def bi_export(
     scan: str | None = None,
     audit: Any = None,
@@ -5555,6 +5632,12 @@ _RAW_HANDLERS = {
     "evidence_normalize": evidence_normalize,
     "evidence_join": evidence_join,
     "bi_export": bi_export,
+    "bi_filter": bi_filter,
+    "scan_navigation": scan_navigation,
+    "project_activity": project_activity,
+    "project_checklist_page": project_checklist_page,
+    "project_task_detail": project_task_detail,
+    "project_scans": project_scans,
     "publication_cohorts": publication_cohorts,
     "gsc_progress": gsc_progress,
     "bi_sheets_plan": bi_sheets_plan,

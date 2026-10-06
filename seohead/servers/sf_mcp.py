@@ -82,6 +82,7 @@ def _do_run(
         raise ValueError("`input` (exports dir / .seospider / url / list) is required")
     observed: tuple[str, str] | None = None
     observed_phase: str | None = None
+    reporter = None
 
     def record_phase(name: str) -> None:
         nonlocal observed_phase
@@ -96,7 +97,7 @@ def _do_run(
         observed_phase = name
 
     if project is not None:
-        from seohead.projects.run_observation import start
+        from seohead.projects.run_observation import NativeRunReporter, start
         from seohead.projects.workspace import open_project
         from seohead.sf.config import load_config
 
@@ -119,6 +120,7 @@ def _do_run(
             counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
         )
         observed = (str(root), run["id"])
+        reporter = NativeRunReporter(root, run["id"], source="sf")
         record_phase("collection" if mode != "parse-exports" else "analysis")
 
     def log(message: str) -> None:
@@ -140,7 +142,11 @@ def _do_run(
             return
 
     try:
-        observer_kwargs = {"on_started": collector_started} if observed is not None else {}
+        observer_kwargs = (
+            {"on_started": collector_started, "on_progress": reporter.observe_counts}
+            if reporter is not None
+            else {}
+        )
         if mode == "parse-exports":
             result = run_audit(
                 input_mode=mode,
