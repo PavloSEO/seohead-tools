@@ -34,6 +34,7 @@ that read these numbers are dispatched from.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 # The key an edge with no recorded position is counted under. Deliberately not one
@@ -79,8 +80,8 @@ def summarize_positions(totals: dict[str, int]) -> dict[str, Any]:
 
 
 def summarize_depth(
-    depths: dict[str, int],
-    page_keys: list[str],
+    depths: Mapping[str, int] | Callable[[str], int | None],
+    page_keys: Iterable[str],
     *,
     seed: str,
     floor: int,
@@ -99,8 +100,11 @@ def summarize_depth(
     histogram: dict[str, int] = {}
     reached = 0
     deepest = 0
+    pages = 0
+    depth_for = depths if callable(depths) else depths.get
     for key in page_keys:
-        depth = depths.get(key)
+        pages += 1
+        depth = depth_for(key)
         if depth is None:
             continue
         reached += 1
@@ -110,9 +114,9 @@ def summarize_depth(
     return {
         "measured": True,
         "seed": seed,
-        "pages": len(page_keys),
+        "pages": pages,
         "reachable": reached,
-        "unreachable": len(page_keys) - reached,
+        "unreachable": pages - reached,
         "max": deepest if reached else None,
         "histogram": dict(sorted(histogram.items(), key=lambda item: int(item[0]))),
         "within": {

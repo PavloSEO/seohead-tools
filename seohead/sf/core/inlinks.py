@@ -12,6 +12,7 @@ import re
 import statistics
 import urllib.parse
 from collections import Counter, OrderedDict
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from seohead.graph import InlinkCompositionRow
@@ -1028,23 +1029,27 @@ def _path_endpoint(ctx: AuditContext, key: str) -> str:
 
 
 def _emit_discovery_paths(
-    ctx: AuditContext, path_for, depths: dict[str, int] | None = None, seed: str = ""
+    ctx: AuditContext,
+    path_for,
+    depths: Mapping[str, int] | Callable[[str], int | None],
+    seed: str,
 ) -> None:
     """Emit the one reviewed DEEP_DISCOVERY_PATH threshold and issue shape."""
     max_depth = ctx.thresholds.get("crawl_depth_max", 4)
+    depth_for = depths if callable(depths) else depths.get
     for page in ctx.indexable_html_pages():
         key = norm_url(page.url)
-        depth = depths.get(key) if depths is not None else None
-        if depth is not None and depth <= max_depth:
+        depth = depth_for(key)
+        if depth is None or depth <= max_depth:
             continue
-        path_norm = path_for(key) if depth is None or depth <= _MAX_PATH_URLS else None
-        if path_norm is None and depth is None:
-            continue
-        details: dict[str, Any] = {"hops": depth if depth is not None else len(path_norm) - 1}
+        path_norm = path_for(key) if depth < _MAX_PATH_URLS else None
+        details: dict[str, Any] = {"hops": depth}
         if path_norm is not None:
             details["path"] = [_path_endpoint(ctx, item) for item in path_norm]
         else:
-            details.update(path_start=[_path_endpoint(ctx, seed)], path_end=[page.url], path_truncated=True)
+            details.update(
+                path_start=[_path_endpoint(ctx, seed)], path_end=[page.url], path_truncated=True
+            )
         ctx.add(
             "DEEP_DISCOVERY_PATH",
             target_url=page.url,
@@ -1077,7 +1082,7 @@ def check_discovery_path(ctx: AuditContext) -> None:
             if paths is None:
                 ctx.skip("DEEP_DISCOVERY_PATH", "all_inlinks export has no internal hyperlinks")
                 return
-            _emit_discovery_paths(ctx, paths.path_to, dict(paths.iter_depths()), norm_url(seed.url))
+            _emit_discovery_paths(ctx, paths.path_to, paths.depth_for, norm_url(seed.url))
             return
         ctx.skip(
             "DEEP_DISCOVERY_PATH",
@@ -1210,11 +1215,18 @@ def _emit_duplicate_links(ctx: AuditContext, groups) -> int:
 
 
 def _emit_deep_click_depth(
-    ctx: AuditContext, depths: dict[str, int], floor: int, path_for, seed: str, *, compact_routes: bool = False
+    ctx: AuditContext,
+    depths: Mapping[str, int] | Callable[[str], int | None],
+    floor: int,
+    path_for,
+    seed: str,
+    *,
+    compact_routes: bool = False,
 ) -> None:
     """Flag indexable pages further from the start URL than the configured floor."""
+    depth_for = depths if callable(depths) else depths.get
     for page in ctx.indexable_html_pages():
-        depth = depths.get(norm_url(page.url))
+        depth = depth_for(norm_url(page.url))
         if depth is None or depth <= floor:
             continue
         details: dict[str, Any] = {
@@ -1227,7 +1239,9 @@ def _emit_deep_click_depth(
         # Do not rebuild a million-node predecessor chain just to render a
         # bounded finding sample.  The depth is the verdict; for a long route
         # retain its known endpoints and say that the middle was omitted.
-        route = path_for(norm_url(page.url)) if not compact_routes or depth <= _MAX_PATH_URLS else None
+        route = (
+            path_for(norm_url(page.url)) if not compact_routes or depth < _MAX_PATH_URLS else None
+        )
         if route:
             urls = [
                 ctx.page_by_norm[item].url if item in ctx.page_by_norm else item for item in route
@@ -1238,7 +1252,7 @@ def _emit_deep_click_depth(
                 details["path_start"] = urls[:_PATH_END_URLS]
                 details["path_end"] = urls[-_PATH_END_URLS:]
                 details["path_truncated"] = True
-        elif depth > _MAX_PATH_URLS:
+        elif depth >= _MAX_PATH_URLS:
             details["path_start"] = [_path_endpoint(ctx, seed)]
             details["path_end"] = [page.url]
             details["path_truncated"] = True
@@ -1337,14 +1351,14 @@ def _measure_click_depth(ctx: AuditContext, records, graph, floor: int) -> dict[
     if seed is None:
         ctx.skip("DEEP_CLICK_DEPTH", reason)
         return unmeasured(reason)
-    page_keys = sorted({norm_url(page.url) for page in ctx.html_pages()})
+    page_keys = ctx.html_page_keys()
     if graph is not None:
         session = graph.begin_paths(seed)
         if session is None:
             reason = "all_inlinks export has no internal hyperlinks"
             ctx.skip("DEEP_CLICK_DEPTH", reason)
             return unmeasured(reason)
-        depths = dict(session.iter_depths())
+        depths = session.depth_for
         _emit_deep_click_depth(ctx, depths, floor, session.path_to, seed, compact_routes=True)
     else:
         edges = _internal_hyperlink_edges(records, _site_host(ctx))
@@ -1355,7 +1369,9 @@ def _measure_click_depth(ctx: AuditContext, records, graph, floor: int) -> dict[
         # The parent tree, never the routes themselves: one entry per node instead
         # of one per hop of every route (see crawl_path.bfs_tree_from_seed).
         depths, parents = bfs_tree_from_seed(edges, seed)
-        _emit_deep_click_depth(ctx, depths, floor, lambda key: route_from_parents(parents, key), seed)
+        _emit_deep_click_depth(
+            ctx, depths, floor, lambda key: route_from_parents(parents, key), seed
+        )
     seed_page = ctx.page_by_norm.get(seed)
     return summarize_depth(
         depths,

@@ -68,6 +68,9 @@ class _Graph:
 
     def begin_paths(self, seed):
         class _Paths:
+            def depth_for(self, target):
+                return dict(self.iter_depths()).get(target)
+
             def path_to(self, target):
                 if target == "https://example.test/target":
                     return (seed, "a", "b", "c", "d", "https://example.test/source", target)

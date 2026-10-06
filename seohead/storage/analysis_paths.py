@@ -64,6 +64,9 @@ class PathSession:
             f"CREATE TEMP TABLE {session._predecessor} ("
             "key TEXT PRIMARY KEY, parent_key TEXT, depth INTEGER NOT NULL)"
         )
+        con.execute(
+            f'CREATE INDEX "{prefix}_path_pending" ON {session._frontier}(queue_order) WHERE done=0'
+        )
         con.execute(f"CREATE INDEX {session._topology_index} ON {topology}(src_key, seq)")
         con.execute(
             f"INSERT INTO {session._frontier}(key, queue_order, done) VALUES(?, 0, 0)",
@@ -77,6 +80,10 @@ class PathSession:
 
     def path_to(self, target: str) -> tuple[str, ...] | None:
         """Return the legacy-equivalent shortest path for one target, if reachable."""
+        return self._materialize(target) if self.depth_for(target) is not None else None
+
+    def depth_for(self, target: str) -> int | None:
+        """Resolve one distance without decoding its predecessor chain or all depths."""
         if self._closed:
             raise ScanError("path session is closed")
         if not isinstance(target, str) or not target:
@@ -88,7 +95,9 @@ class PathSession:
             if row is None:
                 return None
             self._expand(row[0])
-        return self._materialize(target)
+        return self._con.execute(
+            f"SELECT depth FROM {self._predecessor} WHERE key=?", (target,)
+        ).fetchone()[0]
 
     def iter_depths(self):
         """Drain the frontier, then yield ``(key, hops)`` for every reachable node.

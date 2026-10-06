@@ -177,12 +177,10 @@ def test_deep_discovery_path_reports_the_actual_route(tmp_path):
 def test_long_deep_discovery_path_is_bounded_without_losing_its_hop_verdict(tmp_path):
     chain = ["https://example.com/"] + [f"https://example.com/l{i}" for i in range(40)]
     internal_rows = [
-        [url, "text/html", "200", "OK", "Indexable", str(index)]
-        for index, url in enumerate(chain)
+        [url, "text/html", "200", "OK", "Indexable", str(index)] for index, url in enumerate(chain)
     ]
     inlink_rows = [
-        [chain[index - 1], chain[index], "Hyperlink", "true"]
-        for index in range(1, len(chain))
+        [chain[index - 1], chain[index], "Hyperlink", "true"] for index in range(1, len(chain))
     ]
     res = run_audit(
         input_mode="parse-exports",

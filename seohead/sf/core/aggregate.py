@@ -376,7 +376,11 @@ def aggregate(
             # Back-link rows during the stream.  A page store only writes the
             # one page touched by this finding, rather than retaining a final
             # issue list solely for a later backlink pass.
-            if results is not None and getattr(ctx, "_disk_pages", None) is not None and issue.target_url:
+            if (
+                results is not None
+                and getattr(ctx, "_disk_pages", None) is not None
+                and issue.target_url
+            ):
                 ctx._disk_pages.attach_issue(issue.target_url, issue.check, str(issue.id))
             else:
                 page = ctx.page_by_url.get(issue.target_url) if issue.target_url else None
@@ -392,8 +396,14 @@ def aggregate(
             suppressed_issues.append(suppressed)
         suppressed_by_rule[rule["id"]] += 1
         suppressed_occurrences_by_rule[rule["id"]] += issue.occurrences_count
-        if results is not None and getattr(ctx, "_disk_pages", None) is not None and issue.target_url:
-            ctx._disk_pages.attach_issue(issue.target_url, issue.check, str(issue.id), suppressed=True)
+        if (
+            results is not None
+            and getattr(ctx, "_disk_pages", None) is not None
+            and issue.target_url
+        ):
+            ctx._disk_pages.attach_issue(
+                issue.target_url, issue.check, str(issue.id), suppressed=True
+            )
         else:
             page = ctx.page_by_url.get(issue.target_url) if issue.target_url else None
             if page is not None:

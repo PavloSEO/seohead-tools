@@ -12,8 +12,9 @@ from seohead.crawl.settings import fingerprint
 from seohead.crawl.settings import load as load_crawl_settings
 from seohead.sf.config import load_config
 from seohead.sf.core.aggregate import aggregate
-from seohead.sf.core.context import AuditContext
+from seohead.sf.core.context import AuditContext, _DiskPages
 from seohead.sf.core.loader import load_exports
+from seohead.sf.core.models import Page
 from seohead.storage.audit_v2 import AuditV2Reader
 from seohead.storage.native_scan import NativeScan
 
@@ -97,6 +98,60 @@ def test_disk_backed_pages_preserve_metrics_and_normalized_lookup(tmp_path):
     assert not store_path.exists()
     assert not issues_path.exists()
     assert not groups_path.exists()
+
+
+def test_disk_page_cache_evicts_and_batched_findings_keep_persisted_state():
+    records = [
+        {"url": "https://example.test/a", "status_code": 301},
+        {"url": "https://example.test/a/", "status_code": 200},
+        {"url": "https://example.test/b", "status_code": 200},
+    ]
+    store = _DiskPages(records, lambda record: Page(**record))
+    store._cache_limit = 1
+    try:
+        page = store.representative("https://example.test/a")
+        assert page.url == records[1]["url"]
+        assert store.get(page.url) is page
+        page.metrics["observed"] = 42
+        store.get(records[2]["url"])
+        assert len(store._cache) == 1
+        assert store.get(page.url).metrics["observed"] == 42
+        store.attach_issue(page.url, "TITLE_MISSING", "ISSUE-1")
+        store.attach_issue(page.url, "TITLE_MISSING", "ISSUE-2")
+        store.attach_issue(page.url, "H1_MISSING", "ISSUE-3", suppressed=True)
+        reloaded = store.get(page.url)
+        assert reloaded.metrics["observed"] == 42
+        assert reloaded.issues == ["TITLE_MISSING"]
+        assert reloaded.issue_ids == ["ISSUE-1", "ISSUE-2"]
+        assert reloaded.suppressed_issue_ids == ["ISSUE-3"]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("disk_backed", (False, True))
+def test_html_page_keys_stream_unique_normalized_fetched_html(tmp_path, disk_backed):
+    p = tmp_path / "internal_all.csv"
+    with p.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["Address", "Content Type", "Status Code"])
+        writer.writerows(
+            [
+                ["https://example.test/a", "text/html", 200],
+                ["https://example.test/a/", "application/xhtml+xml", 200],
+                ["https://example.test/gone", "text/html", 404],
+                ["https://example.test/image", "image/png", 200],
+            ]
+        )
+    ctx = AuditContext(
+        load_exports(str(tmp_path)), load_config(None), disk_backed_pages=disk_backed
+    )
+    try:
+        keys = ctx.html_page_keys()
+        if disk_backed:
+            assert not isinstance(keys, (list, set, dict))
+        assert list(keys) == ["https://example.test/a"]
+    finally:
+        ctx.close()
 
 
 @pytest.mark.parametrize("count", (1_000, 50_000))

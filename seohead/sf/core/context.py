@@ -170,7 +170,9 @@ class _DiskPages:
         # connection, so they see updates immediately; committing every metric
         # mutation would turn a large audit into thousands of fsyncs.
 
-    def attach_issue(self, url: str, check: str, issue_id: str, *, suppressed: bool = False) -> None:
+    def attach_issue(
+        self, url: str, check: str, issue_id: str, *, suppressed: bool = False
+    ) -> None:
         """Attach one final finding with one JSON read/write for a disk page."""
         row = self.con.execute("SELECT state_json FROM pages WHERE url=?", (url,)).fetchone()
         if row is None:
@@ -183,7 +185,8 @@ class _DiskPages:
                 state["issues"].append(check)
             state["issue_ids"].append(issue_id)
         self.con.execute(
-            "UPDATE pages SET state_json=? WHERE url=?", (json.dumps(state, ensure_ascii=False), url)
+            "UPDATE pages SET state_json=? WHERE url=?",
+            (json.dumps(state, ensure_ascii=False), url),
         )
         # Cached Page instances wrap write-through lists.  Invalidate rather
         # than mutating those wrappers, which would perform a second write and
@@ -827,6 +830,18 @@ class AuditContext:
         self.skipped.append(SkippedCheck(id=check_id, reason=reason))
 
     # -- convenience views --------------------------------------------------
+    def html_page_keys(self) -> Iterable[str]:
+        """Unique normalized fetched HTML keys, streamed for a disk-backed audit."""
+        if self._disk_pages is not None:
+            return (
+                row[0]
+                for row in self._disk_pages.con.execute(
+                    "SELECT DISTINCT norm FROM pages WHERE status_code BETWEEN 200 AND 299 "
+                    "AND lower(json_extract(state_json, '$.content_type')) LIKE '%html%' ORDER BY norm"
+                )
+            )
+        return sorted({_norm_url(page.url) for page in self.html_pages()})
+
     def html_pages(self) -> Any:
         """ "HTML pages" per populations.md: fetched, 2xx, HTML by its own Content-Type.
 
