@@ -289,3 +289,28 @@ def test_unsupported_sf_huge_numbers_cannot_abort_a_collector():
         )
         is None
     )
+
+
+def test_finding_detail_names_projection_omissions_and_preserves_source(tmp_path):
+    root = _project(tmp_path)
+    path = root / "scans" / "test.sqlite"
+    binding = _scan(path)
+    write_audit_v2(
+        path,
+        {"issues": [], "run": {}},
+        {"/issues": [{"id": "stable", "message": "x" * 5000, "samples": list(range(30))}]},
+        binding,
+    )
+    detail = observer.finding_detail(root, ordinal=0)
+    assert detail["evidence_truncated"] is True
+    assert detail["projection_limits"] == {
+        "string_chars": 4096,
+        "list_items": 20,
+        "object_fields": 40,
+        "max_depth": 3,
+        "source_path": str(path),
+    }
+    assert len(detail["evidence"]["samples"]) == 20
+    with AuditV2Reader(path) as retained:
+        original = next(retained.iter_collection("/issues"))
+    assert len(original["message"]) == 5000 and len(original["samples"]) == 30

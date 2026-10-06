@@ -595,6 +595,24 @@ def _bounded_value(value: Any, *, depth: int = 0) -> Any:
     return str(value)[:1024]
 
 
+def _projection_truncated(value: Any, *, depth: int = 0) -> bool:
+    """Name every omission made by the bounded detail projection."""
+    if depth >= 3:
+        return True
+    if isinstance(value, str):
+        return len(value) > 4096
+    if isinstance(value, list):
+        return len(value) > 20 or any(
+            _projection_truncated(item, depth=depth + 1) for item in value
+        )
+    if isinstance(value, dict):
+        return len(value) > 40 or any(
+            len(str(key)) > 128 or _projection_truncated(item, depth=depth + 1)
+            for key, item in value.items()
+        )
+    return False
+
+
 def _v2_findings_page(row, *, offset, limit, query, sort, descending):
     """Let SQLite bound sorting/paging; never materialize unrelated audit collections."""
     from seohead.storage.audit_v2 import AuditV2Reader
@@ -765,6 +783,14 @@ def finding_detail(
         "scan_uuid": row["uuid"],
         "finding": _finding_summary(issue, ordinal),
         "evidence": _bounded_value(issue),
+        "projection_limits": {
+            "string_chars": 4096,
+            "list_items": 20,
+            "object_fields": 40,
+            "max_depth": 3,
+            "source_path": row["path"],
+        },
+        "evidence_truncated": _projection_truncated(issue),
         "audit": {
             "schema_version": retained["schema_version"],
             "generated_at": retained["generated_at"],
