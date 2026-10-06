@@ -280,6 +280,12 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
         if case["mode"] == "javascript":
             assert render_summary.get("render_requests") == expected_rendered, render_summary
             assert sum(render_summary.get("render_counts", {}).values()) == expected_rendered
+            if expected_rendered < case["pages"]:
+                assert render_summary.get("render_budget_exhausted") is True
+                assert render_summary.get("patterns_partially_rendered")
+            else:
+                assert not render_summary.get("render_budget_exhausted")
+                assert not render_summary.get("time_budget_exhausted")
         return {
             "render_summary": render_summary,
             "counts": counts,
@@ -440,6 +446,8 @@ def worker(config: dict, output: Path) -> None:
             observe("query_report")
             measured = evidence(scan, config, expected)
             source_digest = digest(scan)
+            companion = scan.with_name(scan.name + ".audit-v2.sqlite")
+            audit_digest = digest(companion)
             # Registered shared readers/exporters exercise retained contracts.
             inspected = handlers.scan_inspect(str(scan), limit=2)
             exported = handlers.scan_export(
@@ -457,7 +465,7 @@ def worker(config: dict, output: Path) -> None:
             repeated = evidence(derived, config, expected)
             assert repeated["ordered_evidence_sha256"] == measured["ordered_evidence_sha256"]
             assert repeated["selected_dom_sha256"] == measured["selected_dom_sha256"]
-            assert digest(scan) == source_digest
+            assert digest(scan) == source_digest and digest(companion) == audit_digest
             if case_name == "recovery":
                 reference = results[-1]["evidence"]
                 assert measured["render_elapsed"]["seconds"] >= paused_elapsed
@@ -493,6 +501,7 @@ def worker(config: dict, output: Path) -> None:
                 "evidence": measured,
                 "urls_per_second": config["pages"] / (time.monotonic() - start),
                 "scan_sha256": source_digest,
+                "audit_sha256": audit_digest,
                 "rendered_population": expected,
                 "static_population": config["pages"] - expected,
                 "unrendered_by_budget": config["mode"] == "javascript"
