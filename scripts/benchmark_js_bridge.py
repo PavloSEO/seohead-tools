@@ -49,6 +49,9 @@ def source_identity() -> dict:
 
     import seohead
 
+    if Path(seohead.__file__).resolve().parent != ROOT / "seohead":
+        raise RuntimeError("benchmark imported a different checkout")
+
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
     try:
@@ -815,7 +818,11 @@ def main(argv=None):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as runtime:
-        executable = Path(os.environ.get("SEOHEAD_CHROME") or runtime.chromium.executable_path)
+        executable = (
+            Path(os.environ.get("SEOHEAD_CHROME") or runtime.chromium.executable_path)
+            .expanduser()
+            .resolve()
+        )
     if not executable.is_file() or not os.access(executable, os.X_OK):
         parser.error("Chromium is unavailable; select an installed executable with SEOHEAD_CHROME")
     identity["browser_sha256"] = digest(executable)
