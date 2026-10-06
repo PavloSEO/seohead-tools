@@ -1662,7 +1662,7 @@ def _page_row(run: _RunInput, page: dict[str, Any], ordinal: int) -> dict[str, A
 def _finding_source(
     run: _RunInput, finding: dict[str, Any], ordinal: int, group_map: Any
 ) -> dict[str, Any]:
-    if run.source_kind == "sf-audit":
+    if run.source_kind in {"sf-audit", "scan"}:
         check_id = finding.get("check")
         url = finding.get("target_url")
         message = finding.get("message")

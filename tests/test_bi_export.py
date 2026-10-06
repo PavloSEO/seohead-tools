@@ -880,3 +880,32 @@ def test_retained_occurrence_share_and_typed_provider_dimensions_reach_destinati
         columns=["metric_name", "value_number", "dimension_query"],
     )
     assert sheets_plan(filtered)["worksheets"][0]["columns"] == 3
+
+
+def test_native_scan_finding_projection_preserves_exact_urls_messages_and_selected_view(
+    tmp_path, monkeypatch
+):
+    from seohead.reports.bi_destinations import filter_package
+
+    scan = _crawl_with_audit(tmp_path, monkeypatch)
+    original = read_audit(scan)["issues"]
+    package = tmp_path / "package"
+    export_bi(scan=scan, out_dir=package)
+    manifest = json.loads((package / "manifest.json").read_text())
+    findings = _csv_rows(package, manifest, "findings")
+    assert len(findings) == len(original)
+    for source, row in zip(original, findings, strict=True):
+        assert row["url"] == (source.get("target_url") or "")
+        assert row["message"] == (source.get("message") or "")
+        assert row["finding_kind"] == "audit_finding"
+        assert json.loads(row["source_finding_json"]) == source
+    expected = [row for row in original if row.get("target_url") == "https://example.test/child"]
+    assert expected
+    selected = filter_package(
+        package,
+        dataset="findings",
+        out_dir=tmp_path / "selected",
+        where={"url": ["https://example.test/child"]},
+    )
+    assert selected["row_count"] == len(expected)
+    assert selected["conservation"]["source_rows"] == len(original)

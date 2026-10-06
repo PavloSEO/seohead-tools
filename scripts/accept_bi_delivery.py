@@ -7,6 +7,7 @@ supplied source size, not proof of native crawler capacity or a native Looker re
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import platform
@@ -98,6 +99,24 @@ def main() -> None:
         assert all(
             digest(package / part["path"]) == part["sha256"] for part in dataset["partitions"]
         )
+    finding_rows = finding_urls = 0
+    for part in manifest["datasets"]["findings"]["partitions"]:
+        with (package / part["path"]).open(encoding="utf-8", newline="") as stream:
+            for row in csv.DictReader(stream):
+                source = json.loads(row["source_finding_json"])
+                url_field, message_field = (
+                    ("target_url", "message")
+                    if row["finding_kind"] == "audit_finding"
+                    else ("url", "text")
+                )
+                if row["url"] != bi._cell_text(source.get(url_field)):
+                    raise RuntimeError("typed finding URL differs from the retained source finding")
+                if row["message"] != bi._cell_text(source.get(message_field)):
+                    raise RuntimeError(
+                        "typed finding message differs from the retained source finding"
+                    )
+                finding_rows += 1
+                finding_urls += bool(row["url"])
     after = {str(path): digest(path) for path in inputs}
     if before != after:
         raise RuntimeError("retained source bytes changed during read-only delivery")
@@ -138,6 +157,11 @@ def main() -> None:
         "elapsed_seconds": time.perf_counter() - started,
         "source_hashes": before,
         "source_hashes_unchanged": before == after,
+        "exact_finding_projection": {
+            "checked_rows": finding_rows,
+            "rows_with_url": finding_urls,
+            "url_and_message_match_retained_source": True,
+        },
         "export": result,
         "selection": selection,
         "sheets_offline_plan": sheets,
