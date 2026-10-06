@@ -35,8 +35,16 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
         parent = dict(source.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         settings = json.loads(parent["config_json"])
         count = source.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
-        old_audit = source.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
-        captured_run = json.loads(old_audit[0])["run"] if old_audit is not None else {}
+        from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
+
+        if audit_v2_path(input_path).exists():
+            with AuditV2Reader(input_path) as captured:
+                captured_run = dict(captured.header.get("run") or {})
+        else:
+            old_audit = source.execute(
+                "SELECT document_json FROM audit WHERE singleton=1"
+            ).fetchone()
+            captured_run = json.loads(old_audit[0])["run"] if old_audit is not None else {}
         start_gate = None
         selected_start_html = None
         for replay in iterate_reparsed_pages(source, settings):
