@@ -171,3 +171,26 @@ def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence
     assert consumers["health"]["check_coverage"]["checks_total"] > 0
     assert consumers["recheck"]["same_observation"]["not_verifiable"] == 1
     assert consumers["recheck"]["fresh_observation"]["resolved"] == 1
+
+
+def test_catalogue_body_profile_is_varied_reproducible_and_reports_entropy():
+    import zlib
+
+    from bs4 import BeautifulSoup
+
+    from scripts.accept_million_crawl import SyntheticOrigin, _body_profile_summary
+
+    varied = SyntheticOrigin(20, 10, body_padding_bytes=16384, body_profile="catalogue-v1")
+    padding = SyntheticOrigin(20, 10, body_padding_bytes=16384)
+    body = varied._page(2)
+    assert body == varied._page(2)
+    assert body != varied._page(3)
+    assert len(body) >= 16384
+    soup = BeautifulSoup(body, "html.parser")
+    assert soup.select("section table") and soup.select('script[type="application/json"]')
+    assert "not a commercial offer" in soup.get_text()
+    assert len(zlib.compress(body)) > 3 * len(zlib.compress(padding._page(2)))
+    sample = _body_profile_summary(varied)
+    assert sample == _body_profile_summary(varied)
+    assert sample["sampled_pages"] == 20
+    assert sample["sample_byte_entropy_bits"] > 4

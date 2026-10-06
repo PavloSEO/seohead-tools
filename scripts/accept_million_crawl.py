@@ -17,7 +17,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import platform
+import random
 import sqlite3
 import subprocess
 import sys
@@ -55,6 +57,7 @@ class SyntheticOrigin:
         links_per_page: int = 1,
         forms_per_page: int = 0,
         body_padding_bytes: int = 0,
+        body_profile: str = "padding",
     ) -> None:
         if pages < 1:
             raise ValueError("pages must be positive")
@@ -66,6 +69,9 @@ class SyntheticOrigin:
             or not 0 <= body_padding_bytes <= 65536
         ):
             raise ValueError("fixture density is outside its declared bounds")
+        if body_profile not in {"padding", "catalogue-v1"}:
+            raise ValueError("unknown synthetic body profile")
+        self.body_profile = body_profile
         self.links_per_page = min(links_per_page, pages)
         self.forms_per_page = forms_per_page
         self.body_padding_bytes = body_padding_bytes
@@ -114,6 +120,71 @@ class SyntheticOrigin:
             ),
         )
 
+    def _body_extra(self, page: int) -> str:
+        if self.body_profile == "padding":
+            return "<p>" + ("x" * self.body_padding_bytes) + "</p>"
+        rng = random.Random(page)
+        materials = (
+            "aluminium",
+            "steel",
+            "polymer",
+            "ceramic",
+            "composite",
+            "glass",
+            "copper",
+            "silicone",
+        )
+        finishes = (
+            "matte",
+            "polished",
+            "brushed",
+            "coated",
+            "textured",
+            "anodized",
+            "satin",
+            "natural",
+        )
+        roles = (
+            "connector",
+            "housing",
+            "bracket",
+            "panel",
+            "adapter",
+            "frame",
+            "terminal",
+            "mount",
+        )
+        parts = []
+        size = 0
+        while size < self.body_padding_bytes:
+            ordinal = len(parts)
+            sku = hashlib.sha256(f"synthetic-catalogue:{page}:{ordinal}".encode()).hexdigest()[:24]
+            width, height, depth = (rng.randrange(10, 900) for _ in range(3))
+            material, finish, role = rng.choice(materials), rng.choice(finishes), rng.choice(roles)
+            metadata = json.dumps(
+                {
+                    "fixture": True,
+                    "sku": sku,
+                    "batch": rng.randrange(100000, 999999),
+                    "dimensions_mm": [width, height, depth],
+                    "material": material,
+                    "finish": finish,
+                },
+                separators=(",", ":"),
+            )
+            section = (
+                f'<section data-reference="{sku}"><h2>Specification {ordinal + 1}: {finish} {role}</h2>'
+                f"<p>This synthetic catalogue record describes a {material} {role} with a {finish} finish. "
+                f"The measured fixture dimensions are {width} by {height} by {depth} millimetres. "
+                "Every entry is generated for repeatable storage and parsing measurements; it is not a commercial offer.</p>"
+                f"<table><tr><th>Reference</th><td>{sku}</td></tr><tr><th>Material</th><td>{material}</td></tr>"
+                f"<tr><th>Envelope</th><td>{width} / {height} / {depth} mm</td></tr></table>"
+                f'<script type="application/json">{metadata}</script></section>'
+            )
+            parts.append(section)
+            size += len(section.encode("utf-8"))
+        return '<article data-fixture="catalogue-v1">' + "".join(parts) + "</article>"
+
     def _page(self, page: int) -> bytes:
         if page < 0 or page >= self.pages:
             return b"<html><head><title>Absent</title></head><body>Absent</body></html>"
@@ -140,9 +211,7 @@ class SyntheticOrigin:
             + f"<h1>Product family {page % 101}</h1><p>Owned synthetic content for URL {page}.</p>"
             + links
             + extra
-            + "<p>"
-            + ("x" * self.body_padding_bytes)
-            + "</p>"
+            + self._body_extra(page)
             + "</main></body></html>"
         ).encode("utf-8")
 
@@ -201,6 +270,31 @@ class SyntheticOrigin:
                 },
             )
         return self._response(request, 404)
+
+
+def _body_profile_summary(origin: SyntheticOrigin) -> dict[str, Any]:
+    histogram: Counter[int] = Counter()
+    digest = hashlib.sha256()
+    sizes = []
+    for page in range(min(origin.pages, 32)):
+        body = origin._page(page)
+        histogram.update(body)
+        digest.update(len(body).to_bytes(8, "big"))
+        digest.update(body)
+        sizes.append(len(body))
+    total = sum(sizes)
+    entropy = -sum((count / total) * math.log2(count / total) for count in histogram.values())
+    return {
+        "profile": origin.body_profile,
+        "sampled_pages": len(sizes),
+        "sample_rule": "first up to 32 generated fixture pages, including markup and scripts",
+        "sample_sha256": digest.hexdigest(),
+        "sample_min_body_bytes": min(sizes),
+        "sample_max_body_bytes": max(sizes),
+        "sample_mean_body_bytes": round(total / len(sizes), 2),
+        "sample_byte_entropy_bits": round(entropy, 6),
+        "entropy_note": "Empirical byte-frequency entropy of the declared sample, not a claim of real-site representativeness.",
+    }
 
 
 def _peak_rss_mib() -> float:
@@ -420,6 +514,21 @@ def _assert_conservation(scan: Path, pages: int) -> dict[str, int]:
         ).fetchone()[0]
         for table in ("responses", "documents", "bodies"):
             counts[table] = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        sizes = con.execute(
+            "SELECT COALESCE(SUM(decoded_bytes),0),COALESCE(SUM(stored_bytes),0),COALESCE(MIN(decoded_bytes),0),COALESCE(MAX(decoded_bytes),0) FROM bodies"
+        ).fetchone()
+        counts.update(
+            zip(
+                (
+                    "body_decoded_bytes",
+                    "body_stored_bytes",
+                    "smallest_body_bytes",
+                    "largest_body_bytes",
+                ),
+                sizes,
+                strict=True,
+            )
+        )
         frontier = dict(
             con.execute("SELECT state,COUNT(*) FROM frontier GROUP BY state").fetchall()
         )
@@ -649,6 +758,7 @@ def run_stage(
     forms_per_page: int = 0,
     body_padding_bytes: int = 0,
     comparison_compression: str = "none",
+    body_profile: str = "padding",
 ) -> dict[str, Any]:
     """Run one measured stage; exceptions intentionally make its status failed."""
     from seohead.servers.scan_handlers import crawl_site_scan
@@ -670,6 +780,7 @@ def run_stage(
         links_per_page=links_per_page,
         forms_per_page=forms_per_page,
         body_padding_bytes=body_padding_bytes,
+        body_profile=body_profile,
     )
     settings = _settings(pages)
     revision = _revision()
@@ -738,8 +849,10 @@ def run_stage(
         "status": "passed",
         "pages_requested": pages,
         "shard_size": shard_size,
+        "body_profile_sample": _body_profile_summary(origin),
         "fixture": {
-            "schema": "seohead.synthetic-crawl.v2",
+            "schema": "seohead.synthetic-crawl.v3",
+            "body_profile": body_profile,
             "links_per_page": origin.links_per_page,
             "forms_per_page": forms_per_page,
             "body_padding_bytes": body_padding_bytes,
@@ -758,6 +871,14 @@ def run_stage(
         "finalization_retried": finalization_retried,
         "collector": _collector_summary(result),
         "conservation": counts,
+        "body_storage": {
+            "stored_to_decoded_ratio": round(
+                counts["body_stored_bytes"] / counts["body_decoded_bytes"], 6
+            )
+            if counts["body_decoded_bytes"]
+            else None,
+            "note": "Body-codec ratio only; excludes SQLite indexes, audit and consumer files.",
+        },
     }
     record["capture_audit_seconds"] = record["elapsed_seconds"]
     if consumers:
@@ -798,6 +919,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--forms-per-page", type=int, default=0)
     parser.add_argument("--body-padding-bytes", type=int, default=0)
     parser.add_argument("--comparison-compression", choices=("none", "gzip"), default="none")
+    parser.add_argument("--body-profile", choices=("padding", "catalogue-v1"), default="padding")
     args = parser.parse_args(argv)
     if args.interrupt_after < 1:
         parser.error("--interrupt-after must be positive")
@@ -828,6 +950,7 @@ def main(argv: list[str] | None = None) -> int:
                     forms_per_page=args.forms_per_page,
                     body_padding_bytes=args.body_padding_bytes,
                     comparison_compression=args.comparison_compression,
+                    body_profile=args.body_profile,
                 )
             )
         except BaseException as exc:
