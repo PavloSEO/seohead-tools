@@ -650,9 +650,11 @@ def test_graceful_cancel_preserves_observed_render_counts_and_elapsed_on_resume(
     config = _settings(**options)
     path = tmp_path / "resume-js.sqlite"
     seen = []
+    remaining_budgets = []
 
     def render(url, *_args, **_kwargs):
         seen.append(url)
+        remaining_budgets.append(_args[0]["escalation"]["max_render_seconds"])
         return {
             "ok": True,
             "url": url,
@@ -694,3 +696,6 @@ def test_graceful_cancel_preserves_observed_render_counts_and_elapsed_on_resume(
         assert scan.read_context("render_elapsed")["seconds"] >= elapsed["seconds"]
         assert scan.read_context("render_elapsed")["active"] is False
     assert seen == ["https://example.test/p/1", "https://example.test/p/2"]
+    assert remaining_budgets[0] == 600
+    assert remaining_budgets[1] == pytest.approx(600 - elapsed["seconds"])
+    assert remaining_budgets[1] < 600
