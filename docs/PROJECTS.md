@@ -480,5 +480,10 @@ against the supplied SHA-256 and preserve a verification receipt. Explicit
 `workflow-status` revalidates bytes. Passive workflow observations report
 `evidence_verification_mode="metadata_only"`: matching file metadata is a receipt
 observation, not a fresh byte verification. Changed metadata becomes stale; an old
-completion without a receipt remains unverified in that passive view. Other project
-coverage projections may still verify their own evidence separately.
+completion without a receipt remains unverified in that passive view.
+
+Passive checklist rows likewise expose `evidence_verification` with their mode,
+state and verification time. `unverified`, `stale` and unavailable evidence never
+mean a measured zero or a freshly verified completion. Older records are not
+rewritten during reads; recording a new verification receipt is an explicit action.
+Explicit coverage/project status retains byte verification by default.
