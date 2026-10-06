@@ -112,6 +112,9 @@ submit.
   are actionable failures, not successful delivery receipts. `preview()` returns a
   `ReportPreview` with measured rendered size, source SHA-256, source and selected row
   counts, empty/measured population, retained coverage/summary, and the exact profile.
+  `ReportPreview.size_bytes` measures the preview render. Delivery may render again,
+  so ZIP/container metadata can change the byte count; the delivery rechecks the
+  actual byte budget while preserving the selected population, source and profile.
   Oversize source audits and unavailable renderers fail during preview; zero size is
   never a placeholder for an unrendered report.
 
