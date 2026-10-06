@@ -392,7 +392,17 @@ class _AuditV2ReportView:
         from .client_findings import client_reason
 
         self.reader = reader
-        metadata = dict(reader.header)
+
+        def metadata_value(value):
+            if isinstance(value, dict):
+                if "$audit_v2_collection" in value:
+                    return _AuditV2Rows(reader, value["$audit_v2_collection"])
+                return {key: metadata_value(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [metadata_value(item) for item in value]
+            return value
+
+        metadata = metadata_value(reader.header)
         metadata["issues"] = []
         metadata["pages"] = []
         self.document = _normalize_sf_audit(metadata)
@@ -468,7 +478,14 @@ class _AuditV2ReportView:
 
 
 def _build_audit_v2_report(
-    reader: Any, fmt: str, path: str | None, project: str | None, source: Any
+    reader: Any,
+    fmt: str,
+    path: str | None,
+    project: str | None,
+    source: Any,
+    *,
+    lang: str = "en",
+    pdf_policy: str | None = None,
 ) -> dict[str, Any]:
     header = reader.header
     required = {"run": dict, "summary": dict}
@@ -495,7 +512,13 @@ def _build_audit_v2_report(
             "ok": False,
             "error": "project checklist coverage is unavailable for streamed audit.v2 inputs",
         }
-    if fmt not in {"json", "csv", "xlsx", "md", "docx"}:
+    if fmt == "pdf" and pdf_policy is None:
+        return {
+            "ok": False,
+            "error": "streamed audit.v2 PDF requires explicit pdf_policy='overview-v1'; "
+            "this creates a bounded overview and complete JSON/CSV companions",
+        }
+    if fmt not in {"json", "csv", "xlsx", "md", "docx", "pdf"}:
         return {
             "ok": False,
             "error": f"{fmt} output is not implemented for streamed audit.v2 inputs; use json, csv, xlsx, md, or docx",
@@ -504,7 +527,12 @@ def _build_audit_v2_report(
         view = _AuditV2ReportView(reader)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-    target = pathlib.Path(path or f"audit-{view.get('domain') or 'site'}.{fmt}")
+    name = view.get("domain") or "site"
+    if fmt == "pdf":
+        from seohead.tools.downloader import safe_segment
+
+        name = safe_segment(name)
+    target = pathlib.Path(path or f"audit-{name}.{fmt}")
     targets = (
         [target, target.with_suffix(".pages.csv"), target.with_suffix(".scope.csv")]
         if fmt == "csv"
@@ -517,6 +545,10 @@ def _build_audit_v2_report(
         return {"ok": False, "error": "report output must not overwrite its source scan"}
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
+        if fmt == "pdf":
+            from .pdf_stream import write_overview
+
+            return write_overview(reader, view, target, lang=lang)
         if fmt == "json":
             with target.open("w", encoding="utf-8", newline="") as stream:
                 for chunk in reader.document_chunks():
@@ -566,6 +598,7 @@ def build_report(
     view: str | None = None,
     offset: int = 0,
     lang: str = "en",
+    pdf_policy: str | None = None,
 ) -> dict[str, Any]:
     """Render an audit document in the requested report format.
 
@@ -587,6 +620,8 @@ def build_report(
         return {"ok": False, "error": "report language must be 'en' or 'ru'"}
     if fmt != "pdf" and lang != "en":
         return {"ok": False, "error": "report language is only configurable for PDF output"}
+    if pdf_policy is not None and (pdf_policy != "overview-v1" or fmt != "pdf"):
+        return {"ok": False, "error": "pdf_policy supports only 'overview-v1' with PDF output"}
     input_diagnostics: list[dict[str, str]] = []
     try:
         document = _load(data, input_diagnostics)
@@ -604,13 +639,17 @@ def build_report(
                     "ok": False,
                     "error": f"report format {fmt!r} is not supported; available formats: {', '.join(FORMATS)}",
                 }
-            result = _build_audit_v2_report(document, fmt, path, project, data)
+            result = _build_audit_v2_report(
+                document, fmt, path, project, data, lang=lang, pdf_policy=pdf_policy
+            )
             if input_diagnostics and result.get("ok"):
                 result["input_diagnostics"] = input_diagnostics
             return result
         finally:
             if not hasattr(data, "iter_collection"):
                 document.close()
+    if pdf_policy is not None:
+        return {"ok": False, "error": "pdf_policy='overview-v1' requires a streamed audit.v2 input"}
     if not isinstance(document, dict):
         return {
             "ok": False,

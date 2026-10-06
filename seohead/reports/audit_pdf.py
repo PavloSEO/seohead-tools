@@ -530,7 +530,13 @@ def _declared_value(value: Any) -> Any:
     return value
 
 
-def _summary_cards(summary: Mapping[str, Any], coverage: Mapping[str, Any], lang: str) -> str:
+def _summary_cards(
+    summary: Mapping[str, Any],
+    coverage: Mapping[str, Any],
+    lang: str,
+    *,
+    source_totals: bool = False,
+) -> str:
     labels = _LABELS[lang]
     counts = _mapping(summary.get("counts"))
     cards = []
@@ -550,6 +556,8 @@ def _summary_cards(summary: Mapping[str, Any], coverage: Mapping[str, Any], lang
                 else None
             )
         source_count = record.get("source_count", record.get("source_total"))
+        if source_totals and key in {"findings", "pages"}:
+            value = source_count
         declared = _declared_value(record.get("declared_count", record.get("declared_total")))
         display_value = _count(value, lang)
         if key == "backlog" and record.get("state") in {"not_requested", "unavailable"}:
@@ -912,7 +920,9 @@ def _coverage_source_details(
     return "; ".join(parts)
 
 
-def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
+def _coverage_rows(
+    coverage: Mapping[str, Any], lang: str, *, compact: bool = False
+) -> list[list[Any]]:
     labels = _LABELS[lang]
     rows = []
     for section, label_key in (
@@ -926,6 +936,19 @@ def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
         record = evidence.get("record")
         if record is None:
             details = labels["unavailable"] if state == "unavailable" else labels["not_reported"]
+        elif compact and section == "source_check_coverage" and isinstance(record, Mapping):
+            details = _readable_record(
+                {
+                    key: value
+                    for key, value in record.items()
+                    if not isinstance(value, (Mapping, list))
+                },
+                lang,
+            ) + (
+                "; audit.json#/summary/check_coverage; check identifiers listed below"
+                if lang == "en"
+                else "; audit.json#/summary/check_coverage; идентификаторы проверок перечислены ниже"
+            )
         elif isinstance(record, (Mapping, list)):
             details = _coverage_source_details(section, record, coverage, lang)
         else:
@@ -987,6 +1010,7 @@ def _coverage_rows(coverage: Mapping[str, Any], lang: str) -> list[list[Any]]:
             field: item
             for field, item in record.items()
             if field not in {"id", "name", "check", "tool", "state", "reason", "error"}
+            and (not compact or not isinstance(item, (Mapping, list)))
         }
         if detail_fields:
             detail_text = _readable_record(detail_fields, lang)
@@ -1043,6 +1067,57 @@ def _omission_rows(omissions: Any) -> list[list[Any]]:
             ]
         )
     return rows
+
+
+def _overview_notice(model: Mapping[str, Any], lang: str) -> str:
+    projection = _mapping(model.get("projection"))
+    if projection.get("policy") != "overview-v1":
+        return ""
+    from .pdf_stream import ARTIFACT_LINK_PREFIX
+    from .pdf_validation import DEFAULT_BYTE_LIMIT, DEFAULT_PAGE_LIMIT
+
+    title = (
+        "PDF overview — not an exhaustive listing"
+        if lang == "en"
+        else "Обзор PDF — не полный перечень"
+    )
+    explanation = (
+        "The PDF displays an ordered prefix, not a representative sample. Summary counts and charts describe the full saved audit. All check states and reasons are shown; nested metadata and prerequisites remain in complete audit.json. All records remain in the complete JSON and CSV companions."
+        if lang == "en"
+        else "PDF показывает начало сохранённого списка, а не репрезентативную выборку. Счётчики и графики относятся ко всему сохранённому аудиту. Полные записи находятся в приложенных JSON и CSV."
+    )
+    labels = (
+        ["Collection", "Full source", "Displayed", "Omitted from PDF", "Display limits"]
+        if lang == "en"
+        else ["Коллекция", "Полный источник", "В PDF", "Не показано", "Лимиты обзора"]
+    )
+    rows = []
+    row_label, byte_label, page_label = (
+        ("rows", "bytes", "pages") if lang == "en" else ("строк", "байт", "страниц")
+    )
+    for name, item in _mapping(projection.get("collections")).items():
+        rows.append(
+            [
+                ("Findings" if name == "findings" else "Pages")
+                if lang == "en"
+                else ("Находки" if name == "findings" else "Страницы"),
+                item.get("source"),
+                item.get("displayed"),
+                item.get("omitted"),
+                f"{item.get('max_rows')} {row_label}; {item.get('max_bytes')} {byte_label}",
+            ]
+        )
+    links = " · ".join(
+        f'<a href="{ARTIFACT_LINK_PREFIX}{_escape(name)}">{_escape(name)}</a>'
+        for name in model.get("artifacts", [])
+    )
+    limit_label = "PDF limit" if lang == "en" else "Лимит PDF"
+    return (
+        f'<aside class="notes"><h3>{_escape(title)}</h3><p>{_escape(explanation)}</p>'
+        + _table(labels, rows, lang=lang)
+        + f"<p>{limit_label}: {DEFAULT_PAGE_LIMIT} {page_label} / {DEFAULT_BYTE_LIMIT} {byte_label}.</p>"
+        + f"<p>{links}</p></aside>"
+    )
 
 
 def _styles(brand: Brand, lang: str) -> str:
@@ -1162,10 +1237,19 @@ def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: 
         "findings_total",
         "issues_total",
     }
-    summary_rows = _field_rows(
-        {key: value for key, value in summary_source.items() if key not in structured_summary_keys},
-        lang,
-    )
+    summary_fields = {
+        key: value for key, value in summary_source.items() if key not in structured_summary_keys
+    }
+    if model.get("projection"):
+        summary_fields = {
+            key: (
+                "Retained in full: audit.json#/summary/" + key.replace("~", "~0").replace("/", "~1")
+            )
+            if isinstance(value, (Mapping, list))
+            else value
+            for key, value in summary_fields.items()
+        }
+    summary_rows = _field_rows(summary_fields, lang)
     diagnostics = source.get("input_diagnostics")
     if diagnostics:
         summary_rows.append(
@@ -1187,8 +1271,9 @@ def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: 
         + f'<p class="subtitle"><b>{_escape(labels["audit_for"])}:</b> {_escape(domain)}'
         + (f" · <b>{_escape(labels['prepared'])}:</b> {_escape(generated)}" if generated else "")
         + "</p>"
+        + _overview_notice(model, lang)
         + _status(run, lang)
-        + _summary_cards(summary, coverage, lang)
+        + _summary_cards(summary, coverage, lang, source_totals=bool(model.get("projection")))
         + '<div class="chart-grid">'
         + _severity_chart(summary, lang=lang, brand=loaded_brand)
         + _checks_chart(summary, coverage, source.get("kind"), lang=lang, brand=loaded_brand)
@@ -1204,7 +1289,7 @@ def render_audit_pdf_html(model: Mapping[str, Any], *, lang: str = "en", brand: 
         + f'<p class="muted">{_escape(labels["coverage_reported"] if coverage.get("state") == "reported" else _state_label(coverage.get("state"), lang) if coverage.get("state") else labels["unavailable"])}</p>'
         + _table(
             [labels["check"], labels["state_col"], labels["reason"]],
-            _coverage_rows(coverage, lang),
+            _coverage_rows(coverage, lang, compact=bool(model.get("projection"))),
             lang=lang,
         )
         + "</section>"

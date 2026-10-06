@@ -100,7 +100,7 @@ def finding_exclusion_report(
     exclusion = summary.get("finding_exclusions")
     exclusion = exclusion if isinstance(exclusion, dict) else {}
     policy = summary.get("finding_exclusion_policy")
-    policy = policy if isinstance(policy, list) else []
+    policy = policy if isinstance(policy, Sequence) and not isinstance(policy, (str, bytes)) else []
     suppressed = (
         suppressed_issues
         if isinstance(suppressed_issues, Sequence)
@@ -112,7 +112,7 @@ def finding_exclusion_report(
 
     counts_by_rule: dict[str, dict[str, Any]] = {}
     raw_counts = exclusion.get("by_rule")
-    if isinstance(raw_counts, list):
+    if isinstance(raw_counts, Sequence) and not isinstance(raw_counts, (str, bytes)):
         for row in raw_counts:
             if isinstance(row, dict) and row.get("id") is not None:
                 counts_by_rule[str(row["id"])] = row

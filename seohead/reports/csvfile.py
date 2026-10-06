@@ -106,7 +106,7 @@ def _scope_rows(
             ]
 
 
-def _write_project_coverage(summary: dict[str, Any], path: pathlib.Path) -> None:
+def _write_project_coverage(summary: dict[str, Any], path: pathlib.Path, open_text) -> None:
     coverage = summary.get("project_coverage")
     if not isinstance(coverage, dict):
         return
@@ -116,7 +116,7 @@ def _write_project_coverage(summary: dict[str, Any], path: pathlib.Path) -> None
     project = coverage.get("project") or {}
     status = coverage.get("status") or {}
     destination = path.with_suffix(".coverage.csv")
-    with destination.open("w", encoding="utf-8-sig", newline="") as fh:
+    with open_text(destination) as fh:
         writer = csv.writer(fh, delimiter=";")
         writer.writerow(
             [
@@ -173,11 +173,15 @@ def _write_project_coverage(summary: dict[str, Any], path: pathlib.Path) -> None
             )
 
 
-def write(document: dict[str, Any], path: pathlib.Path) -> None:
+def _open_csv(path: pathlib.Path):
+    return path.open("w", encoding="utf-8-sig", newline="")
+
+
+def write(document: Any, path: pathlib.Path, *, open_text=_open_csv) -> None:
     from seohead.reports import SEVERITY_TITLES, neutralize_formula
     from seohead.reports.client_findings import finding_view_columns, finding_view_label
 
-    with path.open("w", encoding="utf-8-sig", newline="") as fh:
+    with open_text(path) as fh:
         # ``utf-8-sig`` includes a BOM so Excel detects UTF-8 instead of corrupting
         # multilingual URLs, titles, and finding evidence when the file is opened.
         writer = csv.writer(fh, delimiter=";")
@@ -226,7 +230,7 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
 
     scope_rows = _scope_rows(document.get("summary") or {}, document.get("suppressed_issues"))
     scope_path = path.with_suffix(".scope.csv")
-    with scope_path.open("w", encoding="utf-8-sig", newline="") as fh:
+    with open_text(scope_path) as fh:
         writer = csv.writer(fh, delimiter=";")
         writer.writerow(["Evidence type", "Identifier", "Status", "Reason"])
         for row in scope_rows:
@@ -246,10 +250,10 @@ def write(document: dict[str, Any], path: pathlib.Path) -> None:
         "social_missing",
     ]
     pages_path = path.with_suffix(".pages.csv")
-    with pages_path.open("w", encoding="utf-8-sig", newline="") as fh:
+    with open_text(pages_path) as fh:
         writer = csv.writer(fh, delimiter=";")
         writer.writerow(columns)
         for page in document.get("pages") or []:
             writer.writerow([neutralize_formula(page.get(c, "")) for c in columns])
 
-    _write_project_coverage(document.get("summary") or {}, path)
+    _write_project_coverage(document.get("summary") or {}, path, open_text)
