@@ -1995,11 +1995,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--directory", help="validated local project workspace")
     if cmd == "project-inbox-submit":
         _source_flag(sub, "--text", help="specialist note or proposed goal text")
-        sub.add_argument("--kind", choices=("note", "proposed_goal"), default="note")
+        sub.add_argument(
+            "--kind", choices=("note", "proposed_goal"), help="entry kind (default: note)"
+        )
         sub.add_argument(
             "--references", help="comma-separated goal/task/scan/finding/section references"
         )
-        sub.add_argument("--author-role", choices=("specialist", "agent"), default="specialist")
+        sub.add_argument(
+            "--author-role",
+            choices=("specialist", "agent"),
+            help="entry author role (default: specialist)",
+        )
         sub.add_argument("--expected-revision", type=int)
     if cmd in {"project-inbox-list", "project-inbox-unread"}:
         sub.add_argument("--consumer", required=True, help="stable local agent/session consumer id")

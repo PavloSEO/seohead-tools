@@ -308,3 +308,57 @@ def test_compare_output_cli_mcp_preserve_full_manifest_and_source_counts(tmp_pat
 
     assert len(list(iter_compare_rows(a["manifest"], "left"))) == 1
     assert len(list(iter_compare_rows(a["manifest"], "entered"))) == 1
+
+
+@pytest.mark.parametrize("overrides", [[], ["--kind", "note", "--author-role", "specialist"]])
+def test_cli_json_proposed_goal_and_author_survive_unless_explicitly_overridden(
+    tmp_path, overrides
+):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    payload = {
+        "directory": str(project),
+        "text": "Review this proposed goal",
+        "kind": "proposed_goal",
+        "author_role": "agent",
+        "references": ["task:custom:review"],
+    }
+    root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "seohead",
+            "project-inbox-submit",
+            "--input",
+            json.dumps(payload),
+            *overrides,
+        ],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root)},
+        input="",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    entry = json.loads(completed.stdout)["entry"]
+    if overrides:
+        payload.update(kind="note", author_role="specialist")
+    other = build_server()._tool_manager.get_tool("seo_project_inbox_submit").fn(**payload)["entry"]
+    assert {
+        key: entry[key] for key in ("kind", "author_role", "goal_state", "text", "references")
+    } == {key: other[key] for key in ("kind", "author_role", "goal_state", "text", "references")}
+    assert entry["kind"] == payload["kind"]
+    assert entry["goal_state"] == ("proposed" if payload["kind"] == "proposed_goal" else None)
+
+
+def test_inbox_submit_omitted_flags_keep_handler_defaults(tmp_path):
+    project = tmp_path / "project"
+    create_project(project, "https://example.test/")
+    entry = _cli("project-inbox-submit", "--directory", str(project), "--text", "A note")["entry"]
+    assert entry["kind"] == "note" and entry["author_role"] == "specialist"
