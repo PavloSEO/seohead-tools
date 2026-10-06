@@ -585,6 +585,10 @@ def run_stage(
         finalization_retried = True
     if not result.get("audit_available") or not result.get("finalized"):
         raise AssertionError(f"collection did not publish an audit: {result!r}")
+    if result.get("partial") or result.get("corpus_partial"):
+        raise AssertionError(
+            f"requested scope or retained corpus is incomplete: {_collector_summary(result)!r}"
+        )
     counts = _assert_conservation(scan, pages)
     if (
         counts["links"] != pages * origin.links_per_page
