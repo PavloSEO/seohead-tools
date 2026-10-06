@@ -144,7 +144,20 @@ def test_structured_data_view_uses_existing_checklist_and_agreed_meter(tmp_path)
 
 
 def test_cached_render_does_not_read_storage_and_receipt_is_visible(tmp_path, monkeypatch):
+    from seohead.projects.run_observation import start
+    from tests.test_scan_history import _finished
+
     root = _project(tmp_path)
+    _finished(root / "scans" / "retained.sqlite")
+    first = observe(root)
+    start(
+        root,
+        kind="native",
+        mode="spider",
+        max_urls=100,
+        config_fingerprint=first["scans"]["items"][0]["config_fingerprint"],
+        artifact=root / "scans" / "retained.sqlite",
+    )
     snapshot = observe(root)
 
     def forbidden(*args, **kwargs):
@@ -152,6 +165,7 @@ def test_cached_render_does_not_read_storage_and_receipt_is_visible(tmp_path, mo
 
     monkeypatch.setattr("seohead.tui.app._read_view", forbidden)
     monkeypatch.setattr("seohead.tui.app._watch_snapshot", forbidden)
+    monkeypatch.setattr("pathlib.Path.resolve", forbidden)
     for width, height in ((80, 24), (120, 32), (237, 68)):
         text = _render(
             root,

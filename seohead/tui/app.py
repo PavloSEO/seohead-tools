@@ -1201,14 +1201,23 @@ def _watch_dashboard(
         latest = scans[0] if scans else {}
         evidence = latest.get("evidence", {})
         counts = evidence.get("frontier", {}).get("counts") or {}
+        latest_artifact = next(
+            (
+                scan.get("artifact", {}).get("path")
+                for site_row in snapshot.get("sites", {}).get("items", [])
+                if site_row["role"] == "primary"
+                for scan in site_row.get("scans", {}).get("items", [])
+                if scan["uuid"] == latest.get("uuid")
+            ),
+            None,
+        )
         native_run = next(
             (
                 run
                 for run in snapshot.get("runs", {}).get("items", [])
                 if run["kind"] == "native"
-                and run.get("artifact")
-                and latest.get("path")
-                and (Path(project) / run["artifact"]).resolve() == Path(latest["path"]).resolve()
+                and latest_artifact
+                and run.get("artifact") == latest_artifact
                 and run["collector"]["config_fingerprint"] == latest.get("config_fingerprint")
             ),
             None,
