@@ -578,3 +578,44 @@ def test_rejected_query_does_not_make_page_ordinal_follow_frontier_ordinal(tmp_p
         assert next_lease.queue_ordinal > 1
         scan.commit_page(next_lease, _record(next_lease.url), runtime=_runtime())
         assert scan.con.execute("SELECT MAX(page_ordinal) FROM pages").fetchone()[0] == 1
+
+
+def test_resume_counts_are_transactional_and_rebuilt_after_reopen(tmp_path):
+    path = tmp_path / "counter.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        assert scan.resume_snapshot()["counts"]["pages"] == 0
+        scan.enqueue([("https://example.test/", 0)])
+        lease = scan.claim(1)[0]
+        assert scan.resume_snapshot()["counts"]["inflight"] == 1
+        scan.con.execute("BEGIN IMMEDIATE")
+        scan.con.execute("UPDATE frontier SET state='done'")
+        assert scan.resume_snapshot()["counts"]["done"] == 1
+        scan.con.rollback()
+        assert scan.resume_snapshot()["counts"]["inflight"] == 1
+        scan.commit_page(lease, _record(), runtime=_runtime())
+        expected = scan.resume_snapshot()["counts"]
+        assert expected == {"pages": 1, "queued": 0, "inflight": 0, "done": 1, "excluded": 0}
+        statements = []
+        scan.con.set_trace_callback(statements.append)
+        scan.resume_snapshot()
+        assert not any("COUNT(*)" in statement for statement in statements)
+    with NativeScan.open(path) as scan:
+        assert scan.resume_snapshot()["counts"] == expected
+
+
+def test_progress_observation_is_readonly_and_explicitly_not_evidence_validation(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "progress.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        scan.enqueue([("https://example.test/", 0)])
+        before = scan.resume_snapshot()
+        monkeypatch.setattr(
+            NativeScan, "_validate_native", lambda _con: pytest.fail("full validation")
+        )
+        observed = NativeScan.observe(path)
+        assert observed["validation"] == "metadata_only"
+        assert observed["counts"] == before["counts"]
+        assert scan.resume_snapshot() == before
+    with pytest.raises(ValueError, match="timeout"):
+        NativeScan.observe(path, timeout_seconds=0)

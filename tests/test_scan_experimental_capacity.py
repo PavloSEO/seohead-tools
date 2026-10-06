@@ -1,4 +1,4 @@
-"""Storage-only admission above the stable crawler ceiling."""
+"""Stable native admission and explicitly separate sparse storage fixtures."""
 
 from __future__ import annotations
 
@@ -28,16 +28,16 @@ def _experimental(pages: int) -> dict:
 
 
 def test_stable_ceiling_and_experimental_admission_are_explicit():
-    with pytest.raises(settings.ConfigError, match="50,000"):
-        settings.load(overrides={"limits.max_urls": 50_001})
     for pages in (50_001, 100_000, 1_000_000):
+        assert settings.load(overrides={"limits.max_urls": pages})["limits"]["max_urls"] == pages
+        assert settings.checked_url_budget(pages) == pages
         resolved = _experimental(pages)
         assert resolved["limits"]["max_urls"] == pages
-        assert settings.manifest(resolved)["storage.capacity_profile"] == ("experimental_synthetic")
-        with pytest.raises(ValueError, match="50,000"):
-            settings.checked_url_budget(pages)
-    with pytest.raises(settings.ConfigError, match="experimental synthetic ceiling"):
+        assert settings.manifest(resolved)["storage.capacity_profile"] == "experimental_synthetic"
+    with pytest.raises(settings.ConfigError, match="ceiling"):
         _experimental(1_000_001)
+    with pytest.raises(ValueError, match="ceiling"):
+        settings.checked_url_budget(1_000_001)
     with pytest.raises(settings.ConfigError, match=r"storage\.capacity_profile"):
         settings.load(overrides={"storage.capacity_profile": "unbounded"})
 

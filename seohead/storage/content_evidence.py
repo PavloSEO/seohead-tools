@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -29,6 +30,7 @@ MAX_DUPLICATE_CANDIDATES = 10_000
 MAX_DUPLICATE_PAIRS = 50_000
 
 
+@cache
 def _implementation() -> dict[str, Any]:
     """Identify the exact extraction implementation without serializing a body."""
     root = Path(__file__).resolve().parents[1]

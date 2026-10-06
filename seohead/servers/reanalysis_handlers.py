@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from seohead.storage import ScanError
-
 
 def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None) -> dict[str, Any]:
     """Publish a new analysis only after retained inputs and output validate."""
@@ -19,8 +17,6 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.servers.handlers import _audit_crawl_result
     from seohead.servers.scan_handlers import (
-        MAX_AUDIT_FORMS,
-        MAX_AUDIT_PAGES,
         _producer_provenance,
         _rebuild_page_result,
     )
@@ -39,10 +35,6 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
         parent = dict(source.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         settings = json.loads(parent["config_json"])
         count = source.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
-        if count > MAX_AUDIT_PAGES:
-            raise ScanError(
-                f"reanalysis unavailable: audit page limit exceeded ({MAX_AUDIT_PAGES})"
-            )
         old_audit = source.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
         captured_run = json.loads(old_audit[0])["run"] if old_audit is not None else {}
         start_gate = None
@@ -53,12 +45,9 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
                 start_gate = dict(replay.start_page_gate)
                 selected_start_html = replay.selected_html
 
-        forms = scan.con.execute("SELECT COUNT(*) FROM forms").fetchone()[0]
         reason = ""
         audit = None
-        if forms > MAX_AUDIT_FORMS:
-            reason = f"reanalysis audit form limit exceeded ({MAX_AUDIT_FORMS})"
-        elif start_gate is None:
+        if start_gate is None:
             reason = "reanalysis unavailable: start-page raw evidence is not_in_corpus"
         else:
             # Reanalysis has already persisted its reparsed rows. Re-open them

@@ -17,8 +17,6 @@ from typing import Any
 from seohead import __version__
 from seohead.build_provenance import BuildProvenanceError, packaged_provenance
 
-MAX_AUDIT_PAGES = 10_000
-MAX_AUDIT_FORMS = 20_000
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 # scan.v1 (evidence_version crawl.v1) retains no robots.txt or sitemap document
@@ -206,12 +204,6 @@ def _response(run, *, audit_available: bool, audit_reason: str, finalized: bool)
 
 
 def _bridge_reason(counts: dict[str, int], start_page_gate: dict[str, Any] | None) -> str | None:
-    if counts["pages"] > MAX_AUDIT_PAGES or counts["forms"] > MAX_AUDIT_FORMS:
-        return (
-            "materialized audit population limit exceeded "
-            f"(pages={counts['pages']}/{MAX_AUDIT_PAGES}, "
-            f"forms={counts['forms']}/{MAX_AUDIT_FORMS})"
-        )
     if start_page_gate is None:
         return (
             "start-page raw evidence was not retained; audit cannot reconstruct its rendering gate"
@@ -327,6 +319,7 @@ def resume_scan(
     url: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Continue an interrupted native scan from its stored frontier and throttle state.
@@ -358,6 +351,7 @@ def resume_scan(
         settings=inputs["settings"],
         producer_build=revision,
         progress=progress,
+        progress_snapshot=progress_snapshot,
         observation=observation,
     )
 
@@ -370,6 +364,7 @@ def crawl_site_scan(
     sitemap: str | None = None,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
     proxy_route=None,
 ) -> dict[str, Any]:
@@ -434,6 +429,7 @@ def crawl_site_scan(
         initial_sitemaps=initial_sitemaps(sitemap),
         seed_loader=seed_loader,
         progress=progress,
+        progress_snapshot=progress_snapshot,
         proxy_route=proxy_route,
     )
     external_summary = None
@@ -528,6 +524,7 @@ def crawl_site_scan(
                 producer_revision=producer_revision,
                 runtime_versions=runtime_versions,
                 progress=progress,
+                progress_snapshot=progress_snapshot,
                 proxy_route=proxy_route,
             )
             render_cycles += 1
@@ -615,10 +612,9 @@ def crawl_site_scan(
                     stored_sitemap=reconciliation,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
-                    # Small audits retain the established scan.v1 document
-                    # surface.  At this threshold the audit collector switches
-                    # before final aggregation can re-materialize every row.
-                    streaming=run.pages >= 10_000,
+                    # Finding density is independent of URL count. Keep every
+                    # retained-native audit streamed, including small dense scans.
+                    streaming=True,
                 )
 
             if settings.get("rendering", {}).get("mode", "raw") != "raw":

@@ -52,7 +52,10 @@ __all__ = [
 
 # ── Limits ──────────────────────────────────────────────────────────────────
 MAX_SITEMAPS = 5000
-MAX_URLS = 300_000
+# Native crawl admission is one million URLs.  A sitemap index may distribute
+# that population across protocol-valid 50,000-URL child documents; this is a
+# crawler-wide retained-member ceiling, not a per-file sitemap protocol limit.
+MAX_URLS = 1_000_000
 MAX_XML_BYTES = 12 * 1024 * 1024
 TIMEOUT_S = 25.0
 MAX_REDIRECTS = 8

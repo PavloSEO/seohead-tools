@@ -352,7 +352,13 @@ def replace_reparsed_page(scan: NativeScan, replay: Any) -> None:
                     (*observation, row[0]),
                 )
             scan._partial_reasons(facts["partial_reasons"])
-        scan._sync_corpus()
+        selected_representation = page["representation"]
+        scan._sync_corpus(
+            committed_document_id=replay.selected_document_id,
+            resource_inventory_state=replay.representation_facts[selected_representation][
+                "resource_inventory_state"
+            ],
+        )
         scan.con.commit()
     except BaseException:
         scan._rollback()

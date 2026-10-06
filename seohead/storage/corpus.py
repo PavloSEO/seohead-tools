@@ -360,7 +360,14 @@ def _rendered_provenance(
     cache_control_no_store = _renderer_bool(
         raw_policy.get("cache_control_no_store", False), "cache-control policy fact"
     )
+    from seohead.tools.navigation import retain_navigation
+
+    try:
+        navigation = retain_navigation(raw_navigation, lambda url: _intern_url(con, url))
+    except ValueError as exc:
+        raise ScanError(f"rendered navigation evidence is invalid: {exc}") from exc
     payload = {
+        "navigation": navigation,
         "engine": engine,
         "engine_version": version,
         "page_concurrency": page_concurrency,

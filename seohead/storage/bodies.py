@@ -47,7 +47,7 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
     }
     if (
         not isinstance(value, dict)
-        or set(value) not in (required, required | {"page_concurrency"})
+        or not required <= set(value) <= required | {"page_concurrency", "navigation"}
         or type(value["engine"]) is not str
         or type(value["engine_version"]) is not str
         or not isinstance(value["settings"], dict)
@@ -57,6 +57,21 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
         or value["navigation_transform"] not in {"direct", "legacy_escaped_fragment", "unknown"}
     ):
         raise ScanError("rendered document renderer provenance is invalid")
+    if "navigation" in value:
+        from seohead.tools.navigation import validate_navigation
+
+        def resolve_url(url_id):
+            row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
+            return row[0] if row else None
+
+        try:
+            validate_navigation(
+                value["navigation"],
+                stored=True,
+                resolve_url=resolve_url if con is not None else None,
+            )
+        except ValueError as exc:
+            raise ScanError(f"rendered navigation evidence is invalid: {exc}") from exc
     if "page_concurrency" in value and (
         type(value["page_concurrency"]) is not int
         or not 1 <= value["page_concurrency"] <= MAX_RENDER_PAGE_CONCURRENCY
@@ -269,3 +284,29 @@ def read_document(con: sqlite3.Connection, document_id: int, *, max_decoded_byte
     if any(document[key] != value for key, value in decoder.items()):
         raise ScanError("document decoder metadata disagrees with stored bytes")
     return text
+
+
+def read_document_navigation(con, document_id: int) -> dict[str, object]:
+    """Read bounded navigation evidence without fetching or interpreting its cause."""
+    from seohead.tools.navigation import expand_navigation, retain_navigation
+
+    if type(document_id) is not int or document_id < 1:
+        raise ValueError("document_id must be a positive integer")
+    row = con.execute("SELECT * FROM documents WHERE document_id=?", (document_id,)).fetchone()
+    if row is None:
+        raise ScanError("navigation document is absent")
+    document = dict(row)
+    renderer = _renderer(document, con)
+    navigation = renderer.get("navigation")
+    if navigation is None:
+        navigation = retain_navigation({}, lambda url: None)
+
+    def resolve_url(url_id):
+        row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
+        return row[0] if row else None
+
+    return {
+        "document_id": document_id,
+        "representation": document["representation"],
+        "navigation": expand_navigation(navigation, resolve_url),
+    }

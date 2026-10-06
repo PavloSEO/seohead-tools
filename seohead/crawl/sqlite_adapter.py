@@ -16,7 +16,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -374,6 +374,7 @@ def crawl_to_scan(
     sleeper: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
     progress: Callable[[int, int], None] | None = None,
+    progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     proxy_route=None,
 ) -> ScanRun:
     """Collect a cache-off native crawl into one explicit scan artifact.
@@ -457,7 +458,16 @@ def crawl_to_scan(
             format_version=settings["storage"]["format_version"],
         )
     )
-    with _client_context(settings, fetcher, proxy_route) as client, scan_context as scan:
+    # A native crawl claims at most ``concurrency`` URLs per durable batch.  Keep
+    # the workers alive across those batches: creating and joining a fresh pool
+    # per batch makes the dispatcher itself the throughput limit at large URL
+    # counts, while the ordered fold-back below still awaits exactly the same
+    # futures in exactly the same lease order.
+    with (
+        _client_context(settings, fetcher, proxy_route) as client,
+        scan_context as scan,
+        ThreadPoolExecutor(max_workers=max(1, throttle.concurrency)) as fetch_pool,
+    ):
         scan.preflight_capture()
         snapshot = scan.resume_snapshot()
         seeded = (
@@ -638,6 +648,13 @@ def crawl_to_scan(
         while True:
             snapshot = scan.resume_snapshot()
             counts = snapshot["counts"]
+            if progress_snapshot is not None:
+                progress_snapshot(
+                    {
+                        "fetched": counts["pages"],
+                        **{key: counts[key] for key in ("queued", "inflight", "excluded")},
+                    }
+                )
             if progress is not None:
                 progress(counts["pages"], counts["queued"] + counts["inflight"])
             if counts["pages"] >= limit:
@@ -772,7 +789,7 @@ def crawl_to_scan(
                         "state": "dispatched",
                     },
                 )
-            with ThreadPoolExecutor(max_workers=max(1, len(fetchable))) as pool:
+            with nullcontext(fetch_pool) as pool:
                 # Futures are consumed in claim order: the C writer's contiguous
                 # inflight-prefix rule then gives deterministic evidence order.
                 futures = {lease.queue_ordinal: pool.submit(fetch, lease) for lease in fetchable}
@@ -1017,6 +1034,14 @@ def crawl_to_scan(
         if start_page_gate is None:
             start_page_gate = retained_start_gate(scan, settings, content_area_config)
         outcome = scan.resume_snapshot(include_edges=True)
+        if progress_snapshot is not None:
+            counts = outcome["counts"]
+            progress_snapshot(
+                {
+                    "fetched": counts["pages"],
+                    **{key: counts[key] for key in ("queued", "inflight", "excluded")},
+                }
+            )
         if progress is not None:
             # The last word on this run, read after collection has stopped: a
             # crawl that ended on the URL budget still has a queue, and saying

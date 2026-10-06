@@ -284,3 +284,62 @@ def test_unknown_renderer_failure_is_stored_as_unavailable_evidence(tmp_path):
                 (document_id,),
             ).fetchone()
         ) == ("unavailable", "unavailable", "fetch_failed")
+
+
+def test_versioned_navigation_survives_reopen_and_rejects_missing_url(tmp_path):
+    from seohead.storage.bodies import read_document_navigation
+    from seohead.tools.navigation import NavigationCapture
+
+    path = tmp_path / "navigation.sqlite"
+    with NativeScan.create(path, **_metadata()) as scan:
+        lease = _static_page(scan)
+        renderer = _renderer(lease.url)
+        navigation = NavigationCapture(lease.url, "load", 10)
+        navigation.cdp = True
+        navigation.add(lease.url, "initial_http_navigation", "cdp_frame")
+        navigation.add(lease.url + "#detail", "fragment_navigation", "cdp_history")
+        navigation.finish(success=True)
+        renderer["navigation"].update(navigation.data)
+        document_id = scan.commit_render(
+            lease.url,
+            _rendered_record(lease.url),
+            html="<html>retained</html>",
+            renderer=renderer,
+            captured_at="2026-09-06T11:00:00Z",
+        )
+        expected = read_document_navigation(scan.con, document_id)
+        assert len(expected["navigation"]["events"]) == 2
+        assert expected["navigation"]["events"][1]["destination"] == lease.url + "#detail"
+        assert expected["navigation"]["events"][1]["user_click"] is None
+    with NativeScan.open(path) as scan:
+        assert read_document_navigation(scan.con, document_id) == expected
+        value = json.loads(
+            scan.con.execute(
+                "SELECT renderer_json FROM documents WHERE document_id=?", (document_id,)
+            ).fetchone()[0]
+        )
+        value["navigation"]["events"][0]["destination_url_id"] = 999999
+        scan.con.execute(
+            "UPDATE documents SET renderer_json=? WHERE document_id=?",
+            (json.dumps(value), document_id),
+        )
+        with pytest.raises(ScanError, match="navigation"):
+            read_document_navigation(scan.con, document_id)
+
+
+def test_legacy_navigation_is_explicitly_unavailable(tmp_path):
+    from seohead.storage.bodies import read_document_navigation
+
+    with NativeScan.create(tmp_path / "legacy.sqlite", **_metadata()) as scan:
+        lease = _static_page(scan)
+        document_id = scan.commit_render(
+            lease.url,
+            _rendered_record(lease.url),
+            html="<html>retained</html>",
+            renderer=_renderer(lease.url),
+            captured_at="2026-09-06T11:00:00Z",
+        )
+        value = read_document_navigation(scan.con, document_id)["navigation"]
+        assert value["state"] == "unavailable"
+        assert value["reason"] == "legacy_navigation_not_captured"
+        assert value["events"] == []
