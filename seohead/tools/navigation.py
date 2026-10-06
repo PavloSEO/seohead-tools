@@ -26,6 +26,16 @@ def validate_navigation(value: Any, *, stored: bool = False, resolve_url=None) -
     """Validate the versioned adjunct, optionally checking retained URL references."""
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         raise ValueError("navigation evidence schema is invalid")
+    if stored and set(value) != {
+        "schema",
+        "state",
+        "reason",
+        "events_omitted",
+        "interaction_policy",
+        "policy",
+        "events",
+    }:
+        raise ValueError("retained navigation fields are invalid")
     if value.get("state") not in {"complete", "partial", "unavailable"}:
         raise ValueError("navigation evidence state is invalid")
     if value.get("interaction_policy") != "no_clicks" or value.get("policy") != "pinned_http":
@@ -41,6 +51,8 @@ def validate_navigation(value: Any, *, stored: bool = False, resolve_url=None) -
         raise ValueError("complete navigation evidence has omissions")
     if value["state"] != "complete" and not value["reason"]:
         raise ValueError("incomplete navigation evidence needs a reason")
+    if value["state"] == "complete" and not events:
+        raise ValueError("complete navigation evidence requires an observed event")
     previous = -1
     for event in events:
         names = {"source_url_id", "destination_url_id"} if stored else {"source", "destination"}
@@ -58,6 +70,15 @@ def validate_navigation(value: Any, *, stored: bool = False, resolve_url=None) -
         previous = elapsed
         if event["kind"] not in KINDS or event["observation"] not in OBSERVATIONS:
             raise ValueError("navigation event cause is invalid")
+        allowed = {
+            "initial_http_navigation": {"cdp_frame", "playwright_frame"},
+            "document_navigation": {"cdp_frame", "playwright_frame", "cdp_history"},
+            "http_redirect": {"http_response"},
+            "spa_history_change": {"cdp_history"},
+            "fragment_navigation": {"cdp_history"},
+        }.get(event["kind"], {"cdp_requested"})
+        if event["observation"] not in allowed:
+            raise ValueError("navigation cause disagrees with its observation")
         if event["user_click"] is not None:
             raise ValueError("navigation user-click cause was not observed")
         status = event["status_code"]
@@ -92,7 +113,9 @@ def retain_navigation(raw: dict[str, Any], intern_url) -> dict[str, Any]:
     Pre-versioned renderers are explicitly unavailable rather than retroactively
     asserting that their old heuristic event classification was observed.
     """
-    if raw.get("schema") != SCHEMA:
+    if raw.get("schema") not in {None, SCHEMA}:
+        raise ValueError("navigation evidence schema is unsupported")
+    if raw.get("schema") is None:
         raw = {
             "schema": SCHEMA,
             "state": "unavailable",
