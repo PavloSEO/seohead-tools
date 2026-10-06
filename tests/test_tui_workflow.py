@@ -246,3 +246,11 @@ def test_hyphenated_command_help_uses_shared_handler_description():
     assert "Diff two audits" in lines[1]
     assert "Command group" not in lines[1]
     assert "--out-dir" in "\n".join(lines)
+
+
+def test_command_group_help_does_not_render_none_type_documentation():
+    from seohead.tui.app import _command_reference
+
+    lines = _command_reference("sf")
+    assert lines[1] == "Command group; choose one of its listed subcommands."
+    assert "None singleton" not in "\n".join(lines)
