@@ -57,6 +57,16 @@ def digest(value: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def results_policy_fingerprint(document: Mapping[str, Any]) -> str | None:
+    """Return the stored results-affecting crawl-policy identity, if complete."""
+    run = document.get("run")
+    config = run.get("crawl_config") if isinstance(run, Mapping) else None
+    if not isinstance(config, Mapping):
+        return None
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 def scan_identity(document: Mapping[str, Any]) -> str | None:
     """The retained scan identity, when an audit actually records one."""
     summary = document.get("summary")
@@ -208,16 +218,11 @@ def select_source(
             raise ValueError("baseline must be an audit document or audit.v2 reader")
         document = dict(source)
         selected, targets = select(document, finding_ids=finding_ids, urls=urls, view=view)
-        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
         return (
             document,
             selected,
             targets,
-            {
-                "audit_sha256": digest(document),
-                "scan_uuid": scan_identity(document),
-                "generated_at": run.get("generated_at"),
-            },
+            source_identity(document),
         )
 
     header = getattr(source, "header", None)
@@ -333,6 +338,7 @@ def source_identity(source: Any) -> dict[str, Any]:
             "audit_sha256": audit_sha256,
             "scan_uuid": scan_uuid if isinstance(scan_uuid, str) else scan_identity(header),
             "generated_at": run.get("generated_at"),
+            "results_policy_fingerprint": results_policy_fingerprint(header),
         }
     if not isinstance(source, Mapping):
         raise ValueError("audit must be an audit document or audit.v2 reader")
@@ -341,6 +347,7 @@ def source_identity(source: Any) -> dict[str, Any]:
         "audit_sha256": digest(source),
         "scan_uuid": scan_identity(source),
         "generated_at": run.get("generated_at"),
+        "results_policy_fingerprint": results_policy_fingerprint(source),
     }
 
 
@@ -356,12 +363,7 @@ def compact_after_source(
         if not isinstance(source, Mapping):
             raise ValueError("after must be an audit document or audit.v2 reader")
         document = dict(source)
-        run = document.get("run") if isinstance(document.get("run"), Mapping) else {}
-        return document, {
-            "audit_sha256": digest(document),
-            "scan_uuid": scan_identity(document),
-            "generated_at": run.get("generated_at"),
-        }
+        return document, source_identity(document)
     pairs = {
         (item.get("check"), item.get("target_url"))
         for item in selected
