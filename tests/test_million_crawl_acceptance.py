@@ -61,8 +61,8 @@ def test_standard_native_handler_bounds_deep_discovery_paths(tmp_path):
             "resolved_depths": 64,
             "missing_depths": 0,
             "deep_depths": 43,
-            "path_for_calls": 16,
-            "longest_path_for_result": 21,
+            "path_for_calls": 15,
+            "longest_path_for_result": 20,
         }
     ]
 
