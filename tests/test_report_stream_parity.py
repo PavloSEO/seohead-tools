@@ -100,3 +100,44 @@ def test_stream_preserves_scope_suppression_and_trailing_notes(
             "/html/body/main/a",
         ):
             assert saved in text
+
+
+def test_csv_suppression_export_does_not_retain_rendered_rows():
+    import tracemalloc
+    from collections.abc import Sequence
+
+    from seohead.reports.csvfile import _scope_rows
+
+    class Suppressed(Sequence):
+        def __len__(self):
+            return 5000
+
+        def __getitem__(self, index):
+            if not 0 <= index < len(self):
+                raise IndexError(index)
+            return {
+                "id": f"suppressed-{index}",
+                "check": "TITLE_MISSING",
+                "severity": "warning",
+                "target_url": f"https://example.test/{index}",
+                "suppression": {"rule_id": "approved", "reason": f"{index}:" + "x" * 2000},
+            }
+
+    # Warm the check registry/import path outside the allocation measurement.
+    list(_scope_rows({}, []))
+    tracemalloc.start()
+    try:
+        count = 0
+        last = None
+        for row in _scope_rows({}, Suppressed()):
+            if row[0] == "suppressed finding":
+                count += 1
+                last = row
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert count == 5000
+    assert last[1] == "suppressed-4999"
+    assert "4999:" in last[3]
+    # Retaining the formatted reasons alone would consume over 10 MB.
+    assert peak < 2 * 1024 * 1024

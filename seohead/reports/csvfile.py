@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import csv
 import pathlib
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 
 def _scope_rows(
-    summary: dict[str, Any], suppressed_issues: list[dict[str, Any]] | None = None
-) -> list[list[Any]]:
+    summary: dict[str, Any], suppressed_issues: Sequence[dict[str, Any]] | None = None
+) -> Iterator[list[Any]]:
     """Return run evidence separately from task-tracker finding rows (#574)."""
     from seohead.reports.client_findings import check_title, finding_view_notice
     from seohead.reports.evidence_summary import rows as evidence_rows
@@ -84,6 +85,8 @@ def _scope_rows(
                     reason,
                 ]
             )
+    yield from rows
+    if exclusions is not None:
         for issue in exclusions["issues"]:
             issue = issue if isinstance(issue, dict) else {}
             marker = issue.get("suppression")
@@ -95,15 +98,12 @@ def _scope_rows(
                 f"Pattern: {marker.get('pattern', '')}",
                 f"Reason: {marker.get('reason', '')}",
             ]
-            rows.append(
-                [
-                    "suppressed finding",
-                    issue.get("id") or issue.get("check", ""),
-                    "excluded",
-                    "; ".join(details),
-                ]
-            )
-    return rows
+            yield [
+                "suppressed finding",
+                issue.get("id") or issue.get("check", ""),
+                "excluded",
+                "; ".join(details),
+            ]
 
 
 def _write_project_coverage(summary: dict[str, Any], path: pathlib.Path) -> None:
