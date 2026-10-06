@@ -624,7 +624,7 @@ def resolve_mapping(
         elif any("keys" in row for row in sample):
             row_shape = "gsc"
         elif provider == "ga4":
-            row_shape = "ga4"
+            row_shape = "flat" if operation == "page_views" else "ga4"
         elif provider == "gsc":
             row_shape = "gsc"
         else:
@@ -668,7 +668,9 @@ def resolve_mapping(
     metrics = manifest.get("metrics")
     if metrics is None:
         metrics = []
-        if row_shape == "ga4":
+        if provider == "ga4" and operation == "page_views" and row_shape == "flat":
+            metrics = [{"name": "screenPageViews", "type": "integer", "unit": "count"}]
+        elif row_shape == "ga4":
             metrics = [
                 {"name": name, "type": "number", "unit": "count"}
                 for name in (result.get("metrics") or [])
