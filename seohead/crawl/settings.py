@@ -71,7 +71,7 @@ from typing import Any
 # above may approach 12,200 bytes/page with rich attribution markup (about
 # 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
 # allocations and are not a full-run memory guarantee.
-# Native collection, retained storage and the streamed audit.v2 path are
+# Native collection, retained storage and the streamed audit.v2 path
 # admit up to one million URLs for measured capacity gates. This is a hard budget,
 # not an invitation to run an unbounded crawl.
 MAX_URLS_CEILING = 1_000_000

@@ -374,14 +374,12 @@ def validate_context(con: Any, item: dict[str, Any], payload: Any) -> None:
         raise ScanError("structured or language evidence binds the wrong document")
 
 
-def read(con: Any) -> dict[str, Any]:
-    """Read typed saved evidence; target observations remain explicitly unmeasured here."""
-    output = {"structured": [], "language": []}
-    for row in con.execute(
-        "SELECT * FROM context_items WHERE kind IN (?,?) ORDER BY kind,item_key",
-        (STRUCTURED_KIND, LANGUAGE_KIND),
-    ):
-        output["structured" if row["kind"] == STRUCTURED_KIND else "language"].append(
-            json.loads(row["payload_json"])
-        )
-    return output
+def read(con: Any, *, streaming: bool = False) -> dict[str, Any]:
+    """Read typed evidence as lists or bounded re-iterable retained collections."""
+    from .content_evidence import ContextRows
+
+    output = {
+        "structured": ContextRows(con, STRUCTURED_KIND),
+        "language": ContextRows(con, LANGUAGE_KIND),
+    }
+    return output if streaming else {key: list(rows) for key, rows in output.items()}
