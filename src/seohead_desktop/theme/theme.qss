@@ -1,0 +1,31 @@
+QWidget { background: $surface; color: $on_surface; font-family: "$font_family"; font-size: 13px; }
+QMainWindow, QWidget#workspace { background: $background; }
+QWidget#topbar { background: $surface_container_lowest; border-bottom: 1px solid $outline_variant; }
+QLabel#brand { font-size: 18px; font-weight: 700; color: $primary; }
+QLabel#sourceBadge { background: $warning_container; color: $on_warning_container; padding: 5px 10px; border-radius: 6px; }
+QLabel#muted { color: $on_surface_variant; }
+QPushButton, QToolButton { border: 1px solid $outline_variant; border-radius: 6px; padding: 7px 12px; background: $surface_container_lowest; }
+QPushButton:hover, QToolButton:hover { background: $primary_container; }
+QPushButton:pressed, QToolButton:pressed { background: $secondary_container; }
+QPushButton:focus, QToolButton:focus { border: 2px solid $primary; }
+QPushButton[role="primary"] { background: $primary; color: $on_primary; border: 1px solid $primary; }
+QPushButton:disabled { color: $outline; background: $surface_container; }
+QLineEdit, QComboBox { border: 1px solid $outline_variant; border-radius: 6px; padding: 7px 10px; background: $surface_container_lowest; }
+QLineEdit:focus, QComboBox:focus { border: 2px solid $primary; }
+QListWidget#navigation { background: $surface_container_low; border: none; padding: 8px; }
+QListWidget#navigation::item { height: 34px; padding-left: 10px; border-radius: 6px; }
+QListWidget#navigation::item:selected { background: $primary_container; color: $on_primary_container; }
+QListWidget#navigation::item:hover { background: $surface_container; }
+QTableView { background: $surface_container_lowest; alternate-background-color: $surface; border: 1px solid $outline_variant; gridline-color: $outline_variant; selection-background-color: $primary_container; selection-color: $on_primary_container; }
+QTableView::item { padding: 4px 8px; border: none; }
+QHeaderView::section { background: $surface_container_low; color: $on_surface_variant; border: none; border-right: 1px solid $outline_variant; border-bottom: 1px solid $outline_variant; padding: 8px; font-weight: 500; }
+QTabWidget::pane { border: 1px solid $outline_variant; background: $surface_container_lowest; }
+QTabBar::tab { padding: 9px 13px; border-bottom: 2px solid transparent; color: $on_surface_variant; }
+QTabBar::tab:selected { color: $primary; border-bottom: 2px solid $primary; }
+QTabBar::tab:hover { background: $surface_container_low; }
+QPlainTextEdit { background: $surface_container_lowest; border: none; padding: 8px; selection-background-color: $primary_container; }
+QSplitter::handle { background: $outline_variant; }
+QSplitter::handle:hover { background: $primary; }
+QStatusBar { border-top: 1px solid $outline_variant; color: $on_surface_variant; }
+QGroupBox { border: 1px solid $outline_variant; border-radius: 8px; margin-top: 12px; padding: 12px; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }
