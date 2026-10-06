@@ -141,7 +141,7 @@ def test_cli_flags_and_mcp_defaults_share_handler_contract(command, flags, expec
 
 def test_scale_admission_stays_within_trusted_remote_project_budget(tmp_path, monkeypatch):
     _network(monkeypatch)
-    request = {"target_url": SITE, "options": {"max_urls": 1_000_000, "max_requests": 2_000_000}}
+    request = {"target_url": SITE, "options": {"max_urls": 50_000, "max_requests": 2_000_000}}
     default = RemoteProjectLimits()
     assert (default.max_urls, default.max_requests) == (10_000, 20_000)
     backend = SQLiteJobBackend(tmp_path / "default", {"alpha": default}, producer_build="a" * 40)
@@ -151,13 +151,18 @@ def test_scale_admission_stays_within_trusted_remote_project_budget(tmp_path, mo
     assert backend.list_jobs("alpha", 0, 10) == []
     authorized = SQLiteJobBackend(
         tmp_path / "authorized",
-        {"alpha": RemoteProjectLimits(max_urls=1_000_000, max_requests=2_000_000)},
+        {"alpha": RemoteProjectLimits(max_urls=50_000, max_requests=2_000_000)},
         producer_build="a" * 40,
     )
     response = _api(authorized).post(SCANS_A, headers=_headers(), json=request)
     assert response.status_code == 202, response.text
     assert len(authorized.list_jobs("alpha", 0, 10)) == 1
-    for values in ({"max_urls": 1_000_001}, {"max_requests": 2_000_001}, {"max_urls": True}):
+    for values in (
+        {"max_urls": 50_001},
+        {"max_urls": 1_000_000},
+        {"max_requests": 2_000_001},
+        {"max_urls": True},
+    ):
         with pytest.raises(ValidationError):
             ScanOptions(**values)
 

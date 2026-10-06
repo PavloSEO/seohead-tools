@@ -5,21 +5,24 @@ from __future__ import annotations
 import pytest
 
 from scripts.accept_million_crawl import run_stage
-from seohead.crawl.settings import MAX_REQUESTS_CEILING, MAX_URLS_CEILING, load
+from seohead.crawl.settings import MAX_REQUESTS_CEILING, MAX_URLS_CEILING, ConfigError, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
 from seohead.storage import read_audit
 from tests.doc_fixtures.site_server import run_fixture_site
 
 
-def test_capacity_configuration_keeps_one_million_pages_and_retry_headroom():
-    settings = load(overrides={"limits.max_urls": 1_000_000, "limits.max_requests": 2_000_000})
-    assert MAX_URLS_CEILING == 1_000_000
+def test_stable_capacity_configuration_keeps_url_gate_and_request_headroom():
+    settings = load(overrides={"limits.max_urls": 50_000, "limits.max_requests": 2_000_000})
+    assert MAX_URLS_CEILING == 50_000
     assert MAX_REQUESTS_CEILING == 2_000_000
     assert settings["limits"] == {
         **settings["limits"],
-        "max_urls": 1_000_000,
+        "max_urls": 50_000,
         "max_requests": 2_000_000,
     }
+    for requested in (50_001, 100_000, 1_000_000):
+        with pytest.raises(ConfigError, match="ceiling"):
+            load(overrides={"limits.max_urls": requested})
 
 
 def test_owned_mock_origin_runs_real_native_route_and_recovers(tmp_path):

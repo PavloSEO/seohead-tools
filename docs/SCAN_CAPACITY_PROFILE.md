@@ -6,6 +6,22 @@ works. Run each stage in a fresh process; the reported peak RSS belongs to that
 stage's process. Use synthetic `example.test` URLs only. No socket, DNS, browser,
 provider or paid API is used.
 
+## Stable release gate
+
+The stable CLI/MCP crawler and remote submission schema share a **50,000-URL**
+ceiling. Larger live requests fail explicitly; scope is never silently reduced.
+The separate request ceiling remains 2,000,000, and operational remote project
+defaults remain 10,000 URLs and 20,000 requests.
+
+All bounded collector, storage, audit.v2, reanalysis and consumer implementations
+remain available. The existing `experimental_synthetic` marker still admits up to
+1,000,000 declared URLs for direct offline storage fixtures and remains forbidden
+in live collectors. Sparse storage admission is not end-to-end crawl acceptance.
+The retained one-million candidate source and frozen measurements remain separate
+from this stable release. Issue #818 still targets actual one-million-URL capture
+and consumers; that goal is not reduced to the stable release ceiling. A later
+admission increase requires its staged, source-bound acceptance evidence.
+
 ## Declared budgets and profiles
 
 Declare the budgets before a run and retain the command, JSON output, stderr,

@@ -71,13 +71,12 @@ from typing import Any
 # above may approach 12,200 bytes/page with rich attribution markup (about
 # 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
 # allocations and are not a full-run memory guarantee.
-# Native collection, retained storage and the streamed audit.v2 path
-# admit up to one million URLs for measured capacity gates. This is a hard budget,
-# not an invitation to run an unbounded crawl.
-MAX_URLS_CEILING = 1_000_000
-MAX_EXPERIMENTAL_URLS = MAX_URLS_CEILING
-# Robots, redirects and retries mean a million admitted pages can require more
-# than a million HTTP turns. Keep that separately explicit and bounded.
+# Stable public admission remains 50,000 until the larger producer/consumer
+# capacity gate passes. Higher requests are refused, never silently clamped.
+MAX_URLS_CEILING = 50_000
+# Preserve the existing direct-storage synthetic profile; live collectors reject it.
+MAX_EXPERIMENTAL_URLS = 1_000_000
+# Robots, redirects and retries have a separate explicit request budget.
 MAX_REQUESTS_CEILING = 2_000_000
 
 
@@ -1134,10 +1133,18 @@ def validate(config: dict[str, Any]) -> None:
     limits = config["limits"]
     if type(limits["max_urls"]) is not int or limits["max_urls"] < 1:
         raise ConfigError("limits.max_urls must be a positive integer")
-    if limits["max_urls"] > MAX_URLS_CEILING:
+    if (
+        limits["max_urls"] > MAX_URLS_CEILING
+        and config["storage"]["capacity_profile"] != "experimental_synthetic"
+    ):
         raise ConfigError(
             f"limits.max_urls is {limits['max_urls']:,}, above this crawler's ceiling of "
-            f"{MAX_URLS_CEILING:,}; split the work into resumable scans instead."
+            f"{MAX_URLS_CEILING:,}; narrow the scope or split the work into resumable scans."
+        )
+    if limits["max_urls"] > MAX_EXPERIMENTAL_URLS:
+        raise ConfigError(
+            f"limits.max_urls is above the experimental synthetic ceiling of "
+            f"{MAX_EXPERIMENTAL_URLS:,}; no larger artifact is admitted"
         )
     if limits["max_depth"] < 0:
         raise ConfigError("limits.max_depth cannot be negative")
