@@ -62,6 +62,11 @@ def source_identity() -> dict:
         "python": platform.python_version(),
         "sqlite": sqlite3.sqlite_version,
         "platform": platform.platform(),
+        "machine": platform.machine(),
+        "logical_cpus": os.cpu_count(),
+        "physical_memory_bytes": os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+        if hasattr(os, "sysconf")
+        else None,
         "playwright": playwright_version,
         "profile_sha256": digest(PROFILE),
         "harness_sha256": digest(Path(__file__)),
@@ -234,6 +239,18 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
         }.items():
             h = hashlib.sha256()
             for row in con.execute(sql):
+                ordinal = int(urlsplit(row[0]).path.rsplit("/", 1)[-1])
+                if name == "pages":
+                    assert row[2] == f"Owned page {ordinal}"
+                    if row[4] == "rendered" or case["mode"] == "html":
+                        assert row[3] == f"Owned page {ordinal}"
+                elif name == "links":
+                    assert row[2] == f"Link {row[3]}"
+                    assert urlsplit(row[1]).path == f"/p/{(ordinal + row[3]) % case['pages']}"
+                    assert row[5] == f"/p/{(ordinal + row[3]) % case['pages']}#link-{row[3]}"
+                else:
+                    assert row[2] == "post" and row[3] == 0
+                    assert urlsplit(row[1]).path == f"/submit/{ordinal}/{row[4]}"
                 h.update(json.dumps(tuple(row), ensure_ascii=False).encode() + b"\n")
             hashes[name] = h.hexdigest()
         dom_hashes = []
@@ -255,6 +272,12 @@ def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
             "ordered_evidence_sha256": hashes,
             "selected_dom_sha256": dom_hashes,
             "render_elapsed": json.loads(render_row[0]) if render_row else None,
+            "renderer_versions": [
+                tuple(row)
+                for row in con.execute(
+                    "SELECT DISTINCT json_extract(renderer_json,'$.engine'),json_extract(renderer_json,'$.engine_version') FROM documents WHERE representation='rendered' ORDER BY 1,2"
+                )
+            ],
         }
     finally:
         con.close()
@@ -268,8 +291,10 @@ def worker(config: dict, output: Path) -> None:
 
     profile = json.loads(PROFILE.read_text())
     identity = source_identity()
-    if config.get("source_revision") and (
-        identity["revision"] != config["source_revision"] or identity["dirty"]
+    if (
+        not config.get("source_revision")
+        or identity["revision"] != config["source_revision"]
+        or identity["dirty"]
     ):
         raise RuntimeError("benchmark source changed after freeze")
     events = output / "events.jsonl"
@@ -319,6 +344,8 @@ def worker(config: dict, output: Path) -> None:
         "speed.min_delay_seconds": 0,
         "speed.concurrency": 1,
         "speed.adaptive": False,
+        "link_position.classify": True,
+        "link_attributes.capture": True,
         "http.timeout_seconds": 5,
         "sitemaps.auto_discover": False,
         "cache.mode": "off",
@@ -342,7 +369,7 @@ def worker(config: dict, output: Path) -> None:
         patch.object(scan_handlers, "crawl_site_scan", instrumented_crawl),
         patch.object(NativeScan, "commit_render", committed_render),
     ):
-        names = ["application_cold", "warmed_worker_repeat"]
+        names = config.get("temperatures", ["application_cold", "warmed_worker_repeat"])
         if config.get("recovery"):
             names.append("recovery")
         for case_name in names:
@@ -405,7 +432,7 @@ def worker(config: dict, output: Path) -> None:
                 str(target / "pages.csv"),
                 format="csv",
                 records=["pages"],
-                fields=["url", "title", "representation"],
+                fields={"pages": ["url", "title", "representation"]},
             )
             observe("reanalysis")
             derived = target / "reanalysis.seohead"
@@ -534,6 +561,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
         )
         known = set()
         cpu = {}
+        cpu_starts = {}
         phase = "setup"
         case = "setup"
         last = time.monotonic()
@@ -559,6 +587,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
                             phase = event["phase"]
                         event_offset = stream.tell()
                 sample = process_sample(process.pid, known)
+                cpu_starts.setdefault(case, sum(cpu.values()))
                 for pid, value in sample["cpu_seconds"].items():
                     cpu[pid] = max(cpu.get(pid, 0), value)
                 sample.update(time=now, case=case, phase=phase)
@@ -582,7 +611,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
                     failure = "sampled process-tree RSS budget exceeded"
                 elif sample["python_rss_bytes"] > budgets["python_rss_mib"] * MIB:
                     failure = "Python RSS budget exceeded"
-                elif sum(cpu.values()) > budgets["cpu_seconds"] * len({x[0] for x in totals}):
+                elif sum(cpu.values()) - cpu_starts[case] > budgets["cpu_seconds"]:
                     failure = "sampled CPU budget exceeded"
                 elif peak_disk > budgets["case_disk_mib"] * MIB:
                     failure = "case retained output budget exceeded"
@@ -779,6 +808,7 @@ def main(argv=None):
                 "forms": 128,
                 "repetition": 1,
                 "render_limit": 16,
+                "temperatures": ["application_cold"],
             }
         ]
     else:
