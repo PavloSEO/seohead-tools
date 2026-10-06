@@ -1,0 +1,40 @@
+{
+  "format": "seohead.reporting-pack-source.v1",
+  "description": "Synthetic Search Console URL totals for the reporting-pack fixture. Dimensionless clicks/impressions rows so the search_visibility_vs_sessions cohort can demonstrate measured, measured-zero and incomplete states. No real property data.",
+  "mapping": {
+    "format": "seohead.evidence-mapping.v1",
+    "source": {
+      "provider": "gsc",
+      "operation": "search_analytics",
+      "reporting_identity": "synthetic-search-console-property",
+      "privacy": "supplied",
+      "timezone": "Europe/Minsk",
+      "attribution": "last-click",
+      "search_engine": "google",
+      "search_type": "web"
+    },
+    "url": {"field": "url", "kind": "absolute"},
+    "row_shape": "flat",
+    "dimensions": [],
+    "metrics": [
+      {"name": "clicks", "type": "number", "unit": "count"},
+      {"name": "impressions", "type": "number", "unit": "count"}
+    ],
+    "period": {"start_date": "2026-09-01", "end_date": "2026-09-30"},
+    "collection": {
+      "state": "complete",
+      "sampled": false,
+      "thresholded": false,
+      "truncated": false
+    },
+    "duplicate_policy": "mark"
+  },
+  "rows": [
+    {"url": "https://example.com/", "clicks": 12, "impressions": 340},
+    {"url": "https://example.com/page-a", "clicks": 0, "impressions": 25},
+    {"url": "https://example.com/page-b", "clicks": 5, "impressions": null},
+    {"url": "https://example.com/no-title", "clicks": 1, "impressions": 8},
+    {"url": "https://external.example.com/landing", "clicks": 8, "impressions": 90},
+    {"url": "/relative-path-not-joinable", "clicks": 2, "impressions": 10}
+  ]
+}
