@@ -684,7 +684,9 @@ def aggregate_coverage(
     return result
 
 
-def resolve_item_scope(directory: str, item_id: str) -> tuple[str, str]:
+def resolve_item_scope(
+    directory: str, item_id: str, *, _verify_evidence: bool = True
+) -> tuple[str, str]:
     """Resolve only declared qualified site rows; unqualified IDs keep their local scope."""
     if not isinstance(item_id, str) or not item_id.startswith("site:"):
         return directory, item_id
@@ -698,6 +700,10 @@ def resolve_item_scope(directory: str, item_id: str) -> tuple[str, str]:
     for child in preparation_status(directory).get("competitors", []):
         if child.get("project_uuid") == requested:
             # Reuse the complete validation before resolving a writable child.
-            aggregate_coverage(directory, coverage_status(root))
+            aggregate_coverage(
+                directory,
+                coverage_status(root, _verify_evidence=_verify_evidence),
+                _verify_evidence=_verify_evidence,
+            )
             return str(root / child["directory"]), local_id
     raise ValueError("item belongs to an undeclared project scope")

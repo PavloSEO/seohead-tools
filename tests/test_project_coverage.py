@@ -550,3 +550,34 @@ def test_explicit_coverage_still_rehashes_changed_receipt(project, monkeypatch):
     result = row(coverage_status(project), "custom:review")
     assert calls == [artifact]
     assert result["stale"] and not result["complete"]
+
+
+def test_scoped_competitor_task_detail_never_rehashes_any_site_artifact(tmp_path, monkeypatch):
+    from seohead.projects import evidence as evidence_core
+    from seohead.projects.observer import task_detail
+    from tests.test_project_observer_sites import _prepare_with_competitors
+
+    root = tmp_path / "owner"
+    prepared = _prepare_with_competitors(root)["preparation"]
+    child = root / prepared["competitors"][0]["directory"]
+    for site in (root, child):
+        edit(site, id="custom:review", title="Review retained report")
+        (site / "reports" / "review.md").write_text("Synthetic retained report")
+        record(
+            site,
+            "custom:review",
+            status="succeeded",
+            reason="Reviewed",
+            reviewer="Synthetic reviewer",
+            review="approved",
+            artifact="reports/review.md",
+        )
+    monkeypatch.setattr(
+        evidence_core,
+        "_digest",
+        lambda *args, **kwargs: pytest.fail("scoped detail hashed a site artifact"),
+    )
+    identifier = "site:" + prepared["competitors"][0]["project_uuid"] + "/custom:review"
+    detail = task_detail(root, item_id=identifier)
+    assert detail["item"]["complete"]
+    assert detail["item"]["evidence_verification"]["state"] == "metadata_matches"

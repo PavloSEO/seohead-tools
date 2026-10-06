@@ -389,13 +389,8 @@ def _receipt_fingerprint(decisions: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def _priority_receipt(value: Any, item_ids: set[str]) -> None:
-    if not isinstance(value, dict) or set(value) != {
-        "policy",
-        "policy_hash",
-        "facts",
-        "decisions",
-        "decision_fingerprint",
-    }:
+    fields = {"policy", "policy_hash", "facts", "decisions", "decision_fingerprint"}
+    if not isinstance(value, dict) or set(value) not in (fields, fields | {"item_ids"}):
         raise ValueError("invalid priority policy receipt")
     _historical_policy(value["policy"])
     if type(value["policy_hash"]) is not str or value["policy_hash"] != _hash(value["policy"]):
@@ -404,7 +399,7 @@ def _priority_receipt(value: Any, item_ids: set[str]) -> None:
     if facts != value["facts"]:
         raise ValueError("invalid priority policy receipt")
     decisions = value["decisions"]
-    if not isinstance(decisions, list) or len(decisions) != len(item_ids):
+    if not isinstance(decisions, list) or len(decisions) > len(item_ids):
         raise ValueError("invalid priority policy receipt")
     seen = set()
     for decision in decisions:
@@ -441,6 +436,14 @@ def _priority_receipt(value: Any, item_ids: set[str]) -> None:
             )
         ):
             raise ValueError("invalid priority policy receipt")
+    if "item_ids" in value:
+        scope = value["item_ids"]
+        if (
+            not isinstance(scope, list)
+            or any(type(item) is not str for item in scope)
+            or scope != sorted(seen)
+        ):
+            raise ValueError("priority policy receipt disagrees with its historical item scope")
     fingerprint = value["decision_fingerprint"]
     if fingerprint != _receipt_fingerprint(decisions):
         raise ValueError("invalid priority policy receipt")
@@ -456,6 +459,11 @@ def _read(root: Path, project: dict) -> dict | None:
         document = json.loads(path.read_text())
     except (ValueError, OSError) as exc:
         raise ValueError("coverage.json is not valid JSON") from exc
+    return _validate_document(document, project)
+
+
+def _validate_document(document: dict, project: dict) -> dict:
+    """Validate the complete document both when reopening and before publication."""
     if not isinstance(document, dict) or type(document.get("format")) is not str:
         raise ValueError("unsupported coverage document shape")
     expected_keys = (
@@ -690,8 +698,8 @@ def _transaction(directory: str | Path, expected_revision: int | None):
         yield root, project, document
         if document == original:
             return
-        _dependencies(document["items"])
         document["revision"] += 1
+        _validate_document(document, project)
         content = json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
         if len(content.encode()) > MAX_BYTES:
             raise ValueError("coverage exceeds its byte limit")

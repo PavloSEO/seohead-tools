@@ -148,6 +148,7 @@ def _receipt(
         "policy_hash": _hash(policy),
         "facts": facts,
         "decisions": decisions,
+        "item_ids": sorted(decision["id"] for decision in decisions),
         "decision_fingerprint": [
             {
                 "id": decision["id"],

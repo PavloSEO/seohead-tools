@@ -998,7 +998,7 @@ def task_detail(directory: str | Path, *, item_id: str) -> dict:
     from .progress import _item_state
     from .runtime import resolve_item_scope
 
-    scoped, local_id = resolve_item_scope(str(directory), item_id)
+    scoped, local_id = resolve_item_scope(str(directory), item_id, _verify_evidence=False)
     root, project = _load(scoped)
     view = coverage_status(root, _verify_evidence=False)
     row = next((item for item in view.get("items", []) if item["id"] == local_id), None)
