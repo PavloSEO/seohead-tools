@@ -2,6 +2,10 @@
 
 `render-check` returns `navigation` with schema `seohead.navigation.v1`.
 Rendered crawl documents retain the same adjunct under renderer provenance.
+The storage encoding uses `settings.navigation_evidence` so older `scan.v1`
+readers can still validate the closed renderer envelope. Current readers also
+accept the earlier prerelease top-level `navigation` form and reject ambiguous
+double encodings. Observed events do not change the renderer-method fingerprint.
 `scan-navigation --scan scan.seohead --document-id 3` reads it offline after
 reopening a scan. Omit the document ID for a bounded page (`--limit`, `--offset`);
 `has_more` and `next_offset` continue the read. `seo_scan_navigation` uses the same

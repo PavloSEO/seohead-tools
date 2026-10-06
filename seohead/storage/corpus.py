@@ -366,8 +366,10 @@ def _rendered_provenance(
         navigation = retain_navigation(raw_navigation, lambda url: _intern_url(con, url))
     except ValueError as exc:
         raise ScanError(f"rendered navigation evidence is invalid: {exc}") from exc
+    # scan.v1 readers already accept extensible renderer settings, while the
+    # top-level renderer envelope is closed. Keep rollback readers compatible.
+    settings["navigation_evidence"] = navigation
     payload = {
-        "navigation": navigation,
         "engine": engine,
         "engine_version": version,
         "page_concurrency": page_concurrency,

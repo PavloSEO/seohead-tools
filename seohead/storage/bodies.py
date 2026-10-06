@@ -18,6 +18,16 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _DECODER_VERSION = "scan_decoder.v1"
 
 
+def _navigation_evidence(renderer: dict):
+    """Read the compatible encoding or the earlier prerelease top-level form."""
+    settings = renderer["settings"]
+    if "navigation" in renderer and "navigation_evidence" in settings:
+        raise ScanError("rendered navigation evidence has conflicting encodings")
+    if "navigation_evidence" in settings:
+        return True, settings["navigation_evidence"]
+    return "navigation" in renderer, renderer.get("navigation")
+
+
 def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
     raw = document["renderer_json"]
     if not isinstance(raw, str):
@@ -57,7 +67,8 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
         or value["navigation_transform"] not in {"direct", "legacy_escaped_fragment", "unknown"}
     ):
         raise ScanError("rendered document renderer provenance is invalid")
-    if "navigation" in value:
+    has_navigation, navigation = _navigation_evidence(value)
+    if has_navigation:
         from seohead.tools.navigation import validate_navigation
 
         def resolve_url(url_id):
@@ -66,7 +77,7 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
 
         try:
             validate_navigation(
-                value["navigation"],
+                navigation,
                 stored=True,
                 resolve_url=resolve_url if con is not None else None,
             )
@@ -297,22 +308,29 @@ def read_document_navigation(con, document_id: int) -> dict[str, object]:
         raise ScanError("navigation document is absent")
     document = dict(row)
     renderer = _renderer(document, con)
-    navigation = renderer.get("navigation")
-    if navigation is None:
+    has_navigation, navigation = _navigation_evidence(renderer) if renderer else (False, None)
+    if not has_navigation:
         navigation = retain_navigation({}, lambda url: None)
 
     def resolve_url(url_id):
         row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
         return row[0] if row else None
 
+    public_renderer = {
+        key: renderer[key]
+        for key in ("engine", "engine_version", "settings", "navigation_transform")
+        if key in renderer
+    }
+    if "settings" in public_renderer:
+        public_renderer["settings"] = {
+            key: value
+            for key, value in public_renderer["settings"].items()
+            if key != "navigation_evidence"
+        }
     return {
         "document_id": document_id,
         "representation": document["representation"],
-        "renderer": {
-            key: renderer[key]
-            for key in ("engine", "engine_version", "settings", "navigation_transform")
-            if key in renderer
-        },
+        "renderer": public_renderer,
         "requested_url": resolve_url(renderer["navigation_url_id"])
         if renderer.get("navigation_url_id")
         else None,

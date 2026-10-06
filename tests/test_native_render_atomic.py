@@ -318,7 +318,7 @@ def test_versioned_navigation_survives_reopen_and_rejects_missing_url(tmp_path):
                 "SELECT renderer_json FROM documents WHERE document_id=?", (document_id,)
             ).fetchone()[0]
         )
-        value["navigation"]["events"][0]["destination_url_id"] = 999999
+        value["settings"]["navigation_evidence"]["events"][0]["destination_url_id"] = 999999
         scan.con.execute(
             "UPDATE documents SET renderer_json=? WHERE document_id=?",
             (json.dumps(value), document_id),
@@ -343,3 +343,57 @@ def test_legacy_navigation_is_explicitly_unavailable(tmp_path):
         assert value["state"] == "unavailable"
         assert value["reason"] == "legacy_navigation_not_captured"
         assert value["events"] == []
+
+
+def test_navigation_uses_extensible_settings_and_reads_prior_prerelease_encoding(tmp_path):
+    from seohead.storage.bodies import read_document_navigation
+    from seohead.storage.body_diff import _renderer_provenance
+    from seohead.tools.navigation import NavigationCapture
+
+    with NativeScan.create(tmp_path / "compatible.sqlite", **_metadata()) as scan:
+        lease = _static_page(scan)
+        renderer = _renderer(lease.url)
+        capture = NavigationCapture(lease.url, "load", 10)
+        capture.cdp = True
+        capture.add(lease.url + "#part", "fragment_navigation", "cdp_history")
+        capture.finish(success=True)
+        renderer["navigation"].update(capture.data)
+        identifier = scan.commit_render(
+            lease.url,
+            _rendered_record(lease.url),
+            html="<html>retained</html>",
+            renderer=renderer,
+            captured_at="2026-10-06T00:00:00Z",
+        )
+        expected = read_document_navigation(scan.con, identifier)
+        raw = scan.con.execute(
+            "SELECT renderer_json FROM documents WHERE document_id=?", (identifier,)
+        ).fetchone()[0]
+        value = json.loads(raw)
+        assert set(value) == {
+            "engine",
+            "engine_version",
+            "settings",
+            "flattened_iframes",
+            "capture_limitations",
+            "navigation_url_id",
+            "final_url_id",
+            "navigation_transform",
+            "page_concurrency",
+        }
+        assert value["settings"]["navigation_evidence"]["schema"] == "seohead.navigation.v1"
+        method = _renderer_provenance({"renderer_json": raw})
+        value["navigation"] = value["settings"].pop("navigation_evidence")
+        scan.con.execute(
+            "UPDATE documents SET renderer_json=? WHERE document_id=?",
+            (json.dumps(value), identifier),
+        )
+        assert read_document_navigation(scan.con, identifier) == expected
+        assert _renderer_provenance({"renderer_json": json.dumps(value)}) == method
+        value["settings"]["navigation_evidence"] = value["navigation"]
+        scan.con.execute(
+            "UPDATE documents SET renderer_json=? WHERE document_id=?",
+            (json.dumps(value), identifier),
+        )
+        with pytest.raises(ScanError, match="conflicting encodings"):
+            read_document_navigation(scan.con, identifier)

@@ -194,7 +194,8 @@ def _renderer_provenance(row: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "engine": value["engine"],
         "engine_version": value["engine_version"],
-        "settings": settings,
+        # Observed route events vary per capture; they are not renderer policy.
+        "settings": {key: item for key, item in settings.items() if key != "navigation_evidence"},
         "navigation_transform": value["navigation_transform"],
     }
 
