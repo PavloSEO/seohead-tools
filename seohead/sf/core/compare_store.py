@@ -7,13 +7,15 @@ manifest; no inline sample stands in for the full comparison population.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
 import sqlite3
 import tempfile
+import zlib
 from collections.abc import Iterable, Mapping
-from contextlib import closing
+from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -120,27 +122,108 @@ def _bind(con: sqlite3.Connection, declaration: Mapping[str, Any]) -> None:
         WHERE side=0""")
 
 
-def _export(root: Path, name: str, rows: Iterable[Any]) -> dict[str, Any]:
+def _export(
+    root: Path, name: str, rows: Iterable[Any], *, compression: str = "none"
+) -> dict[str, Any]:
     digest = hashlib.sha256()
     count = 0
     size = 0
-    path = root / f"{name}.ndjson"
-    with path.open("xb") as stream:
-        for row in rows:
-            data = (_json(row) + "\n").encode("utf-8")
-            stream.write(data)
-            digest.update(data)
-            count += 1
-            size += len(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+    compressed = compression == "gzip"
+    path = root / f"{name}.ndjson{'.gz' if compressed else ''}"
+    with path.open("xb") as raw:
+        # Exclude clock and destination path from gzip headers: the same rows
+        # produce the same bytes in separate CLI and MCP output directories.
+        with (
+            gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6)
+            if compressed
+            else nullcontext(raw)
+        ) as stream:
+            for row in rows:
+                data = (_json(row) + "\n").encode("utf-8")
+                stream.write(data)
+                if not compressed:
+                    digest.update(data)
+                count += 1
+                size += len(data)
+        raw.flush()
+        os.fsync(raw.fileno())
+    stored_size = size
+    if compressed:
+        stored_size = 0
+        with path.open("rb") as stream:
+            for data in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(data)
+                stored_size += len(data)
     return {
         "path": path.name,
-        "format": "ndjson",
+        "format": "ndjson.gz" if compressed else "ndjson",
         "rows": count,
-        "bytes": size,
+        "bytes": stored_size,
         "sha256": digest.hexdigest(),
+        **({"compression": "gzip", "uncompressed_bytes": size} if compressed else {}),
     }
+
+
+def iter_compare_rows(manifest_path: str | Path, name: str):
+    """Validate and stream one complete comparison file, plain or gzip.
+
+    The stored-byte hash is verified before yielding. Exhaust the iterator to
+    validate JSONL framing, decompressor integrity, row and decoded byte counts.
+    """
+    manifest_path = Path(manifest_path)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("schema_version") != "compare.v2":
+            raise CompareError("unsupported comparison manifest schema")
+        entry = manifest["files"][name]
+        relative = entry["path"]
+        if (
+            not isinstance(relative, str)
+            or Path(relative).name != relative
+            or relative in {".", ".."}
+        ):
+            raise CompareError("comparison file path must be a local filename")
+        path = manifest_path.parent / relative
+        if path.is_symlink():
+            raise CompareError("comparison file must not be a symbolic link")
+        format_ = entry["format"]
+        if format_ not in {"ndjson", "ndjson.gz"}:
+            raise CompareError("unsupported comparison file format")
+        compressed = format_ == "ndjson.gz"
+        if compressed and entry.get("compression") != "gzip":
+            raise CompareError("comparison compression metadata mismatch")
+        expected_size = entry["uncompressed_bytes"] if compressed else entry["bytes"]
+        for value in (entry["bytes"], expected_size, entry["rows"]):
+            if type(value) is not int or value < 0:
+                raise CompareError("invalid comparison file count metadata")
+        count = size = stored_size = 0
+        digest = hashlib.sha256()
+        # Keep the same descriptor across the digest and decode passes.
+        with path.open("rb") as raw:
+            for data in iter(lambda: raw.read(1024 * 1024), b""):
+                stored_size += len(data)
+                digest.update(data)
+            if stored_size != entry["bytes"] or digest.hexdigest() != entry["sha256"]:
+                raise CompareError("comparison file checksum or byte count mismatch")
+            raw.seek(0)
+            with (
+                gzip.GzipFile(mode="rb", fileobj=raw) if compressed else nullcontext(raw)
+            ) as stream:
+                for line in stream:
+                    size += len(line)
+                    count += 1
+                    if size > expected_size or count > entry["rows"] or not line.endswith(b"\n"):
+                        raise CompareError("comparison file row framing or count mismatch")
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        raise CompareError("comparison file contains a non-object row")
+                    yield row
+            if count != entry["rows"] or size != expected_size:
+                raise CompareError("comparison file row or decoded byte count mismatch")
+    except (OSError, EOFError, ValueError, KeyError, TypeError, zlib.error) as exc:
+        if isinstance(exc, CompareError):
+            raise
+        raise CompareError(f"invalid comparison file {name!r}: {exc}") from exc
 
 
 def _facts(con: sqlite3.Connection):
@@ -164,7 +247,13 @@ def _facts(con: sqlite3.Connection):
 
 
 def compare_to_files(
-    before: Any, after: Any, *, out_dir: str | Path, force: bool, correspondence: Any
+    before: Any,
+    after: Any,
+    *,
+    out_dir: str | Path,
+    force: bool,
+    correspondence: Any,
+    compression: str = "none",
 ) -> dict[str, Any]:
     """Write a compare.v2 directory; reject duplicate identities, never truncate."""
     from seohead.verification import source_identity
@@ -215,9 +304,12 @@ def compare_to_files(
                 )
             con.execute("CREATE INDEX delta_order ON delta(bucket,check_key,url)")
             con.commit()
+            from functools import partial
+
+            export = partial(_export, compression=compression)
             files = {}
             for bucket in _BUCKETS[:-1]:
-                files[bucket] = _export(
+                files[bucket] = export(
                     root,
                     bucket,
                     (
@@ -228,7 +320,7 @@ def compare_to_files(
                         )
                     ),
                 )
-            files["unchanged"] = _export(
+            files["unchanged"] = export(
                 root,
                 "unchanged",
                 (
@@ -238,7 +330,7 @@ def compare_to_files(
                     WHERE b.side=0 ORDER BY b.check_key,b.url""")
                 ),
             )
-            files["by_check"] = _export(
+            files["by_check"] = export(
                 root,
                 "by_check",
                 (
@@ -249,7 +341,7 @@ def compare_to_files(
                 ),
             )
             if declaration is not None:
-                files["correspondence"] = _export(
+                files["correspondence"] = export(
                     root,
                     "correspondence",
                     (
@@ -257,7 +349,7 @@ def compare_to_files(
                         for row in con.execute("SELECT document FROM pairs ORDER BY before_url")
                     ),
                 )
-                files["facts"] = _export(root, "facts", _facts(con))
+                files["facts"] = export(root, "facts", _facts(con))
             counts = {bucket: files[bucket]["rows"] for bucket in _BUCKETS}
             totals = {}
             for side, label in ((0, "before"), (1, "after")):

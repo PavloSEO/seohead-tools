@@ -51,6 +51,28 @@ unknown scope, configuration, representation, corpus and provider bases remain
 explicit in warnings and compatibility rows. Different recorded crawl settings
 still require `force=True`. Missing observations are not verified fixes.
 
+## Optional lossless gzip
+
+Pass `compression="gzip"` with an explicit `out_dir` (`--compression gzip` in the
+CLI) to compress every complete NDJSON stream with the Python standard library.
+The default `compression="none"` preserves existing plain output. Gzip headers
+omit filename and clock values, so repeated exports have identical stored bytes.
+There is no uncompressed intermediate export and no row omission or truncation.
+
+Compressed entries use `format="ndjson.gz"`, `compression="gzip"`, and a
+`.ndjson.gz` filename. `bytes` and `sha256` describe the compressed file;
+`uncompressed_bytes` describes the original complete JSONL byte stream, and
+`rows` remains the full uncompressed row count. Source identities, ordering,
+summary and conservation semantics are unchanged.
+
+`seohead.sf.core.compare_store.iter_compare_rows(manifest_path, name)` supports
+both formats. It verifies stored bytes and their hash before yielding, then
+streams decompression and checks JSONL framing, gzip integrity, full row counts
+and decoded byte counts. Exhaust the iterator before accepting the file.
+Truncation or tampering raises `CompareError`. The manifest is the atomic commit
+marker: it is published only after all complete flushed streams are in place;
+failed exports expose no completed package.
+
 ## Identity and correspondence
 
 URL identity is exact: no normalization, redirect inference, path decoding, or

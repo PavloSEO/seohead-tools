@@ -468,6 +468,7 @@ def compare(
     force: bool = False,
     correspondence: Any = None,
     out_dir: str | Path | None = None,
+    compression: str = "none",
 ) -> dict[str, Any]:
     """Diff two audit.json documents into the four sets, per check.
 
@@ -480,6 +481,10 @@ def compare(
     the site itself changed. Warnings about a partial crawl remain result data;
     they do not erase the historical observations or recategorize them.
     """
+    if compression not in {"none", "gzip"}:
+        raise CompareError("comparison compression must be none or gzip")
+    if compression != "none" and out_dir is None:
+        raise CompareError("comparison compression requires out_dir")
     before_source, after_source = before, after
     for label, source in (("before", before), ("after", after)):
         audit = _header(source)
@@ -510,6 +515,7 @@ def compare(
             out_dir=out_dir,
             force=force,
             correspondence=correspondence,
+            compression=compression,
         )
     for source in (before_source, after_source):
         if hasattr(source, "iter_collection") and any(

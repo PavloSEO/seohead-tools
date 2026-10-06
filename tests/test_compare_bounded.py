@@ -249,3 +249,83 @@ def test_correspondence_declaration_limit_refuses_before_reading_all_bytes(tmp_p
         stream.truncate(16 * 1024 * 1024 + 1)
     with pytest.raises(CompareError, match="16 MiB"):
         compare(_audit(), _audit(), correspondence=declaration, out_dir=tmp_path / "output")
+
+
+def test_gzip_reopen_preserves_all_rows_order_counts_and_deterministic_bytes(tmp_path):
+    from seohead.sf.core.compare_store import iter_compare_rows
+
+    before = _audit(issues=[_issue("b", "TITLE_MISSING", B), _issue("a", "TITLE_MISSING", A)])
+    after = _audit(issues=[_issue("after", "TITLE_MISSING", A)])
+    plain = compare(before, after, out_dir=tmp_path / "plain")
+    gzip = compare(before, after, out_dir=tmp_path / "gzip", compression="gzip")
+    repeat = compare(before, after, out_dir=tmp_path / "repeat", compression="gzip")
+    assert gzip["conservation"] == plain["conservation"]
+    assert gzip["summary"] == plain["summary"]
+    assert gzip["files"] == repeat["files"]
+    for name, entry in gzip["files"].items():
+        expected = _read(plain, name)
+        assert list(iter_compare_rows(gzip["manifest"], name)) == expected
+        assert list(iter_compare_rows(plain["manifest"], name)) == expected
+        assert entry["format"] == "ndjson.gz"
+        assert entry["rows"] == len(expected)
+        assert entry["uncompressed_bytes"] == plain["files"][name]["bytes"]
+        stored = (Path(gzip["out_dir"]) / entry["path"]).read_bytes()
+        assert len(stored) == entry["bytes"]
+        assert hashlib.sha256(stored).hexdigest() == entry["sha256"]
+    assert not list(Path(gzip["out_dir"]).glob("*.ndjson"))
+
+
+@pytest.mark.parametrize(
+    "damage", ["tamper", "truncate", "truncate-rehashed", "wrong-count", "wrong-decoded-bytes"]
+)
+def test_gzip_reader_rejects_corruption_and_forged_count_metadata(tmp_path, damage):
+    from seohead.sf.core.compare_store import iter_compare_rows
+
+    before = _audit(issues=[_issue("a", "TITLE_MISSING", A)])
+    result = compare(before, before, out_dir=tmp_path / "compressed", compression="gzip")
+    manifest_path = Path(result["manifest"])
+    manifest = json.loads(manifest_path.read_text())
+    entry = manifest["files"]["unchanged"]
+    path = manifest_path.parent / entry["path"]
+    raw = path.read_bytes()
+    if damage.startswith("truncate"):
+        path.write_bytes(raw[:-8])
+        if damage == "truncate-rehashed":
+            entry["bytes"] = len(raw) - 8
+            entry["sha256"] = hashlib.sha256(raw[:-8]).hexdigest()
+    elif damage == "tamper":
+        path.write_bytes(raw[:12] + bytes([raw[12] ^ 1]) + raw[13:])
+    elif damage == "wrong-count":
+        entry["rows"] += 1
+    else:
+        entry["uncompressed_bytes"] += 1
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(CompareError):
+        list(iter_compare_rows(manifest_path, "unchanged"))
+
+
+def test_gzip_requires_explicit_output_and_valid_compression():
+    with pytest.raises(CompareError, match="requires out_dir"):
+        compare(_audit(), _audit(), compression="gzip")
+    with pytest.raises(CompareError, match="none or gzip"):
+        compare(_audit(), _audit(), compression="zip")
+
+
+def test_failed_gzip_export_never_publishes_a_partial_package(tmp_path, monkeypatch):
+    import seohead.sf.core.compare_store as store
+
+    original = store._export
+    calls = 0
+
+    def fail_mid_export(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("synthetic disk failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(store, "_export", fail_mid_export)
+    with pytest.raises(OSError, match="disk failure"):
+        compare(_audit(), _audit(), out_dir=tmp_path / "failed", compression="gzip")
+    assert not (tmp_path / "failed").exists()
+    assert not list(tmp_path.glob(".compare-*"))
