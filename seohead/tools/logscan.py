@@ -361,6 +361,41 @@ def _issues(run: RunArtifacts) -> Iterable[dict[str, Any]]:
     return (run.audit or {}).get("issues") or ()
 
 
+def _site_lastmod_target(run: RunArtifacts, issue: dict[str, Any], target: str) -> bool:
+    """The producer's site-wide lastmod finding may name an uncrawled origin."""
+    if issue.get("check") != "SITEMAP_STALE_LASTMOD" or issue.get("source") != "sitemap":
+        return False
+    measured = ((run.audit or {}).get("summary", {}).get("sitemap") or {}).get("lastmod")
+    if not isinstance(measured, dict) or not measured or issue.get("details") != measured:
+        return False
+    try:
+        parts = urlsplit(target)
+        source = urlsplit(str(((run.audit or {}).get("run") or {}).get("source") or ""))
+    except ValueError:
+        return False
+    if (
+        parts.scheme not in {"http", "https"}
+        or not parts.netloc
+        or parts.path not in {"", "/"}
+        or parts.query
+        or parts.fragment
+    ):
+        return False
+    origin = (parts.scheme.lower(), parts.netloc.lower())
+    if source.scheme in {"http", "https"} and source.netloc:
+        return (source.scheme.lower(), source.netloc.lower()) == origin
+    # SF export audits may name a directory as their input source. A retained
+    # page must still establish that this origin belongs to the audited site.
+    for page in run.pages:
+        try:
+            value = urlsplit(str(page.get("url") or ""))
+        except ValueError:
+            continue
+        if (value.scheme.lower(), value.netloc.lower()) == origin:
+            return True
+    return False
+
+
 def rule_findings_are_about_crawled_urls(run: RunArtifacts) -> Iterator[Anomaly]:
     """A finding about a URL the run never fetched is evidence of nothing (#94).
 
@@ -390,7 +425,12 @@ def rule_findings_are_about_crawled_urls(run: RunArtifacts) -> Iterator[Anomaly]
     for issue in _issues(run):
         check = str(issue.get("check") or "")
         target = str(issue.get("target_url") or "")
-        if not target or check in exempt or target in crawled:
+        if (
+            not target
+            or check in exempt
+            or target in crawled
+            or _site_lastmod_target(run, issue, target)
+        ):
             continue
         if run.native:
             if not run.pages.new_finding(check, target):
