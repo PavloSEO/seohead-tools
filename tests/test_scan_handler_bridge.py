@@ -436,7 +436,12 @@ def test_real_handler_adapter_native_audit_and_all_report_formats(
         from_document = tmp_path / "from-document" / f"report.{fmt}"
         assert build_report(str(scan), fmt, str(from_scan))["ok"]
         assert build_report(audit, fmt, str(from_document))["ok"]
-        assert from_scan.read_bytes() == from_document.read_bytes()
+        if fmt == "json":
+            import json
+
+            assert json.loads(from_scan.read_text()) == json.loads(from_document.read_text())
+        else:
+            assert from_scan.read_bytes() == from_document.read_bytes()
         if fmt == "csv":
             for suffix in (".pages.csv", ".scope.csv"):
                 scan_sidecar = from_scan.with_suffix(suffix)

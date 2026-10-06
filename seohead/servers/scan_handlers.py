@@ -17,6 +17,9 @@ from typing import Any
 from seohead import __version__
 from seohead.build_provenance import BuildProvenanceError, packaged_provenance
 
+# Legacy directory materialization only; native audit.v2 has no population bridge cap.
+MAX_AUDIT_PAGES = 10_000
+MAX_AUDIT_FORMS = 20_000
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 # scan.v1 (evidence_version crawl.v1) retains no robots.txt or sitemap document
