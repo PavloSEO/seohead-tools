@@ -407,3 +407,76 @@ def test_pdf_policy_rejects_incompatible_public_inputs_without_outputs(tmp_path,
     assert result["ok"] is False and "overview-v1" in result["error"]
     assert not destination.exists()
     assert not destination.with_suffix(".files").exists()
+
+
+def test_monitor_preview_and_local_receipt_are_reachable_without_network(tmp_path, monkeypatch):
+    from seohead.projects.monitoring import run, schedule
+    from seohead.recon import net
+    from tests.test_monitor_one_shot import _project
+
+    directory, configured = _project(tmp_path, "https://example.test/page")
+    claimed = schedule(directory, action="start", expected_revision=configured["revision"])
+    before = {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
+    monkeypatch.setattr(net, "http_client", lambda *a, **k: pytest.fail("unexpected network"))
+    preview = _cli(
+        "monitor-collect",
+        "--directory",
+        str(directory),
+        "--expected-revision",
+        str(claimed["revision"]),
+    )
+    manager = build_server()._tool_manager
+    assert preview == manager.get_tool("seo_monitor_collect").fn(
+        directory=str(directory), expected_revision=claimed["revision"]
+    )
+    assert preview["applied"] is False
+    assert before == {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
+    retained = run(
+        directory,
+        "scan:local",
+        [
+            {
+                "url": "https://example.test/page",
+                "changes": [{"kind": "status_changed", "severity": "warning"}],
+            }
+        ],
+        claimed["revision"],
+    )
+    first = _cli(
+        "monitor-local-deliver",
+        "--directory",
+        str(directory),
+        "--scan-id",
+        "scan:local",
+        "--expected-revision",
+        str(retained["revision"]),
+    )
+    second = manager.get_tool("seo_monitor_local_deliver").fn(
+        directory=str(directory), scan_id="scan:local", expected_revision=first["revision"]
+    )
+    assert first["receipts"][0]["state"] == "sent"
+    assert second["receipts"][0]["state"] == "delivered"
+    assert manager.get_tool("seo_monitor_collect").annotations.openWorldHint is True
+    assert manager.get_tool("seo_monitor_local_deliver").annotations.openWorldHint is False
+    assert manager.get_tool("seo_monitor_local_deliver").annotations.readOnlyHint is False
+
+
+@pytest.mark.parametrize(
+    "value,flags,expected", [(True, [], True), (False, ["--apply"], True), (False, [], False)]
+)
+def test_monitor_apply_json_is_preserved_until_an_explicit_flag(
+    monkeypatch, value, flags, expected
+):
+    from seohead.servers import monitor_handlers
+
+    calls = []
+    monkeypatch.setattr(
+        monitor_handlers, "monitor_collect", lambda **kwargs: calls.append(kwargs) or {"ok": True}
+    )
+    _cli(
+        "monitor-collect",
+        "--input",
+        json.dumps({"directory": "project", "expected_revision": 3, "apply": value}),
+        *flags,
+    )
+    assert calls == [{"directory": "project", "expected_revision": 3, "apply": expected}]

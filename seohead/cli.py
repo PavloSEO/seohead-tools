@@ -137,6 +137,8 @@ COMMANDS = (
     "workflow-resume",
     "monitor-configure",
     "monitor-run",
+    "monitor-collect",
+    "monitor-local-deliver",
     "monitor-status",
     "monitor-schedule",
     "project-facts",
@@ -516,6 +518,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "all_pages", False):
             kw["only_indexable"] = False
         # items[] is intentionally accepted through --input JSON.
+    elif cmd in {"monitor-collect", "monitor-local-deliver"}:
+        for name in ("directory", "expected_revision", "scan_id", "apply"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     elif cmd in {
         "workflow-start",
         "workflow-checkpoint",
@@ -2040,8 +2047,26 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "workflow-resume",
     }:
         _source_flag(sub, "--directory", help="project directory")
-    if cmd in {"monitor-configure", "monitor-run", "monitor-status", "monitor-schedule"}:
+    if cmd in {
+        "monitor-configure",
+        "monitor-run",
+        "monitor-status",
+        "monitor-schedule",
+        "monitor-collect",
+        "monitor-local-deliver",
+    }:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd in {"monitor-collect", "monitor-local-deliver"}:
+        sub.add_argument("--expected-revision", type=int, help="current monitoring revision")
+    if cmd == "monitor-collect":
+        sub.add_argument(
+            "--apply",
+            action="store_true",
+            default=None,
+            help="explicitly fetch the existing claimed plan; preview by default",
+        )
+    if cmd == "monitor-local-deliver":
+        sub.add_argument("--scan-id", help="retained monitor run identifier for a local receipt")
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")

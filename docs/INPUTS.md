@@ -161,6 +161,8 @@ and this decision makes no backend migration.
 | `monitor-status` | Project directory (`directory`) | — |
 | `monitor-configure` | Project directory (`directory`); requires `policy` | — |
 | `monitor-run` | Project directory (`directory`); requires `scan_id, observations, expected_revision` | Records supplied retained-scan differences only; it starts no schedule or delivery. |
+| `monitor-collect` | Project directory (`directory`); requires `expected_revision`<br>Selector (`expected_revision, apply`) | Preview by default; explicit apply collects only an existing validated bounded claim. No timer or delivery starts. |
+| `monitor-local-deliver` | Project directory (`directory`); requires `scan_id, expected_revision`<br>Selector (`scan_id, expected_revision`) | Records a local:receipt only; no network, external transport or recipient delivery claim. |
 | `monitor-schedule` | Project directory (`directory`); requires `action, expected_revision` | Claims, cancels, backs off, or recovers a local bounded pass; it starts no timer. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |

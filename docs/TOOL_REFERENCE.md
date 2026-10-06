@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**155 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 160 in total.
+**157 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 162 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1653,6 +1653,46 @@ Claim or recover a local run; no timer, crawl, or delivery starts here.
 | `consumer` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `monitor-collect`
+
+MCP name: `seo_monitor_collect`
+
+Preview or explicitly collect one previously claimed bounded monitor plan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `apply` | `bool` | `False` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+The default preview makes no HTTP request. apply=true collects only the
+validated claim, retains body/validation provenance within its bounds and
+records failed, partial or complete outcomes. Expired or interrupted claims
+require an explicit new start. No timer, background service or delivery starts.
+
+### `monitor-local-deliver`
+
+MCP name: `seo_monitor_local_deliver`
+
+Record a deduplicated local receipt for one retained monitoring run.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `scan_id` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+The destination is fixed to local:receipt. It uses no network or external
+transport and does not claim that any recipient outside the project received it.
 
 ### `monitor-status`
 

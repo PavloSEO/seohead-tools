@@ -1836,6 +1836,38 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files_from_web, structured_output=True)
+    def seo_monitor_collect(
+        directory: str, expected_revision: int, apply: bool = False
+    ) -> dict[str, Any]:
+        """Preview or explicitly collect one previously claimed bounded monitor plan.
+
+        The default preview makes no HTTP request. apply=true collects only the
+        validated claim, retains body/validation provenance within its bounds and
+        records failed, partial or complete outcomes. Expired or interrupted claims
+        require an explicit new start. No timer, background service or delivery starts.
+        """
+        return _checked(
+            handlers.monitor_collect(
+                directory=directory, expected_revision=expected_revision, apply=apply
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_monitor_local_deliver(
+        directory: str, scan_id: str, expected_revision: int
+    ) -> dict[str, Any]:
+        """Record a deduplicated local receipt for one retained monitoring run.
+
+        The destination is fixed to local:receipt. It uses no network or external
+        transport and does not claim that any recipient outside the project received it.
+        """
+        return _checked(
+            handlers.monitor_local_deliver(
+                directory=directory, scan_id=scan_id, expected_revision=expected_revision
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_monitor_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Read local monitor policy and its last retained checkpoint."""

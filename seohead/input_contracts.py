@@ -920,6 +920,20 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         note="Records supplied retained-scan differences only; it starts no schedule or delivery.",
     ),
     _command(
+        "monitor-collect",
+        "monitor_collect",
+        _form("project_directory", "directory", required_with=("expected_revision",)),
+        _form("selector", "expected_revision", "apply"),
+        note="Preview by default; explicit apply collects only an existing validated bounded claim. No timer or delivery starts.",
+    ),
+    _command(
+        "monitor-local-deliver",
+        "monitor_local_deliver",
+        _form("project_directory", "directory", required_with=("scan_id", "expected_revision")),
+        _form("selector", "scan_id", "expected_revision"),
+        note="Records a local:receipt only; no network, external transport or recipient delivery claim.",
+    ),
+    _command(
         "monitor-schedule",
         "monitor_schedule",
         _form(

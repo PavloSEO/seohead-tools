@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 155 commands and 160 callable tools,
+The current registry has 157 commands and 162 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -35,26 +35,27 @@ and inputs remain in the nearby route sections and generated tool reference.
 `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
 `llms-txt-check` · `log-analyze` · `log-scan` · `markdown-extract` · `marketing-inventory` ·
 `meta-description-drafts` · `metrika-counters` · `metrika-report` · `metrika-setup` · `metrika-traffic-pdf` ·
-`miratext-analyze` · `mirror-check` · `monitor-configure` · `monitor-run` · `monitor-schedule` ·
-`monitor-status` · `parse` · `project-activity` · `project-checklist-init` · `project-checklist-page` ·
-`project-checklist-record` · `project-checklist-update` · `project-facts` · `project-inbox-acknowledge` ·
-`project-inbox-goal` · `project-inbox-list` · `project-inbox-read` · `project-inbox-submit` ·
-`project-inbox-triage` · `project-inbox-unread` · `project-new` · `project-observe` · `project-open` ·
-`project-policy` · `project-prepare` · `project-priorities` · `project-progress` · `project-scans` ·
-`project-start` · `project-status` · `project-task-detail` · `project-view-list` · `project-view-save` ·
-`project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` ·
-`provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` ·
-`redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` · `remediation-recheck` ·
-`remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` ·
-`render-check` · `report-build` · `robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` ·
-`scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` ·
-`scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` · `scan-rendered-routes` ·
-`scan-requeue` · `scan-snapshot` · `scan-status` · `scenario-show` · `schema-build` · `schema-check` ·
-`security-check` · `segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` ·
-`sitemap-crawl` · `skill-list` · `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` ·
-`sources-export` · `sources-status` · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` ·
-`topvisor-read` · `verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` ·
-`workflow-execute` · `workflow-resume` · `workflow-start` · `workflow-status`
+`miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
+`monitor-run` · `monitor-schedule` · `monitor-status` · `parse` · `project-activity` ·
+`project-checklist-init` · `project-checklist-page` · `project-checklist-record` · `project-checklist-update`
+· `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
+`project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
+`project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
+`project-priorities` · `project-progress` · `project-scans` · `project-start` · `project-status` ·
+`project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
+`provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
+`provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
+`regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` ·
+`remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
+`robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` ·
+`scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` ·
+`scan-prune` · `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` ·
+`scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` · `semantic-inputs` ·
+`semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` · `skill-show` ·
+`social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status` ·
+`sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
+`wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` ·
+`workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
 ## Offline bounded comparison
 
@@ -717,7 +718,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(155 + 5):
+(157 + 5):
 
 ```bash
 seohead mcp        # stdio
@@ -750,3 +751,12 @@ exhaustive listing or representative sample. Streamed audit.v2 PDF inputs requir
 explicit policy. Materialized inputs and other formats refuse it. Both the PDF and
 its companion directory must be new. See [PDF_OVERVIEW.md](PDF_OVERVIEW.md) for display,
 disk and publication limits.
+
+## One-shot monitoring
+
+After configuring and explicitly claiming a bounded monitor plan, `monitor-collect`
+previews it. Add `--apply` to collect exactly that claim. The collector records source
+provenance and partial/failure states; it does not start a scheduler or delivery.
+`monitor-local-deliver` records a deduplicated `local:receipt` for a retained run,
+without contacting an external recipient. Both require the current monitoring revision.
+See [PROJECTS.md](PROJECTS.md) for the claim and local receipt sequence.

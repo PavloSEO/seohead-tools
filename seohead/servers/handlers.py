@@ -4381,6 +4381,20 @@ def monitor_run(
     return run(directory, scan_id, observations, expected_revision)
 
 
+def monitor_collect(directory: str, expected_revision: int, apply: bool = False) -> dict[str, Any]:
+    """Preview or explicitly collect one existing bounded monitoring claim."""
+    from seohead.servers.monitor_handlers import monitor_collect as core
+
+    return core(directory=directory, expected_revision=expected_revision, apply=apply)
+
+
+def monitor_local_deliver(directory: str, scan_id: str, expected_revision: int) -> dict[str, Any]:
+    """Record a local monitoring receipt without an external transport."""
+    from seohead.servers.monitor_handlers import monitor_local_deliver as core
+
+    return core(directory=directory, scan_id=scan_id, expected_revision=expected_revision)
+
+
 def monitor_status(directory: str) -> dict[str, Any]:
     from seohead.projects.monitoring import status
 
@@ -5655,6 +5669,8 @@ _RAW_HANDLERS = {
     "workflow_resume": workflow_resume,
     "monitor_configure": monitor_configure,
     "monitor_run": monitor_run,
+    "monitor_collect": monitor_collect,
+    "monitor_local_deliver": monitor_local_deliver,
     "monitor_status": monitor_status,
     "monitor_schedule": monitor_schedule,
     "remediation_cases": remediation_cases,
