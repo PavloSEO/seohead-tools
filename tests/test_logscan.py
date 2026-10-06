@@ -346,3 +346,72 @@ def test_scan_stays_quiet_when_no_check_dominates(tmp_path):
     result = scan(run)
 
     assert not [a for a in result["anomalies"] if a["rule"] == "check_describes_most_of_the_site"]
+
+
+def test_native_audit_v2_streams_counts_without_materializing_legacy(tmp_path, monkeypatch):
+    from contextlib import closing
+    from pathlib import Path
+
+    from seohead.storage import open_scan
+    from seohead.storage.audit_v2 import AuditV2Reader, write_audit_v2
+    from tests.test_scan_hreflang_graph import BASE, _capture, _html, _Response
+
+    document = _capture(
+        tmp_path,
+        {
+            BASE: _Response(_html(body='<a href="/fr/">French</a>')),
+            BASE + "fr/": _Response(_html()),
+        },
+    )
+    path = tmp_path / "scan.sqlite"
+    with closing(open_scan(path)) as con:
+        scan = con.execute("SELECT * FROM scan").fetchone()
+        binding = {
+            "scan_uuid": scan["scan_uuid"],
+            "evidence_revision": scan["evidence_revision"],
+            "analyzer_version": scan["writer_version"],
+            "analyzer_revision": scan["writer_revision"],
+        }
+    header = {**document, "issues": [], "pages": [], "summary": {"by_check": {"TITLE_MISSING": 70}}}
+    write_audit_v2(
+        path,
+        header,
+        {
+            "/pages": document["pages"],
+            "/issues": (
+                {"check": "TITLE_MISSING", "target_url": f"{BASE}missing-{index // 2}"}
+                for index in range(70)
+            ),
+        },
+        binding,
+    )
+    monkeypatch.setattr(
+        AuditV2Reader,
+        "materialize_legacy",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy audit materialization")
+        ),
+    )
+    with logscan.load_run(str(path)) as artifacts:
+        index_path = Path(artifacts.pages.path)
+        assert not isinstance(artifacts.pages, list)
+        assert not isinstance(artifacts.audit["issues"], list)
+        result = logscan.scan(artifacts, max_per_rule=3)
+        assert result["read"]["pages"] == 2
+        assert result["read"]["audit"] is True
+        assert result["by_rule"]["findings_are_about_crawled_urls"] == 35
+        examples = [
+            item
+            for item in result["anomalies"]
+            if item["rule"] == "findings_are_about_crawled_urls"
+        ]
+        assert len(examples) == 3
+        assert "#pages" in examples[0]["sources"]["expected"]
+        assert "decisions.jsonl" in result["limitations"][0]
+        # Re-reading the source does not retain the previous rule's dedup set.
+        assert (
+            logscan.scan(artifacts, max_per_rule=0)["by_rule"]["findings_are_about_crawled_urls"]
+            == 35
+        )
+    assert not index_path.exists()
+    assert handlers.log_scan(run=str(tmp_path), max_per_rule=1)["read"]["pages"] == 2

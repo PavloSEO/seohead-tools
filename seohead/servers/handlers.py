@@ -2820,7 +2820,7 @@ def log_scan(
 ) -> dict[str, Any]:
     """Report claims a finished run makes that cannot all be true at once.
 
-    ``run`` is a directory holding ``audit.json``, ``pages.jsonl`` and/or
+    ``run`` is a retained native scan path, or a directory holding ``audit.json``, ``pages.jsonl`` and/or
     ``decisions.jsonl`` — whatever ``crawl-site --out-dir`` or ``sf run --out`` wrote.
     ``decisions.jsonl`` (issue #134) is the per-URL exclusion log a native crawl writes
     beside ``pages.jsonl``; it lets a rule catch a contradiction that never survives into
@@ -2836,16 +2836,16 @@ def log_scan(
     from seohead.tools import logscan
 
     if not run:
-        raise ValueError("log_scan needs a run directory")
-    artifacts = logscan.load_run(run, images_dir)
-    if artifacts.audit is None and not artifacts.pages:
-        return {
-            "ok": False,
-            "error": f"no audit.json or pages.jsonl in {run}",
-            "anomalies": [],
-            "anomaly_count": 0,
-        }
-    return logscan.scan(artifacts, max_per_rule=max_per_rule)
+        raise ValueError("log_scan needs a run directory or native scan path")
+    with logscan.load_run(run, images_dir) as artifacts:
+        if artifacts.audit is None and not artifacts.pages:
+            return {
+                "ok": False,
+                "error": f"no audit.json or pages.jsonl or retained native evidence in {run}",
+                "anomalies": [],
+                "anomaly_count": 0,
+            }
+        return logscan.scan(artifacts, max_per_rule=max_per_rule)
 
 
 def crawl_diagnose(
