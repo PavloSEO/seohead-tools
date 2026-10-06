@@ -142,10 +142,28 @@ launching controller and, for a live Screaming Frog run, its spawned collector
 PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
 The observer records a process-start identity where the OS exposes one, so a
 reused PID is never presented as the original collector. A crawler's discovered frontier and configured URL budget are separate
-values; neither is presented as a site-total percentage. Screaming Frog exposes
-no reliable live URL counter, so its counter fields stay unavailable while its
-collection/analysis phases remain observable. The observer only reads these
+values; neither is presented as a site-total percentage. Screaming Frog counters
+are shown only when recognized collector progress output supplies them. Unsupported
+or missing output leaves counters unavailable while collection/analysis phases
+remain observable. The observer only reads these
 records and never starts, cancels, resumes, or acknowledges a run.
+
+`n` writes one explicit project note and `g` writes one explicit proposed goal.
+They accept ordinary terminal text, including OS dictation committed as text; no
+speech-recognition integration is involved. These are the only writes from the
+observer. Reading a screen never marks an inbox entry read, acknowledged, or
+accepted. Agents receive a bounded unread summary only when their MCP process
+has an explicit consumer identity and a matching project allowlist; see
+[MCP_PROFILES.md](MCP_PROFILES.md) for the local stdio boundary.
+
+An agent controller records a processed specialist note with `project-inbox-triage`.
+The receipt names current `custom:` checklist tasks, a stored proposed goal, retained
+competitor candidates, or a specific blocked/rejected reason. It never parses note text
+into commands, accepts a goal, acknowledges a note, starts a crawl, or treats a candidate
+as a completed competitor audit. Before an execution workflow starts, its controller must
+create or update a current incomplete custom task and pass that task, its separately
+accepted goal, and the registered prompt through the workflow context. Record in-progress
+and completed task states only through the existing evidence and review contracts.
 
 ## Explicit monitor collection
 
@@ -164,22 +182,11 @@ service. An expired or interrupted claim is never replayed automatically: the
 operator must create a new claim. Local receipt recording is explicit and has no
 external destination or transport.
 
-`n` writes one explicit project note and `g` writes one explicit proposed goal.
-They accept ordinary terminal text, including OS dictation committed as text; no
-speech-recognition integration is involved. These are the only writes from the
-observer. Reading a screen never marks an inbox entry read, acknowledged, or
-accepted. Agents receive a bounded unread summary only when their MCP process
-has an explicit consumer identity and a matching project allowlist; see
-[MCP_PROFILES.md](MCP_PROFILES.md) for the local stdio boundary.
-
-An agent controller records a processed specialist note with `project-inbox-triage`.
-The receipt names current `custom:` checklist tasks, a stored proposed goal, retained
-competitor candidates, or a specific blocked/rejected reason. It never parses note text
-into commands, accepts a goal, acknowledges a note, starts a crawl, or treats a candidate
-as a completed competitor audit. Before an execution workflow starts, its controller must
-create or update a current incomplete custom task and pass that task, its separately
-accepted goal, and the registered prompt through the workflow context. Record in-progress
-and completed task states only through the existing evidence and review contracts.
+Use `monitor-configure`, then a `monitor-schedule` start action to create the claim.
+Pass its current revision to `monitor-collect`; add `--apply` only for the explicit
+collection call. After collection, pass the returned run identifier and current
+revision to `monitor-local-deliver`. The same operations are available as
+`seo_monitor_collect` and `seo_monitor_local_deliver` on the local MCP server.
 
 ## Recording stack facts
 
