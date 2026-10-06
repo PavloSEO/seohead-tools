@@ -187,13 +187,19 @@ def test_sf_and_inbox_tabs_expose_bound_runs_and_human_notes(tmp_path):
     sf = "\n".join(
         line.plain for line in _watch_lines(str(root), state, palette, None, snapshot=snapshot)
     )
-    assert "sf_exports" in sf and "Collector PID not recorded" in sf
+    assert "Supplied Screaming Frog exports" in sf
+    state.handle_key("enter")
+    from seohead.tui.app import _watch_detail_lines
+
+    detail = "\n".join(line.plain for line in _watch_detail_lines(str(root), state, palette))
+    assert "Collector" in detail and "Not recorded" in detail
+    state.handle_key("escape")
     assert "unavailable" in sf
     state.handle_key("char:0")
     inbox = "\n".join(
         line.plain for line in _watch_lines(str(root), state, palette, None, snapshot=snapshot)
     )
-    assert "Please inspect this competitor" in inbox and "waiting for agent" in inbox
+    assert "Please inspect this competitor" in inbox and "waiting for agent" in inbox.lower()
     state.handle_key("enter")
     assert state.watch_detail_kind == "inbox"
 
@@ -334,9 +340,10 @@ def test_task_page_keys_read_the_next_durable_checklist_page(tmp_path):
     state.handle_key("page_down")
     second = _watch_lines(str(root), state, palette, None, snapshot=snapshot)
     expected = project_progress(root, limit=50, offset=50)
-    assert expected["items"][0]["id"] in second[4].plain
+    assert expected["items"][0]["title"] in second[4].plain
+    assert state.watch_item_id == expected["items"][0]["id"]
     assert first[4].plain != second[4].plain
-    assert "page offset 50" in second[3].plain
+    assert "51-100" in second[3].plain
 
 
 def test_imported_scan_unknown_frontier_does_not_crash_dashboard(tmp_path, monkeypatch):
@@ -447,4 +454,4 @@ def test_watch_frame_browses_a_retained_finding_and_its_evidence(tmp_path):
             project=str(root),
         )
     )
-    assert "retained evidence" in console.export_text()
+    assert "retained evidence" in console.export_text().lower()
