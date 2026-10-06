@@ -43,11 +43,13 @@ saved evidence. The collector never guesses another host's scheme or starts a cr
 
 ## Offline join and report
 
-The private `provider-*.json` artifact is understood by existing evidence normalization:
+The private `provider-*.json` artifact is understood by existing evidence normalization.
+Replace the illustrative `provider-example.json` filename below with the path returned
+by collection; the example does not create a new provider artifact:
 
 ```bash
-seohead evidence-normalize --file ./provider-evidence/provider-<digest>.json --out-dir ./normalized
-seohead evidence-join --scan ./native.sqlite --evidence ./provider-evidence/provider-<digest>.json --out-dir ./joined
+seohead evidence-normalize --file ./provider-evidence/provider-example.json --out-dir ./normalized
+seohead evidence-join --scan ./native.sqlite --evidence ./provider-evidence/provider-example.json --out-dir ./joined
 ```
 
 Pass the generated join artifact to `bi-export --scan ./native.sqlite --provider-join <join-artifact>
