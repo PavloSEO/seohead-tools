@@ -481,6 +481,9 @@ def main(argv: list[str] | None = None) -> int:
             counters={"fetched": None, "queued": None, "inflight": None, "excluded": None},
         )
         observed = (str(root), run["id"])
+        from seohead.projects.run_observation import NativeRunReporter
+
+        run_reporter = NativeRunReporter(root, run["id"], source="sf")
         record_phase(
             "collection" if input_mode in {"crawl", "crawl-list", "load-crawl"} else "analysis"
         )
@@ -554,7 +557,11 @@ def main(argv: list[str] | None = None) -> int:
             from seohead.terminal_progress import elapsed_progress, show_banner
 
             licensed_run = input_mode in {"crawl", "crawl-list", "load-crawl"}
-            observer_kwargs = {"on_started": collector_started} if observed is not None else {}
+            observer_kwargs = (
+                {"on_started": collector_started, "on_progress": run_reporter.observe_counts}
+                if observed is not None
+                else {}
+            )
             if licensed_run:
                 show_banner(
                     "Screaming Frog run started; elapsed time only because SF exposes no crawl percentage.",

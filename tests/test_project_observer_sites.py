@@ -95,7 +95,8 @@ def test_observer_projects_scans_coverage_and_methods_per_declared_site(tmp_path
     }
     assert owner["scans"]["items"][0]["evidence"]["state"] == "available"
     assert owner["coverage"]["state"] == "initialized"
-    assert owner["methods"]["kinds"]["scenario"]["expected"] > 0
+    assert owner["methods"]["kinds"]["scenario"]["expected"] is None
+    assert owner["methods"]["kinds"]["scenario"]["applicable"] > 0
     assert owner["methods"]["kinds"]["scenario"]["completed"] == 0
     assert competitor_one["role"] == competitor_two["role"] == "competitor"
     assert competitor_one["candidate"]["state"] == "candidate; audit not run"

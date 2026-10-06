@@ -529,9 +529,13 @@ def prepare_project(
         lock.unlink(missing_ok=True)
 
 
-def aggregate_coverage(directory: str, primary: dict) -> dict:
+def aggregate_coverage(
+    directory: str, primary: dict, *, _coverage_views: dict | None = None
+) -> dict:
     """Combine declared site checklists without assigning another site's evidence to a row."""
     root, project = _load(directory)
+    views = {} if _coverage_views is None else _coverage_views
+    views[str(root)] = primary
     preparation = preparation_status(directory)
     children = preparation.get("competitors", [])
     if not children:
@@ -565,12 +569,15 @@ def aggregate_coverage(directory: str, primary: dict) -> dict:
         ):
             raise ValueError("competitor project identity mismatch")
         seen.add(metadata["project_uuid"])
+        child_key = str(path.resolve())
+        if child_key not in views:
+            views[child_key] = coverage_status(path)
         sites.append(
             {
                 "directory": relative,
                 "project_uuid": metadata["project_uuid"],
                 "site": metadata["site"]["target"],
-                "checklist": coverage_status(path),
+                "checklist": views[child_key],
             }
         )
     result = copy.deepcopy(primary)

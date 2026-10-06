@@ -182,8 +182,9 @@ def _review(value: Any, execution_kind: str, state: str) -> dict[str, str] | Non
     }
 
 
-def _rows(root: Path) -> dict[str, dict[str, Any]]:
-    view = coverage_status(root)
+def _rows(root: Path, view: dict | None = None) -> dict[str, dict[str, Any]]:
+    if view is None:
+        view = coverage_status(root)
     if view.get("state") == "not_initialized":
         return {}
     items = view.get("items")
@@ -430,9 +431,9 @@ def resume(directory: str | Path, *, run_id: str, expected_revision: int) -> dic
     }
 
 
-def status(directory: str | Path) -> dict[str, Any]:
+def status(directory: str | Path, *, _coverage: dict | None = None) -> dict[str, Any]:
     root, _, document = _load(directory)
-    rows = _rows(root)
+    rows = _rows(root, _coverage)
     runs = [_public_run(run, rows) for run in document["runs"]]
     active = next((run for run in reversed(runs) if run["state"] == "running"), None)
     resumable = next(

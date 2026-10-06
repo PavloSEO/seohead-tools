@@ -27,6 +27,8 @@ NAME = "run-observation.json"
 MAX_RUNS = 100
 MAX_EVENTS_PER_RUN = 200
 MAX_EVENT_MESSAGE = 240
+STALE_SAMPLE_SECONDS = 5.0
+RATE_WINDOW_SECONDS = 5.0
 WRITE_ATTEMPTS = 5
 _KINDS = {"native", "screaming_frog"}
 _STATES = {"running", "finished", "partial", "failed", "cancelled"}
@@ -92,6 +94,15 @@ def _normalize(document: dict[str, Any]) -> None:
     for run in document.get("runs", []) if isinstance(document.get("runs"), list) else []:
         if not isinstance(run, dict):
             continue
+        run.setdefault(
+            "telemetry",
+            {
+                "sampled_at": None,
+                "rate_window_seconds": None,
+                "queue_semantics": "unknown",
+                "source": "legacy",
+            },
+        )
         if "controller_pid" not in run and "pid" in run:
             run["controller_pid"] = run["pid"]
             run["controller_start_identity"] = None
@@ -129,6 +140,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             "counters",
             "finish_reason",
             "events",
+            "telemetry",
         }:
             raise ValueError("run observation contains an unsupported run")
         _text(run["id"], "run id", 64)
@@ -197,6 +209,28 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
                     raise ValueError("run observation rate is invalid")
             else:
                 _optional_counter(value, name)
+        telemetry = run["telemetry"]
+        if not isinstance(telemetry, dict) or set(telemetry) != {
+            "sampled_at",
+            "rate_window_seconds",
+            "queue_semantics",
+            "source",
+        }:
+            raise ValueError("run telemetry has an unsupported shape")
+        if telemetry["sampled_at"] is not None:
+            if not isinstance(telemetry["sampled_at"], str):
+                raise ValueError("run sample timestamp must be text")
+            stamp = datetime.fromisoformat(telemetry["sampled_at"].replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                raise ValueError("run sample timestamp must include a timezone")
+        window = telemetry["rate_window_seconds"]
+        if window is not None and (
+            type(window) not in {float, int} or not math.isfinite(window) or window < 0
+        ):
+            raise ValueError("run rate window is invalid")
+        if telemetry["queue_semantics"] not in {"unknown", "separate", "outstanding"}:
+            raise ValueError("run queue semantics is invalid")
+        _text(telemetry["source"], "telemetry source", 64)
         if run["finish_reason"] is not None and not isinstance(run["finish_reason"], str):
             raise ValueError("run observation finish reason is invalid")
         if not isinstance(run["events"], list) or len(run["events"]) > MAX_EVENTS_PER_RUN:
@@ -301,17 +335,27 @@ def start(
             "artifact": _relative_artifact(root, artifact),
             "counters": {
                 **{
-                    name: _optional_counter((counters or {}).get(name, 0), name)
+                    name: _optional_counter((counters or {}).get(name), name)
                     for name in ("fetched", "queued", "inflight", "excluded")
                 },
                 "rate_per_second": (counters or {}).get("rate_per_second"),
             },
             "finish_reason": None,
             "events": [],
+            "telemetry": {
+                "sampled_at": None,
+                "rate_window_seconds": None,
+                "queue_semantics": "unknown",
+                "source": "collector",
+            },
         }
         _event(run, "admission", "started")
+        if len(document["runs"]) >= MAX_RUNS:
+            terminal = next((item for item in document["runs"] if item["state"] != "running"), None)
+            if terminal is None:
+                raise ValueError("run observation capacity reached; active runs cannot be evicted")
+            document["runs"].remove(terminal)
         document["runs"].append(run)
-        del document["runs"][:-MAX_RUNS]
         try:
             _save(root, document)
             return copy.deepcopy(run)
@@ -359,11 +403,14 @@ def progress(
     directory: str | Path,
     run_id: str,
     *,
-    fetched: int,
-    queued: int,
-    inflight: int = 0,
-    excluded: int = 0,
+    fetched: int | None,
+    queued: int | None,
+    inflight: int | None = None,
+    excluded: int | None = None,
     rate_per_second: float | None = None,
+    rate_window_seconds: float | None = None,
+    queue_semantics: str = "separate",
+    source: str = "collector",
 ) -> None:
     """Record measured collector counters; no percentage or site total is inferred."""
     root, _project, document = _load(directory)
@@ -371,10 +418,10 @@ def progress(
     if run["state"] != "running":
         return
     values = {
-        "fetched": _counter(fetched, "fetched"),
-        "queued": _counter(queued, "queued"),
-        "inflight": _counter(inflight, "inflight"),
-        "excluded": _counter(excluded, "excluded"),
+        "fetched": _optional_counter(fetched, "fetched"),
+        "queued": _optional_counter(queued, "queued"),
+        "inflight": _optional_counter(inflight, "inflight"),
+        "excluded": _optional_counter(excluded, "excluded"),
         "rate_per_second": rate_per_second,
     }
     if rate_per_second is not None and (
@@ -384,6 +431,13 @@ def progress(
     ):
         raise ValueError("rate_per_second must be a finite nonnegative float")
     run["counters"] = values
+    run["telemetry"] = {
+        "sampled_at": _now(),
+        "rate_window_seconds": rate_window_seconds,
+        "queue_semantics": queue_semantics,
+        "source": source,
+    }
+    _validate(document, document["project_uuid"])
     _event(run, "collection", "progress")
     _save(root, document)
 
@@ -401,7 +455,7 @@ def finish(
     normalized_counters = (
         {
             **{
-                name: _optional_counter(counters.get(name, 0), name)
+                name: _optional_counter(counters.get(name), name)
                 for name in ("fetched", "queued", "inflight", "excluded")
             },
             "rate_per_second": counters.get("rate_per_second"),
@@ -418,6 +472,7 @@ def finish(
             return
         if normalized_counters is not None:
             run["counters"] = normalized_counters
+            run["telemetry"]["sampled_at"] = finished_at
         run["state"] = state
         run["finish_reason"] = finish_reason
         run["finished_at"] = finished_at
@@ -458,16 +513,25 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
         raise ValueError(f"run observation limit must be 1..{MAX_RUNS}")
     _root, _project, document = _load(directory)
     rows = []
-    for run in reversed(document["runs"][-limit:]):
+    active = [run for run in document["runs"] if run["state"] == "running"]
+    terminal = [run for run in document["runs"] if run["state"] != "running"][-limit:]
+    selected_ids = {run["id"] for run in active + terminal}
+    runtime_cache: dict[tuple, str] = {}
+
+    def runtime(pid, identity, running):
+        key = (pid, identity, running)
+        if key not in runtime_cache:
+            runtime_cache[key] = _runtime_state(pid, identity, running=running)
+        return runtime_cache[key]
+
+    for run in reversed(document["runs"]):
+        if run["id"] not in selected_ids:
+            continue
         row = copy.deepcopy(run)
         observed_at = _now()
         running = run["state"] == "running"
-        controller_state = _runtime_state(
-            run["controller_pid"], run["controller_start_identity"], running=running
-        )
-        collector_state = _runtime_state(
-            run["collector_pid"], run["collector_start_identity"], running=running
-        )
+        controller_state = runtime(run["controller_pid"], run["controller_start_identity"], running)
+        collector_state = runtime(run["collector_pid"], run["collector_start_identity"], running)
         row["pid_state"] = controller_state
         row["controller"] = {
             "pid": run["controller_pid"],
@@ -482,53 +546,121 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
             "state": collector_state,
             "observed_at": observed_at,
         }
+        sampled = row["telemetry"]["sampled_at"]
+        age = (
+            None
+            if sampled is None
+            else max(
+                0.0,
+                (
+                    datetime.now(timezone.utc)
+                    - datetime.fromisoformat(sampled.replace("Z", "+00:00"))
+                ).total_seconds(),
+            )
+        )
+        freshness = (
+            "unavailable"
+            if age is None
+            else "retained"
+            if not running
+            else "stale"
+            if age > STALE_SAMPLE_SECONDS
+            else "fresh"
+        )
+        row["telemetry"].update(
+            unit="urls_including_resources"
+            if row["telemetry"]["source"].startswith("sf_")
+            else "pages",
+            age_seconds=age,
+            state=freshness,
+            current_rate_per_second=row["counters"]["rate_per_second"]
+            if freshness == "fresh"
+            else None,
+        )
         rows.append(row)
     return {
         "ok": True,
         "revision": document["revision"],
         "total": len(document["runs"]),
+        "active_total": len(active),
         "items": rows,
         "has_more": len(document["runs"]) > len(rows),
     }
 
 
 class NativeRunReporter:
-    """Throttle durable progress writes while preserving every caller's terminal callback."""
+    """Coalesce measured counters without inventing values absent from legacy callbacks."""
 
-    def __init__(self, directory: str | Path, run_id: str, downstream=None) -> None:
+    def __init__(
+        self, directory: str | Path, run_id: str, downstream=None, *, source="native"
+    ) -> None:
         self.directory = str(directory)
         self.run_id = run_id
         self.downstream = downstream
-        self.last_write = 0.0
+        self.last_write: float | None = None
         self.fetched = 0
         self.queued = 0
-        self.samples: deque[tuple[float, int]] = deque(maxlen=2)
+        self.inflight = None
+        self.excluded = None
+        self.samples: deque[tuple[float, int]] = deque(maxlen=64)
         self.rate_per_second: float | None = None
+        self.rate_window_seconds: float | None = None
+        self.structured = False
+        self.source = source
 
     def __call__(self, fetched: int, queued: int) -> None:
         if self.downstream is not None:
             self.downstream(fetched, queued)
-        self.fetched = fetched
-        self.queued = queued
+        if not self.structured:
+            self._record(fetched, queued, None, None, "outstanding")
+
+    def observe_counts(self, counters: dict) -> None:
+        """Receive the native writer's transaction-consistent separate counters."""
+        self.structured = True
+        self._record(
+            *(counters.get(key) for key in ("fetched", "queued", "inflight", "excluded")),
+            "separate",
+            force=bool(counters.get("final", False)),
+        )
+
+    def _record(self, fetched, queued, inflight, excluded, semantics, *, force=False):
+        self.fetched, self.queued = fetched, queued
+        self.inflight, self.excluded = inflight, excluded
         now = time.monotonic()
-        self.samples.append((now, fetched))
-        if len(self.samples) == 2:
-            (then, prior), (current, total) = self.samples
-            self.rate_per_second = (total - prior) / (current - then) if current > then else None
-        if self.last_write and now - self.last_write < 0.5:
+        if not force and self.last_write is not None and now - self.last_write < 0.5:
             return
-        self.last_write = now
+        if self.samples and (
+            fetched < self.samples[-1][1] or now - self.samples[-1][0] > RATE_WINDOW_SECONDS
+        ):
+            self.samples.clear()
+        self.samples.append((now, fetched))
+        while len(self.samples) > 2 and now - self.samples[1][0] >= RATE_WINDOW_SECONDS:
+            self.samples.popleft()
+        then, prior = self.samples[0]
+        self.rate_window_seconds = now - then if now > then else None
+        self.rate_per_second = (fetched - prior) / (now - then) if now > then else None
         try:
             progress(
                 self.directory,
                 self.run_id,
                 fetched=fetched,
                 queued=queued,
+                inflight=inflight,
+                excluded=excluded,
                 rate_per_second=self.rate_per_second,
+                rate_window_seconds=self.rate_window_seconds,
+                queue_semantics=semantics,
+                source=(
+                    "sf_stdout_19_8"
+                    if self.source == "sf"
+                    else "native_frontier"
+                    if self.structured
+                    else "native_callback"
+                ),
             )
         except (OSError, ValueError):
-            # Observation persistence never turns a successful collector into a failed crawl.
             return
+        self.last_write = now
 
     def enter(self, name: str, *, code: str = "entered") -> None:
         try:
@@ -536,11 +668,11 @@ class NativeRunReporter:
         except (OSError, ValueError):
             return
 
-    def counters(self) -> dict[str, int]:
+    def counters(self) -> dict[str, int | float | None]:
         return {
             "fetched": self.fetched,
             "queued": self.queued,
-            "inflight": 0,
-            "excluded": 0,
+            "inflight": self.inflight,
+            "excluded": self.excluded,
             "rate_per_second": self.rate_per_second,
         }
