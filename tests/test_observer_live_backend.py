@@ -247,3 +247,45 @@ def test_large_finding_projection_reports_truncation_without_losing_source_ident
     result = observer._finding_summary({"id": "stable", "message": "x" * 10000}, 123)
     assert result["id"] == "stable" and result["ordinal"] == 123
     assert len(result["message"]) == 4097 and result["truncated_fields"] == ["message"]
+
+
+def test_sitemap_run_records_only_measured_documents_and_declared_urls(tmp_path):
+    root = _project(tmp_path)
+    run = run_observation.start(
+        root,
+        kind="sitemap",
+        mode="sitemap",
+        max_urls=0,
+        config_fingerprint="synthetic",
+        artifact=None,
+    )
+    pending = run_observation.status(root)["items"][0]
+    assert all(value is None for value in pending["counters"].values())
+    assert pending["telemetry"]["unit"] == "sitemap_documents"
+    run_observation.finish_sitemap(
+        root,
+        run["id"],
+        {
+            "ok": True,
+            "root": "https://example.test/sitemap.xml",
+            "count": 25,
+            "sitemaps": [{"url": "https://example.test/sitemap.xml"}],
+            "errors": [{"error": "unavailable child"}],
+            "truncated": False,
+        },
+    )
+    row = run_observation.status(root)["items"][0]
+    assert row["state"] == "partial" and row["finish_reason"] == "source_errors"
+    assert row["counters"]["fetched"] == 1
+    assert row["source_metadata"]["declared_url_count"] == 25
+    assert row["telemetry"]["current_rate_per_second"] is None
+    assert "percent" not in row
+
+
+def test_unsupported_sf_huge_numbers_cannot_abort_a_collector():
+    assert (
+        runner.parse_sf_progress(
+            "[mActive=" + "1" * 5000 + ", mCompleted=1, mWaiting=0, mCompleted=100%]"
+        )
+        is None
+    )

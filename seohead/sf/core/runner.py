@@ -532,8 +532,8 @@ def _run_watched(
 
 SF_OUTPUT_TAIL_CHARS = 32 * 1024
 _SF_PROGRESS = re.compile(
-    r"\[mActive=(\d+), mCompleted=(\d{1,3}(?:,\d{3})+|\d+), "
-    r"mWaiting=(\d+), mCompleted=(\d+(?:[.,]\d+)?)%\]"
+    r"\[mActive=(\d{1,18}), mCompleted=(\d{1,3}(?:,\d{3}){1,5}|\d{1,18}), "
+    r"mWaiting=(\d{1,18}), mCompleted=(\d{1,3}(?:[.,]\d{1,6})?)%\]"
 )
 
 

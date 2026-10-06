@@ -564,7 +564,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             if licensed_run:
                 show_banner(
-                    "Screaming Frog run started; elapsed time only because SF exposes no crawl percentage.",
+                    "Screaming Frog run started; measured counters appear in the project observer when supported.",
                     quiet=args.quiet,
                 )
             with elapsed_progress("Screaming Frog run", enabled=licensed_run and not args.quiet):

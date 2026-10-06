@@ -30,7 +30,8 @@ MAX_EVENT_MESSAGE = 240
 STALE_SAMPLE_SECONDS = 5.0
 RATE_WINDOW_SECONDS = 5.0
 WRITE_ATTEMPTS = 5
-_KINDS = {"native", "screaming_frog"}
+_KINDS = {"native", "screaming_frog", "sitemap"}
+_MODES = {"spider", "list", "sf_live", "sf_exports", "sitemap"}
 _STATES = {"running", "finished", "partial", "failed", "cancelled"}
 _PHASES = {"admission", "collection", "render", "external", "analysis", "finalizing"}
 
@@ -94,6 +95,7 @@ def _normalize(document: dict[str, Any]) -> None:
     for run in document.get("runs", []) if isinstance(document.get("runs"), list) else []:
         if not isinstance(run, dict):
             continue
+        run.setdefault("source_metadata", None)
         run.setdefault(
             "telemetry",
             {
@@ -141,6 +143,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             "finish_reason",
             "events",
             "telemetry",
+            "source_metadata",
         }:
             raise ValueError("run observation contains an unsupported run")
         _text(run["id"], "run id", 64)
@@ -176,7 +179,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             "resumed",
         }:
             raise ValueError("run observation collector shape is invalid")
-        if run["collector"]["mode"] not in {"spider", "list", "sf_live", "sf_exports"}:
+        if run["collector"]["mode"] not in _MODES:
             raise ValueError("run observation collector mode is invalid")
         _counter(run["collector"]["max_urls"], "collector max_urls")
         _counter(run["collector"]["max_requests"], "collector max_requests")
@@ -209,6 +212,20 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
                     raise ValueError("run observation rate is invalid")
             else:
                 _optional_counter(value, name)
+        source = run["source_metadata"]
+        if source is not None:
+            if (
+                run["kind"] != "sitemap"
+                or not isinstance(source, dict)
+                or set(source)
+                != {"root", "declared_url_count", "parsed_documents", "error_count", "truncated"}
+            ):
+                raise ValueError("run source metadata has an unsupported shape")
+            _text(source["root"], "sitemap root", 8192)
+            for name in ("declared_url_count", "parsed_documents", "error_count"):
+                _counter(source[name], name)
+            if type(source["truncated"]) is not bool:
+                raise ValueError("sitemap truncated state must be boolean")
         telemetry = run["telemetry"]
         if not isinstance(telemetry, dict) or set(telemetry) != {
             "sampled_at",
@@ -292,7 +309,7 @@ def start(
     counters: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     """Persist one project-bound local collector before it starts doing work."""
-    if kind not in _KINDS or mode not in {"spider", "list", "sf_live", "sf_exports"}:
+    if kind not in _KINDS or mode not in _MODES:
         raise ValueError("run kind or collector mode is invalid")
     _counter(max_urls, "max_urls")
     _counter(max_requests, "max_requests")
@@ -342,6 +359,7 @@ def start(
             },
             "finish_reason": None,
             "events": [],
+            "source_metadata": None,
             "telemetry": {
                 "sampled_at": None,
                 "rate_window_seconds": None,
@@ -486,6 +504,73 @@ def finish(
             _retry_delay(attempt)
 
 
+def finish_sitemap(directory: str | Path, run_id: str, result: dict) -> None:
+    """Retain final parsed-document evidence, never infer fetched HTML or completion ratio."""
+    if (
+        not isinstance(result, dict)
+        or not isinstance(result.get("sitemaps"), list)
+        or not isinstance(result.get("errors"), list)
+    ):
+        raise ValueError("sitemap result requires measured document and error lists")
+    metadata = {
+        "root": _text(result.get("root"), "sitemap root", 8192),
+        "declared_url_count": _counter(result.get("count"), "declared URL count"),
+        "parsed_documents": len(result["sitemaps"]),
+        "error_count": len(result["errors"]),
+        "truncated": result.get("truncated"),
+    }
+    if type(metadata["truncated"]) is not bool or type(result.get("ok")) is not bool:
+        raise ValueError("sitemap result requires explicit success and truncation states")
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = _find(document, run_id)
+        if run["kind"] != "sitemap":
+            raise ValueError("sitemap result belongs to a sitemap run")
+        if run["state"] != "running":
+            return
+        stamp = _now()
+        run["source_metadata"] = metadata
+        run["counters"] = {
+            "fetched": metadata["parsed_documents"],
+            "queued": None,
+            "inflight": None,
+            "excluded": None,
+            "rate_per_second": None,
+        }
+        run["telemetry"] = {
+            "sampled_at": stamp,
+            "rate_window_seconds": None,
+            "queue_semantics": "unknown",
+            "source": "sitemap_result",
+        }
+        run["state"] = (
+            "failed"
+            if not result["ok"]
+            else "partial"
+            if metadata["truncated"] or metadata["error_count"]
+            else "finished"
+        )
+        run["finish_reason"] = (
+            "sitemap_failed"
+            if not result["ok"]
+            else "truncated"
+            if metadata["truncated"]
+            else "source_errors"
+            if metadata["error_count"]
+            else "finished"
+        )
+        run["finished_at"] = stamp
+        _event(run, "finalizing", run["state"])
+        _validate(document, document["project_uuid"])
+        try:
+            _save(root, document)
+            return
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
+
+
 def _runtime_state(pid: int | None, identity: str | None, *, running: bool) -> str:
     if not running:
         return "retained"
@@ -568,7 +653,9 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
             else "fresh"
         )
         row["telemetry"].update(
-            unit="urls_including_resources"
+            unit="sitemap_documents"
+            if row["kind"] == "sitemap"
+            else "urls_including_resources"
             if row["telemetry"]["source"].startswith("sf_")
             else "pages",
             age_seconds=age,
