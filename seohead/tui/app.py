@@ -145,7 +145,8 @@ def _command_reference(name: str) -> list[str]:
     subparsers = next(action for action in parser._actions if isinstance(action, _SubParsersAction))
     command = subparsers.choices.get(name)
     description = (
-        getdoc(HANDLERS.get(name)) or "Command group; choose one of its listed subcommands."
+        getdoc(HANDLERS.get(name.replace("-", "_")))
+        or "Command group; choose one of its listed subcommands."
     )
     return [
         name,

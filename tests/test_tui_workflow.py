@@ -237,3 +237,12 @@ def test_note_from_task_context_saves_the_exact_selected_task_reference(tmp_path
     message = _save_note(str(root), state)
     assert "saved" in message and not state.note_error
     assert "task:custom:late" in list_entries(root, consumer="test")["entries"][0]["references"]
+
+
+def test_hyphenated_command_help_uses_shared_handler_description():
+    from seohead.tui.app import _command_reference
+
+    lines = _command_reference("compare-crawls")
+    assert "Diff two audits" in lines[1]
+    assert "Command group" not in lines[1]
+    assert "--out-dir" in "\n".join(lines)
