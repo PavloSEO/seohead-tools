@@ -308,5 +308,16 @@ def read_document_navigation(con, document_id: int) -> dict[str, object]:
     return {
         "document_id": document_id,
         "representation": document["representation"],
+        "renderer": {
+            key: renderer[key]
+            for key in ("engine", "engine_version", "settings", "navigation_transform")
+            if key in renderer
+        },
+        "requested_url": resolve_url(renderer["navigation_url_id"])
+        if renderer.get("navigation_url_id")
+        else None,
+        "final_url": resolve_url(renderer["final_url_id"])
+        if renderer.get("final_url_id")
+        else None,
         "navigation": expand_navigation(navigation, resolve_url),
     }

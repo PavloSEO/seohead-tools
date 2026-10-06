@@ -125,23 +125,12 @@ def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
         if page_view
         else [PageRecord(**page) for page in _page_rows(scan.con)]
     )
-    context = [
-        (row["kind"], json.loads(row["payload_json"]))
-        for row in scan.con.execute(
-            "SELECT kind,payload_json FROM context_items WHERE kind IN ('robots_blocked_url','seed_url','robots_summary') ORDER BY kind,item_key"
-        )
-    ]
-    result.robots_blocked = [
-        scan.con.execute("SELECT url FROM urls WHERE url_id=?", (item["url_id"],)).fetchone()[0]
-        for kind, item in context
-        if kind == "robots_blocked_url"
-    ]
-    result.seed_urls = [
-        scan.con.execute("SELECT url FROM urls WHERE url_id=?", (item["url_id"],)).fetchone()[0]
-        for kind, item in context
-        if kind == "seed_url"
-    ]
-    robots_summary = next((item for kind, item in context if kind == "robots_summary"), None)
+    result.robots_blocked = _StoredContextURLs(scan.con, "robots_blocked_url")
+    result.seed_urls = _StoredContextURLs(scan.con, "seed_url")
+    summary_row = scan.con.execute(
+        "SELECT payload_json FROM context_items WHERE kind='robots_summary' AND item_key='run'"
+    ).fetchone()
+    robots_summary = json.loads(summary_row[0]) if summary_row else None
     result.robots_note = robots_summary["note"] if robots_summary is not None else ""
     snapshot = scan.resume_snapshot()
     result.partial = bool(snapshot["scan"]["crawl_partial"])
@@ -153,6 +142,25 @@ def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
     result.effective_concurrency = snapshot["runtime"]["throttle"]["concurrency"]
     result.limitations = json.loads(snapshot["scan"]["limitations_json"])
     return result
+
+
+class _StoredContextURLs:
+    """Count or iterate retained discovery identities without materializing them."""
+
+    def __init__(self, con, kind):
+        self.con, self.kind = con, kind
+
+    def __len__(self):
+        return self.con.execute(
+            "SELECT COUNT(*) FROM context_items WHERE kind=?", (self.kind,)
+        ).fetchone()[0]
+
+    def __iter__(self):
+        for row in self.con.execute(
+            "SELECT u.url FROM context_items c JOIN urls u ON u.url_id=json_extract(c.payload_json,'$.url_id') WHERE c.kind=? ORDER BY c.item_key",
+            (self.kind,),
+        ):
+            yield row[0]
 
 
 class _StoredPages:
