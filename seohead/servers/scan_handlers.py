@@ -521,7 +521,6 @@ def crawl_site_scan(
                     if run.dispatch_gate is not None
                     else None,
                     proxy_route=proxy_route,
-                    streaming=True,
                 )
                 queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
             if not queued_before or run.partial:

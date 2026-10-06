@@ -93,6 +93,8 @@ def navigation_origin(monkeypatch):
             body = "<html><title>Owned fixture</title><body><h1>Navigation evidence</h1>Fixture content</body></html>"
             if self.path == "/routes":
                 body += "<script>history.pushState({},'', '?q=1');location.hash='part';setTimeout(()=>location.assign('/done'),30)</script>"
+            if self.path == "/forms":
+                body += "<script>document.body.insertAdjacentHTML('beforeend', '<form action=/send><input name=a></form><form action=/other><input name=b></form>')</script>"
             if self.path == "/anchor":
                 body += "<a href='/done' id='next'>Next</a><script>setTimeout(()=>document.querySelector('#next').click(),30)</script>"
             if self.path == "/loop":
@@ -320,3 +322,43 @@ def test_real_remote_navigation_keeps_pinned_policy_without_local_fallback(
         if process.poll() is None:
             process.terminate()
             process.communicate(timeout=10)
+
+
+def test_public_native_js_crawl_reaches_browser_and_retains_real_forms(navigation_origin, tmp_path):
+    from seohead.servers import handlers
+    from seohead.storage import open_scan
+
+    path = tmp_path / "native-js.seohead"
+    result = handlers.crawl_site(
+        url=navigation_origin + "/forms",
+        scan_out=str(path),
+        producer_build="a" * 40,
+        overrides={
+            "limits.max_urls": 1,
+            "speed.min_delay_seconds": 0,
+            "robots.policy": "ignore",
+            "sitemaps.auto_discover": False,
+            "rendering.mode": "js",
+            "rendering.escalation.policy": "full",
+            "rendering.escalation.max_render_urls": 1,
+            "rendering.escalation.max_render_seconds": 30,
+            "rendering.rendered_links.crawl": True,
+        },
+    )
+    assert result.get("ok", True) and result["audit_available"], result
+    con = open_scan(path)
+    try:
+        assert (
+            con.execute(
+                "SELECT COUNT(*) FROM forms WHERE evidence_representation='rendered'"
+            ).fetchone()[0]
+            == 2
+        )
+        assert (
+            con.execute(
+                "SELECT COUNT(*) FROM documents WHERE representation='rendered' AND body_state='complete'"
+            ).fetchone()[0]
+            == 1
+        )
+    finally:
+        con.close()
