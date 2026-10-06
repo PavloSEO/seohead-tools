@@ -194,3 +194,53 @@ def test_catalogue_body_profile_is_varied_reproducible_and_reports_entropy():
     assert sample == _body_profile_summary(varied)
     assert sample["sampled_pages"] == 20
     assert sample["sample_byte_entropy_bits"] > 4
+
+
+def test_consumer_failure_preserves_producer_checkpoint_and_failed_phase(tmp_path, monkeypatch):
+    import json
+
+    from seohead.servers import handlers
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("intentional consumer failure")
+
+    monkeypatch.setattr(handlers, "scan_reanalyze", fail)
+    output = tmp_path / "failed-consumer"
+    with pytest.raises(RuntimeError, match="intentional consumer"):
+        run_stage(output, pages=8, shard_size=4, interrupt_after=2, consumers=True)
+    checkpoint = json.loads((output / "producer-result.json").read_text())
+    assert checkpoint["status"] == "producer_passed_consumers_pending"
+    assert checkpoint["conservation"]["pages"] == 8
+    phases = json.loads((output / "consumers/progress.json").read_text())["phases"]
+    assert phases["reanalysis"]["state"] == "failed"
+    assert phases["export"]["state"] == "returned"
+    assert not (output / "result.json").exists()
+
+
+def test_consumer_retry_preserves_capture_and_only_fetches_fresh_selected_url(
+    tmp_path, monkeypatch
+):
+    from scripts.accept_million_crawl import run_consumers_only
+    from seohead.servers import scan_handlers
+
+    original = run_stage(
+        tmp_path / "original", pages=8, shard_size=4, interrupt_after=2, consumers=False
+    )
+    call = scan_handlers.crawl_site_scan
+    budgets = []
+
+    def selected_only(*args, **kwargs):
+        budgets.append(kwargs["settings"]["limits"]["max_urls"])
+        assert budgets[-1] == 1
+        return call(*args, **kwargs)
+
+    monkeypatch.setattr(scan_handlers, "crawl_site_scan", selected_only)
+    result = run_consumers_only(
+        tmp_path / "original/native.sqlite", tmp_path / "retry", comparison_compression="gzip"
+    )
+    assert budgets == [1]
+    assert result["mode"] == "consumers_only"
+    assert result["capture_source_revision"] == original["source_revision"]
+    consumers = result["consumers"]
+    assert consumers["source_sha256_before"] == consumers["source_sha256_after"]
+    assert consumers["source_audit_sha256_before"] == consumers["source_audit_sha256_after"]

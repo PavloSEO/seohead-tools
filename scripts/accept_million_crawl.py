@@ -633,6 +633,36 @@ def _recheck_consumers(scan: Path, output: Path, revision: str, pages: int) -> d
     }
 
 
+@contextmanager
+def _consumer_phase(output: Path, phases: dict, name: str):
+    started = time.monotonic()
+    phases[name] = {"state": "running", "started_monotonic": started}
+
+    def persist():
+        temporary = output / ".progress.tmp"
+        temporary.write_text(
+            json.dumps({"schema": "seohead.consumer-progress.v1", "phases": phases}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(output / "progress.json")
+
+    persist()
+    try:
+        yield
+    except BaseException as exc:
+        phases[name].update(state="failed", error=f"{type(exc).__name__}: {str(exc)[:2048]}")
+        raise
+    else:
+        phases[name]["state"] = "returned"
+    finally:
+        phases[name].update(
+            elapsed_seconds=round(time.monotonic() - started, 3),
+            cumulative_peak_rss_mib=_peak_rss_mib(),
+        )
+        persist()
+
+
 def _consumers(
     scan: Path, output: Path, revision: str, *, comparison_compression: str = "none"
 ) -> dict[str, Any]:
@@ -641,7 +671,8 @@ def _consumers(
     from seohead.storage.audit_v2 import AuditV2Reader
 
     output.mkdir(parents=True, exist_ok=True)
-    with AuditV2Reader(scan) as reader:
+    phases = {}
+    with _consumer_phase(output, phases, "audit_read"), AuditV2Reader(scan) as reader:
         audit_v2 = {pointer: reader.count(pointer) for pointer in reader.collections}
         if audit_v2.get("/pages") != 0 and audit_v2.get("/issues") is None:
             raise AssertionError("audit.v2 lacks its finding collection")
@@ -671,34 +702,44 @@ def _consumers(
     before_hash = _file_hash(scan)
     companion_path = scan.with_name(scan.name + ".audit-v2.sqlite")
     before_audit_hash = _file_hash(companion_path)
-    task_backlog = build_tasks_from_audit_v2(str(scan))
-    export = handlers.scan_export(
-        input_path=str(scan),
-        out=str(output / "scan-export.csv"),
-        format="csv",
-        records=["pages"],
-        fields={"pages": ["url", "status_code", "title", "canonical"]},
-    )
-    report = handlers.report_build(audit=str(scan), fmt="csv", out=str(output / "audit-report.csv"))
-    status = handlers.scan_status(input_path=str(scan))
-    diagnosis = handlers.crawl_diagnose(scan=str(scan))
-    consistency = handlers.log_scan(run=str(scan))
+    with _consumer_phase(output, phases, "tasks"):
+        task_backlog = build_tasks_from_audit_v2(str(scan))
+    with _consumer_phase(output, phases, "export"):
+        export = handlers.scan_export(
+            input_path=str(scan),
+            out=str(output / "scan-export.csv"),
+            format="csv",
+            records=["pages"],
+            fields={"pages": ["url", "status_code", "title", "canonical"]},
+        )
+    with _consumer_phase(output, phases, "report"):
+        report = handlers.report_build(
+            audit=str(scan), fmt="csv", out=str(output / "audit-report.csv")
+        )
+    with _consumer_phase(output, phases, "status"):
+        status = handlers.scan_status(input_path=str(scan))
+    with _consumer_phase(output, phases, "diagnosis"):
+        diagnosis = handlers.crawl_diagnose(scan=str(scan))
+    with _consumer_phase(output, phases, "log_scan"):
+        consistency = handlers.log_scan(run=str(scan))
     if not consistency.get("ok") or consistency.get("read", {}).get("pages") != audit_v2["/pages"]:
         raise AssertionError(
             f"consistency consumer failed to read full population: {consistency!r}"
         )
-    reanalysis = handlers.scan_reanalyze(
-        input_path=str(scan), out=str(output / "reanalysis.sqlite"), producer_build=revision
-    )
+    with _consumer_phase(output, phases, "reanalysis"):
+        reanalysis = handlers.scan_reanalyze(
+            input_path=str(scan), out=str(output / "reanalysis.sqlite"), producer_build=revision
+        )
     compare_options = (
         {"compression": comparison_compression} if comparison_compression != "none" else {}
     )
-    comparison = handlers.compare_crawls(
-        before=str(scan),
-        after=str(output / "reanalysis.sqlite"),
-        out_dir=str(output / "comparison"),
-        **compare_options,
-    )
+    with _consumer_phase(output, phases, "compare"):
+        comparison = handlers.compare_crawls(
+            before=str(scan),
+            after=str(output / "reanalysis.sqlite"),
+            out_dir=str(output / "comparison"),
+            **compare_options,
+        )
     from seohead.sf.core.compare_store import iter_compare_rows
 
     comparison_roundtrip = {
@@ -714,7 +755,8 @@ def _consumers(
         or comparison["conservation"]["before_issues"] != audit_v2["/issues"]
     ):
         raise AssertionError(f"bounded comparison did not conserve source findings: {comparison!r}")
-    recheck = _recheck_consumers(scan, output, revision, audit_v2["/pages"])
+    with _consumer_phase(output, phases, "recheck"):
+        recheck = _recheck_consumers(scan, output, revision, audit_v2["/pages"])
     after_hash = _file_hash(scan)
     after_audit_hash = _file_hash(companion_path)
     if before_hash != after_hash or before_audit_hash != after_audit_hash:
@@ -881,6 +923,20 @@ def run_stage(
         },
     }
     record["capture_audit_seconds"] = record["elapsed_seconds"]
+    (output / "producer-result.json").write_text(
+        json.dumps(
+            {
+                **record,
+                "status": "producer_passed_consumers_pending"
+                if consumers
+                else "producer_passed_consumers_skipped",
+            },
+            indent=2,
+            default=str,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     if consumers:
         record["consumers"] = _consumers(
             scan, output / "consumers", revision, comparison_compression=comparison_compression
@@ -891,6 +947,46 @@ def run_stage(
         json.dumps(record, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
     )
     return record
+
+
+def run_consumers_only(
+    scan: Path, output: Path, *, comparison_compression: str = "none"
+) -> dict[str, Any]:
+    """Recheck consumers against a preserved synthetic capture without recollection."""
+    from contextlib import closing
+
+    from seohead.storage import open_scan
+
+    started = time.monotonic()
+    loaded_code, loaded_callables = _loaded_code(), _loaded_callable_code()
+    with closing(open_scan(scan, require_audit=False)) as con:
+        source = dict(
+            con.execute("SELECT writer_revision,start_url FROM scan WHERE singleton=1").fetchone()
+        )
+    if source["start_url"] != START_URL:
+        raise ValueError("capacity consumer retry requires the owned synthetic fixture origin")
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("consumer retry output must be empty or new")
+    output.mkdir(parents=True, exist_ok=True)
+    consumers = _consumers(
+        scan, output / "consumers", _revision(), comparison_compression=comparison_compression
+    )
+    result = {
+        "status": "passed",
+        "mode": "consumers_only",
+        "capture_source_revision": source["writer_revision"],
+        "consumer_source_revision": _revision(),
+        "scan": str(scan),
+        "loaded_code": loaded_code,
+        "loaded_callable_code": loaded_callables,
+        "consumers": consumers,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "peak_rss_mib": _peak_rss_mib(),
+    }
+    (output / "result.json").write_text(
+        json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    return result
 
 
 def _parse_stages(value: str) -> list[int]:
@@ -914,6 +1010,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stages", type=_parse_stages, default=[50_000, 100_000, 1_000_000])
     parser.add_argument("--shard-size", type=int, default=50_000)
     parser.add_argument("--interrupt-after", type=int, default=25_000)
+    parser.add_argument(
+        "--input-scan",
+        type=Path,
+        help="retry all consumers on an existing owned synthetic capture; never recollect it",
+    )
     parser.add_argument("--skip-consumers", action="store_true")
     parser.add_argument("--links-per-page", type=int, default=1)
     parser.add_argument("--forms-per-page", type=int, default=0)
@@ -934,6 +1035,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     if status.stdout.strip():
         parser.error("capacity acceptance requires a clean, frozen source checkout")
+    if args.input_scan is not None:
+        if args.skip_consumers:
+            parser.error("--input-scan cannot skip consumers")
+        try:
+            result = run_consumers_only(
+                args.input_scan, args.out, comparison_compression=args.comparison_compression
+            )
+        except BaseException:
+            import traceback
+
+            args.out.mkdir(parents=True, exist_ok=True)
+            (args.out / "consumer-failure.txt").write_text(traceback.format_exc(), encoding="utf-8")
+            return 1
+        print(json.dumps(result, indent=2, default=str))
+        return 0
     args.out.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, Any]] = []
     for pages in args.stages:
