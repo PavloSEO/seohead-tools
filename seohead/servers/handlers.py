@@ -1935,7 +1935,13 @@ def _audit_crawl_result(
         # the writer has consumed every collection.
         for rows in collections.values():
             rows._context_owner = ctx
-        return {"summary": header["summary"], "segments": header["segments"]}, (header, collections)
+        return {
+            "summary": header["summary"],
+            "segments": header["segments"],
+            "requires_rendering": requires_rendering,
+            "requires_rendering_reason": requires_rendering_reason,
+            "render_escalation": render_summary,
+        }, (header, collections)
     audit = audit_result.to_json()
     # Page and issue counts per named segment (#358) -- only when the operator
     # actually declared segments, so a plain crawl's audit.json is unchanged.

@@ -106,7 +106,12 @@ def _saved_semantic_audit(path):
     with open_scan(path) as scan:
         audit = read_audit(str(path))
         assert_saved_contract(audit, scan)
-    return semantic_audit(audit)
+        stored_uuid = scan.execute("SELECT scan_uuid FROM scan WHERE singleton=1").fetchone()[0]
+        assert audit["run"]["scan_uuid"] == stored_uuid
+    semantic = semantic_audit(audit)
+    # Compare crawl evidence after checking this separately bound artifact identity.
+    semantic["run"].pop("scan_uuid")
+    return semantic
 
 
 def test_a_killed_scan_crawl_resumed_fetches_every_url_once_and_audits_the_same(
@@ -138,7 +143,12 @@ def test_a_killed_scan_crawl_resumed_fetches_every_url_once_and_audits_the_same(
     assert Counter(request_log) == uninterrupted
     assert max(Counter(request_log).values()) == 1
 
-    # Exactly one difference, and it is the one that must be there: an audit that matched
+    assert (
+        NativeScan.inspect(whole)["scan"]["scan_uuid"]
+        != NativeScan.inspect(resumable)["scan"]["scan_uuid"]
+    )
+
+    # Exactly one semantic difference, and it is the one that must be there: an audit that matched
     # in every other field would leave a resumed run indistinguishable from a whole one.
     assert set(_differences(_saved_semantic_audit(resumable), _saved_semantic_audit(whole))) == {
         "/run/crawl_resumed"

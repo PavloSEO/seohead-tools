@@ -196,6 +196,7 @@ def _response(run, *, audit_available: bool, audit_reason: str, finalized: bool)
         "links_collected": run.links,
         "forms_collected": run.forms,
         "partial": run.partial,
+        "resumed": getattr(run, "resumed", False),
         "finish_reason": run.finish_reason,
         "audit_available": audit_available,
         "audit_reason": audit_reason,

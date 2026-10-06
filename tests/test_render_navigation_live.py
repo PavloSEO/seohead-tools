@@ -324,9 +324,19 @@ def test_real_remote_navigation_keeps_pinned_policy_without_local_fallback(
             process.communicate(timeout=10)
 
 
-def test_public_native_js_crawl_reaches_browser_and_retains_real_forms(navigation_origin, tmp_path):
+def test_public_native_js_crawl_reaches_browser_and_retains_real_forms(
+    navigation_origin, tmp_path, monkeypatch
+):
     from seohead.servers import handlers
+    from seohead.sf.core.models import AuditResult
     from seohead.storage import open_scan
+    from seohead.storage.audit_v2 import AuditV2Reader
+
+    def refuse_materialization(*_args, **_kwargs):
+        pytest.fail("native response metadata must not materialize audit collections")
+
+    monkeypatch.setattr(AuditResult, "to_json", refuse_materialization)
+    monkeypatch.setattr(AuditV2Reader, "materialize_legacy", refuse_materialization)
 
     path = tmp_path / "native-js.seohead"
     result = handlers.crawl_site(
@@ -346,6 +356,13 @@ def test_public_native_js_crawl_reaches_browser_and_retains_real_forms(navigatio
         },
     )
     assert result.get("ok", True) and result["audit_available"], result
+    assert result["resumed"] is False
+    assert result["render_escalation"]["render_requests"] == 1
+    with AuditV2Reader(path) as audit:
+        recorded = audit.header["run"]
+        assert type(result["requires_rendering"]) is bool
+        for field in ("requires_rendering", "requires_rendering_reason", "render_escalation"):
+            assert result[field] == recorded[field]
     con = open_scan(path)
     try:
         assert (
