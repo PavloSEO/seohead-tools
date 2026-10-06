@@ -1,8 +1,8 @@
-# Project control: prepare an inspectable local audit workspace
+# Project control: configure, analyze, review and hand off
 
-Use this when a specialist needs one project folder that states what ran, what
-did not run, and what evidence still needs review. It does not turn a prepared
-workspace into a completed audit or a delivered report.
+Use this when an SEO engineer and an agent need repeatable work: define the question, configure
+collection and extraction, reuse evidence, prioritize findings, deliver work and retain the next step.
+The project records that process; its creation or preparation alone does not complete the audit.
 
 ## 1. Read the available playbooks
 
@@ -32,6 +32,58 @@ the created workspace.
 the current `expected_revision`; a crawl above the project thresholds requires
 the explicit `approve_large_crawl` input. Record a checklist result only from
 supplied evidence, with its own expected revision.
+
+## 4. Configure the measurement, then reuse it
+
+`project-policy` governs the preparation budget. A crawler JSON passed through `crawl-site --config`
+controls the actual measurement; `crawl-site --config-help` describes every current key and default.
+These are distinct from the analyzer/task pipeline in the repository's `config.example.json`.
+
+For example, save this as `crawl.json` after checking the target's markup and agreed scope:
+
+```json
+{
+  "limits": {"max_urls": 25, "max_requests": 75, "max_crawl_seconds": 60},
+  "speed": {"min_delay_seconds": 1, "concurrency": 1, "adaptive": true},
+  "scope": {"exclude_patterns": ["/cart(?:/|$)"]},
+  "evidence": {
+    "content_area": {"root_selector": "main", "exclude_selectors": [".related"]},
+    "extraction_rules": [{
+      "id": "primary-heading", "kind": "text", "selector": "main h1",
+      "operator": "exists", "value": "", "max_matches": 1
+    }]
+  }
+}
+```
+
+The content selectors change the main-content signature, not the URL frontier. The extraction rule
+records what the selected representation contains; it is not a custom Python check. Inspect one
+representative template's retained output before relying on a site-wide extraction. A missing or
+wrong selector must not be described as evidence that the page has no content.
+
+```bash
+seohead crawl-site --url https://example.com --config ./crawl.json --scan-out native.sqlite
+seohead crawl-diagnose --scan native.sqlite
+seohead report-build --audit native.sqlite --format xlsx --out audit.xlsx
+```
+
+For a project-bound run, supply `--project` with that workspace. Save the returned artifact identity
+and available audit/coverage in the corresponding task record. Reanalysis and `scan-extract` can use
+retained evidence offline when their input contracts allow it; they cannot recover bodies that were
+never retained. Configuration changes affecting collection require an explicitly scoped new capture.
+
+## 5. Decide, deliver and continue
+
+Use [the developer handoff](deliverable.md) to produce the requested Excel, task backlog and evidence
+exports. Save review decisions in the project; keep finding repairs and rechecks in the separate
+[remediation ledger](../LEDGER.md). A new agent reads `project-progress`, task detail, workflow status
+and artifact references before defining more work. Changed scope, definitions or evidence may make
+old work stale; do not relabel it complete.
+
+Refinement is explicit: an engineer/agent may adjust supported collection/extraction settings,
+`tasks_pipeline` grouping/priorities, project work priorities, or a saved report finding view. Retain
+the old inputs and explain the new question. No observer, skill lookup or checklist read rewrites
+configs or runs the next iteration automatically.
 
 ## Acceptance
 

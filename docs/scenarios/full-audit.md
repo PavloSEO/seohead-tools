@@ -2,7 +2,8 @@
 
 ## The question
 
-“Audit this site fully and give me a report I can act on.”
+“Audit this site for the agreed scope. Give the developers an Excel of tasks, all needed
+exports and evidence links, proposed changes, and acceptance/recheck criteria.”
 
 ## The chain
 
@@ -21,8 +22,8 @@ and reuse its audit and page evidence:
 
 Before the first collection or long-running analysis, offer the specialist the optional second-screen
 observer once for the current session and project. Start it only after an explicit yes; an accepted
-or declined answer is not asked again for the same project in that session. The observer is local,
-read-only, and never starts a scan:
+or declined answer is not asked again for the same project in that session. The observer reads local project state and never starts a scan; saving a note or proposed goal
+is an explicit local write:
 
 ```bash
 seohead watch --project ./project-directory
@@ -31,7 +32,8 @@ seohead watch --project ./project-directory
 It requires an existing explicit project workspace. Do not create a project, launch a shell, or
 start a watcher merely because the offer was shown. MCP callers use `seo_project_observe` for the
 same read-only snapshot after the choice; configured unread notes arrive only on a later
-project-bound tool call and never enter the agent chat automatically.
+project-bound tool call and never enter the agent chat automatically. Already granted observation
+authorization is enough; a declined or unanswered optional offer does not block authorized work.
 
 ```bash
 seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./run
@@ -53,6 +55,12 @@ collector. Load specialist methods for applicable questions and point each one a
 evidence. Verify critical findings before delivery or label them unverified. Report the audit's
 actual coverage and every skipped, failed, or unavailable measurement.
 
+For the developer request, continue with [the engineering handoff](deliverable.md), using
+`sf tasks` on the saved native/SF audit and `report-build` for its factual workbook. The agent
+needs a spreadsheet-authoring capability to make the final task workbook and must review its
+proposed fixes and acceptance criteria. Source-code references require access to the target code;
+otherwise retain direct evidence links and name the access gap.
+
 `project-prepare` can initialize a bounded local workspace, but it does not run the full method set
 or establish full-audit completion. Keep its preparation status separate from the audit report.
 
@@ -72,9 +80,10 @@ providers without explicit authorization.
 
 ## What it cannot answer
 
-This workflow does not prove that every possible registry check ran, infer clean results from
-missing evidence, or provide project-checklist completion percentages. There is no shipped
-applicability/denominator contract for that checklist. It does not automatically publish fixes,
+This workflow does not prove that every possible registry check ran or infer clean results from
+missing evidence. [Project coverage](../PROJECTS.md#checklist-coverage) uses explicit agreed tasks
+and URL populations, applicability reviews and stale-evidence rules; its named completion axes
+are not site-health or remediation percentages. The workflow does not automatically publish fixes,
 measure analytics properties without access, or turn a prepared project into a completed audit.
 
 ## Covers

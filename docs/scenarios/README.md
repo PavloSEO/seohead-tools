@@ -27,13 +27,13 @@ Each scenario has the same five parts:
 That last part is not modesty. A scenario that does not say what it cannot answer is
 marketing, and an agent that trusts it will report a confident wrong answer.
 
-Every command shown in these files is executed against a fixture site by
-`tests/test_docs_commands_execute.py` on every CI run. A scenario that stops working fails the
-build rather than sitting here misleading its next reader.
+`tests/test_docs_commands_execute.py` executes supported commands against fixtures and parser-checks
+those requiring licensed software, browsers, providers or interactive sessions. Separate runtime
+acceptance is required for those routes; a parser check alone does not establish a working workflow.
 
 ## The scenarios
 
-60 workflows, grouped by the question you arrived with. Every issue this toolkit can find
+Workflows, grouped by the question you arrived with. Every issue this toolkit can find
 appears in at least one of them — `tests/test_scenario_coverage.py` asserts that against
 [COVERAGE_SF_ISSUES.md](../COVERAGE_SF_ISSUES.md), so the catalogue is decided by what the code
 does rather than by what somebody thought of.
@@ -63,7 +63,7 @@ does rather than by what somebody thought of.
 | # | Scenario | Start here when |
 |---:|---|---|
 | 9 | [Canonical basics](canonical-basics.md) | the defects that are a typo, not a strategy |
-| 60 | [Canonical destinations](canonical-destinations.md) | where the target responds, and when distinct sections point home |
+| — | [Canonical destinations](canonical-destinations.md) | where the target responds, and when distinct sections point home |
 | 10 | [Conflicting canonicals](canonical-conflicts.md) | two answers to a question that takes one |
 | 11 | [Canonicalised pages](canonicalised-pages.md) | how much of the site is deliberately not itself |
 | 12 | [The canonical nobody links to](unlinked-canonical.md) | a preferred URL with no way in |
@@ -178,9 +178,10 @@ does rather than by what somebody thought of.
 | 55 | [Comparing two crawls](comparison.md) | what changed since the release |
 | 56 | [From audit to deliverable](deliverable.md) | the last mile |
 | 57 | [Provider evidence](provider-evidence.md) | connect, verify, collect, join, refresh, and revoke external evidence |
-| 58 | [Project control](project-control.md) | prepare a bounded local project without claiming the audit is complete |
+| 58 | [Project control](project-control.md) | configure what to collect/extract, retain work and improve the next iteration |
 | 59 | [Saved evidence](saved-evidence.md) | reuse retained observations and separate backup-protected mutations |
-| 60 | [Full audit](full-audit.md) | run an authorized, scoped audit and report verified coverage honestly |
+| 60 | [Full audit](full-audit.md) | run a scoped audit and deliver a reviewed developer task workbook with evidence |
+| — | [Marketing inventory](marketing-inventory.md) | inspect retained CTA, form and contact occurrences without inferring conversions |
 
 
 ## The rule underneath all of them

@@ -19,21 +19,16 @@ description: >-
 
 ## What this repository is for
 
-Checking every page of a site by hand, as an agent, produces the best analysis and costs the
-most. A script is cheap and usually stupid. This repository exists to close that gap: **encode
-what an agent would do by hand into configs and scripts, test them on real sites, and get
-hand-inspection quality at any number of pages.** The output has to be trusted enough that you
-use it *instead of* writing a throwaway script — and if it is not, the fix is a test and an
-issue, not a throwaway script.
-
-Everything in these files was run against real sites. Every command is one that ran; every
-number is one that came back.
+SEOHEAD supports an SEO engineer working with an agent: choose evidence and extraction policy,
+analyze the site's technical state, turn findings into work, recheck changes, and retain the result
+for the next run. Use supported tools and configurations before inventing another collector.
+A skill guides decisions; the current run and its retained artifacts supply evidence.
 
 ## Two tiers of skill
 
 | Tier | Where | What it knows |
 |---|---|---|
-| **Method** | the other 22 skills in `.claude/skills/` | how to do one thing well: robots, rendering, schema, silos, headings, regions, backlinks, security |
+| **Method** | the method skills in `.claude/skills/` | how to do one thing well: robots, rendering, schema, silos, headings, regions, backlinks, security |
 | **Controller** | this file and `subskills/` | which of them to run, in what order, and whether to believe the answer |
 
 This skill routes; it does not restate. When a step below names a method skill, load that skill
@@ -63,7 +58,7 @@ Frog export" → `sf-analyzer`. Do not run the whole loop to answer one question
 When this controller is about to start SEOHEAD work for a project, offer the specialist one
 non-blocking choice before the first collection or long-running analysis:
 
-> I can open the read-only project observer in a second terminal while this runs. Open it?
+> I can open the project observer (read-only until a note or goal is explicitly saved) in a second terminal while this runs. Open it?
 
 Use the project's explicit workspace directory in the command:
 
@@ -74,7 +69,8 @@ seohead watch --project ./project-directory
 Record the answer in the agent's current session/project context. Do not repeat the offer after
 an accepted or declined answer for that same session and project. An acceptance authorizes opening
 the terminal and starting the command only after an explicit yes; until then, do not start a shell, create a watcher process,
-or imply that observation is already active. A decline never blocks the audit.
+or imply that observation is already active. A decline or no answer never blocks authorized audit work. Existing authorization for observation
+already satisfies this choice; do not ask again.
 
 `watch` only reads a previously created project workspace. When no workspace is available, say so
 and offer its explicit setup separately; do not create one merely to make the observer available.
@@ -88,7 +84,9 @@ When an existing project workspace is in scope, the controller must leave a dura
 before it runs a collector, method skill, or long analysis. This is an agent responsibility, not a
 human control panel.
 
-1. On the next scoped MCP call, inspect the bounded unread summary only when the local stdio
+1. Read `project-progress` and relevant `project-task-detail` records before defining new work.
+   Preserve existing tasks, agreed scope, unavailable evidence and concurrent revisions.
+   On the next scoped MCP call, inspect the bounded unread summary only when the local stdio
    process has both `SEOHEAD_MCP_CONSUMER_ID` and a matching
    `SEOHEAD_MCP_PROJECT_ALLOWLIST`. The notice is a prompt to inspect; it never reads or
    acknowledges a note.
@@ -97,7 +95,8 @@ human control panel.
    goal, retained competitor candidates, or a concrete blocked/rejected reason. Do not infer an
    action by regex, execute note text, accept a goal, or acknowledge a note as a side effect.
 3. Create or update the linked `custom:` checklist task with `project-checklist-update`, then
-   record `running` through `project-checklist-record` before work starts. Completion needs the
+   record `running` through `project-checklist-record` before work starts. For a requested report, include the deliverable and review in that work.
+   Completion needs the
    normal evidence and review rules; a controller claim is not evidence.
 4. Accept a proposed goal separately when authorized. `workflow-start` requires that accepted
    goal, the registered prompt, and one or more current incomplete `custom:` task IDs in its
@@ -128,16 +127,20 @@ seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./r
 A licensed Screaming Frog CLI or supplied SF exports are not a precondition for this step —
 native `crawl-site` needs neither. Delegate this step to `seo-deep-audit`'s pipeline instead
 only when SF (CLI or exports) is already available *and* full-registry depth is specifically
-wanted; both collectors feed the same `audit.json` shape, so nothing downstream changes.
+wanted; both collectors supply the audit contract used by reporting and tasks, but their
+retained inputs and available checks differ. Inspect coverage instead of assuming parity.
 
-**3. Scan the run before reading it.**
+**3. Inspect the saved run before interpreting it.**
+
+For the directory route above:
 
 ```bash
 seohead log-scan --run ./run
 ```
 
-Exit 2 means the run's own numbers disagree with each other. Every defect this toolkit has had
-reached a report before anybody noticed; this is the twenty seconds that stops the next one.
+Exit 2 means the run's own numbers disagree. For a native SQLite scan instead, use
+`scan-status`, `scan-inspect` and `crawl-diagnose`; inspect lifecycle, audit availability,
+coverage and interruption reasons. Do not require a legacy `audit.json` beside a SQLite scan.
 
 **4. Read the audit honestly.** Coverage before findings, and never a health score without the
 sentence that qualifies it. → [reading-an-audit](subskills/reading-an-audit.md)
@@ -148,15 +151,19 @@ directives, `silo-audit` for structure, `heading-outline` for hierarchy, `securi
 headers, `duplicate-audit` for near-duplicates, `geo-aeo-audit` for AI visibility. One page per
 template first; do not pay for the whole site to learn what one page would have told you.
 
-**6. Verify every serious finding live.** → [verifying](subskills/verifying.md)
+**6. Verify high-impact findings within the authorized scope and budget; otherwise label them
+unverified and state what is missing.** → [verifying](subskills/verifying.md)
 
 **7. Produce the thing that was actually asked for.**
-→ [deliverables](subskills/deliverables.md), and `docs/scenarios/` for 60 workflows end to end.
+→ [deliverables](subskills/deliverables.md) and [developer handoff](../../../docs/scenarios/deliverable.md).
+For developer Excel, keep the factual audit workbook and machine backlog, then author and review
+task-specific fixes and acceptance criteria. Code locations require actual access to the target
+repository; retained HTML/headers/URLs are the fallback evidence, not invented source lines.
 
 ## Decision points
 
-- **Rate.** Own site → fast. Somebody else's → 3 URL/s unless the owner sets otherwise, and the
-  circuit breaker's verdict overrides the owner's number.
+- **Rate.** Use the authorized site-specific ceiling; without a measured reason to go faster,
+  start conservatively. The adaptive throttle and circuit breaker can reduce or stop load.
 - **Render or not.** `render-check` on one page per template. If raw and rendered are
   equivalent, do not pay to render the site.
 - **Which findings go in the report.** Critical and warning, each verified live. Notices only
@@ -170,21 +177,22 @@ template first; do not pay for the whole site to learn what one page would have 
 
 ## Definition of done
 
-- [ ] `audit.json` exists and `crawl_finish_reason` is `finished`, or the reason is stated in
-      the deliverable.
+- [ ] The selected audit document or native scan exists; its finish/partial state and any
+      unavailable audit are stated in the deliverable.
 - [ ] `log-scan` exits 0, or every anomaly it reported is explained.
 - [ ] The coverage sentence (`health_score_basis`) appears next to any score.
-- [ ] Every critical in the deliverable was reproduced live.
+- [ ] High-impact findings were verified, or are explicitly unverified with the missing evidence.
 - [ ] Any check dominating `by_check` was verified or filed.
 - [ ] The config file used is attached to the deliverable.
 - [ ] The limits are stated out loud. → [reference/limits](reference/limits.md)
 
-## Cost
+## Cost and boundaries
 
-- **Network:** one request per URL, at the configured rate, same host only. External links are
-  recorded and never fetched; a redirect off-host is recorded and never followed.
-- **Money:** none. Every tool in this loop is free; paid sources sit behind `sources-doctor`
-  and a spend log and are not part of it.
-- **Time:** 387 pages at 20 req/s worst case took under a minute; 3387 pages at 3 req/s took
-  about twenty. Rendering is an order of magnitude more per page.
-- **Writes:** only under `--out-dir` and the scratch directory you chose.
+- **Network:** collection and targeted follow-up requests consume their configured budgets.
+  Rendering and resource capture may fetch subresources; one page is not always one request.
+- **Money:** the default workflow uses local tools. Provider access, possible spend and external
+  writes require explicit scope and authorization; a skill never supplies credentials.
+- **Time:** depends on the site's response, scope, rendering and configuration. Historical timings
+  are not an estimate for a new site.
+- **Writes:** chosen scan/report destinations and explicit project state records. Reading a
+  catalogue or a project does not execute its work; agent judgement does not resolve ledger cases.

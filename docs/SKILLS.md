@@ -33,6 +33,23 @@ to read the deliverables section. The reference archive matters as much as the s
 every defect found on a live site so far was recognisable by a pattern, and writing those down
 is what lets the next run catch one in minutes instead of an afternoon.
 
+## Discover installed guidance
+
+`seohead skill-list` returns both `workflow/` technical/controller playbooks and the packaged
+`general/` SEO/content methods. Retrieve one with `seohead skill-show --name workflow/control`;
+use `scenario-show` for a concrete sequence. These calls return guidance, not execution.
+An installed wheel reads the generated catalogue, so no repository `.claude` directory is needed.
+
+A skill is useful when it makes a decision the command schema cannot: scope, reuse, interpretation,
+review or handoff. The generated "commands not named" inventory below measures text references,
+not method quality or feature availability. [The capability map](README.md#capability-map) also
+routes workflows whose contracts live in docs instead of a dedicated skill.
+
+For a full audit and developer Excel, use `control` → `full-audit-v1` → `sf-tasks` and
+[the deliverable scenario](scenarios/deliverable.md). Native audits and SF audits can both feed
+the task pipeline; the `sf` command group is a compatibility name, not a licence requirement.
+The agent authors and reviews engineering acceptance criteria; the report formatter supplies facts.
+
 ## How to choose
 
 ```
@@ -54,7 +71,7 @@ Then by the layer of the task.
 
 | Skill | When |
 |---|---|
-| **control** | The single entry point for an unscoped "audit this site" request, or when you are about to write a one-off script to check pages. The whole loop: scope, crawl, `log-scan` the run, read `audit.json`'s honesty fields before its findings, verify criticals live, build the deliverable. Routes to the method skills below rather than restating them; carries its own sub-skills and reference archive. Written against a 4 260-URL run over three live sites |
+| **control** | The single entry point for an unscoped "audit this site" request, or when you are about to write a one-off script to check pages. The whole loop: scope, crawl, `log-scan` the run, read `audit.json`'s honesty fields before its findings, verify criticals live, build the deliverable. Routes to the method skills below rather than restating them; carries its own sub-skills and reference archive. Scope and verification must be established for the current run |
 | **full-audit-v1** | Versioned, addressable execution contract used by `control`: scope and budget gates, evidence reuse, existing collector/method routes, verification, honest coverage and report completion. Adds no checks of its own |
 | **seo-deep-audit** | Not a second unscoped-audit entry point — `control` delegates its crawl step here when a licensed SF CLI or supplied exports are available and full-registry depth is wanted, and it is also fine to call directly once that decision is already made (SF/exports named or already in hand) |
 | **audit-roadmap** | Unfamiliar domain: 5 minutes of recon to decide what to collect next |
@@ -107,10 +124,10 @@ Then by the layer of the task.
 
 ## Tools without a skill of their own
 
-117 of the 157 commands are not named in any skill body.
+112 of the 157 commands are not named in any skill body.
 
 Commands without their own skill:
-`asset-weight-check` · `audit-workflow` · `bi-bigquery-plan` · `bi-destination-apply` · `bi-export` · `bi-filter` · `bi-sheets-plan` · `boilerplate-report` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export` · `crawl-enrich` · `crawl-import` · `crtsh-subdomains` · `crux-report` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` · `google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` · `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `log-analyze` · `marketing-inventory` · `meta-description-drafts` · `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` · `monitor-run` · `monitor-schedule` · `monitor-status` · `project-activity` · `project-checklist-init` · `project-checklist-page` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-list` · `project-inbox-read` · `project-inbox-submit` · `project-inbox-unread` · `project-new` · `project-observe` · `project-open` · `project-policy` · `project-priorities` · `project-progress` · `project-scans` · `project-start` · `project-status` · `project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` · `scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `soft404-check` · `sources-export` · `sources-status` · `sources-sync` · `spend-report` · `tool-catalog` · `topvisor-read` · `verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` · `workflow-status`
+`asset-weight-check` · `audit-workflow` · `bi-bigquery-plan` · `bi-destination-apply` · `bi-export` · `bi-filter` · `bi-sheets-plan` · `boilerplate-report` · `crawl-describe-settings` · `crawl-diagnose-export` · `crawl-enrich` · `crawl-import` · `crtsh-subdomains` · `crux-report` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` · `google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` · `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url` · `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `log-analyze` · `marketing-inventory` · `meta-description-drafts` · `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` · `monitor-run` · `monitor-schedule` · `monitor-status` · `project-activity` · `project-checklist-init` · `project-checklist-page` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-list` · `project-inbox-read` · `project-inbox-submit` · `project-inbox-unread` · `project-new` · `project-observe` · `project-open` · `project-policy` · `project-priorities` · `project-scans` · `project-start` · `project-status` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` · `scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `soft404-check` · `sources-export` · `sources-status` · `sources-sync` · `spend-report` · `tool-catalog` · `topvisor-read` · `verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` · `workflow-status`
 ## Skill rules
 
 **Where a skill lives.** A general method applicable to any project ->

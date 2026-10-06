@@ -8465,7 +8465,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "6f91283f0087c3667c418cba76dd315cb8273de5a2ffa1383cd14ae96e830662",
+        "source_hash": "53ee68733a6e46cc6c1190f0e41c0ecc1e7baad2ba1f14f4b114b60105f09271",
         "title": "Scenario 56 \u2014 From audit to deliverable: the last mile"
       },
       "definitions": [
@@ -8485,7 +8485,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "6f91283f0087c3667c418cba76dd315cb8273de5a2ffa1383cd14ae96e830662",
+            "source_hash": "53ee68733a6e46cc6c1190f0e41c0ecc1e7baad2ba1f14f4b114b60105f09271",
             "title": "Scenario 56 \u2014 From audit to deliverable: the last mile"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -8597,7 +8597,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "b946664fce6b706dde56b82866d76e2ef4363fe0bcc789ae062f3f8421e744ea",
+        "source_hash": "0d683c29a85b4a8a230f7dacea222d183336030b8f091712f27036cd31a7d469",
         "title": "Full audit: from authorized scope to a verified report"
       },
       "definitions": [
@@ -8617,7 +8617,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "b946664fce6b706dde56b82866d76e2ef4363fe0bcc789ae062f3f8421e744ea",
+            "source_hash": "0d683c29a85b4a8a230f7dacea222d183336030b8f091712f27036cd31a7d469",
             "title": "Full audit: from authorized scope to a verified report"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9609,8 +9609,8 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "b27588fdebc1e00c5ed42df25af6236a0f6dea0d0da2a8a87db4f0592f1b9196",
-        "title": "Project control: prepare an inspectable local audit workspace"
+        "source_hash": "53a17ed6e65b4805fd42dda2169d9aa0816351b17caada0342a152dd92b300f8",
+        "title": "Project control: configure, analyze, review and hand off"
       },
       "definitions": [
         {
@@ -9629,8 +9629,8 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "b27588fdebc1e00c5ed42df25af6236a0f6dea0d0da2a8a87db4f0592f1b9196",
-            "title": "Project control: prepare an inspectable local audit workspace"
+            "source_hash": "53a17ed6e65b4805fd42dda2169d9aa0816351b17caada0342a152dd92b300f8",
+            "title": "Project control: configure, analyze, review and hand off"
           },
           "observed_at": "2026-09-09T00:00:00Z"
         }
@@ -11193,7 +11193,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "553c75c67bcd01a72d6f769ff86072c111bca20499b9ee38bce92a9b9cca5837",
+        "source_hash": "2d854dcd08c69cdc99784e6f9904fee73278d1185fe3137eb8c169fe189a1fcf",
         "title": "control"
       },
       "definitions": [
@@ -11213,7 +11213,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "553c75c67bcd01a72d6f769ff86072c111bca20499b9ee38bce92a9b9cca5837",
+            "source_hash": "2d854dcd08c69cdc99784e6f9904fee73278d1185fe3137eb8c169fe189a1fcf",
             "title": "control"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -11281,7 +11281,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "525d31acc569f3f024bb16c235de379a630fe303b7d93693d0ec3604161d22d9",
+        "source_hash": "e198eeeea22f0dda3626997862eed208abd3e3b776fbd3b0c03f06055bbb67f6",
         "title": "full-audit-v1"
       },
       "definitions": [
@@ -11301,7 +11301,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "525d31acc569f3f024bb16c235de379a630fe303b7d93693d0ec3604161d22d9",
+            "source_hash": "e198eeeea22f0dda3626997862eed208abd3e3b776fbd3b0c03f06055bbb67f6",
             "title": "full-audit-v1"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -11941,7 +11941,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "0d5c5b578632c125972ccac21fdf03165d790893bab9bd6acae9dfd627deb127",
+        "source_hash": "f9049f71d7243cdb953ead7ea721224c9eab270159322dd2902ad1de829308ee",
         "title": "sf-tasks"
       },
       "definitions": [
@@ -11961,7 +11961,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "0d5c5b578632c125972ccac21fdf03165d790893bab9bd6acae9dfd627deb127",
+            "source_hash": "f9049f71d7243cdb953ead7ea721224c9eab270159322dd2902ad1de829308ee",
             "title": "sf-tasks"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -12029,7 +12029,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "a4edd38a2df4c86b9588f3c21a92aa96f93c89d7260dfcdc2871d2eb9f336299",
+        "source_hash": "939751563b35118dbf68c01efaa3f4703f5a10b637b5504e2ed5767fa0e19a4b",
         "title": "site-report"
       },
       "definitions": [
@@ -12049,7 +12049,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "a4edd38a2df4c86b9588f3c21a92aa96f93c89d7260dfcdc2871d2eb9f336299",
+            "source_hash": "939751563b35118dbf68c01efaa3f4703f5a10b637b5504e2ed5767fa0e19a4b",
             "title": "site-report"
           },
           "observed_at": "2026-09-09T00:00:00Z"

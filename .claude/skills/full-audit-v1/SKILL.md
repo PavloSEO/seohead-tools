@@ -47,21 +47,24 @@ the requester explicitly authorizes the provider, operation, and spend. Never su
 production pages, or publish recommendations as part of an audit.
 
 Before the first collection or long-running analysis, make one optional observer offer for the
-current project: “I can open the read-only project observer in a second terminal while this runs.
+current project: “I can open the project observer (read-only until a note or goal is explicitly saved) in a second terminal while this runs.
 Open it?” Use `seohead watch --project ./project-directory` only after an explicit yes. Keep the
-answer in the agent's current session/project context and do not offer again after an accepted or declined answer for that same session and project. Until yes, do not start a shell, watcher process,
-or scan. If there is no explicit project workspace, state that prerequisite and do not create one
+answer in the agent's current session/project context and do not offer again after an accepted or declined answer for that same session and project. Existing observation authorization is enough.
+Until yes, do not launch the observer terminal or watcher process. A decline or no answer does not
+block already authorized audit work. If there is no explicit project workspace, state that prerequisite and do not create one
 solely for the observer. MCP agents can use `seo_project_observe` as the equivalent read-only
 snapshot only after the same choice; a later project-bound call may receive configured unread inbox
 notices, but the observer does not inject a chat message or execute work automatically.
 
 ## 1.5 Register controller work and triage human suggestions
 
-For an existing project workspace, read the controller's scoped unread summary on the next MCP
+For an existing project workspace, inspect `project-progress` and the relevant
+`project-task-detail` records first. Reuse agreed tasks rather than creating duplicates, and retain
+stale/unavailable reasons in the handoff. Read the controller's scoped unread summary on the next MCP
 project call only when its local stdio process has both `SEOHEAD_MCP_CONSUMER_ID` and a matching
 `SEOHEAD_MCP_PROJECT_ALLOWLIST`. A notice is neither a read receipt nor permission to act. Read a
-note explicitly, leave it unread until the controller has actually processed it, and never derive
-commands from its free text.
+note explicitly (which records the read receipt), acknowledge it only after processing it, and
+never derive commands from its free text.
 
 Before any collection or method execution, the controller must create or update a durable
 `custom:` checklist task, record that task as `running` with its reason, then append one
@@ -92,8 +95,9 @@ recrawl once for every method skill.
 
 Choose one primary collection path:
 
-- Use native `crawl-site` for the general case. Save its run directory and config; its `audit.json`
-  and page evidence are the shared input for later steps.
+- Use native `crawl-site` for the general case. Save its SQLite scan and configuration; check
+  that the audit is available before reporting. An explicit `--out-dir` selects the separate
+  directory route with `audit.json` and page evidence. Preserve the chosen artifact contract.
 - Use `sf` mode B when the requester supplies Screaming Frog exports. Use mode A only when the
   separately installed and licensed SF CLI is available and the live SF path is in scope. Read
   `workflow/sf-boundaries`, `workflow/sf-analyzer`, and `workflow/sf-config` before that path.
@@ -107,8 +111,9 @@ the extra requests and budget before starting the second collection.
 
 ## 3. Analyze through existing methods
 
-Start with the selected collector's emitted audit/result document. For `crawl-site` and SF, read
-`audit.json`; `site-audit` returns its own `seohead.site-audit/1` document. Read the run scope,
+Start with the selected collector's emitted audit/result document. For a native scan, read
+its saved audit through the public scan/report routes; for a directory or SF run, read
+`audit.json`. `site-audit` returns its own `seohead.site-audit/1` document. Read the run scope,
 finish state where the collector emits one, evidence source, `summary.check_coverage` where
 available, skipped/disabled checks, and failed tools. If a field is absent, report it as
 unavailable rather than inferring it. Missing, skipped, failed, or unavailable evidence is
@@ -133,9 +138,10 @@ preparation state.
 
 Before interpreting or delivering results:
 
-1. For a saved crawl run, run `log-scan` on its output directory. Resolve every contradiction it
-   reports, or state why the audit remains incomplete. A successful command alone does not prove
-   adequate coverage.
+1. For a saved directory run, run `log-scan` on that directory. For a native SQLite artifact,
+   use `scan-status`, `scan-inspect` and `crawl-diagnose` to inspect the retained lifecycle,
+   audit availability and coverage. Resolve contradictions or state why the audit is incomplete;
+   successful execution alone does not prove adequate coverage.
 2. Read `crawl_finish_reason`, partial status, URL counts, check coverage, and each skipped, failed,
    or unavailable item. If the score's `health_score_basis` is limited, include that basis beside
    the score; never turn a partial run into a “clean” result.
@@ -155,6 +161,17 @@ items, verified and unverified findings, limits, and prioritized actions. Attach
 config or identify where they were saved. Do not edit generated findings to make a report appear
 complete.
 
+For the request "full analysis and developer Excel", follow the
+[developer handoff scenario](../../../docs/scenarios/deliverable.md): generate the factual workbook
+with `report-build` and the grouped machine backlog with `sf tasks` from the same native/SF audit.
+Use the agent's available spreadsheet-authoring tools to build the requested engineering workbook
+from that backlog, preserving IDs, affected counts and full-source retrieval references. Add and
+review proposed changes, verification scope and task-specific acceptance criteria; mark them as
+analyst-authored, not measured facts. Link target source files/lines only when that repository is
+actually available. Otherwise cite retained URL/HTML/header/link evidence and name missing access.
+If workbook authoring is unavailable, report the missing requested artifact instead of declaring
+the audit workbook an equivalent developer specification.
+
 If some agreed scope could not be measured, label the deliverable **partial** and state what would
 be required to finish it. A full-audit request does not guarantee a complete run: completion means
 the agreed scope has evidence and the gates above pass, not that every possible check was run.
@@ -171,7 +188,7 @@ coverage from a preparation record.
 
 - The user-approved scope and budget are stated.
 - The selected collector and reused evidence are identified.
-- `log-scan` contradictions are resolved or documented.
+- Saved-run integrity and coverage contradictions are resolved or documented.
 - Actual URL/check coverage, skipped evidence, and failures appear in the report.
 - Critical/high-impact findings are verified or visibly marked unverified.
 - The report and source audit are saved, and any remaining evidence needed to complete scope is

@@ -1,8 +1,43 @@
 # SEOHEAD Tools documentation
 
-Headless SEO evidence and audit automation: a native site crawler, Screaming Frog export analysis,
-bounded live URL and infrastructure checks, and explicit external data sources, exposed through the
-CLI and a local MCP server.
+SEO engineering with AI agents: configurable evidence collection, repeatable technical analysis,
+developer handoff and verification. Start with the question; follow the links for exact contracts.
+
+## Choose a reading path
+
+- **SEO specialist working with an agent:** [project loop](scenarios/project-control.md) →
+  [full audit](scenarios/full-audit.md) → [developer Excel and evidence handoff](scenarios/deliverable.md).
+- **Developer or integrator:** [setup](SETUP.md) → [CLI/MCP conventions](USAGE.md) →
+  [input contracts](INPUTS.md) → [exact tool schemas](TOOL_REFERENCE.md) → [architecture](ARCHITECTURE.md).
+- **Agent taking over:** `skill-list` → `skill-show` with `workflow/control` for an unscoped audit;
+  read [project state](PROJECTS.md), the current scope and evidence before starting work.
+  [MCP profiles](MCP_PROFILES.md) determine which schemas are actually callable.
+
+## Capability map
+
+The CLI names below have matching `seo_` MCP names with hyphens changed to underscores, except
+for the separately named `sf_*` tools. Exact arguments and side effects live in
+[TOOL_REFERENCE.md](TOOL_REFERENCE.md); these rows are a navigation map, not another registry.
+
+| Engineering question | Start with | CLI / MCP route | Evidence and boundary |
+|---|---|---|---|
+| What should be measured, in what order? | [control skill](../.claude/skills/control/SKILL.md), [project-control scenario](scenarios/project-control.md), [Projects](PROJECTS.md) | `project-*`, `workflow-*` | Agreed tasks/population, policy revisions, retained evidence and review gates; a plan executes nothing |
+| What should the crawler fetch and extract? | [configuration inventory](HEADLESS_CAPABILITIES.md), [usage](USAGE.md), [recovery](RECOVERY.md) | `crawl-site`, `crawl-describe-settings`, `crawl-diagnose` | Scope, budgets, selectors and declarative rules; settings are not proof of coverage or scale |
+| What can existing SF or third-party exports prove? | [sf-analyzer skill](../.claude/skills/sf-analyzer/SKILL.md), [import contract](THIRD_PARTY_CRAWL_IMPORT.md) | `sf run` / `sf_audit_run`, `crawl-import` | SF files work offline; other exports need their declared manifest; live SF needs its own licence |
+| Which technical problems are supported by evidence? | [check registry](CHECKS.md), [technical scenarios](scenarios/README.md), [skill map](SKILLS.md) | `parse`, `robots-check`, `schema-check`, `hreflang-check`, `links-check`, `redirects-check` | URL, header, graph and markup observations; a missing input leaves a named gap |
+| What changes after JavaScript or navigation? | [js-render-check skill](../.claude/skills/js-render-check/SKILL.md), [browser navigation](BROWSER_NAVIGATION.md) | `render-check`, `scan-navigation`, `scan-rendered-routes` | Saved representations and browser lab evidence; optional browser dependency, no field-CWV claim |
+| What do content, forms and templates contain? | [content scenario](scenarios/content.md), [marketing inventory](scenarios/marketing-inventory.md), [saved evidence](scenarios/saved-evidence.md) | `scan-extract`, `duplicate-check`, `boilerplate-report`, `marketing-inventory`, `facts-export` | Retained bodies, occurrences and source locators; missing bodies are not empty content |
+| How did a release change the site? | [comparison scenario](scenarios/comparison.md), [comparison contract](COMPARE.md) | `compare-crawls`, `segment-diff`, `scan-body-diff` | Compatible scope/configuration and explicit URL correspondence; a missing page is not automatically fixed |
+| Which findings were repaired and rechecked? | [remediation ledger](LEDGER.md) | `remediation-*`, `verify-fixes` | Separate finding/occurrence history, exact recheck evidence and denominators; ledger bootstrap currently uses the Python core API |
+| What work can the next agent continue? | [Projects](PROJECTS.md), [terminal observer](TERMINAL.md) | `project-progress`, `project-task-detail`, `project-inbox-*`, `workflow-status` | Task, note, accepted-goal and execution states are separate; reads do not accept or run suggestions |
+| What does infrastructure or an access log show? | [recon/security skills](SKILLS.md#recon-and-technical-hygiene), [infrastructure scenario](scenarios/infrastructure.md) | `domain-profile`, `cdn-check`, `security-check`, `log-analyze` | Explicit live requests or supplied logs; service-path probes and bot DNS checks are opt-in |
+| How do demand, SERPs and analytics join the audit? | [provider workflow](scenarios/provider-evidence.md), [provider matrix](PROVIDERS.md), [analytics-console skill](../.claude/skills/analytics-console-review/SKILL.md) | `provider-*`, `evidence-join`, `gsc-*`, `topvisor-read`, keyword/SERP tools | Auth, quota, privacy, grain and freshness remain source-specific; a registered connector is not live account access |
+| What can be delivered to developers or reporting systems? | [developer handoff](scenarios/deliverable.md), [BI contract](BI.md), [report fixtures](../examples/reports/README.md) | `sf tasks` / `sf_audit_tasks`, `report-build`, `bi-*`, `publication-cohorts`, `gsc-progress` | Audit rows, task backlog and reviewed engineering criteria are distinct; a local BI package is not a verified copyable Looker report |
+| How can repeat runs be operated? | [monitor collection](PROJECTS.md#explicit-monitor-collection), [remote API](REMOTE_API.md), [durable jobs](REMOTE_JOBS.md) | `monitor-*`; authenticated adapter/job interfaces | One-shot monitor claims and explicit workers; scheduling metadata alone starts no daemon |
+
+For completeness, use [TOOLS.md](TOOLS.md) for all registered commands,
+[INPUTS.md](INPUTS.md) for all inputs, and the [generated setting/workflow inventory](HEADLESS_CAPABILITIES.json)
+for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compare supported workflows.
 
 ## Where to start
 
@@ -83,10 +118,8 @@ CLI and a local MCP server.
 - **[DECISIONS.md](DECISIONS.md)** — decisions with their price: why no GUI,
   why `load` instead of `networkidle`, why the metrics are called `metrics_lab`,
   why the technology fingerprint database is not shipped.
-- **[COMPARISON.md](COMPARISON.md)** — where the set is stronger than the
-  market and where it loses, to whom. Wins and holes are both named; the main
-  hole is that the bundled `crawl-site` is bounded, not a general-purpose
-  web-scale crawler like Screaming Frog.
+- **[COMPARISON.md](COMPARISON.md)** — how to compare workflow requirements and where verified gaps remain. Collection, interpretation,
+  operations and scale are assessed separately; a configuration option is not acceptance evidence.
 - **[COVERAGE_GAPS.md](COVERAGE_GAPS.md)** — the map of what the audit still
   lacks, with implemented items marked as done.
 - **[CHECKLIST_AUDIT.md](CHECKLIST_AUDIT.md)** — the audit registry checked
@@ -132,10 +165,9 @@ recounts them. It fails when:
   would produce from the MCP tool definitions right now, or is missing a tool.
 - `docs/PROVIDERS.md` disagrees with what `scripts/generate_provider_matrix.py`
   would produce from the provider registry and workflow catalogue right now.
-- a command shown in a fenced code block anywhere in the docs no longer runs
-  against fixtures (`tests/test_docs_commands_execute.py`).
+- a command shown in a fenced code block no longer executes against its supported fixture
+  or parses against the current CLI (`tests/test_docs_commands_execute.py`). Browser, licensed,
+  provider and interactive routes need their separate runtime acceptance; parser success is not it.
 
 The contract test derives counts and command names directly from registries, so public prose
 cannot silently drift away from the interfaces users actually receive.
-
-- [Projects](PROJECTS.md) — portable site facts, custom template references and scan history.
