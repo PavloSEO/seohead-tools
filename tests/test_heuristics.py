@@ -211,3 +211,23 @@ def test_html_index_matches_by_path_and_basename(tmp_path):
     assert heuristics._match_html_file(index, "https://example.com/blog/post.html") == str(f)
     assert heuristics._match_html_file(index, "https://other/zzz/post.html") == str(f)
     assert heuristics._match_html_file(index, "https://example.com/missing.html") is None
+
+
+def test_disk_dom_pass_keeps_every_matched_source_and_coverage_note(tmp_path):
+    from seohead.sf.core.context import AuditContext
+
+    legacy = _dom_context(tmp_path, stored_count=3, total_count=4, depth_max=1, nodes_max=2)
+    legacy.thresholds["html_store_coverage_min"] = 0.9
+    disk = AuditContext(legacy.exports, legacy.config, disk_backed_pages=True)
+    try:
+        heuristics.check_dom(legacy)
+        heuristics.check_dom(disk)
+        assert [item.to_json() for item in disk.issues] == [
+            item.to_json() for item in legacy.issues
+        ]
+        assert len(disk.issues) == 6
+        assert all("3 of 4" in item.details["html_coverage"] for item in disk.issues)
+        assert [page.metrics["dom_nodes"] for page in disk.pages] == [5, 5, 5, None]
+    finally:
+        legacy.close()
+        disk.close()

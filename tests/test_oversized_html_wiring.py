@@ -272,3 +272,35 @@ def test_measured_export_columns_keep_both_verdicts(column, check_id, defect, cl
     run_rules(missing)
     assert not [issue for issue in missing.issues if issue.check == check_id]
     assert [item for item in missing.skipped if item.id == check_id]
+
+
+@pytest.mark.parametrize("disk_backed", (False, True))
+def test_unparsed_reason_streams_headerless_population_with_exact_counts(disk_backed):
+    from seohead.sf.core.rules import _declare_unparsed_body_skips
+
+    exports = LoadedExports(
+        {
+            "internal_all": pd.DataFrame(
+                [
+                    {
+                        "Address": f"https://example.test/p/{index}",
+                        "Content Type": "text/html",
+                        "Status Code": 200,
+                        "Indexability": "Indexable",
+                        "Body Unavailable": "oversized" if index < 7 else "",
+                    }
+                    for index in range(12)
+                ]
+            )
+        }
+    )
+    ctx = AuditContext(exports, load_config(None), disk_backed_pages=disk_backed)
+    try:
+        _declare_unparsed_body_skips(ctx)
+        skipped = {item.id: item.reason for item in ctx.skipped}
+        assert skipped["TITLE_MISSING"].startswith("7 page(s)")
+        assert skipped["MISSING_CHARSET"] == skipped["TITLE_MISSING"]
+        assert "H2_MISSING" not in skipped
+        assert len(ctx.issues) == 0
+    finally:
+        ctx.close()

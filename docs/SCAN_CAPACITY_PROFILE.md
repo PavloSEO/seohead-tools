@@ -184,3 +184,15 @@ decoded page's weight even when its encoded record is below the existing
 disk use on the intended density and complete consumer path before admitting
 a larger profile. Small allocation probes establish ownership and regressions,
 not large-crawl acceptance.
+
+Unavailable-body and charset skip reasons count the complete page stream
+without retaining its Page models. Trust-page checks keep normalized URL group
+order and scalar representatives, preserving the preference for an indexable
+variant in the earliest discovered group. Their previously bounded discovered
+URL examples still select the same first five sorted URLs. The normalized-key
+order map remains O(N) scalar data. Stored-HTML DOM checks count matches against
+one fixed file index and then process every match in a second page pass; they
+do not hold a second complete Page population. The file index remains O(files),
+and individual legacy HTML files are still read in full. These changes do not
+silently truncate source evidence or introduce an unmeasured per-file size
+admission claim.

@@ -185,14 +185,14 @@ def check_dom(ctx: AuditContext) -> None:
     pages = ctx.indexable_html_pages()
     total = len(pages)
     min_coverage = t.get("html_store_coverage_min", 0.5)
-    matched_pages = []
+    # Count against the fixed file index, then re-iterate the page view. The
+    # coverage note remains exact without retaining every matched Page model.
+    matched = sum(1 for page in pages if _match_html_file(index, page.url))
+    coverage_note = _coverage_note(matched, total, min_coverage)
     for page in pages:
         path = _match_html_file(index, page.url)
-        if path:
-            matched_pages.append((page, path))
-    matched = len(matched_pages)
-    coverage_note = _coverage_note(matched, total, min_coverage)
-    for page, path in matched_pages:
+        if not path:
+            continue
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
                 depth, nodes = _dom_metrics(fh.read())

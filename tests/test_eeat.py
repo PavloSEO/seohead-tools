@@ -698,3 +698,67 @@ def test_partially_positioned_external_links_cannot_prove_absent_citations(tmp_p
     )
     assert not any(issue.check == "FEW_CITATIONS" for issue in result.issues)
     assert "FEW_CITATIONS" in {entry.id for entry in result.skipped}
+
+
+@pytest.mark.parametrize("disk_backed", (False, True))
+def test_trust_accumulator_preserves_grouped_variant_order_and_url_examples(
+    monkeypatch, disk_backed
+):
+    import pandas as pd
+
+    import seohead.sf.core.eeat as core
+
+    urls = [
+        "https://example.test/contact/a",
+        "https://example.test/contact/b",
+        "https://example.test/contact/a/",
+    ]
+    exports = LoadedExports(
+        {
+            "internal_all": pd.DataFrame(
+                [
+                    {
+                        "Address": urls[0],
+                        "Status Code": 301,
+                        "Content Type": "text/html",
+                        "Indexability": "Non-Indexable",
+                    },
+                    {
+                        "Address": urls[1],
+                        "Status Code": 200,
+                        "Content Type": "text/html",
+                        "Indexability": "Indexable",
+                    },
+                    {
+                        "Address": urls[2],
+                        "Status Code": 200,
+                        "Content Type": "text/html",
+                        "Indexability": "Indexable",
+                    },
+                ]
+            )
+        }
+    )
+    edges = [{"anchor": "Contact", "destination_url": urls[0]} for _ in range(20)]
+    unknown = [f"https://example.test/unfetched/{index:02}" for index in range(12)]
+    edges.extend({"anchor": "About", "destination_url": url} for url in reversed(unknown))
+    edges.append({"anchor": "About", "destination_url": "https://other.test/about"})
+    monkeypatch.setattr(core, "_inlinks", lambda _ctx: edges)
+    ctx = AuditContext(exports, load_config(None), disk_backed_pages=disk_backed)
+    try:
+        core.check_trust_pages(ctx)
+        trust = ctx.trust_evidence["trust_pages"]
+        # Group a was first; its later indexable URL variant wins over group b,
+        # although b's indexable page was encountered earlier in the page stream.
+        assert trust["contact"]["url"] == urls[2]
+        assert trust["contact"]["state"] == "found_indexable"
+        assert trust["contact"]["evidence"] == ["anchor", "url_path"]
+        assert trust["about"]["state"] == "discovered_not_crawled"
+        assert trust["about"]["discovered_not_crawled"] == unknown[:5]
+        assert {issue.check for issue in ctx.issues} == {
+            "MISSING_ABOUT_PAGE",
+            "MISSING_PRIVACY_POLICY",
+            "MISSING_TERMS_PAGE",
+        }
+    finally:
+        ctx.close()
