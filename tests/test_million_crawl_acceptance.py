@@ -146,6 +146,7 @@ def test_small_consumer_route_streams_export_and_rechecks_real_retained_evidence
     )
     consumers = outcome["consumers"]
     assert consumers["source_sha256_before"] == consumers["source_sha256_after"]
+    assert consumers["source_audit_sha256_before"] == consumers["source_audit_sha256_after"]
     assert consumers["export"]["counts"]["pages"] == 32
     assert consumers["consistency"]["read"]["pages"] == 32
     assert consumers["comparison"]["conservation"]["state"] == "complete"

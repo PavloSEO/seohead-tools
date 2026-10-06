@@ -415,12 +415,21 @@ def _assert_conservation(scan: Path, pages: int) -> dict[str, int]:
                 "SELECT COUNT(*) FROM context_items WHERE kind='sitemap_declared_url'"
             ).fetchone()[0]
         )
+        counts["retained_page_documents"] = con.execute(
+            "SELECT COUNT(*) FROM pages p JOIN documents d ON d.document_id=p.document_id WHERE d.body_state='complete' AND d.body_sha256 IS NOT NULL"
+        ).fetchone()[0]
+        for table in ("responses", "documents", "bodies"):
+            counts[table] = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         frontier = dict(
             con.execute("SELECT state,COUNT(*) FROM frontier GROUP BY state").fetchall()
         )
     finally:
         con.close()
-    if counts["pages"] != pages or counts["sitemap_members"] != pages:
+    if (
+        counts["pages"] != pages
+        or counts["sitemap_members"] != pages
+        or counts["retained_page_documents"] != pages
+    ):
         raise AssertionError(f"retained population disagrees with declared scope: {counts}")
     if frontier.get("done", 0) != pages or frontier.get("queued", 0) or frontier.get("inflight", 0):
         raise AssertionError(f"frontier is not complete: {frontier}")
@@ -525,6 +534,17 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         audit_v2 = {pointer: reader.count(pointer) for pointer in reader.collections}
         if audit_v2.get("/pages") != 0 and audit_v2.get("/issues") is None:
             raise AssertionError("audit.v2 lacks its finding collection")
+        payload_bytes = reader.con.execute(
+            "SELECT COALESCE(SUM(length(CAST(value_json AS BLOB))),0),COALESCE(MAX(length(CAST(value_json AS BLOB))),0) FROM items"
+        ).fetchone()
+        header_bytes = reader.con.execute(
+            "SELECT length(CAST(header_json AS BLOB)) FROM audit_meta WHERE singleton=1"
+        ).fetchone()[0]
+        audit_sizes = {
+            "collection_payload_bytes": payload_bytes[0],
+            "largest_item_bytes": payload_bytes[1],
+            "header_bytes": header_bytes,
+        }
         summary = reader.header["summary"]
         health = {
             "score": summary.get("health_score"),
@@ -538,6 +558,8 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         ) != coverage.get("checks_total"):
             raise AssertionError("retained check coverage denominator is not conserved")
     before_hash = _file_hash(scan)
+    companion_path = scan.with_name(scan.name + ".audit-v2.sqlite")
+    before_audit_hash = _file_hash(companion_path)
     task_backlog = build_tasks_from_audit_v2(str(scan))
     export = handlers.scan_export(
         input_path=str(scan),
@@ -569,7 +591,8 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         raise AssertionError(f"bounded comparison did not conserve source findings: {comparison!r}")
     recheck = _recheck_consumers(scan, output, revision, audit_v2["/pages"])
     after_hash = _file_hash(scan)
-    if before_hash != after_hash:
+    after_audit_hash = _file_hash(companion_path)
+    if before_hash != after_hash or before_audit_hash != after_audit_hash:
         raise AssertionError("read-only consumers or reanalysis changed the source scan")
     with AuditV2Reader(output / "reanalysis.sqlite") as derived:
         if derived.count("/pages") != audit_v2["/pages"]:
@@ -580,8 +603,11 @@ def _consumers(scan: Path, output: Path, revision: str) -> dict[str, Any]:
         )
     return {
         "audit_v2": audit_v2,
+        "audit_sizes": audit_sizes,
         "source_sha256_before": before_hash,
         "source_sha256_after": after_hash,
+        "source_audit_sha256_before": before_audit_hash,
+        "source_audit_sha256_after": after_audit_hash,
         "tasks": task_backlog["summary"],
         "health": health,
         "comparison": comparison,
