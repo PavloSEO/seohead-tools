@@ -3,15 +3,12 @@
 from contextlib import closing
 import hashlib
 import json
-import os
-from pathlib import Path
 import signal
 import sqlite3
 import subprocess
 import unittest
 from unittest.mock import patch
 
-from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
