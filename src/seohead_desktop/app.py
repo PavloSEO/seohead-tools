@@ -41,6 +41,7 @@ from PyQt5.QtWidgets import (
 from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
 from .scan_runner import LocalScanProcess
+from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
 
 ROOT = Path(__file__).resolve().parent
 CONSUMER_ID = "desktop/gui"
@@ -133,7 +134,7 @@ class MainWindow(QMainWindow):
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
         self.navigation.setFixedWidth(192)
-        self.navigation.addItems(["Работа", "URL", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал"])
+        self.navigation.addItems(["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал"])
         body.addWidget(self.navigation)
         self.pages = QStackedWidget()
         body.addWidget(self.pages, 1)
@@ -141,6 +142,8 @@ class MainWindow(QMainWindow):
 
         self.pages.addWidget(self.work_page())
         self.pages.addWidget(self.url_page())
+        self.pages.addWidget(self.audit_page())
+        self.pages.addWidget(self.project_page())
         self.pages.addWidget(self.tasks_page())
         self.pages.addWidget(self.scans_page())
         self.pages.addWidget(self.inbox_page())
@@ -222,6 +225,19 @@ class MainWindow(QMainWindow):
         self.activity_text = plain("Текущая активность будет показана только из локального project-activity.")
         layout.addWidget(self.activity_text)
         return page
+
+    def audit_page(self):
+        self.audit_workspace = AuditWorkspace()
+        self.audit_workspace.intent_requested.connect(self.handle_audit_intent)
+        return self.audit_workspace
+
+    def project_page(self):
+        self.project_panels = ProjectPanels()
+        self.project_panels.refresh.connect(self.refresh_project)
+        self.project_panels.select_task.connect(self.select_project_task)
+        self.project_panels.select_scan.connect(self.select_project_scan)
+        self.project_panels.submit_note.connect(self.submit_note)
+        return self.project_panels
 
     def url_page(self):
         page = QWidget()
@@ -566,6 +582,14 @@ class MainWindow(QMainWindow):
         self.task_model.replace(rows)
         pagination = result.get("pagination") or {}
         self.task_caption.setText(f"Задачи · {pagination.get('total', len(rows))} всего · показано {len(rows)}")
+        self.project_panels.set_page(
+            "tasks",
+            rows,
+            total=pagination.get("total"),
+            offset=pagination.get("offset", 0),
+            has_more=pagination.get("next_offset") is not None,
+            source="Project checklist · retained local state",
+        )
         if rows:
             self.task_table.selectRow(0)
 
@@ -573,7 +597,11 @@ class MainWindow(QMainWindow):
         if not current.isValid() or not self.project_directory:
             return
         item = self.task_model.rows[current.row()]
-        item_id = item.get("id")
+        self.select_project_task(item.get("id"))
+
+    def select_project_task(self, item_id):
+        if not self.project_directory:
+            return
         if isinstance(item_id, str):
             self.start_command(
                 "task-detail",
@@ -591,6 +619,14 @@ class MainWindow(QMainWindow):
             rows.append({**item, "partial": "да" if item.get("crawl_partial") or item.get("corpus_partial") else "нет"})
         self.scan_model.replace(rows)
         self.scan_caption.setText(f"Сканы · {result.get('total', len(rows))} сохранено · показано {len(rows)}")
+        self.project_panels.set_page(
+            "scans",
+            rows,
+            total=result.get("total"),
+            offset=(result.get("pagination") or {}).get("offset", 0),
+            has_more=(result.get("pagination") or {}).get("next_offset") is not None,
+            source="Project retained scans",
+        )
         if rows:
             self.scan_table.selectRow(0)
 
@@ -598,6 +634,9 @@ class MainWindow(QMainWindow):
         if not current.isValid():
             return
         scan = self.scan_model.rows[current.row()]
+        self.select_project_scan(scan)
+
+    def select_project_scan(self, scan):
         path = scan.get("path")
         if not isinstance(path, str) or not path:
             self.scan_detail.setPlainText("Ядро не предоставило путь сохранённого скана.")
@@ -637,6 +676,15 @@ class MainWindow(QMainWindow):
         self.summary_scan.setText("Сохранённая SQLite-проекция")
         self.summary_coverage.setText("Частичная страница; см. метаданные скана")
         self.summary_note.setPlainText(json.dumps({key: result.get(key) for key in ("offset", "has_more", "next_offset", "truncated", "bytes")}, ensure_ascii=False, indent=2))
+        self.audit_workspace.set_page(
+            "internal",
+            rows,
+            total=None,
+            offset=result.get("offset", 0),
+            has_more=bool(result.get("has_more")),
+            source="Retained native scan · bounded page",
+            available_filters=("all",),
+        )
         if rows:
             self.table.selectRow(0)
 
@@ -646,6 +694,13 @@ class MainWindow(QMainWindow):
         self.inbox_model.replace(rows)
         total = (result.get("pagination") or {}).get("total", len(rows))
         self.inbox_caption.setText(f"Входящие · {total} сохранённых записей")
+        inbox_panel = self.project_panels.panel("inbox")
+        self.project_panels.set_page(
+            "inbox", rows, total=total, source="Project durable inbox"
+        )
+        inbox_panel.set_submission_enabled(
+            bool(self.project_directory), "Сохранение явным действием; скан не запускается"
+        )
         if rows:
             self.inbox_table.selectRow(0)
 
@@ -659,17 +714,22 @@ class MainWindow(QMainWindow):
             return
         self.inbox_detail.setPlainText(json.dumps(self.inbox_model.rows[current.row()], ensure_ascii=False, indent=2))
 
-    def submit_note(self):
+    def submit_note(self, supplied_text=None, supplied_kind=None):
         if not self.project_directory:
             return
-        text = self.note_input.text().strip()
+        if isinstance(supplied_text, bool):
+            supplied_text = None
+        text = (supplied_text if supplied_text is not None else self.note_input.text()).strip()
         if not text:
             self.statusBar().showMessage("Введите текст заметки")
             return
+        kind = supplied_kind or self.note_kind.currentData()
+        if kind not in {"note", "proposed_goal"}:
+            kind = "note"
         arguments = {
             "directory": self.project_directory,
             "text": text,
-            "kind": self.note_kind.currentData(),
+            "kind": kind,
             "author_role": "specialist",
         }
         if isinstance(self.inbox_revision, int):
@@ -680,6 +740,7 @@ class MainWindow(QMainWindow):
     def note_saved(self, _result):
         self.note_input.clear()
         self.note_submit.setEnabled(True)
+        self.project_panels.panel("inbox").submission_succeeded()
         self.statusBar().showMessage("Заметка сохранена локально; скан и агент не запускались")
         self.refresh_project()
 
@@ -730,11 +791,68 @@ class MainWindow(QMainWindow):
 
     def load_url_links(self, result):
         self.link_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
+        self.audit_workspace.set_page(
+            "inlinks",
+            result.get("items") or [],
+            total=result.get("total"),
+            offset=result.get("offset", 0),
+            has_more=bool(result.get("has_more")),
+            source="Retained link graph",
+        )
 
     def load_url_detail(self, result):
         self.detail.setPlainText(
             "Сохранённая деталь URL (без HTML-тела и секретных значений)\n\n"
             + json.dumps(result, ensure_ascii=False, indent=2)
+        )
+        page = result.get("page") or {}
+        rows = [{"name": key, "value": value} for key, value in page.items()]
+        self.audit_workspace.set_page(
+            "url_details",
+            rows,
+            total=len(rows),
+            source="Retained URL detail · redacted by core",
+            state="ready" if result.get("state") == "available" else "unavailable",
+            reason=result.get("reason", ""),
+        )
+
+    def handle_audit_intent(self, intent, payload):
+        if intent == "refresh":
+            self.refresh_project()
+            return
+        if intent != "select_url" or not isinstance(payload, dict):
+            return
+        row = payload.get("row")
+        if not isinstance(row, dict):
+            return
+        self.show_retained_url(row)
+
+    def show_retained_url(self, row):
+        if not self.selected_scan_path or not isinstance(row.get("url"), str):
+            return
+        self.start_command(
+            "url-detail",
+            "seo_scan_url_detail",
+            {
+                "input_path": self.selected_scan_path,
+                "url": row["url"],
+                "response_limit": 10,
+                "form_limit": 20,
+                "max_bytes": 262144,
+            },
+            self.load_url_detail,
+        )
+        self.start_command(
+            "url-links",
+            "seo_scan_link_inspect",
+            {
+                "input_path": self.selected_scan_path,
+                "view": "inlinks",
+                "target": row["url"],
+                "limit": 20,
+                "max_bytes": 262144,
+            },
+            self.load_url_links,
         )
 
     def toggle_navigation(self):
@@ -868,7 +986,8 @@ def main():
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
-    load_theme(app)
+    tokens = load_theme(app)
+    app.setStyleSheet(app.styleSheet() + component_stylesheet(tokens))
     window = MainWindow(persistent=not args.no_settings, core_executable=args.core_cli)
     window.show()
     if args.capture or args.export_svg:
