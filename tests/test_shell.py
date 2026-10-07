@@ -14,6 +14,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop import bundle
 from seohead_desktop.bundle import verified_bundled_core_identity
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
 from seohead_desktop.scan_runner import crawl_arguments, resume_arguments
@@ -191,9 +192,12 @@ class ShellTests(unittest.TestCase):
             desktop.parent.mkdir()
             desktop.write_bytes(b"desktop")
             resources = desktop.parent / "Resources"
-            cli = resources / "core" / "seohead"
+            cli = resources / "core" / "seohead" / "seohead"
             cli.parent.mkdir(parents=True)
             cli.write_bytes(b"synthetic core")
+            runtime = cli.parent / "_internal" / "runtime.dat"
+            runtime.parent.mkdir()
+            runtime.write_bytes(b"synthetic runtime")
             manifest = resources / "core-manifest.json"
             manifest.write_text(
                 json.dumps(
@@ -201,8 +205,21 @@ class ShellTests(unittest.TestCase):
                         "schema": "seohead.desktop.core-manifest.v1",
                         "core": {
                             "commit": "a" * 40,
-                            "cli_relpath": "core/seohead",
+                            "cli_relpath": "core/seohead/seohead",
                             "cli_sha256": hashlib.sha256(cli.read_bytes()).hexdigest(),
+                            "root_relpath": "core/seohead",
+                            "inventory": [
+                                {
+                                    "path": "_internal/runtime.dat",
+                                    "kind": "file",
+                                    "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(),
+                                },
+                                {
+                                    "path": "seohead",
+                                    "kind": "file",
+                                    "sha256": hashlib.sha256(cli.read_bytes()).hexdigest(),
+                                },
+                            ],
                         },
                     }
                 ),
@@ -219,7 +236,8 @@ class ShellTests(unittest.TestCase):
                 resume_arguments(str(scan), str(project)),
                 ["crawl-site", "--project", str(project.resolve()), "--resume", str(scan.resolve())],
             )
-            cli.write_bytes(b"tampered")
+            runtime.write_bytes(b"tampered")
+            bundle._IDENTITY_CACHE.clear()
             self.assertIsNone(verified_bundled_core_identity(desktop))
 
     def test_local_core_project_and_explicit_note(self):
