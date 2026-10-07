@@ -104,6 +104,7 @@ COMMANDS = (
     "indexnow-submit",
     "scan-list",
     "scan-inspect",
+    "scan-url-detail",
     "scan-link-inspect",
     "scan-status",
     "scan-rendered-routes",
@@ -234,6 +235,7 @@ STDIN_WAIT_SECONDS = 0.2
 _SCAN_PATH_COMMANDS = frozenset(
     {
         "scan-inspect",
+        "scan-url-detail",
         "scan-link-inspect",
         "scan-status",
         "scan-rendered-routes",
@@ -412,6 +414,18 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "urls_file",
             "url",
             "representation",
+        ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "scan-url-detail":
+        for name in (
+            "input_path",
+            "url",
+            "response_offset",
+            "response_limit",
+            "form_offset",
+            "form_limit",
+            "max_bytes",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -1938,6 +1952,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--offset", type=int)
         sub.add_argument("--limit", type=int)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+    if cmd == "scan-url-detail":
+        _source_flag(sub, "--url", help="exact retained logical URL")
+        sub.add_argument("--response-offset", type=int)
+        sub.add_argument("--response-limit", type=int)
+        sub.add_argument("--form-offset", type=int)
+        sub.add_argument("--form-limit", type=int)
+        sub.add_argument("--max-bytes", dest="max_bytes", type=int)
     if cmd == "scan-link-inspect":
         sub.add_argument("--view", choices=("path", "inlinks", "context"))
         sub.add_argument("--seed")
@@ -2516,6 +2537,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in (
         "list",
         "inspect",
+        "url-detail",
         "link-inspect",
         "status",
         "rendered-routes",

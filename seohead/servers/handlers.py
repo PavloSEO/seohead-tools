@@ -4132,6 +4132,29 @@ def scan_inspect(
     return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
 
 
+def scan_url_detail(
+    input_path: str,
+    url: str,
+    response_offset: int = 0,
+    response_limit: int = 10,
+    form_offset: int = 0,
+    form_limit: int = 20,
+    max_bytes: int = 1_048_576,
+) -> dict[str, Any]:
+    """Read one exact native URL's bounded retained transport metadata offline."""
+    from seohead.servers.history_handlers import scan_url_detail as core
+
+    return core(
+        input_path,
+        url,
+        response_offset=response_offset,
+        response_limit=response_limit,
+        form_offset=form_offset,
+        form_limit=form_limit,
+        max_bytes=max_bytes,
+    )
+
+
 def scan_link_inspect(
     input_path: str,
     view: str = "path",
@@ -5659,6 +5682,7 @@ _RAW_HANDLERS = {
     "scan_reanalyze": scan_reanalyze,
     "scan_list": scan_list,
     "scan_inspect": scan_inspect,
+    "scan_url_detail": scan_url_detail,
     "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,

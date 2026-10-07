@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**157 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 162 in total.
+**158 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 163 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2694,6 +2694,30 @@ Read a bounded, paginated table view from one saved scan.
 | `max_bytes` | `int` | `1048576` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-url-detail`
+
+MCP name: `seo_scan_url_detail`
+
+Read one exact native URL's retained headers, redirects, page fields, and forms.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `url` | `str` | `required` |
+| `response_offset` | `int` | `0` |
+| `response_limit` | `int` | `10` |
+| `form_offset` | `int` | `0` |
+| `form_limit` | `int` | `20` |
+| `max_bytes` | `int` | `1048576` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The query is offline and read-only. Header and query values stay redacted,
+body bytes remain unavailable here, and legacy/Screaming Frog sources
+return named unavailable evidence instead of an empty detail record.
 
 ### `scan-link-inspect`
 

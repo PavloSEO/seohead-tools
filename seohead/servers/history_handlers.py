@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from seohead.storage import open_scan
 from seohead.storage.body_diff import body_diff
@@ -166,6 +167,313 @@ def scan_inspect(
 def scan_status(input_path: str) -> dict[str, Any]:
     """Summarize saved frontier work and committed page outcomes offline."""
     return _scan_status(_path(input_path, "input"))
+
+
+_DETAIL_SENSITIVE_HEADERS = frozenset(
+    {"authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key", "x-auth-token"}
+)
+_DETAIL_PAGE_URL_FIELDS = frozenset(
+    {"canonical", "redirect_url", "final_url", "og_image", "og_url", "meta_refresh", "http_refresh"}
+)
+_DETAIL_NESTED_URL_FIELDS = frozenset(
+    {
+        "url",
+        "href",
+        "action",
+        "canonical",
+        "next_url",
+        "request_url",
+        "location_raw",
+        "source",
+        "destination",
+    }
+)
+
+
+def _detail_url(value: Any) -> Any:
+    """Keep a retained URL's identity while never returning a query value."""
+    if not isinstance(value, str) or "?" not in value:
+        return value
+    try:
+        parts = urlsplit(value)
+        pairs = parse_qsl(parts.query, keep_blank_values=True)
+    except ValueError:
+        return "[query-redacted]"
+    if not pairs:
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "[redacted]", parts.fragment))
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode([(name, "[redacted]") for name, _value in pairs]),
+            parts.fragment,
+        )
+    )
+
+
+def _detail_headers(value: Any, label: str) -> list[list[str]]:
+    """Decode already-redacted headers and fail closed on an unsafe old artifact."""
+    try:
+        pairs = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} are not valid retained header pairs") from exc
+    if not isinstance(pairs, list):
+        raise ValueError(f"{label} are not valid retained header pairs")
+    safe: list[list[str]] = []
+    for pair in pairs:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or any(type(part) is not str for part in pair)
+        ):
+            raise ValueError(f"{label} are not valid retained header pairs")
+        name, header_value = pair
+        if name.lower() in _DETAIL_SENSITIVE_HEADERS:
+            safe.append(["X-SEOHEAD-Redacted-Headers", name.lower()])
+        else:
+            safe.append([name, _detail_url(header_value)])
+    return safe
+
+
+def _detail_json(value: Any, label: str) -> Any:
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} is not valid retained JSON") from exc
+
+
+def _detail_message(value: Any) -> str:
+    """Reuse the restricted browser-artifact redactor for retained transport text."""
+    from seohead.storage.browser_artifacts import _redact
+
+    return _redact(value)
+
+
+def _detail_nested_urls(value: Any, *, key: str | None = None, depth: int = 0) -> Any:
+    """Redact query values in the known URL fields of structured page evidence."""
+    if depth > 8:
+        return value
+    if isinstance(value, dict):
+        return {
+            item_key: _detail_nested_urls(item, key=item_key, depth=depth + 1)
+            for item_key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_detail_nested_urls(item, key=key, depth=depth + 1) for item in value]
+    return _detail_url(value) if key in _DETAIL_NESTED_URL_FIELDS else value
+
+
+def _detail_redirects(value: Any) -> list[dict[str, Any]]:
+    chain = _detail_json(value, "redirect chain")
+    if not isinstance(chain, list) or any(not isinstance(item, dict) for item in chain):
+        raise ValueError("redirect chain is not an ordered retained object list")
+    return [_detail_nested_urls(entry) for entry in chain]
+
+
+def _detail_page(row: sqlite3.Row) -> dict[str, Any]:
+    page = dict(row)
+    page["url"] = _detail_url(page["url"])
+    for key in _DETAIL_PAGE_URL_FIELDS:
+        if key in page:
+            page[key] = _detail_url(page[key])
+    for key in (
+        "hreflang_json",
+        "heading_outline_json",
+        "link_placement_json",
+        "trust_signals_json",
+        "duplicate_ids_json",
+        "canonical_chain_json",
+    ):
+        if page.get(key) is not None:
+            page[key] = _detail_nested_urls(_detail_json(page[key], key))
+    page["redirect_chain"] = _detail_redirects(page.pop("redirect_chain_json"))
+    for key in ("error", "body_unavailable"):
+        if key in page:
+            page[key] = _detail_message(page[key])
+    return page
+
+
+def _detail_response(row: sqlite3.Row) -> dict[str, Any]:
+    item = dict(row)
+    for key in ("request_url", "effective_url"):
+        item[key] = _detail_url(item[key])
+    item["redirect_chain"] = _detail_redirects(item.pop("redirect_chain_json"))
+    item["request_headers"] = _detail_headers(
+        item.pop("request_headers_redacted_json"), "request headers"
+    )
+    item["response_headers"] = _detail_headers(
+        item.pop("response_headers_redacted_json"), "response headers"
+    )
+    item["effective_headers"] = _detail_headers(
+        item.pop("effective_headers_redacted_json"), "effective headers"
+    )
+    item["error"] = _detail_message(item["error"])
+    return item
+
+
+def _detail_forms(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    return [
+        {
+            **dict(row),
+            "action": _detail_url(row["action"]),
+            "has_password": bool(row["has_password"]),
+        }
+        for row in rows
+    ]
+
+
+def _scan_url_detail(
+    input_path: str,
+    url: str,
+    *,
+    response_offset: int = 0,
+    response_limit: int = 10,
+    form_offset: int = 0,
+    form_limit: int = 20,
+    max_bytes: int = 1_048_576,
+) -> dict[str, Any]:
+    """Read one native scan URL and its bounded retained transport evidence offline."""
+    path = _path(input_path, "input")
+    if not isinstance(url, str) or not url or len(url) > 8192:
+        raise ValueError("url must be nonempty exact retained URL text of at most 8192 characters")
+    if type(response_offset) is not int or response_offset < 0:
+        raise ValueError("response_offset must be a nonnegative integer")
+    if type(form_offset) is not int or form_offset < 0:
+        raise ValueError("form_offset must be a nonnegative integer")
+    if type(response_limit) is not int or not 1 <= response_limit <= 100:
+        raise ValueError("response_limit must be 1..100")
+    if type(form_limit) is not int or not 1 <= form_limit <= 100:
+        raise ValueError("form_limit must be 1..100")
+    if type(max_bytes) is not int or not 4096 <= max_bytes <= 8 * 1024 * 1024:
+        raise ValueError("max_bytes must be 4096..8388608")
+    if path.lower().endswith(".json"):
+        return {
+            "ok": True,
+            "state": "unavailable",
+            "reason": "Screaming Frog audit JSON does not retain native per-URL transport evidence",
+            "source": {
+                "source_kind": "screaming_frog",
+                "scan_uuid": None,
+                "evidence_revision": None,
+            },
+        }
+    con = open_scan(path, require_audit=False)
+    try:
+        source_row = con.execute(
+            "SELECT scan_uuid,format_version,source_kind,evidence_revision,lifecycle,finish_reason,"
+            "crawl_partial,corpus_partial FROM scan WHERE singleton=1"
+        ).fetchone()
+        if source_row is None:
+            raise ValueError("scan source identity is unavailable")
+        source = dict(source_row)
+        source["crawl_partial"] = bool(source["crawl_partial"])
+        source["corpus_partial"] = bool(source["corpus_partial"])
+        if source["source_kind"] != "native":
+            return {
+                "ok": True,
+                "state": "unavailable",
+                "reason": "this saved source does not retain native per-URL transport evidence",
+                "source": source,
+            }
+        url_row = con.execute("SELECT url_id,url FROM urls WHERE url=?", (url,)).fetchone()
+        if url_row is None:
+            return {"ok": True, "state": "not_found", "source": source, "url": _detail_url(url)}
+        page = con.execute(
+            "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) WHERE p.url_id=?",
+            (url_row["url_id"],),
+        ).fetchone()
+        if page is None:
+            return {
+                "ok": True,
+                "state": "unavailable",
+                "reason": "URL was retained without a page record",
+                "source": source,
+                "url": _detail_url(url_row["url"]),
+                "url_id": url_row["url_id"],
+            }
+        response_rows = con.execute(
+            "SELECT r.response_id,r.request_ordinal,r.request_url_id,r.effective_url_id,"
+            "request_url.url AS request_url,effective_url.url AS effective_url,r.redirect_chain_json,"
+            "r.method,r.purpose,r.requested_at,r.received_at,r.request_headers_redacted_json,"
+            "r.credentials_used,r.variant_key,r.status_code,r.effective_status_code,"
+            "r.response_headers_redacted_json,r.effective_headers_redacted_json,r.content_type,"
+            "r.charset,r.content_encoding,r.reported_size_bytes,r.response_time,r.transport_source,"
+            "r.cache_status,r.source_response_id,r.body_sha256,r.body_fidelity,r.body_state,"
+            "r.body_reason,r.error,r.error_kind "
+            "FROM responses r JOIN urls request_url ON request_url.url_id=r.request_url_id "
+            "LEFT JOIN urls effective_url ON effective_url.url_id=r.effective_url_id "
+            "WHERE r.request_url_id=? OR r.effective_url_id=? ORDER BY r.request_ordinal "
+            "LIMIT ? OFFSET ?",
+            (url_row["url_id"], url_row["url_id"], response_limit + 1, response_offset),
+        ).fetchall()
+        form_rows = con.execute(
+            "SELECT form_id,ordinal,source_document_id,evidence_representation,method,action,has_password "
+            "FROM forms WHERE page_url_id=? ORDER BY form_id LIMIT ? OFFSET ?",
+            (url_row["url_id"], form_limit + 1, form_offset),
+        ).fetchall()
+        detail = {
+            "ok": True,
+            "state": "available",
+            "source": source,
+            "url": _detail_url(url_row["url"]),
+            "url_id": url_row["url_id"],
+            "page": _detail_page(page),
+            "responses": {
+                "offset": response_offset,
+                "limit": response_limit,
+                "items": [_detail_response(row) for row in response_rows[:response_limit]],
+                "has_more": len(response_rows) > response_limit,
+                "next_offset": response_offset + min(len(response_rows), response_limit),
+            },
+            "forms": {
+                "offset": form_offset,
+                "limit": form_limit,
+                "items": _detail_forms(form_rows[:form_limit]),
+                "has_more": len(form_rows) > form_limit,
+                "next_offset": form_offset + min(len(form_rows), form_limit),
+            },
+            "scope": "retained native metadata only; no HTML body, network request, or artifact mutation",
+        }
+        size = len(json.dumps(detail, ensure_ascii=False, default=str).encode("utf-8"))
+        if size > max_bytes:
+            return {
+                "ok": False,
+                "state": "limit_reached",
+                "reason": "output_byte_limit_exceeded",
+                "source": source,
+                "url": _detail_url(url_row["url"]),
+                "max_bytes": max_bytes,
+                "bytes_required": size,
+            }
+        return detail
+    finally:
+        con.close()
+
+
+def scan_url_detail(
+    input_path: str,
+    url: str,
+    *,
+    response_offset: int = 0,
+    response_limit: int = 10,
+    form_offset: int = 0,
+    form_limit: int = 20,
+    max_bytes: int = 1_048_576,
+) -> dict[str, Any]:
+    """Return structured result data instead of mistaking an unreadable scan for no detail."""
+    try:
+        return _scan_url_detail(
+            input_path,
+            url,
+            response_offset=response_offset,
+            response_limit=response_limit,
+            form_offset=form_offset,
+            form_limit=form_limit,
+            max_bytes=max_bytes,
+        )
+    except (ValueError, OSError, sqlite3.Error, TypeError) as exc:
+        return {"ok": False, "state": "invalid", "error": str(exc)}
 
 
 def scan_rendered_routes(input_path: str) -> dict[str, Any]:
