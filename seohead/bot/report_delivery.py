@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 import uuid
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -116,7 +116,7 @@ class DeliveryReceipts:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("delivery receipt store must be private")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS deliveries (
                     job_id TEXT NOT NULL, artifact_id TEXT NOT NULL, destination TEXT NOT NULL,
@@ -128,7 +128,7 @@ class DeliveryReceipts:
 
     def reserve(self, job_id: str, artifact_id: str, destination: str) -> tuple[str, str]:
         """Claim one delivery; a concurrent caller receives ``in_progress``."""
-        with sqlite3.connect(self.path, isolation_level=None) as con:
+        with closing(sqlite3.connect(self.path, isolation_level=None)) as con:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT receipt,state FROM deliveries WHERE job_id=? AND artifact_id=? AND destination=?",
@@ -157,7 +157,7 @@ class DeliveryReceipts:
 
     def retry(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
         """Release a failed claim so an explicit later attempt can retry it."""
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """UPDATE deliveries SET state='pending' WHERE job_id=? AND artifact_id=?
                    AND destination=? AND receipt=? AND state='sending'""",
@@ -165,7 +165,7 @@ class DeliveryReceipts:
             )
 
     def delivered(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             changed = con.execute(
                 """UPDATE deliveries SET state='delivered' WHERE job_id=? AND artifact_id=?
                    AND destination=? AND receipt=?""",

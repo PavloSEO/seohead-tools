@@ -13,6 +13,7 @@ import os
 import sqlite3
 import uuid
 from collections.abc import Callable, Iterable
+from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -35,7 +36,7 @@ class JobOwnershipStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("job ownership store must be private")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS job_owners (
                     job_id TEXT PRIMARY KEY, subject TEXT NOT NULL, project_id TEXT NOT NULL
@@ -65,7 +66,7 @@ class JobOwnershipStore:
             raise PermissionError("job ownership cannot be reassigned")
 
     def record(self, job_id: str, subject: str, project_id: str) -> None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             self._record(con, job_id, subject, project_id)
 
     def prepare_submission(
@@ -76,7 +77,7 @@ class JobOwnershipStore:
             raise ValueError("dispatch_id must be a bounded nonempty identifier")
         payload = json.dumps(asdict(spec), sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(payload.encode()).hexdigest()
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute("BEGIN IMMEDIATE")
             row = con.execute(
                 "SELECT scope,fingerprint,idempotency_key FROM dispatches WHERE subject=? AND dispatch_id=?",
@@ -104,7 +105,7 @@ class JobOwnershipStore:
         self, job_id: str, subject: str, project_id: str, dispatch_id: str, idempotency_key: str
     ) -> None:
         """Atomically retain both ownership and the permanent dispatch receipt."""
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute("BEGIN IMMEDIATE")
             row = con.execute(
                 "SELECT project_id,idempotency_key,job_id FROM dispatches WHERE subject=? AND dispatch_id=?",
@@ -124,7 +125,7 @@ class JobOwnershipStore:
 
     def pending(self, subject: str, scope: str) -> list[ScanJobSpec]:
         """Recover only already-confirmed dispatches in the same actor/chat scope."""
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             rows = con.execute(
                 "SELECT spec FROM dispatches WHERE subject=? AND scope=? AND job_id IS NULL",
                 (subject, scope),
@@ -133,7 +134,7 @@ class JobOwnershipStore:
 
     def latest_dispatch(self, subject: str, scope: str) -> tuple[ScanJobSpec, str] | None:
         """Return the last confirmed owned dispatch for an exact actor/chat."""
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             row = con.execute(
                 """SELECT spec,job_id FROM dispatches
                    WHERE subject=? AND scope=? AND job_id IS NOT NULL
@@ -143,7 +144,7 @@ class JobOwnershipStore:
         return (ScanJobSpec(**json.loads(row[0])), row[1]) if row is not None else None
 
     def in_scope(self, job_id: str, subject: str, scope: str) -> bool:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             return (
                 con.execute(
                     "SELECT 1 FROM dispatches WHERE job_id=? AND subject=? AND scope=?",
@@ -153,7 +154,7 @@ class JobOwnershipStore:
             )
 
     def project_for(self, job_id: str, subject: str) -> str | None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             row = con.execute(
                 "SELECT project_id FROM job_owners WHERE job_id=? AND subject=?", (job_id, subject)
             ).fetchone()
@@ -174,7 +175,7 @@ class ProjectAuthorizationStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("project authorization store must be private")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS project_grants (
                     subject TEXT NOT NULL, project_id TEXT NOT NULL,
@@ -186,21 +187,21 @@ class ProjectAuthorizationStore:
     def grant(self, subject: str, project_id: str) -> None:
         if not subject or not project_id:
             raise ValueError("subject and project_id are required")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 "INSERT OR IGNORE INTO project_grants(subject,project_id) VALUES(?,?)",
                 (subject, project_id),
             )
 
     def revoke(self, subject: str, project_id: str) -> None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 "DELETE FROM project_grants WHERE subject=? AND project_id=?",
                 (subject, project_id),
             )
 
     def allows(self, subject: str, project_id: str) -> bool:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             row = con.execute(
                 "SELECT 1 FROM project_grants WHERE subject=? AND project_id=?",
                 (subject, project_id),
@@ -211,7 +212,7 @@ class ProjectAuthorizationStore:
         """Return only the currently granted projects for one adapter subject."""
         if not subject:
             return ()
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             rows = con.execute(
                 "SELECT project_id FROM project_grants WHERE subject=? ORDER BY project_id",
                 (subject,),

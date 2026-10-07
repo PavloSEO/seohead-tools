@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -86,7 +87,7 @@ class TelegramChatAuthorizationStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("Telegram authorization store must be private")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS chat_grants (
                     subject TEXT NOT NULL, chat_id TEXT NOT NULL,
@@ -98,17 +99,17 @@ class TelegramChatAuthorizationStore:
     def grant(self, subject: str, chat_id: str) -> None:
         if not subject or not _chat_id(chat_id):
             raise ValueError("subject and non-zero chat_id are required")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 "INSERT OR IGNORE INTO chat_grants(subject,chat_id) VALUES(?,?)", (subject, chat_id)
             )
 
     def revoke(self, subject: str, chat_id: str) -> None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute("DELETE FROM chat_grants WHERE subject=? AND chat_id=?", (subject, chat_id))
 
     def allows(self, subject: str, chat_id: str) -> bool:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             return (
                 con.execute(
                     "SELECT 1 FROM chat_grants WHERE subject=? AND chat_id=?", (subject, chat_id)
@@ -125,7 +126,7 @@ class TelegramSessionBindingStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("Telegram session binding store must be private")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS session_bindings (
                     subject TEXT NOT NULL, chat_id TEXT NOT NULL,
@@ -146,7 +147,7 @@ class TelegramSessionBindingStore:
         if type(update_id) is not int or update_id < 0:
             raise TelegramUnavailable("trusted update requires a nonnegative update_id")
         digest = hashlib.sha256(json.dumps(update, sort_keys=True).encode()).hexdigest()
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute("BEGIN IMMEDIATE")
             row = con.execute(
                 "SELECT digest,reply FROM updates WHERE subject=? AND chat_id=? AND update_id=?",
@@ -172,7 +173,7 @@ class TelegramSessionBindingStore:
         return None
 
     def finish_update(self, subject: str, chat_id: str, update_id: int, reply: Reply) -> None:
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 "UPDATE updates SET reply=? WHERE subject=? AND chat_id=? AND update_id=?",
                 (json.dumps(asdict(reply)), subject, chat_id, update_id),
@@ -187,7 +188,7 @@ class TelegramSessionBindingStore:
         _validate_telegram_subject(subject)
         if not _chat_id(chat_id):
             raise ValueError("Telegram chat id must be non-zero decimal text")
-        with sqlite3.connect(self.path) as con:
+        with closing(sqlite3.connect(self.path)) as con, con:
             row = con.execute(
                 "SELECT 1 FROM session_bindings WHERE subject=? AND chat_id=?", (subject, chat_id)
             ).fetchone()

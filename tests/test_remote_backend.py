@@ -6,6 +6,7 @@ import json
 import socket
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -131,7 +132,7 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     scan_ref = next(item for item in result["artifacts"] if item["kind"] == "scan")
     path = backend.artifact_path("alpha", job_id, scan_ref["artifact_id"])
     assert path is not None and path.name == "scan.sqlite"
-    with sqlite3.connect(path) as scan_db:
+    with closing(sqlite3.connect(path)) as scan_db:
         stored_config = scan_db.execute(
             "SELECT config_json FROM scan WHERE singleton=1"
         ).fetchone()[0]
@@ -217,7 +218,7 @@ def test_trusted_remote_browser_and_credential_references_are_not_submission_fie
         request,
         request.options.effective_config(),
     )
-    with sqlite3.connect(backend.db_path) as con:
+    with closing(sqlite3.connect(backend.db_path)) as con:
         stored = con.execute(
             "SELECT config_json FROM jobs WHERE job_id=?", (outcome.job.job_id,)
         ).fetchone()[0]
@@ -351,7 +352,7 @@ def test_trusted_credential_reference_reaches_runtime_without_leaking_provenance
         item for item in backend.get_result("alpha", job.job_id).artifacts if item.kind == "scan"
     )
     scan_path = backend.artifact_path("alpha", job.job_id, scan_ref.artifact_id)
-    with sqlite3.connect(scan_path) as con:
+    with closing(sqlite3.connect(scan_path)) as con:
         stored = con.execute("SELECT config_json FROM scan WHERE singleton=1").fetchone()[0]
     assert secret not in stored
     assert "REDACTED" in stored

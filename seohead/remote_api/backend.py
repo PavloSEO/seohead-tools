@@ -20,7 +20,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -208,7 +208,7 @@ class SQLiteJobBackend:
             raise ValueError("remote job database cannot be a symlink")
         if self.db_path.exists() and self.db_path.stat().st_mode & 0o077:
             raise ValueError("remote job database must be private")
-        with sqlite3.connect(self.db_path, timeout=30) as con:
+        with closing(sqlite3.connect(self.db_path, timeout=30)) as con:
             con.execute("PRAGMA journal_mode=WAL")
         with self._db(write=True) as con:
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -268,13 +268,13 @@ class SQLiteJobBackend:
     @contextmanager
     def _db(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
         con = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys=ON")
-        con.execute("PRAGMA busy_timeout=30000")
-        con.execute("PRAGMA synchronous=FULL")
-        if write:
-            con.execute("BEGIN IMMEDIATE")
         try:
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA foreign_keys=ON")
+            con.execute("PRAGMA busy_timeout=30000")
+            con.execute("PRAGMA synchronous=FULL")
+            if write:
+                con.execute("BEGIN IMMEDIATE")
             yield con
             if write:
                 con.commit()
@@ -895,7 +895,7 @@ class SQLiteJobBackend:
             if lease_lost.is_set():
                 raise WorkerLeaseLost()
             if scan_path.is_file():
-                with sqlite3.connect(scan_path) as scan_con:
+                with closing(sqlite3.connect(scan_path)) as scan_con:
                     scan_con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 evidence_from_scan(str(scan_path))
                 artifacts["scan"] = scan_path

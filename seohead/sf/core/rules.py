@@ -2543,31 +2543,50 @@ def check_url_hygiene(ctx: AuditContext) -> None:
     if not session_observed and not indexable_pages:
         ctx.skip("URL_SESSION_ID", "no indexable HTML pages to inspect for session parameters")
 
-    pairs: dict[tuple[str, str, str, str], list[Page]] = defaultdict(list)
+    # This check only needs five scalar facts.  Keeping ``Page`` objects in
+    # groups makes a large legacy JSONL audit retain every parsed record until
+    # the final slash pair is inspected (#817).
+    pairs: dict[
+        tuple[str, str, str, str],
+        list[tuple[str, int | None, bool, Any, str | None]],
+    ] = defaultdict(list)
     for page in ctx.pages:
         key = _slash_key(page.url)
         if key is not None:
-            pairs[key].append(page)
+            record = _rec(page)
+            canonical = record.get("canonical")
+            redirect_url = record.get("redirect_url")
+            pairs[key].append(
+                (
+                    page.url,
+                    page.status_code,
+                    page.is_indexable,
+                    canonical,
+                    redirect_url if isinstance(redirect_url, str) else None,
+                )
+            )
     for group in pairs.values():
-        slash = [page for page in group if urllib.parse.urlsplit(page.url).path.endswith("/")]
-        plain = [page for page in group if not urllib.parse.urlsplit(page.url).path.endswith("/")]
+        slash = [
+            variant for variant in group if urllib.parse.urlsplit(variant[0]).path.endswith("/")
+        ]
+        plain = [
+            variant for variant in group if not urllib.parse.urlsplit(variant[0]).path.endswith("/")
+        ]
         if not slash or not plain:
             continue
         observed = slash + plain
-        urls = {page.url for page in observed}
+        urls = {url for url, _status, _indexable, _canonical, _redirect in observed}
         converged = any(
-            page.status_code is not None
-            and 300 <= int(page.status_code) <= 399
-            and isinstance(_rec(page).get("redirect_url"), str)
-            and _rec(page)["redirect_url"] in urls
-            for page in observed
+            status is not None and 300 <= int(status) <= 399 and redirect_url in urls
+            for _url, status, _indexable, _canonical, redirect_url in observed
         ) or any(
-            isinstance(_rec(page).get("canonical"), str)
-            and _rec(page)["canonical"] in urls
-            and _rec(page)["canonical"] != page.url
-            for page in observed
+            isinstance(canonical, str) and canonical in urls and canonical != url
+            for url, _status, _indexable, canonical, _redirect_url in observed
         )
-        if converged or not all(page.is_indexable and page.status_code == 200 for page in observed):
+        if converged or not all(
+            indexable and status == 200
+            for _url, status, indexable, _canonical, _redirect_url in observed
+        ):
             continue
         ctx.add(
             "URL_TRAILING_SLASH_INCONSISTENT",
@@ -2575,8 +2594,12 @@ def check_url_hygiene(ctx: AuditContext) -> None:
             occurrences_count=len(urls),
             details={
                 "observed_variants": sorted(urls),
-                "status_codes": {page.url: page.status_code for page in observed},
-                "canonical": {page.url: _rec(page).get("canonical") for page in observed},
+                "status_codes": {
+                    url: status for url, status, _indexable, _canonical, _redirect in observed
+                },
+                "canonical": {
+                    url: canonical for url, _status, _indexable, canonical, _redirect in observed
+                },
             },
         )
 
