@@ -1,0 +1,1 @@
+- Preserve a saved Screaming Frog crawl's own settings when exporting it: load-crawl no longer injects the current spider configuration. Live spider and list runs continue to receive their explicit per-run profiles.

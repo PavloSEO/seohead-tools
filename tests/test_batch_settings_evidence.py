@@ -1,5 +1,6 @@
 """Results-affecting evidence configuration reaches extraction and route admission."""
 
+import hashlib
 import json
 
 from seohead.crawl.content_evidence import capture
@@ -43,8 +44,39 @@ def test_content_and_rule_settings_reach_the_saved_context():
         next(row["payload_json"] for row in contexts if row["kind"] == "extraction_rule_evidence")
     )
     assert content["content_tokens"] == 2
+    assert content["strategy"] == "include_selector"
     assert extracted["rules"][0]["value"] is True
     assert extracted["rules"][0]["matched"] is True
+
+
+def test_content_strategy_and_hash_follow_configured_area_not_default_parser():
+    html = (
+        "<main>Unrelated default region</main>"
+        "<section id='content'><p>Useful text</p>"
+        "<aside class='promotion'>Unrelated excluded promotion</aside></section>"
+    )
+    parsed = parse_html(html, "https://example.test/")
+    assert parsed["content_area_strategy"] == "auto_main"
+    settings = load(
+        overrides={
+            "evidence.content_area.include_selector": "#content",
+            "evidence.content_area.exclude_selectors": [".promotion"],
+        }
+    )
+    contexts = capture(
+        page_url_id=1,
+        source_document_id=1,
+        representation="static",
+        html=html,
+        parsed=parsed,
+        settings=settings,
+    )
+    content = json.loads(
+        next(row["payload_json"] for row in contexts if row["kind"] == "content_evidence")
+    )
+    assert content["strategy"] == "include_selector"
+    assert content["content_tokens"] == 2
+    assert content["exact_hash"] == hashlib.sha256(b"Useful text").hexdigest()
 
 
 def test_rendered_route_admission_is_independent_of_storage():
