@@ -1632,12 +1632,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument(
             "--sitemap",
-            help="seed and reconcile sitemap URLs; auto-discovery uses --config",
+            help="seed/reconcile XML URLs; discovery: --config",
         )
         sub.add_argument(
             "--sitemap-only",
             action="store_true",
-            help="native SQLite: fetch only explicit sitemap members; requires --sitemap",
+            help="SQLite: explicit --sitemap members only",
         )
         sub.add_argument(
             "--config-help",
