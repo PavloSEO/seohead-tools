@@ -97,7 +97,10 @@ class UXSafetyTests(unittest.TestCase):
         panel.note.setPlainText("other unsent draft")
         pending = {"key": self.window.note_project_key(), "source": "main", "text": "sent", "kind": "note"}
         self.window._pending_note = pending
+        self.window.read_project("/not-opened-while-pending")
+        self.assertEqual(self.window.notice.context, "inbox-submit")
         self.window.note_saved({}, pending)
+        self.assertTrue(self.window.notice.isHidden())
         self.assertEqual(self.window.note_input.text(), "")
         self.assertEqual(panel.note.toPlainText(), "other unsent draft")
         self.window.note_input.setText("newly edited text")

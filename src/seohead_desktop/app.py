@@ -859,7 +859,7 @@ class MainWindow(QMainWindow):
 
     def cancel_requests(self):
         if self._pending_note is not None:
-            self.notice.show_error("Сохранение заметки ещё не подтверждено. Черновик сохранён; дождитесь ответа ядра.")
+            self.notice.show_error("Сохранение заметки ещё не подтверждено. Черновик сохранён; дождитесь ответа ядра.", "inbox-submit")
             return
         if self.mcp_gateway is not None:
             self.mcp_gateway.cancel_generation(self.read_generation)
@@ -887,7 +887,7 @@ class MainWindow(QMainWindow):
 
     def read_project(self, directory):
         if self._pending_note is not None:
-            self.notice.show_error("Заметка сохраняется в текущий проект. Дождитесь подтверждения перед сменой проекта.")
+            self.notice.show_error("Заметка сохраняется в текущий проект. Дождитесь подтверждения перед сменой проекта.", "inbox-submit")
             return
         if not (Path(directory) / "project.json").is_file():
             self.statusBar().showMessage("В папке нет project.json SEOHEAD")
@@ -899,10 +899,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Чтение локального проекта в фоне…")
         gateway = self.ensure_mcp_gateway()
         if gateway is None:
+            self._project_loading = False
+            self.update_note_controls()
             return
         try:
             gateway.set_project_scope(directory)
         except ValueError as exc:
+            self._project_loading = False
+            self.update_note_controls()
             self.statusBar().showMessage(str(exc))
             return
         self.start_command(
@@ -1439,6 +1443,8 @@ class MainWindow(QMainWindow):
             return
         if self._pending_note is pending:
             self._pending_note = None
+        if self.notice.context == "inbox-submit":
+            self.notice.hide()
         if pending["key"] != self.note_project_key():
             saved = self._note_drafts.get(pending["key"], {})
             if saved.get(pending["source"]) == (pending["text"], pending["kind"]):
@@ -1970,6 +1976,7 @@ class MainWindow(QMainWindow):
         dialog.resize(620, 570)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
         target_input = QLineEdit(target)
         target_input.setReadOnly(True)
@@ -2304,7 +2311,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if self._pending_note is not None:
             event.ignore()
-            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием окна. Черновик остаётся в форме.")
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием окна. Черновик остаётся в форме.", "inbox-submit")
             return
         if self.scan_manager is not None and self.scan_manager.active_count:
             event.ignore()
