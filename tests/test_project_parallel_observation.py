@@ -23,10 +23,27 @@ def _project(tmp_path):
 
 
 def _reserve_in_process(project: str, start, results) -> None:
+    from seohead.projects import origin_pacing
+
     pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0, max_requests_per_second=20)
     if not start.wait(timeout=10):
         raise RuntimeError("concurrent pacing start did not arrive")
-    results.put(pacer.reserve())
+    observed = []
+    clock = origin_pacing.time.time
+
+    def record_clock():
+        value = clock()
+        observed.append(value)
+        return value
+
+    origin_pacing.time.time = record_clock
+    try:
+        delay = pacer.reserve()
+    finally:
+        origin_pacing.time.time = clock
+    # This is the exact ``now`` used by reserve(), not a timestamp from before
+    # the process acquired the SQLite transaction.
+    results.put(observed[-1] + delay)
 
 
 def test_three_simultaneous_runs_keep_independent_uuid_artifact_and_progress(tmp_path):
@@ -156,8 +173,9 @@ def test_first_open_is_private_and_safe_across_three_processes(tmp_path):
     for process in processes:
         process.join(timeout=15)
         assert process.exitcode == 0
-    waits = sorted(results.get(timeout=5) for _ in processes)
-    assert waits[0] < 0.01 and waits[1] >= 0.03 and waits[2] >= 0.08
+    turns = sorted(results.get(timeout=5) for _ in processes)
+    assert turns[1] - turns[0] >= 0.045
+    assert turns[2] - turns[1] >= 0.045
     pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0)
     pacer.reserve()
     assert pacer.path.stat().st_mode & 0o777 == 0o600

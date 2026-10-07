@@ -114,7 +114,13 @@ def resolve_cli(config: dict, override: str | None = None) -> str:
 
 
 def build_command(
-    cli_path: str, *, source_arg: str, source_value: str, output_folder: str, config: dict
+    cli_path: str,
+    *,
+    source_arg: str,
+    source_value: str,
+    output_folder: str,
+    config: dict,
+    include_spider_config: bool = True,
 ) -> list[str]:
     sf = config.get("sf_cli", {})
     exports = config.get("exports", {})
@@ -132,7 +138,7 @@ def build_command(
     # Auto-use the audit config only if it actually exists (set-up-once, all sites);
     # silently run with SF defaults otherwise — never break the crawl on a missing file.
     cfg_path = sf.get("seospiderconfig")
-    if cfg_path and os.path.isfile(cfg_path):
+    if include_spider_config and cfg_path and os.path.isfile(cfg_path):
         cmd += ["--config", os.path.abspath(cfg_path)]
 
     # For Basic-Auth staging environments and form-based logins, SF accepts an
@@ -743,7 +749,12 @@ def run_sf(
     before = _dir_entries(output_folder)
     config = _apply_rate_limit(config, output_folder, log, mode=mode, run_info=run_info)
     cmd = build_command(
-        cli, source_arg=arg, source_value=source, output_folder=output_folder, config=config
+        cli,
+        source_arg=arg,
+        source_value=source,
+        output_folder=output_folder,
+        config=config,
+        include_spider_config=mode != "load-crawl",
     )
     log(f"[runner] {' '.join(cmd)}")
 
