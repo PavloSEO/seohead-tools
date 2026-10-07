@@ -950,6 +950,25 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("scan-inspect", "scan_inspect", _form("scan_artifact", "input_path")),
     _command(
+        "scan-content-search",
+        "scan_content_search",
+        _form("scan_artifact", "input_path"),
+        _form(
+            "inline_text",
+            "query",
+            note="Offline retained-content query; package output is bounded and source-identified.",
+        ),
+    ),
+    _command(
+        "scan-content-search-page",
+        "scan_content_search_page",
+        _form(
+            "local_file",
+            "package",
+            note="Read one bounded page from a prior offline search package.",
+        ),
+    ),
+    _command(
         "scan-url-detail",
         "scan_url_detail",
         _form("scan_artifact", "input_path"),

@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**158 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 163 in total.
+**160 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 165 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -93,6 +93,7 @@ Crawl a site from a start URL by following links, or fetch an explicit ``urls`` 
 | `urls` | `list[str] | None` | `None` |
 | `urls_file` | `str | None` | `None` |
 | `sitemap` | `str | None` | `None` |
+| `sitemap_only` | `bool` | `False` |
 | `config` | `str | None` | `None` |
 | `max_urls` | `int | None` | `None` |
 | `max_depth` | `int | None` | `None` |
@@ -2572,6 +2573,47 @@ Read captured evidence, resource windows or the event timeline without fetching 
 | `section` | `Literal['capabilities', 'corpus', 'structured', 'routes', 'resources', 'timeline', 'relations', 'browser', 'extraction']` | `'capabilities'` |
 | `limit` | `int` | `1000` |
 | `offset` | `int` | `0` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-content-search`
+
+MCP name: `seo_scan_content_search`
+
+Search one closed retained scan offline and create an indexed local NDJSON package.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `query` | `str` | `required` |
+| `out_dir` | `str` | `required` |
+| `scope` | `Literal['raw_html', 'head_markup', 'body_text', 'selector_markup']` | `'raw_html'` |
+| `mode` | `Literal['contains', 'not_contains']` | `'contains'` |
+| `representation` | `Literal['static', 'rendered']` | `'static'` |
+| `selector` | `str | None` | `None` |
+| `case_sensitive` | `bool` | `False` |
+| `include_snippets` | `bool` | `False` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+The tool never fetches or reconstructs a body. Static and rendered are
+separate requests; a missing body remains unavailable rather than an
+absence. It returns only source identity, counts and output paths.
+``include_snippets`` is opt-in and redacts common credential-shaped values.
+
+### `scan-content-search-page`
+
+MCP name: `seo_scan_content_search_page`
+
+Read up to 100 indexed derived content-search records without rereading the scan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `package` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `100` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
