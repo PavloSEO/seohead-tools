@@ -53,3 +53,7 @@ The safety integration was checked with actual Cocoa interactions in `functional
 ## Retained content search
 
 The HTML search workspace uses the existing core CLI over the selected retained scan. GTM, Google tag and Metrika presets only fill the form; Search is explicit. Static HTML and retained rendered DOM remain separate, and missing bodies are reported as unavailable, never as absence. Corpus coverage is kept beside bounded pages of at most 100 rows. A marker does not prove that analytics executes. Search owns one separate CLI child and does not block the project MCP observer; project/scan changes invalidate its result, and window shutdown drains only its own child. Older core packages disable the feature using advertised optional capabilities.
+
+## External agent observation
+
+An open project keeps the existing single observer timer running without an owned scan. It reads every two seconds while idle and every 500 ms when an observed or owned run is active. An in-flight observer, project transition or pending note write suppresses another read. Changed plan revisions refresh the bounded checklist. Externally launched CLI/MCP runs remain observations and never become GUI-owned Stop targets.

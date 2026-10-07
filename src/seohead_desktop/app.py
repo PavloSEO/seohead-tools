@@ -989,6 +989,7 @@ class MainWindow(QMainWindow):
         self.summary_coverage.setText("См. прогресс проекта")
         self.refresh_project()
         self.load_crawl_descriptor()
+        self.scan_poll_timer.start(2000)
 
     def load_crawl_descriptor(self):
         if self.crawl_descriptor is None and "crawl-settings" not in self.requests:
@@ -1044,23 +1045,23 @@ class MainWindow(QMainWindow):
             scans.get("total"),
             tuple(item.get("uuid") for item in scans.get("items") or ()),
             inbox.get("revision"),
-            tuple((item.get("id"), item.get("state"), (item.get("telemetry") or {}).get("sampled_at")) for item in runs),
+            tuple((item.get("id"), item.get("state"), (item.get("telemetry") or {}).get("sampled_at"), (item.get("telemetry") or {}).get("state")) for item in runs),
         )
         if self.scan_manager is not None and isinstance(self.current_project_uuid, str):
             self.scan_manager.observe(self.current_project_uuid, runs)
-        if signature == self.last_observer_signature and self.scan_manager is not None and self.scan_manager.active_count:
-            self.poll_backoff_ms = 500
-            self.scan_poll_timer.setInterval(self.poll_backoff_ms)
+        previous_progress_revision = self.last_observer_signature[0] if self.last_observer_signature else None
+        self.set_observer_cadence(runs)
+        if signature == self.last_observer_signature:
             return
         self.last_observer_signature = signature
+        if progress.get("revision") != previous_progress_revision and "tasks" not in self.active_commands:
+            self.start_command("tasks", "seo_project_checklist_page", {"directory": self.project_directory, "limit": PAGE_LIMIT}, self.load_tasks)
         self.present_observed_runs(runs, result.get("observed_at"))
         self.load_progress(result.get("progress") or {})
         self.load_activity({"observed_at": result.get("observed_at"), "sites": result.get("sites") or {}})
         self.load_scans(result.get("scans") or {})
         self.load_inbox(result.get("inbox") or {})
         self.load_unread(result.get("inbox_unread") or {})
-        self.poll_backoff_ms = 500
-        self.scan_poll_timer.setInterval(self.poll_backoff_ms)
 
     def load_progress(self, result):
         counts = result.get("counts") or {}
@@ -2312,17 +2313,22 @@ class MainWindow(QMainWindow):
         if detail:
             self.render_owned_run(detail)
 
+    def set_observer_cadence(self, runs=None):
+        active_states = {"queued", "starting", "running", "stop_requested", "awaiting_core_status"}
+        active = any(item.get("state") in active_states for item in (self.observed_runs if runs is None else runs)) or any(item.get("state") in active_states for item in self.owned_runs_for_project())
+        self.poll_backoff_ms = 500 if active else 2000
+        self.scan_poll_timer.setInterval(self.poll_backoff_ms)
+
     def poll_active_scan(self):
-        if self.scan_manager is not None:
-            self.scan_manager.observe(self.current_project_uuid, [])
-        if self.scan_manager is None or not any(
-            item["state"] in {"starting", "running", "stop_requested", "awaiting_core_status"}
-            for item in self.scan_manager.snapshot(self.current_project_uuid)
-        ):
+        # One project observer also sees independent CLI/MCP work while this GUI is idle.
+        if not self.project_directory or self._close_waiting:
             self.scan_poll_timer.stop()
             return
-        if "observer" in self.requests or not self.project_directory:
+        if self._project_loading or self._pending_note is not None or "observer" in self.active_commands:
             return
+        if self.scan_manager is not None:
+            self.scan_manager.observe(self.current_project_uuid, [])
+        self.set_observer_cadence()
         self.start_command(
             "observer",
             "seo_project_observe",
