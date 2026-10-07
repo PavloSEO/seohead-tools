@@ -5585,6 +5585,201 @@ def scan_evidence(
     return core(input_path, section=section, limit=limit, offset=offset)
 
 
+def scan_content_search(
+    input_path: str,
+    query: str,
+    out_dir: str,
+    scope: str = "raw_html",
+    mode: str = "contains",
+    representation: str = "static",
+    selector: str | None = None,
+    case_sensitive: bool = False,
+    include_snippets: bool = False,
+    *,
+    progress: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
+    """Search one finished retained scan and write a complete local NDJSON package.
+
+    The scan is read offline and never re-fetched. ``out_dir`` must be a new
+    local directory; records and their fixed-width offset index are staged then
+    atomically published. The response contains counts and paths only, while
+    ``scan_content_search_page`` reads at most 100 derived records at a time.
+    A partial source or unavailable body publishes an honest partial package,
+    never an all-clear absence claim.
+    """
+    import hashlib
+    import json
+    import os
+    import shutil
+    import tempfile
+
+    from seohead.storage.content_search import search_scan
+
+    if not isinstance(out_dir, str) or not out_dir:
+        raise ValueError("out_dir required: a new local content-search package directory")
+    destination = Path(out_dir)
+    parent = destination.parent
+    if destination.is_symlink() or os.path.lexists(destination):
+        raise ValueError("content-search out_dir must be a new non-symlink path")
+    if parent.is_symlink() or not parent.is_dir():
+        raise ValueError("content-search output parent must be an existing non-symlink directory")
+    if not isinstance(progress, Callable | type(None)):
+        raise ValueError("content-search progress must be an internal callback or null")
+    stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}-", dir=parent))
+    count = 0
+    record_bytes = 0
+    digest = hashlib.sha256()
+    try:
+        records_path = stage / "records.ndjson"
+        index_path = stage / "records.idx"
+        with records_path.open("wb") as records, index_path.open("wb") as index:
+
+            def emit(record: dict[str, Any]) -> None:
+                nonlocal count, record_bytes
+                encoded = (
+                    json.dumps(record, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                    + b"\n"
+                )
+                index.write(record_bytes.to_bytes(8, "big"))
+                records.write(encoded)
+                digest.update(encoded)
+                record_bytes += len(encoded)
+                count += 1
+                if progress is not None:
+                    progress(count)
+
+            summary = search_scan(
+                input_path,
+                query=query,
+                scope=scope,
+                mode=mode,
+                representations=(representation,),
+                selector=selector,
+                case_sensitive=case_sensitive,
+                include_snippets=include_snippets,
+                on_record=emit,
+            )
+        manifest = {
+            "format": "seohead.retained-content-search.v1",
+            "search_completed": summary["search_completed"],
+            "source": summary["source"],
+            "scope": summary["scope"],
+            "mode": summary["mode"],
+            "representations": summary["representations"],
+            "coverage": summary["coverage"],
+            "absence_confirmed": summary["absence_confirmed"],
+            "records": {
+                "file": records_path.name,
+                "index": index_path.name,
+                "count": count,
+                "bytes": record_bytes,
+                "sha256": digest.hexdigest(),
+            },
+            "snippets": "included" if include_snippets else "omitted",
+            "network": False,
+        }
+        (stage / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if os.path.lexists(destination):
+            raise ValueError("content-search out_dir appeared while the package was being written")
+        os.replace(stage, destination)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    coverage = summary["coverage"]["state"]
+    status = (
+        "complete"
+        if summary["search_completed"] and coverage == "complete"
+        else ("partial" if summary["search_completed"] else "incomplete")
+    )
+    return {
+        "ok": True,
+        "status": status,
+        "format": "seohead.retained-content-search.v1",
+        "out_dir": str(destination),
+        "manifest": str(destination / "manifest.json"),
+        "records": count,
+        "source": summary["source"],
+        "coverage": summary["coverage"],
+        "absence_confirmed": summary["absence_confirmed"],
+        "search_completed": summary["search_completed"],
+        "capabilities": {"retained_content_search": True},
+    }
+
+
+def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    """Read no more than 100 indexed derived content-search records without rescanning evidence."""
+    import json
+    import os
+
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("offset must be nonnegative and limit must be 1..100")
+    root = Path(package)
+    manifest_path = root / "manifest.json"
+    if (
+        root.is_symlink()
+        or not root.is_dir()
+        or manifest_path.is_symlink()
+        or not manifest_path.is_file()
+    ):
+        raise ValueError("content-search package must be a regular local package directory")
+    if manifest_path.stat().st_size > 1_048_576:
+        raise ValueError("content-search package manifest exceeds 1 MiB")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("content-search package manifest is invalid") from exc
+    records = manifest.get("records") if isinstance(manifest, dict) else None
+    if (
+        manifest.get("format") != "seohead.retained-content-search.v1"
+        or not isinstance(records, dict)
+        or type(records.get("count")) is not int
+        or records["count"] < 0
+        or not isinstance(records.get("file"), str)
+        or not isinstance(records.get("index"), str)
+        or Path(records["file"]).name != records["file"]
+        or Path(records["index"]).name != records["index"]
+    ):
+        raise ValueError("content-search package manifest is invalid")
+    records_path = root / records["file"]
+    index_path = root / records["index"]
+    if any(path.is_symlink() or not path.is_file() for path in (records_path, index_path)):
+        raise ValueError("content-search package records are unavailable")
+    if os.path.getsize(index_path) != records["count"] * 8:
+        raise ValueError("content-search package index length is invalid")
+    rows: list[dict[str, Any]] = []
+    with index_path.open("rb") as index, records_path.open("rb") as stream:
+        index.seek(offset * 8)
+        marker = index.read(8)
+        if marker:
+            stream.seek(int.from_bytes(marker, "big"))
+        for _ in range(limit):
+            line = stream.readline(64 * 1024 + 1)
+            if not line:
+                break
+            if len(line) > 64 * 1024:
+                raise ValueError("content-search package record exceeds 64 KiB")
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError("content-search package record is invalid") from exc
+            if not isinstance(row, dict):
+                raise ValueError("content-search package record is invalid")
+            rows.append(row)
+    next_offset = offset + len(rows)
+    return {
+        "ok": True,
+        "format": manifest["format"],
+        "source": manifest["source"],
+        "offset": offset,
+        "records": rows,
+        "has_more": next_offset < records["count"],
+        "next_offset": next_offset,
+    }
+
+
 def scan_extract(
     input_path: str,
     rules: list[dict[str, Any]],
@@ -5725,6 +5920,8 @@ _RAW_HANDLERS = {
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,
     "scan_evidence": scan_evidence,
+    "scan_content_search": scan_content_search,
+    "scan_content_search_page": scan_content_search_page,
     "scan_extract": scan_extract,
     "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,

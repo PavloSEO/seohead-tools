@@ -108,6 +108,8 @@ COMMANDS = (
     "scan-link-inspect",
     "scan-status",
     "scan-rendered-routes",
+    "scan-content-search",
+    "scan-content-search-page",
     "scan-snapshot",
     "scan-export",
     "scan-pin",
@@ -415,6 +417,25 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "url",
             "representation",
         ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "scan-content-search":
+        for name in (
+            "input_path",
+            "query",
+            "out_dir",
+            "scope",
+            "mode",
+            "representation",
+            "selector",
+        ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+        for name in ("case_sensitive", "include_snippets"):
+            if getattr(args, name, False):
+                kw[name] = True
+    elif cmd == "scan-content-search-page":
+        for name in ("package", "offset", "limit"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "scan-url-detail":
@@ -1477,6 +1498,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--end-date", dest="end_date", help="local ISO date filter")
     if cmd in {
         "scan-evidence",
+        "scan-content-search",
         "scan-extract",
         "scan-fragment-links",
         "scan-requeue",
@@ -1513,6 +1535,25 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--limit", type=int)
         sub.add_argument("--offset", type=int)
+    if cmd == "scan-content-search":
+        sub.add_argument(
+            "--query", help="nonempty literal marker; regular expressions are unsupported"
+        )
+        sub.add_argument("--out-dir", help="new local content-search package directory")
+        sub.add_argument(
+            "--scope",
+            choices=("raw_html", "head_markup", "body_text", "selector_markup"),
+            help="retained representation to search",
+        )
+        sub.add_argument("--mode", choices=("contains", "not_contains"))
+        sub.add_argument("--representation", choices=("static", "rendered"))
+        sub.add_argument("--selector", help="CSS selector required only by selector_markup")
+        sub.add_argument("--case-sensitive", action="store_true")
+        sub.add_argument("--include-snippets", action="store_true")
+    if cmd == "scan-content-search-page":
+        _source_flag(sub, "--package", help="completed local content-search package directory")
+        sub.add_argument("--offset", type=int, help="zero-based derived record offset")
+        sub.add_argument("--limit", type=int, help="records per page, 1..100")
     if cmd == "scan-extract":
         _source_flag(sub, "--url", help="optional exact logical URL")
         sub.add_argument("--representation", choices=("static", "rendered", "legacy_fragment"))
@@ -2554,6 +2595,8 @@ def build_parser() -> argparse.ArgumentParser:
         "link-inspect",
         "status",
         "rendered-routes",
+        "content-search",
+        "content-search-page",
         "navigation",
         "snapshot",
         "export",
@@ -2759,6 +2802,14 @@ def main(argv: list[str] | None = None) -> int:
         # A contradiction is a gate, not a report: a pipeline that produced numbers which
         # disagree with each other should stop rather than publish them. 2, not 1, so a
         # caller can tell "the run contradicts itself" from "the command failed".
+        return 2
+    if (
+        cmd == "scan-content-search"
+        and isinstance(result, dict)
+        and result.get("status") in {"partial", "incomplete"}
+    ):
+        # A staged package exists and is usable, but incomplete source coverage
+        # cannot be treated as a clean whole-site presence/absence result.
         return 2
     if isinstance(result, dict) and result.get("audit_available") is False:
         # A scan whose collection finished but whose audit did not (a budget it exceeded,

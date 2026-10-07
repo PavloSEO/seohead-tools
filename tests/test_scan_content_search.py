@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import socket
 import sqlite3
 
 import pytest
 
+from seohead import cli
+from seohead.servers import handlers
 from seohead.storage import ScanError
 from seohead.storage.content_search import search_scan
 from seohead.storage.native_scan import NativeScan
@@ -33,6 +36,7 @@ def _scan_with_rendered_and_no_store(tmp_path):
             ),
             ("https://example.test/body", "<html><head></head><body>GTM-BODY</body></html>", False),
             ("https://example.test/absent", "<html><head></head><body>plain</body></html>", False),
+            ("https://example.test/static", "<html><head></head><body>plain</body></html>", False),
             (
                 "https://example.test/rendered",
                 "<html><head></head><body>plain</body></html>",
@@ -140,8 +144,8 @@ def test_content_search_keeps_static_and_rendered_absence_separate(tmp_path):
     assert static["coverage"]["filter_matching_documents"] == 0
     assert static["absence_confirmed"] is False  # no-store evidence prevents a clean absence
     assert rendered["coverage"]["filter_matching_documents"] == 1
-    assert rendered["coverage"]["url_pages_selected"] == 5
-    assert rendered["coverage"]["unavailable_documents"] == 4
+    assert rendered["coverage"]["url_pages_selected"] == 6
+    assert rendered["coverage"]["unavailable_documents"] == 5
     assert rendered["absence_confirmed"] is False
     assert {record["capture_mode"] for record in rendered_records} == {"rendered"}
 
@@ -309,3 +313,78 @@ def test_sqlite_read_deadline_returns_an_incomplete_receipt(tmp_path, monkeypatc
         result["coverage"]["stream_error"] == "SQLite read deadline or query failure: interrupted"
     )
     assert result["absence_confirmed"] is False
+
+
+def test_content_search_cli_mcp_package_and_indexed_pagination(tmp_path, capsys):
+    scan = _scan(
+        tmp_path / "scan",
+        [
+            (
+                f"https://example.test/{index}",
+                "<html><head><script>GTM-PAGE</script></head><body>plain</body></html>",
+            )
+            for index in range(101)
+        ],
+    )
+    package = tmp_path / "package"
+    assert (
+        cli.main(
+            [
+                "scan-content-search",
+                "--scan",
+                str(scan),
+                "--query",
+                "GTM-PAGE",
+                "--scope",
+                "head_markup",
+                "--out-dir",
+                str(package),
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "complete"
+    assert result["records"] == 101
+    assert result["source"]["scan_uuid"]
+    assert result["capabilities"] == {"retained_content_search": True}
+    assert (package / "manifest.json").is_file()
+    first = handlers.scan_content_search_page(str(package), limit=100)
+    second = handlers.scan_content_search_page(str(package), offset=100, limit=100)
+    assert len(first["records"]) == 100
+    assert first["has_more"] is True
+    assert len(second["records"]) == 1
+    assert second["has_more"] is False
+    assert all("snippet" not in record for record in first["records"])
+
+    from seohead.servers.mcp_server import build_server
+
+    server = build_server()
+    tool = server._tool_manager.get_tool("seo_scan_content_search_page")
+    assert tool.fn(package=str(package), offset=100, limit=100) == second
+
+
+def test_content_search_partial_package_has_exit_two_and_retains_unknowns(tmp_path, capsys):
+    scan = _scan_with_rendered_and_no_store(tmp_path / "scan")
+    package = tmp_path / "partial"
+    assert (
+        cli.main(
+            [
+                "scan-content-search",
+                "--scan",
+                str(scan),
+                "--query",
+                "GTM-ABSENT",
+                "--scope",
+                "head_markup",
+                "--out-dir",
+                str(package),
+            ]
+        )
+        == 2
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "partial"
+    assert result["absence_confirmed"] is False
+    assert result["coverage"]["unavailable_documents"] == 1
+    assert (package / "manifest.json").is_file()
