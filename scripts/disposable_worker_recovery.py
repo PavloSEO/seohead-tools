@@ -44,6 +44,30 @@ TMPFS_BYTES = 8 * 1024 * 1024
 MARKER = "disposable-worker-fixture.json"
 
 
+class FixtureLimits:
+    """Keep the physical-full-disk test outside the public submission contract."""
+
+    def __init__(self, allowed_private_hosts: frozenset[str]) -> None:
+        from seohead.remote_api.backend import RemoteProjectLimits
+
+        self._limits = RemoteProjectLimits(allowed_private_hosts=allowed_private_hosts)
+
+    def __getattr__(self, name: str):
+        return getattr(self._limits, name)
+
+    def effective_config(self, submitted: dict[str, Any]) -> dict[str, Any]:
+        from seohead.crawl.settings import validate
+
+        config = self._limits.effective_config(submitted)
+        # The API deliberately does not accept storage settings.  This
+        # fixture's trusted service configuration removes only the normal
+        # 1 GiB preflight reserve so the owned tmpfs can reach a real kernel
+        # ENOSPC during the worker's unchanged native capture path.
+        config["storage"]["min_free_bytes"] = 0
+        validate(config)
+        return config
+
+
 def require_linux() -> None:
     if sys.platform != "linux":
         raise RuntimeError("the worker recovery fixture requires disposable Linux")
@@ -77,7 +101,7 @@ def fixture_dns(address: str) -> Iterator[None]:
 
 def backend(state: Path, build: str, *, observe_errors: bool = False):
     import seohead.remote_api.backend as implementation
-    from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+    from seohead.remote_api.backend import SQLiteJobBackend
 
     if not Path(implementation.__file__).resolve().is_relative_to(ROOT):
         raise RuntimeError("worker imported a different checkout")
@@ -110,7 +134,7 @@ def backend(state: Path, build: str, *, observe_errors: bool = False):
 
     return SQLiteJobBackend(
         state,
-        {PROJECT: RemoteProjectLimits(allowed_private_hosts=frozenset({HOST}))},
+        {PROJECT: FixtureLimits(frozenset({HOST}))},
         producer_build=build,
         lease_seconds=3,
         runner=native if observe_errors else None,

@@ -61,6 +61,16 @@ def test_worker_rejects_an_unbound_directory_before_queue_creation(tmp_path):
     assert not (state / "jobs.sqlite").exists()
 
 
+def test_fixture_only_removes_the_normal_storage_reserve_after_submission_validation():
+    from seohead.job_contracts import ScanOptions
+
+    submitted = ScanOptions(max_urls=1, max_requests=20).effective_config()
+    effective = fixture.FixtureLimits(frozenset({fixture.HOST})).effective_config(submitted)
+
+    assert submitted["storage"]["min_free_bytes"] > 0
+    assert effective["storage"]["min_free_bytes"] == 0
+
+
 def test_failure_metrics_do_not_expose_exception_arguments(monkeypatch, tmp_path):
     secret = "synthetic-do-not-record-token"
 
