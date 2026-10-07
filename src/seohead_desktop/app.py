@@ -527,6 +527,12 @@ class MainWindow(QMainWindow):
         project = result.get("project", {})
         site = project.get("site", {}) if isinstance(project, dict) else {}
         self.current_project_uuid = project.get("project_uuid") if isinstance(project, dict) else None
+        self.selected_managed_run_id = None
+        self.owned_run_picker.blockSignals(True)
+        self.owned_run_picker.clear()
+        self.owned_run_picker.addItem("Запуски этого окна: выберите проект", None)
+        self.owned_run_picker.blockSignals(False)
+        self.stop_run_button.setEnabled(False)
         label = site.get("label") or site.get("host") or "Подключённый проект"
         self.project_picker.clear()
         self.project_picker.addItem(label)
