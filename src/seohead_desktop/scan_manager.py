@@ -15,6 +15,7 @@ from .scan_runner import LocalScanProcess
 @dataclass
 class ManagedScan:
     id: str
+    observer_run_id: str
     project: str
     project_uuid: str
     kind: str
@@ -40,6 +41,7 @@ class ManagedScan:
             "kind": self.kind,
             "state": self.state,
             "core_run_id": self.core_run_id,
+            "observer_run_id": self.observer_run_id,
             "artifact": self.artifact,
             "core_state": self.core_state,
             "max_urls": self.max_urls,
@@ -83,6 +85,7 @@ class LocalScanManager(QObject):
     ) -> str:
         run = ManagedScan(
             id=uuid.uuid4().hex,
+            observer_run_id=str(uuid.uuid4()),
             project=str(Path(project).resolve()),
             project_uuid=project_uuid,
             kind="crawl",
@@ -101,6 +104,7 @@ class LocalScanManager(QObject):
     def resume(self, *, project: str, project_uuid: str, artifact: str) -> str:
         run = ManagedScan(
             id=uuid.uuid4().hex,
+            observer_run_id=str(uuid.uuid4()),
             project=str(Path(project).resolve()),
             project_uuid=project_uuid,
             kind="resume",
@@ -128,19 +132,23 @@ class LocalScanManager(QObject):
         self._emit(run)
         return True
 
+    def stop_all_owned(self) -> None:
+        """Stop only children created by this manager during application shutdown."""
+        for run in tuple(self._runs.values()):
+            if run.state in {"queued", "starting", "running", "stop_requested"}:
+                self.stop(run.id)
+
     def observe(self, project_uuid: str, runs: list[dict]) -> None:
         """Attach only same-project core records whose PID belongs to this manager."""
+        if not isinstance(runs, list) or any(not isinstance(item, dict) for item in runs):
+            return
         for managed in self._runs.values():
             if managed.project_uuid != project_uuid or managed.process is None:
                 continue
             pid = managed.process.process.processId()
             if not pid:
                 continue
-            candidate = next(
-                (item for item in runs if item.get("id") == managed.core_run_id), None
-            )
-            if candidate is None and managed.core_run_id is None:
-                candidate = next((item for item in runs if self._matches_pid(item, pid)), None)
+            candidate = next((item for item in runs if item.get("id") == managed.observer_run_id), None)
             if candidate is None:
                 continue
             managed.core_run_id = candidate.get("id")
@@ -204,6 +212,7 @@ class LocalScanManager(QObject):
                         run.overrides,
                         run.approve_large_crawl,
                         run.max_urls_per_second,
+                        run.observer_run_id,
                     )
             except (RuntimeError, ValueError) as exc:
                 run.state = "rejected"

@@ -153,6 +153,11 @@ class LocalScanRunnerTests(unittest.TestCase):
                 project_data = json.loads((project / "project.json").read_text())
                 window.project_result = {"project": project_data}
                 window.current_project_uuid = project_data["project_uuid"]
+                window.crawl_descriptor = json.loads(
+                    subprocess.run(
+                        [core, "crawl-describe-settings"], check=True, capture_output=True, text=True
+                    ).stdout
+                )
                 window.show()
 
                 def accept_plan():

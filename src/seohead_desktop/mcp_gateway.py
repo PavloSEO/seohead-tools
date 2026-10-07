@@ -16,6 +16,7 @@ from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 
 TOOL_ALLOWLIST = frozenset(
     {
+        "seo_crawl_describe_settings",
         "seo_project_open",
         "seo_project_observe",
         "seo_project_checklist_page",
@@ -43,6 +44,7 @@ _DIRECTORY_TOOLS = frozenset(
         "seo_project_scans",
     }
 )
+_GLOBAL_READ_TOOLS = frozenset({"seo_crawl_describe_settings"})
 _SCAN_TOOLS = frozenset(
     {
         "seo_scan_inspect",
@@ -149,6 +151,8 @@ class PersistentMcpGateway(QRunnable):
         if tool not in TOOL_ALLOWLIST or not isinstance(arguments, dict):
             raise ValueError("desktop request is not declared by the local MCP adapter")
         scope = self._scope
+        if tool in _GLOBAL_READ_TOOLS:
+            return
         if scope is None:
             raise ValueError("open a local project before making MCP requests")
         if tool in _DIRECTORY_TOOLS:

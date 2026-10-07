@@ -48,6 +48,7 @@ class LocalScanProcess(QObject):
         overrides=(),
         approve_large_crawl=False,
         max_urls_per_second: float | None = None,
+        observer_run_id: str | None = None,
     ) -> None:
         if self.active:
             raise RuntimeError("a local scan is already running")
@@ -62,6 +63,7 @@ class LocalScanProcess(QObject):
                 overrides,
                 approve_large_crawl,
                 max_urls_per_second,
+                observer_run_id,
             ),
         )
 
@@ -107,6 +109,7 @@ def crawl_arguments(
     overrides=(),
     approve_large_crawl=False,
     max_urls_per_second: float | None = None,
+    observer_run_id: str | None = None,
 ) -> list[str]:
     """Build the one explicit native crawl command supported by Desktop."""
     root = Path(project).resolve()
@@ -127,6 +130,8 @@ def crawl_arguments(
     ]
     if producer_build is not None:
         arguments.extend(("--producer-build", producer_build))
+    if observer_run_id is not None:
+        arguments.extend(("--observer-run-id", observer_run_id))
     if approve_large_crawl:
         arguments.append("--approve-large-crawl")
     permitted = {"limits.max_requests", "limits.max_crawl_seconds"}

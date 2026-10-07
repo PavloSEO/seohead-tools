@@ -43,6 +43,7 @@ from PyQt5.QtWidgets import (
 from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
 from .scan_manager import LocalScanManager
+from .crawl_configuration import preview_configuration, validate_overrides
 from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
 
 ROOT = Path(__file__).resolve().parent
@@ -118,6 +119,7 @@ class MainWindow(QMainWindow):
         self.request_handlers = {}
         self.mcp_gateway = None
         self.mcp_ready = False
+        self.crawl_descriptor = None
         self.scan_manager = None
         self.current_project_uuid = None
         self.selected_managed_run_id = None
@@ -547,6 +549,19 @@ class MainWindow(QMainWindow):
         self.summary_scan.setText("Выберите скан")
         self.summary_coverage.setText("См. прогресс проекта")
         self.refresh_project()
+        self.load_crawl_descriptor()
+
+    def load_crawl_descriptor(self):
+        if self.crawl_descriptor is None:
+            self.start_command("crawl-settings", "seo_crawl_describe_settings", {}, self.crawl_descriptor_loaded)
+
+    def crawl_descriptor_loaded(self, result):
+        try:
+            validate_overrides(result, {})
+        except (TypeError, ValueError) as exc:
+            self.statusBar().showMessage(f"Конфигурация ядра недоступна: {exc}")
+            return
+        self.crawl_descriptor = result
 
     def refresh_project(self):
         if not self.project_directory:
@@ -574,13 +589,15 @@ class MainWindow(QMainWindow):
         progress = result.get("progress") or {}
         scans = result.get("scans") or {}
         inbox = result.get("inbox") or {}
+        run_envelope = result.get("runs")
+        runs = run_envelope.get("items", []) if isinstance(run_envelope, dict) else run_envelope if isinstance(run_envelope, list) else []
         signature = (
             progress.get("revision"),
             scans.get("total"),
             tuple(item.get("uuid") for item in scans.get("items") or ()),
             inbox.get("revision"),
+            tuple((item.get("id"), item.get("state"), (item.get("telemetry") or {}).get("sampled_at")) for item in runs),
         )
-        runs = result.get("runs") or []
         if self.scan_manager is not None and isinstance(self.current_project_uuid, str):
             self.scan_manager.observe(self.current_project_uuid, runs)
         if signature == self.last_observer_signature and self.scan_manager is not None and self.scan_manager.active_count:

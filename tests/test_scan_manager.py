@@ -188,7 +188,7 @@ class LocalScanManagerTests(unittest.TestCase):
                         return 77
 
             manager = LocalScanManager("/unused", max_parallel=1)
-            run = ManagedScan("owned", str(project), "project-id", "crawl", process=Process())
+            run = ManagedScan("owned", "core-run", str(project), "project-id", "crawl", process=Process())
             manager._runs[run.id] = run
             first = {"id": "core-run", "controller": {"pid": 77}, "artifact": "scans/first.sqlite", "state": "interrupted"}
             second = {"id": "core-run", "controller": {"pid": 77}, "artifact": "scans/final.sqlite", "state": "interrupted"}
