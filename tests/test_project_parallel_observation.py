@@ -9,6 +9,7 @@ from contextlib import closing
 
 import pytest
 
+from seohead.crawl.sqlite_adapter import _SharedDispatchGate
 from seohead.projects import run_observation
 from seohead.projects.origin_pacing import ProjectOriginPacer
 from seohead.projects.workspace import create_project
@@ -140,8 +141,8 @@ def test_first_open_is_private_and_safe_across_three_processes(tmp_path):
 
 def test_pacer_refuses_unbounded_intervals_and_future_store_waits(tmp_path):
     project = _project(tmp_path)
-    with pytest.raises(ValueError, match="60 second safety bound"):
-        ProjectOriginPacer(project, TARGET, minimum_delay_seconds=61)
+    slow = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=120)
+    assert slow.interval_seconds == pytest.approx(0.5)
     pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0)
     pacer.reserve()
     import sqlite3
@@ -151,3 +152,22 @@ def test_pacer_refuses_unbounded_intervals_and_future_store_waits(tmp_path):
         con.commit()
     with pytest.raises(ValueError, match="excessive wait"):
         pacer.reserve()
+
+
+def test_slow_local_turn_runs_before_the_shared_host_slot():
+    events: list[str] = []
+
+    class LocalGate:
+        throttle = None
+        requests_used = 0
+        max_requests = 0
+
+        def restore_requests_used(self, _value):
+            pass
+
+        def wait_turn(self):
+            events.append("local")
+
+    gate = _SharedDispatchGate(LocalGate(), lambda: events.append("shared"))
+    gate.wait_turn()
+    assert events == ["local", "shared"]

@@ -13,7 +13,6 @@ from urllib.parse import urlsplit
 from .workspace import _load
 
 PUBLIC_PROJECT_MAX_REQUESTS_PER_SECOND = 2.0
-_MAX_INTERVAL_SECONDS = 60.0
 _MAX_STORED_WAIT_SECONDS = 60.0
 _NAME = ".origin-pacing.sqlite"
 
@@ -53,11 +52,11 @@ class ProjectOriginPacer:
         self.root = root
         self.origin = _origin(target)
         self.max_requests_per_second = float(max_requests_per_second)
-        self.interval_seconds = max(
-            float(minimum_delay_seconds), 1.0 / self.max_requests_per_second
-        )
-        if self.interval_seconds > _MAX_INTERVAL_SECONDS:
-            raise ValueError("project origin pacing interval exceeds the 60 second safety bound")
+        # The existing per-scan gate owns this run's configured delay and
+        # adaptive backoff. This separate shared lane adds only the aggregate
+        # project-host ceiling, so a deliberately slow run cannot reserve a
+        # 120-second slot before another run reaches its own local turn.
+        self.interval_seconds = 1.0 / self.max_requests_per_second
         self.path = root / _NAME
 
     def _ensure_private_store(self) -> None:

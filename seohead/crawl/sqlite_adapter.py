@@ -112,8 +112,8 @@ class _SharedDispatchGate:
         self._local.restore_requests_used(value)
 
     def wait_turn(self) -> None:
-        self._shared_wait()
         self._local.wait_turn()
+        self._shared_wait()
 
 
 @dataclass

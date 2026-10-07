@@ -168,9 +168,10 @@ for the same host reserve turns through the project-local shared gate, which
 caps their combined public dispatch rate at 2 requests per second while each
 run preserves its own configuration and resumability evidence.
 An explicitly slower per-scan delay remains slower; a delay above 60 seconds
-is rejected before collection instead of silently being accelerated. A stale
-local pacing record that would wait beyond 60 seconds is named as unavailable
-rather than sleeping without a bounded operator-visible outcome.
+remains valid and does not reserve the shared host slot until its own local
+turn arrives. A stale local pacing record that would wait beyond 60 seconds is
+named as unavailable rather than sleeping without a bounded operator-visible
+outcome.
 Each record also shows the measured recent request rate when available, phase events, a
 project-relative artifact reference, and whether the
 launching controller and, for a live Screaming Frog run, its spawned collector
