@@ -8,13 +8,18 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 if (Test-Path $Output) { throw "Refusing to replace an existing bundle: $Output" }
 if (-not (Test-Path "$CoreSource\pyproject.toml")) { throw "Core source is not a toolkit checkout" }
-$Scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("seohead-desktop-build-" + [guid]::NewGuid())
+$ScratchRoot = Join-Path $ProjectRoot ".build\scratch"
+New-Item -ItemType Directory -Force -Path $ScratchRoot | Out-Null
+$Scratch = Join-Path $ScratchRoot ("packaging-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Scratch | Out-Null
 try {
     & $Python -m PyInstaller --clean --noconfirm --onedir --console --name seohead --paths $CoreSource --collect-all seohead --distpath "$Scratch\core-dist" --workpath "$Scratch\core-work" --specpath $Scratch "$CoreSource\seohead\cli.py"
+    & $Python -m PyInstaller --clean --noconfirm --onedir --console --name seohead-desktop-agent --collect-data seohead_desktop --collect-submodules mcp --distpath "$Scratch\agent-dist" --workpath "$Scratch\agent-work" --specpath $Scratch "$ProjectRoot\scripts\control_entrypoint.py"
     & $Python -m PyInstaller --clean --noconfirm --onedir --windowed --name "SEOHEAD Desktop" --collect-data seohead_desktop --add-data "$Scratch\core-dist\seohead;resources\core\seohead" --distpath "$Scratch\app-dist" --workpath "$Scratch\app-work" --specpath $Scratch "$ProjectRoot\scripts\entrypoint.py"
     $Bundle = "$Scratch\app-dist\SEOHEAD Desktop"
     $Resources = "$Bundle\resources"
+    New-Item -ItemType Directory -Force -Path "$Resources\agent" | Out-Null
+    Copy-Item -Recurse "$Scratch\agent-dist\seohead-desktop-agent" "$Resources\agent\seohead-desktop-agent"
     New-Item -ItemType Directory -Force -Path "$Resources\licenses" | Out-Null
     Copy-Item "$ProjectRoot\LICENSE" "$Resources\licenses\SEOHEAD-Desktop-GPL-3.0-or-later.txt"
     Copy-Item "$ProjectRoot\THIRD_PARTY_NOTICES.md" "$Resources\licenses\THIRD_PARTY_NOTICES.md"
@@ -25,7 +30,7 @@ try {
     Copy-Item "$ProjectRoot\src\seohead_desktop\assets\asset-manifest.json" "$Resources\licenses\desktop-assets-manifest.json"
     & $Python "$ProjectRoot\scripts\copy_runtime_notices.py" --output "$Resources\licenses"
     & $Python "$ProjectRoot\scripts\bundle_manifest.py" create --core-source $CoreSource --platform windows --output "$Resources\core-manifest.json"
-    & $Python "$ProjectRoot\scripts\bundle_manifest.py" finalize --manifest "$Resources\core-manifest.json" --cli "$Resources\core\seohead\seohead.exe"
+    & $Python "$ProjectRoot\scripts\bundle_manifest.py" finalize --manifest "$Resources\core-manifest.json" --cli "$Resources\core\seohead\seohead.exe" --agent "$Resources\agent\seohead-desktop-agent\seohead-desktop-agent.exe"
     & $Python "$ProjectRoot\scripts\smoke_bundle.py" --bundle $Bundle
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Output) | Out-Null
     Move-Item $Bundle $Output

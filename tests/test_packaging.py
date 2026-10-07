@@ -250,6 +250,18 @@ class PackagingTests(unittest.TestCase):
         ):
             self.assertIn(notice, notices)
 
+    def test_every_platform_build_includes_the_bounded_control_agent(self):
+        scripts = {
+            "macos": ROOT / "scripts" / "build_macos.sh",
+            "linux": ROOT / "scripts" / "build_linux.sh",
+            "windows": ROOT / "scripts" / "build_windows.ps1",
+        }
+        for platform, path in scripts.items():
+            source = path.read_text(encoding="utf-8")
+            self.assertIn("seohead-desktop-agent", source, platform)
+            self.assertIn("control_entrypoint.py", source, platform)
+            self.assertIn("--agent", source, platform)
+
 
 if __name__ == "__main__":
     unittest.main()
