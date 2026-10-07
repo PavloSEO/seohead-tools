@@ -1,6 +1,6 @@
 # SEOHEAD Desktop preparation
 
-Authorized by Pavel on2026-10-07: isolated PyQt5/Qt Widgets skeleton and reusable QSS/theme based on existing SEOHEAD brand. Native macOS/Linux/Windows target; only macOS is currently available for runtime acceptance. Web follows desktop. NoElectron/QtWebEngine UI.
+Authorized by Pavel on2026-10-07: isolated PyQt5/Qt Widgets skeleton and reusable QSS/theme based on existing SEOHEAD brand. Native macOS/Linux/Windows target; only macOS is currently available for runtime acceptance. The owner fully cancelled the browser/web console on 2026-10-07. User-facing interfaces are CLI/terminal and native PyQt5 only; local stdio MCP serves AI agents. NoElectron/QtWebEngine UI.
 
 Use Python. Keep core CLI/MCP and crawler/analyzer/task stores in Work/tools/seotools; this package is a presentation adapter. Demo fixtures must be labeled, never represented as real scans. No hidden network/crawl/provider calls. Project loading may call the existing CLI read-only from a worker.
 

@@ -23,6 +23,10 @@ It does not open an HTTP listener. A project is opened explicitly from disk.
 
 ## Functional scope
 
+User-facing interfaces are the CLI/terminal and this native PyQt5 application.
+Local stdio MCP serves AI agents. The browser/web console was cancelled by the
+owner on 2026-10-07 and is removed from the roadmap.
+
 | Area | Current behaviour |
 | --- | --- |
 | Project observer | Retained progress, task page/detail, scan history, activity and durable inbox load through one persistent local MCP session. Reads are bounded and generation-scoped; each operation keeps one in-flight request and one latest pending intent. |
