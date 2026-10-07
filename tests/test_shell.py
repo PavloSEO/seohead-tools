@@ -14,7 +14,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog
 
 from seohead_desktop.app import MainWindow, load_theme
-from seohead_desktop.core_identity import verified_bundle_commit
+from seohead_desktop.bundle import verified_bundled_core_identity
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
 from seohead_desktop.scan_runner import crawl_arguments, resume_arguments
 
@@ -155,10 +155,14 @@ class ShellTests(unittest.TestCase):
             scans = project / "scans"
             scans.mkdir(parents=True)
             (project / "project.json").write_text("{}", encoding="utf-8")
-            cli = root / "core" / "seohead"
-            cli.parent.mkdir()
+            desktop = root / "bin" / "SEOHEAD Desktop"
+            desktop.parent.mkdir()
+            desktop.write_bytes(b"desktop")
+            resources = desktop.parent / "Resources"
+            cli = resources / "core" / "seohead"
+            cli.parent.mkdir(parents=True)
             cli.write_bytes(b"synthetic core")
-            manifest = root / "core-manifest.json"
+            manifest = resources / "core-manifest.json"
             manifest.write_text(
                 json.dumps(
                     {
@@ -172,16 +176,19 @@ class ShellTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            self.assertEqual(verified_bundle_commit(str(cli)), "a" * 40)
+            self.assertEqual(verified_bundled_core_identity(desktop)["commit"], "a" * 40)
             arguments = crawl_arguments(str(project), 25, "raw", "a" * 40)
             self.assertEqual(arguments[:2], ["crawl-site", "--project"])
             self.assertNotIn("--url", arguments)
             self.assertIn("--producer-build", arguments)
             scan = scans / "retained.sqlite"
             scan.write_bytes(b"retained")
-            self.assertEqual(resume_arguments(str(scan), str(project)), ["crawl-site", "--resume", str(scan.resolve())])
+            self.assertEqual(
+                resume_arguments(str(scan), str(project)),
+                ["crawl-site", "--project", str(project.resolve()), "--resume", str(scan.resolve())],
+            )
             cli.write_bytes(b"tampered")
-            self.assertIsNone(verified_bundle_commit(str(cli)))
+            self.assertIsNone(verified_bundled_core_identity(desktop))
 
     def test_local_core_project_and_explicit_note(self):
         configured = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")

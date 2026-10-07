@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import QObject, QProcess, pyqtSignal
 
-from .core_identity import verified_bundle_commit
+from .bundle import verified_bundled_core_identity
 
 
 class LocalScanProcess(QObject):
@@ -22,7 +22,13 @@ class LocalScanProcess(QObject):
     def __init__(self, executable: str, parent=None):
         super().__init__(parent)
         self.executable = executable
-        self.producer_build = verified_bundle_commit(executable)
+        identity = verified_bundled_core_identity()
+        self.producer_build = (
+            identity["commit"]
+            if identity is not None and identity["cli"].resolve() == Path(executable).resolve()
+            else None
+        )
+        self.stop_requested = False
         self.process = QProcess(self)
         self.process.setProcessChannelMode(QProcess.MergedChannels)
         self.process.started.connect(self.started)
@@ -34,23 +40,40 @@ class LocalScanProcess(QObject):
     def active(self) -> bool:
         return self.process.state() != QProcess.NotRunning
 
-    def start(self, project: str, max_urls: int, rendering_mode: str, overrides=()) -> None:
+    def start(
+        self,
+        project: str,
+        max_urls: int,
+        rendering_mode: str,
+        overrides=(),
+        approve_large_crawl=False,
+    ) -> None:
         if self.active:
             raise RuntimeError("a local scan is already running")
+        self.stop_requested = False
         self.process.start(
             self.executable,
-            crawl_arguments(project, max_urls, rendering_mode, self.producer_build, overrides),
+            crawl_arguments(
+                project,
+                max_urls,
+                rendering_mode,
+                self.producer_build,
+                overrides,
+                approve_large_crawl,
+            ),
         )
 
     def resume(self, scan_path: str, project: str) -> None:
         if self.active:
             raise RuntimeError("a local scan is already running")
+        self.stop_requested = False
         self.process.start(self.executable, resume_arguments(scan_path, project))
 
     def request_stop(self) -> None:
         """Ask only this owned child to stop; completion state comes from core."""
         if not self.active:
             return
+        self.stop_requested = True
         pid = self.process.processId()
         if os.name != "nt" and pid:
             try:
@@ -80,6 +103,7 @@ def crawl_arguments(
     rendering_mode: str,
     producer_build: str | None = None,
     overrides=(),
+    approve_large_crawl=False,
 ) -> list[str]:
     """Build the one explicit native crawl command supported by Desktop."""
     root = Path(project).resolve()
@@ -100,6 +124,8 @@ def crawl_arguments(
     ]
     if producer_build is not None:
         arguments.extend(("--producer-build", producer_build))
+    if approve_large_crawl:
+        arguments.append("--approve-large-crawl")
     permitted = {"limits.max_requests", "limits.max_crawl_seconds"}
     for key, value in overrides:
         if key not in permitted or type(value) is not int or value < 1:
@@ -114,4 +140,4 @@ def resume_arguments(scan_path: str, project: str) -> list[str]:
     scan = Path(scan_path).resolve()
     if not scan.is_relative_to((root / "scans").resolve()):
         raise ValueError("resume scan is outside the selected local project")
-    return ["crawl-site", "--resume", str(scan)]
+    return ["crawl-site", "--project", str(root), "--resume", str(scan)]

@@ -15,6 +15,7 @@ from PyQt5.QtSvg import QSvgGenerator, QSvgRenderer
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -237,6 +238,7 @@ class MainWindow(QMainWindow):
         self.project_panels.select_task.connect(self.select_project_task)
         self.project_panels.select_scan.connect(self.select_project_scan)
         self.project_panels.submit_note.connect(self.submit_note)
+        self.project_panels.intent_requested.connect(self.handle_project_intent)
         return self.project_panels
 
     def url_page(self):
@@ -820,6 +822,21 @@ class MainWindow(QMainWindow):
         if intent == "refresh":
             self.refresh_project()
             return
+        if intent == "query" and isinstance(payload, dict) and payload.get("tab_id") == "internal":
+            if not self.selected_scan_path:
+                return
+            self.start_command(
+                "url-page",
+                "seo_scan_inspect",
+                {
+                    "input_path": self.selected_scan_path,
+                    "table": "pages",
+                    "limit": min(100, int(payload.get("limit", PAGE_LIMIT))),
+                    "offset": max(0, int(payload.get("offset", 0))),
+                },
+                self.load_urls,
+            )
+            return
         if intent != "select_url" or not isinstance(payload, dict):
             return
         row = payload.get("row")
@@ -855,6 +872,39 @@ class MainWindow(QMainWindow):
             self.load_url_links,
         )
 
+    def handle_project_intent(self, intent, payload):
+        if intent != "query" or not isinstance(payload, dict) or not self.project_directory:
+            return
+        tab_id = payload.get("tab_id")
+        limit = min(100, max(1, int(payload.get("limit", PAGE_LIMIT))))
+        offset = max(0, int(payload.get("offset", 0)))
+        if tab_id == "tasks":
+            self.start_command(
+                "tasks",
+                "seo_project_checklist_page",
+                {"directory": self.project_directory, "limit": limit, "offset": offset},
+                self.load_tasks,
+            )
+        elif tab_id == "scans":
+            self.start_command(
+                "scans",
+                "seo_project_scans",
+                {"directory": self.project_directory, "limit": limit, "offset": offset},
+                self.load_scans,
+            )
+        elif tab_id == "inbox":
+            self.start_command(
+                "inbox",
+                "seo_project_inbox_list",
+                {
+                    "directory": self.project_directory,
+                    "consumer": CONSUMER_ID,
+                    "limit": limit,
+                    "offset": offset,
+                },
+                self.load_inbox,
+            )
+
     def toggle_navigation(self):
         self.navigation.setVisible(not self.navigation.isVisible())
 
@@ -870,7 +920,7 @@ class MainWindow(QMainWindow):
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("Новый скан · явный план")
-        dialog.resize(500, 320)
+        dialog.resize(540, 410)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
@@ -883,9 +933,37 @@ class MainWindow(QMainWindow):
         form.addRow("Режим", mode)
         limit = QSpinBox()
         limit.setRange(1, 50000)
-        limit.setValue(5000)
+        limit.setValue(40)
+        limit.setObjectName("scanUrlLimit")
         form.addRow("Лимит URL", limit)
+        requests = QSpinBox()
+        requests.setRange(1, 2_000_000)
+        requests.setValue(100)
+        requests.setObjectName("scanRequestBudget")
+        form.addRow("Лимит HTTP-запросов", requests)
+        duration = QSpinBox()
+        duration.setRange(1, 86_400)
+        duration.setValue(60)
+        duration.setSuffix(" с")
+        duration.setObjectName("scanDurationBudget")
+        form.addRow("Лимит времени", duration)
         layout.addLayout(form)
+        approval = QCheckBox("Подтверждаю запуск с повышенным бюджетом")
+        approval.setObjectName("scanLargeApproval")
+        approval.setVisible(False)
+        layout.addWidget(approval)
+
+        def update_approval():
+            elevated = limit.value() > 5_000 or requests.value() > 10_000 or duration.value() > 300
+            approval.setVisible(elevated)
+            if not elevated:
+                approval.setChecked(False)
+            buttons.button(QDialogButtonBox.Ok).setEnabled(not elevated or approval.isChecked())
+
+        limit.valueChanged.connect(update_approval)
+        requests.valueChanged.connect(update_approval)
+        duration.valueChanged.connect(update_approval)
+        approval.toggled.connect(update_approval)
         message = QLabel(
             "После явного «Запустить» приложение создаст только локальный native crawl этого проекта. "
             "Никакой скан не начинается при открытии проекта или обновлении экрана."
@@ -894,11 +972,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(message)
         buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
         buttons.button(QDialogButtonBox.Ok).setText("Запустить")
+        buttons.button(QDialogButtonBox.Ok).setObjectName("scanStartButton")
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        update_approval()
         if dialog.exec_() == QDialog.Accepted:
-            self.launch_scan(limit.value(), mode.currentData())
+            self.launch_scan(
+                limit.value(),
+                mode.currentData(),
+                requests.value(),
+                duration.value(),
+                approval.isChecked(),
+            )
 
     def ensure_scan_runner(self):
         if self.scan_runner is None:
@@ -909,12 +995,20 @@ class MainWindow(QMainWindow):
             self.scan_runner.finished.connect(self.scan_finished)
         return self.scan_runner
 
-    def launch_scan(self, max_urls, rendering_mode):
+    def launch_scan(
+        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False
+    ):
         if not self.project_directory or not self.core_executable:
             return
         runner = self.ensure_scan_runner()
         try:
-            runner.start(self.project_directory, max_urls, rendering_mode)
+            runner.start(
+                self.project_directory,
+                max_urls,
+                rendering_mode,
+                (("limits.max_requests", max_requests), ("limits.max_crawl_seconds", max_seconds)),
+                approve_large_crawl,
+            )
         except (RuntimeError, ValueError) as exc:
             self.statusBar().showMessage(str(exc))
 
@@ -960,7 +1054,17 @@ class MainWindow(QMainWindow):
         self.scan_poll_timer.stop()
         self.new_scan.setEnabled(True)
         self.cancel_button.setText("Отменить чтение")
-        self.statusBar().showMessage(f"Локальный скан завершился: {state}, код {code}; перечитываю сохранённое состояние")
+        if self.scan_runner is not None and self.scan_runner.stop_requested:
+            message = (
+                "Локальный скан прерван; перечитываю сохранённые артефакты. "
+                "Если ядро не сохранило checkpoint, нужен новый запуск, а не ложное resume."
+            )
+            self.statusBar().showMessage(message)
+            self.scan_detail.setPlainText((self.scan_detail.toPlainText() + "\n\n" + message).strip())
+        else:
+            self.statusBar().showMessage(
+                f"Локальный скан завершился: {state}, код {code}; перечитываю сохранённое состояние"
+            )
         self.refresh_project()
 
     def closeEvent(self, event):

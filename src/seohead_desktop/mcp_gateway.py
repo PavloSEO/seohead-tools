@@ -21,6 +21,8 @@ TOOL_ALLOWLIST = frozenset(
         "seo_project_checklist_page",
         "seo_project_task_detail",
         "seo_project_inbox_submit",
+        "seo_project_inbox_list",
+        "seo_project_scans",
         "seo_scan_inspect",
         "seo_scan_url_detail",
         "seo_scan_evidence",
@@ -37,6 +39,8 @@ _DIRECTORY_TOOLS = frozenset(
         "seo_project_checklist_page",
         "seo_project_task_detail",
         "seo_project_inbox_submit",
+        "seo_project_inbox_list",
+        "seo_project_scans",
     }
 )
 _SCAN_TOOLS = frozenset(
