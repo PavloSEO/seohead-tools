@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,21 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def inventory(root: Path) -> list[dict]:
+    entries = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            target = path.resolve(strict=True)
+            target.relative_to(root.resolve())
+            entries.append({"path": relative, "kind": "symlink", "target": os.readlink(path)})
+        elif path.is_file():
+            entries.append({"path": relative, "kind": "file", "sha256": sha256_file(path)})
+        elif not path.is_dir():
+            raise ValueError(f"unsupported core payload entry: {relative}")
+    return entries
 
 
 def check_bundle(bundle: Path) -> dict:
@@ -45,6 +61,12 @@ def check_bundle(bundle: Path) -> dict:
     actual_hash = sha256_file(executable)
     if actual_hash != expected_hash:
         raise ValueError("bundled core executable hash does not match the manifest")
+    root_relative = core.get("root_relpath")
+    root = (resources / root_relative).resolve() if isinstance(root_relative, str) else None
+    if root is None or not root.is_dir() or root != executable.parent:
+        raise ValueError("bundled core root is invalid")
+    if inventory(root) != core.get("inventory"):
+        raise ValueError("bundled core payload does not match the manifest")
     response = subprocess.run(
         [str(executable), "--version"],
         check=True,

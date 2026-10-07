@@ -32,7 +32,8 @@ case "$(uname -s)" in
     *) echo "build_macos.sh must run on macOS" >&2; exit 69 ;;
 esac
 
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/seohead-desktop-build.XXXXXX")
+mkdir -p "$project_dir/.build/scratch"
+scratch=$(mktemp -d "$project_dir/.build/scratch/packaging.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 
 "$python_bin" -m PyInstaller \

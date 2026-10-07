@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -54,6 +55,29 @@ def _core_identity(source: Path) -> dict[str, str]:
     }
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _inventory(root: Path) -> list[dict]:
+    entries = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            target = path.resolve(strict=True)
+            target.relative_to(root.resolve())
+            entries.append({"path": relative, "kind": "symlink", "target": os.readlink(path)})
+        elif path.is_file():
+            entries.append({"path": relative, "kind": "file", "sha256": _sha256_file(path)})
+        elif not path.is_dir():
+            raise ValueError(f"unsupported core payload entry: {relative}")
+    return entries
+
+
 def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
     payload = {
         "schema": "seohead.desktop.core-manifest.v1",
@@ -81,8 +105,12 @@ def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
 def finalize_manifest(manifest: Path, cli: Path) -> dict:
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     relative = cli.resolve().relative_to(manifest.parent.resolve())
+    root = cli.parent.resolve()
+    root_relative = root.relative_to(manifest.parent.resolve())
     payload["core"]["cli_relpath"] = relative.as_posix()
-    payload["core"]["cli_sha256"] = hashlib.file_digest(cli.open("rb"), "sha256").hexdigest()
+    payload["core"]["cli_sha256"] = _sha256_file(cli)
+    payload["core"]["root_relpath"] = root_relative.as_posix()
+    payload["core"]["inventory"] = _inventory(root)
     manifest.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
 

@@ -2,11 +2,43 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import os
+import re
 import sys
 from pathlib import Path
 from typing import Iterable
+
+_HEX = re.compile(r"^[0-9a-f]{64}$")
+_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+_IDENTITY_CACHE: dict[tuple[str, int, int], dict | None] = {}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _tree_entries(root: Path) -> list[dict] | None:
+    entries = []
+    try:
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink():
+                target = path.resolve(strict=True)
+                target.relative_to(root.resolve())
+                entries.append({"path": relative, "kind": "symlink", "target": os.readlink(path)})
+            elif path.is_file():
+                entries.append({"path": relative, "kind": "file", "sha256": _sha256_file(path)})
+            elif not path.is_dir():
+                return None
+    except (OSError, ValueError):
+        return None
+    return entries
 
 
 def _resource_roots(executable: Path | None = None) -> Iterable[Path]:
@@ -58,16 +90,32 @@ def verified_bundled_core_identity(executable: Path | None = None) -> dict | Non
         candidate.relative_to(manifest_path.parent.resolve())
     except ValueError:
         return None
+    core_root = payload["core"].get("root_relpath")
+    inventory = payload["core"].get("inventory")
     commit = payload["core"].get("commit")
     expected_hash = payload["core"].get("cli_sha256")
-    if not candidate.is_file() or not isinstance(commit, str) or len(commit) != 40:
+    if not candidate.is_file() or not isinstance(commit, str) or not _COMMIT.fullmatch(commit):
         return None
-    if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+    if not isinstance(expected_hash, str) or not _HEX.fullmatch(expected_hash):
         return None
-    digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
-    if digest != expected_hash:
+    if not isinstance(core_root, str) or not isinstance(inventory, list):
         return None
-    return {"cli": candidate, "commit": commit, "manifest": manifest_path, "payload": payload}
+    root = (manifest_path.parent / core_root).resolve()
+    try:
+        root.relative_to(manifest_path.parent.resolve())
+    except ValueError:
+        return None
+    if not root.is_dir() or candidate.parent != root:
+        return None
+    cache_key = (str(manifest_path), manifest_path.stat().st_mtime_ns, root.stat().st_mtime_ns)
+    if cache_key in _IDENTITY_CACHE:
+        return _IDENTITY_CACHE[cache_key]
+    if _sha256_file(candidate) != expected_hash or _tree_entries(root) != inventory:
+        _IDENTITY_CACHE[cache_key] = None
+        return None
+    identity = {"cli": candidate, "commit": commit, "manifest": manifest_path, "payload": payload}
+    _IDENTITY_CACHE[cache_key] = identity
+    return identity
 
 
 def package_arguments(arguments: list[str], core_cli: Path | None = None) -> list[str]:
