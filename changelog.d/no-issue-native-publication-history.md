@@ -1,0 +1,1 @@
+- Keep unpublished native SQLite staging files out of scan history and retention candidates; continue reporting invalid published files and allow ordinary user-named hidden scans.
