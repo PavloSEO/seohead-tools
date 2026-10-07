@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import Counter
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ from seohead.reports.bi import (
     MAX_MANIFEST_BYTES,
     MAX_OUTPUT_BYTES,
     MAX_OUTPUT_PARTITIONS,
+    MAX_PROJECTION_INDEX_BYTES,
     MAX_ROWS_PER_PARTITION,
     MIN_FREE_DISK_BYTES,
     BIExportError,
@@ -2033,6 +2034,24 @@ def apply_with_client(
     return result
 
 
+def _segment_page_records(root: Path, dataset: dict[str, Any]):
+    """Yield retained raw page records for the project-view segment engine."""
+    for part in dataset["partitions"]:
+        with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
+            for row in csv.DictReader(stream):
+                url = row.get("url")
+                raw = row.get("source_fields_json")
+                if not isinstance(url, str) or not url:
+                    raise BIDestinationError("BI page source lacks a URL for segment selection")
+                try:
+                    source = json.loads(raw) if isinstance(raw, str) and raw else {}
+                except json.JSONDecodeError as exc:
+                    raise BIDestinationError("BI page source has invalid retained fields") from exc
+                if not isinstance(source, dict):
+                    raise BIDestinationError("BI page source has invalid retained fields")
+                yield {**source, "url": url}
+
+
 def filter_package(
     package: str | Path,
     *,
@@ -2091,25 +2110,25 @@ def filter_package(
     if len(json.dumps(predicates, ensure_ascii=False).encode("utf-8")) > MAX_MANIFEST_BYTES:
         raise BIDestinationError("where exceeds the bounded selection definition")
     allowed_values = {key: set(values) for key, values in predicates.items()}
-    segment_for = None
+    segment_index = None
     if "segment" in predicates:
         settings = (manifest.get("run") or {}).get("crawl_settings") or {}
-        segments = settings.get("scope.segments") if isinstance(settings, dict) else None
-        if not isinstance(segments, list) or not segments:
-            raise BIDestinationError(
-                "segment selection requires retained scope.segments in the source run"
-            )
+        if not isinstance(settings, dict):
+            raise BIDestinationError("segment selection requires retained crawl settings")
         try:
-            from seohead.crawl.spider import Scope
+            from seohead.projects.finding_views import _segment_definitions
+            from seohead.reports.bi_index import PrimarySegmentIndex, projection_index
 
-            segment_for = Scope.from_config(
-                {
-                    "segments": segments,
-                    "segments_only": settings.get("scope.segments_only") or [],
-                }
-            ).segment_for
+            definitions = _segment_definitions({"run": {"crawl_config": settings}})
         except (KeyError, TypeError, ValueError) as exc:
-            raise BIDestinationError("source scope.segments cannot be evaluated") from exc
+            raise BIDestinationError("source segment definitions cannot be evaluated") from exc
+        if not definitions:
+            raise BIDestinationError(
+                "segment selection requires retained analysis or scope segments"
+            )
+        source_pages = manifest["datasets"].get("pages")
+        if not isinstance(source_pages, dict):
+            raise BIDestinationError("segment selection requires retained source page rows")
     destination = Path(out_dir).absolute()
     if (
         destination.is_symlink()
@@ -2122,7 +2141,22 @@ def filter_package(
     source_rows = 0
     selected_states: Counter[str] = Counter()
     source_states: Counter[str] = Counter()
-    with tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent) as temp:
+    with ExitStack() as stack:
+        if "segment" in predicates:
+            index_con = stack.enter_context(
+                projection_index(destination.parent, MAX_PROJECTION_INDEX_BYTES)
+            )
+            segment_index = PrimarySegmentIndex(index_con, definitions)
+            segment_index.build(_segment_page_records(root, source_pages))
+            known_segments = {"default", *(segment.name for segment in segment_index.order)}
+            unknown_segments = sorted(allowed_values["segment"] - known_segments)
+            if unknown_segments:
+                raise BIDestinationError(
+                    f"segment selection names segments absent from the source run: {unknown_segments}"
+                )
+        temp = stack.enter_context(
+            tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent)
+        )
         stage = Path(temp)
         budget = _OutputBudget(max_output_bytes)
         writer = _PartitionWriter(
@@ -2151,8 +2185,8 @@ def filter_package(
                             url = row.get("url")
                             matches = (
                                 isinstance(url, str)
-                                and segment_for is not None
-                                and segment_for(url) in allowed_values["segment"]
+                                and segment_index is not None
+                                and segment_index.primary(url) in allowed_values["segment"]
                             )
                         if matches:
                             selected_states[state] += 1

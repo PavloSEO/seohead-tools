@@ -8,6 +8,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 
 
 @contextmanager
@@ -131,3 +132,98 @@ class InlinkIndex:
 
     def numerator(self, url):
         return self.con.execute("SELECT COUNT(*) FROM inlinks WHERE target=?", (url,)).fetchone()[0]
+
+
+class PrimarySegmentIndex:
+    """Disk-backed primary segments using the shared segment rule engine.
+
+    A selected findings export may need the same ``analysis.segments`` result
+    as a saved project view while its audit.v2 source is too large to
+    materialize.  This temporary index keeps the source rows and membership
+    relations in SQLite; it never changes the retained scan or BI package.
+    """
+
+    def __init__(self, con, definitions):
+        from seohead.sf.core.segments import resolve_order
+
+        self.con = con
+        self.order = resolve_order(definitions)
+        con.execute("CREATE TABLE segment_pages (url TEXT PRIMARY KEY, record_json TEXT NOT NULL)")
+        con.execute(
+            "CREATE TABLE segment_memberships (segment TEXT NOT NULL, url TEXT NOT NULL, "
+            "PRIMARY KEY(segment,url))"
+        )
+        con.execute("CREATE TABLE primary_segments (url TEXT PRIMARY KEY, segment TEXT NOT NULL)")
+
+    def build(self, pages):
+        for page in pages:
+            url = page.get("url") if isinstance(page, dict) else None
+            if not isinstance(url, str) or not url:
+                continue
+            record = dict(page)
+            parts = urlsplit(url)
+            record["url"] = url
+            record.setdefault("path", parts.path)
+            record.setdefault("host", (parts.hostname or "").lower())
+            self.con.execute(
+                "INSERT INTO segment_pages(url,record_json) VALUES (?,?)",
+                (
+                    url,
+                    json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                ),
+            )
+        memberships = _SegmentMemberships(self.con)
+        from seohead.sf.core.segments import _segment_matches
+
+        for segment in self.order:
+            for url, raw in self.con.execute(
+                "SELECT url,record_json FROM segment_pages ORDER BY url"
+            ):
+                if _segment_matches(segment, json.loads(raw), memberships):
+                    self.con.execute(
+                        "INSERT INTO segment_memberships(segment,url) VALUES (?,?)",
+                        (segment.name, url),
+                    )
+                    self.con.execute(
+                        "INSERT OR IGNORE INTO primary_segments(url,segment) VALUES (?,?)",
+                        (url, segment.name),
+                    )
+
+    def primary(self, url):
+        row = self.con.execute(
+            "SELECT segment FROM primary_segments WHERE url=?", (url,)
+        ).fetchone()
+        if row is not None:
+            return row[0]
+        from seohead.sf.core.segments import UNSEGMENTED, assign_segments
+
+        parts = urlsplit(url)
+        isolated = assign_segments(
+            [{"url": url, "path": parts.path, "host": (parts.hostname or "").lower()}],
+            self.order,
+        )["primary"].get(url)
+        return "default" if isolated in (None, UNSEGMENTED) else isolated
+
+
+class _SegmentMemberships:
+    """Mapping-shaped SQLite membership lookup for the shared rule evaluator."""
+
+    def __init__(self, con):
+        self.con = con
+
+    def get(self, name, default=None):
+        return _SegmentMembership(self.con, name) if name is not None else default
+
+
+class _SegmentMembership:
+    def __init__(self, con, segment):
+        self.con = con
+        self.segment = segment
+
+    def __contains__(self, url):
+        return (
+            self.con.execute(
+                "SELECT 1 FROM segment_memberships WHERE segment=? AND url=?", (self.segment, url)
+            ).fetchone()
+            is not None
+        )
