@@ -53,27 +53,6 @@ def load_provider_input(path: str | Path) -> dict[str, Any]:
     return normalize_inline(rows, manifest=mapping)
 
 
-def _concat_partitions(package: Path, manifest: dict[str, Any], dataset: str) -> bytes:
-    """Return one worksheet CSV with a single header across all partitions."""
-    parts = manifest["datasets"][dataset]["partitions"]
-    output = bytearray()
-    header: bytes | None = None
-    for part in parts:
-        raw = (package / part["path"]).read_bytes()
-        first, _, rest = raw.partition(b"\n")
-        if header is None:
-            header = first
-            output += raw
-            continue
-        if first != header:
-            raise ReportingPackError(f"dataset {dataset} partitions do not share one header")
-        if rest:
-            output += rest
-    if header is None:
-        raise ReportingPackError(f"dataset {dataset} has no published partition")
-    return bytes(output)
-
-
 def build_worksheets(
     *,
     audit: str | Path,
@@ -81,12 +60,12 @@ def build_worksheets(
     search_metric: str | None,
     out_dir: str | Path,
 ) -> dict[str, Any]:
-    """Write ``<dataset>.csv`` worksheets plus the package manifest to ``out_dir``.
+    """Publish the native BI CSV partitions and their manifest to ``out_dir``.
 
-    ``out_dir`` must not exist.  The BI package is exported into a temporary
-    sibling directory and removed afterwards; only the worksheet CSVs and the
-    manifest are published.  The result is byte-deterministic for unchanged
-    inputs and toolkit source.
+    ``out_dir`` must not exist. Temporary normalized provider inputs are removed
+    after the BI exporter publishes the complete package. Partition paths,
+    counts and checksums remain unchanged and usable by existing BI consumers.
+    The result is byte-deterministic for unchanged inputs and toolkit source.
     """
     destination = Path(out_dir)
     if destination.is_symlink() or destination.exists():
@@ -105,28 +84,17 @@ def build_worksheets(
                 encoding="utf-8",
             )
             normalized.append(normalized_path)
-        package = work / "package"
         result = bi.export_bi(
             audit=audit,
             provider_joins=normalized,
             search_metric=search_metric,
-            out_dir=package,
+            out_dir=destination,
         )
-        manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-        destination.mkdir()
-        try:
-            worksheets = {}
-            for dataset in manifest["datasets"]:
-                content = _concat_partitions(package, manifest, dataset)
-                (destination / f"{dataset}.csv").write_bytes(content)
-                worksheets[dataset] = {
-                    "rows": manifest["datasets"][dataset]["row_count"],
-                    "bytes": len(content),
-                }
-            (destination / "manifest.json").write_bytes((package / "manifest.json").read_bytes())
-        except Exception:
-            shutil.rmtree(destination, ignore_errors=True)
-            raise
+        manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+        worksheets = {
+            name: {"rows": dataset["row_count"], "bytes": dataset["bytes"]}
+            for name, dataset in manifest["datasets"].items()
+        }
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {

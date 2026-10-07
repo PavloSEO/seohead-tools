@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import json
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree
 
 import pytest
 
-from seohead.reports.bi import DATASET_SPECS
+from seohead.reports.bi import DATASET_SPECS, export_bi
+from seohead.reports.bi_destinations import filter_package, sheets_plan
 from seohead.reports.looker_link import LookerLinkError, build_looker_copy_link, load_blueprint
 from seohead.reports.reporting_pack import build_worksheets
 
@@ -154,23 +156,73 @@ def test_copy_link_refuses_missing_template_and_incomplete_source_mapping():
 
 
 def _worksheet_rows(dataset: str) -> list[dict[str, str]]:
-    path = WORKSHEETS_DIR / f"{dataset}.csv"
-    with path.open(encoding="utf-8", newline="") as stream:
-        return list(csv.DictReader(stream))
+    manifest = json.loads((WORKSHEETS_DIR / "manifest.json").read_text(encoding="utf-8"))
+    rows = []
+    for part in manifest["datasets"][dataset]["partitions"]:
+        with (WORKSHEETS_DIR / part["path"]).open(encoding="utf-8", newline="") as stream:
+            rows.extend(csv.DictReader(stream))
+    return rows
 
 
 def test_committed_worksheets_match_published_bi_schema():
     manifest = json.loads((WORKSHEETS_DIR / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["format"] == "seohead.bi-manifest.v1"
     for name, spec in DATASET_SPECS.items():
-        path = WORKSHEETS_DIR / f"{name}.csv"
-        assert path.is_file(), f"missing worksheet for dataset {name}"
-        header = path.read_text(encoding="utf-8").splitlines()[0].split(",")
-        published = [field.name for field in spec[0]]
-        assert header[: len(published)] == published
         declared = manifest["datasets"][name]
+        for part in declared["partitions"]:
+            path = WORKSHEETS_DIR / part["path"]
+            assert path.is_file(), f"missing partition for dataset {name}"
+            header = path.read_text(encoding="utf-8").splitlines()[0].split(",")
+            published = [field.name for field in spec[0]]
+            assert header[: len(published)] == published
         assert declared["schema_version"] == f"seohead.bi.{name}.v1"
         assert len(_worksheet_rows(name)) == declared["row_count"]
+
+
+@pytest.mark.parametrize("rebuild_partitioned", [False, True])
+def test_worksheets_are_usable_by_existing_bi_consumers(tmp_path, monkeypatch, rebuild_partitioned):
+    package = WORKSHEETS_DIR
+    if rebuild_partitioned:
+        monkeypatch.setattr(
+            "seohead.reports.reporting_pack.bi.export_bi", partial(export_bi, max_rows_per_file=2)
+        )
+        package = tmp_path / "worksheets"
+        build_worksheets(
+            audit=Path("examples/audit.json"),
+            provider_inputs=sorted((PACK_DIR / "sources").glob("*.json")),
+            search_metric="clicks",
+            out_dir=package,
+        )
+    before = {path.name: path.read_bytes() for path in package.iterdir()}
+    manifest = json.loads(before["manifest.json"])
+    if rebuild_partitioned:
+        assert len(manifest["datasets"]["findings"]["partitions"]) > 1
+    plan = sheets_plan(package)
+    assert plan["network"] is False and plan["apply"] is False
+    assert plan["state"] == "ready"
+    assert {item["worksheet"]: item["rows"] for item in plan["worksheets"]} == {
+        name: dataset["row_count"] for name, dataset in manifest["datasets"].items()
+    }
+    selected = tmp_path / "selected"
+    result = filter_package(
+        package,
+        dataset="findings",
+        out_dir=selected,
+        where={"check_id": ["TITLE_MISSING"]},
+        columns=["check_id", "url", "message"],
+    )
+    assert result["conservation"]["source_rows"] == manifest["datasets"]["findings"]["row_count"]
+    assert result["conservation"]["selected_rows"] == 1
+    with (selected / result["partitions"][0]["path"]).open(newline="", encoding="utf-8") as stream:
+        assert list(csv.DictReader(stream)) == [
+            {
+                "check_id": "TITLE_MISSING",
+                "url": "https://example.com/no-title",
+                "message": "Title element is missing",
+            }
+        ]
+    assert sheets_plan(selected)["worksheets"][0]["rows"] == 1
+    assert {path.name: path.read_bytes() for path in package.iterdir()} == before
 
 
 def test_committed_worksheets_demonstrate_required_states():

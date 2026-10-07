@@ -8,10 +8,11 @@ every page, dataset, field, calculated field and filter rule that a native repor
 `layout-preview.svg` is the original visual review of the five blueprint pages; it is not a
 substitute for the native template copy check.
 
-`worksheets/` holds the committed synthetic fixture: one CSV per BI dataset plus the package
+`worksheets/` holds the committed synthetic fixture: native BI CSV partitions plus the package
 manifest, generated deterministically from `examples/audit.json` and the synthetic Search
 Console/GA4 inputs under `sources/` by `scripts/generate_reporting_pack_worksheets.py`. These
-are the worksheets the native template connects to. `SETUP.md` is the mechanical owner-side
+retain the partition paths, counts and checksums required by the existing BI consumers; the
+small fixture has one `<dataset>-0001.csv` partition per worksheet. `SETUP.md` is the owner-side
 build guide: spreadsheet import, six Sheets data sources with the reserved aliases, the five
 pages, calculated fields, copy permission and the fresh-copy verification checklist.
 
@@ -87,16 +88,20 @@ It is the final external step for issue #836, not an implementation substitute.
 [`SETUP.md`](SETUP.md) is the complete mechanical build guide; the short version is:
 
 1. Create a new Google Sheet in the approved account and import each committed
-   `worksheets/<dataset>.csv` into a worksheet with the same name. Do not collapse link
-   occurrences or replace empty state/reason columns with zeroes.
+   partition from `worksheets/manifest.json` into its dataset's worksheet. Keep one header
+   across any partition sequence. Do not collapse link occurrences or replace empty
+   state/reason columns with zeroes.
 2. Preflight each worksheet against `worksheets/manifest.json` row counts. If Sheets cannot
    hold every row, retain the local package and stop instead of partially replacing the
    destination.
 3. In Looker Studio, create a report from the six worksheets and implement the five pages in
-   the blueprint verbatim. Add the global run control and source-specific date controls.
-4. Create a fresh copy as a second account/session, reconnect its synthetic Sheets sources, and
-   verify every page/control. Record the report URL and this copy check only after that external
-   verification succeeds.
+   the blueprint verbatim. Set the six exact **Alias** values in Resource → Manage added data
+   sources; display names alone do not configure them. Add the global run control and
+   source-specific date controls.
+4. Generate the Linking API URL with those aliases and open it in a second account/session
+   with access to the synthetic spreadsheet. Verify all six sources resolve without manual
+   reconnection, save the configured copy, and check every page/control. Record the report
+   URL and this copy check only after that external verification succeeds.
 
 Before treating the returned URL as a usable copy link, verify the original report ID is a real,
 viewable report and complete this exact import checklist:

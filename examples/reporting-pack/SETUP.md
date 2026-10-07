@@ -29,10 +29,13 @@ worksheets no longer match the toolkit's BI projection. All data is synthetic
 
 1. In Google Sheets create a spreadsheet named
    `SEOHEAD Tools - Synthetic reporting pack v1`.
-2. For each of the six CSVs in `worksheets/`: File → Import → Upload → select the CSV →
+2. For each dataset, use the CSV path declared in `manifest.json` under
+   `datasets.<name>.partitions`. This fixture has one partition per dataset,
+   named `<dataset>-0001.csv`. File → Import → Upload → select the CSV →
    Import location "Insert new sheet(s)" → separator "Detect automatically". Rename each
-   resulting tab to the dataset name exactly: `coverage`, `pages`, `findings`,
-   `link_occurrences`, `cohorts`, `metrics`.
+   resulting tab to the dataset name, without the partition suffix: `coverage`, `pages`,
+   `findings`, `link_occurrences`, `cohorts`, `metrics`. For a larger package, import every
+   declared partition in order into that dataset's worksheet, keeping its header once.
 3. Verify each worksheet's data row count against `manifest.json`
    (`datasets.<name>.row_count`). `link_occurrences` legitimately contains only a header
    row: the synthetic audit input declares this dataset `unavailable`, which is part of
@@ -48,12 +51,27 @@ worksheets no longer match the toolkit's BI projection. All data is synthetic
 
 1. Looker Studio → Create → Report.
 2. Add a data source → Google Sheets → select the spreadsheet and the `coverage`
-   worksheet → keep "Use first row as headers" → connect. Rename the data source to
-   `SEOHEAD Synthetic — coverage` (the exact alias contract in
-   `linking-api-source-aliases.json`).
+   worksheet → keep "Use first row as headers" → connect. Set its display name to
+   `SEOHEAD Synthetic — coverage`.
 3. Repeat once per worksheet: `pages`, `findings`, `link_occurrences`, `cohorts`,
-   `metrics`, with the matching `SEOHEAD Synthetic — …` names.
-4. Do not let Looker Studio "fix" field types that change semantics: every `*_state` and
+   `metrics`, with the display names below.
+4. In the report editor open **Resource → Manage added data sources**. Edit the
+   **Alias** column for each source to the exact value below. Display names and aliases
+   are separate properties; renaming a source does not set its Linking API alias.
+
+   | Worksheet | Display name | Linking API alias |
+   |---|---|---|
+   | `coverage` | `SEOHEAD Synthetic — coverage` | `coverage_sheet` |
+   | `pages` | `SEOHEAD Synthetic — pages` | `pages_sheet` |
+   | `findings` | `SEOHEAD Synthetic — findings` | `findings_sheet` |
+   | `link_occurrences` | `SEOHEAD Synthetic — link occurrences` | `links_sheet` |
+   | `cohorts` | `SEOHEAD Synthetic — cohorts` | `cohorts_sheet` |
+   | `metrics` | `SEOHEAD Synthetic — metrics` | `metrics_sheet` |
+
+   Confirm each alias appears exactly once and points to its declared worksheet.
+   These values are the contract in `linking-api-source-aliases.json`; see Google's
+   [data-source alias instructions](https://developers.google.com/looker-studio/integrate/linking-api#data_source_alias).
+5. Do not let Looker Studio "fix" field types that change semantics: every `*_state` and
    `*_reason` column stays Text; `*_value`, `*_rows`, `*_count`, `crawl_depth`,
    `word_count`, `inlinks`, `unique_inlinks`, `numerator`, `denominator`, `value_number`,
    `search_value`, `sessions_value` are Number; `period_start`/`period_end` are Date.
@@ -144,9 +162,11 @@ Add exactly the two blueprint fields, verbatim from `looker-studio-blueprint.jso
    settings, leave "download, print and copy" allowed for viewers — that is what makes
    the template copyable.
 2. The template link is the report URL
-   `https://lookerstudio.google.com/reporting/<report-id>`. A copyable Linking API URL
-   (`c.reportId=…`) can be produced afterwards with
-   `seohead.reports.looker_link.build_looker_copy_link` using the reserved aliases.
+   `https://lookerstudio.google.com/reporting/<report-id>`. Generate its configured
+   Linking API URL with `seohead.reports.looker_link.build_looker_copy_link`, using
+   the confirmed original report ID and all six aliases from step 2 mapped to their
+   actual synthetic spreadsheet/worksheet IDs. The local builder validates the mapping;
+   only the fresh-copy check below can verify that the native report resolves it.
 3. Record the report ID, the spreadsheet ID and the per-worksheet IDs in the local
    destination notes only — never commit them to the repository.
 
@@ -154,9 +174,12 @@ Add exactly the two blueprint fields, verbatim from `looker-studio-blueprint.jso
 
 In a different account or an incognito session where the original is only *viewable*:
 
-1. Open the template link (or the generated Linking API copy URL) → "Make a copy" →
-   reconnect each of the six data sources to the synthetic worksheet with the matching
-   name, preserving the declared aliases.
+1. Give the copying account access to the synthetic spreadsheet, then open the **generated
+   Linking API URL** from step 5. Confirm that all six sources resolve to the intended
+   spreadsheet/worksheet IDs without manual reconnection. Use "Edit and share" to save
+   the configured copy. A manual copy of the original template does not verify the
+   Linking API mapping; if the generated link fails, correct the original aliases or local
+   mapping and repeat this check from a fresh session.
 2. Confirm all five pages render, the report-level `run_id` control and the page-5 date
    control work, and no chart shows a broken-data-source badge.
 3. Confirm the states contract on the copy: `link_occurrences` shows `unavailable`, the
@@ -164,7 +187,8 @@ In a different account or an incognito session where the original is only *viewa
    `value_state = measured` (not blank), the suppressed `page-b` impressions cell is
    blank with `value_state = unavailable` — it must not plot as zero — and quadrant rows
    for URLs without a complete pair show `incomplete`, not zero.
-4. Record the template link, report ID and this checklist's outcome in the issue. Until
+4. Record the template link, report ID and this checklist's outcome in the issue, including
+   that the generated Linking API URL resolved all six sources without manual repair. Until
    then the deliverable state stays `template_state: missing` even though every local
    artifact below is complete.
 
