@@ -120,6 +120,34 @@ class ContentSearchTests(unittest.TestCase):
         self.assertEqual(controller.last_payload["state"], "error")
         self.assertIsNone(controller.last_payload["coverage"])
 
+    def test_mainwindow_close_waits_for_its_search_and_spares_external_process(self):
+        from seohead_desktop.app import MainWindow
+        executable = self.project / "slow-window-core"
+        executable.write_text(f"#!{sys.executable}\nimport signal,time,sys\nfrom pathlib import Path\nsignal.signal(signal.SIGINT, signal.SIG_IGN)\nPath(sys.argv[0]+'.ready').write_text('ready')\ntime.sleep(60)\n")
+        executable.chmod(0o755)
+        window = MainWindow(persistent=False, core_executable=str(executable))
+        window.project_directory = str(self.project)
+        window.current_project_uuid = "project-id"
+        window.selected_scan_path = str(self.project / "scans/selected.sqlite")
+        window.selected_scan_uuid = "scan-id"
+        window.content_search.set_available(TOOLS)
+        window.show()
+        external = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            window.content_search.start("GTM-")
+            wait_for(self, lambda: Path(str(executable) + ".ready").exists(), "search child did not become ready")
+            window.close()
+            self.assertTrue(window.isVisible(), "window bypassed its owned search shutdown")
+            wait_for(self, lambda: not window.isVisible(), "window did not close after owned search cancellation", timeout=8)
+            self.assertFalse(window.content_search.active)
+            self.assertIsNone(external.poll(), "window close affected an external process")
+        finally:
+            window.content_search.shutdown()
+            wait_for(self, lambda: not window.content_search.active, "owned search cleanup did not finish", timeout=8)
+            close_window(self, window)
+            external.terminate()
+            external.wait(timeout=5)
+
     def test_real_partial_static_and_missing_rendered_search_keep_global_coverage(self):
         core = core_cli(self)
         project = os.environ.get("SEOHEAD_DESKTOP_SEARCH_PROJECT")
@@ -143,6 +171,8 @@ class ContentSearchTests(unittest.TestCase):
             states, observed = [], []
             controller.changed.connect(states.append)
             window.open_content_search("gtm")
+            self.assertIs(window.pages.currentWidget(), window.content_search_panel)
+            self.assertTrue(window.findChild(QPushButton, "bodySearchStart").isVisible())
             self.assertFalse(controller.active, "opening a preset started a search")
             window.findChild(QLineEdit, "bodySearchQuery").setText("GTM-QADEMO")
             QTest.mouseClick(window.findChild(QPushButton, "bodySearchStart"), Qt.LeftButton)
@@ -151,6 +181,9 @@ class ContentSearchTests(unittest.TestCase):
             self.assertTrue(observed[0]["active"], "observer only responded after the separate search ended")
             wait_for(self, lambda: states and states[-1]["state"] in {"ready", "error"}, lambda: str(states[-1]), timeout=30)
             first = states[-1]
+            self.assertEqual(window.navigation.currentRow(), 10, "navigation moved away while content search was running")
+            self.assertIs(window.pages.currentWidget(), window.content_search_panel)
+            self.assertTrue(window.content_search_panel.isVisible())
             self.assertEqual(first["state"], "ready", first)
             self.assertEqual(first["operation_status"], "partial")
             self.assertEqual(first["exit_code"], 2)
@@ -164,6 +197,8 @@ class ContentSearchTests(unittest.TestCase):
             QTest.mouseClick(window.findChild(QPushButton, "bodySearchStart"), Qt.LeftButton)
             wait_for(self, lambda: states[-1]["state"] in {"ready", "error"}, lambda: str(states[-1]), timeout=30)
             rendered = states[-1]
+            self.assertIs(window.pages.currentWidget(), window.content_search_panel)
+            self.assertTrue(window.findChild(QPushButton, "bodySearchStart").isVisible())
             self.assertEqual(rendered["state"], "ready", rendered)
             self.assertEqual(rendered["coverage"]["unavailable_documents"], 6)
             self.assertEqual(rendered["coverage"]["documents_measured"], 0)
