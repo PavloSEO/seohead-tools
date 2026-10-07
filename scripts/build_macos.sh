@@ -44,7 +44,7 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 
 "$python_bin" -m PyInstaller \
     --clean --noconfirm --onedir --console --name seohead-desktop-agent \
-    --collect-data seohead_desktop --collect-submodules mcp \
+    --collect-data seohead_desktop --collect-data mcp \
     --distpath "$scratch/agent-dist" --workpath "$scratch/agent-work" --specpath "$scratch" \
     "$project_dir/scripts/control_entrypoint.py"
 

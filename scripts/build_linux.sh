@@ -17,7 +17,7 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
     --paths "$core_source" --collect-all seohead --distpath "$scratch/core-dist" \
     --workpath "$scratch/core-work" --specpath "$scratch" "$core_source/seohead/cli.py"
 "$python_bin" -m PyInstaller --clean --noconfirm --onedir --console --name seohead-desktop-agent \
-    --collect-data seohead_desktop --collect-submodules mcp --distpath "$scratch/agent-dist" \
+    --collect-data seohead_desktop --collect-data mcp --distpath "$scratch/agent-dist" \
     --workpath "$scratch/agent-work" --specpath "$scratch" "$project_dir/scripts/control_entrypoint.py"
 "$python_bin" -m PyInstaller --clean --noconfirm --onedir --windowed --name "SEOHEAD Desktop" \
     --collect-data seohead_desktop --add-data "$scratch/core-dist/seohead:resources/core/seohead" \

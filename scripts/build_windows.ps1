@@ -14,7 +14,7 @@ $Scratch = Join-Path $ScratchRoot ("packaging-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Scratch | Out-Null
 try {
     & $Python -m PyInstaller --clean --noconfirm --onedir --console --name seohead --paths $CoreSource --collect-all seohead --distpath "$Scratch\core-dist" --workpath "$Scratch\core-work" --specpath $Scratch "$CoreSource\seohead\cli.py"
-    & $Python -m PyInstaller --clean --noconfirm --onedir --console --name seohead-desktop-agent --collect-data seohead_desktop --collect-submodules mcp --distpath "$Scratch\agent-dist" --workpath "$Scratch\agent-work" --specpath $Scratch "$ProjectRoot\scripts\control_entrypoint.py"
+    & $Python -m PyInstaller --clean --noconfirm --onedir --console --name seohead-desktop-agent --collect-data seohead_desktop --collect-data mcp --distpath "$Scratch\agent-dist" --workpath "$Scratch\agent-work" --specpath $Scratch "$ProjectRoot\scripts\control_entrypoint.py"
     & $Python -m PyInstaller --clean --noconfirm --onedir --windowed --name "SEOHEAD Desktop" --collect-data seohead_desktop --add-data "$Scratch\core-dist\seohead;resources\core\seohead" --distpath "$Scratch\app-dist" --workpath "$Scratch\app-work" --specpath $Scratch "$ProjectRoot\scripts\entrypoint.py"
     $Bundle = "$Scratch\app-dist\SEOHEAD Desktop"
     $Resources = "$Bundle\resources"
