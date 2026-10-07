@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -38,7 +39,13 @@ def bundled_core_manifest(executable: Path | None = None) -> tuple[Path, dict] |
 
 
 def bundled_core_cli(executable: Path | None = None) -> Path | None:
-    """Return a bundled CLI only when its manifest names a safe relative executable."""
+    """Return a bundled CLI only when its manifest identity verifies."""
+    identity = verified_bundled_core_identity(executable)
+    return None if identity is None else identity["cli"]
+
+
+def verified_bundled_core_identity(executable: Path | None = None) -> dict | None:
+    """Verify the co-shipped core path, recorded commit, and executable digest."""
     located = bundled_core_manifest(executable)
     if located is None:
         return None
@@ -51,7 +58,16 @@ def bundled_core_cli(executable: Path | None = None) -> Path | None:
         candidate.relative_to(manifest_path.parent.resolve())
     except ValueError:
         return None
-    return candidate if candidate.is_file() else None
+    commit = payload["core"].get("commit")
+    expected_hash = payload["core"].get("cli_sha256")
+    if not candidate.is_file() or not isinstance(commit, str) or len(commit) != 40:
+        return None
+    if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+        return None
+    digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    if digest != expected_hash:
+        return None
+    return {"cli": candidate, "commit": commit, "manifest": manifest_path, "payload": payload}
 
 
 def package_arguments(arguments: list[str], core_cli: Path | None = None) -> list[str]:

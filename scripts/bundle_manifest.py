@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 try:  # pragma: no cover - Python 3.11+ takes the first branch.
@@ -48,6 +50,7 @@ def _core_identity(source: Path) -> dict[str, str]:
         "repository": remote,
         "commit": _run("git", "rev-parse", "HEAD", cwd=root),
         "source_archive_sha256": hashlib.sha256(archive).hexdigest(),
+        "optional_dependency_declarations": project.get("optional-dependencies", {}),
     }
 
 
@@ -56,6 +59,19 @@ def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
         "schema": "seohead.desktop.core-manifest.v1",
         "platform": platform,
         "core": _core_identity(core_source.resolve()),
+        "build_environment": {
+            "python": sys.version,
+            "installed_distributions": dict(
+                sorted(
+                    (
+                        distribution.metadata["Name"].lower(),
+                        distribution.version,
+                    )
+                    for distribution in importlib.metadata.distributions()
+                    if distribution.metadata.get("Name")
+                )
+            ),
+        },
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

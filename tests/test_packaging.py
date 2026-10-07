@@ -13,7 +13,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from seohead_desktop.bundle import bundled_core_cli, bundled_core_manifest, package_arguments
+from seohead_desktop.bundle import (
+    bundled_core_cli,
+    bundled_core_manifest,
+    package_arguments,
+    verified_bundled_core_identity,
+)
 
 
 def load_script(name: str):
@@ -43,7 +48,11 @@ class PackagingTests(unittest.TestCase):
                 json.dumps(
                     {
                         "schema": "seohead.desktop.core-manifest.v1",
-                        "core": {"cli_relpath": "core/seohead/seohead"},
+                        "core": {
+                            "cli_relpath": "core/seohead/seohead",
+                            "commit": "a" * 40,
+                            "cli_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -51,6 +60,32 @@ class PackagingTests(unittest.TestCase):
             found = bundled_core_manifest(executable)
             self.assertIsNotNone(found)
             self.assertEqual(bundled_core_cli(executable), core.resolve())
+            self.assertEqual(verified_bundled_core_identity(executable)["commit"], "a" * 40)
+
+    def test_core_hash_mismatch_is_not_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "SEOHEAD Desktop.app"
+            executable = app / "Contents" / "MacOS" / "SEOHEAD Desktop"
+            resources = app / "Contents" / "Resources"
+            core = resources / "core" / "seohead" / "seohead"
+            executable.parent.mkdir(parents=True)
+            core.parent.mkdir(parents=True)
+            executable.touch()
+            core.write_text("changed", encoding="utf-8")
+            (resources / "core-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "seohead.desktop.core-manifest.v1",
+                        "core": {
+                            "cli_relpath": "core/seohead/seohead",
+                            "commit": "b" * 40,
+                            "cli_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertIsNone(verified_bundled_core_identity(executable))
 
     def test_core_path_cannot_escape_resources(self):
         with tempfile.TemporaryDirectory() as directory:
