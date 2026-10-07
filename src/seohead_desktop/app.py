@@ -118,6 +118,8 @@ class MainWindow(QMainWindow):
         self.inbox_revision = None
         self.requests = {}
         self.request_handlers = {}
+        self.active_commands = {}
+        self.pending_commands = {}
         self.mcp_gateway = None
         self.mcp_ready = False
         self.crawl_descriptor = None
@@ -126,7 +128,9 @@ class MainWindow(QMainWindow):
         self.selected_managed_run_id = None
         self.selected_scan_path = None
         self.selected_scan_uuid = None
+        self.selected_url = None
         self.last_observer_signature = None
+        self._reload_selected_scan = False
         self.poll_backoff_ms = 500
         self._close_waiting = False
         self.scan_poll_timer = QTimer(self)
@@ -434,32 +438,48 @@ class MainWindow(QMainWindow):
         gateway = self.ensure_mcp_gateway()
         if gateway is None:
             return
+        operation = request_id.split(":", 1)[0]
+        if operation in self.active_commands:
+            # Keep one in-flight callback and only the latest pending intent per panel.
+            self.pending_commands[operation] = (request_id, tool, arguments, handler)
+            return
+        self.active_commands[operation] = request_id
         self.requests[request_id] = self.read_generation
         self.request_handlers[request_id] = handler
         try:
             gateway.submit(request_id, tool, arguments, self.read_generation)
         except (RuntimeError, ValueError) as exc:
-            self.requests.pop(request_id, None)
-            self.request_handlers.pop(request_id, None)
+            self.complete_command(request_id)
             self.statusBar().showMessage(str(exc))
             return
         self.cancel_button.setEnabled(True)
 
+    def complete_command(self, request_id):
+        self.requests.pop(request_id, None)
+        handler = self.request_handlers.pop(request_id, None)
+        operation = request_id.split(":", 1)[0]
+        self.active_commands.pop(operation, None)
+        pending = self.pending_commands.pop(operation, None)
+        if pending is not None:
+            self.start_command(*pending)
+        return handler
+
     def command_loaded(self, request_id, result, generation):
         if generation != self.read_generation:
             return
-        self.requests.pop(request_id, None)
-        handler = self.request_handlers.pop(request_id, None)
+        handler = self.complete_command(request_id)
         if handler:
             handler(result)
-        self.cancel_button.setEnabled(bool(self.requests))
+        self.select_owned_run()
 
     def command_failed(self, request_id, text, generation):
         if generation != self.read_generation:
             return
-        self.requests.pop(request_id, None)
-        self.request_handlers.pop(request_id, None)
-        self.cancel_button.setEnabled(bool(self.requests))
+        superseded = request_id.split(":", 1)[0] in self.pending_commands
+        self.complete_command(request_id)
+        self.select_owned_run()
+        if superseded:
+            return
         if request_id == "inbox-submit":
             self.note_submit.setEnabled(True)
             self.project_panels.panel("inbox").set_submission_enabled(
@@ -480,6 +500,9 @@ class MainWindow(QMainWindow):
             self.mcp_gateway.cancel_generation(self.read_generation)
         self.requests.clear()
         self.request_handlers.clear()
+        self.active_commands.clear()
+        self.pending_commands.clear()
+        self.read_generation += 1
         self.cancel_button.setEnabled(False)
         self.statusBar().showMessage("Текущие чтения отменены; сохранённые данные проекта не изменены")
 
@@ -500,7 +523,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("В папке нет project.json SEOHEAD")
             return
         self.cancel_requests()
-        self.read_generation += 1
         self.statusBar().showMessage("Чтение локального проекта в фоне…")
         gateway = self.ensure_mcp_gateway()
         if gateway is None:
@@ -520,6 +542,11 @@ class MainWindow(QMainWindow):
     def project_loaded(self, result, generation):
         if generation != self.read_generation:
             return
+        self.clear_scan_selection("Selected project changed")
+        self.last_observer_signature = None
+        self.scan_model.replace([])
+        self.task_model.replace([])
+        self.inbox_model.replace([])
         self.project_result = result
         self.project_directory = str(result.get("path") or "")
         self.model.replace([])
@@ -554,7 +581,7 @@ class MainWindow(QMainWindow):
         self.load_crawl_descriptor()
 
     def load_crawl_descriptor(self):
-        if self.crawl_descriptor is None:
+        if self.crawl_descriptor is None and "crawl-settings" not in self.requests:
             self.start_command("crawl-settings", "seo_crawl_describe_settings", {}, self.crawl_descriptor_loaded)
 
     def crawl_descriptor_loaded(self, result):
@@ -570,8 +597,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Сначала откройте локальный проект SEOHEAD")
             return
         self.cancel_requests()
-        self.read_generation += 1
         directory = self.project_directory
+        self._reload_selected_scan = True
         self.statusBar().showMessage("Обновление сохранённых проекций в фоне…")
         self.start_command(
             "observer",
@@ -585,6 +612,7 @@ class MainWindow(QMainWindow):
             {"directory": directory, "limit": PAGE_LIMIT},
             self.load_tasks,
         )
+        self.load_crawl_descriptor()
 
     def load_observer(self, result):
         """Project-observe is the core's coherent bounded snapshot."""
@@ -676,21 +704,44 @@ class MainWindow(QMainWindow):
         self.task_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
 
     def load_scans(self, result):
-        rows = []
-        for item in result.get("items") or []:
-            rows.append({**item, "partial": "да" if item.get("crawl_partial") or item.get("corpus_partial") else "нет"})
+        rows = [
+            {**item, "partial": "да" if item.get("crawl_partial") or item.get("corpus_partial") else "нет"}
+            for item in result.get("items") or []
+        ]
+        old = next((item for item in self.scan_model.rows if item.get("path") == self.selected_scan_path), None)
+        selection = self.scan_table.selectionModel()
+        selection.blockSignals(True)
         self.scan_model.replace(rows)
         self.scan_caption.setText(f"Сканы · {result.get('total', len(rows))} сохранено · показано {len(rows)}")
         self.project_panels.set_page(
-            "scans",
-            rows,
-            total=result.get("total"),
+            "scans", rows, total=result.get("total"),
             offset=(result.get("pagination") or {}).get("offset", 0),
             has_more=(result.get("pagination") or {}).get("next_offset") is not None,
             source="Project retained scans",
         )
+        index = next((index for index, item in enumerate(rows) if item.get("path") == self.selected_scan_path), 0)
         if rows:
-            self.scan_table.selectRow(0)
+            self.scan_table.selectRow(index)
+        selection.blockSignals(False)
+        if rows:
+            selected = rows[index]
+            if self._reload_selected_scan or selected.get("path") != self.selected_scan_path or selected != old:
+                self._reload_selected_scan = False
+                self.select_project_scan(selected)
+        elif not self.selected_scan_path:
+            self.clear_scan_selection("No retained scans in this project")
+
+    def clear_scan_selection(self, reason):
+        self.selected_scan_path = None
+        self.selected_scan_uuid = None
+        self.selected_url = None
+        self.model.replace([])
+        self.search.clear()
+        self.search.setEnabled(False)
+        self.audit_workspace.clear(reason)
+        for view in (self.detail, self.debug_detail, self.link_detail, self.evidence_detail, self.scan_detail):
+            view.setPlainText(reason)
+        self.resume_scan_button.setEnabled(False)
 
     def show_scan(self, current, _previous):
         if not current.isValid():
@@ -703,6 +754,7 @@ class MainWindow(QMainWindow):
         if not isinstance(path, str) or not path:
             self.scan_detail.setPlainText("Ядро не предоставило путь сохранённого скана.")
             return
+        self.clear_scan_selection("Selected scan changed")
         self.selected_scan_path = path
         self.selected_scan_uuid = scan.get("uuid") if isinstance(scan.get("uuid"), str) else None
         self.model.replace([])
@@ -743,6 +795,9 @@ class MainWindow(QMainWindow):
     def load_urls(self, result, scan_path=None):
         if scan_path is not None and scan_path != self.selected_scan_path:
             return
+        self.selected_url = None
+        self.link_detail.setPlainText("Выберите URL в текущей странице")
+        self.audit_workspace.set_page("inlinks", [], state="unavailable", reason="URL page changed")
         rows = []
         for page in result.get("rows") or []:
             rows.append({
@@ -852,7 +907,7 @@ class MainWindow(QMainWindow):
         self.debug_detail.setPlainText(json.dumps(row, ensure_ascii=False, indent=2))
 
     def load_url_links(self, result, scan_path=None, url=None):
-        if scan_path != self.selected_scan_path:
+        if scan_path != self.selected_scan_path or url != self.selected_url:
             return
         self.link_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
         self.audit_workspace.set_page(
@@ -865,7 +920,7 @@ class MainWindow(QMainWindow):
         )
 
     def load_url_detail(self, result, scan_path=None, url=None):
-        if scan_path != self.selected_scan_path:
+        if scan_path != self.selected_scan_path or url != self.selected_url:
             return
         self.detail.setPlainText(
             "Сохранённая деталь URL (без HTML-тела и секретных значений)\n\n"
@@ -911,6 +966,10 @@ class MainWindow(QMainWindow):
     def show_retained_url(self, row):
         if not self.selected_scan_path or not isinstance(row.get("url"), str):
             return
+        self.selected_url = row["url"]
+        self.link_detail.setPlainText("Загрузка ссылок выбранного URL…")
+        self.audit_workspace.set_page("inlinks", [], state="loading", reason="Selected URL changed")
+        self.audit_workspace.set_page("url_details", [], state="loading", reason="Selected URL changed")
         self.start_command(
             scan_request_key(self.current_project_uuid, self.selected_scan_path, "url-detail"),
             "seo_scan_url_detail",
@@ -1018,6 +1077,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(approval)
         advanced_overrides = {}
         advanced = QPushButton("Расширенные настройки…")
+        advanced.setEnabled(self.crawl_descriptor is not None)
+        if self.crawl_descriptor is None:
+            self.load_crawl_descriptor()
         def edit_advanced():
             current = {
                 **advanced_overrides,
@@ -1035,7 +1097,9 @@ class MainWindow(QMainWindow):
                 if "limits.max_requests" in advanced_overrides:
                     requests.setValue(advanced_overrides["limits.max_requests"])
                 if "limits.max_crawl_seconds" in advanced_overrides:
-                    duration.setValue(advanced_overrides["limits.max_crawl_seconds"])
+                    seconds = advanced_overrides["limits.max_crawl_seconds"]
+                    duration.setMaximum(max(duration.maximum(), seconds))
+                    duration.setValue(seconds)
                 if "rendering.mode" in advanced_overrides:
                     mode.setCurrentIndex(mode.findData(advanced_overrides["rendering.mode"]))
         advanced.clicked.connect(edit_advanced)
@@ -1046,7 +1110,9 @@ class MainWindow(QMainWindow):
             approval.setVisible(elevated)
             if not elevated:
                 approval.setChecked(False)
-            buttons.button(QDialogButtonBox.Ok).setEnabled(not elevated or approval.isChecked())
+            buttons.button(QDialogButtonBox.Ok).setEnabled(
+                self.crawl_descriptor is not None and (not elevated or approval.isChecked())
+            )
 
         limit.valueChanged.connect(update_approval)
         requests.valueChanged.connect(update_approval)
@@ -1102,9 +1168,11 @@ class MainWindow(QMainWindow):
                 rendering_mode=rendering_mode,
                 overrides=tuple(preview["overrides"].items()),
                 approve_large_crawl=approve_large_crawl,
-                max_urls_per_second=0.5,
+                max_urls_per_second=None,
             )
             self.selected_managed_run_id = run_id
+            self.owned_run_picker.setCurrentIndex(self.owned_run_picker.findData(run_id))
+            self.select_owned_run()
             self.scan_poll_timer.start()
         except (RuntimeError, ValueError) as exc:
             self.statusBar().showMessage(str(exc))
@@ -1143,8 +1211,8 @@ class MainWindow(QMainWindow):
         self.select_owned_run()
         if run.get("state") in {"starting", "running"}:
             self.statusBar().showMessage("Локальный native crawl запущен; наблюдение обновляется каждые 0,5 с")
-        elif run.get("state") in {"finished", "failed", "interrupted"}:
-            self.refresh_project()
+        elif run.get("state") == "awaiting_core_status":
+            self.scan_poll_timer.start()
         if self._close_waiting:
             self._finish_owned_shutdown()
 
@@ -1158,11 +1226,12 @@ class MainWindow(QMainWindow):
                 self.scan_detail.setPlainText(json.dumps(detail, ensure_ascii=False, indent=2))
             active = any(
                 item["id"] == self.selected_managed_run_id
-                and item["state"] in {"starting", "running", "stop_requested"}
+                and item["state"] in {"queued", "starting", "running", "stop_requested"}
                 for item in self.scan_manager.snapshot(self.current_project_uuid)
             )
         self.stop_run_button.setEnabled(active)
         self.cancel_button.setText("Остановить скан" if active else "Отменить чтение")
+        self.cancel_button.setEnabled(active or bool(self.requests))
 
     def stop_selected_run(self):
         self.cancel_active_work()
@@ -1174,7 +1243,12 @@ class MainWindow(QMainWindow):
         self.scan_detail.setPlainText((current + "\n" + text).strip()[-20_000:])
 
     def poll_active_scan(self):
-        if self.scan_manager is None or self.scan_manager.active_count == 0:
+        if self.scan_manager is not None:
+            self.scan_manager.observe(self.current_project_uuid, [])
+        if self.scan_manager is None or not any(
+            item["state"] in {"starting", "running", "stop_requested", "awaiting_core_status"}
+            for item in self.scan_manager.snapshot(self.current_project_uuid)
+        ):
             self.scan_poll_timer.stop()
             return
         if "observer" in self.requests or not self.project_directory:
@@ -1191,16 +1265,25 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Локальный скан: {text}")
 
     def closeEvent(self, event):
-        if not self._close_waiting and self.scan_manager is not None and self.scan_manager.active_count:
-            self._close_waiting = True
-            self.scan_manager.stop_all_owned()
+        if self.scan_manager is not None and self.scan_manager.active_count:
             event.ignore()
-            QTimer.singleShot(50, self._finish_owned_shutdown)
+            if not self._close_waiting:
+                self._close_waiting = True
+                self.scan_manager.stop_all_owned()
+                QTimer.singleShot(50, self._finish_owned_shutdown)
             return
         self.cancel_requests()
         self.scan_poll_timer.stop()
         if self.mcp_gateway is not None:
             self.mcp_gateway.stop()
+        # Qt pool destruction during Python GC can hold the GIL while its worker
+        # needs it to exit. Drain with the binding (which releases it) before close.
+        if not self.pool.waitForDone(200):
+            self._close_waiting = True
+            event.ignore()
+            QTimer.singleShot(100, self._finish_owned_shutdown)
+            return
+        self._close_waiting = False
         if self.settings:
             self.settings.setValue("geometry", self.saveGeometry())
             self.settings.setValue("horizontal", self.horizontal.saveState())

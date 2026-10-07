@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-import json
-import math
 import os
-import re
 import re
 import signal
 from pathlib import Path
@@ -73,11 +70,13 @@ class LocalScanProcess(QObject):
             ),
         )
 
-    def resume(self, scan_path: str, project: str) -> None:
+    def resume(self, scan_path: str, project: str, observer_run_id: str | None = None) -> None:
         if self.active:
             raise RuntimeError("a local scan is already running")
         self.stop_requested = False
-        self.process.start(self.executable, resume_arguments(scan_path, project))
+        self.process.start(
+            self.executable, resume_arguments(scan_path, project, observer_run_id, self.producer_build)
+        )
 
     def request_stop(self) -> None:
         """Ask only this owned child to stop; completion state comes from core."""
@@ -131,8 +130,6 @@ def crawl_arguments(
         str(root),
         "--max-urls",
         str(max_urls),
-        "--set",
-        f"rendering.mode={rendering_mode}",
     ]
     if producer_build is not None:
         arguments.extend(("--producer-build", producer_build))
@@ -140,6 +137,7 @@ def crawl_arguments(
         arguments.extend(("--observer-run-id", observer_run_id))
     if approve_large_crawl:
         arguments.append("--approve-large-crawl")
+    typed_overrides = {"rendering.mode": rendering_mode}
     for key, value in overrides:
         if key in {"limits.max_urls", "rendering.mode"}:
             continue
@@ -147,18 +145,30 @@ def crawl_arguments(
             raise ValueError("invalid validated crawl override path")
         if not isinstance(value, (str, int, float, bool, list)) or isinstance(value, float) and not math.isfinite(value):
             raise ValueError("unsupported local crawl override")
-        arguments.extend(("--set", f"{key}={json.dumps(value)}"))
+        typed_overrides[key] = value
     if max_urls_per_second is not None:
         if not isinstance(max_urls_per_second, float) or not 0 < max_urls_per_second <= 2.0:
             raise ValueError("native request rate must be a finite value from 0 to 2")
-        arguments.extend(("--max-urls-per-second", str(max_urls_per_second)))
+        typed_overrides["speed.min_delay_seconds"] = max(
+            typed_overrides.get("speed.min_delay_seconds", 0), 1 / max_urls_per_second
+        )
+    # The existing JSON input contract preserves regex commas, lists and selectors.
+    arguments.extend(("--input", json.dumps({"overrides": typed_overrides}, allow_nan=False)))
     return arguments
 
 
-def resume_arguments(scan_path: str, project: str) -> list[str]:
+def resume_arguments(
+    scan_path: str, project: str, observer_run_id: str | None = None,
+    producer_build: str | None = None,
+) -> list[str]:
     """Resume an in-project artifact without changing its stored crawl settings."""
     root = Path(project).resolve()
     scan = Path(scan_path).resolve()
     if not scan.is_relative_to((root / "scans").resolve()):
         raise ValueError("resume scan is outside the selected local project")
-    return ["crawl-site", "--project", str(root), "--resume", str(scan)]
+    arguments = ["crawl-site", "--project", str(root), "--resume", str(scan)]
+    if observer_run_id is not None:
+        arguments.extend(("--observer-run-id", observer_run_id))
+    if producer_build is not None:
+        arguments.extend(("--producer-build", producer_build))
+    return arguments

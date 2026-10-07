@@ -1,43 +1,140 @@
-"""Owned-loopback integration gate for explicit local crawl process control."""
+"""Real owned-loopback acceptance for CLI checkpoint and Qt launch control."""
 
-import os
+from contextlib import contextmanager, closing
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import shutil
+import sqlite3
 import subprocess
 import tempfile
 import threading
 import time
 import unittest
+import uuid
 
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog, QPushButton, QSpinBox
 
-from seohead_desktop.app import MainWindow, load_theme
-from seohead_desktop.scan_runner import LocalScanProcess
+from seohead_desktop.app import MainWindow
+from seohead_desktop.scan_runner import LocalScanProcess, crawl_arguments
 
 
 class _SlowSite(BaseHTTPRequestHandler):
-    delay = 0.25
+    delay = 0.2
 
     def do_GET(self):
-        if self.path == "/":
-            body = "<html><body>" + "".join(
-                f'<a href="/page-{number}">{number}</a>' for number in range(6)
-            ) + "</body></html>"
+        self.server.hits.append(self.path)
+        if self.path == "/robots.txt":
+            body, media, status = "User-agent: *\nAllow: /\n", "text/plain", 200
+        elif self.path == "/" or self.path.startswith("/page-"):
+            if self.path != "/":
+                time.sleep(self.delay)
+            links = "".join(f'<a href="/page-{n}">Page {n}</a>' for n in range(6)) if self.path == "/" else ""
+            body = f'<html><head><title>{self.path}</title></head><body><nav>NOISE_NAVIGATION</nav><main><p>OUTSIDE_REGION</p><section id="content"><h1>KEPT_CONTENT</h1><span class="omit">OMITTED_SELECTOR_ONLY</span>{links}</section></main></body></html>'
+            media, status = "text/html; charset=utf-8", 200
         else:
-            time.sleep(self.delay)
-            body = "<html><body>retained fixture</body></html>"
+            body, media, status = "Not found", "text/plain", 404
         encoded = body.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", media)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def log_message(self, *_args):
         pass
+
+
+def core_cli(case):
+    core = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")
+    if not core or not Path(core).is_file():
+        case.skipTest("set SEOHEAD_DESKTOP_CORE_CLI to run the owned-loopback gate")
+    return core
+
+
+def wait_for(case, predicate, message, timeout=45):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        if predicate():
+            return
+        QTest.qWait(25)
+    case.fail(message() if callable(message) else message)
+
+
+@contextmanager
+def owned_site():
+    previous = os.environ.get("SEOHEAD_ALLOW_PRIVATE_HOSTS")
+    os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = "crawl.localhost,127.0.0.1"
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowSite)
+    server.hits = []
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    scratch = Path(__file__).resolve().parents[1] / ".build"
+    scratch.mkdir(exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix="owned-desktop-", dir=scratch) as temporary:
+            yield Path(temporary), server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        if previous is None:
+            os.environ.pop("SEOHEAD_ALLOW_PRIVATE_HOSTS", None)
+        else:
+            os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = previous
+
+
+def create_project(core, root, server):
+    project = root / "project"
+    subprocess.run(
+        [core, "project-new", "--directory", str(project), "--target", f"http://crawl.localhost:{server.server_port}/"],
+        check=True, capture_output=True, text=True, timeout=20,
+    )
+    return project
+
+
+def snapshot(scan):
+    if not Path(scan).is_file():
+        return {}
+    with closing(sqlite3.connect(Path(scan).resolve().as_uri() + "?mode=ro", uri=True)) as con:
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM scan").fetchone()
+            if row is None:
+                return {}
+            return {"scan": dict(row), "pages": con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]}
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                return {}
+            raise
+
+
+def retained_pages(project):
+    return {scan: snapshot(scan) for scan in (project / "scans").glob("*.sqlite") if snapshot(scan).get("pages", 0)}
+
+
+def preserve(root, name, receipt, window=None):
+    output = os.environ.get("SEOHEAD_DESKTOP_ACCEPTANCE_DIR")
+    if not output:
+        return
+    destination = Path(output) / f"{name}-{root.name}"
+    shutil.copytree(root, destination)
+    (destination / "receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2))
+    if window is not None:
+        window.grab().save(str(destination / "window.png"))
+
+
+def close_window(case, window):
+    window.close()
+    wait_for(case, lambda: not window.isVisible(), "window did not finish owned shutdown", timeout=35)
+    case.assertTrue(window.pool.waitForDone(10000), "MCP worker remained active after closing")
 
 
 class LocalScanRunnerTests(unittest.TestCase):
@@ -45,148 +142,105 @@ class LocalScanRunnerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_raw_and_js_arguments_preserve_typed_overrides_in_real_cli(self):
+        core = core_cli(self)
+        scratch = Path(__file__).resolve().parents[1] / ".build"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="typed-cli-", dir=scratch) as temporary:
+            project = Path(temporary)
+            (project / "project.json").write_text("{}")
+            for mode in ("raw", "js"):
+                with self.subTest(mode=mode):
+                    arguments = crawl_arguments(
+                        str(project), 21, mode,
+                        overrides=(("limits.max_requests", 31), ("limits.max_crawl_seconds", 41),
+                                   ("scope.include_patterns", ["page-[0,12]$"]),
+                                   ("evidence.content_area.include_selector", "main"),
+                                   ("speed.min_delay_seconds", 0.75)),
+                    )
+                    code = (
+                        "import json,sys; from seohead.cli import build_parser,_build_kwargs; "
+                        "args=build_parser().parse_args(json.loads(sys.argv[1])); "
+                        "print(json.dumps(_build_kwargs(args.command,args)[1]))"
+                    )
+                    result = json.loads(subprocess.run(
+                        [str(Path(core).parent / "python"), "-c", code, json.dumps(arguments)],
+                        check=True, capture_output=True, text=True, timeout=20,
+                    ).stdout)
+                    self.assertEqual(result["max_urls"], 21)
+                    self.assertEqual(result["project"], str(project))
+                    self.assertEqual(result["overrides"], {
+                        "rendering.mode": mode, "limits.max_requests": 31,
+                        "limits.max_crawl_seconds": 41, "scope.include_patterns": ["page-[0,12]$"],
+                        "evidence.content_area.include_selector": "main", "speed.min_delay_seconds": 0.75,
+                    })
+
     def test_owned_loopback_capture_interrupt_and_resume(self):
-        core = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")
-        if not core or not Path(core).is_file():
-            self.skipTest("set SEOHEAD_DESKTOP_CORE_CLI to run the local native-crawl gate")
-        self.skipTest(
-            "until core persists SIGINT checkpoints: active crawl cancellation currently raises KeyboardInterrupt and removes the staged artifact"
-        )
-        previous = os.environ.get("SEOHEAD_ALLOW_PRIVATE_HOSTS")
-        os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = "crawl.localhost,127.0.0.1"
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowSite)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-
-        def wait_for(predicate, message, timeout=20):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                self.app.processEvents()
-                if predicate():
-                    return
-                QTest.qWait(30)
-            self.fail(message)
-
-        try:
-            with tempfile.TemporaryDirectory(prefix="seohead-desktop-crawl-") as temporary:
-                project = Path(temporary) / "project"
-                target = f"http://crawl.localhost:{server.server_port}/"
-                subprocess.run(
-                    [core, "project-new", "--directory", str(project), "--target", target],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                runner = LocalScanProcess(core)
-                finished = []
-                runner.finished.connect(lambda code, state: finished.append((code, state)))
-                runner.start(
-                    str(project),
-                    20,
-                    "raw",
-                    (("limits.max_requests", 100), ("limits.max_crawl_seconds", 60)),
-                )
-                wait_for(lambda: runner.active, "local crawl did not start")
-                wait_for(
-                    lambda: any((project / "scans").glob("*.sqlite")),
-                    "local crawl did not create its retained artifact",
-                )
-                QTest.qWait(700)
+        core = core_cli(self)
+        with owned_site() as (root, server):
+            project = create_project(core, root, server)
+            runner = LocalScanProcess(core)
+            try:
+                runner.start(str(project), 20, "raw", (("limits.max_requests", 100), ("limits.max_crawl_seconds", 60)), observer_run_id=str(uuid.uuid4()))
+                wait_for(self, lambda: retained_pages(project), "crawl never retained its start page")
+                scan = next(iter(retained_pages(project)))
                 runner.request_stop()
-                wait_for(lambda: not runner.active, "owned local crawl did not stop")
-                self.assertTrue(finished)
-                scans = sorted((project / "scans").glob("*.sqlite"))
-                self.assertTrue(scans, "interrupted crawl did not retain a scan artifact")
+                wait_for(self, lambda: not runner.active, "owned crawl did not stop")
+                interrupted = snapshot(scan)
+                self.assertEqual(interrupted["scan"]["lifecycle"], "interrupted")
+                self.assertEqual(interrupted["scan"]["crawl_partial"], 1)
+                self.assertGreaterEqual(interrupted["pages"], 1)
+                root_hits = server.hits.count("/")
+                runner.resume(str(scan), str(project), str(uuid.uuid4()))
+                wait_for(self, lambda: not runner.active, "resume did not finish")
+                completed = snapshot(scan)
+                self.assertEqual(completed["scan"]["lifecycle"], "finished")
+                self.assertEqual(completed["pages"], 7)
+                self.assertEqual(server.hits.count("/"), root_hits, "resume refetched retained start page")
+                preserve(root, "runner-resume", {"interrupted": interrupted, "completed": completed})
+            finally:
+                if runner.active:
+                    runner.request_stop()
+                    wait_for(self, lambda: not runner.active, "fixture child remained active", timeout=30)
 
-                _SlowSite.delay = 0
-                runner.resume(str(scans[0]), str(project))
-                wait_for(lambda: runner.active, "retained scan did not begin its explicit resume")
-                wait_for(lambda: not runner.active, "retained scan did not finish its explicit resume")
-                status = subprocess.run(
-                    [core, "scan-status", "--scan", str(scans[0])],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout
-                self.assertIn('"lifecycle": "finished"', status)
-        finally:
-            if previous is None:
-                os.environ.pop("SEOHEAD_ALLOW_PRIVATE_HOSTS", None)
-            else:
-                os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = previous
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=5)
-
-    def test_gui_dialog_launches_bounded_owned_crawl_and_names_interruption(self):
-        core = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")
-        if not core or not Path(core).is_file():
-            self.skipTest("set SEOHEAD_DESKTOP_CORE_CLI to run the GUI crawl gate")
-        previous = os.environ.get("SEOHEAD_ALLOW_PRIVATE_HOSTS")
-        os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = "crawl.localhost,127.0.0.1"
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowSite)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-
-        def wait_for(predicate, message, timeout=20):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                self.app.processEvents()
-                if predicate():
-                    return
-                QTest.qWait(30)
-            self.fail(message)
-
-        try:
-            with tempfile.TemporaryDirectory(prefix="seohead-desktop-gui-crawl-") as temporary:
-                project = Path(temporary) / "project"
-                target = f"http://crawl.localhost:{server.server_port}/"
-                subprocess.run(
-                    [core, "project-new", "--directory", str(project), "--target", target],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                load_theme(self.app)
-                window = MainWindow(persistent=False, core_executable=core)
-                window.project_directory = str(project)
-                project_data = json.loads((project / "project.json").read_text())
-                window.project_result = {"project": project_data}
-                window.current_project_uuid = project_data["project_uuid"]
-                window.crawl_descriptor = json.loads(
-                    subprocess.run(
-                        [core, "crawl-describe-settings"], check=True, capture_output=True, text=True
-                    ).stdout
-                )
-                window.show()
+    def test_gui_dialog_stops_with_real_checkpoint_and_final_observer(self):
+        core = core_cli(self)
+        with owned_site() as (root, server):
+            project = create_project(core, root, server)
+            window = MainWindow(persistent=False, core_executable=core)
+            window.show()
+            try:
+                window.read_project(str(project))
+                wait_for(self, lambda: window.crawl_descriptor and window.project_directory and not window.requests, "project MCP did not load")
+                errors = []
 
                 def accept_plan():
-                    dialog = self.app.activeModalWidget()
-                    self.assertIsInstance(dialog, QDialog)
-                    self.assertEqual(dialog.findChild(QSpinBox, "scanRequestBudget").value(), 100)
-                    self.assertEqual(dialog.findChild(QSpinBox, "scanDurationBudget").value(), 60)
-                    QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), 1)
+                    try:
+                        dialog = self.app.activeModalWidget()
+                        self.assertIsInstance(dialog, QDialog)
+                        self.assertEqual(dialog.findChild(QSpinBox, "scanRequestBudget").value(), 100)
+                        self.assertEqual(dialog.findChild(QSpinBox, "scanDurationBudget").value(), 60)
+                        QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
+                    except BaseException as exc:
+                        errors.append(exc)
+                        if self.app.activeModalWidget():
+                            self.app.activeModalWidget().reject()
 
                 QTimer.singleShot(100, accept_plan)
-                QTest.mouseClick(window.new_scan, 1)
-                wait_for(lambda: window.scan_manager is not None and window.scan_manager.active_count == 1, "GUI plan did not launch a local crawl")
-                wait_for(lambda: any((project / "scans").glob("*.sqlite")), "GUI crawl did not retain a scan")
-                scan = next((project / "scans").glob("*.sqlite"))
-                QTest.qWait(700)
+                QTest.mouseClick(window.new_scan, Qt.LeftButton)
+                if errors:
+                    raise errors[0]
+                wait_for(self, lambda: retained_pages(project), "GUI crawl never retained a page")
+                run_id = window.selected_managed_run_id
                 window.cancel_active_work()
-                wait_for(lambda: window.scan_manager.active_count == 0, "GUI cancellation did not stop the owned crawl")
-                self.assertIn("не сохранило checkpoint", window.scan_detail.toPlainText())
-                # A race with terminal completion may leave a scan. The GUI must
-                # inspect its retained lifecycle before advertising resume.
-                window.close()
-        finally:
-            if previous is None:
-                os.environ.pop("SEOHEAD_ALLOW_PRIVATE_HOSTS", None)
-            else:
-                os.environ["SEOHEAD_ALLOW_PRIVATE_HOSTS"] = previous
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=5)
+                wait_for(self, lambda: window.scan_manager.detail(run_id)["state"] == "partial", lambda: json.dumps(window.scan_manager.detail(run_id)))
+                self.assertEqual(window.scan_manager.active_count, 0)
+                scan = Path(window.scan_manager.detail(run_id)["artifact"])
+                self.assertEqual(snapshot(scan)["scan"]["lifecycle"], "interrupted")
+                wait_for(self, lambda: window.resume_scan_button.isEnabled(), "retained interrupted scan did not offer resume")
+                preserve(root, "gui-stop", window.scan_manager.detail(run_id), window)
+            finally:
+                close_window(self, window)
 
 
 if __name__ == "__main__":

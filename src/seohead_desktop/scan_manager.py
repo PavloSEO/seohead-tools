@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ class ManagedScan:
     kind: str
     max_urls: int | None = None
     rendering_mode: str | None = None
-    overrides: tuple[tuple[str, int], ...] = ()
+    overrides: tuple[tuple[str, object], ...] = ()
     approve_large_crawl: bool = False
     max_urls_per_second: float | None = None
     resume_path: str | None = None
@@ -30,6 +31,8 @@ class ManagedScan:
     artifact: str | None = None
     core_state: str | None = None
     output: str = ""
+    status_reason: str | None = None
+    reconcile_deadline: float | None = field(default=None, repr=False)
     slot_reserved: bool = field(default=False, repr=False)
     process: LocalScanProcess | None = field(default=None, repr=False)
 
@@ -49,6 +52,7 @@ class ManagedScan:
             "resume_path": self.resume_path,
             "max_urls_per_second": self.max_urls_per_second,
             "owned": True,
+            "status_reason": self.status_reason,
         }
 
 
@@ -67,6 +71,7 @@ class LocalScanManager(QObject):
         self.max_parallel = max_parallel
         self._queue: deque[ManagedScan] = deque()
         self._runs: dict[str, ManagedScan] = {}
+        self._closing = False
 
     @property
     def active_count(self) -> int:
@@ -79,10 +84,12 @@ class LocalScanManager(QObject):
         project_uuid: str,
         max_urls: int,
         rendering_mode: str,
-        overrides: tuple[tuple[str, int], ...],
+        overrides: tuple[tuple[str, object], ...],
         approve_large_crawl: bool,
-        max_urls_per_second: float,
+        max_urls_per_second: float | None,
     ) -> str:
+        if self._closing:
+            raise RuntimeError("the local scan manager is shutting down")
         run = ManagedScan(
             id=uuid.uuid4().hex,
             observer_run_id=str(uuid.uuid4()),
@@ -102,6 +109,8 @@ class LocalScanManager(QObject):
         return run.id
 
     def resume(self, *, project: str, project_uuid: str, artifact: str) -> str:
+        if self._closing:
+            raise RuntimeError("the local scan manager is shutting down")
         run = ManagedScan(
             id=uuid.uuid4().hex,
             observer_run_id=str(uuid.uuid4()),
@@ -134,22 +143,26 @@ class LocalScanManager(QObject):
 
     def stop_all_owned(self) -> None:
         """Stop only children created by this manager during application shutdown."""
+        self._closing = True
         for run in tuple(self._runs.values()):
-            if run.state in {"queued", "starting", "running", "stop_requested"}:
+            if run.state == "queued":
+                self.stop(run.id)
+        for run in tuple(self._runs.values()):
+            if run.process is not None and run.process.active:
                 self.stop(run.id)
 
     def observe(self, project_uuid: str, runs: list[dict]) -> None:
-        """Attach only same-project core records whose PID belongs to this manager."""
+        """Reconcile owned UUIDs even after the child has exited and lost its PID."""
         if not isinstance(runs, list) or any(not isinstance(item, dict) for item in runs):
             return
         for managed in self._runs.values():
             if managed.project_uuid != project_uuid or managed.process is None:
                 continue
-            pid = managed.process.process.processId()
-            if not pid:
-                continue
             candidate = next((item for item in runs if item.get("id") == managed.observer_run_id), None)
+            before = managed.public()
             if candidate is None:
+                if self._reconciliation_expired(managed):
+                    self._emit(managed)
                 continue
             managed.core_run_id = candidate.get("id")
             artifact = candidate.get("artifact")
@@ -165,13 +178,20 @@ class LocalScanManager(QObject):
                 "interrupted",
             }:
                 managed.state = managed.core_state
-            self._emit(managed)
+                managed.status_reason = None
+            else:
+                self._reconciliation_expired(managed)
+            if managed.public() != before:
+                self._emit(managed)
 
     @staticmethod
-    def _matches_pid(run: dict, pid: int) -> bool:
-        controller = run.get("controller") if isinstance(run.get("controller"), dict) else {}
-        collector = run.get("collector_runtime") if isinstance(run.get("collector_runtime"), dict) else {}
-        return controller.get("pid") == pid or collector.get("pid") == pid
+    def _reconciliation_expired(run: ManagedScan) -> bool:
+        if (run.state == "awaiting_core_status" and run.reconcile_deadline is not None
+                and time.monotonic() >= run.reconcile_deadline):
+            run.state = "status_unavailable"
+            run.status_reason = "Child exited; core did not expose a terminal run record within 10 seconds"
+            return True
+        return False
 
     def snapshot(self, project_uuid: str | None = None) -> list[dict]:
         return [
@@ -187,7 +207,7 @@ class LocalScanManager(QObject):
         return {**run.public(), "output": run.output}
 
     def _drain(self) -> None:
-        while self._queue and self.active_count < self.max_parallel:
+        while not self._closing and self._queue and self.active_count < self.max_parallel:
             run = self._queue.popleft()
             if run.state != "queued":
                 continue
@@ -207,7 +227,7 @@ class LocalScanManager(QObject):
                 else:
                     process.start(
                         run.project,
-                        run.max_urls or 1,
+                        run.max_urls if run.max_urls is not None else 1,
                         run.rendering_mode or "raw",
                         run.overrides,
                         run.approve_large_crawl,
@@ -238,12 +258,13 @@ class LocalScanManager(QObject):
 
     def _finished(self, run: ManagedScan, code: int, state: str) -> None:
         run.slot_reserved = False
-        if run.state == "stop_requested":
-            run.state = "awaiting_core_status"
-        elif code == 0 and state == "normal":
-            run.state = "finished"
-        else:
-            run.state = "failed"
+        run.reconcile_deadline = time.monotonic() + 10
+        # A successful process exit can still mean a partial retained crawl.
+        run.state = (
+            run.core_state
+            if run.core_state in {"finished", "partial", "failed", "interrupted"}
+            else "awaiting_core_status"
+        )
         self._emit(run)
         self._drain()
 

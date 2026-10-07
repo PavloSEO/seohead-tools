@@ -6,7 +6,7 @@ evidence, project state, reports and policy validation stay in the co-shipped
 core.
 
 The current development baseline is compatible with SEOHEAD core
-`3c60d0c051e282603188cef0f70341d1a5d8ad72`. An external development core must
+`ceb2eab716c0077355d96b3a99f92ea1eb0bc0b6`. An external development core must
 be a clean checkout; a frozen bundle verifies its manifest, executable digest
 and producer commit before it supplies `--producer-build`.
 
@@ -25,16 +25,16 @@ It does not open an HTTP listener. A project is opened explicitly from disk.
 
 | Area | Current behaviour |
 | --- | --- |
-| Project observer | Retained progress, task page/detail, scan history, activity and durable inbox load through one persistent local MCP session. Reads are bounded and generation-scoped. |
-| URL evidence | A retained scan supplies paged URL rows, a redacted URL detail, scan status and bounded inlinks. Selecting another project or scan clears previous evidence before the next result arrives. |
-| Native scan plan | The user explicitly confirms a project-bound native crawl. The dialog shows URL, HTTP-request and time budgets plus raw/JS mode. Opening or refreshing a project never starts a crawl. |
-| Local run control | Desktop owns only QProcesses it started. It supports up to three queued native runs and records separate local output per run. Stop targets the selected owned run; other runs and work started outside Desktop are left alone. |
-| Progress | While an owned run is active, `project-observe` is polled at 0.5 seconds. Core run identity is keyed by project UUID plus run ID; PID state is diagnostic only. |
-| Resume | Resume is offered only after core reports a retained scan with `source.lifecycle: interrupted`; Desktop keeps project binding and never changes stored scope/configuration. |
+| Project observer | Retained progress, task page/detail, scan history, activity and durable inbox load through one persistent local MCP session. Reads are bounded and generation-scoped; each operation keeps one in-flight request and one latest pending intent. |
+| URL evidence | A retained scan supplies paged URL rows, a redacted URL detail, scan status and bounded inlinks. Selecting another project, scan or URL clears previous evidence before the next result arrives. Observer refreshes preserve the selected retained scan. |
+| Native scan plan | The user explicitly confirms a project-bound native crawl. The dialog shows URL, HTTP-request and time budgets plus raw/JS mode. Advanced settings use the core descriptor and existing typed JSON CLI input, including scope patterns, content selectors and request delay. Opening or refreshing a project never starts a crawl. |
+| Local run control | Desktop owns only QProcesses it started. It runs up to three native children concurrently, queues later requests and records separate local output per run. Stop targets the selected owned run. Closing cancels queued work and waits for owned children to save checkpoints; work started outside Desktop is left alone. |
+| Progress | `project-observe` is polled at 0.5 seconds while the selected project has active children or awaits a final core status. A child exit alone cannot claim completeness. A missing terminal record is explicitly unavailable after 10 seconds; project UUID plus run UUID is the identity, including after PID exit. |
+| Resume | Resume is offered only after core reports a retained scan with `source.lifecycle: interrupted`; Desktop keeps project binding and stored scope/configuration, and supplies a fresh observer UUID for each resumed attempt. |
 | Notes | A note or proposed goal is stored only after an explicit click and revision-aware core confirmation. It never launches a scan or injects chat text. |
 
-Each native project run is rate-limited to 0.5 URL/s from Desktop while core
-enforces the shared per-origin gate. The core remains the authority for final
+Desktop preserves the configured minimum request delay; its editor admits
+a delay of at least 0.5 seconds. Core enforces the shared per-origin gate. The core remains the authority for final
 admission, stored settings, scope, authentication and evidence completeness.
 
 ## Verification
@@ -46,9 +46,10 @@ SEOHEAD_DESKTOP_CORE_CLI=/absolute/path/to/seohead \
 ```
 
 The real-core gate creates only owned `crawl.localhost` loopback projects. It
-verifies three concurrent bounded captures, selecting/stopping one owned run,
-and resuming its retained interrupted artifact while the other captures remain
-independent. No public site, provider, cloud account or paid API is used.
+verifies three concurrent bounded captures in one MainWindow/project over MCP,
+selecting two retained artifacts, stopping/resuming with a fresh run UUID, typed
+Advanced settings in actual scan evidence, and closing with two active children
+plus queued work while an external crawl remains alive. No public site, provider, cloud account or paid API is used.
 
 ## Packaging and platforms
 
