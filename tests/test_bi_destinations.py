@@ -156,6 +156,37 @@ def test_finding_segment_selection_keeps_an_unfiltered_coverage_companion(tmp_pa
     }
 
 
+def test_finding_segment_selection_refuses_a_field_missing_from_projection(tmp_path):
+    audit = _audit()
+    audit["findings"] = [
+        {
+            "severity": "warning",
+            "check": "MISSING_TITLE",
+            "url": "https://example.test/",
+            "text": "missing title",
+        }
+    ]
+    package = tmp_path / "package"
+    export_bi(audit=audit, out_dir=package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["run"]["crawl_settings"] = {
+        "analysis.segments": [
+            {"name": "has-title", "rules": [{"op": "eq", "field": "title", "value": "Home"}]}
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(BIDestinationError, match="retained page fields are missing: title"):
+        filter_package(
+            package,
+            dataset="findings",
+            out_dir=tmp_path / "selected",
+            where={"segment": ["has-title"]},
+        )
+    assert not (tmp_path / "selected").exists()
+
+
 def test_destination_preflight_streams_partitions_and_accepts_selected_projection(
     tmp_path, monkeypatch
 ):
