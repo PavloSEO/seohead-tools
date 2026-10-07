@@ -152,3 +152,22 @@ python scripts/disposable_service_profile.py --metrics-out /tmp/service-profile.
 
 This is a synthetic loopback check. It does not deploy the remote API, create a
 domain, load a production secret, alter a firewall, or contact a customer site.
+
+
+### Interpreting CI evidence and remaining containment claims
+
+The existing Linux lifecycle job measures local installation, HTTP/JS capture,
+release switching, artifact readability and sampled process-tree RSS. Its name
+is an SSH-operator workflow label, not evidence of a network SSH handshake.
+The separate [actual SSH worker fixture](DISPOSABLE_SERVICE_PROFILE.md#actual-ssh-worker-and-bounded-enospc-fixture)
+uses a loopback-only sshd and a genuine bounded tmpfs ENOSPC event. It must
+finish successfully on a disposable runner before that boundary is accepted.
+
+Do not combine logical quota, kernel file-size limit, and physical ENOSPC into
+one claimed measurement. Preserve the exact failure source and terminal state.
+The worker fixture keeps the queue database on another filesystem so it can
+record failure; simultaneous exhaustion of queue and artifact storage remains
+a distinct deployment failure mode. The fixture does not prove a public domain,
+firewall, trusted external certificate, production supervision, fair scheduling,
+or hard CPU/RAM limits. Those are operator configuration and workload-specific
+acceptance, not functionality silently enabled by installing this package.

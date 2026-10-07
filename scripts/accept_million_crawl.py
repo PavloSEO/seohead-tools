@@ -253,7 +253,7 @@ class SyntheticOrigin:
             )
         if path.startswith("/p/"):
             self.page_requests += 1
-            if self.interrupt_after is not None and self.page_requests > self.interrupt_after:
+            if self.interrupt_after is not None and self.page_requests >= self.interrupt_after:
                 raise KeyboardInterrupt("intentional synthetic collection interruption")
             try:
                 page = int(path.rsplit("/", 1)[-1])
@@ -477,7 +477,7 @@ def _synthetic_transport(origin: SyntheticOrigin) -> Iterator[None]:
         yield
 
 
-def _settings(pages: int) -> dict[str, Any]:
+def _settings(pages: int, *, concurrency: int = 8) -> dict[str, Any]:
     from seohead.crawl.settings import load
 
     return load(
@@ -487,7 +487,7 @@ def _settings(pages: int) -> dict[str, Any]:
             "limits.max_requests": min(2_000_000, pages + max(10_000, pages // 10)),
             "limits.max_depth": 1,
             "speed.min_delay_seconds": 0,
-            "speed.concurrency": 8,
+            "speed.concurrency": concurrency,
             "robots.policy": "respect",
             "sitemaps.auto_discover": False,
             "cache.mode": "off",
@@ -839,7 +839,10 @@ def run_stage(
         body_padding_bytes=body_padding_bytes,
         body_profile=body_profile,
     )
-    settings = _settings(pages)
+    # A synthetic KeyboardInterrupt must reach the real collector coordinator,
+    # not be retained as one failed member of a concurrent fixture batch.
+    # The resumed run uses this same settings object, preserving its contract.
+    settings = _settings(pages, concurrency=1 if interrupt_after is not None else 8)
     revision = _revision()
     loaded_code = _loaded_code()
     loaded_callable_code = _loaded_callable_code()
@@ -848,7 +851,7 @@ def run_stage(
     with _synthetic_transport(origin), _discovery_path_trace() as discovery_path_trace:
         if interrupt_after is not None:
             try:
-                crawl_site_scan(
+                interrupted = crawl_site_scan(
                     START_URL,
                     scan_out=str(scan),
                     settings=settings,
@@ -856,23 +859,28 @@ def run_stage(
                     producer_build=revision,
                 )
             except KeyboardInterrupt:
-                con = open_scan(scan, require_audit=False)
-                try:
-                    row = con.execute("SELECT lifecycle,finish_reason FROM scan").fetchone()
-                    committed = int(con.execute("SELECT COUNT(*) FROM pages").fetchone()[0])
-                finally:
-                    con.close()
-                if not 0 < committed < pages or row["lifecycle"] == "finished":
-                    raise AssertionError(
-                        f"interruption did not leave a resumable prefix: {committed}, {dict(row)}"
-                    ) from None
-                checkpoint = {
-                    "pages": committed,
-                    "lifecycle": row["lifecycle"],
-                    "finish_reason": row["finish_reason"],
-                }
+                interrupted = {"partial": True, "finish_reason": "interrupted"}
             else:
-                raise AssertionError("synthetic interruption did not interrupt the collector")
+                if (
+                    not interrupted.get("partial")
+                    or interrupted.get("finish_reason") != "interrupted"
+                ):
+                    raise AssertionError("synthetic interruption did not interrupt the collector")
+            con = open_scan(scan, require_audit=False)
+            try:
+                row = con.execute("SELECT lifecycle,finish_reason FROM scan").fetchone()
+                committed = int(con.execute("SELECT COUNT(*) FROM pages").fetchone()[0])
+            finally:
+                con.close()
+            if not 0 < committed < pages or row["lifecycle"] == "finished":
+                raise AssertionError(
+                    f"interruption did not leave a resumable prefix: {committed}, {dict(row)}"
+                ) from None
+            checkpoint = {
+                "pages": committed,
+                "lifecycle": row["lifecycle"],
+                "finish_reason": row["finish_reason"],
+            }
             origin.resume()
         result = crawl_site_scan(
             START_URL,
@@ -918,7 +926,15 @@ def run_stage(
         "runtime": _runtime(),
         "loaded_code": loaded_code,
         "loaded_callable_code": loaded_callable_code,
-        "discovery_path_trace": discovery_path_trace,
+        # An intentional interrupted prefix is evidence about resume, while
+        # this final metric names the finished capture only. Keep both rather
+        # than silently merging populations from different lifecycle states.
+        "discovery_path_trace": [
+            item for item in discovery_path_trace if item["indexable_pages"] == pages
+        ],
+        "interruption_discovery_path_trace": [
+            item for item in discovery_path_trace if item["indexable_pages"] != pages
+        ],
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "peak_rss_mib": _peak_rss_mib(),
         "disk_bytes": _disk_bytes(scan),

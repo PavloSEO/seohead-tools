@@ -950,6 +950,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("scan-inspect", "scan_inspect", _form("scan_artifact", "input_path")),
     _command(
+        "scan-url-detail",
+        "scan_url_detail",
+        _form("scan_artifact", "input_path"),
+        _form("selector", "url", note="Exact retained native URL; output redacts query values."),
+    ),
+    _command(
         "scan-link-inspect",
         "scan_link_inspect",
         _form(

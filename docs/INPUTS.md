@@ -166,6 +166,7 @@ and this decision makes no backend migration.
 | `monitor-schedule` | Project directory (`directory`); requires `action, expected_revision` | Claims, cancels, backs off, or recovers a local bounded pass; it starts no timer. |
 | `tool-catalog` | Inline text (`query`) | Optional bounded discovery query. |
 | `scan-inspect` | Scan artifact (`scan`) | — |
+| `scan-url-detail` | Scan artifact (`input_path`)<br>Selector (`url`) | Exact retained native URL; output redacts query values. |
 | `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required. |
 | `scan-status` | Scan artifact (`scan`) | — |
 | `scan-rendered-routes` | Scan artifact (`scan`) | — |

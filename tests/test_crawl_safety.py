@@ -370,6 +370,97 @@ def test_pinning_honours_the_named_host_allowlist_but_not_a_different_host(monke
         net.pinned_target("https://other-internal.example/")
 
 
+def test_pinning_prefers_a_vetted_ipv4_answer_for_an_ipv4_only_origin(monkeypatch):
+    """Dual-stack DNS must not select an unreachable IPv6 loopback first."""
+    from seohead.recon import net
+
+    records = [
+        (net.socket.AF_INET6, net.socket.SOCK_STREAM, 6, "", ("::1", 443, 0, 0)),
+        (net.socket.AF_INET, net.socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+    ]
+    monkeypatch.setattr(net.socket, "getaddrinfo", lambda *_args, **_kwargs: records)
+    monkeypatch.setenv(net.PRIVATE_HOST_ALLOWLIST_ENV, "crawl.localhost")
+
+    url, headers, extensions = net.pinned_target("https://crawl.localhost/")
+
+    assert url.startswith("https://127.0.0.1/")
+    assert headers == {"Host": "crawl.localhost"}
+    assert extensions == {"sni_hostname": "crawl.localhost"}
+
+
+def test_named_loopback_allowlist_survives_pre_pinned_collection(monkeypatch):
+    """A vetted ``crawl.localhost`` connection must not become bare loopback.
+
+    The collector intentionally connects to a literal address after validating
+    the hostname. The request hook must preserve that host identity, while a
+    forged different host remains blocked.
+    """
+    import socket
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from seohead.recon import net
+
+    seen_hosts = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen_hosts.append(self.headers.get("Host"))
+            number = int(self.path.strip("/") or "0")
+            link = "" if number >= 2 else f'<a href="/{number + 1}">next</a>'
+            body = f"<html><head><title>{number}</title></head><body>{link}</body></html>".encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    real_getaddrinfo = socket.getaddrinfo
+
+    def resolve(host, port, *args, **kwargs):
+        if host == "crawl.localhost":
+            return real_getaddrinfo("127.0.0.1", port, *args, **kwargs)
+        return real_getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(net.socket, "getaddrinfo", resolve)
+    monkeypatch.setenv(net.PRIVATE_HOST_ALLOWLIST_ENV, "crawl.localhost")
+    monkeypatch.delenv(net.PRIVATE_NETWORK_ENV, raising=False)
+    try:
+        result = crawl_site(
+            f"http://crawl.localhost:{server.server_port}/0",
+            max_urls=3,
+            min_delay=0,
+            robots_policy="ignore",
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert [page.status_code for page in result.pages] == [200, 200, 200]
+    assert [page.url for page in result.pages] == [
+        f"http://crawl.localhost:{server.server_port}/0",
+        f"http://crawl.localhost:{server.server_port}/1",
+        f"http://crawl.localhost:{server.server_port}/2",
+    ]
+    assert seen_hosts == [f"crawl.localhost:{server.server_port}"] * 3
+
+    client, _ = net.http_client(5)
+    forged = httpx.Request(
+        "GET",
+        f"http://127.0.0.1:{server.server_port}/",
+        headers={"Host": f"other.localhost:{server.server_port}"},
+        extensions={"sni_hostname": "other.localhost"},
+    )
+    with client, pytest.raises(ValueError, match="private or non-public network target blocked"):
+        client.send(forged)
+
+
 # ── http_client()'s pinning transport (#142) ─────────────────────────────────
 #
 # pinned_target() alone only protects a caller disciplined enough to call it.

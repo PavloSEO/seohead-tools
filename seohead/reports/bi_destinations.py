@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import Counter
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ from seohead.reports.bi import (
     MAX_MANIFEST_BYTES,
     MAX_OUTPUT_BYTES,
     MAX_OUTPUT_PARTITIONS,
+    MAX_PROJECTION_INDEX_BYTES,
     MAX_ROWS_PER_PARTITION,
     MIN_FREE_DISK_BYTES,
     BIExportError,
@@ -462,6 +463,60 @@ class GoogleSheetsClient(_GoogleRESTClient):
             }
         except (KeyError, IndexError, TypeError) as exc:
             raise BIDestinationError("Google Sheets staging response is invalid") from exc
+
+    def reconcile_begin(
+        self,
+        *,
+        target: str,
+        operation: str,
+        schema_version: str,
+        datasets: dict[str, Any],
+        package_sha256: str,
+        selected_projection: bool = False,
+    ):
+        """Recover deterministic stage sheets after a lost begin response."""
+        if operation != "replace":
+            raise BIDestinationError("Google Sheets append is unavailable: use replace")
+        mapping = _require_dataset_mapping(
+            self.worksheets,
+            datasets,
+            label="Google Sheets worksheet",
+            id_name="worksheet_id",
+            allow_extra=selected_projection,
+        )
+        metadata = self._request(
+            "GET",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}?fields=sheets.properties(sheetId,title)",
+            retryable=True,
+        )
+        properties = [
+            item.get("properties")
+            for item in metadata.get("sheets", [])
+            if isinstance(item, dict) and isinstance(item.get("properties"), dict)
+        ]
+        nonce = package_sha256[:12]
+        expected = {name: f"__seohead_stage_{name}_{nonce}" for name in datasets}
+        stages = {
+            name: next((item for item in properties if item.get("title") == title), None)
+            for name, title in expected.items()
+        }
+        present = [stage for stage in stages.values() if stage is not None]
+        if not present:
+            return "not_applied"
+        if len(present) != len(expected) or any(
+            not isinstance(stage.get("sheetId"), int) or not isinstance(stage.get("title"), str)
+            for stage in present
+        ):
+            return "uncertain"
+        return {
+            "target": target,
+            "schema_version": schema_version,
+            "package_sha256": package_sha256,
+            "stages": stages,
+            "worksheets": mapping,
+            "headers": {},
+            "rows": {name: 0 for name in datasets},
+        }
 
     def write(self, transaction, dataset: str, rows: list[list[str]]) -> None:
         if dataset not in transaction["stages"]:
@@ -1259,6 +1314,48 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             {"name": column, "type": expected[column].type, "nullable": expected[column].nullable}
             for column in columns
         ]
+        datasets = {
+            name: {
+                **(value.get("source_coverage") or {}),
+                "fields": fields,
+                "partitions": partitions,
+                "row_count": row_count,
+                "bytes": sum(part.get("bytes", 0) for part in partitions if isinstance(part, dict)),
+            }
+        }
+        companion = value.get("coverage_companion")
+        if companion is not None:
+            if not isinstance(companion, dict) or companion.get("dataset") != "coverage":
+                raise BIDestinationError("selected BI coverage companion is invalid")
+            companion_fields = companion.get("fields")
+            companion_partitions = companion.get("partitions")
+            companion_rows = companion.get("row_count")
+            expected_coverage = _fields_for_manifest("coverage", None)
+            if (
+                not isinstance(companion_fields, list)
+                or [field.get("name") for field in companion_fields if isinstance(field, dict)]
+                != list(expected_coverage)
+                or not isinstance(companion_partitions, list)
+                or type(companion_rows) is not int
+                or companion_rows < 0
+            ):
+                raise BIDestinationError("selected BI coverage companion is invalid")
+            datasets["coverage"] = {
+                key: companion.get(key)
+                for key in ("state", "reason", "source_population", "coverage")
+            }
+            datasets["coverage"].update(
+                {
+                    "fields": companion_fields,
+                    "partitions": companion_partitions,
+                    "row_count": companion_rows,
+                    "bytes": sum(
+                        part.get("bytes", 0)
+                        for part in companion_partitions
+                        if isinstance(part, dict)
+                    ),
+                }
+            )
         return root, {
             "format": MANIFEST_FORMAT,
             "schema_version": BI_SCHEMA_VERSION,
@@ -1268,17 +1365,7 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             "source_coverage": value.get("source_coverage"),
             "conservation": value.get("conservation"),
             "metrics_dimension_columns": value.get("metrics_dimension_columns"),
-            "datasets": {
-                name: {
-                    **(value.get("source_coverage") or {}),
-                    "fields": fields,
-                    "partitions": partitions,
-                    "row_count": row_count,
-                    "bytes": sum(
-                        part.get("bytes", 0) for part in partitions if isinstance(part, dict)
-                    ),
-                }
-            },
+            "datasets": datasets,
         }
     raise BIDestinationError("package has an unsupported BI manifest/schema version")
 
@@ -1668,6 +1755,92 @@ def _reconcile_pending(
     )
 
 
+def _begin_transaction(
+    *,
+    state: dict[str, Any],
+    checkpoint: Path,
+    client: Any,
+    target: str,
+    operation: str,
+    manifest: dict[str, Any],
+    manifest_sha256: str,
+) -> None:
+    """Call begin only after its durable pre-request checkpoint exists."""
+    transaction = client.begin(
+        target=target,
+        operation=operation,
+        schema_version=BI_SCHEMA_VERSION,
+        datasets=manifest["datasets"],
+        package_sha256=manifest_sha256,
+        selected_projection=manifest.get("selected_projection") is True,
+    )
+    state["transaction"] = transaction
+    state["pending"] = None
+    state["status"] = "staging"
+    _save_state(checkpoint, state)
+
+
+def _reconcile_begin(
+    *,
+    state: dict[str, Any],
+    checkpoint: Path,
+    client: Any,
+    target: str,
+    operation: str,
+    manifest: dict[str, Any],
+    manifest_sha256: str,
+    reconcile: bool,
+) -> dict[str, Any] | None:
+    """Resolve an interrupted begin before another remote staging attempt."""
+    if state.get("status") != "begin_pending":
+        return None
+    if not reconcile:
+        state["status"] = "reconciliation_required"
+        _save_state(checkpoint, state)
+        return _result_from_state(
+            state,
+            reason="a prior destination begin is uncertain; rerun with reconcile=true before retry",
+        )
+    reconcile_begin = getattr(client, "reconcile_begin", None)
+    if reconcile_begin is None:
+        state["status"] = "reconciliation_required"
+        _save_state(checkpoint, state)
+        return _result_from_state(
+            state,
+            reason="destination client cannot reconcile an uncertain begin operation",
+        )
+    transaction = reconcile_begin(
+        target=target,
+        operation=operation,
+        schema_version=BI_SCHEMA_VERSION,
+        datasets=manifest["datasets"],
+        package_sha256=manifest_sha256,
+        selected_projection=manifest.get("selected_projection") is True,
+    )
+    if transaction == "not_applied":
+        _begin_transaction(
+            state=state,
+            checkpoint=checkpoint,
+            client=client,
+            target=target,
+            operation=operation,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+        )
+        return None
+    if transaction == "uncertain":
+        state["status"] = "reconciliation_required"
+        _save_state(checkpoint, state)
+        return _result_from_state(
+            state, reason="destination begin reconciliation did not reach a safe verdict"
+        )
+    state["transaction"] = transaction
+    state["pending"] = None
+    state["status"] = "staging"
+    _save_state(checkpoint, state)
+    return None
+
+
 def apply_with_client(
     package: str | Path,
     *,
@@ -1721,23 +1894,51 @@ def apply_with_client(
     if state is not None and state.get("status") == "failed":
         return _result_from_state(state, reason=str(state.get("reason") or "prior write failed"))
     if state is None:
-        transaction = client.begin(
-            target=target,
-            operation=operation,
-            schema_version=BI_SCHEMA_VERSION,
-            datasets=manifest["datasets"],
-            package_sha256=manifest_sha256,
-            selected_projection=manifest.get("selected_projection") is True,
-        )
         state = _new_state(
             destination=destination,
             target=target,
             operation=operation,
             manifest_sha256=manifest_sha256,
             datasets=datasets,
-            transaction=transaction,
+            transaction=None,
         )
+        state["status"] = "begin_pending"
+        state["pending"] = {"kind": "begin"}
         _save_state(checkpoint, state)
+        try:
+            _begin_transaction(
+                state=state,
+                checkpoint=checkpoint,
+                client=client,
+                target=target,
+                operation=operation,
+                manifest=manifest,
+                manifest_sha256=manifest_sha256,
+            )
+        except BIDestinationError:
+            state["status"] = "reconciliation_required"
+            state["reason"] = "destination begin failed after its durable pre-request checkpoint"
+            _save_state(checkpoint, state)
+            raise
+    elif state.get("status") == "begin_pending":
+        try:
+            begun = _reconcile_begin(
+                state=state,
+                checkpoint=checkpoint,
+                client=client,
+                target=target,
+                operation=operation,
+                manifest=manifest,
+                manifest_sha256=manifest_sha256,
+                reconcile=reconcile,
+            )
+        except BIDestinationError:
+            state["status"] = "reconciliation_required"
+            state["reason"] = "destination begin reconciliation failed"
+            _save_state(checkpoint, state)
+            raise
+        if begun is not None:
+            return begun
     try:
         reconciled = _reconcile_pending(
             root=root,
@@ -1833,6 +2034,59 @@ def apply_with_client(
     return result
 
 
+def _segment_page_records(root: Path, dataset: dict[str, Any]):
+    """Yield retained raw page records for the project-view segment engine."""
+    field_types = {
+        field["name"]: field["type"]
+        for field in dataset.get("fields") or []
+        if isinstance(field, dict)
+        and isinstance(field.get("name"), str)
+        and isinstance(field.get("type"), str)
+    }
+    state_names = {
+        "response_time_seconds": "response_time_state",
+        "size_bytes": "size_state",
+    }
+
+    def scalar(value: str, field_type: str):
+        if field_type == "integer":
+            return int(value) if value else None
+        if field_type == "number":
+            return float(value) if value else None
+        if field_type == "boolean":
+            return value == "true" if value else None
+        return value
+
+    for part in dataset["partitions"]:
+        with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
+            for row in csv.DictReader(stream):
+                url = row.get("url")
+                raw = row.get("source_fields_json")
+                if not isinstance(url, str) or not url:
+                    raise BIDestinationError("BI page source lacks a URL for segment selection")
+                try:
+                    source = json.loads(raw) if isinstance(raw, str) and raw else {}
+                except json.JSONDecodeError as exc:
+                    raise BIDestinationError("BI page source has invalid retained fields") from exc
+                if not isinstance(source, dict):
+                    raise BIDestinationError("BI page source has invalid retained fields")
+                record = {**source, "url": url}
+                metrics = record.get("metrics")
+                metrics = dict(metrics) if isinstance(metrics, dict) else {}
+                for field, field_type in field_types.items():
+                    if field in record or field.endswith(("_state", "_reason", "_json")):
+                        continue
+                    state = row.get(state_names.get(field, f"{field}_state"))
+                    if state not in {"measured", "derived"}:
+                        continue
+                    value = scalar(row.get(field, ""), field_type)
+                    record[field] = value
+                    metrics.setdefault(field, value)
+                if metrics:
+                    record["metrics"] = metrics
+                yield record
+
+
 def filter_package(
     package: str | Path,
     *,
@@ -1875,7 +2129,8 @@ def filter_package(
     ):
         raise BIDestinationError("columns must be a non-empty unique subset of declared fields")
     predicates = {} if where is None else where
-    if not isinstance(predicates, dict) or set(predicates) - set(declared):
+    virtual_fields = {"segment"} if dataset == "findings" else set()
+    if not isinstance(predicates, dict) or set(predicates) - set(declared) - virtual_fields:
         raise BIDestinationError("where keys must be declared fields")
     if any(
         not isinstance(values, list)
@@ -1890,6 +2145,25 @@ def filter_package(
     if len(json.dumps(predicates, ensure_ascii=False).encode("utf-8")) > MAX_MANIFEST_BYTES:
         raise BIDestinationError("where exceeds the bounded selection definition")
     allowed_values = {key: set(values) for key, values in predicates.items()}
+    segment_index = None
+    if "segment" in predicates:
+        settings = (manifest.get("run") or {}).get("crawl_settings") or {}
+        if not isinstance(settings, dict):
+            raise BIDestinationError("segment selection requires retained crawl settings")
+        try:
+            from seohead.projects.finding_views import _segment_definitions
+            from seohead.reports.bi_index import PrimarySegmentIndex, projection_index
+
+            definitions = _segment_definitions({"run": {"crawl_config": settings}})
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BIDestinationError("source segment definitions cannot be evaluated") from exc
+        if not definitions:
+            raise BIDestinationError(
+                "segment selection requires retained analysis or scope segments"
+            )
+        source_pages = manifest["datasets"].get("pages")
+        if not isinstance(source_pages, dict):
+            raise BIDestinationError("segment selection requires retained source page rows")
     destination = Path(out_dir).absolute()
     if (
         destination.is_symlink()
@@ -1902,7 +2176,22 @@ def filter_package(
     source_rows = 0
     selected_states: Counter[str] = Counter()
     source_states: Counter[str] = Counter()
-    with tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent) as temp:
+    with ExitStack() as stack:
+        if "segment" in predicates:
+            index_con = stack.enter_context(
+                projection_index(destination.parent, MAX_PROJECTION_INDEX_BYTES)
+            )
+            segment_index = PrimarySegmentIndex(index_con, definitions)
+            segment_index.build(_segment_page_records(root, source_pages))
+            known_segments = {"default", *(segment.name for segment in segment_index.order)}
+            unknown_segments = sorted(allowed_values["segment"] - known_segments)
+            if unknown_segments:
+                raise BIDestinationError(
+                    f"segment selection names segments absent from the source run: {unknown_segments}"
+                )
+        temp = stack.enter_context(
+            tempfile.TemporaryDirectory(prefix=".seohead-bi-filter-", dir=destination.parent)
+        )
         stage = Path(temp)
         budget = _OutputBudget(max_output_bytes)
         writer = _PartitionWriter(
@@ -1922,7 +2211,19 @@ def filter_package(
                         source_rows += 1
                         state = row.get("state", "not_declared")
                         source_states[state] += 1
-                        if all(row[key] in allowed for key, allowed in allowed_values.items()):
+                        matches = all(
+                            row[key] in allowed
+                            for key, allowed in allowed_values.items()
+                            if key != "segment"
+                        )
+                        if matches and "segment" in allowed_values:
+                            url = row.get("url")
+                            matches = (
+                                isinstance(url, str)
+                                and segment_index is not None
+                                and segment_index.primary(url) in allowed_values["segment"]
+                            )
+                        if matches:
                             selected_states[state] += 1
                             values = [row[name] for name in selected]
                             for index, name in enumerate(selected):
@@ -1940,6 +2241,60 @@ def filter_package(
                 or _verify_partitions(root, manifest) != datasets
             ):
                 raise BIDestinationError("source package changed during selection")
+            coverage_companion = None
+            if dataset == "findings":
+                source_coverage = manifest["datasets"].get("coverage")
+                if not isinstance(source_coverage, dict):
+                    raise BIDestinationError("source package has no immutable coverage dataset")
+                coverage_fields = source_coverage.get("fields")
+                coverage_parts = source_coverage.get("partitions")
+                if not isinstance(coverage_fields, list) or not isinstance(coverage_parts, list):
+                    raise BIDestinationError("source coverage dataset has no field declarations")
+                coverage_output = {
+                    "row_count": 0,
+                    "partition_count": 0,
+                    "bytes": 0,
+                    "partitions": [],
+                }
+                for part in coverage_parts:
+                    relative = part.get("path") if isinstance(part, dict) else None
+                    byte_count = part.get("bytes") if isinstance(part, dict) else None
+                    if (
+                        not isinstance(relative, str)
+                        or type(byte_count) is not int
+                        or byte_count < 0
+                    ):
+                        raise BIDestinationError("source coverage partition is invalid")
+                    budget.reserve_bytes(byte_count)
+                    source_path, copied_path = root / relative, stage / relative
+                    copied_path.parent.mkdir(parents=True, exist_ok=True)
+                    with source_path.open("rb") as source, copied_path.open("xb") as copied:
+                        shutil.copyfileobj(source, copied, 1024 * 1024)
+                    os.chmod(copied_path, 0o600)
+                    coverage_output["row_count"] += part["rows"]
+                    coverage_output["partition_count"] += 1
+                    coverage_output["bytes"] += byte_count
+                    coverage_output["partitions"].append(copy.deepcopy(part))
+                coverage_output["formula_safe_cells_prefixed"] = source_coverage.get(
+                    "formula_safe_cells_prefixed", 0
+                )
+                if coverage_output["row_count"] != datasets["coverage"]["rows"]:
+                    raise BIDestinationError("coverage companion row conservation changed")
+                coverage_companion = {
+                    "dataset": "coverage",
+                    "fields": coverage_fields,
+                    **coverage_output,
+                    "state": source_coverage.get("state"),
+                    "reason": source_coverage.get("reason"),
+                    "source_population": source_coverage.get("source_population"),
+                    "coverage": source_coverage.get("coverage"),
+                    "selection": "complete immutable source coverage; not filtered with findings",
+                }
+                if (
+                    _checksum_file(root / "manifest.json") != source_manifest_sha256
+                    or _verify_partitions(root, manifest) != datasets
+                ):
+                    raise BIDestinationError("source package changed during coverage preservation")
             result = {
                 "format": "seohead.bi-filter.v1",
                 "source_schema_version": manifest["schema_version"],
@@ -1958,6 +2313,7 @@ def filter_package(
                     key: source_dataset.get(key)
                     for key in ("state", "reason", "source_population", "coverage")
                 },
+                "coverage_companion": coverage_companion,
                 "conservation": {
                     "source_rows": source_rows,
                     "selected_rows": output["row_count"],

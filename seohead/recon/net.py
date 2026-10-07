@@ -312,7 +312,13 @@ def pinned_target(url: str, *, policy: Any = None) -> tuple[str, dict[str, str],
         raise ValueError("no host to pin" if policy is not None else f"no host to pin in {url!r}")
     port = parts.port or (443 if parts.scheme == "https" else 80)
 
-    address = resolve_socket_addresses(host, port, policy=policy)[0][3][0].split("%", 1)[0]
+    addresses = resolve_socket_addresses(host, port, policy=policy)
+    # Every answer above is already vetted. Prefer IPv4 when both families are
+    # usable: local fixtures and IPv4-only staging servers commonly publish an
+    # IPv6 loopback answer too, but do not listen on it. This is selection among
+    # pinned answers, never a second DNS lookup or an unvetted fallback.
+    selected = next((item for item in addresses if item[0] == socket.AF_INET), addresses[0])
+    address = selected[3][0].split("%", 1)[0]
     literal = f"[{address}]" if ":" in address else address
     netloc = f"{literal}:{parts.port}" if parts.port else literal
     pinned = urlunsplit((parts.scheme, netloc, parts.path or "/", parts.query, ""))
@@ -432,10 +438,50 @@ class BlockedRedirectError(ValueError):
         self.location = location
 
 
+def _validate_locally_pinned_request(request: Any) -> None:
+    """Recheck a pre-pinned local request against its named host.
+
+    List-mode collection pins before calling ``httpx.Client.get``. Its URL is
+    necessarily a literal address, so treating it as a new user URL in the
+    request hook loses the explicit named-host private allowlist. Do not trust
+    the extension alone: the literal must still match the original Host header
+    and a current vetted resolution of that exact original hostname.
+    """
+    original_host = request.extensions.get("sni_hostname")
+    if not isinstance(original_host, str) or not original_host:
+        raise ValueError("invalid pinned target")
+    try:
+        literal = ipaddress.ip_address(str(request.url.host)).compressed
+        authority = urlsplit("//" + request.headers.get("host", ""))
+        host_matches = (
+            authority.hostname is not None
+            and authority.hostname.rstrip(".").lower() == original_host.rstrip(".").lower()
+            and authority.port == request.url.port
+            and authority.username is None
+            and authority.password is None
+            and not authority.path
+            and not authority.query
+            and not authority.fragment
+        )
+    except ValueError:
+        host_matches = False
+    if not host_matches:
+        raise ValueError("request host does not match pinned target")
+    addresses = {
+        ipaddress.ip_address(record[3][0].split("%", 1)[0]).compressed
+        for record in resolve_socket_addresses(original_host, request.url.port or 80)
+    }
+    if literal not in addresses:
+        raise ValueError("pinned target does not match hostname resolution")
+
+
 def _guard_request(request: Any, policy: Any = None) -> None:
-    if policy is not None and "sni_hostname" in request.extensions:
-        # The caller already pinned this URL; the transport validates the
-        # literal against the named host without a second DNS lookup.
+    if "sni_hostname" in request.extensions:
+        if policy is not None:
+            # The remote transport validates the literal against the named host
+            # under its request budget and remote egress policy.
+            return
+        _validate_locally_pinned_request(request)
         return
     validate_url(str(request.url), policy=policy)
 

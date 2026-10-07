@@ -1,5 +1,30 @@
 # Projects
 
+A project is the durable handoff between an SEO engineer and an agent: the agreed scope,
+collection policy, saved scans, tasks, review decisions and outputs. Start with
+[the project-control scenario](scenarios/project-control.md) for a working sequence.
+
+## Which state answers which question?
+
+| State | Question it answers | Read or act through | What it does not establish |
+|---|---|---|---|
+| Checklist (`coverage.json`) | What agreed work remains, is blocked or needs review? | `project-progress`, `project-checklist-page`, `project-task-detail`; explicit update/record | Whether every page was measured or a website defect repaired |
+| Crawl evidence and coverage | What was actually fetched, extracted or unavailable? | `project-scans`, `scan-status`, `scan-inspect`, `crawl-diagnose` | Business priority or completed developer work |
+| Remediation ledger | Which finding cases persist, were rechecked or resolved? | [ledger](LEDGER.md), `remediation-*` | Audit-task completion or clean unobserved URLs |
+| Workflow/checkpoints | Which accepted, task-bound execution is active or resumable? | `workflow-status`, explicit start/checkpoint/execute/resume | A background agent or arbitrary execution of note text |
+| Inbox | What did the specialist suggest, and how was it processed? | `project-inbox-*` | Reading, triage, acknowledgement and goal acceptance are separate explicit actions |
+| Worker jobs / monitor claims | What bounded execution was submitted or claimed? | [remote jobs](REMOTE_JOBS.md), `monitor-status` | Completion of the audit or an installed recurring scheduler |
+
+`project-inbox-read` records a read receipt for one consumer; a triage receipt links the decision to work;
+`project-inbox-acknowledge` records processing for one consumer; `project-inbox-goal` separately
+accepts or rejects a proposed goal. None of these is permission to execute free text. A workflow
+requires the accepted goal, registered prompt and current incomplete custom task IDs.
+
+Use the revision returned by the latest read when writing. Old definitions, changed artifacts,
+changed scope or stale dependencies can leave work stale or unfinished; a handoff must include
+those reasons, the next action and its expected evidence, not just a completion count. Competitor
+candidates stay separate site identities and require their own authorized scope and evidence.
+
 ## Observation dashboard
 
 `seohead watch --project ./example-project` opens a local terminal dashboard.
@@ -136,7 +161,18 @@ Project-bound native crawls and optional `sf run --project DIRECTORY` attempts
 also retain a small live-run record. It shows the collector mode, the recorded
 URL budget, the current measured frontier counters when the collector exposes
 them, its retained request/time budgets and configured request-rate ceiling,
-the measured recent request rate when available, phase events, a
+the retained source kind, project-relative artifact path, config fingerprint,
+and one stable run ID per capture. Several explicit native captures may be
+active for a project at once; their records remain separate. Native captures
+for the same host reserve turns through the project-local shared gate, which
+caps their combined public dispatch rate at 2 requests per second while each
+run preserves its own configuration and resumability evidence.
+An explicitly slower per-scan delay remains slower; a delay above 60 seconds
+remains valid and does not reserve the shared host slot until its own local
+turn arrives. A stale local pacing record that would wait beyond 60 seconds is
+named as unavailable rather than sleeping without a bounded operator-visible
+outcome.
+Each record also shows the measured recent request rate when available, phase events, a
 project-relative artifact reference, and whether the
 launching controller and, for a live Screaming Frog run, its spawned collector
 PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
@@ -347,7 +383,9 @@ result. View definitions themselves accept no regex expressions.
 Views only affect displayed finding rows and fields. Reports label the view and returned page;
 audit totals, evidence coverage and scores still describe the source audit. The saved scan and its
 findings are unchanged. The MCP `seo_findings_view` operation exposes the same bounded projection
-to terminal clients and future navigation surfaces.
+to terminal clients and future navigation surfaces. Saved finding views do not currently support
+the streamed audit.v2 report path; that route refuses the combination rather than silently losing
+filters. A BI cohort selection is a different dataset and does not replace a finding-segment view.
 
 `report-build --project DIRECTORY` includes the validated checklist coverage, reasons,
 scope and measurement in a human report without fetching or rerunning the audit. The

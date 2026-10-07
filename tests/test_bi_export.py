@@ -6,6 +6,7 @@ import asyncio
 import csv
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -324,6 +325,97 @@ def test_audit_v2_page_overlay_is_keyed_not_positional(tmp_path, monkeypatch):
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
     pages = _csv_rows(package, manifest, "pages")
     assert {row["url"]: row["indexability"] or None for row in pages} == expected
+
+
+def test_audit_v2_finding_segment_selection_matches_saved_view_engine(tmp_path, monkeypatch):
+    """Streamed audit.v2 selection keeps project-view analysis segment semantics."""
+    from seohead.projects.finding_views import _segment_definitions
+    from seohead.reports.bi_destinations import filter_package
+    from seohead.sf.core.segments import assign_segments
+    from seohead.storage.audit_v2 import write_audit_v2
+    from seohead.storage.native_scan import crawl_config_fingerprint
+
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    document = read_audit(scan_path)
+    definitions = [
+        {"name": "after-child", "rules": [{"op": "segment", "value": "child"}]},
+        {"name": "child", "rules": [{"op": "contains", "field": "url", "value": "/child"}]},
+    ]
+    with sqlite3.connect(scan_path) as con:
+        row = con.execute("SELECT config_json FROM scan WHERE singleton=1").fetchone()
+        config = json.loads(row[0])
+        config["analysis"]["segments"] = definitions
+        con.execute(
+            "UPDATE scan SET config_json=?,config_fingerprint=? WHERE singleton=1",
+            (json.dumps(config), crawl_config_fingerprint(config)),
+        )
+        metadata = con.execute(
+            "SELECT scan_uuid,evidence_revision,writer_version,writer_revision FROM scan WHERE singleton=1"
+        ).fetchone()
+    write_audit_v2(
+        scan_path,
+        document,
+        {
+            "/issues": document["issues"],
+            "/pages": reversed(document["pages"]),
+            "/groups": document["groups"],
+        },
+        {
+            "scan_uuid": metadata[0],
+            "evidence_revision": metadata[1],
+            "analyzer_version": metadata[2],
+            "analyzer_revision": metadata[3],
+        },
+    )
+    primary = assign_segments(
+        document["pages"],
+        _segment_definitions({"run": {"crawl_config": {"analysis.segments": definitions}}}),
+    )["primary"]
+    expected_urls = {
+        item["target_url"]
+        for item in document["issues"]
+        if primary.get(item.get("target_url")) == "child"
+    }
+    assert expected_urls
+
+    package = tmp_path / "audit-v2-bi"
+    export_bi(scan=scan_path, out_dir=package)
+    selected = filter_package(
+        package,
+        dataset="findings",
+        out_dir=tmp_path / "audit-v2-selected",
+        where={"segment": ["child"]},
+        columns=["url", "check_id"],
+    )
+    selected_urls = set()
+    for part in selected["partitions"]:
+        with (Path(selected["output_directory"]) / part["path"]).open(newline="") as stream:
+            selected_urls.update(row["url"] for row in csv.DictReader(stream))
+    assert selected_urls == expected_urls
+
+
+def test_segment_projection_refuses_absent_fields_but_keeps_explicit_null(tmp_path):
+    from seohead.reports.bi_index import PrimarySegmentIndex, projection_index
+    from seohead.sf.core.segments import assign_segments
+
+    definitions = [
+        {"name": "has-title", "rules": [{"op": "eq", "field": "title", "value": "Home"}]}
+    ]
+    assert (
+        assign_segments([{"url": "https://example.test/", "title": "Home"}], definitions)[
+            "primary"
+        ]["https://example.test/"]
+        == "has-title"
+    )
+    with projection_index(tmp_path, 1024 * 1024) as con:
+        index = PrimarySegmentIndex(con, definitions)
+        index.build([{"url": "https://example.test/"}])
+        with pytest.raises(BIExportError, match="retained page fields are missing: title"):
+            index.primary("https://example.test/")
+    with projection_index(tmp_path, 1024 * 1024) as con:
+        index = PrimarySegmentIndex(con, definitions)
+        index.build([{"url": "https://example.test/", "title": None}])
+        assert index.primary("https://example.test/") == "default"
 
 
 def test_cursor_backed_join_store_preserves_grain_without_matched_url_lists(tmp_path, monkeypatch):

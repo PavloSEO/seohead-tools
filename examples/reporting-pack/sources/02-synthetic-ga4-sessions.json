@@ -1,0 +1,35 @@
+{
+  "format": "seohead.reporting-pack-source.v1",
+  "description": "Synthetic GA4 URL session totals for the reporting-pack fixture. Dimensionless sessions rows in the same period and timezone as the synthetic Search Console input so compatible one-to-one quadrant pairs form for example.com/, page-a and no-title; page-b has no GA4 row and stays incomplete. No real property data.",
+  "mapping": {
+    "format": "seohead.evidence-mapping.v1",
+    "source": {
+      "provider": "ga4",
+      "operation": "run_report",
+      "reporting_identity": "synthetic-ga4-property",
+      "privacy": "supplied",
+      "timezone": "Europe/Minsk",
+      "attribution": "last-click"
+    },
+    "url": {"field": "url", "kind": "absolute"},
+    "row_shape": "flat",
+    "dimensions": [],
+    "metrics": [
+      {"name": "sessions", "type": "number", "unit": "count"}
+    ],
+    "period": {"start_date": "2026-09-01", "end_date": "2026-09-30"},
+    "collection": {
+      "state": "complete",
+      "sampled": false,
+      "thresholded": false,
+      "truncated": false
+    },
+    "duplicate_policy": "mark"
+  },
+  "rows": [
+    {"url": "https://example.com/", "sessions": 45},
+    {"url": "https://example.com/page-a", "sessions": 9},
+    {"url": "https://example.com/no-title", "sessions": 2},
+    {"url": "https://example.com/old-page", "sessions": 3}
+  ]
+}

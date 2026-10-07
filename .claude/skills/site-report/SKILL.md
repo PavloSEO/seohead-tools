@@ -1,13 +1,10 @@
 ---
 name: site-report
 description: >-
-  Runs a bulk site audit with one command and produces a ready-made report: Excel
-  (4 worksheets, filters, chart), Word (for the client), CSV (for the tracker), or
-  Markdown. Site-level tools run once, while page-level tools run for every URL in
-  the sitemap; everything is consolidated into one JSON document from which a file
-  in any supported format can be built. Triggers: "full-site audit," "Excel
-  report," "Word report," "export to CSV," "bulk audit," "check the entire site,"
-  "client report," "build a report," "xlsx," "docx," "site audit," "SEO report."
+  Build XLSX, DOCX, CSV or Markdown reports from saved audit evidence, or run an explicitly
+  requested bounded sitemap/list-based site-audit. Use for report formatting, not as the entry
+  point for an unscoped full audit or link crawl; those route through control. Report formatters
+  arrange measured facts and do not produce a reviewed developer specification.
 ---
 
 # Site Report — From Domain to File
@@ -16,28 +13,29 @@ The consolidation is implemented in code: one call assembles the evidence docume
 and a second call turns it into a file.
 
 ## Trigger
-- "Full-site audit," "check the entire site," "bulk audit."
+- A saved audit needs a human-readable file, or an explicitly bounded sitemap/list pass is wanted.
 - "Excel report," "Word report," "export to CSV," "client report," "build a
   report," "xlsx," "docx," "site audit," "SEO report."
 - A sitemap-driven audit is wanted without running a full Screaming Frog crawl.
 
 ## Anti-trigger
 - A full site crawl is needed (arbitrary depth, all internal links, not just the
-  sitemap) — this skill has no crawler; it audits the sitemap or a supplied URL
-  list only. Use `sf-analyzer` (`seohead sf run --crawl ...`) instead.
-- The deliverable is a Screaming-Frog-derived issue backlog or a topical/silo
-  verdict — those are `sf-tasks` and `silo-audit`, both built on an SF crawl, not
-  on this skill's site-level + per-page checks.
+  sitemap), or the full-audit scope is unstated — use `control`, which selects the native
+  collector by default and an SF path only when that input is requested/available.
+- A grouped developer backlog is wanted — use `sf-tasks` on a native/SF audit.
+  A topical/silo verdict instead uses `silo-audit` with the evidence its method requires;
+  this formatter adds neither interpretation.
 - Only a `robots.txt` directive review is wanted — use `robots-audit`; this skill
   treats `robots.txt` only as the place it reads the sitemap URL from, it does not
   analyze the directives themselves.
 - A delta against a previous audit is wanted ("what changed since last month") —
-  this skill produces no diff; see Boundaries below for the manual workaround.
+  use `compare-crawls` for supported compatible audits; the report formatter itself produces no diff.
 
 ## Preconditions
-- [ ] The domain resolves and either serves a discoverable sitemap via
-  `robots.txt`, or a custom `--urls` list is supplied instead.
-- [ ] `--limit`/`--concurrency` have been considered for the site's size — the
+- [ ] For formatting, a supported saved audit or scan is readable; no live target is required.
+- [ ] Only for new collection: the authorized domain resolves and serves a discoverable
+  sitemap via `robots.txt`, or an explicit `--urls` list is supplied.
+- [ ] For new collection, `--limit`/`--concurrency` fit the agreed scope — the
   default 25-page limit under-samples a large site, and raising it multiplies
   request volume by N×3 (see the Flags table below).
 - [ ] The output format(s) actually needed are decided up front (xlsx/docx/csv/md)
@@ -45,6 +43,12 @@ and a second call turns it into a file.
   only cost one more `report-build` call each, not a re-audit.
 
 ## Workflow
+
+**Saved evidence first:** when a native/SF audit or supported scan already answers the scope,
+call `report-build` directly. Do not launch `site-audit` simply to obtain another output format.
+For a developer task workbook, use `sf-tasks` and the reviewed engineering handoff; this formatter
+exports findings and does not invent implementation or acceptance criteria.
+
 
 **Everything at once — audit and Excel in a single command:**
 ```bash
@@ -113,17 +117,17 @@ unavailable from the saved audit; do not add a live request or invent one.
 |---|---|---|
 | `xlsx` | you and the developers | filters, sorting, a live Excel chart, and findings distributed one per row |
 | `docx` | the client | text with headings: an executive summary (counts, unavailable checks) first, then evidence — never a generated conclusion |
-| `csv` | findings, for the tracker to map | two files (findings and `*.pages.csv`), `;` and BOM — otherwise Excel displays garbled characters; one row per finding, not a grouped task |
+| `csv` | findings, for the tracker to map | three files (findings, `*.pages.csv` and `*.scope.csv`), `;` and BOM — otherwise Excel displays garbled characters; one row per finding, not a grouped task |
 | `md` | Git and correspondence | readable anywhere |
 
 ## Boundaries
-- **There is no crawler.** The audit runs against the sitemap or your custom list.
-  Use Screaming Frog for a full-site crawl; see `sf-analyzer`.
+- **This collection mode is bounded.** `site-audit` uses the sitemap or a supplied list;
+  native `crawl-site` is the first-class link collector. See `control` for collection selection.
 - **The report does not calculate anything.** The generators only arrange JSON into
   worksheets and paragraphs. If a number is absent from the document, it will also
   be absent from the report.
-- **Compare repeat runs manually.** There is currently no audit delta: save
-  `audit.json` with the date in its filename.
+- **Comparison is separate.** Use `compare-crawls` only for its supported audit inputs with
+  compatible scope and provenance; save each original document.
 
 ## Decision points
 - **`pages_checked` is lower than expected.** Check whether that is because no
@@ -170,5 +174,5 @@ to populate when the document is assembled by custom code rather than by the
 audit.
 
 ## Related Skills
-`sf-analyzer` (when a full crawl rather than a sitemap is needed) · `sf-tasks`
+`control` (collection choice) · `sf-analyzer` (selected SF input) · `sf-tasks`
 (backlog from a crawl audit) · `regional-audit` · `js-render-check` · `seo-recon`.

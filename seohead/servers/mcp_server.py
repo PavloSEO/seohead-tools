@@ -183,6 +183,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         project: str | None = None,
         approve_large_crawl: bool = False,
         user_agent: str | None = None,
+        observer_run_id: str | None = None,
     ) -> dict[str, Any]:
         """Crawl a site from a start URL by following links, or fetch an explicit
         ``urls`` list instead of following links at all, then audit the result
@@ -264,6 +265,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 project=project,
                 approve_large_crawl=approve_large_crawl,
                 user_agent=user_agent,
+                observer_run_id=observer_run_id,
             )
         )
         # The crawler calls its workspace argument ``project`` while observer
@@ -2822,6 +2824,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 table=table,
                 offset=offset,
                 limit=limit,
+                max_bytes=max_bytes,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_url_detail(
+        input_path: str,
+        url: str,
+        response_offset: int = 0,
+        response_limit: int = 10,
+        form_offset: int = 0,
+        form_limit: int = 20,
+        max_bytes: int = 1_048_576,
+    ) -> dict[str, Any]:
+        """Read one exact native URL's retained headers, redirects, page fields, and forms.
+
+        The query is offline and read-only. Header and query values stay redacted,
+        body bytes remain unavailable here, and legacy/Screaming Frog sources
+        return named unavailable evidence instead of an empty detail record.
+        """
+        return _checked(
+            handlers.scan_url_detail(
+                input_path=input_path,
+                url=url,
+                response_offset=response_offset,
+                response_limit=response_limit,
+                form_offset=form_offset,
+                form_limit=form_limit,
                 max_bytes=max_bytes,
             )
         )

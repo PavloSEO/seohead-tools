@@ -1,0 +1,217 @@
+"""Concurrent local project runs retain separate observation and pacing facts."""
+
+from __future__ import annotations
+
+import multiprocessing
+import threading
+import time
+import uuid
+from contextlib import closing
+
+import pytest
+
+from seohead.crawl.sqlite_adapter import _SharedDispatchGate
+from seohead.projects import run_observation
+from seohead.projects.origin_pacing import ProjectOriginPacer
+from seohead.projects.workspace import create_project
+
+TARGET = "https://example.test/"
+
+
+def _project(tmp_path):
+    return create_project(tmp_path / "project", TARGET)["path"]
+
+
+def _reserve_in_process(project: str, start, results) -> None:
+    from seohead.projects import origin_pacing
+
+    pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0, max_requests_per_second=20)
+    if not start.wait(timeout=10):
+        raise RuntimeError("concurrent pacing start did not arrive")
+    observed = []
+    clock = origin_pacing.time.time
+
+    def record_clock():
+        value = clock()
+        observed.append(value)
+        return value
+
+    origin_pacing.time.time = record_clock
+    try:
+        delay = pacer.reserve()
+    finally:
+        origin_pacing.time.time = clock
+    # This is the exact ``now`` used by reserve(), not a timestamp from before
+    # the process acquired the SQLite transaction.
+    results.put(observed[-1] + delay)
+
+
+def test_three_simultaneous_runs_keep_independent_uuid_artifact_and_progress(tmp_path):
+    project = _project(tmp_path)
+    barrier = threading.Barrier(3)
+    failures: list[BaseException] = []
+    runs = []
+
+    def record(index: int) -> None:
+        try:
+            barrier.wait(timeout=5)
+            run = run_observation.start(
+                project,
+                kind="native",
+                mode="spider",
+                max_urls=10,
+                max_requests=20,
+                max_crawl_seconds=30,
+                max_requests_per_second=2.0,
+                config_fingerprint=f"config-{index}",
+                artifact=f"{project}/scans/run-{index}.sqlite",
+                origin="example.test",
+                aggregate_max_requests_per_second=2.0,
+            )
+            run_observation.progress(
+                project,
+                run["id"],
+                fetched=index + 1,
+                queued=10 - index,
+                inflight=1,
+                excluded=0,
+                rate_per_second=1.0,
+            )
+            runs.append(run)
+        except BaseException as exc:  # pragma: no cover - assertion happens in parent thread
+            failures.append(exc)
+
+    threads = [threading.Thread(target=record, args=(index,)) for index in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not failures
+    assert len({run["id"] for run in runs}) == 3
+
+    status = run_observation.status(project, limit=3)
+    assert status["active_total"] == 3
+    assert {row["source_kind"] for row in status["items"]} == {"native"}
+    assert {row["artifact"] for row in status["items"]} == {
+        f"scans/run-{index}.sqlite" for index in range(3)
+    }
+    assert {row["collector"]["config_fingerprint"] for row in status["items"]} == {
+        f"config-{index}" for index in range(3)
+    }
+    assert all(
+        row["collector"]["aggregate_max_requests_per_second"] == 2.0 for row in status["items"]
+    )
+    assert all(row["telemetry"]["sampled_at"] for row in status["items"])
+
+
+def test_caller_uuid_is_retained_as_the_observer_handshake(tmp_path):
+    project = _project(tmp_path)
+    requested = str(uuid.uuid4())
+    run = run_observation.start(
+        project,
+        kind="native",
+        mode="spider",
+        max_urls=1,
+        config_fingerprint="config",
+        artifact=f"{project}/scans/run.sqlite",
+        run_id=requested,
+    )
+    assert run["id"] == requested
+    with pytest.raises(ValueError, match="already exists"):
+        run_observation.start(
+            project,
+            kind="native",
+            mode="spider",
+            max_urls=1,
+            config_fingerprint="other",
+            artifact=f"{project}/scans/other.sqlite",
+            run_id=requested,
+        )
+
+
+def test_project_origin_pacer_reserves_one_shared_host_schedule(tmp_path):
+    project = _project(tmp_path)
+    barrier = threading.Barrier(3)
+    waits: list[float] = []
+    failures: list[BaseException] = []
+
+    def reserve() -> None:
+        try:
+            pacer = ProjectOriginPacer(
+                project, TARGET, minimum_delay_seconds=0, max_requests_per_second=20
+            )
+            barrier.wait(timeout=5)
+            waits.append(pacer.reserve())
+        except BaseException as exc:  # pragma: no cover - assertion happens in parent thread
+            failures.append(exc)
+
+    threads = [threading.Thread(target=reserve) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not failures
+    assert len(waits) == 3
+    ordered = sorted(waits)
+    assert ordered[0] < 0.01
+    assert ordered[1] >= 0.03
+    assert ordered[2] >= 0.08
+
+
+def test_first_open_is_private_and_safe_across_three_processes(tmp_path):
+    project = _project(tmp_path)
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(target=_reserve_in_process, args=(project, start, results))
+        for _ in range(3)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=15)
+        assert process.exitcode == 0
+    turns = sorted(results.get(timeout=5) for _ in processes)
+    assert turns[1] - turns[0] >= 0.045
+    assert turns[2] - turns[1] >= 0.045
+    pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0)
+    pacer.reserve()
+    assert pacer.path.stat().st_mode & 0o777 == 0o600
+    pacer.path.unlink()
+    assert not pacer.path.exists()
+
+
+def test_pacer_refuses_unbounded_intervals_and_future_store_waits(tmp_path):
+    project = _project(tmp_path)
+    slow = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=120)
+    assert slow.interval_seconds == pytest.approx(0.5)
+    pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0)
+    pacer.reserve()
+    import sqlite3
+
+    with closing(sqlite3.connect(pacer.path)) as con:
+        con.execute("UPDATE origin_turns SET next_at=?", (time.time() + 61,))
+        con.commit()
+    with pytest.raises(ValueError, match="excessive wait"):
+        pacer.reserve()
+
+
+def test_slow_local_turn_runs_before_the_shared_host_slot():
+    events: list[str] = []
+
+    class LocalGate:
+        throttle = None
+        requests_used = 0
+        max_requests = 0
+
+        def restore_requests_used(self, _value):
+            pass
+
+        def wait_turn(self):
+            events.append("local")
+
+    gate = _SharedDispatchGate(LocalGate(), lambda: events.append("shared"))
+    gate.wait_turn()
+    assert events == ["local", "shared"]

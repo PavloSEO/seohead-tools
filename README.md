@@ -1,6 +1,6 @@
 # SEOHEAD Tools
 
-**A local Python SEO crawler and scan-analysis toolkit for specialists and tool-calling agents.**
+**Configurable SEO engineering for specialists working with AI agents and agent systems.**
 
 [Website](https://seohead.tech/seotools) · [Documentation](docs/README.md) · [Examples](examples/README.md) · [Scope and trade-offs](docs/COMPARISON.md)
 
@@ -9,71 +9,68 @@
 ![MCP](https://img.shields.io/badge/MCP-local%20stdio-151A25)
 [![MIT License](https://img.shields.io/badge/code-MIT-1565C0)](LICENSE)
 
-SEOHEAD crawls websites with its own native engine, retains scan evidence for offline reanalysis, and turns native scans, Screaming Frog exports, and live checks into reviewable audits, task backlogs, and reports. It runs as a Python CLI or a local stdio MCP server. There is no hosted account, dashboard, or public MCP endpoint.
+SEOHEAD helps an SEO engineer turn a project goal into repeatable analysis and actionable work:
+choose what to collect and extract, retain the evidence, investigate technical health, compare
+changes, prepare developer tasks, recheck fixes, and build reports. Refine the configuration and
+priorities for the next run; a new agent can continue from the saved project instead of chat history.
 
-An [optional remote API](docs/REMOTE_API.md) and [durable worker backend](docs/REMOTE_JOBS.md)
-support authenticated self-hosted scan jobs when explicitly constructed with a target policy.
-Installation starts no listener or worker; the CLI and local MCP continue to work without that extra.
+Its native Python crawler is a first-class collector. Supplied Screaming Frog exports, licensed
+live SF, focused checks and explicit provider operations supply other evidence. The CLI and local
+stdio MCP share the same core. An [optional authenticated remote API](docs/REMOTE_API.md) supports
+operator-configured job workers; installation starts no listener. There is no hosted account or web dashboard.
 
-It does not replace specialist judgement. It records what was measured, what failed, and what could not be measured so a specialist can assess scope, business context, and implementation risk.
+## What you can build
 
-## Capabilities at a glance
+- **Configurable collection and extraction:** native HTTP/JavaScript crawling, sitemap/list inputs,
+  URL and template scope, content selectors, declarative extraction, request budgets and recovery.
+- **Technical analysis:** indexing, metadata, links, redirects, structured data, hreflang,
+  duplicates, infrastructure, logs and marketing-element inventories, with unavailable evidence named.
+- **Evidence reuse:** retained SQLite scans, offline reanalysis, before/after and declared URL-migration
+  comparisons, plus explicit joins to supplied or provider data.
+- **Engineering work:** scoped project tasks and dependencies, agent handoff, finding history,
+  remediation decisions and evidence-bound rechecks. Task completion and site health stay separate.
+- **Reporting:** audit spreadsheets/documents, a configurable prioritized backlog, filtered finding
+  views, CSV/JSON exports and BI packages. Provider credentials and external destinations are explicit.
 
-- **Website crawling:** native HTTP crawling and configurable JavaScript rendering, sitemap/list inputs, scope and rate controls, checkpoints, and retained scan evidence.
-- **Technical SEO analysis:** indexing directives, metadata, headings, links, redirects, structured data, hreflang, duplicates, infrastructure and server logs; offline reanalysis and before/after comparisons.
-- **Connected data:** optional, explicitly invoked operations for Google Search Console, Google Analytics 4, Bing Webmaster Tools, Yandex Webmaster, Yandex Metrika, demand, SERPs and performance evidence. Credentials and provider access are configured separately; a registry entry does not prove an account is connected.
-- **External evidence:** join supplied URL-keyed tables and provider rows to crawl data, retaining unmatched rows and source provenance. This is data import and enrichment, not an automatic connector for every service.
-- **Deliverables:** prioritized findings and task backlogs; Excel, Word, CSV, Markdown and JSON reports, plus a dedicated static HTML/PDF traffic-report workflow for Yandex Metrika.
-- **Agent task tracking:** a persistent project checklist stores candidate work items, scopes, dependencies and recorded evidence; `project status` summarizes the saved entries and what remains.
-- **Operation:** Python CLI and local stdio MCP for specialists and tool-calling agents. Credentials, provider quotas, browser dependencies and supported operations are documented explicitly.
+The [capability map](docs/README.md#capability-map) connects each area to its method, CLI/MCP route,
+inputs and limits. Use the [comparison guide](docs/COMPARISON.md) to evaluate a workflow against
+another tool and the [generated reference](docs/TOOL_REFERENCE.md) for exact defaults and effects.
 
-See the [tool catalogue](docs/TOOLS.md), [provider workflow](docs/scenarios/provider-evidence.md), [input contracts](docs/INPUTS.md) and [generated reference](docs/TOOL_REFERENCE.md) for exact capabilities and limits. Declared integrations are not a claim that credentials or live access have been verified for every account.
+## A useful first request
 
-## Start with a project
+> Audit this site for the agreed scope. Give the developers an Excel workbook of tasks, the
+> underlying exports and evidence links, proposed fixes, and acceptance/recheck criteria.
 
-A project is the local workspace for a site's scans, supplied competitor candidates, crawl policy
-and an optional checklist of checks, skills, scenarios or custom work. Each checklist entry has a
-scope and state; execution evidence is present only after a record is saved. Its counts summarize
-enabled entries in that saved checklist; they are not a universal denominator for every applicable
-URL, template or check on the site.
-An omitted or unrecorded item is not evidence that the work was irrelevant or complete.
+The agent starts with [control](.claude/skills/control/SKILL.md), selects collection and extraction
+policy, reuses the saved audit, and follows the [developer handoff](docs/scenarios/deliverable.md).
+`report-build` produces the factual audit workbook; `sf tasks` produces the prioritized
+`tasks.json`/`tasks.md` from a native or SF audit. The agent combines these into the requested
+engineering handoff and reviews task-specific criteria. A formatter alone does not produce a
+reviewed specification or identify a website's source-code locations. Code references require
+access to that code; otherwise the handoff points to retained URL, HTML, header and link evidence.
+
+## The repeatable project loop
+
+1. **Define why:** record the site, agreed URL/template population, custom work and priorities.
+2. **Choose what and how:** save crawl scope, rendering, extraction and resource settings.
+3. **Collect once, analyze again:** reuse retained evidence where it answers the question;
+   record partial, skipped and unavailable work explicitly.
+4. **Compare and act:** review changes, create developer work, and keep repair verification
+   in the remediation ledger.
+5. **Report and improve:** select report views/formats, retain evidence and review decisions,
+   then refine the next configuration or hand it to another agent.
 
 ```bash
+# These calls only create/inspect local project state; they do not crawl.
 seohead project new --directory ./shop --target https://example.com/
 seohead project checklist-init --directory ./shop
-seohead project status --directory ./shop
+seohead project progress --directory ./shop
 ```
 
-### A persistent task tracker for audit agents
-
-The project checklist is a local task tracker for specialists and AI agents during a website
-audit. `seohead project status --directory ./shop` (or MCP `seo_project_status`) returns counts
-and states for the saved entries, including remaining work, blocked items, stale evidence, and
-items awaiting manual review. An agent can inspect the saved state when resuming an audit or
-taking over from another agent, rather than reconstructing progress from chat history.
-
-`project checklist-init` defines the work; `project checklist-update` edits scoped tasks and
-dependencies; `project checklist-record` validates and records execution evidence using the
-current revision. These operations do not execute the tasks themselves. A run or a prepared
-workspace is not a full audit, and opening a playbook or running a command is not proof that its
-checklist entry has evidence. Read [the project contract](docs/PROJECTS.md) for exactly what each
-state and record means.
-
-Own-site and competitor scans are retained as separate SQLite artifacts through Python's
-SQLite support. The task definitions and execution history live in `coverage.json` alongside
-the project. Audit completion, measured crawl coverage, and the resolution of website errors
-are different measures: a completed audit can still identify unresolved problems. The current
-tracker reports counts and states; it does not claim a universal full-audit percentage or an
-automatic per-finding repair-verification ledger.
-
-`project start` enters a policy-bounded preparation path from there. Preparation records its
-crawl scope, operator-supplied competitor candidates and each unavailable step; it does not
-invent competitors and does not turn a partial crawl into a completed audit. A crawl that would
-exceed the project's own page, request or time thresholds stops and names the flag that
-authorizes it, rather than spending hours unasked.
-
-[The project-control scenario](docs/scenarios/project-control.md) shows the review points, and
-[PROJECTS.md](docs/PROJECTS.md) describes the workspace files.
+The [project-control scenario](docs/scenarios/project-control.md) shows configuration and handoff.
+[Projects](docs/PROJECTS.md) explains tasks, coverage, inbox and workflow state;
+[the remediation ledger](docs/LEDGER.md) separately tracks finding cases and recheck evidence.
+A prepared project or a completed task is not proof that the site's errors were fixed.
 
 ## Start with the task
 
@@ -163,37 +160,15 @@ seohead images-optimize \
 
 For a retained native scan, `scan reanalyze` creates a new derived SQLite artifact without a network request. [Storage documentation](docs/STORAGE.md) describes retention, provenance, and the limits of offline reanalysis.
 
-## Focused investigations
+## Find a focused workflow
 
-Choose the input that matches the question; a single-page check, an access log and a saved crawl answer different things.
+Start from the [capability map](docs/README.md#capability-map), [scenarios](docs/scenarios/README.md)
+or [skill map](docs/SKILLS.md). Narrow requests such as robots, schema, rendering or saved-scan
+comparison go directly to their method; a full audit uses the controller.
 
-| Question | Tools to start with | Input and useful output |
-|---|---|---|
-| Which URLs, links or redirects need attention? | `crawl-site`, `sitemap-crawl`, `links-check`, `redirects-check` | A site, sitemap or page URL; bounded crawl evidence, link targets and redirect observations |
-| What metadata and indexing directives are present? | `parse`, `headers-check`, `robots-check` | A page URL; titles/headings, canonical declarations, response headers and robots rules |
-| What appears only after JavaScript runs? | `render-check` | A page URL; raw/rendered differences, request identity and browser lab measurements |
-| Is structured data or language markup inconsistent? | `schema-check`, `hreflang-check` | A page URL, or inline HTML for structured data; validation findings and the declarations behind them |
-| Are pages duplicate candidates or template outliers? | `duplicate-check`, `boilerplate-report` | Retained scan bodies or an inline corpus; duplicate candidates, similarity evidence and template groups |
-| What is the site's delivery environment? | `domain-profile`, `tech-detect`, `cdn-check` | A domain or URL; DNS/hosting/TLS, stack and cache observations, with unavailable sources named |
-| What did clients and bots request? | `log-analyze` | An access log; request/status distributions and optional bot verification |
-| What changed, and what can I hand over? | `compare-crawls`, `report-build` | Compatible audit documents or scans; comparisons and reviewable report files |
-| How did search traffic move, in a form a client can read? | `metrika-traffic-pdf` | A Yandex Metrika counter and period, or a saved traffic document; a static dashboard-style HTML/PDF with changes against the previous period, a year earlier and 3/6/12-month windows |
-
-```bash
-# Compare the raw response with the mobile browser representation.
-seohead render-check --url https://example.com --viewport mobile
-
-# Reuse the scan produced above without fetching those pages again.
-seohead duplicate-check --scan ./scans/audit.sqlite
-seohead boilerplate-report --scan ./scans/audit.sqlite
-
-# Small existing inputs can also be passed directly as a JSON argument.
-seohead duplicate-check --input '{"items":[{"id":"a","text":"Example product description"},{"id":"b","text":"Example product description"}]}'
-```
-
-`render-check` requires the `render` extra and a Playwright Chromium installation. Its timings are lab observations, not real-user Core Web Vitals. Corpus analysis requires retained HTML: omitted, disabled or unsupported bodies remain coverage gaps. Duplicate groups are evidence to review before choosing redirects or canonicals, not automatic site changes.
-
-Use `seohead <command> --help` for calling syntax and `seohead crawl-site --config-help` for crawl settings. The [input catalogue](docs/INPUTS.md) explains what each tool consumes; the [generated tool reference](docs/TOOL_REFERENCE.md) gives arguments, defaults and execution notes. [Scenarios](docs/scenarios/README.md) show longer sequences with acceptance criteria.
+Use `seohead <command> --help` for calling syntax and `seohead crawl-site --config-help` for the
+configurable collection/extraction surface. [Input contracts](docs/INPUTS.md) distinguish URLs,
+retained scans, inline data, provider queries and the separate operational stores.
 
 ## Local MCP server
 
@@ -210,7 +185,7 @@ Register the installed CLI as a stdio server in a compatible client:
 }
 ```
 
-For example, after an MCP client connects, these `tools/call` parameters perform the same offline duplicate check as the CLI command above:
+For example, after an MCP client connects, these `tools/call` parameters perform the same offline duplicate check on a retained scan:
 
 ```json
 {
@@ -219,7 +194,10 @@ For example, after an MCP client connects, these `tools/call` parameters perform
 }
 ```
 
-The corresponding mobile-render tool is `seo_render_check` with `url` and `viewport: "mobile"`. File-producing tools return paths so the next step can reuse the saved output.
+Use `seo_tool_catalog` to discover a route, `seo_skill_show` for its playbook, and
+`seo_scenario_show` for an end-to-end example. File-producing tools return paths for the next step.
+A catalogue result describes a capability; it neither executes it nor enables a tool removed by
+the selected MCP profile.
 
 The CLI and MCP server share handlers and registration checks. The generated [tool reference](docs/TOOL_REFERENCE.md) is the authoritative list of available commands, arguments, side effects, network use, idempotency, and provider spend. [Scenarios](docs/scenarios/README.md) connect a specialist goal to an ordered tool chain and a usable artifact. For an agent beginning an unscoped audit, start with [the control workflow](.claude/skills/control/SKILL.md).
 

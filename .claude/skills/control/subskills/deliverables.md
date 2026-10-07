@@ -24,13 +24,19 @@ and its limits.
 | Format | Audience | Command |
 |---|---|---|
 | `docx` | the client — prose, severity, meaning | `report-build --format docx` |
-| `xlsx` | the SEO — sheets, filters, a chart | `report-build --format xlsx` |
-| `csv` | the tracker — one row per task | `report-build --format csv` |
+| `xlsx` | audit findings/evidence for the SEO engineer | `report-build --format xlsx` |
+| `csv` | findings, pages and scope tables; not grouped tasks | `report-build --format csv` |
 | `md` | a repository, or another agent | `report-build --format md` |
 | `audit.json` | the machine-readable original | written by the crawl |
 
-All of them derive from one document, so the client's PDF and the developer's ticket cannot
-drift apart.
+These outputs derive from one saved audit. Keep its identity in the handoff; analyst-authored
+recommendations must remain distinguishable from the measured facts.
+
+For developer Excel, generate the audit workbook and `sf tasks` backlog separately, then use
+the agent's spreadsheet authoring capability to turn that backlog into the requested engineering
+workbook. Include proposed changes, reproducible evidence, full affected-population references
+and reviewed acceptance/recheck criteria. See [the complete handoff](../../../../docs/scenarios/deliverable.md).
+Only cite source-code paths/lines when the target repository is actually available.
 
 ## What belongs in every deliverable
 
@@ -39,8 +45,10 @@ drift apart.
 - What was skipped, and why.
 - The limits, stated rather than implied. → [reference/limits](../reference/limits.md)
 
-## What is not yours to decide
+## Priorities and the next iteration
 
-Severity is not priority. A critical on a page nobody visits ranks below a warning on the page
-that makes the money, and nothing in this toolkit knows which is which. Order by severity,
-say so, and let somebody with traffic data reorder it.
+Severity describes a technical finding. Work priority uses the agreed project goals and explicit
+evidence: retain the rationale, use the supported task pipeline/project priority policy, and
+label default effort estimates as suggestions. Missing business data is not permission to invent it.
+After review, refine the crawl/extraction configuration or report view for the next run, while
+preserving the original evidence and its scope.

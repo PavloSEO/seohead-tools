@@ -1,0 +1,1 @@
+- Record the content-area strategy used to produce retained hashes and token counts, rather than a parser's default-area strategy. Explicit selectors and exclusions now have matching extraction provenance even when the page parser used its default region.

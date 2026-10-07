@@ -333,6 +333,7 @@ def resume_scan(
     progress: Callable[[int, int], None] | None = None,
     progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
+    shared_request_gate: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Continue an interrupted native scan from its stored frontier and throttle state.
 
@@ -365,6 +366,7 @@ def resume_scan(
         progress=progress,
         progress_snapshot=progress_snapshot,
         observation=observation,
+        shared_request_gate=shared_request_gate,
     )
 
 
@@ -378,6 +380,7 @@ def crawl_site_scan(
     progress: Callable[[int, int], None] | None = None,
     progress_snapshot: Callable[[dict[str, int]], None] | None = None,
     observation: Callable[[str], None] | None = None,
+    shared_request_gate: Callable[[], None] | None = None,
     proxy_route=None,
 ) -> dict[str, Any]:
     """Collect a native scan, then audit its SQL graph with finite page/output bounds.
@@ -442,6 +445,7 @@ def crawl_site_scan(
         seed_loader=seed_loader,
         progress=progress,
         progress_snapshot=progress_snapshot,
+        shared_request_gate=shared_request_gate,
         proxy_route=proxy_route,
     )
     external_summary = None
@@ -536,6 +540,7 @@ def crawl_site_scan(
                 runtime_versions=runtime_versions,
                 progress=progress,
                 progress_snapshot=progress_snapshot,
+                shared_request_gate=shared_request_gate,
                 proxy_route=proxy_route,
             )
             render_cycles += 1

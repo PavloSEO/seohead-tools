@@ -1,0 +1,1 @@
+- Preserve distinct project run records for simultaneous native captures and share a project-local 2 requests/second dispatch gate for the same public host; expose each run's source kind, origin, config fingerprint, and aggregate rate boundary to observers.

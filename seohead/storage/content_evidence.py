@@ -136,7 +136,7 @@ def capture_document(
         "reason": "main content area is empty" if state == "empty" else "",
         "indexable": indexable,
         "canonical_target": canonical_target,
-        "strategy": str(parsed.get("content_area_strategy") or extracted["content_area_strategy"]),
+        "strategy": str(extracted["content_area_strategy"]),
         "implementation": _implementation(),
         "exact_hash": _sha(content),
         "normalized_hash": _sha(normalized),

@@ -1,16 +1,23 @@
 # Remediation ledger (`ledger.v1`)
 
-The remediation ledger is a separate local SQLite artifact that records which
-findings a project has seen, where each finding's occurrences live, and every
-later observation of the same case. It exists so an operator can answer "what
-was found, where, and what changed since" without rerunning a full audit, and
-so later lanes (lifecycle transitions, bounded rechecks, coverage metrics,
-before/after reports) build on verified evidence rather than re-derivation.
+The remediation ledger is a separate local SQLite artifact for finding cases, their occurrences,
+observations, lifecycle decisions and evidence-bound rechecks. It answers "what was found, where,
+what was reported fixed, and what was actually verified later?" independently of the project's
+audit-task checklist. Source scans remain unchanged.
 
-The ledger is deliberately **not** a scan. It never writes to a `scan.v1` or
-`scan.v2` artifact, never upgrades one, and never claims a finding is fixed:
-it records observations and their provenance, and leaves every case in the
-population until an explicit later lane classifies it.
+## Start from the right layer
+
+The current public CLI/MCP exposes `remediation-summary`, `remediation-cases`,
+`remediation-transition`, `remediation-recheck`, `remediation-record-verification` and
+`remediation-report`. Their exact parameters and network/write effects are in
+[TOOL_REFERENCE.md](TOOL_REFERENCE.md). A recheck is an explicit operation: without a supplied after-audit it can fetch the selected
+targets; it also writes verification evidence and updates the ledger.
+
+Creating the ledger and ingesting a retained scan currently require the Python core API
+`create_ledger` and `ingest_scan` documented below. There is no CLI/MCP bootstrap command to infer
+from the read/transition routes. An integrator must create and bind that artifact before using
+those routes. The ledger never resolves a case merely because it disappears from a partial scan:
+resolution needs exact retained recheck evidence or an eligible later measured observation.
 
 ## File identity
 
@@ -19,7 +26,7 @@ population until an explicit later lane classifies it.
 | Format | `ledger.v1` |
 | SQLite signature | `SQLite format 3\000` |
 | `application_id` | `1397051212` (`SEOL`; scans use `SEOH`) |
-| `user_version` | `3` |
+| `user_version` | `4` |
 
 A reader must require all three identifiers. `open_ledger` returns a validated
 connection or refuses; it never auto-repairs, never opens a foreign file, and
@@ -57,7 +64,7 @@ affected_url        (finding, url, role) membership rows
 finding_observation the run-local audit projection per finding per source
 finding_group       group membership per finding per source (history)
 observation         append-only sighting per occurrence per source
-decision            reserved for #789 lifecycle transition history
+decision            append-only lifecycle transition history
 verification_artifact immutable verification.v1 file identity, selected scope and collection state
 verification_result  one exact before/after outcome bound to an occurrence and decision
 ```
@@ -176,7 +183,7 @@ that original validated source can fill the digest and restore its canonical
 baseline bridge.
 
 `ledger.ledger_revision` counts committed write transactions that changed
-ledger content (reserved for optimistic concurrency in #789). It is
+ledger content, used for optimistic concurrency. It is
 independent of `source_scan.evidence_revision`, which belongs to the source
 artifact's evidence.
 

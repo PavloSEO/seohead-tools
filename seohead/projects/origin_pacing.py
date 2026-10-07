@@ -1,0 +1,123 @@
+"""Project-local cross-process origin pacing for explicit native captures."""
+
+from __future__ import annotations
+
+import math
+import os
+import sqlite3
+import time
+from contextlib import closing
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from .workspace import _load
+
+PUBLIC_PROJECT_MAX_REQUESTS_PER_SECOND = 2.0
+_MAX_STORED_WAIT_SECONDS = 60.0
+_NAME = ".origin-pacing.sqlite"
+
+
+def _origin(target: str) -> str:
+    parsed = urlsplit(target)
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("project origin needs a hostname")
+    return host
+
+
+class ProjectOriginPacer:
+    """Reserve one request turn across local processes for one project host."""
+
+    def __init__(
+        self,
+        directory: str | Path,
+        target: str,
+        *,
+        minimum_delay_seconds: float,
+        max_requests_per_second: float = PUBLIC_PROJECT_MAX_REQUESTS_PER_SECOND,
+    ) -> None:
+        root, _project = _load(directory)
+        if (
+            not isinstance(minimum_delay_seconds, (int, float))
+            or not math.isfinite(minimum_delay_seconds)
+            or minimum_delay_seconds < 0
+        ):
+            raise ValueError("minimum delay must be finite and nonnegative")
+        if (
+            not isinstance(max_requests_per_second, (int, float))
+            or not math.isfinite(max_requests_per_second)
+            or max_requests_per_second <= 0
+        ):
+            raise ValueError("maximum request rate must be finite and positive")
+        self.root = root
+        self.origin = _origin(target)
+        self.max_requests_per_second = float(max_requests_per_second)
+        # The existing per-scan gate owns this run's configured delay and
+        # adaptive backoff. This separate shared lane adds only the aggregate
+        # project-host ceiling, so a deliberately slow run cannot reserve a
+        # 120-second slot before another run reaches its own local turn.
+        self.interval_seconds = 1.0 / self.max_requests_per_second
+        self.path = root / _NAME
+
+    def _ensure_private_store(self) -> None:
+        if self.path.is_symlink():
+            raise ValueError("project origin pacing store must not be a symlink")
+        try:
+            descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            descriptor = None
+        else:
+            os.close(descriptor)
+        if self.path.is_symlink() or not self.path.is_file() or self.path.stat().st_mode & 0o077:
+            raise ValueError("project origin pacing store must be private")
+
+    def _connect(self) -> sqlite3.Connection:
+        self._ensure_private_store()
+        con = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        try:
+            con.execute("PRAGMA busy_timeout=5000")
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS origin_turns (origin TEXT PRIMARY KEY, next_at REAL NOT NULL)"
+            )
+            if (
+                self.path.is_symlink()
+                or not self.path.is_file()
+                or self.path.stat().st_mode & 0o077
+            ):
+                raise ValueError("project origin pacing store must be private")
+            return con
+        except BaseException:
+            con.close()
+            raise
+
+    def reserve(self) -> float:
+        """Atomically reserve a wall-clock request slot and return its wait time."""
+        with closing(self._connect()) as con:
+            con.execute("BEGIN IMMEDIATE")
+            try:
+                now = time.time()
+                row = con.execute(
+                    "SELECT next_at FROM origin_turns WHERE origin=?", (self.origin,)
+                ).fetchone()
+                prior = float(row[0]) if row is not None else now
+                if not math.isfinite(prior):
+                    raise ValueError("project origin pacing store contains an invalid timestamp")
+                if prior - now > _MAX_STORED_WAIT_SECONDS:
+                    raise ValueError("project origin pacing store requests an excessive wait")
+                slot = max(now, prior)
+                con.execute(
+                    "INSERT INTO origin_turns(origin,next_at) VALUES(?,?) "
+                    "ON CONFLICT(origin) DO UPDATE SET next_at=excluded.next_at",
+                    (self.origin, slot + self.interval_seconds),
+                )
+                con.execute("COMMIT")
+            except BaseException:
+                if con.in_transaction:
+                    con.execute("ROLLBACK")
+                raise
+        return max(0.0, slot - now)
+
+    def wait_turn(self) -> None:
+        delay = self.reserve()
+        if delay:
+            time.sleep(delay)

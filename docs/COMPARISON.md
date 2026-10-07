@@ -1,35 +1,51 @@
 # How SEOHEAD fits into a technical SEO stack
 
-SEOHEAD Tools is a local Python SEO crawler and scan-analysis toolkit. Its own native engine
-collects website evidence; the same toolkit retains, analyzes, reanalyzes, compares, and reports
-on scans through a CLI and local stdio MCP server.
+SEOHEAD Tools supports SEO specialists and engineers working with AI agents. Its native Python
+crawler, retained evidence, analysis, task tracking and report formats form a configurable loop:
+**goal → collection/extraction policy → analysis → comparison → tasks → recheck → report → refinement**.
 
 ## Canonical product description
 
-> SEOHEAD crawls websites, retains scan evidence for offline reanalysis, analyzes native scans
-> and Screaming Frog exports, and combines them with explicit live and provider evidence to
-> produce traceable SEO findings, prioritized tasks, and reports for specialists and agents.
+> SEOHEAD is a local SEO engineering toolkit for specialists working with AI agents and agent
+> systems. Configure evidence collection and extraction, investigate technical project health,
+> turn findings into developer work, verify changes, and repeat from retained project evidence
+> through Python, CLI and local MCP interfaces.
 
-The development direction is full headless crawling and analysis, including JavaScript-heavy
-sites. Complete parity with another crawler, at equivalent speed and scale, requires feature
-acceptance tests and reproducible benchmarks. It is not a verified capability claim today.
-Resource budgets protect runs and expose incomplete coverage; they do not define the product
-as a small-site collector. The supported interfaces remain CLI and local MCP.
+The native crawler is a first-class collector; supplied Screaming Frog CSV/XLSX exports and a
+separately licensed SF CLI are distinct supported inputs. Other crawler exports require the
+[declared import contract](THIRD_PARTY_CRAWL_IMPORT.md), not assumed compatibility.
 
-The short workflow is: **collect -> analyze -> enrich deliberately -> review -> deliver**.
+## Compare a complete workflow
 
-The built-in 182-check importer targets Screaming Frog CSV/XLSX exports. Another crawler may still
-belong in a team's stack, but its exports are not claimed to be a drop-in input for the SF analyzer.
+Use the same target or fixture, agreed URL/template population, configuration, representation and
+resource budget in both products. Keep unavailable evidence visible. These dimensions reveal more
+than a command total or an unsupported percentage of "SEO tasks automated":
+
+| Dimension | Inspect in SEOHEAD | What a comparison must demonstrate |
+|---|---|---|
+| Configurable collection | [source-derived settings](HEADLESS_CAPABILITIES.md) | Which URLs/resources were admitted, excluded, rendered and retained under the selected policy |
+| Extraction and analysis | [checks](CHECKS.md), [input contracts](INPUTS.md) | Correct facts for representative templates, rule thresholds and missing-data behavior |
+| Repeatability | [storage](STORAGE.md), [comparison](COMPARE.md) | Evidence reuse, provenance, compatible deltas and explicit partial/incompatible states |
+| Engineering handoff | [developer deliverable](scenarios/deliverable.md) | Inspectable tasks, full affected population, evidence, proposed changes and reviewed acceptance criteria |
+| Work and repair tracking | [projects](PROJECTS.md), [ledger](LEDGER.md) | Scoped task progress separately from finding resolution, review gates and evidence-bound rechecks |
+| Reporting and integrations | [reports](../examples/reports/README.md), [providers](PROVIDERS.md), [BI](BI.md) | Requested output actually produced, provider grain/availability preserved, destination validated if used |
+| Operations and capacity | [platforms](PLATFORMS.md), [capacity profile](SCAN_CAPACITY_PROFILE.md) | Complete retained runtime evidence for the actual build, workload and environment |
+
+The stable live crawler currently admits at most 50,000 URLs. That limit is an admission guard,
+not a benchmark showing every 50,000-URL workload completes. Million-URL end-to-end delivery and
+full feature/performance parity remain unaccepted; the [capacity record](SCAN_CAPACITY_PROFILE.md)
+names the measured limits. Configurability means supported settings, views and policies, not an
+arbitrary plugin runtime or autonomous code rewriting.
 
 ## Where it is strong
 
 ### One local interface for an agent
 
-The CLI and MCP server share the same 157 handlers, and five additional MCP tools cover the
+The CLI and MCP server share the same 158 handlers, and five additional MCP tools cover the
 Screaming Frog audit workflow. A registration test prevents a command from existing in only one
 interface.
 
-## Release review across a declared URL migration
+### Release review across a declared URL migration
 
 `compare-crawls` compares exact URLs by default. A changed path or host is not silently paired by
 title, canonical, content, or a redirect guess. For a release that intentionally moved URLs, pass
@@ -76,7 +92,9 @@ Schema.org graphs, and optional demand/traffic data.
 `site-audit` runs a bounded sitemap-based pass: ten site-level tools and three page-level tools,
 with 25 selected pages by default. It assembles one document and records individual tool failures;
 it is not an exhaustive run of the catalog or a link-graph crawl. `report-build` formats existing
-evidence as XLSX, DOCX, CSV, Markdown, or JSON without recalculating findings.
+evidence as XLSX, DOCX, CSV, Markdown, JSON or optional offline PDF without recalculating findings.
+A grouped task backlog is a separate `sf tasks` output from native or SF audit evidence; a reviewed
+developer workbook additionally needs the agent's engineering interpretation and artifact authoring.
 
 ## Where another tool is the right choice
 
