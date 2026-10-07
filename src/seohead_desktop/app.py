@@ -38,8 +38,9 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .gateway import CoreCommand
+from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
+from .scan_runner import LocalScanProcess
 
 ROOT = Path(__file__).resolve().parent
 CONSUMER_ID = "desktop/gui"
@@ -107,6 +108,15 @@ class MainWindow(QMainWindow):
         self.inbox_revision = None
         self.requests = {}
         self.request_handlers = {}
+        self.mcp_gateway = None
+        self.mcp_ready = False
+        self.scan_runner = None
+        self.selected_scan_path = None
+        self.last_observer_signature = None
+        self.poll_backoff_ms = 500
+        self.scan_poll_timer = QTimer(self)
+        self.scan_poll_timer.setInterval(self.poll_backoff_ms)
+        self.scan_poll_timer.timeout.connect(self.poll_active_scan)
         self.demo = json.loads((ROOT / "fixtures/demo.json").read_text())
 
         workspace = QWidget()
@@ -186,7 +196,7 @@ class MainWindow(QMainWindow):
         self.refresh_button.setEnabled(False)
         layout.addWidget(self.refresh_button)
         self.cancel_button = QPushButton("Отменить чтение")
-        self.cancel_button.clicked.connect(self.cancel_requests)
+        self.cancel_button.clicked.connect(self.cancel_active_work)
         self.cancel_button.setEnabled(False)
         layout.addWidget(self.cancel_button)
         layout.addStretch()
@@ -260,7 +270,11 @@ class MainWindow(QMainWindow):
         self.inspector.addTab(self.detail, "Сведения")
         self.debug_detail = plain()
         self.inspector.addTab(self.debug_detail, "Диагностика")
-        for title in ("Ссылки", "HTTP headers", "HTML", "Снимки", "Извлечение"):
+        self.link_detail = plain("Внутренние ссылки появятся только из сохранённого скана.")
+        self.inspector.addTab(self.link_detail, "Ссылки")
+        self.evidence_detail = plain("Состояние скана появится после выбора сохранённого скана.")
+        self.inspector.addTab(self.evidence_detail, "Снимки")
+        for title in ("HTTP headers", "HTML", "Извлечение"):
             self.inspector.addTab(plain("Данные появятся только из сохранённых измерений ядра."), title)
         self.vertical.addWidget(self.inspector)
         self.vertical.setSizes([480, 230])
@@ -314,6 +328,13 @@ class MainWindow(QMainWindow):
         self.scan_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.scan_table.selectionModel().currentRowChanged.connect(self.show_scan)
         layout.addWidget(self.scan_table, 3)
+        controls = QHBoxLayout()
+        self.resume_scan_button = QPushButton("Продолжить выбранный скан")
+        self.resume_scan_button.setEnabled(False)
+        self.resume_scan_button.clicked.connect(self.resume_selected_scan)
+        controls.addWidget(self.resume_scan_button)
+        controls.addStretch()
+        layout.addLayout(controls)
         self.scan_detail = plain("Выберите сохранённый скан: URL загружаются только из его локальной SQLite-копии.")
         layout.addWidget(self.scan_detail, 2)
         return page
@@ -348,27 +369,41 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.inbox_detail, 1)
         return page
 
-    def start_command(self, request_id, command, arguments, handler):
+    def ensure_mcp_gateway(self):
         if not self.core_executable:
             self.statusBar().showMessage("Укажите --core-cli: CLI ядра SEOHEAD не найден")
+            return None
+        if self.mcp_gateway is None:
+            self.mcp_gateway = PersistentMcpGateway(self.core_executable)
+            self.mcp_gateway.signals.ready.connect(self.mcp_ready_state)
+            self.mcp_gateway.signals.result.connect(self.command_loaded)
+            self.mcp_gateway.signals.failed.connect(self.command_failed)
+            self.mcp_gateway.signals.transport_failed.connect(self.mcp_transport_failed)
+            self.pool.start(self.mcp_gateway)
+        return self.mcp_gateway
+
+    def mcp_ready_state(self, _tools):
+        self.mcp_ready = True
+        self.statusBar().showMessage("Локальный SEOHEAD MCP подключён")
+
+    def mcp_transport_failed(self, text):
+        self.mcp_ready = False
+        self.statusBar().showMessage(f"Локальный SEOHEAD MCP переподключается: {text}")
+
+    def start_command(self, request_id, tool, arguments, handler):
+        gateway = self.ensure_mcp_gateway()
+        if gateway is None:
             return
-        previous = self.requests.pop(request_id, None)
-        if previous is not None:
-            previous.cancel()
-        worker = CoreCommand(
-            self.core_executable,
-            command,
-            arguments,
-            request_id=request_id,
-            generation=self.read_generation,
-        )
-        self.requests[request_id] = worker
+        self.requests[request_id] = self.read_generation
         self.request_handlers[request_id] = handler
-        worker.signals.loaded.connect(self.command_loaded)
-        worker.signals.failed.connect(self.command_failed)
-        worker.signals.cancelled.connect(self.command_cancelled)
+        try:
+            gateway.submit(request_id, tool, arguments, self.read_generation)
+        except (RuntimeError, ValueError) as exc:
+            self.requests.pop(request_id, None)
+            self.request_handlers.pop(request_id, None)
+            self.statusBar().showMessage(str(exc))
+            return
         self.cancel_button.setEnabled(True)
-        self.pool.start(worker)
 
     def command_loaded(self, request_id, result, generation):
         if generation != self.read_generation:
@@ -387,20 +422,20 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(bool(self.requests))
         self.statusBar().showMessage(f"{request_id}: {text}")
 
-    def command_cancelled(self, request_id, generation):
-        if generation != self.read_generation:
-            return
-        self.requests.pop(request_id, None)
-        self.request_handlers.pop(request_id, None)
-        self.cancel_button.setEnabled(bool(self.requests))
-
     def cancel_requests(self):
-        for worker in self.requests.values():
-            worker.cancel()
+        if self.mcp_gateway is not None:
+            self.mcp_gateway.cancel_generation(self.read_generation)
         self.requests.clear()
         self.request_handlers.clear()
         self.cancel_button.setEnabled(False)
         self.statusBar().showMessage("Текущие чтения отменены; сохранённые данные проекта не изменены")
+
+    def cancel_active_work(self):
+        if self.scan_runner is not None and self.scan_runner.active:
+            self.scan_runner.request_stop()
+            self.statusBar().showMessage("Остановка отправлена только запущенному этим окном скану")
+            return
+        self.cancel_requests()
 
     def choose_project(self):
         directory = QFileDialog.getExistingDirectory(self, "Открыть существующий проект SEOHEAD")
@@ -414,7 +449,20 @@ class MainWindow(QMainWindow):
         self.cancel_requests()
         self.read_generation += 1
         self.statusBar().showMessage("Чтение локального проекта в фоне…")
-        self.start_command("project-open", "project-open", ("--directory", directory), lambda result: self.project_loaded(result, self.read_generation))
+        gateway = self.ensure_mcp_gateway()
+        if gateway is None:
+            return
+        try:
+            gateway.set_project_scope(directory)
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc))
+            return
+        self.start_command(
+            "project-open",
+            "seo_project_open",
+            {"directory": directory},
+            lambda result: self.project_loaded(result, self.read_generation),
+        )
 
     def project_loaded(self, result, generation):
         if generation != self.read_generation:
@@ -452,12 +500,42 @@ class MainWindow(QMainWindow):
         self.read_generation += 1
         directory = self.project_directory
         self.statusBar().showMessage("Обновление сохранённых проекций в фоне…")
-        self.start_command("progress", "project-progress", ("--directory", directory, "--limit", str(PAGE_LIMIT)), self.load_progress)
-        self.start_command("tasks", "project-checklist-page", ("--directory", directory, "--limit", str(PAGE_LIMIT)), self.load_tasks)
-        self.start_command("scans", "project-scans", ("--directory", directory, "--limit", "20"), self.load_scans)
-        self.start_command("activity", "project-activity", ("--directory", directory), self.load_activity)
-        self.start_command("inbox", "project-inbox-list", ("--directory", directory, "--consumer", CONSUMER_ID, "--limit", "50"), self.load_inbox)
-        self.start_command("unread", "project-inbox-unread", ("--directory", directory, "--consumer", CONSUMER_ID, "--limit", "10"), self.load_unread)
+        self.start_command(
+            "observer",
+            "seo_project_observe",
+            {"directory": directory, "consumer": CONSUMER_ID, "scan_limit": 20},
+            self.load_observer,
+        )
+        self.start_command(
+            "tasks",
+            "seo_project_checklist_page",
+            {"directory": directory, "limit": PAGE_LIMIT},
+            self.load_tasks,
+        )
+
+    def load_observer(self, result):
+        """Project-observe is the core's coherent bounded snapshot."""
+        progress = result.get("progress") or {}
+        scans = result.get("scans") or {}
+        inbox = result.get("inbox") or {}
+        signature = (
+            progress.get("revision"),
+            scans.get("total"),
+            tuple(item.get("uuid") for item in scans.get("items") or ()),
+            inbox.get("revision"),
+        )
+        if signature == self.last_observer_signature and self.scan_runner is not None and self.scan_runner.active:
+            self.poll_backoff_ms = 500
+            self.scan_poll_timer.setInterval(self.poll_backoff_ms)
+            return
+        self.last_observer_signature = signature
+        self.load_progress(result.get("progress") or {})
+        self.load_activity({"observed_at": result.get("observed_at"), "sites": result.get("sites") or {}})
+        self.load_scans(result.get("scans") or {})
+        self.load_inbox(result.get("inbox") or {})
+        self.load_unread(result.get("inbox_unread") or {})
+        self.poll_backoff_ms = 500
+        self.scan_poll_timer.setInterval(self.poll_backoff_ms)
 
     def load_progress(self, result):
         counts = result.get("counts") or {}
@@ -497,7 +575,12 @@ class MainWindow(QMainWindow):
         item = self.task_model.rows[current.row()]
         item_id = item.get("id")
         if isinstance(item_id, str):
-            self.start_command("task-detail", "project-task-detail", ("--directory", self.project_directory, "--item-id", item_id), self.load_task_detail)
+            self.start_command(
+                "task-detail",
+                "seo_project_task_detail",
+                {"directory": self.project_directory, "item_id": item_id},
+                self.load_task_detail,
+            )
 
     def load_task_detail(self, result):
         self.task_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
@@ -519,8 +602,20 @@ class MainWindow(QMainWindow):
         if not isinstance(path, str) or not path:
             self.scan_detail.setPlainText("Ядро не предоставило путь сохранённого скана.")
             return
+        self.selected_scan_path = path
+        resumable = scan.get("lifecycle") in {"running", "interrupted", "failed"}
+        self.resume_scan_button.setEnabled(resumable and not (self.scan_runner and self.scan_runner.active))
         self.scan_detail.setPlainText(json.dumps(scan, ensure_ascii=False, indent=2))
-        self.start_command("url-page", "scan-inspect", ("--scan", path, "--table", "pages", "--limit", str(PAGE_LIMIT), "--offset", "0"), self.load_urls)
+        self.start_command(
+            "url-page",
+            "seo_scan_inspect",
+            {"input_path": path, "table": "pages", "limit": PAGE_LIMIT, "offset": 0},
+            self.load_urls,
+        )
+        self.start_command("scan-status", "seo_scan_status", {"input_path": path}, self.load_scan_status)
+
+    def load_scan_status(self, result):
+        self.evidence_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
 
     def load_urls(self, result):
         rows = []
@@ -571,11 +666,16 @@ class MainWindow(QMainWindow):
         if not text:
             self.statusBar().showMessage("Введите текст заметки")
             return
-        arguments = ["--directory", self.project_directory, "--text", text, "--kind", self.note_kind.currentData(), "--author-role", "specialist"]
+        arguments = {
+            "directory": self.project_directory,
+            "text": text,
+            "kind": self.note_kind.currentData(),
+            "author_role": "specialist",
+        }
         if isinstance(self.inbox_revision, int):
-            arguments.extend(("--expected-revision", str(self.inbox_revision)))
+            arguments["expected_revision"] = self.inbox_revision
         self.note_submit.setEnabled(False)
-        self.start_command("inbox-submit", "project-inbox-submit", arguments, self.note_saved)
+        self.start_command("inbox-submit", "seo_project_inbox_submit", arguments, self.note_saved)
 
     def note_saved(self, _result):
         self.note_input.clear()
@@ -593,6 +693,31 @@ class MainWindow(QMainWindow):
         if retained:
             self.detail.setPlainText("Сохранённая ограниченная проекция страницы\n\n" + json.dumps(retained, ensure_ascii=False, indent=2))
             self.debug_detail.setPlainText(json.dumps(retained, ensure_ascii=False, indent=2))
+            if self.selected_scan_path and isinstance(row.get("url"), str):
+                self.start_command(
+                    "url-detail",
+                    "seo_scan_url_detail",
+                    {
+                        "input_path": self.selected_scan_path,
+                        "url": row["url"],
+                        "response_limit": 10,
+                        "form_limit": 20,
+                        "max_bytes": 262144,
+                    },
+                    self.load_url_detail,
+                )
+                self.start_command(
+                    "url-links",
+                    "seo_scan_link_inspect",
+                    {
+                        "input_path": self.selected_scan_path,
+                        "view": "inlinks",
+                        "target": row["url"],
+                        "limit": 20,
+                        "max_bytes": 262144,
+                    },
+                    self.load_url_links,
+                )
             return
         self.detail.setPlainText(
             "Демо · синтетическая запись\n\n"
@@ -602,6 +727,15 @@ class MainWindow(QMainWindow):
             "Это демонстрационные данные. Headers, HTML и cookies не измерялись."
         )
         self.debug_detail.setPlainText(json.dumps(row, ensure_ascii=False, indent=2))
+
+    def load_url_links(self, result):
+        self.link_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
+
+    def load_url_detail(self, result):
+        self.detail.setPlainText(
+            "Сохранённая деталь URL (без HTML-тела и секретных значений)\n\n"
+            + json.dumps(result, ensure_ascii=False, indent=2)
+        )
 
     def toggle_navigation(self):
         self.navigation.setVisible(not self.navigation.isVisible())
@@ -613,30 +747,109 @@ class MainWindow(QMainWindow):
         self.vertical.setSizes([480, 230])
 
     def scan_preview(self):
+        if not self.project_directory:
+            self.statusBar().showMessage("Сначала откройте локальный проект SEOHEAD")
+            return
         dialog = QDialog(self)
-        dialog.setWindowTitle("Новый скан · только preview каркаса")
+        dialog.setWindowTitle("Новый скан · явный план")
         dialog.resize(500, 320)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
-        form.addRow("URL", QLineEdit("https://shop.example.test/"))
+        target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
+        target_input = QLineEdit(target)
+        target_input.setReadOnly(True)
+        form.addRow("Проектный URL", target_input)
         mode = QComboBox()
-        mode.addItems(["Native HTML", "Native JavaScript", "Screaming Frog"])
-        form.addRow("Источник", mode)
+        mode.addItem("Native raw HTML", "raw")
+        mode.addItem("Native JavaScript", "js")
+        form.addRow("Режим", mode)
         limit = QSpinBox()
         limit.setRange(1, 50000)
         limit.setValue(5000)
         form.addRow("Лимит URL", limit)
         layout.addLayout(form)
-        message = QLabel("Каркас показывает будущий preview. Backend submission ещё не подключён: реальный скан не будет запущен.")
+        message = QLabel(
+            "После явного «Запустить» приложение создаст только локальный native crawl этого проекта. "
+            "Никакой скан не начинается при открытии проекта или обновлении экрана."
+        )
         message.setWordWrap(True)
         layout.addWidget(message)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        buttons.button(QDialogButtonBox.Ok).setText("Запустить")
+        buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        dialog.exec_()
+        if dialog.exec_() == QDialog.Accepted:
+            self.launch_scan(limit.value(), mode.currentData())
+
+    def ensure_scan_runner(self):
+        if self.scan_runner is None:
+            self.scan_runner = LocalScanProcess(self.core_executable, self)
+            self.scan_runner.started.connect(self.scan_started)
+            self.scan_runner.output.connect(self.scan_output)
+            self.scan_runner.failed.connect(self.scan_failed)
+            self.scan_runner.finished.connect(self.scan_finished)
+        return self.scan_runner
+
+    def launch_scan(self, max_urls, rendering_mode):
+        if not self.project_directory or not self.core_executable:
+            return
+        runner = self.ensure_scan_runner()
+        try:
+            runner.start(self.project_directory, max_urls, rendering_mode)
+        except (RuntimeError, ValueError) as exc:
+            self.statusBar().showMessage(str(exc))
+
+    def resume_selected_scan(self):
+        if not self.selected_scan_path or not self.project_directory:
+            return
+        runner = self.ensure_scan_runner()
+        try:
+            runner.resume(self.selected_scan_path, self.project_directory)
+        except (RuntimeError, ValueError) as exc:
+            self.statusBar().showMessage(str(exc))
+
+    def scan_started(self):
+        self.new_scan.setEnabled(False)
+        self.resume_scan_button.setEnabled(False)
+        self.cancel_button.setText("Остановить скан")
+        self.cancel_button.setEnabled(True)
+        self.poll_backoff_ms = 500
+        self.scan_poll_timer.start()
+        self.statusBar().showMessage("Локальный native crawl запущен; наблюдение обновляется каждые 0,5 с")
+
+    def scan_output(self, text):
+        current = self.scan_detail.toPlainText()
+        self.scan_detail.setPlainText((current + "\n" + text).strip()[-20000:])
+
+    def poll_active_scan(self):
+        if self.scan_runner is None or not self.scan_runner.active:
+            self.scan_poll_timer.stop()
+            return
+        if "observer" in self.requests or not self.project_directory:
+            return
+        self.start_command(
+            "observer",
+            "seo_project_observe",
+            {"directory": self.project_directory, "consumer": CONSUMER_ID, "scan_limit": 20},
+            self.load_observer,
+        )
+
+    def scan_failed(self, text):
+        self.statusBar().showMessage(f"Локальный скан: {text}")
+
+    def scan_finished(self, code, state):
+        self.scan_poll_timer.stop()
+        self.new_scan.setEnabled(True)
+        self.cancel_button.setText("Отменить чтение")
+        self.statusBar().showMessage(f"Локальный скан завершился: {state}, код {code}; перечитываю сохранённое состояние")
+        self.refresh_project()
 
     def closeEvent(self, event):
-        self.cancel_requests()
+        self.cancel_active_work()
+        self.scan_poll_timer.stop()
+        if self.mcp_gateway is not None:
+            self.mcp_gateway.stop()
         if self.settings:
             self.settings.setValue("geometry", self.saveGeometry())
             self.settings.setValue("horizontal", self.horizontal.saveState())

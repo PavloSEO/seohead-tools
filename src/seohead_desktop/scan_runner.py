@@ -1,0 +1,117 @@
+"""Explicit local native-crawl process control for the Desktop shell."""
+
+from __future__ import annotations
+
+import os
+import signal
+from pathlib import Path
+
+from PyQt5.QtCore import QObject, QProcess, pyqtSignal
+
+from .core_identity import verified_bundle_commit
+
+
+class LocalScanProcess(QObject):
+    """Own one user-confirmed `crawl-site` child; never a durable job queue."""
+
+    output = pyqtSignal(str)
+    started = pyqtSignal()
+    finished = pyqtSignal(int, str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, executable: str, parent=None):
+        super().__init__(parent)
+        self.executable = executable
+        self.producer_build = verified_bundle_commit(executable)
+        self.process = QProcess(self)
+        self.process.setProcessChannelMode(QProcess.MergedChannels)
+        self.process.started.connect(self.started)
+        self.process.readyReadStandardOutput.connect(self._read_output)
+        self.process.errorOccurred.connect(self._error)
+        self.process.finished.connect(self._finished)
+
+    @property
+    def active(self) -> bool:
+        return self.process.state() != QProcess.NotRunning
+
+    def start(self, project: str, max_urls: int, rendering_mode: str, overrides=()) -> None:
+        if self.active:
+            raise RuntimeError("a local scan is already running")
+        self.process.start(
+            self.executable,
+            crawl_arguments(project, max_urls, rendering_mode, self.producer_build, overrides),
+        )
+
+    def resume(self, scan_path: str, project: str) -> None:
+        if self.active:
+            raise RuntimeError("a local scan is already running")
+        self.process.start(self.executable, resume_arguments(scan_path, project))
+
+    def request_stop(self) -> None:
+        """Ask only this owned child to stop; completion state comes from core."""
+        if not self.active:
+            return
+        pid = self.process.processId()
+        if os.name != "nt" and pid:
+            try:
+                os.kill(pid, signal.SIGINT)
+                return
+            except OSError:
+                pass
+        self.process.terminate()
+
+    def _read_output(self) -> None:
+        text = bytes(self.process.readAllStandardOutput()).decode(errors="replace")
+        if text:
+            self.output.emit(text)
+
+    def _error(self, _error) -> None:
+        self.failed.emit(self.process.errorString())
+
+    def _finished(self, code: int, status) -> None:
+        self._read_output()
+        state = "normal" if status == QProcess.NormalExit else "crashed"
+        self.finished.emit(code, state)
+
+
+def crawl_arguments(
+    project: str,
+    max_urls: int,
+    rendering_mode: str,
+    producer_build: str | None = None,
+    overrides=(),
+) -> list[str]:
+    """Build the one explicit native crawl command supported by Desktop."""
+    root = Path(project).resolve()
+    if not (root / "project.json").is_file():
+        raise ValueError("selected scan project is unavailable")
+    if rendering_mode not in {"raw", "js"}:
+        raise ValueError("desktop supports only declared native raw or js modes")
+    if type(max_urls) is not int or not 1 <= max_urls <= 50_000:
+        raise ValueError("scan URL limit must be from 1 to 50,000")
+    arguments = [
+        "crawl-site",
+        "--project",
+        str(root),
+        "--max-urls",
+        str(max_urls),
+        "--set",
+        f"rendering.mode={rendering_mode}",
+    ]
+    if producer_build is not None:
+        arguments.extend(("--producer-build", producer_build))
+    permitted = {"limits.max_requests", "limits.max_crawl_seconds"}
+    for key, value in overrides:
+        if key not in permitted or type(value) is not int or value < 1:
+            raise ValueError("unsupported local crawl override")
+        arguments.extend(("--set", f"{key}={value}"))
+    return arguments
+
+
+def resume_arguments(scan_path: str, project: str) -> list[str]:
+    """Resume an in-project artifact without changing its stored crawl settings."""
+    root = Path(project).resolve()
+    scan = Path(scan_path).resolve()
+    if not scan.is_relative_to((root / "scans").resolve()):
+        raise ValueError("resume scan is outside the selected local project")
+    return ["crawl-site", "--resume", str(scan)]

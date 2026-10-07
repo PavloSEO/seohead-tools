@@ -19,6 +19,7 @@ READ_COMMANDS = frozenset(
         "project-open",
         "project-status",
         "project-progress",
+        "project-observe",
         "project-checklist-page",
         "project-task-detail",
         "project-scans",

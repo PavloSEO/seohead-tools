@@ -2,6 +2,8 @@
 
 import os
 from pathlib import Path
+import hashlib
+import json
 import subprocess
 import tempfile
 import time
@@ -12,7 +14,9 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog
 
 from seohead_desktop.app import MainWindow, load_theme
-from seohead_desktop.gateway import command_argv
+from seohead_desktop.core_identity import verified_bundle_commit
+from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
+from seohead_desktop.scan_runner import crawl_arguments, resume_arguments
 
 
 class ShellTests(unittest.TestCase):
@@ -56,17 +60,22 @@ class ShellTests(unittest.TestCase):
 
     def test_scan_preview_cannot_dispatch(self):
         seen = []
+        with tempfile.TemporaryDirectory(prefix="seohead-desktop-preview-") as temporary:
+            project = Path(temporary)
+            (project / "project.json").write_text("{}", encoding="utf-8")
+            self.window.project_directory = str(project)
+            self.window.project_result = {"project": {"site": {"target": "https://example.test/"}}}
 
-        def close_preview():
-            dialog = self.app.activeModalWidget()
-            self.assertIsInstance(dialog, QDialog)
-            seen.append(dialog.windowTitle())
-            dialog.reject()
+            def close_preview():
+                dialog = self.app.activeModalWidget()
+                self.assertIsInstance(dialog, QDialog)
+                seen.append(dialog.windowTitle())
+                dialog.reject()
 
-        QTimer.singleShot(100, close_preview)
-        QTest.mouseClick(self.window.new_scan, Qt.LeftButton)
+            QTimer.singleShot(100, close_preview)
+            QTest.mouseClick(self.window.new_scan, Qt.LeftButton)
         self.assertEqual(len(seen), 1)
-        self.assertIn("preview", seen[0])
+        self.assertIn("явный план", seen[0])
 
     def test_real_metadata_clears_demo_rows(self):
         self.window.read_generation = 1
@@ -77,13 +86,15 @@ class ShellTests(unittest.TestCase):
         self.window.project_loaded({"wrong": True}, 0)
         self.assertNotIn("wrong", self.window.detail.toPlainText())
 
-    def test_declared_adapter_never_builds_a_shell_or_scan_command(self):
-        self.assertEqual(
-            command_argv("/opt/seohead", "project-progress", ("--directory", "/tmp/project")),
-            ["/opt/seohead", "project-progress", "--directory", "/tmp/project"],
-        )
-        with self.assertRaises(ValueError):
-            command_argv("/opt/seohead", "crawl-site", ())
+    def test_declared_mcp_adapter_excludes_crawl_dispatch(self):
+        self.assertIn("seo_project_observe", TOOL_ALLOWLIST)
+        self.assertNotIn("seo_crawl_site", TOOL_ALLOWLIST)
+
+        class Result:
+            isError = False
+            structuredContent = {"result": {"ok": True}}
+
+        self.assertEqual(payload(Result()), {"ok": True})
 
     def test_retained_projection_pages_replace_demo_models(self):
         self.window.load_tasks(
@@ -136,6 +147,41 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(self.window.scan_model.rows[0]["partial"], "нет")
         self.assertEqual(self.window.inbox_revision, 3)
         self.assertEqual(self.window.inbox_model.rows[0]["text"], "Retained handoff")
+
+    def test_explicit_scan_arguments_and_verified_bundle_identity(self):
+        with tempfile.TemporaryDirectory(prefix="seohead-desktop-bundle-") as temporary:
+            root = Path(temporary)
+            project = root / "project"
+            scans = project / "scans"
+            scans.mkdir(parents=True)
+            (project / "project.json").write_text("{}", encoding="utf-8")
+            cli = root / "core" / "seohead"
+            cli.parent.mkdir()
+            cli.write_bytes(b"synthetic core")
+            manifest = root / "core-manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema": "seohead.desktop.core-manifest.v1",
+                        "core": {
+                            "commit": "a" * 40,
+                            "cli_relpath": "core/seohead",
+                            "cli_sha256": hashlib.sha256(cli.read_bytes()).hexdigest(),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(verified_bundle_commit(str(cli)), "a" * 40)
+            arguments = crawl_arguments(str(project), 25, "raw", "a" * 40)
+            self.assertEqual(arguments[:2], ["crawl-site", "--project"])
+            self.assertNotIn("--url", arguments)
+            self.assertIn("--producer-build", arguments)
+            scan = scans / "retained.sqlite"
+            scan.write_bytes(b"retained")
+            self.assertEqual(resume_arguments(str(scan), str(project)), ["crawl-site", "--resume", str(scan.resolve())])
+            cli.write_bytes(b"tampered")
+            self.assertIsNone(verified_bundle_commit(str(cli)))
 
     def test_local_core_project_and_explicit_note(self):
         configured = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")
