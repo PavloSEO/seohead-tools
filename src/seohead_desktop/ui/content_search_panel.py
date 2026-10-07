@@ -1,0 +1,197 @@
+"""Native controls over the core's retained content-search projection."""
+
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import (
+    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QPushButton, QTableView, QVBoxLayout, QWidget,
+)
+
+from ..content_search import SEARCH_PRESETS
+from .components import PageModel, material_icon
+from .presentation import ElidedLabel, StateBadge, value_text
+
+
+class ContentSearchPanel(QWidget):
+    searchRequested = pyqtSignal(dict)
+    pageRequested = pyqtSignal(int)
+    cancelRequested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("bodySearchPanel")
+        self._available = self._selected = self._busy = False
+        self._offset = 0
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        heading = QHBoxLayout()
+        title = QLabel("Поиск в сохранённом HTML")
+        title.setObjectName("sectionTitle")
+        heading.addWidget(title, 1)
+        self.state = StateBadge()
+        heading.addWidget(self.state)
+        layout.addLayout(heading)
+        self.context = ElidedLabel("Выберите сохранённый скан")
+        self.context.setObjectName("metadata")
+        layout.addWidget(self.context)
+        presets = QHBoxLayout()
+        for preset in SEARCH_PRESETS:
+            button = QPushButton(preset["label"])
+            button.setProperty("role", "quiet")
+            button.setIcon(material_icon("search"))
+            button.setToolTip("Заполнить форму; поиск запускается отдельной кнопкой")
+            button.clicked.connect(lambda checked=False, identifier=preset["id"]: self.set_preset(identifier))
+            presets.addWidget(button)
+        presets.addStretch()
+        layout.addLayout(presets)
+        query_row = QHBoxLayout()
+        self.query = QLineEdit()
+        self.query.setObjectName("bodySearchQuery")
+        self.query.setAccessibleName("Буквальный текст для поиска в сохранённом скане")
+        self.query.setPlaceholderText("Буквальная строка: GTM-, фрагмент кода или текст…")
+        self.query.setMaxLength(512)
+        self.query.setClearButtonEnabled(True)
+        self.start = QPushButton("Найти в скане")
+        self.start.setObjectName("bodySearchStart")
+        self.start.setProperty("role", "primary")
+        self.start.setIcon(material_icon("search"))
+        self.cancel = QPushButton("Отменить поиск")
+        self.cancel.setIcon(material_icon("stop"))
+        self.cancel.clicked.connect(self.cancelRequested)
+        query_row.addWidget(self.query, 1)
+        query_row.addWidget(self.start)
+        query_row.addWidget(self.cancel)
+        layout.addLayout(query_row)
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        self.scope = self.combo("bodySearchScope", [("Код <head>", "head_markup"), ("Весь HTML", "raw_html"), ("Текст <body>", "body_text"), ("Код CSS-элемента", "selector_markup")])
+        self.mode = self.combo("bodySearchMode", [("Содержит строку", "contains"), ("Не содержит строку", "not_contains")])
+        self.representation = self.combo("bodySearchRepresentation", [("Исходный HTML", "static"), ("Сохранённый DOM после JavaScript", "rendered")])
+        self.selector = QLineEdit()
+        self.selector.setObjectName("bodySearchSelector")
+        self.selector.setPlaceholderText("CSS-селектор, например head script")
+        self.selector.setMaxLength(4096)
+        options = QHBoxLayout()
+        for widget in (self.scope, self.mode, self.representation):
+            options.addWidget(widget, 1)
+        form.addRow("Где и как", options)
+        form.addRow("CSS-селектор", self.selector)
+        self.selector_label = form.labelForField(self.selector)
+        layout.addLayout(form)
+        self.case_sensitive = QCheckBox("Учитывать регистр")
+        self.snippets = QCheckBox("Показывать фрагменты содержимого")
+        flags = QHBoxLayout()
+        flags.addWidget(self.case_sensitive)
+        flags.addWidget(self.snippets)
+        flags.addStretch()
+        layout.addLayout(flags)
+        help_text = QLabel("Поиск читает сохранённые тела выбранного скана. Наличие маркера не подтверждает работу тега. Недоступный HTML или DOM не считается отсутствием строки.")
+        help_text.setObjectName("metadata")
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        self.coverage = QLabel("Измерений пока нет")
+        self.coverage.setObjectName("searchCoverage")
+        self.coverage.setWordWrap(True)
+        layout.addWidget(self.coverage)
+        self.result_context = ElidedLabel()
+        self.result_context.setObjectName("metadata")
+        layout.addWidget(self.result_context)
+        self.message = QLabel()
+        self.message.setObjectName("panelMessage")
+        self.message.setWordWrap(True)
+        self.message.setTextFormat(Qt.PlainText)
+        layout.addWidget(self.message)
+        self.model = PageModel((("url", "URL"), ("presence_label", "Строка в документе"), ("capture_mode", "Источник"), ("reason", "Основание"), ("snippet", "Фрагмент")), self)
+        self.table = QTableView()
+        self.table.setObjectName("bodySearchResults")
+        self.table.setModel(self.model)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        self.table.verticalHeader().hide()
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        for column, width in enumerate((340, 160, 130, 250, 250)):
+            self.table.setColumnWidth(column, width)
+        layout.addWidget(self.table, 1)
+        pager = QHBoxLayout()
+        self.count = QLabel("Страница не загружена")
+        self.previous = QPushButton("Назад")
+        self.next = QPushButton("Далее")
+        self.previous.clicked.connect(lambda: self.pageRequested.emit(max(0, self._offset - 100)))
+        self.next.clicked.connect(lambda: self.pageRequested.emit(self._offset + len(self.model.rows)))
+        pager.addWidget(self.count, 1)
+        pager.addWidget(self.previous)
+        pager.addWidget(self.next)
+        layout.addLayout(pager)
+        self.query.textChanged.connect(self.update_controls)
+        self.selector.textChanged.connect(self.update_controls)
+        self.scope.currentIndexChanged.connect(self.update_controls)
+        self.start.clicked.connect(self.request_search)
+        self.query.returnPressed.connect(self.request_search)
+        self.set_payload({"state": "unavailable", "reason": "Выберите сохранённый скан; возможность поиска проверяется у ядра"})
+
+    @staticmethod
+    def combo(name, entries):
+        widget = QComboBox()
+        widget.setObjectName(name)
+        widget.setAccessibleName(name)
+        widget.setMinimumContentsLength(10)
+        widget.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        for label, value in entries:
+            widget.addItem(label, value)
+        return widget
+
+    def set_context(self, label, scan_uuid, available):
+        self._selected, self._available = bool(scan_uuid), bool(available)
+        self.context.setText(f"{label} · скан {scan_uuid}" if scan_uuid else "Выберите сохранённый скан в панели проекта")
+        self.update_controls()
+
+    def set_preset(self, identifier):
+        preset = next((item for item in SEARCH_PRESETS if item["id"] == identifier), None)
+        if preset:
+            self.query.setText(preset["query"])
+            self.scope.setCurrentIndex(self.scope.findData(preset["scope"]))
+            self.mode.setCurrentIndex(self.mode.findData("contains"))
+        self.query.setFocus()
+        self.query.selectAll()
+
+    def update_controls(self, *_args):
+        selector_mode = self.scope.currentData() == "selector_markup"
+        self.selector.setVisible(selector_mode)
+        self.selector_label.setVisible(selector_mode)
+        valid = bool(self.query.text().strip()) and "\x00" not in self.query.text() and (not selector_mode or bool(self.selector.text().strip()))
+        self.start.setEnabled(self._available and self._selected and valid and not self._busy)
+        self.start.setToolTip("Подключённое ядро не поддерживает поиск по телам" if not self._available else "Выберите сохранённый скан" if not self._selected else "Явный поиск по всему сохранённому скану")
+        self.cancel.setEnabled(self._busy)
+
+    def request_search(self):
+        if self.start.isEnabled():
+            self.searchRequested.emit({"query": self.query.text(), "scope": self.scope.currentData(), "mode": self.mode.currentData(), "representation": self.representation.currentData(), "selector": self.selector.text().strip() if self.scope.currentData() == "selector_markup" else None, "case_sensitive": self.case_sensitive.isChecked(), "include_snippets": self.snippets.isChecked()})
+
+    def set_payload(self, payload):
+        state = payload.get("state", "unavailable")
+        self._busy = state == "loading"
+        self._offset = payload.get("offset") or 0
+        self.state.set_state("running" if self._busy else "partial" if payload.get("operation_status") in {"partial", "incomplete"} else "finished" if state == "ready" else state)
+        rows = [{**row, "presence_label": "Найдена" if row.get("presence") is True else "Не найдена" if row.get("presence") is False else "Не проверено"} for row in payload.get("rows", [])]
+        self.model.replace(rows)
+        self.table.setVisible(bool(rows))
+        self.table.setColumnHidden(4, not any("snippet" in row for row in rows))
+        coverage = payload.get("coverage") or {}
+        self.coverage.setText("  ·  ".join(f"{title}: {value_text(coverage.get(key))}" for key, title in (("present_documents", "Найдена"), ("absent_documents", "Не найдена"), ("unavailable_documents", "Недоступно"), ("non_html_documents", "Не HTML"))))
+        self.coverage.setToolTip("Счётчики всего корпуса выбранного скана, не текущей страницы")
+        source = payload.get("source") or {}
+        query = payload.get("query")
+        self.result_context.setText(f"Результат: {query} · {payload.get('scope')} · {payload.get('representation')} · скан {source.get('scan_uuid', '—')}" if query else "Результат появится после явного поиска")
+        total = payload.get("total")
+        self.count.setText(f"Строки {self._offset + 1}–{self._offset + len(rows)} из {total}" if rows else f"Нет строк на этой странице · всего {value_text(total)}")
+        self.previous.setEnabled(state == "ready" and self._offset > 0)
+        self.next.setEnabled(state == "ready" and bool(payload.get("has_more")) and bool(rows))
+        reason = payload.get("reason") or ""
+        if state == "ready" and coverage.get("unavailable_documents"):
+            reason = "Часть документов недоступна. Отсутствие строки во всём скане не подтверждено." + ("\n" + reason if reason else "")
+        self.message.setText(reason)
+        self.message.setVisible(bool(reason))
+        self.update_controls()

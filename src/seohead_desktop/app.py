@@ -59,6 +59,8 @@ from PyQt5.QtWidgets import (
 )
 
 from .comparison import ComparisonController
+from .content_search import ContentSearchController, SEARCH_PRESETS
+from .ui.content_search_panel import ContentSearchPanel
 from .crawl_configuration import preview_configuration, validate_overrides
 from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
@@ -179,6 +181,8 @@ class MainWindow(QMainWindow):
         self.pending_commands = {}
         self.mcp_gateway = None
         self.mcp_ready = False
+        self.content_search = ContentSearchController(self)
+        self.content_search.idle.connect(self._finish_owned_shutdown)
         self.crawl_descriptor = None
         self._crawl_descriptor_error = None
         self._scan_drafts = {}
@@ -246,10 +250,10 @@ class MainWindow(QMainWindow):
         self.navigation.setAccessibleName("Разделы проекта")
         self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.navigation.setUniformItemSizes(True)
-        self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал", "Сравнение"]
+        self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал", "Сравнение", "Поиск HTML"]
         self.navigation.addItems(self.navigation_labels)
         self.navigation.setIconSize(QSize(20, 20))
-        for index, name in enumerate(("dashboard", "table_chart", "fact_check", "folder_open", "checklist", "manage_search", "notes", "description", "history", "compare_arrows")):
+        for index, name in enumerate(("dashboard", "table_chart", "fact_check", "folder_open", "checklist", "manage_search", "notes", "description", "history", "compare_arrows", "search")):
             item = self.navigation.item(index)
             item.setIcon(icon(name))
             item.setData(Qt.AccessibleTextRole, self.navigation_labels[index])
@@ -272,6 +276,12 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.inbox_page())
         self.pages.addWidget(self.reports_page())
         self.pages.addWidget(self.journal_page())
+        self.content_search_panel = ContentSearchPanel()
+        self.pages.addWidget(self.content_search_panel)
+        self.content_search_panel.searchRequested.connect(lambda values: self.content_search.start(**values))
+        self.content_search_panel.pageRequested.connect(self.content_search.page)
+        self.content_search_panel.cancelRequested.connect(self.content_search.cancel)
+        self.content_search.changed.connect(self.load_content_search)
         self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
         self.statusBar().showMessage("Демо · сеть и сканирование не запускаются")
@@ -779,6 +789,7 @@ class MainWindow(QMainWindow):
 
     def mcp_ready_state(self, _tools):
         self.mcp_ready = True
+        self.content_search.set_available(_tools)
         self.statusBar().showMessage("Локальный SEOHEAD MCP подключён")
 
     def mcp_transport_failed(self, text):
@@ -1206,8 +1217,10 @@ class MainWindow(QMainWindow):
             self.clear_scan_selection("В этом проекте нет сохранённых сканов")
 
     def clear_scan_selection(self, reason):
+        self.content_search.clear(reason)
         self.selected_scan_path = None
         self.selected_scan_uuid = None
+        self.update_content_search_context()
         self.clear_url_selection(reason)
         self.model.replace([])
         self.search.clear()
@@ -1244,6 +1257,7 @@ class MainWindow(QMainWindow):
         self.clear_scan_selection("Выбран другой скан. Загрузка сохранённых данных…")
         self.selected_scan_path = path
         self.selected_scan_uuid = scan.get("uuid") if isinstance(scan.get("uuid"), str) else None
+        self.update_content_search_context()
         self.model.replace([])
         self.search.clear()
         self.search.setEnabled(False)
@@ -1787,8 +1801,8 @@ class MainWindow(QMainWindow):
             actions.append({"title": "Раскладка · " + title, "keywords": "layout вид панели", "callback": lambda identifier=identifier: self.apply_layout(identifier)})
         for identifier, title in (("compact", "Компактные строки · 28 px"), ("standard", "Обычные строки · 32 px"), ("comfortable", "Свободные строки · 40 px")):
             actions.append({"title": title, "keywords": "density плотность таблица", "callback": lambda identifier=identifier: self.set_density(identifier)})
-        for label, keywords in (("GTM в head", "gtm tag manager"), ("GA4", "ga4 gtag analytics"), ("Яндекс Метрика", "metrika ym yandex"), ("Текст в сохранённом HTML", "literal текст строка")):
-            actions.append({"title": "Поиск · " + label, "keywords": "html body код теги search " + keywords, "callback": None, "enabled": False, "reason": "Поиск по сохранённому HTML ожидает подключения соответствующей возможности ядра"})
+        for preset in (*SEARCH_PRESETS, {"id": None, "label": "Текст в сохранённом HTML"}):
+            actions.append({"title": "Поиск · " + preset["label"], "keywords": "html body код теги search " + str(preset["id"]), "callback": lambda identifier=preset["id"]: self.open_content_search(identifier), "enabled": self.content_search.available, "reason": "Открывает форму без запуска поиска" if self.content_search.available else "Подключённое ядро не поддерживает поиск по сохранённым телам"})
         return actions
 
     def show_action_finder(self):
@@ -1802,11 +1816,24 @@ class MainWindow(QMainWindow):
         self.search.selectAll()
 
     def navigate(self, row):
-        self.pages.setCurrentIndex(3 if row == 9 else row)
+        self.pages.setCurrentIndex(3 if row == 9 else 9 if row == 10 else row)
         if row == 9:
             self.project_panels.select_tab("compare")
         elif row == 1 and not self.table.currentIndex().isValid() and self.proxy.rowCount():
             self.table.selectRow(0)
+
+    def update_content_search_context(self):
+        if hasattr(self, "content_search_panel"):
+            self.content_search_panel.set_context(self.project_picker.currentText(), self.selected_scan_uuid, self.content_search.available)
+
+    def load_content_search(self, payload):
+        self.update_content_search_context()
+        self.content_search_panel.set_payload(payload)
+
+    def open_content_search(self, preset_id=None):
+        self.navigation.setCurrentRow(10)
+        self.update_content_search_context()
+        self.content_search_panel.set_preset(preset_id)
 
     def open_comparison(self):
         self.navigation.setCurrentRow(9)
@@ -2313,11 +2340,13 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием окна. Черновик остаётся в форме.", "inbox-submit")
             return
-        if self.scan_manager is not None and self.scan_manager.active_count:
+        self.content_search.shutdown()
+        if self.content_search.active or (self.scan_manager is not None and self.scan_manager.active_count):
             event.ignore()
             if not self._close_waiting:
                 self._close_waiting = True
-                self.scan_manager.stop_all_owned()
+                if self.scan_manager is not None:
+                    self.scan_manager.stop_all_owned()
                 QTimer.singleShot(50, self._finish_owned_shutdown)
             return
         self.cancel_requests()
@@ -2344,7 +2373,7 @@ class MainWindow(QMainWindow):
     def _finish_owned_shutdown(self):
         if not self._close_waiting:
             return
-        if self.scan_manager is not None and self.scan_manager.active_count:
+        if self.content_search.active or (self.scan_manager is not None and self.scan_manager.active_count):
             QTimer.singleShot(100, self._finish_owned_shutdown)
             return
         self._close_waiting = False

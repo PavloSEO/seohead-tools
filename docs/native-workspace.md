@@ -49,3 +49,7 @@ The third-pass native evidence is in `visual-native/workspace/`: distinct native
 The workspace clears URL detail and pending detail intents when a page or local filter invalidates selection. Observer rows map Stop to the exact owned run identity; external rows cannot target an owned process. Project note drafts use both project UUID and resolved directory, and writes require a fresh inbox revision. The native plan keeps invalid input open and updates when the core capability descriptor arrives. User panel and navigation choices survive responsive breakpoints.
 
 The safety integration was checked with actual Cocoa interactions in `functional-resume-20261007/ux-five/`: scan-plan validation, URL/detail clearing, project note isolation, two-window wrapping/geometry, and retained-data immutability. Owned Stop/Resume was additionally exercised against a fresh loopback fixture.
+
+## Retained content search
+
+The HTML search workspace uses the existing core CLI over the selected retained scan. GTM, Google tag and Metrika presets only fill the form; Search is explicit. Static HTML and retained rendered DOM remain separate, and missing bodies are reported as unavailable, never as absence. Corpus coverage is kept beside bounded pages of at most 100 rows. A marker does not prove that analytics executes. Search owns one separate CLI child and does not block the project MCP observer; project/scan changes invalidate its result, and window shutdown drains only its own child. Older core packages disable the feature using advertised optional capabilities.
