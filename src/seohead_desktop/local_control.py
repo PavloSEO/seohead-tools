@@ -382,7 +382,15 @@ class DesktopControlServer(QObject):
             max_clients,
         )
         self.server = QLocalServer(self)
-        self.server.setSocketOptions(QLocalServer.UserAccessOption)
+        # Unix access is enforced by the private directory and authenticated
+        # descriptor. Qt permission flags bind through an extra temporary path,
+        # which can overflow sockaddr_un even when the final path fits. Keep the
+        # native user-only named-pipe ACL on Windows.
+        self.server.setSocketOptions(
+            QLocalServer.UserAccessOption
+            if os.name == "nt"
+            else QLocalServer.SocketOptions(0)
+        )
         self.server.setMaxPendingConnections(max_clients)
         self.server.newConnection.connect(self._accept)
         self._clients = {}
@@ -408,19 +416,28 @@ class DesktopControlServer(QObject):
             or not secrets.compare_digest(current.token, self.endpoint.token)
         ):
             raise ControlError("unsafe_endpoint", "Prepared endpoint identity changed")
-        if self.endpoint.socket_name in _ACTIVE_ENDPOINTS or not self.server.listen(
-            self.endpoint.socket_name
+        if self.endpoint.socket_name in _ACTIVE_ENDPOINTS or (
+            os.name != "nt" and os.path.lexists(self.endpoint.socket_name)
         ):
-            # Never removeServer: an existing endpoint belongs to another owner.
             raise ControlError(
                 "endpoint_unavailable",
-                "Endpoint is unavailable; choose a new explicit instance name",
+                "Endpoint already has an owner or an existing path; choose a new explicit instance location",
+            )
+        if not self.server.listen(self.endpoint.socket_name):
+            reason = " ".join(self.server.errorString().replace("\x00", "").split())[
+                :160
+            ]
+            raise ControlError(
+                "endpoint_unavailable",
+                f"Endpoint cannot listen (Qt {int(self.server.serverError())}: {reason or 'no reason supplied'}; "
+                f"socket path {len(os.fsencode(self.endpoint.socket_name))} bytes)",
             )
         _ACTIVE_ENDPOINTS.add(self.endpoint.socket_name)
         self._owns_endpoint = True
 
     def close(self):
-        self.server.close()
+        if self.server.isListening():
+            self.server.close()
         for socket in tuple(self._clients):
             socket.abort()
             self._discard(socket)

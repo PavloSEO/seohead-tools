@@ -83,9 +83,12 @@ control.start()
 
 The existing runtime parent must be an absolute, owned real directory. No
 existing directory is chmodded. Preparation creates a fresh private `0700`
-instance directory and an exclusive `0600` `control.json`. Unix socket paths are
-inside that directory; short paths are required by the platform's local-socket
-limit. Windows uses a random per-instance pipe and Qt `UserAccessOption`.
+instance directory and an exclusive `0600` `control.json`. Unix sockets bind
+directly inside that directory with no Qt permission-staging flags; the final
+path is limited to 100 encoded bytes. Qt 5's permission-staging path adds an
+extra temporary directory in its [Unix implementation](https://github.com/qt/qtbase/blob/5.15/src/network/socket/qlocalserver_unix.cpp), which can exceed the native socket limit even when
+the final path fits. The private directory and token enforce Unix access.
+Windows uses a random per-instance pipe and Qt `UserAccessOption`.
 Authentication verifies a 256-bit token plus instance identity on every request.
 This directory/token boundary is necessary because macOS ignores Qt socket
 permission flags, as documented by [Qt](https://doc.qt.io/archives/qt-5.15/qlocalserver.html#socketOptions-prop). Clients verify owner, mode, real path and descriptor size

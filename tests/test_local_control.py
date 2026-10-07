@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 from PyQt5.QtCore import QThread
-from PyQt5.QtNetwork import QLocalSocket
+from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.control_cli import create_mcp_server
@@ -177,6 +177,62 @@ class LocalControlTests(unittest.TestCase):
         other.close()
         self.assertTrue(self.endpoint.descriptor_path.exists())
         self.assertEqual(self.call()["state"], "ready")
+
+    @unittest.skipIf(os.name == "nt", "Unix pathname boundary")
+    def test_100_byte_socket_path_avoids_qt_permission_staging_overflow(self):
+        with tempfile.TemporaryDirectory(prefix="", dir=self.root.parent) as temporary:
+            parent = Path(temporary).resolve()
+            # prepare_endpoint adds /d-<16 hex>/ipc: 23 bytes. Exercise the
+            # declared upper bound, independent of the runner's TMPDIR length.
+            padding = 77 - len(os.fsencode(parent)) - 1
+            self.assertGreaterEqual(padding, 1, "Use a shorter test scratch parent")
+            runtime = parent / ("r" * padding)
+            runtime.mkdir(mode=0o700)
+            endpoint = prepare_endpoint(runtime)
+            self.assertEqual(len(os.fsencode(endpoint.socket_name)), 100)
+            server = DesktopControlServer(endpoint, lambda *_: {"boundary": 100})
+            try:
+                server.start()
+                self.assertEqual(int(server.server.socketOptions()), 0)
+                self.assertEqual(
+                    stat.S_IMODE(endpoint.descriptor_path.parent.stat().st_mode), 0o700
+                )
+                self.assertEqual(
+                    stat.S_IMODE(endpoint.descriptor_path.stat().st_mode), 0o600
+                )
+                result = self.worker(
+                    lambda: request(endpoint.descriptor_path, "status")
+                )
+                self.assertEqual(result, {"boundary": 100})
+            finally:
+                server.close()
+
+    @unittest.skipIf(os.name == "nt", "Unix pathname ownership")
+    def test_independent_listener_collision_preserves_live_path_and_owner(self):
+        endpoint = prepare_endpoint(self.root)
+        original = QLocalServer()
+        self.assertTrue(original.listen(endpoint.socket_name), original.errorString())
+        contender = DesktopControlServer(endpoint, lambda *_: {})
+        probe = QLocalSocket()
+        try:
+            with self.assertRaises(ControlError) as caught:
+                contender.start()
+            self.assertEqual(caught.exception.code, "endpoint_unavailable")
+            contender.close()
+            self.assertTrue(original.isListening())
+            self.assertTrue(Path(endpoint.socket_name).exists())
+            self.assertTrue(endpoint.descriptor_path.exists())
+            probe.connectToServer(endpoint.socket_name)
+            self.assertTrue(probe.waitForConnected(1000))
+            self.app.processEvents()
+            self.assertTrue(original.hasPendingConnections())
+            accepted = original.nextPendingConnection()
+            accepted.abort()
+            accepted.deleteLater()
+        finally:
+            probe.abort()
+            contender.close()
+            original.close()
 
     def test_multiple_frames_and_duplicate_keys_are_rejected(self):
         response = self.raw(self.frame() + self.frame(id="two"))
