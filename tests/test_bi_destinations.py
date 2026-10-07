@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import re
 from hashlib import sha256
@@ -96,6 +97,63 @@ def test_filtered_bi_export_is_exact_and_partitioned(tmp_path):
     assert filtered["row_count"] == 2
     assert [part["rows"] for part in filtered["partitions"]] == [1, 1]
     assert (tmp_path / "filtered" / "manifest.json").is_file()
+
+
+def test_finding_segment_selection_keeps_an_unfiltered_coverage_companion(tmp_path):
+    audit = _audit()
+    audit["findings"] = [
+        {
+            "severity": "warning",
+            "check": "MISSING_TITLE",
+            "url": "https://example.test/blog/a",
+            "text": "missing title",
+        },
+        {
+            "severity": "warning",
+            "check": "MISSING_TITLE",
+            "url": "https://example.test/catalogue/a",
+            "text": "missing title",
+        },
+    ]
+    audit["summary"]["tools_failed"] = [{"tool": "render", "error": "unavailable"}]
+    package = tmp_path / "package"
+    export_bi(audit=audit, out_dir=package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["run"]["crawl_settings"] = {"scope.segments": [{"name": "blog", "prefix": "/blog/"}]}
+    manifest_path.write_text(json.dumps(manifest))
+
+    filtered = filter_package(
+        package,
+        dataset="findings",
+        out_dir=tmp_path / "selected",
+        where={"segment": ["blog"]},
+        columns=["url", "check_id"],
+    )
+    assert filtered["row_count"] == 1
+    companion = filtered["coverage_companion"]
+    assert companion["selection"].startswith("complete immutable")
+    assert companion["row_count"] == manifest["datasets"]["coverage"]["row_count"]
+
+    selected_manifest = json.loads((tmp_path / "selected" / "manifest.json").read_text())
+    selected_rows = []
+    for part in selected_manifest["partitions"]:
+        with (tmp_path / "selected" / part["path"]).open(newline="") as stream:
+            selected_rows.extend(csv.DictReader(stream))
+    assert selected_rows == [{"url": "https://example.test/blog/a", "check_id": "MISSING_TITLE"}]
+    source_coverage = []
+    for part in manifest["datasets"]["coverage"]["partitions"]:
+        with (package / part["path"]).open(newline="") as stream:
+            source_coverage.extend(csv.DictReader(stream))
+    copied_coverage = []
+    for part in companion["partitions"]:
+        with (tmp_path / "selected" / part["path"]).open(newline="") as stream:
+            copied_coverage.extend(csv.DictReader(stream))
+    assert copied_coverage == source_coverage
+    assert {item["worksheet"] for item in sheets_plan(tmp_path / "selected")["worksheets"]} == {
+        "findings",
+        "coverage",
+    }
 
 
 def test_destination_preflight_streams_partitions_and_accepts_selected_projection(
@@ -839,6 +897,107 @@ def test_uncertain_write_never_replays_without_explicit_reconciliation(tmp_path)
     )
     assert second["state"] == "reconciliation_required"
     assert client.calls == calls
+
+
+def test_interrupted_begin_reconciles_before_any_second_remote_begin(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+
+    class FirstClient:
+        destination = "synthetic-begin"
+
+        def __init__(self):
+            self.begin_calls = 0
+
+        def authorize_target(self, _target):
+            return True
+
+        def begin(self, **_kwargs):
+            self.begin_calls += 1
+            raise KeyboardInterrupt("response lost after remote staging")
+
+    first = FirstClient()
+    with pytest.raises(KeyboardInterrupt):
+        apply_with_client(
+            package, target="synthetic", operation="replace", client=first, apply=True
+        )
+    assert first.begin_calls == 1
+
+    class RecoveredClient:
+        destination = "synthetic-begin"
+
+        def __init__(self):
+            self.begin_calls = 0
+            self.writes = 0
+
+        def authorize_target(self, _target):
+            return True
+
+        def begin(self, **_kwargs):
+            self.begin_calls += 1
+            pytest.fail("an uncertain begin must be reconciled before another remote begin")
+
+        def reconcile_begin(self, **_kwargs):
+            return {"recovered": True}
+
+        def write(self, _transaction, _dataset, _rows):
+            self.writes += 1
+
+        def commit(self, transaction):
+            assert transaction == {"recovered": True}
+
+    recovered = RecoveredClient()
+    result = apply_with_client(
+        package,
+        target="synthetic",
+        operation="replace",
+        client=recovered,
+        apply=True,
+        reconcile=True,
+    )
+    assert result["state"] == "committed"
+    assert recovered.begin_calls == 0 and recovered.writes > 0
+
+
+def test_sheets_recovers_staged_tabs_after_a_lost_begin_response(tmp_path):
+    package = tmp_path / "package"
+    export_bi(audit=_audit(), out_dir=package)
+    worksheets = _worksheet_mapping(package)
+    fetch = _restartable_sheets_fetcher(worksheets)
+    first = GoogleSheetsClient(
+        "synthetic", "sheet-id", worksheets, token_supplier=lambda _scope: "token", fetcher=fetch
+    )
+    original_request = first._request
+
+    def lost_begin(method, url, body=None, **kwargs):
+        response = original_request(method, url, body, **kwargs)
+        if (
+            method == "POST"
+            and url.endswith(":batchUpdate")
+            and body["requests"]
+            and "addSheet" in body["requests"][0]
+        ):
+            raise KeyboardInterrupt("lost addSheet response")
+        return response
+
+    first._request = lost_begin
+    with pytest.raises(KeyboardInterrupt):
+        apply_with_client(
+            package, target="synthetic", operation="replace", client=first, apply=True
+        )
+
+    resumed = GoogleSheetsClient(
+        "synthetic", "sheet-id", worksheets, token_supplier=lambda _scope: "token", fetcher=fetch
+    )
+    result = apply_with_client(
+        package,
+        target="synthetic",
+        operation="replace",
+        client=resumed,
+        apply=True,
+        reconcile=True,
+    )
+    assert result["state"] == "committed"
 
 
 def test_failed_write_returns_complete_per_dataset_accounting(tmp_path):
