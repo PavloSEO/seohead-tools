@@ -1,0 +1,1 @@
+- Added native SQLite sitemap-only collection: an explicit sitemap defines the complete requested URL population, with no start-page fallback, hyperlink expansion, or redirect-target expansion. Empty, incomplete, and over-budget sitemap populations stop explicitly and resume reuses the retained population without refetching XML.

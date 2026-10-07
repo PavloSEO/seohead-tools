@@ -1,0 +1,1 @@
+- Add offline literal search over retained HEAD, HTML, body text and CSS-selected markup, with explicit static/rendered coverage, unknown missing bodies, optional redacted snippets and integrity-checked pagination of new local result packages.

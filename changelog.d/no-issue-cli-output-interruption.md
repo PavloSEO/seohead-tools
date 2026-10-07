@@ -1,0 +1,1 @@
+- Return exit 130 without a traceback when SIGINT interrupts final JSON output after a handler has completed. Retained artifacts remain unchanged; a truncated output stream is never reported as successful.

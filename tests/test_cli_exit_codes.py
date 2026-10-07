@@ -138,3 +138,31 @@ def test_an_uncaught_exception_still_exits_one_with_stderr_message(monkeypatch, 
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "kaboom" in captured.err
+
+
+def test_interrupted_result_output_has_explicit_exit_and_preserves_artifact(
+    monkeypatch, capsys, tmp_path
+):
+    artifact = tmp_path / "retained.fixture"
+    original = b"completed retained evidence"
+    artifact.write_bytes(original)
+    calls = []
+
+    def completed(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True, "artifact": str(artifact)}
+
+    def interrupted_output(result, stream, **kwargs):
+        stream.write('{"ok":true,')
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(handlers.HANDLERS, "robots_check", completed)
+    monkeypatch.setattr(cli.json, "dump", interrupted_output)
+    rc = cli.main(["robots-check", "--url", "https://example.test/"])
+    captured = capsys.readouterr()
+    assert rc == 130
+    assert len(calls) == 1
+    assert artifact.read_bytes() == original
+    assert captured.out == '{"ok":true,'
+    assert "interrupted while writing result" in captured.err
+    assert "Traceback" not in captured.err

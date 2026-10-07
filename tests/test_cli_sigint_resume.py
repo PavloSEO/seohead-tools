@@ -115,7 +115,11 @@ def test_cli_sigint_keeps_a_project_scan_and_resume_finishes_without_refetching(
         deadline = time.monotonic() + 20
         scans = []
         while time.monotonic() < deadline:
-            scans = list((project / "scans").glob("*.sqlite"))
+            scans = [
+                path
+                for path in (project / "scans").glob("*.sqlite")
+                if not path.name.startswith(".native-scan-")
+            ]
             if scans and _pages(scans[0]) >= 1:
                 break
             time.sleep(0.05)

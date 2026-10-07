@@ -376,6 +376,7 @@ def crawl_site_scan(
     scan_out: str,
     settings: dict[str, Any],
     sitemap: str | None = None,
+    sitemap_only: bool = False,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
     progress_snapshot: Callable[[dict[str, int]], None] | None = None,
@@ -392,6 +393,8 @@ def crawl_site_scan(
     """
     if not isinstance(url, str) or not url:
         raise ValueError("url is required for a SQLite scan crawl")
+    if sitemap_only and not sitemap:
+        raise ValueError("sitemap_only requires an explicit sitemap")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
     discovery = settings.get("discovery", {})
@@ -441,8 +444,11 @@ def crawl_site_scan(
         producer_version=producer_version,
         producer_revision=producer_revision,
         runtime_versions=runtime_versions,
-        initial_sitemaps=initial_sitemaps(sitemap),
+        initial_sitemaps=initial_sitemaps(
+            sitemap, source="sitemap-only" if sitemap_only else "explicit"
+        ),
         seed_loader=seed_loader,
+        sitemap_only=sitemap_only,
         progress=progress,
         progress_snapshot=progress_snapshot,
         shared_request_gate=shared_request_gate,
@@ -554,6 +560,9 @@ def crawl_site_scan(
     with NativeScan.open(run.path) as scan:
         snapshot = scan.resume_snapshot(include_edges=True)
         roots = scan.sitemap_roots()
+        resumed_sitemap_only = bool(getattr(run, "resumed", False)) and any(
+            root["source"] == "sitemap-only" for root in roots
+        )
         sitemap_seed.update(
             sitemap_url=roots[0]["url"] if roots else None,
             sitemap_urls=[root["url"] for root in roots],
@@ -626,6 +635,10 @@ def crawl_site_scan(
                     pages_resume_path=None,
                     stored_scan=scan,
                     stored_sitemap=reconciliation,
+                    # A resumed sitemap-only scan owns a complete retained XML
+                    # population. Re-fetching the root would mix a changed live
+                    # declaration into that resumed population.
+                    offline=resumed_sitemap_only,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
                     # Finding density is independent of URL count. Keep every

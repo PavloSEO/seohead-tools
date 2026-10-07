@@ -169,6 +169,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         urls: list[str] | None = None,
         urls_file: str | None = None,
         sitemap: str | None = None,
+        sitemap_only: bool = False,
         config: str | None = None,
         max_urls: int | None = None,
         max_depth: int | None = None,
@@ -251,6 +252,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 urls=urls,
                 urls_file=urls_file,
                 sitemap=sitemap,
+                sitemap_only=sitemap_only or None,
                 config=config,
                 max_urls=max_urls,
                 max_depth=max_depth,
@@ -2706,6 +2708,48 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             handlers.scan_evidence(
                 input_path=input_path, section=section, limit=limit, offset=offset
             )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_scan_content_search(
+        input_path: str,
+        query: str,
+        out_dir: str,
+        scope: Literal["raw_html", "head_markup", "body_text", "selector_markup"] = "raw_html",
+        mode: Literal["contains", "not_contains"] = "contains",
+        representation: Literal["static", "rendered"] = "static",
+        selector: str | None = None,
+        case_sensitive: bool = False,
+        include_snippets: bool = False,
+    ) -> dict[str, Any]:
+        """Search one closed retained scan offline and create an indexed local NDJSON package.
+
+        The tool never fetches or reconstructs a body. Static and rendered are
+        separate requests; a missing body remains unavailable rather than an
+        absence. It returns only source identity, counts and output paths.
+        ``include_snippets`` is opt-in and redacts common credential-shaped values.
+        """
+        return _checked(
+            handlers.scan_content_search(
+                input_path=input_path,
+                query=query,
+                out_dir=out_dir,
+                scope=scope,
+                mode=mode,
+                representation=representation,
+                selector=selector,
+                case_sensitive=case_sensitive,
+                include_snippets=include_snippets,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_content_search_page(
+        package: str, offset: int = 0, limit: int = 100
+    ) -> dict[str, Any]:
+        """Read up to 100 indexed derived content-search records without rereading the scan."""
+        return _checked(
+            handlers.scan_content_search_page(package=package, offset=offset, limit=limit)
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)

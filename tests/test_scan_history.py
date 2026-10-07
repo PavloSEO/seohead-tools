@@ -135,6 +135,22 @@ def _finished(path: Path, *, age_days: int = 31, captured: bool = True) -> None:
         con.execute("UPDATE scan SET finished_at=?", (finished_at,))
 
 
+def test_history_ignores_unpublished_staging_but_preserves_other_hidden_scans(tmp_path):
+    staged = tmp_path / ".native-scan-unpublished.sqlite"
+    staged.write_bytes(b"unpublished SQLite initialization")
+    _finished(tmp_path / "published.sqlite")
+    _finished(tmp_path / ".user-named.sqlite")
+    (tmp_path / "broken.sqlite").write_bytes(b"invalid published scan")
+    listing = list_scans(tmp_path)
+    assert listing["total"] == 2
+    assert {Path(row["path"]).name for row in listing["items"]} == {
+        "published.sqlite",
+        ".user-named.sqlite",
+    }
+    assert [Path(row["path"]).name for row in listing["errors"]] == ["broken.sqlite"]
+    assert staged.read_bytes() == b"unpublished SQLite initialization"
+
+
 def test_list_inspect_preview_and_stale_apply_use_valid_native_artifacts(tmp_path):
     for index in range(6):
         _finished(tmp_path / f"{index}.sqlite", age_days=40 - index)

@@ -547,12 +547,35 @@ def test_documented_command_executes_or_at_least_still_parses(
     if argv[:2] in (["project", "start"], ["project", "prepare"]):
         _seed_project_prepare(tmp_path, monkeypatch)
     if (
-        argv[:1] in (["duplicate-check"], ["boilerplate-report"], ["semantic-inputs"])
+        argv[:1]
+        in (
+            ["duplicate-check"],
+            ["boilerplate-report"],
+            ["semantic-inputs"],
+            ["scan-content-search"],
+        )
         and "--scan" in argv
     ):
         # Body consumers need a native retained corpus, including when they use
         # the same filename that report examples use for a saved audit.
         _seed_documented_body_scan(tmp_path, argv[argv.index("--scan") + 1])
+        if argv[:1] == ["scan-content-search"]:
+            # The README explicitly creates this parent before the search;
+            # isolated cases need that same prerequisite.
+            (tmp_path / argv[argv.index("--out-dir") + 1]).parent.mkdir(parents=True, exist_ok=True)
+    elif argv[:1] == ["scan-content-search-page"]:
+        # Each documented command is isolated; derive the package that the
+        # preceding search example would create, using the real offline handler.
+        from seohead.servers.handlers import scan_content_search
+
+        source = "content-search-doc-fixture.sqlite"
+        _seed_documented_body_scan(tmp_path, source)
+        package = tmp_path / argv[argv.index("--package") + 1]
+        package.parent.mkdir(parents=True, exist_ok=True)
+        result = scan_content_search(
+            str(tmp_path / source), "GTM-", str(package), scope="head_markup"
+        )
+        assert result["ok"] and result["status"] == "complete"
     elif argv[:2] in (
         ["scan", "evidence"],
         ["scan", "extract"],

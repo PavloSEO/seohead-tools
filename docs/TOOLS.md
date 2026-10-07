@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 158 commands and 163 callable tools,
+The current registry has 160 commands and 165 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -47,13 +47,14 @@ and inputs remain in the nearby route sections and generated tool reference.
 `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
 `regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` ·
 `remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
-`robots-check` · `scan-body-diff` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` ·
-`scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` ·
-`scan-prune` · `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` ·
-`scan-url-detail` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
-`semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` ·
-`skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status`
-· `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
+`robots-check` · `scan-body-diff` · `scan-content-search` · `scan-content-search-page` · `scan-evidence` ·
+`scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
+`scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
+`scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
+`scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` · `semantic-inputs` ·
+`semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` · `skill-show` ·
+`social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status` ·
+`sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
 `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` ·
 `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
@@ -402,6 +403,8 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
 | `scan-evidence` | Reads one bounded saved-evidence section: capabilities, corpus, structured data, rendered routes, resources, or timeline. It never fetches or replays a scan. | — |
 | `scan-extract` | Applies closed declarative extraction rules to retained complete bodies only. It is offline, body-retention limited, and does not persist the ad-hoc result. | — |
+| `scan-content-search` | Searches all retained complete textual documents offline for a literal string, including HEAD, raw HTML, body text, or CSS-selected markup. Static/rendered coverage is explicit: unavailable bodies stay unknown, never absent. GTM/GA4/analytics tags are useful audit inputs; a tag's presence does not prove it fired. | writes a new indexed local result package |
+| `scan-content-search-page` | Reads at most 100 rows of that derived package using validated offsets and integrity checks, with unchanged global coverage counters. This operation never reopens or fetches the site. | — |
 | `marketing-inventory` | Correlates CTA and form/iframe fields per supplied DOM occurrence. It never fetches, submits forms, or inspects iframe contents; an explicit new output directory writes local JSON and formula-safe CSV. | optional local artifact write |
 | `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
 | `scan-requeue` | Requeues a restricted saved URL/page selection only after creating a mandatory verified backup. | writes artifact and backup |
@@ -726,7 +729,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(158 + 5):
+(160 + 5):
 
 ```bash
 seohead mcp        # stdio

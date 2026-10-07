@@ -287,9 +287,12 @@ def _catalog(directory: str | Path) -> tuple[list[dict], list[dict]]:
     root = _directory(directory)
     items, errors = [], []
     used = 0
-    for index, path in enumerate(root.glob("*.sqlite")):
-        if path.name.endswith(".audit-v2.sqlite"):
-            continue
+    candidates = (
+        path
+        for path in root.glob("*.sqlite")
+        if not path.name.endswith(".audit-v2.sqlite") and not path.name.startswith(".native-scan-")
+    )
+    for index, path in enumerate(candidates):
         if index >= 10_000:
             raise ScanError("scan directory exceeds the 10,000-file history limit")
         try:

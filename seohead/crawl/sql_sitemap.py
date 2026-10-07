@@ -234,7 +234,10 @@ def _load_context_membership(con: sqlite3.Connection, names: dict[str, str]) -> 
         sitemap_url_id = payload["sitemap_url_id"]
         if type(sitemap_url_id) is not int or sitemap_url_id < 1:
             raise SitemapContextError("saved sitemap declaration has an invalid URL id")
-        if payload["source"] not in {"explicit", "robots"} or type(payload["ordinal"]) is not int:
+        if (
+            payload["source"] not in {"explicit", "robots", "sitemap-only"}
+            or type(payload["ordinal"]) is not int
+        ):
             raise SitemapContextError("saved sitemap declaration has invalid source order")
         con.execute(f"INSERT OR IGNORE INTO {names['sources']} VALUES (?)", (sitemap_url_id,))
     for row in _rows(

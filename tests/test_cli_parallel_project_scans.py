@@ -119,7 +119,11 @@ def test_three_project_scans_share_pacing_and_one_sigint_does_not_stop_the_other
             deadline = time.monotonic() + 30
             scans: list[Path] = []
             while time.monotonic() < deadline:
-                scans = list((project / "scans").glob("*.sqlite"))
+                scans = [
+                    path
+                    for path in (project / "scans").glob("*.sqlite")
+                    if not path.name.startswith(".native-scan-")
+                ]
                 if len(scans) == 3 and all(_pages(path) >= 1 for path in scans):
                     break
                 time.sleep(0.05)
