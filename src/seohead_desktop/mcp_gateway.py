@@ -35,6 +35,8 @@ TOOL_ALLOWLIST = frozenset(
         "seo_scan_status",
     }
 )
+OPTIONAL_TOOLS = frozenset({"seo_scan_content_search", "seo_scan_content_search_page"})
+
 _DIRECTORY_TOOLS = frozenset(
     {
         "seo_project_open",
@@ -220,7 +222,7 @@ class PersistentMcpGateway(QRunnable):
                     missing = TOOL_ALLOWLIST - advertised
                     if missing:
                         raise RuntimeError("bundled core misses desktop tools: " + ", ".join(sorted(missing)))
-                    self.signals.ready.emit(tuple(sorted(TOOL_ALLOWLIST)))
+                    self.signals.ready.emit(tuple(sorted((TOOL_ALLOWLIST | OPTIONAL_TOOLS) & advertised)))
                     failures = 0
                     while True:
                         request = await asyncio.to_thread(self._next_request)
