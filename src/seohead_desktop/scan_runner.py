@@ -8,6 +8,7 @@ import os
 import re
 import signal
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from PyQt5.QtCore import QObject, QProcess, pyqtSignal
 
@@ -52,6 +53,7 @@ class LocalScanProcess(QObject):
         approve_large_crawl=False,
         max_urls_per_second: float | None = None,
         observer_run_id: str | None = None,
+        sitemap_url: str | None = None,
     ) -> None:
         if self.active:
             raise RuntimeError("a local scan is already running")
@@ -67,6 +69,7 @@ class LocalScanProcess(QObject):
                 approve_large_crawl,
                 max_urls_per_second,
                 observer_run_id,
+                sitemap_url,
             ),
         )
 
@@ -115,6 +118,7 @@ def crawl_arguments(
     approve_large_crawl=False,
     max_urls_per_second: float | None = None,
     observer_run_id: str | None = None,
+    sitemap_url: str | None = None,
 ) -> list[str]:
     """Build the one explicit native crawl command supported by Desktop."""
     root = Path(project).resolve()
@@ -131,6 +135,14 @@ def crawl_arguments(
         "--max-urls",
         str(max_urls),
     ]
+    if sitemap_url is not None:
+        if not isinstance(sitemap_url, str) or len(sitemap_url) > 4096 or any(char in sitemap_url for char in "\r\n\x00"):
+            raise ValueError("Sitemap URL must be a bounded absolute HTTP(S) URL")
+        parsed = urlsplit(sitemap_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+            raise ValueError("Sitemap URL must be absolute HTTP(S), without credentials or fragment")
+        parsed.port  # Validate malformed port syntax before starting the child.
+        arguments.extend(("--sitemap-only", "--sitemap", sitemap_url))
     if producer_build is not None:
         arguments.extend(("--producer-build", producer_build))
     if observer_run_id is not None:

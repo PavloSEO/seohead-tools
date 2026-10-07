@@ -26,6 +26,7 @@ class ManagedScan:
     approve_large_crawl: bool = False
     max_urls_per_second: float | None = None
     resume_path: str | None = None
+    sitemap_url: str | None = None
     state: str = "queued"
     core_run_id: str | None = None
     artifact: str | None = None
@@ -50,6 +51,8 @@ class ManagedScan:
             "max_urls": self.max_urls,
             "rendering_mode": self.rendering_mode,
             "resume_path": self.resume_path,
+            "sitemap_url": self.sitemap_url,
+            "input_mode": "sitemap" if self.sitemap_url is not None else "spider",
             "max_urls_per_second": self.max_urls_per_second,
             "owned": True,
             "status_reason": self.status_reason,
@@ -87,6 +90,7 @@ class LocalScanManager(QObject):
         overrides: tuple[tuple[str, object], ...],
         approve_large_crawl: bool,
         max_urls_per_second: float | None,
+        sitemap_url: str | None = None,
     ) -> str:
         if self._closing:
             raise RuntimeError("the local scan manager is shutting down")
@@ -101,6 +105,7 @@ class LocalScanManager(QObject):
             overrides=overrides,
             approve_large_crawl=approve_large_crawl,
             max_urls_per_second=max_urls_per_second,
+            sitemap_url=sitemap_url,
         )
         self._runs[run.id] = run
         self._queue.append(run)
@@ -233,6 +238,7 @@ class LocalScanManager(QObject):
                         run.approve_large_crawl,
                         run.max_urls_per_second,
                         run.observer_run_id,
+                        run.sitemap_url,
                     )
             except (RuntimeError, ValueError) as exc:
                 run.state = "rejected"
