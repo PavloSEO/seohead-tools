@@ -394,6 +394,30 @@ def test_audit_v2_finding_segment_selection_matches_saved_view_engine(tmp_path, 
     assert selected_urls == expected_urls
 
 
+def test_segment_projection_refuses_absent_fields_but_keeps_explicit_null(tmp_path):
+    from seohead.reports.bi_index import PrimarySegmentIndex, projection_index
+    from seohead.sf.core.segments import assign_segments
+
+    definitions = [
+        {"name": "has-title", "rules": [{"op": "eq", "field": "title", "value": "Home"}]}
+    ]
+    assert (
+        assign_segments([{"url": "https://example.test/", "title": "Home"}], definitions)[
+            "primary"
+        ]["https://example.test/"]
+        == "has-title"
+    )
+    with projection_index(tmp_path, 1024 * 1024) as con:
+        index = PrimarySegmentIndex(con, definitions)
+        index.build([{"url": "https://example.test/"}])
+        with pytest.raises(BIExportError, match="retained page fields are missing: title"):
+            index.primary("https://example.test/")
+    with projection_index(tmp_path, 1024 * 1024) as con:
+        index = PrimarySegmentIndex(con, definitions)
+        index.build([{"url": "https://example.test/", "title": None}])
+        assert index.primary("https://example.test/") == "default"
+
+
 def test_cursor_backed_join_store_preserves_grain_without_matched_url_lists(tmp_path, monkeypatch):
     scan_path = _crawl_with_audit(tmp_path, monkeypatch)
     store_path = tmp_path / "evidence-join.sqlite"

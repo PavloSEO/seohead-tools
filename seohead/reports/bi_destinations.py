@@ -2036,6 +2036,27 @@ def apply_with_client(
 
 def _segment_page_records(root: Path, dataset: dict[str, Any]):
     """Yield retained raw page records for the project-view segment engine."""
+    field_types = {
+        field["name"]: field["type"]
+        for field in dataset.get("fields") or []
+        if isinstance(field, dict)
+        and isinstance(field.get("name"), str)
+        and isinstance(field.get("type"), str)
+    }
+    state_names = {
+        "response_time_seconds": "response_time_state",
+        "size_bytes": "size_state",
+    }
+
+    def scalar(value: str, field_type: str):
+        if field_type == "integer":
+            return int(value) if value else None
+        if field_type == "number":
+            return float(value) if value else None
+        if field_type == "boolean":
+            return value == "true" if value else None
+        return value
+
     for part in dataset["partitions"]:
         with (root / part["path"]).open(encoding="utf-8", newline="") as stream:
             for row in csv.DictReader(stream):
@@ -2049,7 +2070,21 @@ def _segment_page_records(root: Path, dataset: dict[str, Any]):
                     raise BIDestinationError("BI page source has invalid retained fields") from exc
                 if not isinstance(source, dict):
                     raise BIDestinationError("BI page source has invalid retained fields")
-                yield {**source, "url": url}
+                record = {**source, "url": url}
+                metrics = record.get("metrics")
+                metrics = dict(metrics) if isinstance(metrics, dict) else {}
+                for field, field_type in field_types.items():
+                    if field in record or field.endswith(("_state", "_reason", "_json")):
+                        continue
+                    state = row.get(state_names.get(field, f"{field}_state"))
+                    if state not in {"measured", "derived"}:
+                        continue
+                    value = scalar(row.get(field, ""), field_type)
+                    record[field] = value
+                    metrics.setdefault(field, value)
+                if metrics:
+                    record["metrics"] = metrics
+                yield record
 
 
 def filter_package(

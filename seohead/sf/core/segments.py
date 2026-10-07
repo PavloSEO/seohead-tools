@@ -206,6 +206,22 @@ def resolve_order(segments: Iterable[Mapping[str, Any] | Segment]) -> list[Segme
     return [by_name[name] for name in order]
 
 
+def required_fields(segments: Iterable[Mapping[str, Any] | Segment]) -> dict[str, frozenset[str]]:
+    """Return each compiled segment's direct and dependency-required fields.
+
+    Consumers that only retain a projection of source pages use this metadata to
+    distinguish a field that was explicitly null from one never retained.  The
+    same resolved order and dependency graph as ``assign_segments`` applies.
+    """
+    required: dict[str, frozenset[str]] = {}
+    for segment in resolve_order(segments):
+        fields = {rule.field for rule in segment.rules if rule.op != "segment"}
+        for dependency in segment.depends_on:
+            fields.update(required[dependency])
+        required[segment.name] = frozenset(fields)
+    return required
+
+
 def _find_cycle(remaining: list[str], by_name: Mapping[str, Segment]) -> list[str]:
     """Name one concrete cycle among the nodes Kahn's algorithm could not
     place, instead of just listing the segments involved."""

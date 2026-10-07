@@ -144,16 +144,22 @@ class PrimarySegmentIndex:
     """
 
     def __init__(self, con, definitions):
-        from seohead.sf.core.segments import resolve_order
+        from seohead.sf.core.segments import required_fields, resolve_order
 
         self.con = con
         self.order = resolve_order(definitions)
+        self.required_fields = required_fields(self.order)
+        self._order_index = {segment.name: index for index, segment in enumerate(self.order)}
         con.execute("CREATE TABLE segment_pages (url TEXT PRIMARY KEY, record_json TEXT NOT NULL)")
         con.execute(
             "CREATE TABLE segment_memberships (segment TEXT NOT NULL, url TEXT NOT NULL, "
             "PRIMARY KEY(segment,url))"
         )
         con.execute("CREATE TABLE primary_segments (url TEXT PRIMARY KEY, segment TEXT NOT NULL)")
+        con.execute(
+            "CREATE TABLE segment_unknown (segment TEXT NOT NULL, url TEXT NOT NULL, "
+            "fields_json TEXT NOT NULL, PRIMARY KEY(segment,url))"
+        )
 
     def build(self, pages):
         for page in pages:
@@ -173,13 +179,20 @@ class PrimarySegmentIndex:
                 ),
             )
         memberships = _SegmentMemberships(self.con)
-        from seohead.sf.core.segments import _segment_matches
+        from seohead.sf.core.segments import _rule_matches
 
         for segment in self.order:
             for url, raw in self.con.execute(
                 "SELECT url,record_json FROM segment_pages ORDER BY url"
             ):
-                if _segment_matches(segment, json.loads(raw), memberships):
+                state, missing = _segment_state(
+                    segment,
+                    json.loads(raw),
+                    memberships,
+                    _rule_matches,
+                    self.required_fields[segment.name],
+                )
+                if state == "matched":
                     self.con.execute(
                         "INSERT INTO segment_memberships(segment,url) VALUES (?,?)",
                         (segment.name, url),
@@ -188,13 +201,47 @@ class PrimarySegmentIndex:
                         "INSERT OR IGNORE INTO primary_segments(url,segment) VALUES (?,?)",
                         (url, segment.name),
                     )
+                elif state == "unknown":
+                    self.con.execute(
+                        "INSERT INTO segment_unknown(segment,url,fields_json) VALUES (?,?,?)",
+                        (segment.name, url, json.dumps(sorted(missing))),
+                    )
 
     def primary(self, url):
         row = self.con.execute(
             "SELECT segment FROM primary_segments WHERE url=?", (url,)
         ).fetchone()
         if row is not None:
+            primary_index = self._order_index[row[0]]
+            missing = set()
+            for segment, index in self._order_index.items():
+                if index >= primary_index:
+                    continue
+                unknown = self.con.execute(
+                    "SELECT fields_json FROM segment_unknown WHERE url=? AND segment=?",
+                    (url, segment),
+                ).fetchone()
+                if unknown is not None:
+                    missing.update(json.loads(unknown[0]))
+            if missing:
+                from seohead.reports.bi import BIExportError
+
+                raise BIExportError(
+                    "segment selection is unavailable because retained page fields are missing: "
+                    + ", ".join(sorted(missing))
+                )
             return row[0]
+        unknown = self.con.execute(
+            "SELECT fields_json FROM segment_unknown WHERE url=? ORDER BY segment", (url,)
+        ).fetchall()
+        if unknown:
+            missing = sorted({field for value in unknown for field in json.loads(value[0])})
+            from seohead.reports.bi import BIExportError
+
+            raise BIExportError(
+                "segment selection is unavailable because retained page fields are missing: "
+                + ", ".join(missing)
+            )
         from seohead.sf.core.segments import UNSEGMENTED, assign_segments
 
         parts = urlsplit(url)
@@ -214,6 +261,12 @@ class _SegmentMemberships:
     def get(self, name, default=None):
         return _SegmentMembership(self.con, name) if name is not None else default
 
+    def unknown_fields(self, name, url):
+        row = self.con.execute(
+            "SELECT fields_json FROM segment_unknown WHERE segment=? AND url=?", (name, url)
+        ).fetchone()
+        return set(json.loads(row[0])) if row is not None else set()
+
 
 class _SegmentMembership:
     def __init__(self, con, segment):
@@ -227,3 +280,31 @@ class _SegmentMembership:
             ).fetchone()
             is not None
         )
+
+
+def _field_present(record, field):
+    value = record
+    for part in field.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return False
+        value = value[part]
+    return True
+
+
+def _segment_state(segment, record, memberships, rule_matches, required):
+    """Evaluate shared OR rules while preserving unavailable retained fields."""
+    unknown = set()
+    url = record.get("url")
+    for rule in segment.rules:
+        if rule.op == "segment":
+            if url in memberships.get(rule.value, ()):
+                return "matched", set()
+            unknown.update(memberships.unknown_fields(rule.value, url))
+            continue
+        if not _field_present(record, rule.field):
+            unknown.add(rule.field)
+            continue
+        if rule_matches(rule, record, memberships):
+            return "matched", set()
+    unknown.intersection_update(required)
+    return ("unknown", unknown) if unknown else ("not_matched", set())
