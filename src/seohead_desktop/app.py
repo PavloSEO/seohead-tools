@@ -1019,10 +1019,25 @@ class MainWindow(QMainWindow):
         advanced_overrides = {}
         advanced = QPushButton("Расширенные настройки…")
         def edit_advanced():
-            editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides=advanced_overrides)
+            current = {
+                **advanced_overrides,
+                "limits.max_urls": limit.value(),
+                "limits.max_requests": requests.value(),
+                "limits.max_crawl_seconds": duration.value(),
+                "rendering.mode": mode.currentData(),
+            }
+            editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides=current)
             if editor.exec_() == QDialog.Accepted:
                 advanced_overrides.clear()
                 advanced_overrides.update(editor.get_overrides())
+                if "limits.max_urls" in advanced_overrides:
+                    limit.setValue(advanced_overrides["limits.max_urls"])
+                if "limits.max_requests" in advanced_overrides:
+                    requests.setValue(advanced_overrides["limits.max_requests"])
+                if "limits.max_crawl_seconds" in advanced_overrides:
+                    duration.setValue(advanced_overrides["limits.max_crawl_seconds"])
+                if "rendering.mode" in advanced_overrides:
+                    mode.setCurrentIndex(mode.findData(advanced_overrides["rendering.mode"]))
         advanced.clicked.connect(edit_advanced)
         layout.addWidget(advanced)
 
