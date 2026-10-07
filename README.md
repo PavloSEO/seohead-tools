@@ -170,6 +170,7 @@ Search a saved native scan without another crawl. For example, find which retain
 contain a GTM marker; choose `--mode not_contains` to list measured absences instead:
 
 ```bash
+mkdir -p ./reports
 seohead scan-content-search --scan ./scans/audit.sqlite --query GTM- --scope head_markup --out-dir ./reports/gtm-check
 seohead scan-content-search-page --package ./reports/gtm-check --offset 0 --limit 100
 ```

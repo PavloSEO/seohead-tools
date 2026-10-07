@@ -559,6 +559,10 @@ def test_documented_command_executes_or_at_least_still_parses(
         # Body consumers need a native retained corpus, including when they use
         # the same filename that report examples use for a saved audit.
         _seed_documented_body_scan(tmp_path, argv[argv.index("--scan") + 1])
+        if argv[:1] == ["scan-content-search"]:
+            # The README explicitly creates this parent before the search;
+            # isolated cases need that same prerequisite.
+            (tmp_path / argv[argv.index("--out-dir") + 1]).parent.mkdir(parents=True, exist_ok=True)
     elif argv[:1] == ["scan-content-search-page"]:
         # Each documented command is isolated; derive the package that the
         # preceding search example would create, using the real offline handler.
