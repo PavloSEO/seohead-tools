@@ -29,7 +29,7 @@ MAX_EVENTS_PER_RUN = 200
 MAX_EVENT_MESSAGE = 240
 STALE_SAMPLE_SECONDS = 5.0
 RATE_WINDOW_SECONDS = 5.0
-WRITE_ATTEMPTS = 5
+WRITE_ATTEMPTS = 20
 _KINDS = {"native", "screaming_frog", "sitemap"}
 _MODES = {"spider", "list", "sf_live", "sf_exports", "sitemap"}
 _STATES = {"running", "finished", "partial", "failed", "cancelled"}
@@ -105,6 +105,10 @@ def _normalize(document: dict[str, Any]) -> None:
                 "source": "legacy",
             },
         )
+        collector = run.get("collector")
+        if isinstance(collector, dict):
+            collector.setdefault("origin", None)
+            collector.setdefault("aggregate_max_requests_per_second", None)
         if "controller_pid" not in run and "pid" in run:
             run["controller_pid"] = run["pid"]
             run["controller_start_identity"] = None
@@ -177,6 +181,8 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             "max_requests_per_second",
             "config_fingerprint",
             "resumed",
+            "origin",
+            "aggregate_max_requests_per_second",
         }:
             raise ValueError("run observation collector shape is invalid")
         if run["collector"]["mode"] not in _MODES:
@@ -194,6 +200,16 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
             raise ValueError("run observation config fingerprint is invalid")
         if type(run["collector"]["resumed"]) is not bool:
             raise ValueError("run observation resumed flag is invalid")
+        origin = run["collector"]["origin"]
+        if origin is not None and (not isinstance(origin, str) or not origin or len(origin) > 253):
+            raise ValueError("run observation origin is invalid")
+        aggregate_rate = run["collector"]["aggregate_max_requests_per_second"]
+        if aggregate_rate is not None and (
+            not isinstance(aggregate_rate, float)
+            or not math.isfinite(aggregate_rate)
+            or aggregate_rate <= 0
+        ):
+            raise ValueError("run observation aggregate request rate is invalid")
         if run["artifact"] is not None and not isinstance(run["artifact"], str):
             raise ValueError("run observation artifact is invalid")
         if not isinstance(run["counters"], dict) or set(run["counters"]) != {
@@ -306,6 +322,8 @@ def start(
     config_fingerprint: str,
     artifact: str | Path | None,
     resumed: bool = False,
+    origin: str | None = None,
+    aggregate_max_requests_per_second: float | None = None,
     counters: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     """Persist one project-bound local collector before it starts doing work."""
@@ -322,6 +340,14 @@ def start(
         raise ValueError("max_requests_per_second must be a finite nonnegative float")
     if type(resumed) is not bool:
         raise ValueError("resumed must be boolean")
+    if origin is not None and (not isinstance(origin, str) or not origin or len(origin) > 253):
+        raise ValueError("origin must be bounded nonempty text or null")
+    if aggregate_max_requests_per_second is not None and (
+        not isinstance(aggregate_max_requests_per_second, float)
+        or not math.isfinite(aggregate_max_requests_per_second)
+        or aggregate_max_requests_per_second <= 0
+    ):
+        raise ValueError("aggregate maximum request rate must be finite and positive")
     run_id = uuid.uuid4().hex
     started_at = _now()
     controller_pid = os.getpid()
@@ -348,6 +374,8 @@ def start(
                 "max_requests_per_second": max_requests_per_second,
                 "config_fingerprint": _text(config_fingerprint, "config fingerprint", 256),
                 "resumed": resumed,
+                "origin": origin,
+                "aggregate_max_requests_per_second": aggregate_max_requests_per_second,
             },
             "artifact": _relative_artifact(root, artifact),
             "counters": {
@@ -385,12 +413,19 @@ def start(
 
 
 def phase(directory: str | Path, run_id: str, name: str, *, code: str = "entered") -> None:
-    root, _project, document = _load(directory)
-    run = _find(document, run_id)
-    if run["state"] != "running":
-        return
-    _event(run, name, code)
-    _save(root, document)
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = _find(document, run_id)
+        if run["state"] != "running":
+            return
+        _event(run, name, code)
+        try:
+            _save(root, document)
+            return
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
 
 
 def collector_started(directory: str | Path, run_id: str, pid: int) -> None:
@@ -431,10 +466,6 @@ def progress(
     source: str = "collector",
 ) -> None:
     """Record measured collector counters; no percentage or site total is inferred."""
-    root, _project, document = _load(directory)
-    run = _find(document, run_id)
-    if run["state"] != "running":
-        return
     values = {
         "fetched": _optional_counter(fetched, "fetched"),
         "queued": _optional_counter(queued, "queued"),
@@ -448,16 +479,27 @@ def progress(
         or rate_per_second < 0
     ):
         raise ValueError("rate_per_second must be a finite nonnegative float")
-    run["counters"] = values
-    run["telemetry"] = {
-        "sampled_at": _now(),
-        "rate_window_seconds": rate_window_seconds,
-        "queue_semantics": queue_semantics,
-        "source": source,
-    }
-    _validate(document, document["project_uuid"])
-    _event(run, "collection", "progress")
-    _save(root, document)
+    for attempt in range(WRITE_ATTEMPTS):
+        root, _project, document = _load(directory)
+        run = _find(document, run_id)
+        if run["state"] != "running":
+            return
+        run["counters"] = values
+        run["telemetry"] = {
+            "sampled_at": _now(),
+            "rate_window_seconds": rate_window_seconds,
+            "queue_semantics": queue_semantics,
+            "source": source,
+        }
+        _validate(document, document["project_uuid"])
+        _event(run, "collection", "progress")
+        try:
+            _save(root, document)
+            return
+        except ValueError as exc:
+            if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
+                raise
+            _retry_delay(attempt)
 
 
 def finish(
@@ -613,6 +655,7 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
         if run["id"] not in selected_ids:
             continue
         row = copy.deepcopy(run)
+        row["source_kind"] = run["kind"]
         observed_at = _now()
         running = run["state"] == "running"
         controller_state = runtime(run["controller_pid"], run["controller_start_identity"], running)

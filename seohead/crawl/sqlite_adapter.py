@@ -89,6 +89,33 @@ class ScanRun:
     dispatch_gate: _DispatchGate | None = None
 
 
+class _SharedDispatchGate:
+    """Compose a per-scan budget gate with an optional project-origin turn gate."""
+
+    def __init__(self, local: _DispatchGate, shared_wait: Callable[[], None]) -> None:
+        self._local = local
+        self._shared_wait = shared_wait
+
+    @property
+    def throttle(self) -> Throttle:
+        return self._local.throttle
+
+    @property
+    def requests_used(self) -> int:
+        return self._local.requests_used
+
+    @property
+    def max_requests(self) -> int:
+        return self._local.max_requests
+
+    def restore_requests_used(self, value: int) -> None:
+        self._local.restore_requests_used(value)
+
+    def wait_turn(self) -> None:
+        self._shared_wait()
+        self._local.wait_turn()
+
+
 @dataclass
 class _DocumentBatch:
     links: list[dict[str, Any]] = field(default_factory=list)
@@ -375,6 +402,7 @@ def crawl_to_scan(
     clock: Callable[[], float] = time.monotonic,
     progress: Callable[[int, int], None] | None = None,
     progress_snapshot: Callable[[dict[str, int]], None] | None = None,
+    shared_request_gate: Callable[[], None] | None = None,
     proxy_route=None,
 ) -> ScanRun:
     """Collect a cache-off native crawl into one explicit scan artifact.
@@ -427,6 +455,8 @@ def crawl_to_scan(
         max_requests=settings["limits"]["max_requests"],
         event_callback=emit_event,
     )
+    if shared_request_gate is not None:
+        dispatch_gate = _SharedDispatchGate(dispatch_gate, shared_request_gate)
     started = clock()
     timeouts = server_errors = max_depth = 0
     elapsed_before = 0.0

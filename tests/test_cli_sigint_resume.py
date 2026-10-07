@@ -59,8 +59,18 @@ def _slow_site():
 
 
 def _pages(path: Path) -> int:
-    with contextlib.closing(sqlite3.connect(path)) as con:
-        return con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+    try:
+        with contextlib.closing(
+            sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as con:
+            return con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+    except sqlite3.OperationalError as exc:
+        # Discovery sees the artifact as soon as SQLite creates it; the writer may
+        # not have committed the schema yet. The bounded caller retries only this
+        # named startup state and still fails on corruption, locks, or bad SQL.
+        if "no such table: pages" in str(exc):
+            return 0
+        raise
 
 
 def _run(command: list[str], *, root: Path) -> subprocess.Popen[str]:

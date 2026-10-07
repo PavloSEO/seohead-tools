@@ -704,8 +704,14 @@ def crawl_site(
                 from math import isfinite
 
                 from seohead.crawl.settings import effective_request_rate
+                from seohead.projects.origin_pacing import ProjectOriginPacer
 
                 rate = effective_request_rate(resume_data["settings"])
+                pacer = ProjectOriginPacer(
+                    project_root,
+                    resume_data["start_url"],
+                    minimum_delay_seconds=resume_data["settings"]["speed"]["min_delay_seconds"],
+                )
                 observed = start(
                     project_root,
                     kind="native",
@@ -717,6 +723,8 @@ def crawl_site(
                     config_fingerprint=str(resume_data.get("config_fingerprint") or "unknown"),
                     artifact=resume,
                     resumed=True,
+                    origin=pacer.origin,
+                    aggregate_max_requests_per_second=pacer.max_requests_per_second,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
                 try:
@@ -727,6 +735,7 @@ def crawl_site(
                         progress=reporter,
                         observation=reporter.enter,
                         progress_snapshot=reporter.observe_counts,
+                        shared_request_gate=pacer.wait_turn,
                     )
                 except BaseException as exc:
                     with contextlib.suppress(OSError, ValueError):
@@ -894,7 +903,9 @@ def crawl_site(
 
         observed = None
         reporter = None
+        pacer = None
         if project_root is not None:
+            from seohead.projects.origin_pacing import ProjectOriginPacer
             from seohead.projects.run_observation import NativeRunReporter, start
 
             try:
@@ -905,6 +916,11 @@ def crawl_site(
                 from math import isfinite
 
                 rate = crawl_config.effective_request_rate(settings)
+                pacer = ProjectOriginPacer(
+                    project_root,
+                    url,
+                    minimum_delay_seconds=settings["speed"]["min_delay_seconds"],
+                )
                 observed = start(
                     project_root,
                     kind="native",
@@ -915,6 +931,8 @@ def crawl_site(
                     max_requests_per_second=float(rate) if isfinite(rate) else None,
                     config_fingerprint=crawl_config.fingerprint(settings),
                     artifact=scan_out,
+                    origin=pacer.origin,
+                    aggregate_max_requests_per_second=pacer.max_requests_per_second,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
         try:
@@ -927,6 +945,7 @@ def crawl_site(
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
                 progress_snapshot=reporter.observe_counts if reporter is not None else None,
+                shared_request_gate=pacer.wait_turn if pacer is not None else None,
                 proxy_route=proxy_route,
             )
         except BaseException as exc:

@@ -71,6 +71,8 @@ def test_project_run_records_real_counters_and_no_false_site_percentage(tmp_path
         "max_requests_per_second": None,
         "config_fingerprint": "synthetic",
         "resumed": False,
+        "origin": None,
+        "aggregate_max_requests_per_second": None,
     }
     assert item["artifact"] == "scans/scan.sqlite"
     assert item["counters"] == {

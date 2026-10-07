@@ -161,7 +161,13 @@ Project-bound native crawls and optional `sf run --project DIRECTORY` attempts
 also retain a small live-run record. It shows the collector mode, the recorded
 URL budget, the current measured frontier counters when the collector exposes
 them, its retained request/time budgets and configured request-rate ceiling,
-the measured recent request rate when available, phase events, a
+the retained source kind, project-relative artifact path, config fingerprint,
+and one stable run ID per capture. Several explicit native captures may be
+active for a project at once; their records remain separate. Native captures
+for the same host reserve turns through the project-local shared gate, which
+caps their combined public dispatch rate at 2 requests per second while each
+run preserves its own configuration and resumability evidence.
+Each record also shows the measured recent request rate when available, phase events, a
 project-relative artifact reference, and whether the
 launching controller and, for a live Screaming Frog run, its spawned collector
 PID are live, abandoned, stale, unknown, or retained after a terminal outcome.
