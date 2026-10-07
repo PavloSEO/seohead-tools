@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import Qt
+from PyQt5.QtTest import QTest
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.local_control import ControlError
@@ -137,6 +139,30 @@ class WorkspaceContextTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             w.dispatch_control("new_scan", {"project_uuid": "A", "config": {**config, "configuration_overrides": {"not.advertised": True}}, "approved": True})
         self.assertIsNone(w.scan_manager)
+
+    def test_work_cards_and_second_monitor_select_only_exact_owned_target(self):
+        w = self.window
+        rows = [{"id": "owned-" + name, "project": self.roots["A"], "project_uuid": "A", "observer_run_id": "core-" + name, "core_run_id": "core-" + name, "kind": "crawl", "state": "running"} for name in ("one", "two")]
+        stopped = []
+        w.scan_manager = SimpleNamespace(snapshot=lambda *args: rows, detail=lambda identifier: next((row for row in rows if row["id"] == identifier), None), stop=lambda identifier: stopped.append(identifier) or True, active_count=0)
+        try:
+            w.managed_scan_changed(rows[0])
+            w.present_observed_runs([{"id": "core-" + name, "state": "running", "kind": "crawl", "counters": {"fetched": 3, "queued": 4}, "telemetry": {"state": "fresh", "current_rate_per_second": 1.2, "unit": "pages"}} for name in ("one", "two")], "2026-10-07T18:00:00Z")
+            w.refresh_work_monitor()
+            QTest.mouseClick(w.work_monitor.run_cards["core-one"], Qt.LeftButton)
+            self.assertEqual(w.selected_managed_run_id, "owned-one")
+            monitor = w.ensure_monitor()
+            QTest.mouseClick(monitor.work_monitor.run_cards["core-two"], Qt.LeftButton)
+            self.assertEqual(w.selected_managed_run_id, "owned-two")
+            self.assertEqual(w.work_monitor.selected_run_id, "core-two")
+            w.cancel_active_work()
+            self.assertEqual(stopped, ["owned-two"])
+            w.new_workspace_tab()
+            self.assertEqual(w.work_monitor.runs, {})
+            self.assertEqual(monitor.work_monitor.runs, {})
+            self.assertEqual(stopped, ["owned-two"])
+        finally:
+            w.scan_manager = None
 
 
 if __name__ == "__main__":

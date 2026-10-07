@@ -45,14 +45,10 @@ from .presentation import (
     theme_tokens,
 )
 from .tabcatalogue import filter_id
+from .icons import material_icon
 
 PAGE_LIMIT = 100
 ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "icons"
-
-
-def material_icon(name):
-    """Use the already packaged Material Symbols without network/font loading."""
-    return QIcon(str(ASSET_ROOT / f"{name}.svg"))
 
 
 def display_value(value, depth=0):
@@ -303,6 +299,8 @@ class TablePanel(QWidget):
         self.copy_shortcut = QShortcut(QKeySequence.Copy, self.table)
         self.copy_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.copy_shortcut.activated.connect(self.copy_selection)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.context_menu)
         self.filter.currentIndexChanged.connect(lambda: self.request_page(0))
         self.set_page(
             [],
@@ -485,6 +483,21 @@ class TablePanel(QWidget):
                 if not self.table.isColumnHidden(column)
             ]
             QApplication.clipboard().setText("\t".join(values))
+
+    def context_menu(self, point):
+        index = self.table.indexAt(point)
+        if index.isValid():
+            self.table.selectRow(index.row())
+        current = self.table.currentIndex()
+        if not current.isValid():
+            return
+        menu = QMenu(self)
+        url_column = next((index for index, (key, label) in enumerate(self.model.columns) if key == "url"), None)
+        if url_column is not None:
+            url = str(self.proxy.index(current.row(), url_column).data())
+            menu.addAction(material_icon("content_copy"), "Копировать URL", lambda: QApplication.clipboard().setText(url))
+        menu.addAction("Копировать строку (TSV)", self.copy_selection)
+        menu.exec_(self.table.viewport().mapToGlobal(point))
 
 
 class TabConfigurationDialog(QDialog):

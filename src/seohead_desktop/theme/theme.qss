@@ -122,3 +122,18 @@ QTabBar#workspaceTabBar::tab:hover:!selected { background: $surface_container; }
 QTabBar#workspaceTabBar::close-button { image: url("$icon_root/close.svg"); width: 16px; height: 16px; border-radius: 4px; }
 QTabBar#workspaceTabBar::close-button:hover { background: $primary_container; }
 QLabel#searchCoverage { background: $surface_container_low; border: 1px solid $outline_variant; border-radius: 8px; padding: 10px 12px; font-weight: 500; }
+
+QWidget#workMonitor { background: transparent; }
+QWidget#workPlan { background: $surface_container_low; border: 1px solid $outline_variant; border-radius: 8px; }
+QWidget#workSelected { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: 10px; }
+QPushButton#workRunCard { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: 10px; padding: 0; text-align: left; }
+QPushButton#workRunCard[active="true"] { border: 2px solid $primary; background: $primary_container; }
+QPushButton#workRunCard:hover { border-color: $primary; }
+QPushButton#workRunCard:focus { border: 2px solid $primary; padding: 0; }
+QLabel#workMetricValue { font-size: 24px; font-weight: 700; color: $on_surface; }
+QLabel#workMetricLabel { font-size: 12px; font-weight: 500; color: $on_surface_variant; }
+QLabel#workStage { font-size: 14px; font-weight: 500; color: $on_surface; }
+
+QLabel#workSource { background: transparent; color: $on_surface_variant; font-size: 12px; font-weight: 500; padding: 0; }
+
+QLabel#searchNotice { background: $surface_container_lowest; color: $on_surface_variant; padding: 8px 10px; border: 1px solid $outline_variant; border-radius: 8px; font-size: 12px; }

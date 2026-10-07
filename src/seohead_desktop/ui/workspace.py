@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -114,7 +115,15 @@ class ProjectMonitor(QDockWidget):
         self.detail.setAccessibleName("Те же измерения выбранного запуска")
         splitter.addWidget(self.detail)
         splitter.setSizes([180, 260, 240])
-        layout.addWidget(splitter, 1)
+        from .work_monitor import WorkMonitor
+        self.views = QTabWidget()
+        self.work_monitor = WorkMonitor()
+        self.work_monitor.set_reduced_motion(owner.reduced_motion)
+        self.work_monitor.runSelected.connect(owner.select_observed_identity)
+        self.work_monitor.showResult.connect(owner.open_observed_result)
+        self.views.addTab(self.work_monitor, "Монитор")
+        self.views.addTab(splitter, "Таблица и детали")
+        layout.addWidget(self.views, 1)
         footer = QHBoxLayout()
         label = QLabel("Наблюдение за текущим проектом основного окна")
         label.setObjectName("metadata")

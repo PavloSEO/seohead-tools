@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .comparison_summary import ComparisonSummary
-from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value
+from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value, material_icon
 from .presentation import WorkspaceSplitter
 from .tabcatalogue import DETAIL_TABS, MAIN_TABS, PROJECT_TABS, RIGHT_TABS, TAB_BY_ID
 
@@ -223,11 +223,29 @@ class ComparePanel(TablePanel):
         header_layout.setContentsMargins(0, 2, 0, 12)
         title = QLabel("Сравнение сканов")
         title.setObjectName("sectionTitle")
-        header_layout.addWidget(title)
+        heading_row = QHBoxLayout()
+        heading_row.addWidget(title, 1)
+        header_layout.addLayout(heading_row)
         caption = QLabel("Выберите два сохранённых наблюдения. Исправление подтверждается отдельной проверкой ядра.")
         caption.setObjectName("metadata")
         caption.setWordWrap(True)
-        header_layout.addWidget(caption)
+        caption.hide()
+        title.setToolTip(caption.text())
+        self.pair_toggle = QToolButton()
+        self.pair_toggle.setCheckable(True)
+        self.pair_toggle.setText("Выбрать пару")
+        self.pair_toggle.setToolTip("Раскрыть выбор пары и повторное сравнение")
+        self.pair_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.pair_toggle.setIcon(material_icon("tune"))
+        self.pair_toggle.setAccessibleName("Раскрыть выбор пары и повторное сравнение")
+        self.pair_toggle.hide()
+        heading_row.addWidget(self.pair_toggle)
+        self.pair_controls = QWidget()
+        pair_layout = QVBoxLayout(self.pair_controls)
+        pair_layout.setContentsMargins(0, 0, 0, 0)
+        pair_layout.setSpacing(4)
+        header_layout.addWidget(self.pair_controls)
+        self.pair_toggle.toggled.connect(self.sync_pair_controls)
         chooser = QGridLayout()
         chooser.setColumnStretch(0, 1)
         chooser.setColumnStretch(1, 1)
@@ -236,7 +254,7 @@ class ComparePanel(TablePanel):
             label.setObjectName("comparisonStep")
             chooser.addWidget(label, 0, column)
             chooser.addWidget(combo, 1, column)
-        header_layout.addLayout(chooser)
+        pair_layout.addLayout(chooser)
         controls = QHBoxLayout()
         self.comparison_status = QLabel("Выберите два разных скана")
         self.comparison_status.setObjectName("metadata")
@@ -246,7 +264,7 @@ class ComparePanel(TablePanel):
         self.compare_button.setProperty("role", "primary")
         self.compare_button.setEnabled(False)
         controls.addWidget(self.compare_button)
-        header_layout.addLayout(controls)
+        pair_layout.addLayout(controls)
         self.comparison_summary = ComparisonSummary()
         self.warning_toggle = self.comparison_summary.details_toggle
         self.warning_text = self.comparison_summary.details
@@ -271,6 +289,19 @@ class ComparePanel(TablePanel):
         self.table.setColumnWidth(2, 190)
         for column in range(3, self.model.columnCount()):
             self.table.setColumnWidth(column, 240)
+
+    def sync_pair_controls(self, *_args):
+        if not hasattr(self, "pair_controls"):
+            return
+        compact = self.window().height() < 760 and self.state == "ready"
+        self.pair_toggle.setVisible(compact)
+        if hasattr(self, "comparison_summary"):
+            self.comparison_summary.set_compact(compact)
+        self.pair_controls.setVisible(not compact or self.pair_toggle.isChecked())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.sync_pair_controls()
 
     def set_scans(self, items):
         from .presentation import field_text, state_text
@@ -330,6 +361,7 @@ class ComparePanel(TablePanel):
     def set_page(self, items, **kwargs):
         kwargs["available_filters"] = ("all", "resolved", "persisting", "changed", "not_verifiable", "new")
         super().set_page(items, **kwargs)
+        self.sync_pair_controls()
         if hasattr(self, "compare_button"):
             self.refresh_button.setEnabled(self.state == "ready")
             self._valid_pair()

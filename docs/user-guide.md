@@ -76,3 +76,7 @@ visible error text, not synthesize a missing reason.
 The guide has three scrollable topics and preserves access at 440×420 logical
 pixels. It reuses bundled Material Symbols and the current theme; it introduces
 no web view, network dependency, persistence or operation dispatch.
+
+## Window sizes
+
+The primary window supports a minimum of 800×720 logical pixels. Use a tall or half-screen window for dense tables. In a short window, search presets and secondary options are in the settings menu, and comparison pair controls can be expanded with Choose pair. The source scan selector and run controls remain reachable. Windows and mixed-monitor scaling require their own acceptance checks.

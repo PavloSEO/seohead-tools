@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .components import ASSET_ROOT, material_icon
+from .icons import MaterialIconLabel
 from .presentation import StateBadge, readable_record
 
 STATUSES = (
@@ -43,6 +44,7 @@ class _MetricCard(QPushButton):
         self.setProperty("state", state)
         self.setProperty("tone", tone)
         self.setCheckable(True)
+        self.setMinimumHeight(82)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.title, self.note = title, note
@@ -50,10 +52,8 @@ class _MetricCard(QPushButton):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setHorizontalSpacing(6)
         layout.setVerticalSpacing(3)
-        self.symbol = QLabel()
+        self.symbol = MaterialIconLabel(icon, size=18, parent=self)
         has_icon = (ASSET_ROOT / f"{icon}.svg").is_file()
-        if has_icon:
-            self.symbol.setPixmap(material_icon(icon).pixmap(18, 18))
         self.symbol.setFixedSize(18, 18)
         self.symbol.setVisible(has_icon)
         label = QLabel(title)
@@ -71,10 +71,10 @@ class _MetricCard(QPushButton):
             child.setAttribute(Qt.WA_TransparentForMouseEvents)
 
     def sizeHint(self):
-        return self.layout().sizeHint().expandedTo(QSize(148, 72))
+        return self.layout().sizeHint().expandedTo(QSize(112, 72))
 
     def minimumSizeHint(self):
-        return QSize(148, self.layout().minimumSize().height())
+        return QSize(112, self.layout().minimumSize().height())
 
     def set_count(self, count, scope):
         self.value.setText(_number(count))
@@ -118,6 +118,7 @@ class ComparisonSummary(QWidget):
         self.whole_scope.setWordWrap(True)
         self.coverage_badge = StateBadge()
         self.coverage_badge.setWordWrap(True)
+        self.coverage_badge.setMinimumHeight(28)
         self.details_toggle = QToolButton()
         self.details_toggle.setText("Как читать сравнение")
         self.details_toggle.setProperty("role", "quiet")
@@ -161,6 +162,11 @@ class ComparisonSummary(QWidget):
         self._arrange_cards()
         self.set_payload({})
 
+    def set_compact(self, compact):
+        self.raw_summary.setVisible(not compact)
+        self.details_toggle.setToolButtonStyle(Qt.ToolButtonIconOnly if compact else Qt.ToolButtonTextBesideIcon)
+        self.details_toggle.setToolTip("Как читать сравнение: полная сводка и ограничения")
+
     def minimumSizeHint(self):
         size = super().minimumSizeHint()
         size.setWidth(304)
@@ -177,7 +183,7 @@ class ComparisonSummary(QWidget):
             self.delta_layout.addWidget(self.coverage_badge, 1 if narrow else 0, 0 if narrow else 1)
             self.delta_layout.addWidget(self.details_toggle, 1 if narrow else 0, 1 if narrow else 2, 1, 2 if narrow else 1)
             self.delta_layout.addWidget(self.raw_summary, 2 if narrow else 1, 0, 1, 3)
-        columns = 5 if width >= 772 else 3 if width >= 460 else 2 if width >= 304 else 1
+        columns = 5 if width >= 630 else 3 if width >= 400 else 2 if width >= 304 else 1
         if columns == self._columns:
             return
         for column in range(5):

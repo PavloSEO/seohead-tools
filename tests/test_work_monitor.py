@@ -69,7 +69,7 @@ class WorkMonitorTests(unittest.TestCase):
         row = observed()
         self.monitor.set_observation([row], {}, None)
         self.assertEqual(self.monitor.metric_values["rate"].text(), "1.25 стр./с")
-        self.assertIn("Возраст при наблюдении: 2 с", self.monitor.sample_label.text())
+        self.assertIn("Возраст: 2 с", self.monitor.sample_label.text())
         for state in ("retained", "stale", "unavailable"):
             row["telemetry"]["state"] = state
             self.monitor.set_observation([row], {}, None)
@@ -77,7 +77,8 @@ class WorkMonitorTests(unittest.TestCase):
             self.assertNotIn("99", self.monitor.metric_values["rate"].text())
         row["telemetry"].update(state="fresh", current_rate_per_second=float("nan"))
         self.monitor.set_observation([row], {}, None)
-        self.assertEqual(self.monitor.metric_values["rate"].text(), "Не измерено")
+        self.assertEqual(self.monitor.metric_values["rate"].text(), "—")
+        self.assertIn("Нет текущей скорости", self.monitor.metric_labels["rate"].text())
 
     def test_sources_units_and_stage_use_supplied_evidence(self):
         sf = observed("sf", kind="screaming_frog", collector={"mode": "sf_live"})
@@ -169,7 +170,7 @@ class WorkMonitorTests(unittest.TestCase):
             self.monitor.resize(width, 720)
             QTest.qWait(40)
             self.assertEqual(self.monitor.width(), width)
-            self.assertEqual(self.monitor._columns, 4 if width == 1440 else 2)
+            self.assertEqual(self.monitor._columns, 4 if width == 1440 else 3 if width == 1024 else 2)
             for card in self.monitor.run_cards.values():
                 self.assertTrue(self.monitor.cards_widget.rect().contains(card.geometry()))
                 self.assertGreater(card.width(), 220)

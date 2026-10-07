@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .components import PageModel, material_icon
+from .icons import MaterialIconLabel
 from .presentation import (
     ElidedLabel,
     StateBadge,
@@ -47,6 +48,18 @@ def _counter(value):
 
 def _display(value):
     return "—" if value is None else value_text(value)
+
+
+def _duration(value):
+    measured = _number(value)
+    if measured is None:
+        return "не измерено"
+    seconds = round(measured)
+    if seconds >= 3600:
+        return f"{seconds // 3600} ч {seconds % 3600 // 60} мин"
+    if seconds >= 60:
+        return f"{seconds // 60} мин {seconds % 60} с"
+    return f"{seconds} с"
 
 
 def _mapping(value):
@@ -117,11 +130,11 @@ class _RunCard(QPushButton):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(6)
         self.source = StateBadge()
+        self.source.setObjectName("workSource")
         self.state = StateBadge()
         self.source.setWordWrap(True)
         self.state.setWordWrap(True)
-        self.source_icon = QLabel()
-        self.source_icon.setFixedSize(18, 18)
+        self.source_icon = MaterialIconLabel("history", size=18, parent=self)
         self.title = ElidedLabel()
         self.title.setObjectName("workStage")
         self.counts = QLabel()
@@ -130,7 +143,7 @@ class _RunCard(QPushButton):
         self.activity.setObjectName("metadata")
         self.activity.setWordWrap(True)
         layout.addWidget(self.source, 0, 0)
-        layout.addWidget(self.state, 0, 1)
+        layout.addWidget(self.state, 0, 1, Qt.AlignRight)
         title_row = QHBoxLayout()
         title_row.setSpacing(6)
         title_row.addWidget(self.source_icon)
@@ -148,12 +161,12 @@ class _RunCard(QPushButton):
 
     def set_run(self, run):
         source, icon = _source(run)
-        self.source_icon.setPixmap(material_icon(icon).pixmap(18, 18))
+        self.source_icon.set_material_icon(icon)
         self.source.set_state("retained")
         self.source.setText(source)
         self.state.set_state(run.get("state", "unknown"))
         collector, counters = _mapping(run.get("collector")), _mapping(run.get("counters"))
-        self.title.setText(str(collector.get("origin") or "Запуск " + self.identity[:8]))
+        self.title.setText(str(collector.get("origin") or "Запуск") + " · " + self.identity[:8])
         self.counts.setText(f"Получено: {_display(_counter(counters.get('fetched')))} · В очереди: {_display(_counter(counters.get('queued')))}")
         phase = state_text(_phase(run)) if _phase(run) else "Этап не сообщён"
         self.activity.setText(f"{phase} · {_rate(run)}" if run.get("_observed") else "Очередь этого окна · ожидается наблюдение ядра")
@@ -313,7 +326,7 @@ class WorkMonitor(QWidget):
 
     def _arrange_cards(self):
         width = self.cards_scroll.viewport().width()
-        columns = min(len(self.run_cards) or 1, 4 if width >= 1120 else 2 if width >= 540 else 1)
+        columns = min(len(self.run_cards) or 1, 4 if width >= 1120 else 3 if width >= 840 else 2 if width >= 540 else 1)
         for column in range(4):
             self.cards.setColumnStretch(column, 0)
         for index, card in enumerate(self.run_cards.values()):
@@ -396,13 +409,15 @@ class WorkMonitor(QWidget):
         source, _icon = _source(run)
         telemetry, counters = _mapping(run.get("telemetry")), _mapping(run.get("counters"))
         collector, owned = _mapping(run.get("collector")), _mapping(run.get("_owned"))
-        self.selected_title.setText(f"{source} · {collector.get('origin') or identity[:8]}")
+        self.selected_title.setText(f"{source} · {collector.get('origin') or 'Запуск'} · {identity[:8]}")
         self.selected_title.setToolTip(identity)
         self.selected_badge.set_state(run.get("state", "unknown"))
         phase = _phase(run)
         self.phase_label.setText("Последний этап по журналу: " + state_text(phase) if phase else "Этап ещё не сообщён")
         values = {key: _display(_counter(counters.get(key))) for key in ("fetched", "queued", "inflight", "excluded")}
-        values["rate"] = _rate(run)
+        measured_rate = telemetry.get("state") == "fresh" and _number(telemetry.get("current_rate_per_second")) is not None
+        values["rate"] = _rate(run) if measured_rate else "—"
+        self.metric_labels["rate"].setText("Сейчас" if measured_rate else "Измерение устарело" if telemetry.get("state") == "stale" else "Нет текущей скорости")
         self.metric_labels["fetched"].setText({"pages": "Получено страниц", "sitemap_documents": "Sitemap-документов", "urls_including_resources": "URL и ресурсов"}.get(telemetry.get("unit"), "Получено"))
         for key, value in values.items():
             self.metric_values[key].setText(value)
@@ -422,8 +437,9 @@ class WorkMonitor(QWidget):
         self._detail_signature = signature
         self.sample_label.setText(
             f"{state_text(telemetry.get('state', 'unavailable'))} · Измерено: {field_text('sampled_at', telemetry.get('sampled_at'))} · "
-            f"Возраст при наблюдении: {_display(_number(telemetry.get('age_seconds')))} с · Окно: {_display(_number(telemetry.get('rate_window_seconds')))} с"
+            f"Возраст: {_duration(telemetry.get('age_seconds'))} · Окно: {_duration(telemetry.get('rate_window_seconds'))}"
         )
+        self.sample_label.setToolTip("Возраст на момент наблюдения ядра.\n" + str(dict(telemetry)))
         limit = _counter(collector.get("max_urls", owned.get("max_urls")))
         rate_limit = _number(collector.get("max_requests_per_second", owned.get("max_urls_per_second")))
         self.budget_label.setText(f"Лимиты запуска · URL: {_display(limit)} · запросов/с: {_display(rate_limit)} · время: {_display(_number(collector.get('max_crawl_seconds')))} с")
