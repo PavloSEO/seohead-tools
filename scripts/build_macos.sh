@@ -43,6 +43,12 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
     "$core_source/seohead/cli.py"
 
 "$python_bin" -m PyInstaller \
+    --clean --noconfirm --onedir --console --name seohead-desktop-agent \
+    --collect-data seohead_desktop --collect-submodules mcp \
+    --distpath "$scratch/agent-dist" --workpath "$scratch/agent-work" --specpath "$scratch" \
+    "$project_dir/scripts/control_entrypoint.py"
+
+"$python_bin" -m PyInstaller \
     --clean --noconfirm --onedir --windowed --name "SEOHEAD Desktop" \
     --osx-bundle-identifier tech.seohead.desktop \
     --collect-data seohead_desktop \
@@ -56,6 +62,8 @@ mkdir -p "$resources/core"
 # The desktop resolver deliberately owns Contents/Resources, so copy the
 # complete frozen core there after BUNDLE without changing its internal layout.
 ditto "$scratch/core-dist/seohead" "$resources/core/seohead"
+mkdir -p "$resources/agent"
+ditto "$scratch/agent-dist/seohead-desktop-agent" "$resources/agent/seohead-desktop-agent"
 mkdir -p "$resources/licenses"
 cp "$project_dir/LICENSE" "$resources/licenses/SEOHEAD-Desktop-GPL-3.0-or-later.txt"
 cp "$project_dir/THIRD_PARTY_NOTICES.md" "$resources/licenses/THIRD_PARTY_NOTICES.md"
@@ -68,7 +76,8 @@ cp "$project_dir/src/seohead_desktop/assets/asset-manifest.json" "$resources/lic
 "$python_bin" "$project_dir/scripts/bundle_manifest.py" create \
     --core-source "$core_source" --platform macos --output "$resources/core-manifest.json"
 "$python_bin" "$project_dir/scripts/bundle_manifest.py" finalize \
-    --manifest "$resources/core-manifest.json" --cli "$resources/core/seohead/seohead"
+    --manifest "$resources/core-manifest.json" --cli "$resources/core/seohead/seohead" \
+    --agent "$resources/agent/seohead-desktop-agent/seohead-desktop-agent"
 "$python_bin" "$project_dir/scripts/smoke_bundle.py" --bundle "$bundle"
 
 mkdir -p "$(dirname -- "$output")"

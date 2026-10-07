@@ -102,15 +102,24 @@ def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
     return payload
 
 
-def finalize_manifest(manifest: Path, cli: Path) -> dict:
+def _payload(root: Path, executable: Path, manifest_root: Path) -> dict:
+    return {
+        "executable_relpath": executable.resolve().relative_to(manifest_root.resolve()).as_posix(),
+        "executable_sha256": _sha256_file(executable),
+        "root_relpath": root.resolve().relative_to(manifest_root.resolve()).as_posix(),
+        "inventory": _inventory(root),
+    }
+
+
+def finalize_manifest(manifest: Path, cli: Path, agent: Path | None = None) -> dict:
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    relative = cli.resolve().relative_to(manifest.parent.resolve())
-    root = cli.parent.resolve()
-    root_relative = root.relative_to(manifest.parent.resolve())
-    payload["core"]["cli_relpath"] = relative.as_posix()
-    payload["core"]["cli_sha256"] = _sha256_file(cli)
-    payload["core"]["root_relpath"] = root_relative.as_posix()
-    payload["core"]["inventory"] = _inventory(root)
+    core = _payload(cli.parent, cli, manifest.parent)
+    payload["core"].update(
+        cli_relpath=core["executable_relpath"], cli_sha256=core["executable_sha256"],
+        root_relpath=core["root_relpath"], inventory=core["inventory"],
+    )
+    if agent is not None:
+        payload["agent"] = _payload(agent.parent, agent, manifest.parent)
     manifest.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
 
@@ -125,11 +134,12 @@ def main() -> int:
     finalize = commands.add_parser("finalize")
     finalize.add_argument("--manifest", type=Path, required=True)
     finalize.add_argument("--cli", type=Path, required=True)
+    finalize.add_argument("--agent", type=Path)
     args = parser.parse_args()
     if args.command == "create":
         create_manifest(args.core_source, args.output, args.platform)
     else:
-        finalize_manifest(args.manifest, args.cli)
+        finalize_manifest(args.manifest, args.cli, args.agent)
     return 0
 
 

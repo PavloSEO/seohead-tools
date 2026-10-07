@@ -67,8 +67,27 @@ def check_bundle(bundle: Path) -> dict:
         raise ValueError("bundled core root is invalid")
     if inventory(root) != core.get("inventory"):
         raise ValueError("bundled core payload does not match the manifest")
+    agent = manifest.get("agent")
+    if not isinstance(agent, dict):
+        raise ValueError("missing bundled Desktop control agent")
+    agent_executable = (resources / str(agent.get("executable_relpath", ""))).resolve()
+    agent_root = (resources / str(agent.get("root_relpath", ""))).resolve()
+    if (
+        not agent_executable.is_file()
+        or agent_executable.parent != agent_root
+        or sha256_file(agent_executable) != agent.get("executable_sha256")
+        or inventory(agent_root) != agent.get("inventory")
+    ):
+        raise ValueError("bundled Desktop control agent does not match the manifest")
     response = subprocess.run(
         [str(executable), "--version"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    agent_help = subprocess.run(
+        [str(agent_executable), "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -78,6 +97,7 @@ def check_bundle(bundle: Path) -> dict:
         "core_version_output": response.stdout.strip(),
         "core_commit": core.get("commit"),
         "core_source_archive_sha256": core.get("source_archive_sha256"),
+        "agent_help": agent_help.stdout.splitlines()[0] if agent_help.stdout else "",
     }
 
 
