@@ -768,8 +768,12 @@ class NativeScan:
                     "throttle_state_json": _dump(
                         {
                             "schema_version": "scan_throttle.v2",
-                            "delay_seconds": 0.0,
-                            "concurrency": 1,
+                            "delay_seconds": effective["speed"]["min_delay_seconds"],
+                            "concurrency": (
+                                1
+                                if effective["speed"]["adaptive"]
+                                else effective["speed"]["concurrency"]
+                            ),
                             "consecutive_ok": 0,
                             "requests_used": 0,
                         }

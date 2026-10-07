@@ -70,6 +70,21 @@ def test_resume_closes_credential_reader_before_returning_writer(tmp_path, monke
         assert writer.finish_without_audit("empty resume fixture") is True
 
 
+def test_initial_resume_throttle_matches_a_nonzero_configured_delay(tmp_path):
+    path = tmp_path / "native.sqlite"
+    metadata = _metadata(**{"speed.min_delay_seconds": 1.5})
+    with NativeScan.create(path, **metadata) as scan:
+        snapshot = scan.resume_snapshot()
+        assert snapshot["runtime"]["throttle"] == {
+            "delay_seconds": 1.5,
+            "concurrency": 1,
+            "consecutive_ok": 0,
+            "requests_used": 0,
+        }
+    with NativeScan.open(path, expected_config=metadata["config"]):
+        pass
+
+
 def _record(url="https://example.test/"):
     return vars(
         PageRecord(
