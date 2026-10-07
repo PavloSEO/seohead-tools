@@ -45,6 +45,7 @@ from .models import RecordModel, UrlModel
 from .scan_manager import LocalScanManager
 from .crawl_configuration import preview_configuration, validate_overrides
 from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
+from .ui.crawl_configuration_dialog import CrawlConfigurationDialog
 
 ROOT = Path(__file__).resolve().parent
 CONSUMER_ID = "desktop/gui"
@@ -127,6 +128,7 @@ class MainWindow(QMainWindow):
         self.selected_scan_uuid = None
         self.last_observer_signature = None
         self.poll_backoff_ms = 500
+        self._close_waiting = False
         self.scan_poll_timer = QTimer(self)
         self.scan_poll_timer.setInterval(self.poll_backoff_ms)
         self.scan_poll_timer.timeout.connect(self.poll_active_scan)
@@ -1014,6 +1016,15 @@ class MainWindow(QMainWindow):
         approval.setObjectName("scanLargeApproval")
         approval.setVisible(False)
         layout.addWidget(approval)
+        advanced_overrides = {}
+        advanced = QPushButton("Расширенные настройки…")
+        def edit_advanced():
+            editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides=advanced_overrides)
+            if editor.exec_() == QDialog.Accepted:
+                advanced_overrides.clear()
+                advanced_overrides.update(editor.get_overrides())
+        advanced.clicked.connect(edit_advanced)
+        layout.addWidget(advanced)
 
         def update_approval():
             elevated = limit.value() > 5_000 or requests.value() > 10_000 or duration.value() > 300
@@ -1046,6 +1057,7 @@ class MainWindow(QMainWindow):
                 requests.value(),
                 duration.value(),
                 approval.isChecked(),
+                advanced_overrides,
             )
 
     def ensure_scan_manager(self):
@@ -1057,21 +1069,23 @@ class MainWindow(QMainWindow):
         return self.scan_manager
 
     def launch_scan(
-        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False
+        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False, configuration_overrides=None
     ):
         if not self.project_directory or not self.core_executable:
             return
-        if not isinstance(self.current_project_uuid, str):
+        if self.crawl_descriptor is None or not isinstance(self.current_project_uuid, str):
             self.statusBar().showMessage("Ядро не вернуло устойчивый ID проекта")
             return
         manager = self.ensure_scan_manager()
         try:
+            draft = {**(configuration_overrides or {}), "limits.max_urls": max_urls, "limits.max_requests": max_requests, "limits.max_crawl_seconds": max_seconds, "rendering.mode": rendering_mode}
+            preview = preview_configuration(self.crawl_descriptor, draft)
             run_id = manager.submit(
                 project=self.project_directory,
                 project_uuid=self.current_project_uuid,
                 max_urls=max_urls,
                 rendering_mode=rendering_mode,
-                overrides=(("limits.max_requests", max_requests), ("limits.max_crawl_seconds", max_seconds)),
+                overrides=tuple(preview["overrides"].items()),
                 approve_large_crawl=approve_large_crawl,
                 max_urls_per_second=0.5,
             )
@@ -1116,6 +1130,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Локальный native crawl запущен; наблюдение обновляется каждые 0,5 с")
         elif run.get("state") in {"finished", "failed", "interrupted"}:
             self.refresh_project()
+        if self._close_waiting:
+            self._finish_owned_shutdown()
 
     def select_owned_run(self):
         value = self.owned_run_picker.currentData()
@@ -1160,7 +1176,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Локальный скан: {text}")
 
     def closeEvent(self, event):
-        self.cancel_active_work()
+        if not self._close_waiting and self.scan_manager is not None and self.scan_manager.active_count:
+            self._close_waiting = True
+            self.scan_manager.stop_all_owned()
+            event.ignore()
+            QTimer.singleShot(50, self._finish_owned_shutdown)
+            return
+        self.cancel_requests()
         self.scan_poll_timer.stop()
         if self.mcp_gateway is not None:
             self.mcp_gateway.stop()
@@ -1169,6 +1191,15 @@ class MainWindow(QMainWindow):
             self.settings.setValue("horizontal", self.horizontal.saveState())
             self.settings.setValue("vertical", self.vertical.saveState())
         super().closeEvent(event)
+
+    def _finish_owned_shutdown(self):
+        if not self._close_waiting:
+            return
+        if self.scan_manager is not None and self.scan_manager.active_count:
+            QTimer.singleShot(100, self._finish_owned_shutdown)
+            return
+        self._close_waiting = False
+        self.close()
 
 
 def main():
