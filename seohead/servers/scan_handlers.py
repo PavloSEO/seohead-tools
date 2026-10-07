@@ -560,6 +560,9 @@ def crawl_site_scan(
     with NativeScan.open(run.path) as scan:
         snapshot = scan.resume_snapshot(include_edges=True)
         roots = scan.sitemap_roots()
+        resumed_sitemap_only = bool(getattr(run, "resumed", False)) and any(
+            root["source"] == "sitemap-only" for root in roots
+        )
         sitemap_seed.update(
             sitemap_url=roots[0]["url"] if roots else None,
             sitemap_urls=[root["url"] for root in roots],
@@ -632,6 +635,10 @@ def crawl_site_scan(
                     pages_resume_path=None,
                     stored_scan=scan,
                     stored_sitemap=reconciliation,
+                    # A resumed sitemap-only scan owns a complete retained XML
+                    # population. Re-fetching the root would mix a changed live
+                    # declaration into that resumed population.
+                    offline=resumed_sitemap_only,
                     dispatch_gate=run.dispatch_gate,
                     proxy_route=proxy_route,
                     # Finding density is independent of URL count. Keep every
