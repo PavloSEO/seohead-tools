@@ -12,7 +12,7 @@ QLabel#stateBadge { border-radius: 4px; padding: 5px 8px; font-size: ${font_smal
 QLabel#stateBadge[tone="active"] { background: $primary_container; color: $on_primary_container; }
 QLabel#stateBadge[tone="warning"] { background: $warning_container; color: $on_warning_container; }
 QLabel#stateBadge[tone="error"] { background: $error_container; color: $on_error_container; }
-QPushButton, QToolButton { border: 1px solid $outline_variant; border-radius: 6px; padding: 6px 10px; min-height: 18px; background: $surface_container_lowest; font-weight: 500; }
+QPushButton, QToolButton { border: 1px solid $outline_variant; border-radius: 8px; padding: 6px 10px; min-height: 18px; background: $surface_container_lowest; font-weight: 500; }
 QToolButton { padding: 6px; }
 QPushButton:hover, QToolButton:hover { background: $primary_container; color: $on_primary_container; }
 QPushButton:pressed, QToolButton:pressed, QToolButton:checked { background: $secondary_container; }
@@ -23,7 +23,7 @@ QPushButton[role="primary"]:hover { background: $on_primary_container; }
 QPushButton[role="primary"]:focus { border: 2px solid $on_primary_container; }
 QPushButton[role="danger"] { color: $error; border-color: $error; }
 QPushButton:disabled, QToolButton:disabled { color: $outline; background: $surface_container_low; border-color: $outline_variant; }
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { border: 1px solid $outline_variant; border-radius: 6px; padding: 6px 9px; min-height: 18px; background: $surface_container_lowest; }
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { border: 1px solid $outline_variant; border-radius: 8px; padding: 6px 9px; min-height: 18px; background: $surface_container_lowest; }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid $primary; padding: 5px 8px; }
 QLineEdit:disabled, QComboBox:disabled { color: $outline; background: $surface_container_low; }
 QListWidget#navigation { background: $surface_container_low; border: none; border-right: 1px solid $outline_variant; padding: 12px 8px; outline: none; }
@@ -31,13 +31,13 @@ QListWidget#navigation::item { height: 34px; padding: 1px 10px; margin-bottom: 4
 QListWidget#navigation::item:selected { background: $primary_container; color: $on_primary_container; font-weight: 500; }
 QListWidget#navigation::item:focus { border: 1px solid $primary; }
 QListWidget#navigation::item:hover { background: $surface_container; }
-QListWidget#navigation[compact="true"] { padding: 12px 3px; }
-QListWidget#navigation[compact="true"]::item { padding: 1px 0; font-size: ${font_small}px; }
+QListWidget#navigation[compact="true"] { padding: 12px 3px; font-size: ${font_rail}px; }
+QListWidget#navigation[compact="true"]::item { padding: 1px 0; font-size: ${font_rail}px; }
 QTableView { background: $surface_container_lowest; alternate-background-color: $surface; border: 1px solid $outline_variant; gridline-color: $surface_container; selection-background-color: $primary_container; selection-color: $on_primary_container; }
 QTableView::item { padding: 3px 8px; border: none; }
 QTableView::item:hover:!selected { background: $surface_container_low; }
 QTableView::item:focus { border: 1px solid $primary; }
-QHeaderView::section { background: $surface_container_low; color: $on_surface_variant; border: none; border-right: 1px solid $outline_variant; border-bottom: 1px solid $outline_variant; padding: 8px; font-size: ${font_small}px; font-weight: 500; }
+QHeaderView::section { background: $surface; color: $on_surface_variant; border: none; border-right: 1px solid $surface_container; border-bottom: 1px solid $outline_variant; padding: 8px; font-size: ${font_small}px; font-weight: 500; }
 QTableCornerButton::section { border: none; background: $surface_container_low; }
 QTabWidget::pane { border: 1px solid $outline_variant; background: $surface_container_lowest; }
 QTabBar::tab { padding: 9px 12px; border-bottom: 2px solid transparent; color: $on_surface_variant; background: $surface; }
@@ -47,8 +47,8 @@ QTabBar::tab:focus { color: $primary; }
 QPlainTextEdit { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: 4px; padding: 12px; selection-background-color: $primary_container; }
 QPlainTextEdit:focus { border-color: $primary; }
 QPlainTextEdit#diagnostics { font-family: "Menlo"; font-size: ${font_small}px; }
-QSplitter::handle { background: $surface_container; }
-QSplitter::handle:hover, QSplitter::handle:pressed { background: $primary; }
+QSplitter::handle { background: $surface; }
+QSplitter::handle:hover, QSplitter::handle:pressed { background: $primary_container; }
 QStatusBar { border-top: 1px solid $outline_variant; color: $on_surface_variant; font-size: ${font_small}px; background: $surface_container_lowest; }
 QStatusBar::item { border: none; }
 QGroupBox { border: 1px solid $outline_variant; border-radius: 8px; margin-top: 10px; padding: 12px; background: $surface_container_lowest; }
@@ -56,3 +56,35 @@ QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; color:
 QProgressBar { border: none; border-radius: 3px; background: $surface_container; max-height: 6px; min-height: 6px; }
 QProgressBar::chunk { background: $primary; border-radius: 3px; }
 QToolTip { padding: 6px; border: 1px solid $outline_variant; background: $surface_container_lowest; color: $on_surface; }
+
+/* Flat native controls keep the same Qt input and accessibility behavior. */
+QPushButton[role="quiet"], QToolButton[role="quiet"] { border: 1px solid transparent; background: transparent; }
+QPushButton[role="quiet"]:hover, QToolButton[role="quiet"]:hover { background: $primary_container; }
+QPushButton[role="quiet"]:focus, QToolButton[role="quiet"]:focus { border: 2px solid $primary; }
+QToolButton[role="panelToggle"] { border: 1px solid transparent; color: $on_surface_variant; background: transparent; padding: 5px 10px; }
+QToolButton[role="panelToggle"]:hover, QToolButton[role="panelToggle"]:checked { background: $primary_container; color: $on_primary_container; }
+QToolButton[role="panelToggle"]:focus { border-color: $primary; }
+QComboBox { padding-right: 30px; }
+QComboBox:focus { padding-right: 29px; }
+QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border: none; background: transparent; }
+QComboBox::down-arrow { image: url("$icon_root/chevron_down.svg"); width: 18px; height: 18px; }
+QComboBox QAbstractItemView { outline: 0; border: 1px solid $outline_variant; border-radius: 8px; padding: 5px; selection-background-color: $primary_container; selection-color: $on_primary_container; }
+QComboBox QAbstractItemView::item { min-height: 28px; padding: 4px 8px; border-radius: 4px; }
+QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 24px; border: none; border-top-right-radius: 8px; background: transparent; }
+QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 24px; border: none; border-bottom-right-radius: 8px; background: transparent; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url("$icon_root/chevron_up.svg"); width: 14px; height: 14px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url("$icon_root/chevron_down.svg"); width: 14px; height: 14px; }
+QScrollBar:vertical { background: transparent; width: ${scrollbar_extent}px; margin: 0; border: none; }
+QScrollBar:horizontal { background: transparent; height: ${scrollbar_extent}px; margin: 0; border: none; }
+QScrollBar::handle:vertical { background: $outline; border-radius: 3px; min-height: ${scrollbar_thumb_minimum}px; margin: 3px 4px; }
+QScrollBar::handle:horizontal { background: $outline; border-radius: 3px; min-width: ${scrollbar_thumb_minimum}px; margin: 4px 3px; }
+QScrollBar::handle:hover, QScrollBar::handle:pressed { background: $primary; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; border: none; background: transparent; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QAbstractScrollArea::corner { border: none; background: transparent; }
+QPlainTextEdit[role="summary"] { border: none; padding: 12px; background: $surface_container_lowest; }
+QWidget#inlineNotice { background: $error_container; border-radius: 8px; }
+QWidget#inlineNotice QLabel { color: $on_error_container; }
+QWidget#comparisonHeader { background: $surface_container_lowest; border-bottom: 1px solid $outline_variant; }
+QLabel#comparisonStep { font-size: 12px; color: $on_surface_variant; font-weight: 500; }
+QLabel#comparisonValue { font-size: 18px; font-weight: 500; }

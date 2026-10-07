@@ -53,5 +53,19 @@
     "path": "fonts/OFL.txt",
     "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/OFL.txt",
     "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41"
+  },
+  {
+    "path": "icons/chevron_down.svg",
+    "derived_from": "icons/chevron_right.svg",
+    "transform": "rotate(90 480 -480)",
+    "license": "Apache-2.0",
+    "sha256": "12202243b84d27b3c3ef904e36307ca062a5e565a436938c64cee73bf72b180a"
+  },
+  {
+    "path": "icons/chevron_up.svg",
+    "derived_from": "icons/chevron_right.svg",
+    "transform": "rotate(-90 480 -480)",
+    "license": "Apache-2.0",
+    "sha256": "19cfcd3f939b4338592c63dc9571c609995037ccdc6cecd52f9aff6a986eec89"
   }
 ]

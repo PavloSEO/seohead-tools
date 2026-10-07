@@ -23,7 +23,6 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QShortcut,
     QStackedWidget,
-    QStyle,
     QTabBar,
     QTableView,
     QToolButton,
@@ -186,7 +185,8 @@ class TablePanel(QWidget):
         self.search.setPlaceholderText("Поиск в этой странице")
         self.search.setClearButtonEnabled(True)
         self.refresh_button = QToolButton()
-        self.refresh_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.refresh_button.setText("Обновить")
+        self.refresh_button.setProperty("role", "quiet")
         self.refresh_button.setToolTip("Обновить сохранённые данные")
         self.refresh_button.setAccessibleName("Обновить сохранённые данные")
         self.refresh_button.clicked.connect(

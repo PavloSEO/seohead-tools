@@ -7,8 +7,17 @@ from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLabel, QSizePolicy
+from PyQt5.QtCore import QPointF, Qt
+from PyQt5.QtGui import QColor, QPainter
+from PyQt5.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QSplitter,
+    QSplitterHandle,
+    QToolButton,
+    QWidget,
+)
 
 
 @lru_cache(maxsize=1)
@@ -17,6 +26,7 @@ def theme_tokens():
 
 
 STATES = {
+    "resolved": "Исправлено · проверено", "persisting": "Сохранилось", "changed": "Изменилось", "not_verifiable": "Нельзя подтвердить", "new": "Новая находка",
     "not_initialized": "План не настроен", "unknown": "Неизвестно",
     "not_agreed": "Не согласовано", "remaining": "Ожидает выполнения",
     "started": "Начало запуска", "entered": "Вход в этап", "progress": "Обновление счётчиков",
@@ -239,3 +249,90 @@ class StateBadge(QLabel):
             self.style().unpolish(self)
             self.style().polish(self)
         self.setAccessibleName("Состояние: " + self.text())
+
+
+class InlineNotice(QWidget):
+    """Readable, dismissible errors stay beside the workspace until addressed."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("inlineNotice")
+        self.context = None
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 8, 8)
+        self.message = QLabel()
+        self.message.setTextFormat(Qt.PlainText)
+        self.message.setWordWrap(True)
+        self.message.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.message, 1)
+        close = QToolButton()
+        close.setText("Закрыть")
+        close.setProperty("role", "quiet")
+        close.setAccessibleName("Скрыть сообщение об ошибке")
+        close.clicked.connect(self.hide)
+        layout.addWidget(close)
+        self.hide()
+
+    def show_error(self, message, context=None):
+        self.context = context
+        self.message.setText(str(message)[:1200])
+        self.setAccessibleName("Ошибка: " + str(message)[:1200])
+        self.show()
+
+
+class WorkspaceSplitterHandle(QSplitterHandle):
+    def __init__(self, orientation, splitter):
+        super().__init__(orientation, splitter)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAccessibleName("Изменить размер панелей")
+        self.setToolTip("Перетащите границу или используйте стрелки. Двойной щелчок — восстановить размеры.")
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        colors = theme_tokens()["colors"]
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(colors["primary"] if self.hasFocus() or self.underMouse() else colors["outline"]))
+        center = self.rect().center()
+        for offset in (-5, 0, 5):
+            point = QPointF(center.x(), center.y() + offset) if self.orientation() == Qt.Horizontal else QPointF(center.x() + offset, center.y())
+            painter.drawEllipse(point, 1.25, 1.25)
+        painter.end()
+
+    def keyPressEvent(self, event):
+        keys = (Qt.Key_Left, Qt.Key_Right) if self.orientation() == Qt.Horizontal else (Qt.Key_Up, Qt.Key_Down)
+        if event.key() in keys:
+            splitter = self.splitter()
+            index = next(i for i in range(1, splitter.count()) if splitter.handle(i) is self)
+            position = sum(splitter.sizes()[:index]) + splitter.handleWidth() * (index - 1)
+            step = 40 if event.modifiers() & Qt.ShiftModifier else 16
+            splitter.moveSplitter(position + (-step if event.key() == keys[0] else step), index)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.splitter().restore_sizes()
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+class WorkspaceSplitter(QSplitter):
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._default_sizes = None
+        self.setHandleWidth(theme_tokens()["splitter_width"])
+
+    def createHandle(self):
+        return WorkspaceSplitterHandle(self.orientation(), self)
+
+    def setSizes(self, sizes):
+        if self._default_sizes is None and len(sizes) == self.count():
+            self._default_sizes = list(sizes)
+        super().setSizes(sizes)
+
+    def restore_sizes(self):
+        if self._default_sizes:
+            super().setSizes(self._default_sizes)

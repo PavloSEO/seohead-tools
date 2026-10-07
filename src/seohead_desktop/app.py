@@ -9,8 +9,17 @@ import shutil
 import sys
 from pathlib import Path
 from string import Template
+from urllib.parse import urlsplit
 
-from PyQt5.QtCore import QSettings, QSortFilterProxyModel, Qt, QThreadPool, QTimer
+from PyQt5.QtCore import (
+    QEasingCurve,
+    QSettings,
+    QSortFilterProxyModel,
+    Qt,
+    QThreadPool,
+    QTimer,
+    QVariantAnimation,
+)
 from PyQt5.QtGui import QFontDatabase, QIcon, QKeySequence, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgGenerator, QSvgRenderer
 from PyQt5.QtWidgets import (
@@ -36,7 +45,6 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QShortcut,
     QSpinBox,
-    QSplitter,
     QTableView,
     QTabWidget,
     QToolButton,
@@ -44,6 +52,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .comparison import ComparisonController
 from .crawl_configuration import preview_configuration, validate_overrides
 from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
@@ -53,7 +62,9 @@ from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
 from .ui.presentation import (
     FIELDS,
     ElidedLabel,
+    InlineNotice,
     StateBadge,
+    WorkspaceSplitter,
     field_text,
     readable_record,
     run_projection,
@@ -72,7 +83,7 @@ def load_theme(app):
     font = ROOT / "assets/fonts/Roboto.ttf"
     if font.exists():
         QFontDatabase.addApplicationFont(str(font))
-    values = {**tokens["colors"], **{key: value for key, value in tokens.items() if isinstance(value, (str, int))}}
+    values = {**tokens["colors"], **{key: value for key, value in tokens.items() if isinstance(value, (str, int))}, "icon_root": (ROOT / "assets/icons").as_posix()}
     app.setStyleSheet(Template((ROOT / "theme/theme.qss").read_text()).substitute(values))
     return tokens
 
@@ -157,6 +168,17 @@ class MainWindow(QMainWindow):
         self._compact = None
         self._focus_mode = False
         self._density = "standard"
+        self.recent_projects = self.settings.value("recent_projects", []) if self.settings else []
+        if not isinstance(self.recent_projects, list):
+            self.recent_projects = []
+        self.recent_projects = [item for item in self.recent_projects[:20] if isinstance(item, dict) and isinstance(item.get("path"), str) and isinstance(item.get("label"), str)]
+        system_motion = QSettings(QSettings.NativeFormat, QSettings.UserScope, "com.apple.universalaccess").value("reduceMotion", False, type=bool) if sys.platform == "darwin" else False
+        self.system_reduced_motion = system_motion
+        self.reduced_motion = system_motion or (self.settings.value("reduced_motion", False, type=bool) if self.settings else False)
+        self._navigation_animation = QVariantAnimation(self)
+        self._navigation_animation.setDuration(theme_tokens()["motion"]["duration_ms"])
+        self._navigation_animation.setEasingCurve(QEasingCurve.InOutCubic)
+        self._navigation_animation.valueChanged.connect(lambda value: self.navigation.setFixedWidth(int(value)))
         self.observed_runs = []
         self.observed_at = None
         self.scan_poll_timer = QTimer(self)
@@ -172,6 +194,8 @@ class MainWindow(QMainWindow):
         shell.setSpacing(0)
         shell.addWidget(self.topbar())
         shell.addWidget(self.contextbar())
+        self.notice = InlineNotice()
+        shell.addWidget(self.notice)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -182,7 +206,7 @@ class MainWindow(QMainWindow):
         self.navigation.setAccessibleName("Разделы проекта")
         self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.navigation.setUniformItemSizes(True)
-        self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал"]
+        self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал", "Сравнение"]
         self.navigation.addItems(self.navigation_labels)
         body.addWidget(self.navigation)
         from .ui.components import PanelStack
@@ -194,12 +218,15 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.url_page())
         self.pages.addWidget(self.audit_page())
         self.pages.addWidget(self.project_page())
+        self.comparison = ComparisonController(self)
+        self.comparison.changed.connect(self.load_comparison)
+        self.project_panels.panel("compare").pair_changed.connect(lambda: self.comparison.clear("Выбрана другая пара; нажмите «Сравнить»"))
         self.pages.addWidget(self.tasks_page())
         self.pages.addWidget(self.scans_page())
         self.pages.addWidget(self.inbox_page())
         self.pages.addWidget(self.reports_page())
         self.pages.addWidget(self.journal_page())
-        self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
         self.statusBar().showMessage("Демо · сеть и сканирование не запускаются")
 
@@ -224,6 +251,12 @@ class MainWindow(QMainWindow):
             action.setChecked(density == "standard")
             density_group.addAction(action)
             action.triggered.connect(lambda checked, density=density: self.set_density(density))
+        motion_action = view_menu.addAction("Уменьшить движение")
+        motion_action.setCheckable(True)
+        motion_action.setChecked(self.reduced_motion)
+        motion_action.setEnabled(not self.system_reduced_motion)
+        motion_action.setToolTip("Системное уменьшение движения имеет приоритет" if self.system_reduced_motion else "Отключить плавное сворачивание навигации")
+        motion_action.toggled.connect(self.set_reduced_motion)
         self.find_shortcut = QShortcut(QKeySequence.Find, self)
         self.find_shortcut.activated.connect(self.focus_search)
         self.region_shortcut = QShortcut("F6", self)
@@ -246,6 +279,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
         self.nav_toggle = QToolButton()
         self.nav_toggle.setIcon(icon("menu"))
+        self.nav_toggle.setProperty("role", "quiet")
         self.nav_toggle.setAccessibleName("Свернуть или развернуть навигацию")
         self.nav_toggle.setToolTip("Свернуть или развернуть навигацию")
         self.nav_toggle.clicked.connect(self.toggle_navigation)
@@ -254,7 +288,9 @@ class MainWindow(QMainWindow):
         self.brand.setObjectName("brand")
         layout.addWidget(self.brand)
         self.project_picker = QComboBox()
-        self.project_picker.addItem(self.demo["label"])
+        self.project_picker.addItem(self.demo["label"], None)
+        self.project_picker.addItem("Открыть другой проект…", {"action": "open"})
+        self.project_picker.activated.connect(self.activate_project_picker)
         self.project_picker.setAccessibleName("Текущий проект")
         self.project_picker.setMinimumContentsLength(16)
         self.project_picker.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -262,6 +298,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.project_picker, 1)
         self.open_project_button = QToolButton()
         self.open_project_button.setIcon(icon("folder_open"))
+        self.open_project_button.setProperty("role", "quiet")
         self.open_project_button.setAccessibleName("Открыть проект")
         self.open_project_button.setToolTip("Открыть проект · Cmd/Ctrl+O")
         self.open_project_button.clicked.connect(self.choose_project)
@@ -269,6 +306,7 @@ class MainWindow(QMainWindow):
         self.refresh_button = QToolButton()
         self.refresh_button.setIcon(icon("chevron_right"))
         self.refresh_button.setText("Обновить")
+        self.refresh_button.setProperty("role", "quiet")
         self.refresh_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.refresh_button.setAccessibleName("Обновить сохранённые данные")
         self.refresh_button.setToolTip("Перечитать сохранённые данные проекта")
@@ -307,6 +345,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.scan_picker, 1)
         self.scan_state_badge = StateBadge("Демо")
         layout.addWidget(self.scan_state_badge)
+        self.compare_shortcut_button = QToolButton()
+        self.compare_shortcut_button.setText("Сравнить")
+        self.compare_shortcut_button.setProperty("role", "panelToggle")
+        self.compare_shortcut_button.setAccessibleName("Открыть сравнение сохранённых сканов")
+        self.compare_shortcut_button.clicked.connect(self.open_comparison)
+        layout.addWidget(self.compare_shortcut_button)
         self.source_badge = ElidedLabel("Демо · синтетические данные")
         self.source_badge.setObjectName("sourceBadge")
         layout.addWidget(self.source_badge, 1)
@@ -323,9 +367,10 @@ class MainWindow(QMainWindow):
         caption = QLabel("Согласованный объём, следующие действия и отдельные запуски проекта")
         caption.setObjectName("sectionCaption")
         layout.addWidget(caption)
-        self.work_splitter = QSplitter(Qt.Vertical)
+        self.work_splitter = WorkspaceSplitter(Qt.Vertical)
         self.progress_text = plain("Откройте проект, чтобы увидеть сохранённые задачи и согласованный план.\n\nДемо не содержит измеренного прогресса проекта.")
         self.progress_text.setAccessibleName("Прогресс задач проекта")
+        self.progress_text.setProperty("role", "summary")
         self.work_splitter.addWidget(self.progress_text)
         activity = QWidget()
         activity_layout = QVBoxLayout(activity)
@@ -402,8 +447,8 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 12, 16, 12)
-        self.horizontal = QSplitter(Qt.Horizontal)
-        self.vertical = QSplitter(Qt.Vertical)
+        self.horizontal = WorkspaceSplitter(Qt.Horizontal)
+        self.vertical = WorkspaceSplitter(Qt.Vertical)
         table_area = QWidget()
         area = QVBoxLayout(table_area)
         area.setContentsMargins(0, 0, 0, 0)
@@ -485,6 +530,7 @@ class MainWindow(QMainWindow):
         summary.addWidget(box)
         self.summary_note = plain("Выберите сохранённый скан на вкладке «Сканы», чтобы открыть первую ограниченную страницу URL.")
         self.summary_note.setAccessibleName("Происхождение и границы страницы URL")
+        self.summary_note.setProperty("role", "summary")
         summary.addWidget(self.summary_note)
         self.horizontal.addWidget(self.overview)
         self.horizontal.setSizes([1000, 280])
@@ -649,6 +695,8 @@ class MainWindow(QMainWindow):
         handler = self.complete_command(request_id)
         if handler:
             handler(result)
+        if self.notice.context == request_id:
+            self.notice.hide()
         self.select_owned_run()
         if not self.requests and self.project_directory:
             self.statusBar().showMessage("Чтение завершено · локальный проект · выберите URL или запуск для подробностей")
@@ -675,6 +723,7 @@ class MainWindow(QMainWindow):
                 "url_details", [], state="unavailable", reason=text, source="Retained URL detail unavailable"
             )
         self.statusBar().showMessage(f"{request_id}: {text}")
+        self.notice.show_error(f"Не удалось получить данные. {text}", request_id)
 
     def cancel_requests(self):
         if self.mcp_gateway is not None:
@@ -684,6 +733,8 @@ class MainWindow(QMainWindow):
         self.active_commands.clear()
         self.pending_commands.clear()
         self.read_generation += 1
+        if hasattr(self, "comparison"):
+            self.comparison.clear("Чтение сравнения отменено; выберите пару и повторите")
         self.cancel_button.setEnabled(False)
         self.statusBar().showMessage("Текущие чтения отменены; сохранённые данные проекта не изменены")
 
@@ -702,6 +753,7 @@ class MainWindow(QMainWindow):
     def read_project(self, directory):
         if not (Path(directory) / "project.json").is_file():
             self.statusBar().showMessage("В папке нет project.json SEOHEAD")
+            self.notice.show_error("В выбранной папке нет project.json SEOHEAD. Выберите сохранённый проект через меню проекта.", "project-open")
             return
         self.cancel_requests()
         self.statusBar().showMessage("Чтение локального проекта в фоне…")
@@ -724,6 +776,8 @@ class MainWindow(QMainWindow):
         if generation != self.read_generation:
             return
         self.clear_scan_selection("Выбран другой проект. Загрузка сохранённого контекста…")
+        self.comparison.clear("Выбран другой проект. Выберите два его сохранённых скана.")
+        self.project_panels.panel("compare").set_scans([])
         self.last_observer_signature = None
         self.scan_model.replace([])
         self.task_model.replace([])
@@ -747,8 +801,8 @@ class MainWindow(QMainWindow):
         self.owned_run_picker.blockSignals(False)
         self.stop_run_button.setEnabled(False)
         label = site.get("label") or site.get("host") or "Подключённый проект"
-        self.project_picker.clear()
-        self.project_picker.addItem(label)
+        self.remember_project(label, self.project_directory)
+        self.fill_project_picker(label)
         self.setWindowTitle(f"SEOHEAD · {label}")
         self.source_badge.setText("Локальный проект · сохранённые данные")
         self.refresh_button.setEnabled(True)
@@ -937,6 +991,7 @@ class MainWindow(QMainWindow):
         selection = self.scan_table.selectionModel()
         selection.blockSignals(True)
         self.scan_model.replace(rows)
+        self.project_panels.panel("compare").set_scans(rows)
         self.scan_picker.blockSignals(True)
         self.scan_picker.clear()
         for item in rows:
@@ -1285,13 +1340,23 @@ class MainWindow(QMainWindow):
             lambda result, path=self.selected_scan_path, url=row["url"]: self.load_url_links(result, path, url),
         )
 
+    def load_comparison(self, payload):
+        panel = self.project_panels.panel("compare")
+        panel.set_page(payload.get("rows") or [], total=payload.get("total"), offset=payload.get("offset", 0), has_more=bool(payload.get("has_more")), state=payload.get("state", "unavailable"), reason=payload.get("reason", ""), source=payload.get("source", "Сравнение сохранённых данных"), available_filters=("all",))
+        panel.set_summary(payload)
+
     def handle_project_intent(self, intent, payload):
+        if intent == "preview_compare" and isinstance(payload, dict) and self.project_directory:
+            self.comparison.start(payload.get("before"), payload.get("after"))
+            return
         if intent != "query" or not isinstance(payload, dict) or not self.project_directory:
             return
         tab_id = payload.get("tab_id")
         limit = min(100, max(1, int(payload.get("limit", PAGE_LIMIT))))
         offset = max(0, int(payload.get("offset", 0)))
-        if tab_id == "tasks":
+        if tab_id == "compare":
+            self.comparison.page(offset, limit)
+        elif tab_id == "tasks":
             self.start_command(
                 "tasks",
                 "seo_project_checklist_page",
@@ -1318,11 +1383,61 @@ class MainWindow(QMainWindow):
                 self.load_inbox,
             )
 
-    def set_navigation_compact(self, compact):
+    def navigate(self, row):
+        self.pages.setCurrentIndex(3 if row == 9 else row)
+        if row == 9:
+            self.project_panels.select_tab("compare")
+
+    def open_comparison(self):
+        self.navigation.setCurrentRow(9)
+        self.project_panels.select_tab("compare")
+
+    def remember_project(self, label, path):
+        self.recent_projects = [{"label": label, "path": path}, *[item for item in self.recent_projects if item["path"] != path]][:20]
+        if self.settings:
+            self.settings.setValue("recent_projects", self.recent_projects)
+
+    def fill_project_picker(self, label):
+        self.project_picker.blockSignals(True)
+        self.project_picker.clear()
+        self.project_picker.addItem(label, {"path": self.project_directory})
+        for item in self.recent_projects:
+            if item["path"] != self.project_directory:
+                self.project_picker.addItem(item["label"], dict(item))
+                self.project_picker.setItemData(self.project_picker.count() - 1, item["path"], Qt.ToolTipRole)
+        self.project_picker.addItem("Открыть другой проект…", {"action": "open"})
+        self.project_picker.blockSignals(False)
+        self.project_picker.setToolTip(self.project_directory or "Выбрать локальный проект")
+
+    def activate_project_picker(self, index):
+        item = self.project_picker.itemData(index)
+        self.project_picker.blockSignals(True)
+        self.project_picker.setCurrentIndex(0)
+        self.project_picker.blockSignals(False)
+        if isinstance(item, dict) and item.get("action") == "open":
+            self.choose_project()
+        elif isinstance(item, dict) and item.get("path") and item["path"] != self.project_directory:
+            self.read_project(item["path"])
+
+    def set_reduced_motion(self, enabled):
+        self.reduced_motion = bool(enabled) or self.system_reduced_motion
+        if self.reduced_motion:
+            self._navigation_animation.stop()
+            self.set_navigation_compact(bool(self.navigation.property("compact")))
+        if self.settings:
+            self.settings.setValue("reduced_motion", self.reduced_motion)
+
+    def set_navigation_compact(self, compact, animate=False):
         width = theme_tokens()["layout"]["navigation_rail" if compact else "navigation_width"]
-        self.navigation.setFixedWidth(width)
+        self._navigation_animation.stop()
+        if animate and not self.reduced_motion:
+            self._navigation_animation.setStartValue(self.navigation.width())
+            self._navigation_animation.setEndValue(width)
+            self._navigation_animation.start()
+        else:
+            self.navigation.setFixedWidth(width)
         self.navigation.setProperty("compact", compact)
-        short = ["Обзор", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Вход.", "Отчёт", "Лог"]
+        short = ["Обзор", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Вход.", "Отчёт", "Лог", "Пара"]
         for index, title in enumerate(self.navigation_labels):
             item = self.navigation.item(index)
             item.setText(short[index] if compact else title)
@@ -1332,8 +1447,9 @@ class MainWindow(QMainWindow):
         self.navigation.style().polish(self.navigation)
 
     def toggle_navigation(self):
+        self.set_panel_visible("Навигация", True)
         self.navigation.show()
-        self.set_navigation_compact(not bool(self.navigation.property("compact")))
+        self.set_navigation_compact(not bool(self.navigation.property("compact")), animate=True)
 
     def set_panel_visible(self, name, visible):
         action = self.panel_actions.get(name)
@@ -1413,13 +1529,27 @@ class MainWindow(QMainWindow):
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("Новый скан · явный план")
-        dialog.resize(540, 410)
+        dialog.resize(600, 540)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
         target_input = QLineEdit(target)
         target_input.setReadOnly(True)
         form.addRow("Проектный URL", target_input)
+        source_mode = QComboBox()
+        source_mode.setObjectName("scanSourceMode")
+        source_mode.setAccessibleName("Источник URL: спайдер или sitemap")
+        source_mode.addItem("Спайдер · переход по ссылкам", "spider")
+        source_mode.addItem("Только URL из sitemap", "sitemap")
+        sitemap_supported = ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is True
+        source_mode.model().item(1).setEnabled(sitemap_supported)
+        source_mode.model().item(1).setToolTip("Только URL из явно указанного sitemap; без перехода по ссылкам" if sitemap_supported else "Подключённое ядро не объявило поддержку сохранённого sitemap-скана")
+        form.addRow("Источник URL", source_mode)
+        sitemap_input = QLineEdit()
+        sitemap_input.setObjectName("scanSitemapUrl")
+        sitemap_input.setAccessibleName("Адрес sitemap для сканирования")
+        sitemap_input.setPlaceholderText("https://example.com/sitemap.xml")
+        form.addRow("Sitemap", sitemap_input)
         mode = QComboBox()
         mode.addItem("Native raw HTML", "raw")
         mode.addItem("Native JavaScript", "js")
@@ -1480,14 +1610,29 @@ class MainWindow(QMainWindow):
             approval.setVisible(elevated)
             if not elevated:
                 approval.setChecked(False)
+            sitemap_only = source_mode.currentData() == "sitemap"
+            sitemap_input.setVisible(sitemap_only)
+            form.labelForField(sitemap_input).setVisible(sitemap_only)
+            sitemap_value = sitemap_input.text().strip()
+            try:
+                parsed = urlsplit(sitemap_value)
+                valid_sitemap = parsed.scheme in {"http", "https"} and bool(parsed.hostname) and not parsed.username and not parsed.password and not any(char in sitemap_value for char in "\r\n\x00")
+            except ValueError:
+                valid_sitemap = False
+            source_valid = not sitemap_only or (sitemap_supported and valid_sitemap)
             buttons.button(QDialogButtonBox.Ok).setEnabled(
-                self.crawl_descriptor is not None and (not elevated or approval.isChecked())
+                self.crawl_descriptor is not None and source_valid and (not elevated or approval.isChecked())
             )
+            scope = f"Только URL из sitemap: {sitemap_value or 'укажите адрес'}" if sitemap_only else f"Спайдер: {target}"
+            message.setText(f"{scope}\nЛимиты: {limit.value()} URL · {requests.value()} HTTP-запросов · {duration.value()} с\n" + ("По ссылкам со страниц перехода не будет. " if sitemap_only else "") + "Скан начнётся после нажатия «Запустить».")
 
         limit.valueChanged.connect(update_approval)
         requests.valueChanged.connect(update_approval)
         duration.valueChanged.connect(update_approval)
         approval.toggled.connect(update_approval)
+        source_mode.currentIndexChanged.connect(update_approval)
+        sitemap_input.textChanged.connect(update_approval)
+        mode.currentIndexChanged.connect(update_approval)
         message = QLabel(
             "После явного «Запустить» приложение создаст только локальный native crawl этого проекта. "
             "Никакой скан не начинается при открытии проекта или обновлении экрана."
@@ -1509,6 +1654,7 @@ class MainWindow(QMainWindow):
                 duration.value(),
                 approval.isChecked(),
                 advanced_overrides,
+                sitemap_input.text().strip() if source_mode.currentData() == "sitemap" else None,
             )
 
     def ensure_scan_manager(self):
@@ -1520,12 +1666,15 @@ class MainWindow(QMainWindow):
         return self.scan_manager
 
     def launch_scan(
-        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False, configuration_overrides=None
+        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False, configuration_overrides=None, sitemap_url=None
     ):
         if not self.project_directory or not self.core_executable:
             return
         if self.crawl_descriptor is None or not isinstance(self.current_project_uuid, str):
             self.statusBar().showMessage("Ядро не вернуло устойчивый ID проекта")
+            return
+        if sitemap_url is not None and ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is not True:
+            self.notice.show_error("Подключённое ядро не поддерживает сохранённый sitemap-скан. Выберите совместимый комплект приложения и ядра.")
             return
         manager = self.ensure_scan_manager()
         try:
@@ -1539,6 +1688,7 @@ class MainWindow(QMainWindow):
                 overrides=tuple(preview["overrides"].items()),
                 approve_large_crawl=approve_large_crawl,
                 max_urls_per_second=None,
+                sitemap_url=sitemap_url,
             )
             self.selected_managed_run_id = run_id
             self.owned_run_picker.setCurrentIndex(self.owned_run_picker.findData(run_id))

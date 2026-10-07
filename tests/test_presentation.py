@@ -2,9 +2,9 @@
 
 import unittest
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QLineEdit, QPushButton
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.presentation import run_projection, value_text
@@ -108,6 +108,106 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(self.window.audit_workspace.panel("http_headers").model.rowCount(), 2)
         self.window.clear_scan_selection("Other scan")
         self.assertNotIn("Content-Type", self.window.headers_detail.toPlainText())
+
+    def test_reduce_motion_and_splitter_keyboard_have_real_effect(self):
+        self.window.system_reduced_motion = False
+        self.window.set_navigation_compact(False)
+        self.window.set_reduced_motion(False)
+        self.window.toggle_navigation()
+        QTest.qWait(160)
+        self.assertEqual(self.window.navigation.width(), 64)
+        self.window.set_reduced_motion(True)
+        self.window.toggle_navigation()
+        self.assertEqual(self.window.navigation.width(), 176)
+        self.window.restore_panels()
+        self.app.processEvents()
+        handle = self.window.horizontal.handle(1)
+        before = self.window.horizontal.sizes()
+        QTest.keyClick(handle, Qt.Key_Left)
+        self.assertNotEqual(self.window.horizontal.sizes(), before)
+        QTest.mouseDClick(handle, Qt.LeftButton)
+        self.assertTrue(all(self.window.horizontal.sizes()))
+
+    def test_recent_project_selection_is_explicit_and_bounded(self):
+        self.window.project_directory = "/current"
+        calls = []
+        self.window.read_project = calls.append
+        for index in range(25):
+            self.window.remember_project(f"Project {index}", f"/project/{index}")
+        self.assertEqual(len(self.window.recent_projects), 20)
+        self.window.fill_project_picker("Current")
+        self.assertFalse(calls)
+        self.window.activate_project_picker(1)
+        self.assertEqual(calls, ["/project/24"])
+        self.assertEqual(self.window.project_picker.currentIndex(), 0)
+
+    def test_changed_comparison_pair_invalidates_old_result_without_dispatch(self):
+        self.window.project_directory = "/project"
+        panel = self.window.project_panels.panel("compare")
+        panel.set_scans([{"uuid": "before", "path": "/project/scans/a"}, {"uuid": "after", "path": "/project/scans/b"}])
+        panel.before.setCurrentIndex(1)
+        panel.after.setCurrentIndex(2)
+        revision = self.window.comparison.revision
+        self.window.load_comparison({"state": "ready", "rows": [{"url": "old", "state": "resolved"}], "total": 1, "summary": {"delta": {"left": 9}, "verified_page": {"resolved": 1}}})
+        panel.after.setCurrentIndex(1)
+        self.assertGreater(self.window.comparison.revision, revision)
+        self.assertEqual(panel.model.rowCount(), 0)
+        self.assertFalse(panel.compare_button.isEnabled())
+        panel.after.setCurrentIndex(2)
+        self.assertTrue(panel.compare_button.isEnabled())
+        self.assertIsNone(self.window.comparison.package)
+
+    def test_comparison_warnings_collapse_and_failed_pair_can_retry(self):
+        self.window.project_directory = "/project"
+        panel = self.window.project_panels.panel("compare")
+        panel.set_scans([{"uuid": "a"}, {"uuid": "b"}])
+        panel.before.setCurrentIndex(1)
+        panel.after.setCurrentIndex(2)
+        self.window.load_comparison({"state": "ready", "rows": [], "total": 0, "warnings": ["No measurement <script>literal</script>"], "summary": {"delta": {}, "verified_page": {}}})
+        self.assertTrue(panel.warning_text.isHidden())
+        panel.warning_toggle.click()
+        self.assertFalse(panel.warning_text.isHidden())
+        self.assertIn("<script>literal</script>", panel.warning_text.toPlainText())
+        self.window.load_comparison({"state": "unavailable", "rows": [], "reason": "Source locked"})
+        self.assertTrue(panel.compare_button.isEnabled())
+        self.assertEqual(panel.before.currentData()["uuid"], "a")
+
+    def test_cancel_read_releases_comparison_busy_state(self):
+        panel = self.window.project_panels.panel("compare")
+        self.window.load_comparison({"state": "loading", "rows": []})
+        self.window.cancel_requests()
+        self.assertEqual(panel.state, "unavailable")
+        self.assertIn("отменено", panel.comparison_status.text())
+
+    def test_sitemap_preview_gate_and_required_url(self):
+        self.window.project_directory = "/project"
+        self.window.project_result = {"project": {"site": {"target": "https://fixture.test/"}}}
+        self.window.crawl_descriptor = {"capabilities": {"sitemap_only_retained": True}}
+        captured = []
+        self.window.launch_scan = lambda *args: captured.append(args)
+        def enter_preview():
+            dialog = self.app.activeModalWidget()
+            self.assertIsInstance(dialog, QDialog)
+            mode = dialog.findChild(QComboBox, "scanSourceMode")
+            url = dialog.findChild(QLineEdit, "scanSitemapUrl")
+            start = dialog.findChild(QPushButton, "scanStartButton")
+            mode.setCurrentIndex(1)
+            self.assertFalse(start.isEnabled())
+            url.setText("https://fixture.test/sitemap.xml")
+            self.assertTrue(start.isEnabled())
+            dialog.accept()
+        QTimer.singleShot(10, enter_preview)
+        self.window.scan_preview()
+        self.assertEqual(captured[0][-1], "https://fixture.test/sitemap.xml")
+        self.window.crawl_descriptor = {"capabilities": {}}
+        def inspect_old_core():
+            dialog = self.app.activeModalWidget()
+            mode = dialog.findChild(QComboBox, "scanSourceMode")
+            self.assertFalse(mode.model().item(1).isEnabled())
+            dialog.reject()
+        QTimer.singleShot(10, inspect_old_core)
+        self.window.scan_preview()
+        self.assertEqual(len(captured), 1)
 
 
 if __name__ == "__main__":

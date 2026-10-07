@@ -7,18 +7,19 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QSplitter,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value
+from .presentation import WorkspaceSplitter, value_text
 from .tabcatalogue import DETAIL_TABS, MAIN_TABS, PROJECT_TABS, RIGHT_TABS, TAB_BY_ID
 
 
@@ -198,62 +199,144 @@ class InboxPanel(TablePanel):
 
 
 class ComparePanel(TablePanel):
+    """Retained-pair selectors and separate raw-change/verified-page summaries."""
+    pair_changed = pyqtSignal()
+
     def __init__(self, spec, parent=None):
         super().__init__(spec, parent)
         self.before = QComboBox()
-        self.before.setAccessibleName("Исходный сохранённый скан")
+        self.before.setAccessibleName("До: исходный сохранённый скан")
         self.after = QComboBox()
-        self.after.setAccessibleName("Новый сохранённый скан")
-        self.compare_button = QPushButton("Предпросмотр сравнения")
+        self.after.setAccessibleName("После: новый сохранённый скан")
+        for combo in (self.before, self.after):
+            combo.setMinimumContentsLength(22)
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        header = QWidget()
+        header.setObjectName("comparisonHeader")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(0, 2, 0, 12)
+        title = QLabel("Сравнение сканов")
+        title.setObjectName("sectionTitle")
+        header_layout.addWidget(title)
+        caption = QLabel("Выберите два сохранённых наблюдения. Исправление подтверждается отдельной проверкой ядра.")
+        caption.setObjectName("metadata")
+        caption.setWordWrap(True)
+        header_layout.addWidget(caption)
+        chooser = QGridLayout()
+        chooser.setColumnStretch(0, 1)
+        chooser.setColumnStretch(1, 1)
+        for column, text, combo in ((0, "ДО · исходное состояние", self.before), (1, "ПОСЛЕ · новое наблюдение", self.after)):
+            label = QLabel(text)
+            label.setObjectName("comparisonStep")
+            chooser.addWidget(label, 0, column)
+            chooser.addWidget(combo, 1, column)
+        header_layout.addLayout(chooser)
+        controls = QHBoxLayout()
+        self.comparison_status = QLabel("Выберите два разных скана")
+        self.comparison_status.setObjectName("metadata")
+        self.comparison_status.setWordWrap(True)
+        controls.addWidget(self.comparison_status, 1)
+        self.compare_button = QPushButton("Сравнить сохранённые сканы")
+        self.compare_button.setProperty("role", "primary")
         self.compare_button.setEnabled(False)
-        chooser = QHBoxLayout()
-        chooser.addWidget(self.before, 1)
-        chooser.addWidget(self.after, 1)
-        chooser.addWidget(self.compare_button)
-        self.layout().insertLayout(0, chooser)
+        controls.addWidget(self.compare_button)
+        self.warning_toggle = QToolButton()
+        self.warning_toggle.setProperty("role", "panelToggle")
+        self.warning_toggle.setCheckable(True)
+        self.warning_toggle.hide()
+        controls.insertWidget(1, self.warning_toggle)
+        header_layout.addLayout(controls)
+        self.warning_text = QPlainTextEdit()
+        self.warning_text.setReadOnly(True)
+        self.warning_text.setAccessibleName("Ограничения сравнения и покрытия проверок")
+        self.warning_text.setMaximumHeight(140)
+        self.warning_text.hide()
+        self.warning_toggle.toggled.connect(self.warning_text.setVisible)
+        header_layout.addWidget(self.warning_text)
+        self.comparison_summary = QLabel("Изменения и результаты перепроверки ещё не измерены.")
+        self.comparison_summary.setWordWrap(True)
+        self.comparison_summary.setTextFormat(Qt.PlainText)
+        self.comparison_summary.setObjectName("comparisonSummary")
+        header_layout.addWidget(self.comparison_summary)
+        self.layout().insertWidget(0, header)
         self.before.currentIndexChanged.connect(self._valid_pair)
         self.after.currentIndexChanged.connect(self._valid_pair)
+        self.before.currentIndexChanged.connect(lambda: self.pair_changed.emit())
+        self.after.currentIndexChanged.connect(lambda: self.pair_changed.emit())
         self.compare_button.clicked.connect(self.preview_comparison)
+        self.refresh_button.clicked.disconnect()
+        self.refresh_button.clicked.connect(lambda: self.request_page(self.offset))
+        self.refresh_button.setEnabled(False)
+        self.table.setColumnWidth(0, 280)
+        self.table.setColumnWidth(1, 180)
+        self.table.setColumnWidth(2, 190)
+        for column in range(3, self.model.columnCount()):
+            self.table.setColumnWidth(column, 240)
 
     def set_scans(self, items):
+        from .presentation import field_text, state_text
         scans = list(islice(iter(items), PAGE_LIMIT + 1))
         if len(scans) > PAGE_LIMIT:
             raise ValueError("Scan chooser is bounded to one page")
         for combo in (self.before, self.after):
+            previous = combo.currentData()
+            selected_uuid = previous.get("uuid") if isinstance(previous, dict) else None
             combo.blockSignals(True)
             combo.clear()
             combo.addItem("Выберите сохранённый скан", None)
             for scan in scans:
-                label = f"{scan.get('finished_at', 'Дата неизвестна')} · {scan.get('uuid', 'ID неизвестен')}"
+                label = f"{field_text('finished_at', scan.get('finished_at') or scan.get('created_at'))} · {str(scan.get('uuid') or 'ID неизвестен')[:8]} · {state_text('partial' if scan.get('crawl_partial') or scan.get('corpus_partial') else scan.get('lifecycle'))}"
                 combo.addItem(label, dict(scan))
+                combo.setItemData(combo.count() - 1, scan.get("path") or scan.get("uuid"), Qt.ToolTipRole)
+                if scan.get("uuid") == selected_uuid:
+                    combo.setCurrentIndex(combo.count() - 1)
             combo.blockSignals(False)
         self._valid_pair()
 
     def _valid_pair(self):
         before, after = self.before.currentData(), self.after.currentData()
-        valid = bool(
-            before
-            and after
-            and before.get("uuid")
-            and after.get("uuid")
-            and before["uuid"] != after["uuid"]
-        )
-        self.compare_button.setEnabled(valid)
+        valid = bool(before and after and before.get("uuid") and after.get("uuid") and before["uuid"] != after["uuid"])
+        self.compare_button.setEnabled(valid and self.state != "loading")
+        if not valid:
+            self.comparison_status.setText("Нужны два разных сохранённых скана")
+
+    def set_summary(self, payload):
+        state = payload.get("state")
+        self.warning_toggle.setChecked(False)
+        self.warning_toggle.hide()
+        self.warning_text.hide()
+        if state == "unavailable":
+            self._valid_pair()
+        self.comparison_status.setText(payload.get("reason") or ("Сравнение сохранено · результаты ниже" if state == "ready" else "Выберите два сохранённых скана"))
+        if state != "ready":
+            self.comparison_summary.setText("Изменения и результаты перепроверки ещё не измерены.")
+            return
+        summary = payload.get("summary") or {}
+        delta = summary.get("delta") or {}
+        verified = summary.get("verified_page")
+        raw_text = " · ".join(f"{label}: {value_text(delta.get(key))}" for key, label in (("left", "Больше не обнаружено"), ("entered", "Новых на известных URL"), ("appeared", "На новых URL"), ("unchanged", "В обоих сканах"), ("disappeared", "На отсутствующих URL")))
+        verified_text = " · ".join(f"{label}: {value_text(verified.get(key, 0)) if isinstance(verified, dict) else 'Не измерено'}" for key, label in (("resolved", "Подтверждено исправлено"), ("persisting", "Сохранилось"), ("changed", "Изменилось"), ("not_verifiable", "Нельзя подтвердить"), ("new", "Новых находок")))
+        self.comparison_summary.setText("ИЗМЕНЕНИЯ НАБЛЮДЕНИЙ\n" + raw_text + "\n\nПЕРЕПРОВЕРКА ЗАГРУЖЕННОЙ СТРАНИЦЫ\n" + verified_text)
+        warnings = payload.get("warnings") or []
+        if warnings:
+            self.warning_toggle.setText(f"Ограничения охвата · {len(warnings)}")
+            self.warning_toggle.setAccessibleName(f"Раскрыть {len(warnings)} ограничений охвата сравнения")
+            self.warning_toggle.show()
+            self.warning_text.setPlainText("\n\n".join(str(item) for item in warnings[:20]))
+            self.comparison_status.setText("Сравнение сохранено · есть ограничения покрытия")
+        self.comparison_summary.setToolTip(payload.get("package") or "")
 
     def preview_comparison(self):
         if self.compare_button.isEnabled():
-            self.intent_requested.emit(
-                "preview_compare",
-                {
-                    "before": self.before.currentData(),
-                    "after": self.after.currentData(),
-                },
-            )
+            self.intent_requested.emit("preview_compare", {"before": self.before.currentData(), "after": self.after.currentData()})
 
     def set_page(self, items, **kwargs):
         super().set_page(items, **kwargs)
-        if hasattr(self, "before") and self.state == "unavailable":
-            self.set_scans([])
+        if hasattr(self, "compare_button"):
+            self.refresh_button.setEnabled(self.state == "ready")
+            self._valid_pair()
+            if self.state in {"unavailable", "loading"}:
+                self.compare_button.setEnabled(False)
 
 
 def detail_factory(spec, parent):
@@ -280,19 +363,21 @@ class AuditWorkspace(QWidget):
         controls.addWidget(heading, 1)
         self.detail_toggle = QToolButton()
         self.detail_toggle.setText("Детали")
+        self.detail_toggle.setProperty("role", "panelToggle")
         self.detail_toggle.setToolTip("Скрыть или показать детали URL")
         self.detail_toggle.setAccessibleName("Скрыть или показать детали URL")
         self.detail_toggle.clicked.connect(lambda: self.detail.setVisible(self.detail.isHidden()))
         controls.addWidget(self.detail_toggle)
         self.right_toggle = QToolButton()
         self.right_toggle.setText("Сводка")
+        self.right_toggle.setProperty("role", "panelToggle")
         self.right_toggle.setToolTip("Скрыть или показать сводку аудита")
         self.right_toggle.setAccessibleName("Скрыть или показать сводку аудита")
         self.right_toggle.clicked.connect(lambda: self.right.setVisible(self.right.isHidden()))
         controls.addWidget(self.right_toggle)
         layout.addLayout(controls)
-        self.horizontal = QSplitter(Qt.Horizontal)
-        self.vertical = QSplitter(Qt.Vertical)
+        self.horizontal = WorkspaceSplitter(Qt.Horizontal)
+        self.vertical = WorkspaceSplitter(Qt.Vertical)
         self.main = TabDeck(MAIN_TABS)
         self.detail = TabDeck(DETAIL_TABS, detail_factory)
         self.right = TabDeck(RIGHT_TABS)

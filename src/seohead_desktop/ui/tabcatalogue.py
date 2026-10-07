@@ -451,7 +451,7 @@ PROJECT_TABS = (
         "compare",
         "Сравнение",
         "project",
-        "url=URL|state=Изменение|before=Раньше|after=Сейчас|reason=Причина",
+        "url=URL|check=Проверка|state=Изменение|before=Раньше|after=Сейчас|reason=Причина",
         "All|New|Resolved|Persistent|Unknown",
         "Core comparison requires compatible scope/config/provenance; absence is not resolution.",
     ),
