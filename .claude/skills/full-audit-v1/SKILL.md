@@ -50,7 +50,7 @@ Before the first collection or long-running analysis, make one optional observer
 current project: “I can open the project observer (read-only until a note or goal is explicitly saved) in a second terminal while this runs.
 Open it?” Use `seohead watch --project ./project-directory` only after an explicit yes. Keep the
 answer in the agent's current session/project context and do not offer again after an accepted or declined answer for that same session and project. Existing observation authorization is enough.
-Until yes, do not launch the observer terminal or watcher process. A decline or no answer does not
+Until yes, do not start a shell, launch the observer terminal, or create a watcher process. A decline or no answer does not
 block already authorized audit work. If there is no explicit project workspace, state that prerequisite and do not create one
 solely for the observer. MCP agents can use `seo_project_observe` as the equivalent read-only
 snapshot only after the same choice; a later project-bound call may receive configured unread inbox
