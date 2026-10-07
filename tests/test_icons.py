@@ -77,6 +77,17 @@ class IconTests(unittest.TestCase):
             rendered.append(image)
         self.assertNotEqual(rendered[0], rendered[1])
 
+    def test_explicit_contrast_color_survives_active_state(self):
+        engine = _SvgEngine((ASSET_ROOT / "play_arrow.svg").read_bytes(), "#ffffff")
+        image = engine.scaledPixmap(QSize(24, 24), QIcon.Active, QIcon.Off, 2).toImage()
+        opaque = {
+            image.pixelColor(x, y).name()
+            for x in range(48)
+            for y in range(48)
+            if image.pixelColor(x, y).alpha() == 255
+        }
+        self.assertEqual(opaque, {"#ffffff"})
+
     def test_label_hover_repaints_vector_and_invalid_paths_are_refused(self):
         button = QPushButton("Icon host")
         button.resize(120, 60)

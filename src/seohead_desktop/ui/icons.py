@@ -18,10 +18,15 @@ class _SvgEngine(QIconEngine):
         super().__init__()
         self.raw, self.color = raw, color
         colors = theme_tokens()["colors"]
+        active_ink = (
+            colors["primary"]
+            if color.lower() == colors["on_surface_variant"].lower()
+            else color
+        )
         self.renderers = {}
         for mode, ink in (
             (QIcon.Normal, color),
-            (QIcon.Active, colors["primary"]),
+            (QIcon.Active, active_ink),
             (QIcon.Selected, colors["on_primary_container"]),
             (QIcon.Disabled, colors["outline"]),
         ):
