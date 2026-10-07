@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 
 FORMAT = "seohead.qa-site.v1"
-PROFILES = ("broken", "clean", "fix-delta")
+PROFILES = ("broken", "clean", "fix-delta", "tracking")
 SOURCE = Path(__file__).resolve()
 
 
@@ -131,6 +131,37 @@ def _clean_home() -> str:
     )
 
 
+def _tracking_head(marker: str) -> str:
+    """Passive literals only: these do not load or initialize analytics."""
+    return (
+        f"<script type='application/json' data-qa-tracking='{marker}'>"
+        '{"gtm_container":"GTM-QADEMO","ga4_measurement_id":"G-QADEMO123",'
+        '"metrika_counter_id":98765432}</script>'
+    )
+
+
+def _tracking_response(path: str, headers: dict[str, str]) -> tuple[int, dict[str, str], bytes] | None:
+    if path == "/":
+        links = ("/tracking/static-head", "/tracking/body-only", "/tracking/absent", "/tracking/raw-rendered", "/tracking/no-store")
+        body = "<main><h1>Tracking QA routes</h1><ul>" + "".join(f"<li><a href='{link}'>{link}</a></li>" for link in links) + "</ul></main>"
+        return _html(_page("Tracking QA fixture", body, head="<link rel='canonical' href='/'>"), headers)
+    if path == "/tracking/static-head":
+        body = "<main><h1>Static head marker</h1><p>Passive source-only tracking syntax.</p></main>"
+        return _html(_page("Static tracking marker | QA", body, head=_tracking_head("GTM-QADEMO") + "<link rel='canonical' href='/tracking/static-head'>"), headers)
+    if path == "/tracking/body-only":
+        body = "<main><h1>Body-only marker</h1><p>GTM-BODY-QADEMO</p></main>"
+        return _html(_page("Body tracking marker | QA", body, head="<link rel='canonical' href='/tracking/body-only'>"), headers)
+    if path == "/tracking/absent":
+        return _html(_page("No tracking marker | QA", "<main><h1>Absent marker</h1><p>No tracking marker is present on this route.</p></main>", head="<link rel='canonical' href='/tracking/absent'>"), headers)
+    if path == "/tracking/raw-rendered":
+        body = "<main><h1>Rendered-only marker</h1><div id='rendered-marker'>raw shell</div><script>document.getElementById('rendered-marker').textContent='GTM-' + 'RENDERED-QADEMO';</script></main>"
+        return _html(_page("Rendered tracking marker | QA", body, head="<link rel='canonical' href='/tracking/raw-rendered'>"), headers)
+    if path == "/tracking/no-store":
+        body = "<main><h1>No-store marker</h1><p>GTM-NOSTORE-QADEMO</p></main>"
+        return _html(_page("No-store tracking marker | QA", body, head=_tracking_head("GTM-NOSTORE-QADEMO") + "<link rel='canonical' href='/tracking/no-store'>"), {"Cache-Control": "no-store", **headers})
+    return None
+
+
 def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
     """Return a complete deterministic response without performing any I/O."""
     common_headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin"}
@@ -138,6 +169,10 @@ def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
         fixed = _fixed_response(path, common_headers)
         if fixed is not None:
             return fixed
+    if profile == "tracking":
+        tracked = _tracking_response(path, common_headers)
+        if tracked is not None:
+            return tracked
     if path == "/robots.txt":
         return 200, {"Content-Type": "text/plain; charset=utf-8", **common_headers}, (
             "User-agent: *\nAllow: /\nDisallow: /private/\nSitemap: /sitemap.xml\n"
@@ -244,6 +279,21 @@ def catalogue(profile: str, base_url: str = "") -> dict[str, Any]:
     """Facts deliberately encoded in this fixture, with honest prerequisites."""
     if profile not in PROFILES:
         raise ValueError(f"unknown profile: {profile}")
+    if profile == "tracking":
+        return {
+            "format": f"{FORMAT}.catalogue",
+            "profile": profile,
+            "origin": base_url.rstrip("/"),
+            "deterministic": True,
+            "scenarios": [
+                {"id": "static-head", "paths": ["/tracking/static-head"], "expected": {"literal": ["GTM-QADEMO", "G-QADEMO123", "metrika_counter_id"], "scope": "static head script"}, "evidence": {"availability": "measured when the retained static body is available", "source": "retained native document body"}},
+                {"id": "body-only", "paths": ["/tracking/body-only"], "expected": {"literal": "GTM-BODY-QADEMO", "scope": "static body only"}, "evidence": {"availability": "measured when the retained static body is available", "source": "retained native document body"}},
+                {"id": "absent", "paths": ["/tracking/absent"], "expected": {"literal": "GTM-QADEMO", "match": False}, "evidence": {"availability": "measured when the retained static body is available", "source": "retained native document body"}},
+                {"id": "rendered-only", "paths": ["/tracking/raw-rendered"], "expected": {"raw_literal": "GTM-RENDERED-QADEMO", "raw_match": False, "rendered_match": "unknown"}, "prerequisite": "A configured existing JS renderer is required to capture the injected text.", "unavailable_without": "rendering.mode=js and a working renderer"},
+                {"id": "no-store", "paths": ["/tracking/no-store"], "expected": {"literal": "GTM-NOSTORE-QADEMO", "offline_match": "unknown"}, "prerequisite": "Captured-body retention must explicitly acknowledge no-store responses.", "unavailable_without": "storage retains no-store evidence; this capture uses the default acknowledgement=false"},
+            ],
+            "limits": {"network": "No route loads Google, Yandex, GTM, GA4, Metrika, or any external script.", "meaning": "Literal code presence is not evidence that analytics collection or a tag manager works."},
+        }
     broken = profile == "broken"
     return {
         "format": f"{FORMAT}.catalogue",
@@ -351,7 +401,14 @@ def serve(args: argparse.Namespace) -> int:
         timer.daemon = True
         timer.start()
     previous_term = signal.getsignal(signal.SIGTERM)
-    signal.signal(signal.SIGTERM, lambda *_ignored: server.shutdown())
+    shutdown_requested = threading.Event()
+
+    def request_shutdown(*_ignored: object) -> None:
+        if not shutdown_requested.is_set():
+            shutdown_requested.set()
+            threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, request_shutdown)
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

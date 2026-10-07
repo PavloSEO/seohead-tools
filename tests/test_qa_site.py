@@ -69,6 +69,25 @@ class QaSiteTests(unittest.TestCase):
         self.assertEqual(scenarios["http-statuses"]["expected"]["/missing"], 200)
         self.assertEqual(scenarios["structured-data"]["expected"]["malformed_json_ld"], 0)
 
+    def test_tracking_profile_has_passive_static_body_and_honest_unknown_cases(self):
+        _status, _headers, static = qa._body("tracking", "/tracking/static-head")
+        self.assertIn("GTM-QADEMO", static.decode())
+        self.assertIn("G-QADEMO123", static.decode())
+        self.assertIn("metrika_counter_id", static.decode())
+        _status, _headers, body_only = qa._body("tracking", "/tracking/body-only")
+        self.assertIn("GTM-BODY-QADEMO", body_only.decode())
+        _status, _headers, absent = qa._body("tracking", "/tracking/absent")
+        self.assertNotIn("GTM-QADEMO", absent.decode())
+        _status, headers, no_store = qa._body("tracking", "/tracking/no-store")
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertIn("GTM-NOSTORE-QADEMO", no_store.decode())
+        _status, _headers, rendered = qa._body("tracking", "/tracking/raw-rendered")
+        self.assertNotIn("GTM-RENDERED-QADEMO", rendered.decode())
+        scenarios = {item["id"]: item for item in qa.catalogue("tracking")["scenarios"]}
+        self.assertEqual(scenarios["absent"]["expected"]["match"], False)
+        self.assertEqual(scenarios["rendered-only"]["expected"]["rendered_match"], "unknown")
+        self.assertEqual(scenarios["no-store"]["expected"]["offline_match"], "unknown")
+
     def test_manifest_and_catalogue_are_repeatable_and_do_not_embed_machine_path(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

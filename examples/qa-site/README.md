@@ -14,6 +14,14 @@ before→after input; the independent `clean` snapshot is not comparable because
 it has a smaller URL population. The source has no hard-coded machine path or
 public origin.
 
+`tracking` is a separate six-route source-code search corpus. Its passive
+`application/json` marker contains `GTM-QADEMO`, `G-QADEMO123`, and a synthetic
+Metrika counter literal; it never loads Google, Yandex, GTM, GA4, Metrika, or
+any network script. It also includes a body-only marker, an absent-marker
+control, an exact literal assembled only at JavaScript render time, and a
+`no-store` route. These are evidence about code presence only, never evidence
+that analytics collection or a tag manager works.
+
 ## Start a bounded local fixture
 
 ```bash
@@ -82,3 +90,9 @@ intentional console error. Those facts require an already configured existing
 JS renderer; a raw capture must record them as unavailable rather than claim
 they were checked. The fixture does not claim that every provider-dependent or
 browser-only check can be proven offline.
+
+For the tracking profile, the raw-rendered marker remains unknown without a
+configured existing JS renderer. The no-store route remains unavailable for
+offline body search when the capture keeps its default
+`evidence.retain_no_store_acknowledged=false`. Record those states as
+unavailable; never turn them into absent-marker findings.
