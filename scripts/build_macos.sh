@@ -46,12 +46,16 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
     --clean --noconfirm --onedir --windowed --name "SEOHEAD Desktop" \
     --osx-bundle-identifier tech.seohead.desktop \
     --collect-data seohead_desktop \
-    --add-data "$scratch/core-dist/seohead:core/seohead" \
     --distpath "$scratch/app-dist" --workpath "$scratch/app-work" --specpath "$scratch" \
     "$project_dir/scripts/entrypoint.py"
 
 bundle="$scratch/app-dist/SEOHEAD Desktop.app"
 resources="$bundle/Contents/Resources"
+mkdir -p "$resources/core"
+# PyInstaller maps --add-data into Contents/Frameworks for a macOS .app.
+# The desktop resolver deliberately owns Contents/Resources, so copy the
+# complete frozen core there after BUNDLE without changing its internal layout.
+ditto "$scratch/core-dist/seohead" "$resources/core/seohead"
 mkdir -p "$resources/licenses"
 cp "$project_dir/LICENSE" "$resources/licenses/SEOHEAD-Desktop-GPL-3.0-or-later.txt"
 cp "$project_dir/THIRD_PARTY_NOTICES.md" "$resources/licenses/THIRD_PARTY_NOTICES.md"
