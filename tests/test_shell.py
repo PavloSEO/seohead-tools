@@ -105,6 +105,9 @@ class ShellTests(unittest.TestCase):
             payload(Refused())
 
     def test_refused_inbox_write_preserves_draft(self):
+        self.window.project_directory = "/owned-note-project"
+        self.window.current_project_uuid = "owned"
+        self.window.inbox_revision = 1
         self.window.note_input.setText("Do not lose this note")
         self.window.note_submit.setEnabled(False)
         self.window.command_failed("inbox-submit", "inbox revision conflict", self.window.read_generation)

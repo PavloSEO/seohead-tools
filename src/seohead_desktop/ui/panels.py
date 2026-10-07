@@ -18,8 +18,9 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .comparison_summary import ComparisonSummary
 from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value
-from .presentation import WorkspaceSplitter, value_text
+from .presentation import WorkspaceSplitter
 from .tabcatalogue import DETAIL_TABS, MAIN_TABS, PROJECT_TABS, RIGHT_TABS, TAB_BY_ID
 
 
@@ -148,18 +149,23 @@ class InboxPanel(TablePanel):
         self.note.setAccessibleName("Новая заметка проекта")
         self.note.setPlaceholderText("Заметка или вопрос по проекту")
         self.note.setMaximumHeight(100)
+        self.note.setTabChangesFocus(True)
         self.layout().addWidget(self.note)
         controls = QHBoxLayout()
         self.kind = QComboBox()
         self.kind.setAccessibleName("Тип заметки")
         self.kind.addItem("Заметка", "note")
-        self.kind.addItem("Вопрос", "question")
+        self.kind.addItem("Вопрос · недоступно", "question")
+        self.kind.model().item(1).setEnabled(False)
+        self.kind.model().item(1).setToolTip("Ядро поддерживает note и proposed_goal; вопрос можно записать как текст заметки.")
+        self.kind.addItem("Предложенная цель", "proposed_goal")
+        self.kind.currentIndexChanged.connect(self._validate_note)
         controls.addWidget(self.kind)
         self.note_status = QLabel("Отправка не подключена")
         self.note_status.setObjectName("muted")
         self.note_status.setWordWrap(True)
         controls.addWidget(self.note_status, 1)
-        self.submit_button = QPushButton("Отправить заметку")
+        self.submit_button = QPushButton("Сохранить заметку")
         self.submit_button.setProperty("role", "primary")
         self.submit_button.setEnabled(False)
         self.submit_button.clicked.connect(self.submit)
@@ -177,13 +183,13 @@ class InboxPanel(TablePanel):
 
     def _validate_note(self):
         length = len(self.note.toPlainText().strip())
-        self.submit_button.setEnabled(self.submission_enabled and 0 < length <= 4000)
+        self.submit_button.setEnabled(self.submission_enabled and 0 < length <= 4000 and self.kind.currentData() in {"note", "proposed_goal"})
         if length > 4000:
             self.note_status.setText("Максимум 4 000 символов; текст сохранён в форме")
 
     def submit(self):
         text = self.note.toPlainText().strip()
-        if self.submission_enabled and 0 < len(text) <= 4000:
+        if self.submission_enabled and 0 < len(text) <= 4000 and self.kind.currentData() in {"note", "proposed_goal"}:
             self.intent_requested.emit(
                 "submit_note", {"text": text, "kind": self.kind.currentData()}
             )
@@ -240,24 +246,17 @@ class ComparePanel(TablePanel):
         self.compare_button.setProperty("role", "primary")
         self.compare_button.setEnabled(False)
         controls.addWidget(self.compare_button)
-        self.warning_toggle = QToolButton()
-        self.warning_toggle.setProperty("role", "panelToggle")
-        self.warning_toggle.setCheckable(True)
-        self.warning_toggle.hide()
-        controls.insertWidget(1, self.warning_toggle)
         header_layout.addLayout(controls)
-        self.warning_text = QPlainTextEdit()
-        self.warning_text.setReadOnly(True)
-        self.warning_text.setAccessibleName("Ограничения сравнения и покрытия проверок")
-        self.warning_text.setMaximumHeight(140)
-        self.warning_text.hide()
-        self.warning_toggle.toggled.connect(self.warning_text.setVisible)
-        header_layout.addWidget(self.warning_text)
-        self.comparison_summary = QLabel("Изменения и результаты перепроверки ещё не измерены.")
-        self.comparison_summary.setWordWrap(True)
-        self.comparison_summary.setTextFormat(Qt.PlainText)
-        self.comparison_summary.setObjectName("comparisonSummary")
+        self.comparison_summary = ComparisonSummary()
+        self.warning_toggle = self.comparison_summary.details_toggle
+        self.warning_text = self.comparison_summary.details
+        self.comparison_summary.filterRequested.connect(self.apply_status_filter)
         header_layout.addWidget(self.comparison_summary)
+        self.filter.currentIndexChanged.disconnect()
+        self.filter.clear()
+        for label, state in (("Все на странице", "all"), ("Исправлено", "resolved"), ("Сохранилось", "persisting"), ("Изменилось", "changed"), ("Нельзя подтвердить", "not_verifiable"), ("Новые", "new")):
+            self.filter.addItem(label, state)
+        self.filter.currentIndexChanged.connect(lambda: self.apply_status_filter(self.filter.currentData()))
         self.layout().insertWidget(0, header)
         self.before.currentIndexChanged.connect(self._valid_pair)
         self.after.currentIndexChanged.connect(self._valid_pair)
@@ -302,35 +301,34 @@ class ComparePanel(TablePanel):
 
     def set_summary(self, payload):
         state = payload.get("state")
-        self.warning_toggle.setChecked(False)
-        self.warning_toggle.hide()
-        self.warning_text.hide()
         if state == "unavailable":
             self._valid_pair()
         self.comparison_status.setText(payload.get("reason") or ("Сравнение сохранено · результаты ниже" if state == "ready" else "Выберите два сохранённых скана"))
-        if state != "ready":
-            self.comparison_summary.setText("Изменения и результаты перепроверки ещё не измерены.")
-            return
-        summary = payload.get("summary") or {}
-        delta = summary.get("delta") or {}
-        verified = summary.get("verified_page")
-        raw_text = " · ".join(f"{label}: {value_text(delta.get(key))}" for key, label in (("left", "Больше не обнаружено"), ("entered", "Новых на известных URL"), ("appeared", "На новых URL"), ("unchanged", "В обоих сканах"), ("disappeared", "На отсутствующих URL")))
-        verified_text = " · ".join(f"{label}: {value_text(verified.get(key, 0)) if isinstance(verified, dict) else 'Не измерено'}" for key, label in (("resolved", "Подтверждено исправлено"), ("persisting", "Сохранилось"), ("changed", "Изменилось"), ("not_verifiable", "Нельзя подтвердить"), ("new", "Новых находок")))
-        self.comparison_summary.setText("ИЗМЕНЕНИЯ НАБЛЮДЕНИЙ\n" + raw_text + "\n\nПЕРЕПРОВЕРКА ЗАГРУЖЕННОЙ СТРАНИЦЫ\n" + verified_text)
-        warnings = payload.get("warnings") or []
-        if warnings:
-            self.warning_toggle.setText(f"Ограничения охвата · {len(warnings)}")
-            self.warning_toggle.setAccessibleName(f"Раскрыть {len(warnings)} ограничений охвата сравнения")
-            self.warning_toggle.show()
-            self.warning_text.setPlainText("\n\n".join(str(item) for item in warnings[:20]))
-            self.comparison_status.setText("Сравнение сохранено · есть ограничения покрытия")
+        self.comparison_summary.set_payload(payload)
+        self.apply_status_filter("all")
         self.comparison_summary.setToolTip(payload.get("package") or "")
+        if payload.get("source"):
+            before, after = self.before.currentText(), self.after.currentText()
+            self.source_label.setText(f"До: {before} → после: {after}")
+            self.source_label.setToolTip(payload["source"])
+
+    def apply_status_filter(self, state):
+        allowed = {"all", "resolved", "persisting", "changed", "not_verifiable", "new"}
+        if state not in allowed:
+            return
+        self.filter.blockSignals(True)
+        self.filter.setCurrentIndex(self.filter.findData(state))
+        self.filter.blockSignals(False)
+        self.proxy.set_state_filter(state)
+        self.comparison_summary.set_active_filter(state)
+        self._search_page(self.search.text())
 
     def preview_comparison(self):
         if self.compare_button.isEnabled():
             self.intent_requested.emit("preview_compare", {"before": self.before.currentData(), "after": self.after.currentData()})
 
     def set_page(self, items, **kwargs):
+        kwargs["available_filters"] = ("all", "resolved", "persisting", "changed", "not_verifiable", "new")
         super().set_page(items, **kwargs)
         if hasattr(self, "compare_button"):
             self.refresh_button.setEnabled(self.state == "ready")

@@ -57,14 +57,18 @@ def system_reduced_motion(path=None):
 
 def keep_on_screen(widget, screen=None):
     """Recover a window stored on a monitor that is no longer connected."""
-    if not widget.isWindow():
+    if not widget.isWindow() or widget.isFullScreen() or widget.isMaximized():
         return
     screens = QApplication.screens()
     target = next((candidate for candidate in screens if candidate.availableGeometry().contains(widget.frameGeometry().center())), None) or screen or QApplication.primaryScreen()
     if target:
         available = target.availableGeometry()
-        widget.resize(min(widget.width(), available.width()), min(widget.height(), available.height()))
-        widget.move(max(available.left(), min(widget.x(), available.right() - widget.width() + 1)), max(available.top(), min(widget.y(), available.bottom() - widget.height() + 1)))
+        frame = widget.frameGeometry()
+        extra_width = max(0, frame.width() - widget.width())
+        extra_height = max(0, frame.height() - widget.height())
+        widget.resize(min(widget.width(), max(1, available.width() - extra_width)), min(widget.height(), max(1, available.height() - extra_height)))
+        frame = widget.frameGeometry()
+        widget.move(max(available.left(), min(frame.x(), available.right() - frame.width() + 1)), max(available.top(), min(frame.y(), available.bottom() - frame.height() + 1)))
 
 
 
@@ -88,12 +92,14 @@ class ProjectMonitor(QDockWidget):
         splitter = WorkspaceSplitter(Qt.Vertical)
         self.progress = QPlainTextEdit()
         self.progress.setReadOnly(True)
-        self.progress.setDocument(owner.progress_text.document())
+        self.progress.setPlainText(owner.progress_text.toPlainText())
+        owner.progress_text.textChanged.connect(lambda: self.progress.setPlainText(owner.progress_text.toPlainText()))
         self.progress.setAccessibleName("Тот же согласованный план проекта")
         splitter.addWidget(self.progress)
         self.table = QTableView()
         self.table.setModel(owner.activity_model)
         self.table.setSelectionModel(owner.activity_table.selectionModel())
+        self.table.clicked.connect(lambda index: owner.show_observed_run(index, None))
         self.table.setAccessibleName("Те же запуски проекта в дополнительном окне")
         configure_table(self.table)
         for column in (1, 3, 5, 6):
@@ -103,7 +109,8 @@ class ProjectMonitor(QDockWidget):
         splitter.addWidget(self.table)
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setDocument(owner.activity_text.document())
+        self.detail.setPlainText(owner.activity_text.toPlainText())
+        owner.activity_text.textChanged.connect(lambda: self.detail.setPlainText(owner.activity_text.toPlainText()))
         self.detail.setAccessibleName("Те же измерения выбранного запуска")
         splitter.addWidget(self.detail)
         splitter.setSizes([180, 260, 240])
@@ -122,7 +129,8 @@ class ProjectMonitor(QDockWidget):
         self.resize(540, 720)
 
     def focus_primary(self):
-        self.owner.showNormal()
+        if self.owner.isMinimized():
+            self.owner.showNormal()
         self.owner.raise_()
         self.owner.activateWindow()
 

@@ -1,6 +1,8 @@
 """Presentation correctness: unknown evidence, selected identity and native layout."""
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
@@ -8,6 +10,7 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QLineEdit, QPushBu
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.presentation import run_projection, value_text
+from tests.test_crawl_configuration import descriptor
 
 
 class PresentationTests(unittest.TestCase):
@@ -180,9 +183,15 @@ class PresentationTests(unittest.TestCase):
         self.assertIn("отменено", panel.comparison_status.text())
 
     def test_sitemap_preview_gate_and_required_url(self):
-        self.window.project_directory = "/project"
+        scratch = Path(__file__).parents[1] / ".build/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(dir=scratch)
+        self.addCleanup(temporary.cleanup)
+        project = Path(temporary.name)
+        (project / "project.json").write_text("{}")
+        self.window.project_directory = str(project)
         self.window.project_result = {"project": {"site": {"target": "https://fixture.test/"}}}
-        self.window.crawl_descriptor = {"capabilities": {"sitemap_only_retained": True}}
+        self.window.crawl_descriptor = {**descriptor(), "capabilities": {"sitemap_only_retained": True}}
         captured = []
         self.window.launch_scan = lambda *args: captured.append(args)
         def enter_preview():
@@ -195,11 +204,11 @@ class PresentationTests(unittest.TestCase):
             self.assertFalse(start.isEnabled())
             url.setText("https://fixture.test/sitemap.xml")
             self.assertTrue(start.isEnabled())
-            dialog.accept()
+            start.click()
         QTimer.singleShot(10, enter_preview)
         self.window.scan_preview()
         self.assertEqual(captured[0][-1], "https://fixture.test/sitemap.xml")
-        self.window.crawl_descriptor = {"capabilities": {}}
+        self.window.crawl_descriptor = {**descriptor(), "capabilities": {}}
         def inspect_old_core():
             dialog = self.app.activeModalWidget()
             mode = dialog.findChild(QComboBox, "scanSourceMode")

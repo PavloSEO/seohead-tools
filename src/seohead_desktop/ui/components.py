@@ -4,7 +4,13 @@ from collections.abc import Mapping
 from itertools import islice
 from pathlib import Path
 
-from PyQt5.QtCore import QAbstractTableModel, QSortFilterProxyModel, Qt, pyqtSignal
+from PyQt5.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QSortFilterProxyModel,
+    Qt,
+    pyqtSignal,
+)
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -35,6 +41,7 @@ from .presentation import (
     ElidedLabel,
     field_text,
     panel_title,
+    state_text,
     theme_tokens,
 )
 from .tabcatalogue import filter_id
@@ -135,6 +142,16 @@ class PageModel(QAbstractTableModel):
 
 
 class PageProxy(QSortFilterProxyModel):
+    state_filter = None
+
+    def set_state_filter(self, state):
+        self.state_filter = None if state == "all" else state
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, row, parent):
+        matches_state = self.state_filter is None or self.sourceModel().rows[row].get("state") == self.state_filter
+        return matches_state and super().filterAcceptsRow(row, parent)
+
     def lessThan(self, left, right):
         a, b = left.data(Qt.UserRole), right.data(Qt.UserRole)
         if isinstance(a, (int, float)) and isinstance(b, (int, float)):
@@ -274,7 +291,7 @@ class TablePanel(QWidget):
         layout.addLayout(footer)
         menu = QMenu(self)
         for column, (_, label) in enumerate(spec.columns):
-            action = menu.addAction(label)
+            action = menu.addAction(COLUMN_LABELS.get(label, label))
             action.setCheckable(True)
             action.setChecked(True)
             action.toggled.connect(
@@ -284,6 +301,7 @@ class TablePanel(QWidget):
             )
         self.columns_button.setMenu(menu)
         self.copy_shortcut = QShortcut(QKeySequence.Copy, self.table)
+        self.copy_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.copy_shortcut.activated.connect(self.copy_selection)
         self.filter.currentIndexChanged.connect(lambda: self.request_page(0))
         self.set_page(
@@ -420,7 +438,17 @@ class TablePanel(QWidget):
         )
 
     def _search_page(self, text):
+        self.table.selectionModel().blockSignals(True)
         self.proxy.setFilterFixedString(text)
+        self.table.clearSelection()
+        self.table.setCurrentIndex(QModelIndex())
+        self.table.selectionModel().blockSignals(False)
+        if self.spec.intent == "select_url":
+            self.intent_requested.emit("clear_url", {"tab_id": self.spec.id})
+        if self.state == "ready":
+            empty = self.proxy.rowCount() == 0
+            self.message.setText("По вашему поиску нет строк в этой странице" if text else "В сохранённой выборке нет записей.")
+            self.stack.setCurrentIndex(1 if empty else 0)
         self._update_count()
 
     def _update_count(self):
@@ -432,10 +460,11 @@ class TablePanel(QWidget):
         total = str(self.total) if self.total is not None else "неизвестного количества"
         suffix = (
             f" · найдено на странице: {self.proxy.rowCount()}"
-            if self.search.text()
+            if self.search.text() or self.proxy.state_filter
             else ""
         )
-        self.count_label.setText(f"Строки {extent} из {total}{suffix}")
+        state = f" · {state_text(self.proxy.state_filter)}" if self.proxy.state_filter else ""
+        self.count_label.setText(f"Строки {extent} из {total}{suffix}{state}")
 
     def _selected(self, current, previous):
         index = self.proxy.mapToSource(current)
@@ -444,6 +473,8 @@ class TablePanel(QWidget):
                 self.spec.intent,
                 {"tab_id": self.spec.id, "row": dict(self.model.rows[index.row()])},
             )
+        elif self.spec.intent == "select_url":
+            self.intent_requested.emit("clear_url", {"tab_id": self.spec.id})
 
     def copy_selection(self):
         index = self.table.currentIndex()

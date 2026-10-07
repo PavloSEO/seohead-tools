@@ -101,3 +101,16 @@ QListWidget#actionResults::item:focus { border: 1px solid $primary; }
 QListWidget#actionResults::item:hover { background: $surface_container_low; }
 
 QToolBar { border: none; padding: 0; spacing: 0; background: $surface_container_lowest; }
+
+QWidget#comparisonDelta { background: $surface_container_low; border: 1px solid $outline_variant; border-radius: 8px; }
+QPushButton#comparisonMetric { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: 8px; padding: 0; text-align: left; }
+QPushButton#comparisonMetric[tone="success"] { background: $success_container; border-color: $success; }
+QPushButton#comparisonMetric[tone="active"] { background: $primary_container; }
+QPushButton#comparisonMetric[tone="warning"] { background: $warning_container; }
+QPushButton#comparisonMetric:checked, QPushButton#comparisonMetric:focus { border: 2px solid $primary; }
+QPushButton#comparisonMetric:hover:enabled { border-color: $primary; }
+QPushButton#comparisonMetric:disabled { background: $surface_container_low; border-color: $outline_variant; }
+QLabel#comparisonValue[role="comparisonMetricValue"] { font-size: 26px; font-weight: 700; }
+QPushButton#comparisonMetric[tone="success"] QLabel { color: $on_success_container; }
+QPushButton#comparisonMetric[tone="warning"] QLabel { color: $on_warning_container; }
+QPushButton#comparisonMetric[tone="active"] QLabel { color: $on_primary_container; }

@@ -7,21 +7,24 @@ import hashlib
 import json
 import shutil
 import sys
+from functools import lru_cache
 from pathlib import Path
 from string import Template
-from urllib.parse import urlsplit
 
 from PyQt5.QtCore import (
     QEasingCurve,
     QEvent,
+    QModelIndex,
     QSettings,
+    QSize,
     QSortFilterProxyModel,
     Qt,
     QThreadPool,
     QTimer,
     QVariantAnimation,
+    pyqtSignal,
 )
-from PyQt5.QtGui import QFontDatabase, QIcon, QKeySequence, QPainter, QPixmap
+from PyQt5.QtGui import QColor, QFontDatabase, QIcon, QKeySequence, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgGenerator, QSvgRenderer
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -60,6 +63,7 @@ from .crawl_configuration import preview_configuration, validate_overrides
 from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
 from .scan_manager import LocalScanManager
+from .scan_runner import crawl_arguments
 from .ui.crawl_configuration_dialog import CrawlConfigurationDialog
 from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
 from .ui.presentation import (
@@ -101,17 +105,20 @@ def load_theme(app):
     return tokens
 
 
+@lru_cache(maxsize=128)
 def icon(name, color=None):
     color = color or theme_tokens()["colors"]["on_surface_variant"]
     path = ROOT / "assets/icons" / f"{name}.svg"
     if not path.exists():
         return QIcon()
-    raw = path.read_text().replace("<svg ", f'<svg fill="{color}" ', 1)
+    raw = path.read_text()
     renderer = QSvgRenderer(raw.encode())
     pixmap = QPixmap(48, 48)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     renderer.render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
     painter.end()
     pixmap.setDevicePixelRatio(2)
     return QIcon(pixmap)
@@ -147,6 +154,8 @@ def configure_table(table):
 class MainWindow(QMainWindow):
     """Desktop presentation adapter. All scanning remains owned by core CLI."""
 
+    crawl_descriptor_changed = pyqtSignal()
+
     def __init__(self, *, persistent=True, core_executable=None):
         super().__init__()
         self.setWindowTitle("SEOHEAD · Демо")
@@ -161,6 +170,9 @@ class MainWindow(QMainWindow):
         self.project_directory = None
         self.project_result = None
         self.inbox_revision = None
+        self._note_drafts = {}
+        self._pending_note = None
+        self._project_loading = False
         self.requests = {}
         self.request_handlers = {}
         self.active_commands = {}
@@ -168,18 +180,28 @@ class MainWindow(QMainWindow):
         self.mcp_gateway = None
         self.mcp_ready = False
         self.crawl_descriptor = None
+        self._crawl_descriptor_error = None
+        self._scan_drafts = {}
         self.scan_manager = None
         self.current_project_uuid = None
         self.selected_managed_run_id = None
+        self.selected_observed_run_id = None
+        self._resume_eligible_path = None
+        self._pending_resume_paths = set()
+        self._shown_run_error_key = None
         self.selected_scan_path = None
         self.selected_scan_uuid = None
         self.selected_url = None
+        self.url_selection_generation = 0
         self.last_observer_signature = None
         self._reload_selected_scan = False
         self.poll_backoff_ms = 500
         self._close_waiting = False
         self._compact = None
         self._focus_mode = False
+        self._panel_intent = {"Навигация": True, "Сводка": None, "Инспектор URL": True}
+        self._navigation_compact_intent = None
+        self._syncing_panel = False
         self._density = "standard"
         self.recent_projects = self.settings.value("recent_projects", []) if self.settings else []
         if not isinstance(self.recent_projects, list):
@@ -226,6 +248,12 @@ class MainWindow(QMainWindow):
         self.navigation.setUniformItemSizes(True)
         self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал", "Сравнение"]
         self.navigation.addItems(self.navigation_labels)
+        self.navigation.setIconSize(QSize(20, 20))
+        for index, name in enumerate(("dashboard", "table_chart", "fact_check", "folder_open", "checklist", "manage_search", "notes", "description", "history", "compare_arrows")):
+            item = self.navigation.item(index)
+            item.setIcon(icon(name))
+            item.setData(Qt.AccessibleTextRole, self.navigation_labels[index])
+            item.setToolTip(self.navigation_labels[index])
         body.addWidget(self.navigation)
         from .ui.components import PanelStack
         self.pages = PanelStack()
@@ -256,7 +284,7 @@ class MainWindow(QMainWindow):
             action = view_menu.addAction(name)
             action.setCheckable(True)
             action.setChecked(True)
-            action.toggled.connect(widget.setVisible)
+            action.toggled.connect(lambda shown, name=name, widget=widget: self.panel_action_changed(name, widget, shown))
             self.panel_actions[name] = action
         self.panel_actions["Инспектор URL"].toggled.connect(self.inspector_toggle.setChecked)
         view_menu.addSeparator()
@@ -343,10 +371,10 @@ class MainWindow(QMainWindow):
         self.open_project_button.clicked.connect(self.choose_project)
         layout.addWidget(self.open_project_button)
         self.refresh_button = QToolButton()
-        self.refresh_button.setIcon(icon("chevron_right"))
+        self.refresh_button.setIcon(icon("sync"))
         self.refresh_button.setText("Обновить")
         self.refresh_button.setProperty("role", "quiet")
-        self.refresh_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.refresh_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.refresh_button.setAccessibleName("Обновить сохранённые данные")
         self.refresh_button.setToolTip("Перечитать сохранённые данные проекта")
         self.refresh_button.clicked.connect(self.refresh_project)
@@ -395,6 +423,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.scan_state_badge)
         self.compare_shortcut_button = QToolButton()
         self.compare_shortcut_button.setText("Сравнить")
+        self.compare_shortcut_button.setIcon(icon("compare_arrows"))
+        self.compare_shortcut_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.compare_shortcut_button.setProperty("role", "panelToggle")
         self.compare_shortcut_button.setAccessibleName("Открыть сравнение сохранённых сканов")
         self.compare_shortcut_button.clicked.connect(self.open_comparison)
@@ -434,6 +464,7 @@ class MainWindow(QMainWindow):
         for column, width in enumerate((140, 85, 160, 140, 80, 80, 80, 140, 110)):
             self.activity_table.setColumnWidth(column, width)
         self.activity_table.selectionModel().currentRowChanged.connect(self.show_observed_run)
+        self.activity_table.clicked.connect(lambda index: self.show_observed_run(index, None))
         activity_layout.addWidget(self.activity_table, 1)
         self.activity_text = plain("Нет измерений активности. История появится из сохранённых запусков проекта.")
         self.activity_text.setAccessibleName("Измерения выбранного запуска")
@@ -535,7 +566,8 @@ class MainWindow(QMainWindow):
         self.proxy.setSourceModel(self.model)
         self.proxy.setFilterKeyColumn(0)
         self.proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
-        self.search.textChanged.connect(self.proxy.setFilterFixedString)
+        self.search.textChanged.connect(self.filter_urls)
+        self.search.returnPressed.connect(lambda: self.table.selectRow(0) if self.proxy.rowCount() else None)
         self.table = QTableView()
         self.table.setModel(self.proxy)
         self.table.setSortingEnabled(True)
@@ -551,6 +583,11 @@ class MainWindow(QMainWindow):
         self.table.setColumnWidth(5, 104)
         self.table.selectionModel().currentRowChanged.connect(self.show_url)
         area.addWidget(self.table)
+        self.url_empty = QLabel("Выберите сохранённый скан")
+        self.url_empty.setObjectName("panelMessage")
+        self.url_empty.setAlignment(Qt.AlignCenter)
+        self.url_empty.hide()
+        area.addWidget(self.url_empty, 1)
         self.vertical.addWidget(table_area)
         self.inspector = QTabWidget()
         hide_details = QToolButton()
@@ -646,11 +683,13 @@ class MainWindow(QMainWindow):
         self.owned_run_picker.currentIndexChanged.connect(self.select_owned_run)
         controls.addWidget(self.owned_run_picker, 0, 0, 1, 3)
         self.stop_run_button = QPushButton("Остановить запуск")
+        self.stop_run_button.setIcon(icon("stop", theme_tokens()["colors"]["error"]))
         self.stop_run_button.setEnabled(False)
         self.stop_run_button.clicked.connect(self.stop_selected_run)
         self.stop_run_button.setProperty("role", "danger")
         controls.addWidget(self.stop_run_button, 1, 0)
         self.resume_scan_button = QPushButton("Продолжить скан")
+        self.resume_scan_button.setIcon(icon("replay"))
         self.resume_scan_button.setEnabled(False)
         self.resume_scan_button.clicked.connect(self.resume_selected_scan)
         controls.addWidget(self.resume_scan_button, 1, 1)
@@ -665,8 +704,23 @@ class MainWindow(QMainWindow):
         self.scan_progress.setAccessibleName("Обработано известных URL; размер сайта не измеряется")
         self.scan_progress.hide()
         layout.addWidget(self.scan_progress)
-        self.scan_detail = plain("Выберите сохранённый скан: URL загружаются только из его локальной SQLite-копии.")
-        layout.addWidget(self.scan_detail, 2)
+        self.run_details = QTabWidget()
+        self.scan_detail = plain("Выберите сохранённый скан, чтобы открыть его данные.")
+        self.run_details.addTab(self.scan_detail, "Сохранённый скан")
+        self.owned_run_detail = plain("Выберите запуск, созданный этим окном")
+        self.run_details.addTab(self.owned_run_detail, "Запуск этого окна")
+        self.owned_run_output = plain("Вывод выбранного запуска появится здесь")
+        self.owned_run_output.setObjectName("diagnostics")
+        self.run_details.addTab(self.owned_run_output, "Журнал запуска")
+        self.show_run_result = QPushButton("Показать результат запуска")
+        self.show_run_result.setIcon(icon("open_in_new"))
+        self.show_run_result.setEnabled(False)
+        self.show_run_result.clicked.connect(self.open_owned_run_result)
+        controls.addWidget(self.show_run_result, 1, 2)
+        self.owned_target_caption = ElidedLabel("Управление запуском: ничего не выбрано")
+        self.owned_target_caption.setObjectName("metadata")
+        layout.addWidget(self.owned_target_caption)
+        layout.addWidget(self.run_details, 2)
         return page
 
     def inbox_page(self):
@@ -685,17 +739,27 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.inbox_table, 3)
         composer = QHBoxLayout()
         self.note_input = QLineEdit()
-        self.note_input.setPlaceholderText("Сохранить заметку для агента в этом локальном проекте")
+        self.note_input.setPlaceholderText("Заметка для текущего проекта")
+        self.note_input.setAccessibleName("Текст заметки текущего проекта")
+        self.note_input.textChanged.connect(self.update_note_controls)
         self.note_kind = QComboBox()
         self.note_kind.addItem("Заметка", "note")
+        self.note_kind.addItem("Вопрос · недоступно", "question")
+        self.note_kind.model().item(1).setEnabled(False)
+        self.note_kind.model().item(1).setToolTip("Ядро поддерживает заметку и предложенную цель. Вопрос можно записать текстом заметки.")
         self.note_kind.addItem("Предложенная цель", "proposed_goal")
-        self.note_submit = QPushButton("Сохранить")
+        self.note_kind.currentIndexChanged.connect(self.update_note_controls)
+        self.note_submit = QPushButton("Сохранить заметку")
+        self.note_submit.setIcon(icon("edit_note"))
         self.note_submit.clicked.connect(self.submit_note)
         self.note_submit.setEnabled(False)
         composer.addWidget(self.note_input, 1)
         composer.addWidget(self.note_kind)
         composer.addWidget(self.note_submit)
         layout.addLayout(composer)
+        self.note_destination = ElidedLabel("Откройте проект для сохранения заметки")
+        self.note_destination.setObjectName("metadata")
+        layout.addWidget(self.note_destination)
         self.inbox_detail = plain("Заметка записывается только после явного нажатия «Сохранить». Она не запускает скан и не отправляет текст в чат агента.")
         layout.addWidget(self.inbox_detail, 1)
         return page
@@ -772,10 +836,16 @@ class MainWindow(QMainWindow):
         if superseded:
             return
         if request_id == "inbox-submit":
-            self.note_submit.setEnabled(True)
-            self.project_panels.panel("inbox").set_submission_enabled(
-                True, "Ядро отклонило запись; черновик сохранён в форме"
-            )
+            self._pending_note = None
+            self.update_note_controls()
+        elif request_id == "project-open":
+            self._project_loading = False
+            if self.mcp_gateway is not None and self.project_directory:
+                self.mcp_gateway.set_project_scope(self.project_directory)
+            self.update_note_controls()
+        elif request_id == "crawl-settings":
+            self._crawl_descriptor_error = text
+            self.crawl_descriptor_changed.emit()
         elif request_id.startswith("url-page:"):
             self.audit_workspace.set_page(
                 "internal", [], state="unavailable", reason=text, source="Retained scan unavailable"
@@ -788,6 +858,9 @@ class MainWindow(QMainWindow):
         self.notice.show_error(f"Не удалось получить данные. {text}", request_id)
 
     def cancel_requests(self):
+        if self._pending_note is not None:
+            self.notice.show_error("Сохранение заметки ещё не подтверждено. Черновик сохранён; дождитесь ответа ядра.")
+            return
         if self.mcp_gateway is not None:
             self.mcp_gateway.cancel_generation(self.read_generation)
         self.requests.clear()
@@ -813,10 +886,15 @@ class MainWindow(QMainWindow):
             self.read_project(directory)
 
     def read_project(self, directory):
+        if self._pending_note is not None:
+            self.notice.show_error("Заметка сохраняется в текущий проект. Дождитесь подтверждения перед сменой проекта.")
+            return
         if not (Path(directory) / "project.json").is_file():
             self.statusBar().showMessage("В папке нет project.json SEOHEAD")
             self.notice.show_error("В выбранной папке нет project.json SEOHEAD. Выберите сохранённый проект через меню проекта.", "project-open")
             return
+        self._project_loading = True
+        self.update_note_controls()
         self.cancel_requests()
         self.statusBar().showMessage("Чтение локального проекта в фоне…")
         gateway = self.ensure_mcp_gateway()
@@ -837,6 +915,9 @@ class MainWindow(QMainWindow):
     def project_loaded(self, result, generation):
         if generation != self.read_generation:
             return
+        self.stash_note_drafts()
+        self._project_loading = False
+        self.inbox_revision = None
         self.clear_scan_selection("Выбран другой проект. Загрузка сохранённого контекста…")
         self.comparison.clear("Выбран другой проект. Выберите два его сохранённых скана.")
         self.project_panels.panel("compare").set_scans([])
@@ -852,6 +933,8 @@ class MainWindow(QMainWindow):
         self.scan_model.replace([])
         self.task_model.replace([])
         self.inbox_model.replace([])
+        self.inbox_detail.setPlainText("Выберите запись текущего проекта")
+        self.task_detail.setPlainText("Выберите задачу текущего проекта")
         self.project_result = result
         self.project_directory = str(result.get("path") or "")
         self.model.replace([])
@@ -865,6 +948,10 @@ class MainWindow(QMainWindow):
         site = project.get("site", {}) if isinstance(project, dict) else {}
         self.current_project_uuid = project.get("project_uuid") if isinstance(project, dict) else None
         self.selected_managed_run_id = None
+        self.selected_observed_run_id = None
+        self.owned_run_detail.setPlainText("Выберите запуск текущего проекта")
+        self.owned_run_output.clear()
+        self.restore_note_drafts()
         self.owned_run_picker.blockSignals(True)
         self.owned_run_picker.clear()
         self.owned_run_picker.addItem("Запуски этого окна: нет", None)
@@ -878,7 +965,7 @@ class MainWindow(QMainWindow):
             self.monitor.sync_context()
         self.source_badge.setText("Локальный проект · сохранённые данные")
         self.refresh_button.setEnabled(True)
-        self.note_submit.setEnabled(True)
+        self.update_note_controls()
         self.detail.setPlainText(readable_record(project, heading="Локальный проект"))
         self.debug_detail.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
         self.summary_source.setText("Сохранённые данные ядра")
@@ -890,17 +977,25 @@ class MainWindow(QMainWindow):
 
     def load_crawl_descriptor(self):
         if self.crawl_descriptor is None and "crawl-settings" not in self.requests:
+            self._crawl_descriptor_error = None
             self.start_command("crawl-settings", "seo_crawl_describe_settings", {}, self.crawl_descriptor_loaded)
 
     def crawl_descriptor_loaded(self, result):
         try:
             validate_overrides(result, {})
         except (TypeError, ValueError) as exc:
+            self._crawl_descriptor_error = str(exc)
             self.statusBar().showMessage(f"Конфигурация ядра недоступна: {exc}")
+            self.crawl_descriptor_changed.emit()
             return
         self.crawl_descriptor = result
+        self._crawl_descriptor_error = None
+        self.crawl_descriptor_changed.emit()
 
     def refresh_project(self):
+        if self._pending_note is not None:
+            self.statusBar().showMessage("Обновление будет доступно после подтверждения сохранения заметки")
+            return
         if not self.project_directory:
             self.statusBar().showMessage("Сначала откройте локальный проект SEOHEAD")
             return
@@ -984,26 +1079,37 @@ class MainWindow(QMainWindow):
         self.observed_runs = list(runs[:50])
         self.observed_at = observed_at
         current = self.activity_table.currentIndex()
-        selected = self.activity_model.rows[current.row()].get("id") if current.isValid() else None
+        selected = self.selected_observed_run_id or (self.activity_model.rows[current.row()].get("id") if current.isValid() else None)
         self.activity_table.selectionModel().blockSignals(True)
         self.activity_model.replace([run_projection(run) for run in self.observed_runs])
-        row = next((index for index, run in enumerate(self.observed_runs) if run.get("id") == selected), 0)
-        if self.observed_runs:
+        row = next((index for index, run in enumerate(self.observed_runs) if run.get("id") == selected), -1 if self.selected_observed_run_id else 0)
+        if self.observed_runs and row >= 0:
             self.activity_table.selectRow(row)
+        else:
+            self.activity_table.clearSelection()
+            self.activity_table.setCurrentIndex(QModelIndex())
         self.activity_table.selectionModel().blockSignals(False)
-        if self.observed_runs:
-            self.show_observed_run(self.activity_model.index(row, 0), None)
+        if self.observed_runs and row >= 0:
+            self.show_observed_run(self.activity_model.index(row, 0), None, sync_controls=False)
         else:
             self.activity_text.setPlainText("В текущем наблюдении ядро не вернуло запусков. Это не измерение скорости или покрытия сайта.")
         events = [{"run_id": run.get("id"), **event} for run in self.observed_runs for event in (run.get("events") or [])[-20:]][-200:]
         self.journal_model.replace(events)
         self.journal_caption.setText(f"Сохранённых событий в выборке: {len(events)} · последние 20 на запуск, до 200 строк")
 
-    def show_observed_run(self, current, _previous):
+    def show_observed_run(self, current, _previous, sync_controls=True):
         if not current.isValid():
             return
         row = self.activity_model.rows[current.row()]
         run = row["_run"]
+        if sync_controls:
+            self.selected_observed_run_id = run.get("id")
+            owned = next((item for item in self.owned_runs_for_project() if run.get("id") in {item.get("core_run_id"), item.get("observer_run_id")}), None)
+            self.selected_managed_run_id = owned.get("id") if owned else None
+            self.owned_run_picker.blockSignals(True)
+            self.owned_run_picker.setCurrentIndex(max(0, self.owned_run_picker.findData(self.selected_managed_run_id)))
+            self.owned_run_picker.blockSignals(False)
+            self.render_owned_run(self.scan_manager.detail(owned["id"]) if owned else None)
         telemetry = run.get("telemetry") or {}
         counters = run.get("counters") or {}
         collector = run.get("collector") or {}
@@ -1092,13 +1198,13 @@ class MainWindow(QMainWindow):
             if self._reload_selected_scan or selected.get("path") != self.selected_scan_path or selected != old:
                 self._reload_selected_scan = False
                 self.select_project_scan(selected)
-        elif not self.selected_scan_path:
+        elif result.get("total") == 0 or not self.selected_scan_path:
             self.clear_scan_selection("В этом проекте нет сохранённых сканов")
 
     def clear_scan_selection(self, reason):
         self.selected_scan_path = None
         self.selected_scan_uuid = None
-        self.selected_url = None
+        self.clear_url_selection(reason)
         self.model.replace([])
         self.search.clear()
         self.search.setEnabled(False)
@@ -1106,9 +1212,14 @@ class MainWindow(QMainWindow):
         for view in (self.detail, self.debug_detail, self.link_detail, self.evidence_detail, self.scan_detail, self.headers_detail):
             view.setPlainText(reason)
         self.resume_scan_button.setEnabled(False)
+        self._resume_eligible_path = None
         self.scan_progress.hide()
         self.scan_progress_label.setText("Прогресс выбранного скана не измерен")
         self.scan_state_badge.set_state("unknown")
+        self.url_caption.setText("URL · данные не загружены")
+        self.url_empty.setText(reason)
+        self.url_empty.show()
+        self.table.hide()
 
     def select_scan_from_picker(self):
         scan = self.scan_picker.currentData()
@@ -1179,7 +1290,7 @@ class MainWindow(QMainWindow):
         self.scan_progress.setVisible(measured and total > 0)
         if measured and total > 0:
             self.scan_progress.setValue(round(1000 * done / total))
-            self.scan_progress_label.setText(f"Обработано известных URL: {done} из {total} · в очереди {queued} · в работе {inflight}. Размер сайта не измерен.")
+            self.scan_progress_label.setText(f"Сохранённый скан {self.selected_scan_uuid or source.get('scan_uuid') or 'ID неизвестен'} · обработано известных URL: {done} из {total} · очередь {queued} · в работе {inflight}. Размер сайта не измерен.")
         else:
             self.scan_progress_label.setText("Прогресс известных URL не измерен: нет полного набора счётчиков.")
         self.summary_scan.setText(state_text(source.get("lifecycle")))
@@ -1187,11 +1298,8 @@ class MainWindow(QMainWindow):
         if isinstance(outcomes, dict):
             aggregate_rows = [{"name": "Без ответа" if key == "no_response" else "Другие" if key == "other" else key, "urls": value} for key, value in outcomes.items()]
             self.audit_workspace.set_page("overview", aggregate_rows, total=len(aggregate_rows), source="Сохранённые HTTP-ответы · доля по всему сайту не измерена")
-        self.resume_scan_button.setEnabled(
-            bool(scan_path)
-            and source.get("lifecycle") == "interrupted"
-            and Path(scan_path).is_file()
-        )
+        self._resume_eligible_path = scan_path if scan_path and source.get("lifecycle") == "interrupted" and Path(scan_path).is_file() else None
+        self.update_resume_control()
 
     def load_urls(self, result, scan_path=None):
         if scan_path is not None and scan_path != self.selected_scan_path:
@@ -1210,10 +1318,11 @@ class MainWindow(QMainWindow):
                 "issues": page.get("finding_count"),
                 "_retained": page,
             })
+        self.clear_url_selection("Выберите URL в загруженной странице")
         self.model.replace(rows)
         self.search.setEnabled(True)
         self.search.setPlaceholderText("Поиск в загруженной странице сохранённого скана")
-        self.url_caption.setText(f"URL · {len(rows)} записей")
+        self.update_url_count()
         self.url_scope_caption.setText(f"Скан {self.selected_scan_uuid or 'ID неизвестен'} · поиск и сортировка только в загруженной странице")
         self.summary_records.setText(str(len(rows)))
         self.summary_source.setText("Native · сохранённый скан")
@@ -1228,8 +1337,12 @@ class MainWindow(QMainWindow):
             source=f"Скан {self.selected_scan_uuid or 'ID неизвестен'} · загруженная страница",
             available_filters=("all",),
         )
-        if rows:
+        if rows and self.navigation.currentRow() == 1 and self.proxy.rowCount():
             self.table.selectRow(0)
+        elif rows and self.navigation.currentRow() == 2 and self.audit_workspace.main.current_id == "internal":
+            panel = self.audit_workspace.panel("internal")
+            if panel.proxy.rowCount():
+                panel.table.selectRow(0)
 
     def load_inbox(self, result):
         self.inbox_revision = result.get("revision")
@@ -1237,15 +1350,14 @@ class MainWindow(QMainWindow):
         self.inbox_model.replace(rows)
         total = (result.get("pagination") or {}).get("total", len(rows))
         self.inbox_caption.setText(f"Входящие · {total} сохранённых записей")
-        inbox_panel = self.project_panels.panel("inbox")
         self.project_panels.set_page(
             "inbox", rows, total=total, source="Сохранённые входящие проекта"
         )
-        inbox_panel.set_submission_enabled(
-            bool(self.project_directory), "Сохранение явным действием; скан не запускается"
-        )
+        self.update_note_controls()
         if rows:
             self.inbox_table.selectRow(0)
+        else:
+            self.inbox_detail.setPlainText("В этом проекте пока нет сохранённых заметок")
 
     def load_unread(self, result):
         count = result.get("count")
@@ -1260,40 +1372,121 @@ class MainWindow(QMainWindow):
             return
         self.inbox_detail.setPlainText(readable_record(self.inbox_model.rows[current.row()], heading="Запись входящих"))
 
-    def submit_note(self, supplied_text=None, supplied_kind=None):
+    def note_project_key(self):
         if not self.project_directory:
+            return None
+        return (self.current_project_uuid or "", str(Path(self.project_directory).resolve()))
+
+    def stash_note_drafts(self):
+        key = self.note_project_key()
+        if key is None or not hasattr(self, "note_input"):
+            return
+        panel = self.project_panels.panel("inbox")
+        self._note_drafts[key] = {"main": (self.note_input.text(), self.note_kind.currentData()), "project": (panel.note.toPlainText(), panel.kind.currentData())}
+
+    def restore_note_drafts(self):
+        draft = self._note_drafts.get(self.note_project_key(), {})
+        panel = self.project_panels.panel("inbox")
+        for name, edit, combo in (("main", self.note_input, self.note_kind), ("project", panel.note, panel.kind)):
+            text, kind = draft.get(name, ("", "note"))
+            edit.blockSignals(True)
+            (edit.setText if name == "main" else edit.setPlainText)(text)
+            edit.blockSignals(False)
+            combo.setCurrentIndex(max(0, combo.findData(kind)))
+        self.update_note_controls()
+
+    def update_note_controls(self):
+        if not hasattr(self, "note_submit"):
+            return
+        panel = self.project_panels.panel("inbox")
+        ready = bool(self.project_directory) and type(self.inbox_revision) is int and not self._project_loading and self._pending_note is None
+        length = len(self.note_input.text().strip())
+        self.note_submit.setEnabled(ready and 0 < length <= 4000 and self.note_kind.currentData() in {"note", "proposed_goal"})
+        destination = f"Проект: {self.project_picker.currentText()} · {self.project_directory}" if self.project_directory else "Откройте проект"
+        reason = "Сохранение…" if self._pending_note is not None else "Ожидание состояния входящих" if not ready else "Черновик относится только к этому проекту"
+        if hasattr(self, "note_destination"):
+            self.note_destination.setText(destination + " · " + reason)
+        panel.set_submission_enabled(ready, destination + " · " + reason)
+
+    def submit_note(self, supplied_text=None, supplied_kind=None):
+        if not self.project_directory or self._project_loading or self._pending_note is not None:
+            return
+        if type(self.inbox_revision) is not int:
+            self.notice.show_error("Состояние входящих ещё не получено. Обновите проект перед сохранением; черновик остаётся в форме.")
             return
         if isinstance(supplied_text, bool):
             supplied_text = None
+        source = "project" if supplied_text is not None else "main"
         text = (supplied_text if supplied_text is not None else self.note_input.text()).strip()
-        if not text:
-            self.statusBar().showMessage("Введите текст заметки")
-            return
         kind = supplied_kind or self.note_kind.currentData()
+        if not 0 < len(text) <= 4000:
+            self.notice.show_error("Введите заметку до 4 000 символов. Текст остаётся в форме.")
+            return
         if kind not in {"note", "proposed_goal"}:
-            kind = "note"
-        arguments = {
-            "directory": self.project_directory,
-            "text": text,
-            "kind": kind,
-            "author_role": "specialist",
-        }
-        if isinstance(self.inbox_revision, int):
-            arguments["expected_revision"] = self.inbox_revision
-        self.note_submit.setEnabled(False)
-        self.start_command("inbox-submit", "seo_project_inbox_submit", arguments, self.note_saved)
+            self.notice.show_error("Выбранный тип сообщения не поддержан ядром. Выберите заметку или предложенную цель; текст не изменён.")
+            return
+        pending = {"key": self.note_project_key(), "source": source, "text": text, "kind": kind}
+        self._pending_note = pending
+        self.update_note_controls()
+        self.start_command("inbox-submit", "seo_project_inbox_submit", {"directory": self.project_directory, "text": text, "kind": kind, "author_role": "specialist", "expected_revision": self.inbox_revision}, lambda result: self.note_saved(result, pending))
+        if self._pending_note is pending and "inbox-submit" not in self.requests:
+            self._pending_note = None
+            self.update_note_controls()
 
-    def note_saved(self, _result):
-        self.note_input.clear()
-        self.note_submit.setEnabled(True)
-        self.project_panels.panel("inbox").submission_succeeded()
-        self.statusBar().showMessage("Заметка сохранена локально; скан и агент не запускались")
+    def note_saved(self, _result, pending=None):
+        pending = pending or self._pending_note
+        if not pending:
+            return
+        if self._pending_note is pending:
+            self._pending_note = None
+        if pending["key"] != self.note_project_key():
+            saved = self._note_drafts.get(pending["key"], {})
+            if saved.get(pending["source"]) == (pending["text"], pending["kind"]):
+                saved[pending["source"]] = ("", pending["kind"])
+            return
+        panel = self.project_panels.panel("inbox")
+        edit, combo = (panel.note, panel.kind) if pending["source"] == "project" else (self.note_input, self.note_kind)
+        current = edit.toPlainText() if pending["source"] == "project" else edit.text()
+        if current.strip() == pending["text"] and combo.currentData() == pending["kind"]:
+            edit.clear()
+        self.stash_note_drafts()
+        self.update_note_controls()
+        self.statusBar().showMessage("Заметка сохранена в выбранном проекте; остальные черновики сохранены")
         self.refresh_project()
+
+    def clear_url_selection(self, reason="Выберите сохранённый URL"):
+        self.selected_url = None
+        self.url_selection_generation += 1
+        self.pending_commands.pop("url-detail", None)
+        self.pending_commands.pop("url-links", None)
+        for view in (self.detail, self.debug_detail, self.link_detail, self.headers_detail):
+            view.setPlainText(reason)
+        self.audit_workspace.detail.clear(reason)
+
+    def update_url_count(self):
+        found, loaded = self.proxy.rowCount(), self.model.rowCount()
+        self.url_caption.setText(f"URL · {found} из {loaded} на странице" if self.search.text() else f"URL · {loaded} записей")
+        if hasattr(self, "url_empty"):
+            self.url_empty.setText("По вашему поиску нет URL в этой странице" if self.search.text() else "Выберите сохранённый скан")
+            self.url_empty.setVisible(found == 0)
+            self.table.setVisible(found > 0)
+
+    def filter_urls(self, text):
+        if not hasattr(self, "table"):
+            return
+        self.clear_url_selection("Поиск изменён. Выберите URL из результатов или нажмите Enter.")
+        selection = self.table.selectionModel()
+        selection.blockSignals(True)
+        self.proxy.setFilterFixedString(text)
+        self.table.clearSelection()
+        self.table.setCurrentIndex(QModelIndex())
+        selection.blockSignals(False)
+        self.update_url_count()
 
     def show_url(self, current, _previous):
         source = self.proxy.mapToSource(current)
         if not source.isValid():
-            self.detail.setPlainText("Выберите сохранённую запись")
+            self.clear_url_selection("Выберите сохранённый URL")
             return
         row = self.model.rows[source.row()]
         retained = row.get("_retained")
@@ -1311,7 +1504,9 @@ class MainWindow(QMainWindow):
         )
         self.debug_detail.setPlainText(json.dumps(row, ensure_ascii=False, indent=2))
 
-    def load_url_links(self, result, scan_path=None, url=None):
+    def load_url_links(self, result, scan_path=None, url=None, selection_generation=None):
+        if selection_generation is not None and selection_generation != self.url_selection_generation:
+            return
         if scan_path != self.selected_scan_path or url != self.selected_url:
             return
         self.link_detail.setPlainText(readable_record(result, heading="Сохранённые входящие ссылки"))
@@ -1324,7 +1519,9 @@ class MainWindow(QMainWindow):
             source="Сохранённые входящие ссылки",
         )
 
-    def load_url_detail(self, result, scan_path=None, url=None):
+    def load_url_detail(self, result, scan_path=None, url=None, selection_generation=None):
+        if selection_generation is not None and selection_generation != self.url_selection_generation:
+            return
         if scan_path != self.selected_scan_path or url != self.selected_url:
             return
         page = result.get("page") or {}
@@ -1354,6 +1551,9 @@ class MainWindow(QMainWindow):
         )
 
     def handle_audit_intent(self, intent, payload):
+        if intent == "clear_url":
+            self.clear_url_selection("Выберите URL в текущем разделе")
+            return
         if intent == "refresh":
             self.refresh_project()
             return
@@ -1382,7 +1582,9 @@ class MainWindow(QMainWindow):
     def show_retained_url(self, row):
         if not self.selected_scan_path or not isinstance(row.get("url"), str):
             return
+        self.clear_url_selection("Загрузка выбранного URL…")
         self.selected_url = row["url"]
+        selection_generation = self.url_selection_generation
         self.link_detail.setPlainText("Загрузка ссылок выбранного URL…")
         self.headers_detail.setPlainText("HTTP headers выбранного URL загружаются…")
         self.audit_workspace.set_page("inlinks", [], state="loading", reason="Загрузка выбранного URL…")
@@ -1397,7 +1599,7 @@ class MainWindow(QMainWindow):
                 "form_limit": 20,
                 "max_bytes": 262144,
             },
-            lambda result, path=self.selected_scan_path, url=row["url"]: self.load_url_detail(result, path, url),
+            lambda result, path=self.selected_scan_path, url=row["url"], token=selection_generation: self.load_url_detail(result, path, url, token),
         )
         self.start_command(
             scan_request_key(self.current_project_uuid, self.selected_scan_path, "url-links"),
@@ -1409,7 +1611,7 @@ class MainWindow(QMainWindow):
                 "limit": 20,
                 "max_bytes": 262144,
             },
-            lambda result, path=self.selected_scan_path, url=row["url"]: self.load_url_links(result, path, url),
+            lambda result, path=self.selected_scan_path, url=row["url"], token=selection_generation: self.load_url_links(result, path, url, token),
         )
 
     def load_comparison(self, payload):
@@ -1491,7 +1693,8 @@ class MainWindow(QMainWindow):
         else:
             self.navigation.setCurrentRow(1)
             self.set_panel_visible("Инспектор URL", identifier != "table")
-            self.set_panel_visible("Сводка", identifier == "url" and self.width() >= theme_tokens()["layout"]["compact_breakpoint"])
+            self._panel_intent["Сводка"] = None if identifier == "url" else False
+            self.set_panel_visible("Сводка", identifier == "url" and self.width() >= theme_tokens()["layout"]["compact_breakpoint"], remember=False)
             self.horizontal.setSizes([1000, 280])
             self.vertical.setSizes([440, 230])
         if identifier == "monitor":
@@ -1517,8 +1720,10 @@ class MainWindow(QMainWindow):
         self.settings.setValue("workspace/horizontal", self.horizontal.saveState())
         self.settings.setValue("workspace/vertical", self.vertical.saveState())
         self.settings.setValue("workspace/navigation_compact", bool(self.navigation.property("compact")))
+        self.settings.setValue("workspace/navigation_intent", "auto" if self._navigation_compact_intent is None else self._navigation_compact_intent)
         for identifier, name in PANEL_IDS.items():
             self.settings.setValue("workspace/panel/" + identifier, self.panel_actions[name].isChecked())
+            self.settings.setValue("workspace/panel_intent/" + identifier, "auto" if self._panel_intent[name] is None else self._panel_intent[name])
         row = self.navigation.currentRow()
         self.settings.setValue("workspace/view", VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else "url")
         self.settings.setValue("workspace/monitor_exists", self.monitor is not None)
@@ -1540,7 +1745,11 @@ class MainWindow(QMainWindow):
             if saved:
                 widget.restoreState(saved)
         for identifier, name in PANEL_IDS.items():
-            self.set_panel_visible(name, self.settings.value("workspace/panel/" + identifier, True, type=bool))
+            intent = self.settings.value("workspace/panel_intent/" + identifier, None)
+            self._panel_intent[name] = None if intent == "auto" else self.settings.value("workspace/panel/" + identifier, True, type=bool) if intent is None else str(intent).lower() in {"true", "1"}
+            self.set_panel_visible(name, self.settings.value("workspace/panel/" + identifier, True, type=bool), remember=False)
+        intent = self.settings.value("workspace/navigation_intent", "auto")
+        self._navigation_compact_intent = None if intent == "auto" else str(intent).lower() in {"true", "1"}
         self.set_navigation_compact(self.settings.value("workspace/navigation_compact", False, type=bool))
         density = self.settings.value("workspace/density", "standard")
         if density in theme_tokens()["density"]:
@@ -1590,6 +1799,8 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentIndex(3 if row == 9 else row)
         if row == 9:
             self.project_panels.select_tab("compare")
+        elif row == 1 and not self.table.currentIndex().isValid() and self.proxy.rowCount():
+            self.table.selectRow(0)
 
     def open_comparison(self):
         self.navigation.setCurrentRow(9)
@@ -1640,10 +1851,9 @@ class MainWindow(QMainWindow):
         else:
             self.navigation.setFixedWidth(width)
         self.navigation.setProperty("compact", compact)
-        short = ["Обзор", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Вход.", "Отчёт", "Лог", "Пара"]
         for index, title in enumerate(self.navigation_labels):
             item = self.navigation.item(index)
-            item.setText(short[index] if compact else title)
+            item.setText("" if compact else title)
             item.setToolTip(title)
             item.setTextAlignment(Qt.AlignCenter if compact else Qt.AlignLeft | Qt.AlignVCenter)
         self.navigation.style().unpolish(self.navigation)
@@ -1652,12 +1862,23 @@ class MainWindow(QMainWindow):
     def toggle_navigation(self):
         self.set_panel_visible("Навигация", True)
         self.navigation.show()
-        self.set_navigation_compact(not bool(self.navigation.property("compact")), animate=True)
+        self._navigation_compact_intent = not bool(self.navigation.property("compact"))
+        self.set_navigation_compact(self._navigation_compact_intent, animate=True)
 
-    def set_panel_visible(self, name, visible):
+    def panel_action_changed(self, name, widget, shown):
+        if not self._syncing_panel:
+            self._panel_intent[name] = bool(shown)
+        widget.setVisible(shown)
+
+    def set_panel_visible(self, name, visible, remember=True):
+        if remember:
+            self._panel_intent[name] = bool(visible)
         action = self.panel_actions.get(name)
         if action is not None:
+            self._syncing_panel = True
             action.setChecked(visible)
+            {"Навигация": self.navigation, "Сводка": self.overview, "Инспектор URL": self.inspector}[name].setVisible(visible)
+            self._syncing_panel = False
 
     def sync_workspace_width(self):
         if not hasattr(self, "panel_actions"):
@@ -1665,8 +1886,9 @@ class MainWindow(QMainWindow):
         compact = self.centralWidget().width() < theme_tokens()["layout"]["compact_breakpoint"]
         if compact != self._compact:
             self._compact = compact
-            self.set_navigation_compact(compact)
-            self.set_panel_visible("Сводка", not compact and not self._focus_mode)
+            self.set_navigation_compact(compact if self._navigation_compact_intent is None else self._navigation_compact_intent)
+            wanted = self._panel_intent["Сводка"]
+            self.set_panel_visible("Сводка", (not compact if wanted is None else wanted) and not self._focus_mode, remember=False)
             self.audit_workspace.right.setVisible(not compact and not self._focus_mode)
 
     def eventFilter(self, watched, event):
@@ -1693,13 +1915,15 @@ class MainWindow(QMainWindow):
         if self._focus_mode:
             self._panel_visibility = {name: action.isChecked() for name, action in self.panel_actions.items()}
             for name in ("Сводка", "Инспектор URL"):
-                self.set_panel_visible(name, False)
+                self.set_panel_visible(name, False, remember=False)
             self._audit_visibility = (not self.audit_workspace.detail.isHidden(), not self.audit_workspace.right.isHidden())
             self.audit_workspace.detail.hide()
             self.audit_workspace.right.hide()
         else:
             for name, visible in self._panel_visibility.items():
-                self.set_panel_visible(name, visible)
+                self.set_panel_visible(name, visible, remember=False)
+            self._compact = None
+            self.sync_workspace_width()
             for widget, visible in zip((self.audit_workspace.detail, self.audit_workspace.right), self._audit_visibility):
                 widget.setVisible(visible)
 
@@ -1736,12 +1960,14 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText("\t".join(str(self.proxy.index(current.row(), column).data()) for column in range(self.proxy.columnCount()) if not self.table.isColumnHidden(column)))
 
     def scan_preview(self):
-        if not self.project_directory:
-            self.statusBar().showMessage("Сначала откройте локальный проект SEOHEAD")
+        if not self.project_directory or self._project_loading:
+            self.notice.show_error("Сначала откройте проект и дождитесь его данных")
             return
+        project_key = self.note_project_key()
+        draft = self._scan_drafts.get(project_key, {})
         dialog = QDialog(self)
         dialog.setWindowTitle("Новый скан · явный план")
-        dialog.resize(600, 540)
+        dialog.resize(620, 570)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
@@ -1753,11 +1979,9 @@ class MainWindow(QMainWindow):
         source_mode.setAccessibleName("Источник URL: спайдер или sitemap")
         source_mode.addItem("Спайдер · переход по ссылкам", "spider")
         source_mode.addItem("Только URL из sitemap", "sitemap")
-        sitemap_supported = ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is True
-        source_mode.model().item(1).setEnabled(sitemap_supported)
-        source_mode.model().item(1).setToolTip("Только URL из явно указанного sitemap; без перехода по ссылкам" if sitemap_supported else "Подключённое ядро не объявило поддержку сохранённого sitemap-скана")
+        source_mode.setCurrentIndex(max(0, source_mode.findData(draft.get("source", "spider"))))
         form.addRow("Источник URL", source_mode)
-        sitemap_input = QLineEdit()
+        sitemap_input = QLineEdit(draft.get("sitemap", ""))
         sitemap_input.setObjectName("scanSitemapUrl")
         sitemap_input.setAccessibleName("Адрес sitemap для сканирования")
         sitemap_input.setPlaceholderText("https://example.com/sitemap.xml")
@@ -1765,109 +1989,131 @@ class MainWindow(QMainWindow):
         mode = QComboBox()
         mode.addItem("Native raw HTML", "raw")
         mode.addItem("Native JavaScript", "js")
+        mode.setCurrentIndex(max(0, mode.findData(draft.get("mode", "raw"))))
         form.addRow("Режим", mode)
-        limit = QSpinBox()
-        limit.setRange(1, 50000)
-        limit.setValue(40)
-        limit.setObjectName("scanUrlLimit")
-        form.addRow("Лимит URL", limit)
-        requests = QSpinBox()
-        requests.setRange(1, 2_000_000)
-        requests.setValue(100)
-        requests.setObjectName("scanRequestBudget")
-        form.addRow("Лимит HTTP-запросов", requests)
-        duration = QSpinBox()
-        duration.setRange(1, 86_400)
-        duration.setValue(60)
-        duration.setSuffix(" с")
-        duration.setObjectName("scanDurationBudget")
-        form.addRow("Лимит времени", duration)
+        limit = QSpinBox(); limit.setRange(1, 50000); limit.setValue(draft.get("limit", 40)); limit.setObjectName("scanUrlLimit")
+        requests = QSpinBox(); requests.setRange(1, 2_000_000); requests.setValue(draft.get("requests", 100)); requests.setObjectName("scanRequestBudget")
+        duration = QSpinBox(); duration.setRange(1, 86_400); duration.setValue(draft.get("duration", 60)); duration.setSuffix(" с"); duration.setObjectName("scanDurationBudget")
+        form.addRow("Лимит URL", limit); form.addRow("Лимит HTTP-запросов", requests); form.addRow("Лимит времени", duration)
         layout.addLayout(form)
         approval = QCheckBox("Подтверждаю запуск с повышенным бюджетом")
         approval.setObjectName("scanLargeApproval")
-        approval.setVisible(False)
         layout.addWidget(approval)
-        advanced_overrides = {}
+        advanced_overrides = dict(draft.get("overrides", {}))
         advanced = QPushButton("Расширенные настройки…")
-        advanced.setEnabled(self.crawl_descriptor is not None)
+        advanced.setObjectName("scanAdvancedSettings")
+        advanced.setIcon(icon("settings"))
+        layout.addWidget(advanced)
+        message = QLabel()
+        message.setWordWrap(True)
+        message.setTextFormat(Qt.PlainText)
+        layout.addWidget(message)
+        feedback = QLabel()
+        feedback.setObjectName("scanValidationFeedback")
+        feedback.setWordWrap(True)
+        feedback.setTextFormat(Qt.PlainText)
+        layout.addWidget(feedback)
+        retry = QPushButton("Повторить загрузку настроек")
+        retry.clicked.connect(self.load_crawl_descriptor)
+        layout.addWidget(retry)
+        buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        buttons.button(QDialogButtonBox.Cancel).setText("Отмена")
+        start_button = buttons.button(QDialogButtonBox.Ok)
+        start_button.setText("Запустить"); start_button.setObjectName("scanStartButton"); start_button.setProperty("role", "primary")
+        layout.addWidget(buttons)
+        accepted = []
+
+        def prepare():
+            if self.note_project_key() != project_key or self._project_loading:
+                raise ValueError("Проект изменился. Закройте план и откройте его для текущего проекта.")
+            if self.crawl_descriptor is None:
+                raise ValueError(self._crawl_descriptor_error or "Параметры ядра загружаются…")
+            sitemap = sitemap_input.text().strip() if source_mode.currentData() == "sitemap" else None
+            if sitemap is not None and ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is not True:
+                raise ValueError("Подключённое ядро не поддерживает сохранённый sitemap-скан")
+            values = {**advanced_overrides, "limits.max_urls": limit.value(), "limits.max_requests": requests.value(), "limits.max_crawl_seconds": duration.value(), "rendering.mode": mode.currentData()}
+            preview = preview_configuration(self.crawl_descriptor, values)
+            crawl_arguments(self.project_directory, limit.value(), mode.currentData(), overrides=tuple(preview["overrides"].items()), approve_large_crawl=approval.isChecked(), sitemap_url=sitemap)
+            return (limit.value(), mode.currentData(), requests.value(), duration.value(), approval.isChecked(), dict(advanced_overrides), sitemap)
+
+        def explain(error):
+            text = str(error)
+            if "Sitemap URL" in text:
+                return "Укажите полный HTTP(S)-адрес sitemap до 4096 символов, без логина, пароля, #фрагмента и управляющих символов."
+            if "port" in text.lower():
+                return "В адресе sitemap некорректный порт. Исправьте адрес; остальные настройки сохранены."
+            if "selected scan project" in text:
+                return "Папка проекта недоступна. Настройки сохранены; проверьте расположение проекта."
+            return text
+
+        def update_plan():
+            supported = ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is True
+            source_mode.model().item(1).setEnabled(supported)
+            source_mode.model().item(1).setToolTip("Скан только URL из указанного XML" if supported else "Подключённое ядро не объявило эту возможность")
+            advanced.setEnabled(self.crawl_descriptor is not None)
+            retry.setVisible(self.crawl_descriptor is None and bool(self._crawl_descriptor_error))
+            elevated = limit.value() > 5000 or requests.value() > 10000 or duration.value() > 300
+            approval.setVisible(elevated)
+            if not elevated and approval.isChecked():
+                approval.blockSignals(True); approval.setChecked(False); approval.blockSignals(False)
+            sitemap_only = source_mode.currentData() == "sitemap"
+            sitemap_input.setVisible(sitemap_only); form.labelForField(sitemap_input).setVisible(sitemap_only)
+            scope = f"Только URL из sitemap: {sitemap_input.text().strip() or 'укажите адрес'}" if sitemap_only else f"Спайдер: {target}"
+            message.setText(f"{scope}\nЛимиты: {limit.value()} URL · {requests.value()} HTTP-запросов · {duration.value()} с\n" + ("Без перехода по ссылкам со страниц. " if sitemap_only else "") + "Запуск — отдельной кнопкой ниже.")
+            try:
+                prepare()
+                ready = not elevated or approval.isChecked()
+                feedback.setText("Подтвердите повышенный бюджет" if not ready else "План проверен. Настройки относятся только к выбранному проекту.")
+            except (TypeError, ValueError, OSError) as exc:
+                ready = False
+                feedback.setText(explain(exc)); feedback.setToolTip(str(exc))
+            start_button.setEnabled(ready)
+
+        def edit_advanced():
+            try:
+                editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides={**advanced_overrides, "limits.max_urls": limit.value(), "limits.max_requests": requests.value(), "limits.max_crawl_seconds": duration.value(), "rendering.mode": mode.currentData()})
+                if editor.exec_() == QDialog.Accepted:
+                    advanced_overrides.clear(); advanced_overrides.update(editor.get_overrides())
+                    limit.setValue(advanced_overrides.get("limits.max_urls", limit.value()))
+                    requests.setValue(advanced_overrides.get("limits.max_requests", requests.value()))
+                    seconds = advanced_overrides.get("limits.max_crawl_seconds", duration.value()); duration.setMaximum(max(duration.maximum(), seconds)); duration.setValue(seconds)
+                    mode.setCurrentIndex(mode.findData(advanced_overrides.get("rendering.mode", mode.currentData())))
+                    update_plan()
+            except (TypeError, ValueError) as exc:
+                feedback.setText(explain(exc))
+
+        def accept_plan():
+            try:
+                payload = prepare()
+                elevated = payload[0] > 5000 or payload[2] > 10000 or payload[3] > 300
+                if elevated and not approval.isChecked():
+                    raise ValueError("Подтвердите повышенный бюджет")
+            except (TypeError, ValueError, OSError) as exc:
+                feedback.setText(explain(exc)); feedback.setToolTip(str(exc))
+                return
+            accepted.append(payload)
+            dialog.accept()
+
+        def release(*_args):
+            try:
+                self.crawl_descriptor_changed.disconnect(update_plan)
+            except (TypeError, RuntimeError):
+                pass
+
+        advanced.clicked.connect(edit_advanced)
+        for signal in (limit.valueChanged, requests.valueChanged, duration.valueChanged, approval.toggled, source_mode.currentIndexChanged, sitemap_input.textChanged, mode.currentIndexChanged):
+            signal.connect(update_plan)
+        self.crawl_descriptor_changed.connect(update_plan)
+        dialog.finished.connect(release)
+        buttons.accepted.connect(accept_plan); buttons.rejected.connect(dialog.reject)
+        update_plan()
         if self.crawl_descriptor is None:
             self.load_crawl_descriptor()
-        def edit_advanced():
-            current = {
-                **advanced_overrides,
-                "limits.max_urls": limit.value(),
-                "limits.max_requests": requests.value(),
-                "limits.max_crawl_seconds": duration.value(),
-                "rendering.mode": mode.currentData(),
-            }
-            editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides=current)
-            if editor.exec_() == QDialog.Accepted:
-                advanced_overrides.clear()
-                advanced_overrides.update(editor.get_overrides())
-                if "limits.max_urls" in advanced_overrides:
-                    limit.setValue(advanced_overrides["limits.max_urls"])
-                if "limits.max_requests" in advanced_overrides:
-                    requests.setValue(advanced_overrides["limits.max_requests"])
-                if "limits.max_crawl_seconds" in advanced_overrides:
-                    seconds = advanced_overrides["limits.max_crawl_seconds"]
-                    duration.setMaximum(max(duration.maximum(), seconds))
-                    duration.setValue(seconds)
-                if "rendering.mode" in advanced_overrides:
-                    mode.setCurrentIndex(mode.findData(advanced_overrides["rendering.mode"]))
-        advanced.clicked.connect(edit_advanced)
-        layout.addWidget(advanced)
-
-        def update_approval():
-            elevated = limit.value() > 5_000 or requests.value() > 10_000 or duration.value() > 300
-            approval.setVisible(elevated)
-            if not elevated:
-                approval.setChecked(False)
-            sitemap_only = source_mode.currentData() == "sitemap"
-            sitemap_input.setVisible(sitemap_only)
-            form.labelForField(sitemap_input).setVisible(sitemap_only)
-            sitemap_value = sitemap_input.text().strip()
-            try:
-                parsed = urlsplit(sitemap_value)
-                valid_sitemap = parsed.scheme in {"http", "https"} and bool(parsed.hostname) and not parsed.username and not parsed.password and not any(char in sitemap_value for char in "\r\n\x00")
-            except ValueError:
-                valid_sitemap = False
-            source_valid = not sitemap_only or (sitemap_supported and valid_sitemap)
-            buttons.button(QDialogButtonBox.Ok).setEnabled(
-                self.crawl_descriptor is not None and source_valid and (not elevated or approval.isChecked())
-            )
-            scope = f"Только URL из sitemap: {sitemap_value or 'укажите адрес'}" if sitemap_only else f"Спайдер: {target}"
-            message.setText(f"{scope}\nЛимиты: {limit.value()} URL · {requests.value()} HTTP-запросов · {duration.value()} с\n" + ("По ссылкам со страниц перехода не будет. " if sitemap_only else "") + "Скан начнётся после нажатия «Запустить».")
-
-        limit.valueChanged.connect(update_approval)
-        requests.valueChanged.connect(update_approval)
-        duration.valueChanged.connect(update_approval)
-        approval.toggled.connect(update_approval)
-        source_mode.currentIndexChanged.connect(update_approval)
-        sitemap_input.textChanged.connect(update_approval)
-        mode.currentIndexChanged.connect(update_approval)
-        message = QLabel(
-            "После явного «Запустить» приложение создаст только локальный native crawl этого проекта. "
-            "Никакой скан не начинается при открытии проекта или обновлении экрана."
-        )
-        message.setWordWrap(True)
-        layout.addWidget(message)
-        buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
-        buttons.button(QDialogButtonBox.Ok).setText("Запустить")
-        buttons.button(QDialogButtonBox.Ok).setObjectName("scanStartButton")
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        update_approval()
-        if dialog.exec_() == QDialog.Accepted:
-            self.launch_scan(
-                limit.value(),
-                mode.currentData(),
-                requests.value(),
-                duration.value(),
-                approval.isChecked(),
-                advanced_overrides,
-                sitemap_input.text().strip() if source_mode.currentData() == "sitemap" else None,
-            )
+        dialog.exec_()
+        self._scan_drafts[project_key] = {"source": source_mode.currentData(), "sitemap": sitemap_input.text(), "mode": mode.currentData(), "limit": limit.value(), "requests": requests.value(), "duration": duration.value(), "overrides": dict(advanced_overrides)}
+        release(); dialog.deleteLater()
+        if accepted:
+            self.launch_scan(*accepted[0])
 
     def ensure_scan_manager(self):
         if self.scan_manager is None:
@@ -1902,38 +2148,69 @@ class MainWindow(QMainWindow):
                 max_urls_per_second=None,
                 sitemap_url=sitemap_url,
             )
-            self.selected_managed_run_id = run_id
-            self.owned_run_picker.setCurrentIndex(self.owned_run_picker.findData(run_id))
-            self.select_owned_run()
+            self.choose_owned_run(run_id)
             self.scan_poll_timer.start()
         except (RuntimeError, ValueError) as exc:
             self.statusBar().showMessage(str(exc))
 
+    def owned_runs_for_project(self):
+        if self.scan_manager is None or not self.project_directory:
+            return []
+        root = Path(self.project_directory).resolve()
+        return [item for item in self.scan_manager.snapshot(self.current_project_uuid) if Path(item.get("project") or "").resolve() == root]
+
+    def update_resume_control(self):
+        path = self.selected_scan_path
+        active_states = {"queued", "starting", "running", "stop_requested", "awaiting_core_status"}
+        busy = path in self._pending_resume_paths or any(item.get("state") in active_states and path in {item.get("resume_path"), item.get("artifact")} for item in self.owned_runs_for_project())
+        self.resume_scan_button.setEnabled(bool(path) and path == self._resume_eligible_path and not busy)
+        self.resume_scan_button.setText("Продолжить скан " + (self.selected_scan_uuid or "")[:8])
+        self.resume_scan_button.setToolTip("Для этого снимка уже есть активная попытка" if busy else f"Сохранённый источник: {path or 'не выбран'}")
+
     def resume_selected_scan(self):
-        if not self.selected_scan_path or not self.project_directory:
+        if not self.selected_scan_path or not self.project_directory or not isinstance(self.current_project_uuid, str):
             return
-        if not isinstance(self.current_project_uuid, str):
+        self.update_resume_control()
+        if not self.resume_scan_button.isEnabled():
             return
         manager = self.ensure_scan_manager()
+        path = self.selected_scan_path
+        self._pending_resume_paths.add(path)
+        self.update_resume_control()
         try:
-            self.selected_managed_run_id = manager.resume(
-                project=self.project_directory,
-                project_uuid=self.current_project_uuid,
-                artifact=self.selected_scan_path,
-            )
+            run_id = manager.resume(project=self.project_directory, project_uuid=self.current_project_uuid, artifact=path)
+            self.choose_owned_run(run_id)
             self.scan_poll_timer.start()
         except (RuntimeError, ValueError) as exc:
-            self.statusBar().showMessage(str(exc))
+            self.notice.show_error(f"Не удалось продолжить выбранный скан: {exc}")
+        finally:
+            self._pending_resume_paths.discard(path)
+            self.update_resume_control()
+
+    def choose_owned_run(self, run_id):
+        self.selected_managed_run_id = run_id
+        self.owned_run_picker.blockSignals(True)
+        self.owned_run_picker.setCurrentIndex(max(0, self.owned_run_picker.findData(run_id)))
+        self.owned_run_picker.blockSignals(False)
+        self.select_owned_run()
+
+    def open_owned_run_result(self):
+        if not self.scan_manager or not self.selected_managed_run_id:
+            return
+        detail = self.scan_manager.detail(self.selected_managed_run_id) or {}
+        scan = next((row for row in self.scan_model.rows if row.get("path") == detail.get("artifact")), None)
+        if scan:
+            self.select_project_scan(scan)
+            self.navigation.setCurrentRow(1)
 
     def managed_scan_changed(self, run):
         if run.get("project_uuid") != self.current_project_uuid:
             return
-        rows = self.scan_manager.snapshot(self.current_project_uuid) if self.scan_manager else []
+        rows = self.owned_runs_for_project()
         selected = self.selected_managed_run_id
         self.owned_run_picker.blockSignals(True)
         self.owned_run_picker.clear()
-        if not rows:
-            self.owned_run_picker.addItem("Запуски этого окна: нет", None)
+        self.owned_run_picker.addItem("Выберите запуск этого окна" if rows else "Запуски этого окна: нет", None)
         for item in rows:
             label = f"{item['id'][:8]} · {state_text(item['kind'])} · {state_text(item['state'])}"
             self.owned_run_picker.addItem(label, item["id"])
@@ -1950,20 +2227,46 @@ class MainWindow(QMainWindow):
 
     def select_owned_run(self):
         value = self.owned_run_picker.currentData()
-        self.selected_managed_run_id = value if isinstance(value, str) else None
-        active = False
-        if self.scan_manager and self.selected_managed_run_id:
-            detail = self.scan_manager.detail(self.selected_managed_run_id)
-            if detail is not None:
-                self.scan_detail.setPlainText(readable_record({key: value for key, value in detail.items() if key != "output"}, heading="Выбранный запуск этого окна"))
-            active = any(
-                item["id"] == self.selected_managed_run_id
-                and item["state"] in {"queued", "starting", "running", "stop_requested"}
-                for item in self.scan_manager.snapshot(self.current_project_uuid)
-            )
+        allowed = {item["id"] for item in self.owned_runs_for_project()}
+        self.selected_managed_run_id = value if isinstance(value, str) and value in allowed else None
+        detail = self.scan_manager.detail(self.selected_managed_run_id) if self.scan_manager and self.selected_managed_run_id else None
+        self.render_owned_run(detail)
+        if detail:
+            self.selected_observed_run_id = detail.get("core_run_id") or detail.get("observer_run_id")
+            selection = self.activity_table.selectionModel()
+            selection.blockSignals(True)
+            index = next((i for i, row in enumerate(self.activity_model.rows) if row.get("id") == self.selected_observed_run_id), None)
+            if index is None:
+                self.activity_table.clearSelection()
+                self.activity_table.setCurrentIndex(QModelIndex())
+                self.activity_text.setPlainText("Выбран запуск " + self.selected_managed_run_id + ". Измерения ожидаются от ядра.")
+            else:
+                self.activity_table.selectRow(index)
+                self.show_observed_run(self.activity_model.index(index, 0), None, sync_controls=False)
+            selection.blockSignals(False)
+
+    def render_owned_run(self, detail):
+        active = bool(detail) and detail.get("state") in {"queued", "starting", "running", "stop_requested"}
         self.stop_run_button.setEnabled(active)
-        self.cancel_button.setText("Остановить скан" if active else "Отменить чтение")
+        short_id = str((detail or {}).get("id") or "")[:8]
+        self.stop_run_button.setText("Остановить " + short_id if active else "Остановить выбранный запуск")
+        self.cancel_button.setText("Остановить " + short_id if active else "Отменить чтение")
         self.cancel_button.setEnabled(active or bool(self.requests))
+        self.cancel_button.setToolTip("Цель управления: " + str((detail or {}).get("id") or "только текущие чтения"))
+        self.owned_target_caption.setText(f"Запуск этого окна: {short_id} · {state_text(detail.get('state'))}" if detail else "Управление запуском: собственный запуск не выбран")
+        text = readable_record({key: value for key, value in detail.items() if key != "output"}, heading="Выбранный запуск этого окна") if detail else "Выберите запуск, созданный этим окном. Чужие процессы здесь не останавливаются."
+        if self.owned_run_detail.toPlainText() != text:
+            self.owned_run_detail.setPlainText(text)
+        output = (detail or {}).get("output") or "Вывод выбранного запуска ещё не получен"
+        if self.owned_run_output.toPlainText() != output:
+            self.owned_run_output.setPlainText(output[-20000:])
+        self.show_run_result.setEnabled(bool(detail and detail.get("artifact") and any(row.get("path") == detail["artifact"] for row in self.scan_model.rows)))
+        if detail and detail.get("state") in {"failed", "rejected", "status_unavailable"}:
+            key = (detail.get("id"), detail.get("state"), detail.get("status_reason"))
+            if key != self._shown_run_error_key:
+                self._shown_run_error_key = key
+                self.notice.show_error(f"Запуск {short_id}: {state_text(detail.get('state'))}. {detail.get('status_reason') or 'Подробности сохранены во вкладке «Журнал запуска».'}", "owned:" + str(detail.get("id")))
+        self.update_resume_control()
 
     def stop_selected_run(self):
         self.cancel_active_work()
@@ -1971,8 +2274,9 @@ class MainWindow(QMainWindow):
     def managed_scan_output(self, run_id, text):
         if run_id != self.selected_managed_run_id:
             return
-        current = self.scan_detail.toPlainText()
-        self.scan_detail.setPlainText((current + "\n" + text).strip()[-20_000:])
+        detail = self.scan_manager.detail(run_id) if self.scan_manager else None
+        if detail:
+            self.render_owned_run(detail)
 
     def poll_active_scan(self):
         if self.scan_manager is not None:
@@ -1995,8 +2299,13 @@ class MainWindow(QMainWindow):
     def managed_scan_failed(self, run_id, text):
         if run_id == self.selected_managed_run_id:
             self.statusBar().showMessage(f"Локальный скан: {text}")
+            self.notice.show_error(f"Запуск {run_id[:8]}: {text}. Полный вывод сохранён в журнале запуска.", "owned:" + run_id)
 
     def closeEvent(self, event):
+        if self._pending_note is not None:
+            event.ignore()
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием окна. Черновик остаётся в форме.")
+            return
         if self.scan_manager is not None and self.scan_manager.active_count:
             event.ignore()
             if not self._close_waiting:
