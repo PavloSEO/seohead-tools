@@ -1,0 +1,13 @@
+SEOHEAD Desktop
+Copyright (C) 2026 Pavel Barushka
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+This source package is intended for distribution under GNU General Public
+License version 3 or any later version. A release artifact that bundles the
+GPL edition of PyQt5 must include the complete GPLv3 text and all applicable
+third-party notices. No release artifact is produced by this preparation
+repository.
+
+The complete GPLv3 text is available from the Free Software Foundation:
+https://www.gnu.org/licenses/gpl-3.0.txt
