@@ -1,39 +1,66 @@
-# SEOHEAD Desktop — preparation skeleton
+# SEOHEAD Desktop
 
-Native PyQt5/Qt Widgets shell, version0.1.0. This is D0 preparation, not the full desktop product.
+Native PyQt5/Qt Widgets desktop adapter for the local SEOHEAD core. It is not a
+second crawler, task store, or HTTP service: collection, retained SQLite
+evidence, project state, reports and policy validation stay in the co-shipped
+core.
 
-## Run
+The current development baseline is compatible with SEOHEAD core
+`3c60d0c051e282603188cef0f70341d1a5d8ad72`. An external development core must
+be a clean checkout; a frozen bundle verifies its manifest, executable digest
+and producer commit before it supplies `--producer-build`.
+
+## Run from source
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -e ".[build]"
-.venv/bin/seohead-desktop
+.venv/bin/seohead-desktop --core-cli /absolute/path/to/seohead
 ```
 
-On Windows use `.venv\Scripts\python.exe` and `.venv\Scripts\seohead-desktop.exe`. Runtime on Windows/Linux is not yet verified. `requirements-macos-arm64.lock` records the measured Mac development environment; it is not a universal OS lockfile.
+The application starts one local stdio MCP connection to the supplied core.
+It does not open an HTTP listener. A project is opened explicitly from disk.
 
-## Available now
+## Functional scope
 
-- Canonical brand tokens in `theme/tokens.json`, applied through `theme/theme.qss`.
-- Packaged local Roboto and Material Symbols with upstream licensing/source manifest.
-- Model-backed demo URL table, filtering/sorting, selection detail, tabs and collapsible split panels.
-- Read-only existing-core project-open seam on a worker. Configure `--core-cli <seohead executable>`; demo rows are removed when a real project is loaded. Real URL queries and full project projections remain unconnected.
-- Preview-only scan setup, with no dispatch/network/provider calls.
-- Native Qt PNG capture and SVG export: `--capture evidence/shell.png --export-svg design/qt-skeleton.svg --no-settings`.
+| Area | Current behaviour |
+| --- | --- |
+| Project observer | Retained progress, task page/detail, scan history, activity and durable inbox load through one persistent local MCP session. Reads are bounded and generation-scoped. |
+| URL evidence | A retained scan supplies paged URL rows, a redacted URL detail, scan status and bounded inlinks. Selecting another project or scan clears previous evidence before the next result arrives. |
+| Native scan plan | The user explicitly confirms a project-bound native crawl. The dialog shows URL, HTTP-request and time budgets plus raw/JS mode. Opening or refreshing a project never starts a crawl. |
+| Local run control | Desktop owns only QProcesses it started. It supports up to three queued native runs and records separate local output per run. Stop targets the selected owned run; other runs and work started outside Desktop are left alone. |
+| Progress | While an owned run is active, `project-observe` is polled at 0.5 seconds. Core run identity is keyed by project UUID plus run ID; PID state is diagnostic only. |
+| Resume | Resume is offered only after core reports a retained scan with `source.lifecycle: interrupted`; Desktop keeps project binding and never changes stored scope/configuration. |
+| Notes | A note or proposed goal is stored only after an explicit click and revision-aware core confirmation. It never launches a scan or injects chat text. |
 
-## Figma input
+Each native project run is rate-limited to 0.5 URL/s from Desktop while core
+enforces the shared per-origin gate. The core remains the authority for final
+admission, stored settings, scope, authentication and evidence completeness.
 
-`design/source/Untitled.fig` is preserved verbatim. ZIP/fig-kiwi inspection found a326-byte message with Document/Page1/InternalOnlyCanvas labels and a black400pxthumbnail. It was not fully decoded or edited in a Figma client. `design/qt-skeleton.svg` is an SVG exported from the actual Qt widget rendering, suitable for importing into Figma; it is not a newly created native.fig document.
-
-## Checks and packaging
+## Verification
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python -m PyInstaller --noconfirm --onedir --windowed --name "SEOHEAD Desktop" --osx-bundle-identifier tech.seohead.desktop --collect-data seohead_desktop scripts/entrypoint.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests -v
+SEOHEAD_DESKTOP_CORE_CLI=/absolute/path/to/seohead \
+  QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Mac arm64 native Cocoa launch, AX search/inspector, four Qt smoke tests and real CLI project metadata reading passed. Evidence is in `evidence/preparation-acceptance.json`. No live site was scanned. Five visible rows are labeled synthetic demo data. No million-row/large-crawl readiness or Windows/Linux acceptance is claimed.
+The real-core gate creates only owned `crawl.localhost` loopback projects. It
+verifies three concurrent bounded captures, selecting/stopping one owned run,
+and resuming its retained interrupted artifact while the other captures remain
+independent. No public site, provider, cloud account or paid API is used.
 
-Next work: replace demo provider with bounded core URL query/detail and project/task/inbox adapters; finish job controls, durable notes and platform packaging/latency/memory gates. Avoid new crawler/analyzer/task stores. Use the supplied text TZ.
+## Packaging and platforms
 
-PyQt5 uses GPLv3/commercial distribution terms; this private preparation does not establish a distribution license decision. Google font/icon assets retain their original notices. No paid purchase or external deployment was performed.
+`scripts/build_macos.sh` builds an application plus an exact core payload and
+writes a provenance manifest. See [docs/packaging.md](docs/packaging.md) for
+the required build arguments and clean-machine smoke check.
+
+macOS is the only runtime currently exercised. Windows and Linux compatibility,
+large-crawl/million-row readiness and final product design are not claimed.
+
+## Design input
+
+`design/source/Untitled.fig` is preserved as the original input. The Qt
+component catalogue is in `design/tab-contracts.md`; it provides native bounded
+tables and panels without a web view or Electron runtime.

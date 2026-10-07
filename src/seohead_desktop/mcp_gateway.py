@@ -84,11 +84,15 @@ def payload(response: Any) -> dict[str, Any]:
     if isinstance(structured, dict):
         result = structured.get("result", structured)
         if isinstance(result, dict):
+            if result.get("ok") is False:
+                raise ValueError(str(result.get("error") or result.get("reason") or "core refused request"))
             return result
     content = getattr(response, "content", ())
     if content and isinstance(getattr(content[0], "text", None), str):
         result = json.loads(content[0].text)
         if isinstance(result, dict):
+            if result.get("ok") is False:
+                raise ValueError(str(result.get("error") or result.get("reason") or "core refused request"))
             return result
     raise TypeError("MCP tool returned no object result")
 

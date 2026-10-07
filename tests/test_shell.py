@@ -96,6 +96,29 @@ class ShellTests(unittest.TestCase):
 
         self.assertEqual(payload(Result()), {"ok": True})
 
+        class Refused:
+            isError = False
+            structuredContent = {"result": {"ok": False, "reason": "revision conflict"}}
+
+        with self.assertRaisesRegex(ValueError, "revision conflict"):
+            payload(Refused())
+
+    def test_refused_inbox_write_preserves_draft(self):
+        self.window.note_input.setText("Do not lose this note")
+        self.window.note_submit.setEnabled(False)
+        self.window.command_failed("inbox-submit", "inbox revision conflict", self.window.read_generation)
+        self.assertEqual(self.window.note_input.text(), "Do not lose this note")
+        self.assertTrue(self.window.note_submit.isEnabled())
+
+    def test_stale_scan_result_cannot_replace_selected_scan(self):
+        self.window.selected_scan_path = "/retained/current.sqlite"
+        before = self.window.model.rowCount()
+        self.window.load_urls(
+            {"rows": [{"url": "https://old.example.test/", "status_code": 200}]},
+            "/retained/old.sqlite",
+        )
+        self.assertEqual(self.window.model.rowCount(), before)
+
     def test_retained_projection_pages_replace_demo_models(self):
         self.window.load_tasks(
             {

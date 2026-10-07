@@ -1,6 +1,7 @@
 """Owned-loopback integration gate for explicit local crawl process control."""
 
 import os
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
@@ -149,7 +150,9 @@ class LocalScanRunnerTests(unittest.TestCase):
                 load_theme(self.app)
                 window = MainWindow(persistent=False, core_executable=core)
                 window.project_directory = str(project)
-                window.project_result = {"project": {"site": {"target": target}}}
+                project_data = json.loads((project / "project.json").read_text())
+                window.project_result = {"project": project_data}
+                window.current_project_uuid = project_data["project_uuid"]
                 window.show()
 
                 def accept_plan():
@@ -161,12 +164,12 @@ class LocalScanRunnerTests(unittest.TestCase):
 
                 QTimer.singleShot(100, accept_plan)
                 QTest.mouseClick(window.new_scan, 1)
-                wait_for(lambda: window.scan_runner is not None and window.scan_runner.active, "GUI plan did not launch a local crawl")
+                wait_for(lambda: window.scan_manager is not None and window.scan_manager.active_count == 1, "GUI plan did not launch a local crawl")
                 wait_for(lambda: any((project / "scans").glob("*.sqlite")), "GUI crawl did not retain a scan")
                 scan = next((project / "scans").glob("*.sqlite"))
                 QTest.qWait(700)
                 window.cancel_active_work()
-                wait_for(lambda: not window.scan_runner.active, "GUI cancellation did not stop the owned crawl")
+                wait_for(lambda: window.scan_manager.active_count == 0, "GUI cancellation did not stop the owned crawl")
                 self.assertIn("не сохранило checkpoint", window.scan_detail.toPlainText())
                 # A race with terminal completion may leave a scan. The GUI must
                 # inspect its retained lifecycle before advertising resume.
