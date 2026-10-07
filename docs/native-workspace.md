@@ -57,3 +57,9 @@ The HTML search workspace uses the existing core CLI over the selected retained 
 ## External agent observation
 
 An open project keeps the existing single observer timer running without an owned scan. It reads every two seconds while idle and every 500 ms when an observed or owned run is active. An in-flight observer, project transition or pending note write suppresses another read. Changed plan revisions refresh the bounded checklist. Externally launched CLI/MCP runs remain observations and never become GUI-owned Stop targets.
+
+## Browser-style workspace contexts and agent control
+
+A native tab strip holds at most 12 immutable view contexts over the same MainWindow, gateway and local scan manager. Tabs remember project/scan identity, view, URL page/filter/selection, per-panel searches and splitters. Switching clears old evidence and reloads bounded core projections with the existing generation guard. Note drafts remain scoped to project UUID and resolved path; an unconfirmed write blocks tab changes. Closing a tab removes only its descriptor, and an owned scan continues. Cmd/Ctrl T/W and native next/previous-tab shortcuts are available; duplicate and overflow actions live beside the tab strip.
+
+The Agent menu and optional `--agent-control EXISTING_DIRECTORY` publish one protected descriptor path for the local CLI/MCP bridge. No automatic endpoint discovery or arbitrary IPC project paths are admitted. Run actions use existing typed core settings, explicit approval, loaded IDs and the same scan manager. `--project EXISTING_PROJECT` is a separate explicit startup argument that opens retained data without launching a scan. The main URL view exposes bounded paging and separate Copy URL / Copy row (TSV) actions.

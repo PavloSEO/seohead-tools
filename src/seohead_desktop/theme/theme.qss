@@ -114,3 +114,11 @@ QLabel#comparisonValue[role="comparisonMetricValue"] { font-size: 26px; font-wei
 QPushButton#comparisonMetric[tone="success"] QLabel { color: $on_success_container; }
 QPushButton#comparisonMetric[tone="warning"] QLabel { color: $on_warning_container; }
 QPushButton#comparisonMetric[tone="active"] QLabel { color: $on_primary_container; }
+
+QWidget#workspaceTabs { background: $surface_container_low; border-bottom: 1px solid $outline_variant; }
+QTabBar#workspaceTabBar::tab { padding: 8px 12px; margin: 4px 2px 0 2px; border: 1px solid transparent; border-bottom: none; border-top-left-radius: 8px; border-top-right-radius: 8px; min-width: 120px; max-width: 260px; background: transparent; }
+QTabBar#workspaceTabBar::tab:selected { background: $surface_container_lowest; border-color: $outline_variant; color: $primary; }
+QTabBar#workspaceTabBar::tab:hover:!selected { background: $surface_container; }
+QTabBar#workspaceTabBar::close-button { image: url("$icon_root/close.svg"); width: 16px; height: 16px; border-radius: 4px; }
+QTabBar#workspaceTabBar::close-button:hover { background: $primary_container; }
+QLabel#searchCoverage { background: $surface_container_low; border: 1px solid $outline_variant; border-radius: 8px; padding: 10px 12px; font-weight: 500; }

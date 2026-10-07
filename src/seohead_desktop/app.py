@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shlex
 import shutil
 import sys
 from functools import lru_cache
@@ -44,6 +45,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMainWindow,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -61,8 +63,10 @@ from PyQt5.QtWidgets import (
 from .comparison import ComparisonController
 from .content_search import ContentSearchController, SEARCH_PRESETS
 from .ui.content_search_panel import ContentSearchPanel
+from .ui.workspace_tabs import WorkspaceContext, WorkspaceTabs
 from .crawl_configuration import preview_configuration, validate_overrides
 from .mcp_gateway import PersistentMcpGateway
+from .local_control import ControlError, DesktopControlServer, prepare_endpoint, validate_arguments
 from .models import RecordModel, UrlModel
 from .scan_manager import LocalScanManager
 from .scan_runner import crawl_arguments
@@ -171,6 +175,12 @@ class MainWindow(QMainWindow):
         self.read_generation = 0
         self.project_directory = None
         self.project_result = None
+        self._known_projects = {}
+        self._active_workspace_id = None
+        self._workspace_restore = None
+        self._switching_workspace = False
+        self._url_page_offset = 0
+        self._url_page_has_more = False
         self.inbox_revision = None
         self._note_drafts = {}
         self._pending_note = None
@@ -181,6 +191,8 @@ class MainWindow(QMainWindow):
         self.pending_commands = {}
         self.mcp_gateway = None
         self.mcp_ready = False
+        self.control_server = None
+        self.control_endpoint = None
         self.content_search = ContentSearchController(self)
         self.content_search.idle.connect(self._finish_owned_shutdown)
         self.crawl_descriptor = None
@@ -234,6 +246,8 @@ class MainWindow(QMainWindow):
         shell = QVBoxLayout(workspace)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
+        self.workspace_tabs = WorkspaceTabs(max_tabs=12)
+        shell.addWidget(self.workspace_tabs)
         self.add_workspace_toolbar("projectControls", self.topbar())
         self.addToolBarBreak(Qt.TopToolBarArea)
         self.add_workspace_toolbar("scanContext", self.contextbar())
@@ -288,6 +302,8 @@ class MainWindow(QMainWindow):
 
         file_menu = self.menuBar().addMenu("Проект")
         file_menu.addAction("Открыть проект…", self.choose_project, QKeySequence.Open)
+        agent_menu = self.menuBar().addMenu("Агент")
+        agent_menu.addAction("Подключить агента…", self.show_agent_connection)
         view_menu = self.menuBar().addMenu("Вид")
         self.panel_actions = {}
         for name, widget in [("Навигация", self.navigation), ("Сводка", self.overview), ("Инспектор URL", self.inspector)]:
@@ -335,6 +351,14 @@ class MainWindow(QMainWindow):
                 value = self.settings.value(key)
                 if value:
                     (widget.restoreGeometry if widget is self else widget.restoreState)(value)
+        self.workspace_tabs.selected.connect(self.switch_workspace_tab)
+        self.workspace_tabs.newRequested.connect(self.new_workspace_tab)
+        self.workspace_tabs.closeRequested.connect(self.close_workspace_tab)
+        self.workspace_tabs.duplicateRequested.connect(self.duplicate_workspace_tab)
+        self.workspace_tabs.install_shortcuts(self)
+        initial = WorkspaceContext(view_id="url")
+        self._active_workspace_id = initial.id
+        self.workspace_tabs.add(initial, select=True)
         self.table.selectRow(0)
         if self.settings:
             QTimer.singleShot(0, self.restore_workspace_layout)
@@ -598,6 +622,23 @@ class MainWindow(QMainWindow):
         self.url_empty.setAlignment(Qt.AlignCenter)
         self.url_empty.hide()
         area.addWidget(self.url_empty, 1)
+        paging = QHBoxLayout()
+        self.url_page_label = QLabel("Демо · без постраничного чтения")
+        self.url_page_label.setObjectName("metadata")
+        paging.addWidget(self.url_page_label, 1)
+        self.url_previous = QPushButton("Назад")
+        self.url_previous.setIcon(icon("chevron_left"))
+        self.url_next = QPushButton("Далее")
+        self.url_next.setIcon(icon("chevron_right"))
+        self.url_previous.clicked.connect(lambda: self.request_url_page(max(0, self._url_page_offset - PAGE_LIMIT)))
+        self.url_next.clicked.connect(lambda: self.request_url_page(self._url_page_offset + len(self.model.rows)))
+        self.url_previous.setEnabled(False)
+        self.url_next.setEnabled(False)
+        paging.addWidget(self.url_previous)
+        paging.addWidget(self.url_next)
+        area.addLayout(paging)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.url_context_menu)
         self.vertical.addWidget(table_area)
         self.inspector = QTabWidget()
         hide_details = QToolButton()
@@ -854,6 +895,7 @@ class MainWindow(QMainWindow):
             if self.mcp_gateway is not None and self.project_directory:
                 self.mcp_gateway.set_project_scope(self.project_directory)
             self.update_note_controls()
+            self.finish_workspace_restore()
         elif request_id == "crawl-settings":
             self._crawl_descriptor_error = text
             self.crawl_descriptor_changed.emit()
@@ -861,6 +903,7 @@ class MainWindow(QMainWindow):
             self.audit_workspace.set_page(
                 "internal", [], state="unavailable", reason=text, source="Retained scan unavailable"
             )
+            self.finish_workspace_restore()
         elif request_id.startswith("url-detail:"):
             self.audit_workspace.set_page(
                 "url_details", [], state="unavailable", reason=text, source="Retained URL detail unavailable"
@@ -962,6 +1005,7 @@ class MainWindow(QMainWindow):
         project = result.get("project", {})
         site = project.get("site", {}) if isinstance(project, dict) else {}
         self.current_project_uuid = project.get("project_uuid") if isinstance(project, dict) else None
+        self._known_projects[str(Path(self.project_directory).resolve())] = {"result": result, "scans": [], "uuid": self.current_project_uuid}
         self.selected_managed_run_id = None
         self.selected_observed_run_id = None
         self.owned_run_detail.setPlainText("Выберите запуск текущего проекта")
@@ -989,6 +1033,7 @@ class MainWindow(QMainWindow):
         self.summary_coverage.setText("См. прогресс проекта")
         self.refresh_project()
         self.load_crawl_descriptor()
+        self.sync_workspace_identity()
         self.scan_poll_timer.start(2000)
 
     def load_crawl_descriptor(self):
@@ -1202,7 +1247,16 @@ class MainWindow(QMainWindow):
             has_more=(result.get("pagination") or {}).get("next_offset") is not None,
             source="Сохранённые сканы проекта",
         )
-        index = next((index for index, item in enumerate(rows) if item.get("path") == self.selected_scan_path), 0)
+        if self.project_directory and str(Path(self.project_directory).resolve()) in self._known_projects:
+            self._known_projects[str(Path(self.project_directory).resolve())]["scans"] = rows
+        restore = self._workspace_restore if self._workspace_restore and self._workspace_restore["id"] == self._active_workspace_id else None
+        desired_uuid = restore.get("scan_uuid") if restore else None
+        index = next((index for index, item in enumerate(rows) if item.get("uuid") == desired_uuid), -1) if desired_uuid else next((index for index, item in enumerate(rows) if item.get("path") == self.selected_scan_path), 0)
+        if restore and desired_uuid and index < 0:
+            selection.blockSignals(False)
+            self.clear_scan_selection("Скан этой вкладки отсутствует в текущей сохранённой выборке. Выберите доступный скан.")
+            self.finish_workspace_restore()
+            return
         if rows:
             self.scan_table.selectRow(index)
             self.scan_picker.blockSignals(True)
@@ -1213,9 +1267,10 @@ class MainWindow(QMainWindow):
             selected = rows[index]
             if self._reload_selected_scan or selected.get("path") != self.selected_scan_path or selected != old:
                 self._reload_selected_scan = False
-                self.select_project_scan(selected)
+                self.select_project_scan(selected, offset=restore.get("state", {}).get("url_offset", 0) if restore else 0)
         elif result.get("total") == 0 or not self.selected_scan_path:
             self.clear_scan_selection("В этом проекте нет сохранённых сканов")
+            self.finish_workspace_restore()
 
     def clear_scan_selection(self, reason):
         self.content_search.clear(reason)
@@ -1234,6 +1289,11 @@ class MainWindow(QMainWindow):
         self.scan_progress.hide()
         self.scan_progress_label.setText("Прогресс выбранного скана не измерен")
         self.scan_state_badge.set_state("unknown")
+        self._url_page_offset = 0
+        self._url_page_has_more = False
+        self.url_previous.setEnabled(False)
+        self.url_next.setEnabled(False)
+        self.url_page_label.setText("Выберите сохранённый скан")
         self.url_caption.setText("URL · данные не загружены")
         self.url_empty.setText(reason)
         self.url_empty.show()
@@ -1250,7 +1310,7 @@ class MainWindow(QMainWindow):
         scan = self.scan_model.rows[current.row()]
         self.select_project_scan(scan)
 
-    def select_project_scan(self, scan):
+    def select_project_scan(self, scan, *, offset=0):
         path = scan.get("path")
         if not isinstance(path, str) or not path:
             self.scan_detail.setPlainText("Ядро не предоставило путь сохранённого скана.")
@@ -1285,7 +1345,7 @@ class MainWindow(QMainWindow):
         self.start_command(
             scan_request_key(self.current_project_uuid, path, "url-page"),
             "seo_scan_inspect",
-            {"input_path": path, "table": "pages", "limit": PAGE_LIMIT, "offset": 0},
+            {"input_path": path, "table": "pages", "limit": PAGE_LIMIT, "offset": max(0, int(offset))},
             lambda result, path=path: self.load_urls(result, path),
         )
         self.start_command(
@@ -1319,6 +1379,7 @@ class MainWindow(QMainWindow):
             self.audit_workspace.set_page("overview", aggregate_rows, total=len(aggregate_rows), source="Сохранённые HTTP-ответы · доля по всему сайту не измерена")
         self._resume_eligible_path = scan_path if scan_path and source.get("lifecycle") == "interrupted" and Path(scan_path).is_file() else None
         self.update_resume_control()
+        self.sync_workspace_identity()
 
     def load_urls(self, result, scan_path=None):
         if scan_path is not None and scan_path != self.selected_scan_path:
@@ -1339,6 +1400,11 @@ class MainWindow(QMainWindow):
             })
         self.clear_url_selection("Выберите URL в загруженной странице")
         self.model.replace(rows)
+        self._url_page_offset = int(result.get("offset") or 0)
+        self._url_page_has_more = bool(result.get("has_more"))
+        self.url_previous.setEnabled(self._url_page_offset > 0)
+        self.url_next.setEnabled(self._url_page_has_more and bool(rows))
+        self.url_page_label.setText(f"Строки {self._url_page_offset + 1}–{self._url_page_offset + len(rows)} · весь скан не загружен" if rows else "На этой странице нет URL")
         self.search.setEnabled(True)
         self.search.setPlaceholderText("Поиск в загруженной странице сохранённого скана")
         self.update_url_count()
@@ -1362,6 +1428,7 @@ class MainWindow(QMainWindow):
             panel = self.audit_workspace.panel("internal")
             if panel.proxy.rowCount():
                 panel.table.selectRow(0)
+        self.finish_workspace_restore()
 
     def load_inbox(self, result):
         self.inbox_revision = result.get("revision")
@@ -1788,6 +1855,424 @@ class MainWindow(QMainWindow):
             keep_on_screen(self.monitor)
         keep_on_screen(self)
 
+    def workspace_context(self, identifier=None):
+        wanted = identifier or self._active_workspace_id
+        return next((item for item in self.workspace_tabs.contexts() if item.id == wanted), None)
+
+    def sync_workspace_identity(self):
+        if not self._active_workspace_id or self._workspace_restore or not self.workspace_context():
+            return
+        row = self.navigation.currentRow()
+        self.workspace_tabs.update_context(self._active_workspace_id,
+            project_uuid=self.current_project_uuid, project_root=self.project_directory,
+            project_label=self.project_picker.currentText() if self.project_directory else "Новая вкладка",
+            scan_uuid=self.selected_scan_uuid, view_id=VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else "work")
+        label = self.project_picker.currentText() if self.project_directory else "Новая вкладка"
+        scan = next((item for item in self.scan_model.rows if item.get("uuid") == self.selected_scan_uuid), {})
+        title = label + (" · " + self.selected_scan_uuid[:8] if self.selected_scan_uuid else "")
+        if scan.get("lifecycle"):
+            title += " · " + state_text(scan["lifecycle"])
+        self.workspace_tabs.update_title(self._active_workspace_id, title, icon("compare_arrows" if row == 9 else "search" if row == 10 else "folder_open"))
+
+    def capture_workspace_context(self):
+        context = self.workspace_context()
+        if context is None or self._workspace_restore:
+            return context
+        self.stash_note_drafts()
+        decks = {"audit_main": self.audit_workspace.main, "audit_detail": self.audit_workspace.detail,
+                 "audit_right": self.audit_workspace.right, "project": self.project_panels}
+        state = {"url_search": self.search.text(), "url_offset": self._url_page_offset,
+                 "selected_url": self.selected_url, "url_sort_column": self.proxy.sortColumn(),
+                 "url_sort_order": int(self.proxy.sortOrder()),
+                 "horizontal": bytes(self.horizontal.saveState()), "vertical": bytes(self.vertical.saveState()),
+                 "panels": dict(self._panel_intent), "decks": {},
+                 "search_query": self.content_search_panel.query.text(),
+                 "search_scope": self.content_search_panel.scope.currentData(),
+                 "search_mode": self.content_search_panel.mode.currentData(),
+                 "search_representation": self.content_search_panel.representation.currentData()}
+        for name, deck in decks.items():
+            state["decks"][name] = {"current": deck.current_id, "panels": {
+                key: {"search": panel.search.text(), "filter": panel.filter.currentData(), "offset": panel.offset}
+                for key, panel in deck._panels.items()}}
+        compare = self.project_panels.panel("compare")
+        state["compare_pair"] = [(combo.currentData() or {}).get("uuid") for combo in (compare.before, compare.after)]
+        self.sync_workspace_identity()
+        self.workspace_tabs.update_state(context.id, state)
+        return self.workspace_context(context.id)
+
+    def new_workspace_tab(self, project_uuid=None, scan_uuid=None, view_id="work"):
+        if self._pending_note is not None:
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед сменой вкладки.", "inbox-submit")
+            return None
+        if view_id not in VIEW_IDS:
+            raise ValueError("Неизвестный раздел рабочего пространства")
+        values = {}
+        if project_uuid:
+            matches = [(root, info) for root, info in self._known_projects.items() if info["uuid"] == project_uuid]
+            if len(matches) != 1:
+                raise ValueError("Для новой вкладки нужен один уже открытый проект с этим ID")
+            root, info = matches[0]
+            if scan_uuid and not any(row.get("uuid") == scan_uuid for row in info["scans"]):
+                raise ValueError("Скан не найден среди уже полученных сканов проекта")
+            site = (info["result"].get("project") or {}).get("site") or {}
+            values = {"project_root": root, "project_uuid": project_uuid, "project_label": site.get("label") or site.get("host") or "Проект", "scan_uuid": scan_uuid}
+        context = WorkspaceContext(view_id=view_id, **values)
+        try:
+            return self.workspace_tabs.add(context)
+        except ValueError as exc:
+            self.notice.show_error(str(exc))
+            return None
+
+    def duplicate_workspace_tab(self, identifier):
+        if self._pending_note is not None:
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки.", "inbox-submit")
+            return None
+        if identifier == self._active_workspace_id:
+            self.capture_workspace_context()
+        context = self.workspace_context(identifier)
+        if context is None:
+            return None
+        duplicate = WorkspaceContext(project_uuid=context.project_uuid, project_root=context.project_root,
+            project_label=context.project_label, scan_uuid=context.scan_uuid, view_id=context.view_id, state=context.state_dict())
+        try:
+            return self.workspace_tabs.add(duplicate)
+        except ValueError as exc:
+            self.notice.show_error(str(exc))
+            return None
+
+    def close_workspace_tab(self, identifier):
+        if self._pending_note is not None:
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием вкладки.", "inbox-submit")
+            return False
+        if identifier == self._active_workspace_id:
+            self.capture_workspace_context()
+        removed = self.workspace_tabs.remove(identifier)
+        if removed and not self.workspace_tabs.contexts():
+            self._active_workspace_id = None
+            self.new_workspace_tab()
+        return removed is not None
+
+    def clear_workspace_presentation(self, reason):
+        """Clear project evidence without changing the shared manager or gateway."""
+        self.clear_scan_selection(reason)
+        self.comparison.clear(reason)
+        self.project_panels.clear(reason)
+        self.project_panels.panel("compare").set_scans([])
+        self.scan_model.replace([])
+        self.task_model.replace([])
+        self.inbox_model.replace([])
+        self.observed_runs = []
+        self.observed_at = None
+        self.last_observer_signature = None
+        self.activity_model.replace([])
+        self.journal_model.replace([])
+        self.progress_text.setPlainText(reason)
+        self.activity_text.setPlainText(reason)
+        self.inbox_detail.setPlainText(reason)
+        self.task_detail.setPlainText(reason)
+        self.activity_caption.setText("Запуски · данные не загружены")
+        self.journal_caption.setText("События · данные не загружены")
+        self.task_caption.setText("Задачи · данные не загружены")
+        self.inbox_caption.setText("Входящие · данные не загружены")
+        self.summary_source.setText("Данные не загружены")
+        self.summary_records.setText("—")
+        self.summary_scan.setText("Скан не выбран")
+        self.summary_coverage.setText("Не измерено")
+        self.summary_note.setPlainText(reason)
+        self.selected_managed_run_id = None
+        self.selected_observed_run_id = None
+        self.owned_run_picker.blockSignals(True)
+        self.owned_run_picker.clear()
+        self.owned_run_picker.addItem("Выберите запуск этого окна", None)
+        self.owned_run_picker.blockSignals(False)
+        self.render_owned_run(None)
+        self.scan_picker.blockSignals(True)
+        self.scan_picker.clear()
+        self.scan_picker.addItem("Выберите сохранённый проект", None)
+        self.scan_picker.setEnabled(False)
+        self.scan_picker.blockSignals(False)
+
+    def switch_workspace_tab(self, identifier):
+        if self._switching_workspace or identifier == self._active_workspace_id:
+            return
+        context = self.workspace_context(identifier)
+        if context is None:
+            return
+        if self._pending_note is not None:
+            self._switching_workspace = True
+            self.workspace_tabs.select(self._active_workspace_id)
+            self._switching_workspace = False
+            self.notice.show_error("Дождитесь подтверждения сохранения заметки перед сменой вкладки.", "inbox-submit")
+            return
+        self.capture_workspace_context()
+        self.stash_note_drafts()
+        self.cancel_requests()
+        self.scan_poll_timer.stop()
+        self._active_workspace_id = identifier
+        self._workspace_restore = {"id": identifier, "scan_uuid": context.scan_uuid, "view_id": context.view_id, "state": context.state_dict()}
+        self.project_directory = self.project_result = self.current_project_uuid = None
+        self.inbox_revision = None
+        self._project_loading = False
+        self.clear_workspace_presentation("Загрузка контекста вкладки…" if context.project_root else "Откройте локальный проект в новой вкладке")
+        self.restore_note_drafts()
+        self.project_picker.blockSignals(True)
+        self.project_picker.clear()
+        self.project_picker.addItem(context.project_label)
+        self.project_picker.blockSignals(False)
+        self.source_badge.setText("Загрузка проекта…" if context.project_root else "Новая вкладка · проект не открыт")
+        self.refresh_button.setEnabled(False)
+        self.navigation.setCurrentRow(VIEW_IDS.index(context.view_id) if context.view_id in VIEW_IDS else 0)
+        if context.project_root:
+            self.pages.setEnabled(False)
+            self.read_project(context.project_root)
+            if not self._project_loading:
+                self.finish_workspace_restore()
+        else:
+            self.finish_workspace_restore()
+        if self.monitor is not None:
+            self.monitor.sync_context()
+
+    def finish_workspace_restore(self):
+        restore = self._workspace_restore
+        if restore is None or restore["id"] != self._active_workspace_id:
+            return
+        state = restore["state"]
+        self._workspace_restore = None
+        self.pages.setEnabled(True)
+        for name, splitter in (("horizontal", self.horizontal), ("vertical", self.vertical)):
+            if state.get(name):
+                splitter.restoreState(state[name])
+        for name, visible in state.get("panels", {}).items():
+            if name in self.panel_actions and type(visible) is bool:
+                self.set_panel_visible(name, visible)
+        decks = {"audit_main": self.audit_workspace.main, "audit_detail": self.audit_workspace.detail,
+                 "audit_right": self.audit_workspace.right, "project": self.project_panels}
+        for name, saved in state.get("decks", {}).items():
+            deck = decks.get(name)
+            if deck is None:
+                continue
+            if saved.get("current") in deck.specs:
+                deck.select_tab(saved["current"])
+            for key, values in saved.get("panels", {}).items():
+                if key not in deck.specs:
+                    continue
+                panel = deck.panel(key)
+                panel.search.setText(values.get("search", ""))
+                if key == "compare":
+                    panel.apply_status_filter(values.get("filter", "all"))
+        compare = self.project_panels.panel("compare")
+        for combo, uuid in zip((compare.before, compare.after), state.get("compare_pair", ())):
+            combo.setCurrentIndex(next((i for i in range(combo.count()) if (combo.itemData(i) or {}).get("uuid") == uuid), 0))
+        self.search.setText(state.get("url_search", ""))
+        if state.get("url_sort_column", -1) >= 0:
+            self.proxy.sort(state["url_sort_column"], Qt.SortOrder(state.get("url_sort_order", 0)))
+        self.content_search_panel.query.setText(state.get("search_query", ""))
+        for name in ("scope", "mode", "representation"):
+            combo = getattr(self.content_search_panel, name)
+            index = combo.findData(state.get("search_" + name))
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        self.navigation.setCurrentRow(VIEW_IDS.index(restore["view_id"]) if restore["view_id"] in VIEW_IDS else 0)
+        wanted = state.get("selected_url")
+        table, proxy = (self.audit_workspace.panel("internal").table, self.audit_workspace.panel("internal").proxy) if self.navigation.currentRow() == 2 and self.audit_workspace.main.current_id == "internal" else (self.table, self.proxy)
+        row = next((row for row in range(proxy.rowCount()) if proxy.index(row, 0).data() == wanted), None) if wanted else None
+        if row is not None:
+            table.selectRow(row)
+        else:
+            table.clearSelection()
+            table.setCurrentIndex(QModelIndex())
+            self.clear_url_selection("Выберите URL в сохранённом контексте вкладки")
+        self.sync_workspace_identity()
+
+    def request_url_page(self, offset):
+        if not self.selected_scan_path:
+            return
+        self.clear_url_selection("Загрузка другой страницы URL…")
+        self.url_previous.setEnabled(False)
+        self.url_next.setEnabled(False)
+        self.start_command(scan_request_key(self.current_project_uuid, self.selected_scan_path, "url-page"),
+            "seo_scan_inspect", {"input_path": self.selected_scan_path, "table": "pages", "limit": PAGE_LIMIT, "offset": max(0, int(offset))},
+            lambda result, path=self.selected_scan_path: self.load_urls(result, path))
+
+    def url_context_menu(self, point):
+        index = self.table.indexAt(point)
+        if index.isValid():
+            self.table.selectRow(index.row())
+        if not self.table.currentIndex().isValid():
+            return
+        menu = QMenu(self)
+        menu.addAction(icon("content_copy"), "Копировать URL", lambda: QApplication.clipboard().setText(str(self.proxy.index(self.table.currentIndex().row(), 0).data())))
+        menu.addAction("Копировать строку (TSV)", self.copy_url_selection)
+        menu.exec_(self.table.viewport().mapToGlobal(point))
+
+    def start_agent_control(self, directory):
+        if self.control_server is not None:
+            return self.control_endpoint.descriptor_path
+        endpoint = prepare_endpoint(directory)
+        server = DesktopControlServer(endpoint, self.dispatch_control, parent=self)
+        try:
+            server.start()
+        except Exception:
+            server.close()
+            raise
+        self.control_endpoint, self.control_server = endpoint, server
+        self.statusBar().showMessage("Подключение агента включено для этого окна: " + str(endpoint.descriptor_path))
+        return endpoint.descriptor_path
+
+    def agent_client_command(self):
+        if self.control_endpoint is None:
+            return None
+        resources = Path(sys.executable).resolve().parent.parent / "Resources"
+        helper = resources / "agent" / "desktop-agent" / "desktop-agent"
+        prefix = [str(helper)] if getattr(sys, "frozen", False) and helper.is_file() else [sys.executable, "-m", "seohead_desktop.control_cli"]
+        return [*prefix, "--endpoint", str(self.control_endpoint.descriptor_path)]
+
+    def show_agent_connection(self):
+        if self.control_server is None:
+            directory = QFileDialog.getExistingDirectory(self, "Папка для локального подключения агента")
+            if not directory:
+                return
+            try:
+                self.start_agent_control(directory)
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.notice.show_error("Подключение агента недоступно: " + str(exc))
+                return
+        command = self.agent_client_command()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Агент · управление этим окном")
+        dialog.resize(700, 370)
+        layout = QVBoxLayout(dialog)
+        description = QLabel("Агент видит вкладки и сохранённые сканы этого окна. Новые сканы и остановка требуют явного approved=true; закрытие вкладки не останавливает процесс. Подключение действует до закрытия приложения.")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        path = QLineEdit(str(self.control_endpoint.descriptor_path))
+        path.setReadOnly(True)
+        path.setAccessibleName("Путь защищённого описателя подключения")
+        layout.addWidget(path)
+        preview = plain(shlex.join([*command, "status"]))
+        preview.setMaximumHeight(100)
+        layout.addWidget(preview)
+        buttons = QHBoxLayout()
+        cli = QPushButton("Копировать команду CLI")
+        cli.setIcon(icon("content_copy"))
+        cli.clicked.connect(lambda: QApplication.clipboard().setText(shlex.join([*command, "status"])))
+        mcp = QPushButton("Копировать конфигурацию MCP")
+        mcp.setIcon(icon("code"))
+        config = {"mcpServers": {"seohead-desktop": {"command": command[0], "args": [*command[1:], "mcp"]}}}
+        mcp.clicked.connect(lambda: QApplication.clipboard().setText(json.dumps(config, ensure_ascii=False, indent=2)))
+        buttons.addWidget(cli)
+        buttons.addWidget(mcp)
+        layout.addLayout(buttons)
+        close = QDialogButtonBox(QDialogButtonBox.Close)
+        close.rejected.connect(dialog.reject)
+        layout.addWidget(close)
+        dialog.exec_()
+
+    def control_tab(self, arguments, *, ready=False):
+        identifier = arguments.get("tab_id") or self._active_workspace_id
+        context = self.workspace_context(identifier)
+        if context is None:
+            raise ControlError("unknown_tab", "Вкладка не найдена в этом окне")
+        if arguments.get("project_uuid") and arguments["project_uuid"] != context.project_uuid:
+            raise ControlError("project_mismatch", "ID проекта не совпадает с выбранной вкладкой")
+        if ready and (identifier != self._active_workspace_id or self._project_loading or self._workspace_restore or self._pending_note is not None or not self.project_directory):
+            raise ControlError("context_not_ready", "Сначала выберите вкладку и дождитесь её данных")
+        return context
+
+    def dispatch_control(self, operation, arguments):
+        """Typed admission on the Qt thread; never evaluates paths or commands."""
+        validate_arguments(operation, arguments)
+        if self._close_waiting and operation not in {"status", "tabs", "project_scans"}:
+            raise ControlError("closing", "Окно завершает собственные процессы")
+        self.capture_workspace_context()
+        if operation == "status":
+            return {"tab_id": self._active_workspace_id, "project_uuid": self.current_project_uuid,
+                    "scan_uuid": self.selected_scan_uuid, "view_id": self.workspace_context().view_id,
+                    "loading": self._project_loading or self._workspace_restore is not None,
+                    "core_connected": self.mcp_ready, "selected_owned_run_id": self.selected_managed_run_id,
+                    "content_search_available": self.content_search.available,
+                    "owned_runs": [{key: row.get(key) for key in ("id", "project_uuid", "kind", "state", "core_run_id", "observer_run_id", "core_state")} for row in (self.scan_manager.snapshot() if self.scan_manager else [])[-50:]],
+                    "observed_runs": [run_projection(row) | {"_run": None} for row in self.observed_runs],
+                    "observed_at": self.observed_at}
+        if operation == "tabs":
+            return {"active_tab_id": self._active_workspace_id, "limit": self.workspace_tabs.max_tabs,
+                    "items": [{"id": row.id, "project_uuid": row.project_uuid, "project_label": row.project_label, "scan_uuid": row.scan_uuid, "view_id": row.view_id} for row in self.workspace_tabs.contexts()]}
+        if operation == "select_tab":
+            self.control_tab(arguments)
+            if self._pending_note is not None:
+                raise ControlError("pending_write", "Дождитесь подтверждения сохранения заметки")
+            self.workspace_tabs.select(arguments["tab_id"])
+            return {"tab_id": self._active_workspace_id, "loading": self._project_loading}
+        if operation == "close_tab":
+            self.control_tab(arguments)
+            if not self.close_workspace_tab(arguments["tab_id"]):
+                raise ControlError("pending_write", "Вкладка не закрыта; дождитесь сохранения заметки")
+            return {"closed_tab_id": arguments["tab_id"], "active_tab_id": self._active_workspace_id}
+        if operation == "new_tab":
+            identifier = self.new_workspace_tab(arguments["project_uuid"], arguments.get("scan_uuid"), arguments.get("view_id", "work"))
+            if not identifier:
+                raise ControlError("tab_not_created", "Достигнут предел вкладок или ожидается сохранение заметки")
+            return {"tab_id": identifier, "loading": self._project_loading}
+        if operation == "project_scans":
+            context = self.control_tab(arguments)
+            info = self._known_projects.get(str(Path(context.project_root).resolve())) if context.project_root else None
+            return {"project_uuid": context.project_uuid, "tab_id": context.id, "items": [{key: row.get(key) for key in ("uuid", "source_kind", "lifecycle", "created_at", "finished_at", "crawl_partial", "corpus_partial")} for row in (info or {}).get("scans", [])[:100]], "scope": "loaded_scan_page"}
+        if operation in {"select_view", "select_scan", "new_scan"}:
+            context = self.control_tab(arguments, ready=operation != "select_view")
+            if operation == "select_view":
+                if arguments["view_id"] not in VIEW_IDS:
+                    raise ControlError("unknown_view", "Раздел не объявлен в этом приложении")
+                if context.id != self._active_workspace_id:
+                    if self._pending_note is not None:
+                        raise ControlError("pending_write", "Дождитесь подтверждения сохранения заметки")
+                    self.workspace_tabs.update_context(context.id, view_id=arguments["view_id"])
+                    self.workspace_tabs.select(context.id)
+                elif self._workspace_restore:
+                    self._workspace_restore["view_id"] = arguments["view_id"]
+                self.navigation.setCurrentRow(VIEW_IDS.index(arguments["view_id"]))
+                return {"tab_id": context.id, "view_id": arguments["view_id"], "loading": self._project_loading}
+            if operation == "select_scan":
+                row = next((row for row in self.scan_model.rows if row.get("uuid") == arguments["scan_uuid"]), None)
+                if row is None:
+                    raise ControlError("unknown_scan", "Скан не найден в сохранённой выборке этой вкладки")
+                self.select_project_scan(row)
+                self.sync_workspace_identity()
+                return {"scan_uuid": row["uuid"], "tab_id": context.id, "loading": True}
+            config = dict(arguments["config"])
+            if self.crawl_descriptor is None:
+                raise ControlError("capability_unavailable", "Настройки ядра ещё не получены")
+            if config.get("sitemap_url") and (self.crawl_descriptor.get("capabilities") or {}).get("sitemap_only_retained") is not True:
+                raise ControlError("capability_unavailable", "Ядро не поддерживает sitemap-only retained scan")
+            overrides = {**config.get("configuration_overrides", {}), "limits.max_urls": config["max_urls"], "limits.max_requests": config["max_requests"], "limits.max_crawl_seconds": config["max_seconds"], "rendering.mode": config["rendering_mode"]}
+            preview = preview_configuration(self.crawl_descriptor, overrides)
+            crawl_arguments(self.project_directory, config["max_urls"], config["rendering_mode"], overrides=tuple(preview["overrides"].items()), approve_large_crawl=config.get("approve_large_crawl", False), sitemap_url=config.get("sitemap_url"))
+            run_id = self.launch_scan(**config)
+            if not run_id:
+                raise ControlError("launch_rejected", "План скана не принят; проверьте состояние окна")
+            return {"run_id": run_id, "state": self.scan_manager.detail(run_id)["state"], "tab_id": context.id}
+        detail = self.scan_manager.detail(arguments["run_id"]) if self.scan_manager else None
+        if detail is None:
+            raise ControlError("not_owned", "Запуск не принадлежит менеджеру этого окна")
+        if operation == "stop_run":
+            if not self.scan_manager.stop(detail["id"]):
+                raise ControlError("not_running", "Этот собственный запуск уже не выполняется")
+            return {"run_id": detail["id"], "state": self.scan_manager.detail(detail["id"])["state"]}
+        if operation == "resume_run":
+            self.control_tab({"project_uuid": detail["project_uuid"]}, ready=True)
+            if Path(detail["project"]).resolve() != Path(self.project_directory).resolve():
+                raise ControlError("project_mismatch", "Путь проекта запуска не совпадает с открытой вкладкой")
+            artifact = detail.get("artifact") or detail.get("resume_path")
+            source = next((row for row in self.scan_model.rows if row.get("path") == artifact and row.get("lifecycle") == "interrupted"), None)
+            if source is None or not Path(artifact).is_file():
+                raise ControlError("not_resumable", "Ядро не предоставило прерванный сохранённый источник")
+            if any(row.get("state") in {"queued", "starting", "running", "stop_requested", "awaiting_core_status"} and artifact in {row.get("resume_path"), row.get("artifact")} for row in self.owned_runs_for_project()):
+                raise ControlError("already_active", "Для этого источника уже есть активная попытка")
+            run_id = self.scan_manager.resume(project=self.project_directory, project_uuid=self.current_project_uuid, artifact=artifact)
+            self.choose_owned_run(run_id)
+            self.scan_poll_timer.start(500)
+            return {"run_id": run_id, "state": self.scan_manager.detail(run_id)["state"]}
+        raise ControlError("unsupported_operation", "Действие не поддерживается")
+
     def action_registry(self):
         actions = [
             {"title": "Открыть проект…", "keywords": "open folder проект папка", "callback": self.choose_project},
@@ -1818,6 +2303,7 @@ class MainWindow(QMainWindow):
 
     def navigate(self, row):
         self.pages.setCurrentIndex(3 if row == 9 else 9 if row == 10 else row)
+        self.sync_workspace_identity()
         if row == 9:
             self.project_panels.select_tab("compare")
         elif row == 1 and not self.table.currentIndex().isValid() and self.proxy.rowCount():
@@ -2185,6 +2671,7 @@ class MainWindow(QMainWindow):
             )
             self.choose_owned_run(run_id)
             self.scan_poll_timer.start()
+            return run_id
         except (RuntimeError, ValueError) as exc:
             self.statusBar().showMessage(str(exc))
 
@@ -2372,6 +2859,8 @@ class MainWindow(QMainWindow):
             self.settings.setValue("horizontal", self.horizontal.saveState())
             self.settings.setValue("vertical", self.vertical.saveState())
         self.save_workspace_layout()
+        if self.control_server is not None:
+            self.control_server.close()
         if self.monitor is not None:
             self.monitor.hide()
         super().closeEvent(event)
@@ -2389,9 +2878,11 @@ class MainWindow(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core-cli", help="Existing seohead CLI executable; local project adapter")
+    parser.add_argument("--project", type=Path, help="Explicit existing SEOHEAD project to open; never starts a scan")
     parser.add_argument("--capture", type=Path, help="Save the native widget rendering to a PNG and exit")
     parser.add_argument("--export-svg", type=Path, help="Export actual Qt painting as SVG for Figma import")
     parser.add_argument("--no-settings", action="store_true")
+    parser.add_argument("--agent-control", type=Path, help="Existing owned runtime directory for explicit local agent control")
     args = parser.parse_args()
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
@@ -2400,7 +2891,14 @@ def main():
     tokens = load_theme(app)
     app.setStyleSheet(app.styleSheet() + component_stylesheet(tokens))
     window = MainWindow(persistent=not args.no_settings, core_executable=args.core_cli)
+    if args.agent_control:
+        try:
+            window.start_agent_control(str(args.agent_control.resolve()))
+        except (OSError, RuntimeError, ValueError) as exc:
+            window.notice.show_error("Подключение агента недоступно: " + str(exc))
     window.show()
+    if args.project:
+        QTimer.singleShot(0, lambda: window.read_project(str(args.project.resolve())))
     if args.capture or args.export_svg:
         def capture():
             if args.capture:
