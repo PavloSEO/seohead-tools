@@ -17,6 +17,8 @@ from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 TOOL_ALLOWLIST = frozenset(
     {
         "seo_crawl_describe_settings",
+        "seo_compare_crawls",
+        "seo_verify_fixes",
         "seo_project_open",
         "seo_project_observe",
         "seo_project_checklist_page",
@@ -166,6 +168,30 @@ class PersistentMcpGateway(QRunnable):
             scans = (scope / "scans").resolve()
             if not Path(scan).resolve().is_relative_to(scans):
                 raise ValueError("MCP scan request is outside the selected local project")
+
+        if tool in {"seo_compare_crawls", "seo_verify_fixes"}:
+            before = arguments.get("before" if tool == "seo_compare_crawls" else "baseline")
+            after = arguments.get("after")
+            if any(not isinstance(value, str) for value in (before, after)):
+                raise ValueError("comparison requires explicit saved before and after paths; recrawling is unavailable")
+            paths = [Path(value).resolve() for value in (before, after)]
+            if paths[0] == paths[1] or any(
+                not path.is_relative_to(scope / "scans") or not path.is_file() for path in paths
+            ):
+                raise ValueError("comparison requires two retained scans inside the selected project")
+            output = arguments.get("out_dir")
+            if not isinstance(output, str) or not Path(output).resolve().is_relative_to(scope / "reports"):
+                raise ValueError("comparison output must remain inside the selected project's reports")
+            if Path(output).exists() or arguments.get("force"):
+                raise ValueError("comparison cannot overwrite an existing report or force incompatible settings")
+            allowed = ({"before", "after", "force", "out_dir"} if tool == "seo_compare_crawls"
+                       else {"baseline", "after", "finding_ids", "out_dir"})
+            if set(arguments) - allowed:
+                raise ValueError("comparison arguments exceed the offline Desktop contract")
+            if tool == "seo_verify_fixes":
+                ids = arguments.get("finding_ids")
+                if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(not isinstance(item, str) or not item for item in ids):
+                    raise ValueError("offline verification is bounded to 100 selected finding IDs")
 
     def _next_request(self) -> Request | None:
         with self._condition:
