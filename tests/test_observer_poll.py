@@ -48,6 +48,36 @@ class ObserverPollTests(unittest.TestCase):
             for key, value in old.items():
                 setattr(self.window, key, value)
 
+    def test_refresh_reissues_cancelled_url_read_when_observer_snapshot_is_unchanged(self):
+        window = self.window
+        snapshot = {"progress": {"revision": 1}, "runs": {"items": []},
+                    "scans": {"total": 1, "items": [{"uuid": "scan-A", "path": "/owned/project/scans/a.sqlite", "lifecycle": "finished"}]},
+                    "inbox": {"revision": 1, "entries": []}}
+        window.load_observer(snapshot)
+        first_read = next(call for call in self.calls if call[1] == "seo_scan_inspect")
+        window.requests[first_read[0]] = window.read_generation
+        self.assertEqual(window.model.rowCount(), 0, "the original URL reply has not arrived")
+        signature = window.last_observer_signature
+        window.refresh_project()
+        self.assertNotIn(first_read[0], window.requests)
+        self.assertTrue(window._reload_selected_scan)
+        self.calls.clear()
+        window.load_observer(snapshot)
+        self.assertEqual(window.last_observer_signature, signature)
+        replacement = next((call for call in self.calls if call[1] == "seo_scan_inspect"), None)
+        self.assertIsNotNone(replacement, "a forced reload must bypass the unchanged-observation fast path")
+        replacement[3]({"offset": 0, "has_more": False, "rows": [{"url": f"https://owned.test/{i}", "status_code": 200} for i in range(7)]})
+        self.assertEqual(window.model.rowCount(), 7)
+        self.assertFalse(window._reload_selected_scan)
+
+    def test_pending_workspace_restore_is_not_skipped_for_an_unchanged_observation(self):
+        snapshot = {"progress": {"revision": 1}, "runs": {"items": []}, "scans": {"total": 0, "items": []}, "inbox": {"revision": 1, "entries": []}}
+        self.window.load_observer(snapshot)
+        self.window._workspace_restore = {"id": self.window._active_workspace_id, "scan_uuid": None, "view_id": "url", "state": {}}
+        self.window.load_observer(snapshot)
+        self.assertIsNone(self.window._workspace_restore)
+        self.assertTrue(self.window.pages.isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()

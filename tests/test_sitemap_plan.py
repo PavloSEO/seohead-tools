@@ -91,7 +91,7 @@ class SitemapPlanTests(unittest.TestCase):
                             dialog.findChild(QSpinBox, name).setValue(value)
                         labels = "\n".join(label.text() for label in dialog.findChildren(QLabel))
                         self.assertIn("Только URL из sitemap: " + target + "/sitemap.xml", labels)
-                        self.assertIn("По ссылкам со страниц перехода не будет", labels)
+                        self.assertIn("Без перехода по ссылкам со страниц", labels)
                         start = dialog.findChild(QPushButton, "scanStartButton")
                         self.assertTrue(start.isEnabled())
                         QTest.mouseClick(start, Qt.LeftButton)

@@ -1103,7 +1103,7 @@ class MainWindow(QMainWindow):
             self.scan_manager.observe(self.current_project_uuid, runs)
         previous_progress_revision = self.last_observer_signature[0] if self.last_observer_signature else None
         self.set_observer_cadence(runs)
-        if signature == self.last_observer_signature:
+        if signature == self.last_observer_signature and not self._reload_selected_scan and not self._workspace_restore:
             return
         self.last_observer_signature = signature
         self._run_envelope = run_envelope if isinstance(run_envelope, dict) else {"items": runs}
