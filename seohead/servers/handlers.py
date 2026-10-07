@@ -609,6 +609,7 @@ def crawl_site(
     project: str | None = None,
     approve_large_crawl: bool = False,
     user_agent: str | None = None,
+    observer_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Crawl a site from a start URL, or fetch an explicit list, then audit it.
 
@@ -725,6 +726,7 @@ def crawl_site(
                     resumed=True,
                     origin=pacer.origin,
                     aggregate_max_requests_per_second=pacer.max_requests_per_second,
+                    run_id=observer_run_id,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
                 try:
@@ -933,6 +935,7 @@ def crawl_site(
                     artifact=scan_out,
                     origin=pacer.origin,
                     aggregate_max_requests_per_second=pacer.max_requests_per_second,
+                    run_id=observer_run_id,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
         try:

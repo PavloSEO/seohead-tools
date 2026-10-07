@@ -296,6 +296,17 @@ def _find(document: dict[str, Any], run_id: str) -> dict[str, Any]:
     return found
 
 
+def _new_run_id(value: str | None) -> str:
+    if value is None:
+        return uuid.uuid4().hex
+    if not isinstance(value, str) or not value:
+        raise ValueError("observer run ID must be a UUID")
+    try:
+        return str(uuid.UUID(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("observer run ID must be a UUID") from exc
+
+
 def _save(root: Path, document: dict[str, Any]) -> None:
     expected = document["revision"]
     document["revision"] += 1
@@ -324,6 +335,7 @@ def start(
     resumed: bool = False,
     origin: str | None = None,
     aggregate_max_requests_per_second: float | None = None,
+    run_id: str | None = None,
     counters: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     """Persist one project-bound local collector before it starts doing work."""
@@ -348,12 +360,14 @@ def start(
         or aggregate_max_requests_per_second <= 0
     ):
         raise ValueError("aggregate maximum request rate must be finite and positive")
-    run_id = uuid.uuid4().hex
+    run_id = _new_run_id(run_id)
     started_at = _now()
     controller_pid = os.getpid()
     controller_identity = _process_identity(controller_pid)
     for attempt in range(WRITE_ATTEMPTS):
         root, _project, document = _load(directory)
+        if any(item["id"] == run_id for item in document["runs"]):
+            raise ValueError("observer run ID already exists in this project")
         run = {
             "id": run_id,
             "kind": kind,

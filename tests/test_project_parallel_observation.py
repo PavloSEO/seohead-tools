@@ -5,6 +5,7 @@ from __future__ import annotations
 import multiprocessing
 import threading
 import time
+import uuid
 from contextlib import closing
 
 import pytest
@@ -84,6 +85,31 @@ def test_three_simultaneous_runs_keep_independent_uuid_artifact_and_progress(tmp
         row["collector"]["aggregate_max_requests_per_second"] == 2.0 for row in status["items"]
     )
     assert all(row["telemetry"]["sampled_at"] for row in status["items"])
+
+
+def test_caller_uuid_is_retained_as_the_observer_handshake(tmp_path):
+    project = _project(tmp_path)
+    requested = str(uuid.uuid4())
+    run = run_observation.start(
+        project,
+        kind="native",
+        mode="spider",
+        max_urls=1,
+        config_fingerprint="config",
+        artifact=f"{project}/scans/run.sqlite",
+        run_id=requested,
+    )
+    assert run["id"] == requested
+    with pytest.raises(ValueError, match="already exists"):
+        run_observation.start(
+            project,
+            kind="native",
+            mode="spider",
+            max_urls=1,
+            config_fingerprint="other",
+            artifact=f"{project}/scans/other.sqlite",
+            run_id=requested,
+        )
 
 
 def test_project_origin_pacer_reserves_one_shared_host_schedule(tmp_path):

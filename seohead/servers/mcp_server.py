@@ -183,6 +183,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         project: str | None = None,
         approve_large_crawl: bool = False,
         user_agent: str | None = None,
+        observer_run_id: str | None = None,
     ) -> dict[str, Any]:
         """Crawl a site from a start URL by following links, or fetch an explicit
         ``urls`` list instead of following links at all, then audit the result
@@ -264,6 +265,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 project=project,
                 approve_large_crawl=approve_large_crawl,
                 user_agent=user_agent,
+                observer_run_id=observer_run_id,
             )
         )
         # The crawler calls its workspace argument ``project`` while observer

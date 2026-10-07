@@ -467,6 +467,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["approve_large_crawl"] = True
         if getattr(args, "user_agent", None):
             kw["user_agent"] = args.user_agent
+        if getattr(args, "observer_run_id", None):
+            kw["observer_run_id"] = args.observer_run_id
         for flag in (
             "config",
             "max_urls",
@@ -1541,6 +1543,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="approve exceeding project budgets",
         )
         sub.add_argument("--user-agent", help="request identity or googlebot diagnostic preset")
+        sub.add_argument(
+            "--observer-run-id",
+            help=argparse.SUPPRESS,
+        )
         _source_flag(
             sub,
             "--project",

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import pairwise
 from pathlib import Path
@@ -73,7 +74,7 @@ def _pages(path: Path) -> int:
         raise
 
 
-def _command(root: Path, project: Path) -> subprocess.Popen[str]:
+def _command(root: Path, project: Path, observer_run_id: str) -> subprocess.Popen[str]:
     env = os.environ | {
         "PYTHONPATH": str(root),
         "SEOHEAD_ALLOW_PRIVATE_HOSTS": "crawl.localhost,127.0.0.1",
@@ -86,6 +87,8 @@ def _command(root: Path, project: Path) -> subprocess.Popen[str]:
             "crawl-site",
             "--project",
             str(project),
+            "--observer-run-id",
+            observer_run_id,
             "--max-urls",
             "2",
             "--producer-build",
@@ -110,7 +113,8 @@ def test_three_project_scans_share_pacing_and_one_sigint_does_not_stop_the_other
     project = tmp_path / "project"
     with _owned_site() as (target, hits):
         create_project(project, target)
-        processes = [_command(root, project) for _ in range(3)]
+        observer_ids = [str(uuid.uuid4()) for _ in range(3)]
+        processes = [_command(root, project, observer_id) for observer_id in observer_ids]
         try:
             deadline = time.monotonic() + 30
             scans: list[Path] = []
@@ -144,6 +148,7 @@ def test_three_project_scans_share_pacing_and_one_sigint_does_not_stop_the_other
 
     runs = run_observation.status(project, limit=3)["items"]
     assert len(runs) == 3 and len({run["id"] for run in runs}) == 3
+    assert {run["id"] for run in runs} == set(observer_ids)
     assert sum(run["state"] == "partial" for run in runs) == 1
     assert sum(run["state"] == "finished" for run in runs) == 2
     assert all(run["collector"]["origin"] == "crawl.localhost" for run in runs)
