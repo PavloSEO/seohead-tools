@@ -1,5 +1,10 @@
 """Owned-widget smoke tests; no target requests or scan launch."""
 
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
 import unittest
 
 from PyQt5.QtCore import Qt, QTimer
@@ -7,6 +12,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.gateway import command_argv
 
 
 class ShellTests(unittest.TestCase):
@@ -70,6 +76,121 @@ class ShellTests(unittest.TestCase):
         self.assertNotIn("5 демо", self.window.url_caption.text())
         self.window.project_loaded({"wrong": True}, 0)
         self.assertNotIn("wrong", self.window.detail.toPlainText())
+
+    def test_declared_adapter_never_builds_a_shell_or_scan_command(self):
+        self.assertEqual(
+            command_argv("/opt/seohead", "project-progress", ("--directory", "/tmp/project")),
+            ["/opt/seohead", "project-progress", "--directory", "/tmp/project"],
+        )
+        with self.assertRaises(ValueError):
+            command_argv("/opt/seohead", "crawl-site", ())
+
+    def test_retained_projection_pages_replace_demo_models(self):
+        self.window.load_tasks(
+            {
+                "items": [
+                    {
+                        "id": "check:demo",
+                        "title": "Retained task",
+                        "kind": "check",
+                        "display_state": "remaining",
+                        "reason": "not attempted",
+                    }
+                ],
+                "pagination": {"total": 1},
+            }
+        )
+        self.window.load_scans(
+            {
+                "total": 1,
+                "items": [
+                    {
+                        "uuid": "retained-scan",
+                        "start_url": "https://example.test/",
+                        "lifecycle": "finished",
+                        "source_kind": "native",
+                        "finished_at": "2026-10-07T00:00:00Z",
+                        "crawl_partial": False,
+                        "corpus_partial": False,
+                    }
+                ],
+            }
+        )
+        self.window.load_inbox(
+            {
+                "revision": 3,
+                "entries": [
+                    {
+                        "id": "inbox:retained",
+                        "kind": "note",
+                        "text": "Retained handoff",
+                        "author_role": "specialist",
+                        "goal_state": None,
+                        "created_at": "2026-10-07T00:00:00Z",
+                    }
+                ],
+                "pagination": {"total": 1},
+            }
+        )
+        self.assertEqual(self.window.task_model.rows[0]["id"], "check:demo")
+        self.assertEqual(self.window.scan_model.rows[0]["partial"], "нет")
+        self.assertEqual(self.window.inbox_revision, 3)
+        self.assertEqual(self.window.inbox_model.rows[0]["text"], "Retained handoff")
+
+    def test_local_core_project_and_explicit_note(self):
+        configured = os.environ.get("SEOHEAD_DESKTOP_CORE_CLI")
+        if not configured:
+            self.skipTest("set SEOHEAD_DESKTOP_CORE_CLI to run the local-core integration gate")
+        candidate = Path(configured)
+        if not candidate.is_file():
+            self.skipTest("local SEOHEAD core CLI is not installed")
+
+        def wait_for(predicate, message, timeout=20):
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                self.app.processEvents()
+                if predicate():
+                    return
+                QTest.qWait(30)
+            self.fail(message)
+
+        with tempfile.TemporaryDirectory(prefix="seohead-desktop-test-") as temporary:
+            project = Path(temporary) / "project"
+            subprocess.run(
+                [
+                    str(candidate),
+                    "project-new",
+                    "--directory",
+                    str(project),
+                    "--target",
+                    "https://example.test/",
+                    "--label",
+                    "Desktop test project",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.window.core_executable = str(candidate)
+            self.window.read_project(str(project))
+            wait_for(
+                lambda: self.window.project_directory is not None
+                and self.window.refresh_button.isEnabled()
+                and not self.window.requests,
+                "desktop did not load local core projections",
+            )
+            self.assertEqual(Path(self.window.project_directory).resolve(), project.resolve())
+            self.assertIn("Локальный проект", self.window.source_badge.text())
+            self.assertEqual(self.window.scan_model.rowCount(), 0)
+            self.assertEqual(self.window.task_model.rowCount(), 0)
+
+            self.window.note_input.setText("Persist this local handoff")
+            QTest.mouseClick(self.window.note_submit, Qt.LeftButton)
+            wait_for(
+                lambda: self.window.inbox_model.rowCount() == 1 and not self.window.requests,
+                "explicit note was not persisted through the declared core adapter",
+            )
+            self.assertEqual(self.window.inbox_model.rows[0]["text"], "Persist this local handoff")
 
 
 if __name__ == "__main__":
