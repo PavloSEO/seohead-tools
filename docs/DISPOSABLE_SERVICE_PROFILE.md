@@ -47,3 +47,60 @@ tokens, headers, customer URLs, artifact contents, or certificate private keys.
 CI's completed Docker and disposable-profile jobs are build evidence for the
 repository image and fixture only. They do not prove that a local Docker daemon,
 an external DNS name, a firewall rule, or a production certificate is present.
+
+
+## Actual SSH worker and bounded ENOSPC fixture
+
+`scripts/disposable_worker_recovery.py` is a separate Linux-only acceptance
+fixture. Run it only on a reviewed disposable runner as its ordinary non-root
+user. It needs the existing Python environment with `remote`, `reports`, and
+`render` extras, the runner's sandboxed Chrome via `SEOHEAD_CHROME`, OpenSSH
+client/server, `openssl`, `findmnt`, GNU `timeout`, and noninteractive sudo for
+an owned sshd process and a bounded tmpfs mount. The runner must already have
+OpenSSH's `/run/sshd` privilege-separation directory. The helper installs
+nothing and refuses execution on a personal Mac or Windows machine.
+
+```bash
+python scripts/disposable_worker_recovery.py \
+  --metrics-out "$RUNNER_TEMP/disposable-worker-recovery.json" \
+  --evidence-out "$RUNNER_TEMP/disposable-worker-evidence"
+```
+
+The evidence destination must not exist before the run. The fixture:
+
+1. Generates temporary host/client SSH keys and a dedicated sshd configuration.
+   SSH binds only `127.0.0.1`; authentication is public-key-only with a pinned
+   host key, no forwarding, no user rc, and a forced, wall-clock-bounded worker
+   command. It never reads personal SSH configuration or changes accounts.
+2. Starts the existing authenticated ASGI app behind the existing TLS fixture.
+   API and TLS bind loopback. A reserved synthetic target hostname maps only
+   inside the fixture to its owned RFC1918 HTTP listener; real network policy,
+   sockets and collector code remain active.
+3. Submits a baseline scan through HTTPS, reads its authenticated terminal
+   status, executes the actual queue worker over SSH, and records hashes of
+   authenticated retained artifact downloads. It also cancels a queued job
+   through the API and proves that a worker cannot dispatch it.
+4. Queues a second job, mounts an **8 MiB tmpfs only on that job's directory**,
+   and fills it until the operating system reports `ENOSPC`. The queue database
+   and baseline evidence remain outside the full filesystem. A thin observer
+   delegates to the real native handler unchanged and records exception codes.
+   The gate requires an actual worker `ENOSPC` or `SQLITE_FULL`; a permission
+   error, size limit, reserve refusal, or unrelated worker failure cannot pass.
+5. Requires a failed/partial result visible through the API, unchanged baseline
+   hashes, no successful failed-job result after remount recovery, no remaining
+   lease recovery, and no automatic replay. A fresh SSH worker then runs a new
+   JS job successfully and publishes its terminal status.
+6. Preserves a SQLite-consistent queue snapshot, synthetic job files, and
+   redacted error codes outside the tmpfs before cleanup. SSH/TLS keys, bearer
+   credentials and filler bytes are excluded from the evidence artifact.
+
+The JSON has `ok: true` only after all checks pass. Until a reviewed CI run
+produces that evidence, the script and its portable guard tests are a prepared
+fixture, not proof of SSH or worker ENOSPC acceptance. A failed run retains its
+phase and available synthetic state. Mounts and owned listeners are cleaned up;
+no system sshd configuration, public endpoint or production service is changed.
+
+These boundaries are separate from application quotas: this tmpfs enforces a
+small job-directory storage boundary, while the queue's project budget remains
+an application-level check. GNU timeout bounds this fixture's worker lifetime;
+it is not CPU/RAM containment or fair multi-user scheduling.

@@ -12,6 +12,13 @@ build must capture the JavaScript-rendered page through the runner's preinstalle
 This is evidence for that disposable runner environment; it is not a claim that a particular VPS
 provider or every Linux distribution has been tested.
 
+The lifecycle helper executes local processes on that runner; despite the job's
+SSH-operator label, it does not perform an SSH handshake. Actual key-based SSH
+worker execution is checked separately by the opt-in
+[disposable worker recovery fixture](DISPOSABLE_SERVICE_PROFILE.md#actual-ssh-worker-and-bounded-enospc-fixture).
+Only a completed fixture result is SSH transport evidence. The sampled RSS and
+application crawl budgets do not establish OS-enforced CPU/RAM containment.
+
 ## Host and operator layout
 
 Use a dedicated Unix account for the tool and its project data. SSH access, firewall policy, and

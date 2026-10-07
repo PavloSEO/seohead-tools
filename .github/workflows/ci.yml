@@ -249,6 +249,42 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  disposable-worker-recovery:
+    name: Disposable SSH worker and bounded storage recovery
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install the isolated worker fixture dependencies
+        run: python -m pip install -e ".[dev,remote,reports,render]"
+      - name: Prepare the OpenSSH privilege-separation directory
+        run: sudo install -d -o root -g root -m 0755 /run/sshd
+      - name: Exercise SSH dispatch and a real bounded ENOSPC recovery
+        run: |
+          chrome_path="$(command -v google-chrome || true)"
+          if [ -z "$chrome_path" ]; then
+            echo "Google Chrome is required for the rendered recovery job" >&2
+            exit 1
+          fi
+          export SEOHEAD_CHROME="$(readlink -f "$chrome_path")"
+          python scripts/disposable_worker_recovery.py \
+            --metrics-out "$RUNNER_TEMP/disposable-worker-recovery.json" \
+            --evidence-out "$RUNNER_TEMP/disposable-worker-evidence"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: disposable-worker-recovery
+          path: |
+            ${{ runner.temp }}/disposable-worker-recovery.json
+            ${{ runner.temp }}/disposable-worker-evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+
   docker:
     runs-on: ubuntu-latest
     steps:
