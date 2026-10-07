@@ -861,7 +861,10 @@ def run_stage(
             except KeyboardInterrupt:
                 interrupted = {"partial": True, "finish_reason": "interrupted"}
             else:
-                if not interrupted.get("partial") or interrupted.get("finish_reason") != "interrupted":
+                if (
+                    not interrupted.get("partial")
+                    or interrupted.get("finish_reason") != "interrupted"
+                ):
                     raise AssertionError("synthetic interruption did not interrupt the collector")
             con = open_scan(scan, require_audit=False)
             try:
