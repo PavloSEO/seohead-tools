@@ -250,10 +250,21 @@ class MultiRunAppTests(unittest.TestCase):
                 self.assertEqual(len(owned_scans), 2)
                 self.assertTrue(all(snapshot(scan)["scan"]["lifecycle"] == "interrupted" for scan in owned_scans))
                 self.assertTrue(all(snapshot(scan)["pages"] >= 1 for scan in owned_scans))
+                external_before_cleanup = snapshot(external_scan)
+                external_digest = hashlib.sha256(external_scan.read_bytes()).hexdigest()
                 external.send_signal(signal.SIGINT)
                 stdout, stderr = external.communicate(timeout=30)
-                self.assertIn(external.returncode, (0, 2), stderr)
-                preserve(root, "close-owned-only", {"owned": manager.snapshot(), "external_result": json.loads(stdout)})
+                self.assertIn(external.returncode, (0, 2, 130), stderr)
+                if external.returncode == 130:
+                    retained = snapshot(external_scan)
+                    self.assertEqual(retained["scan"]["lifecycle"], "finished")
+                    self.assertEqual(retained, external_before_cleanup)
+                    self.assertEqual(hashlib.sha256(external_scan.read_bytes()).hexdigest(), external_digest)
+                    self.assertNotIn("Traceback", stderr)
+                    external_result = {"exit_code": 130, "output_interrupted": True, "retained": retained}
+                else:
+                    external_result = json.loads(stdout)
+                preserve(root, "close-owned-only", {"owned": manager.snapshot(), "external_result": external_result})
             finally:
                 if external.poll() is None:
                     external.send_signal(signal.SIGINT)
