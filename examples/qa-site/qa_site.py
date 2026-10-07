@@ -37,8 +37,8 @@ def _page(title: str, body: str, *, head: str = "", lang: str = "en") -> str:
     )
 
 
-def _clean_page(slug: str, extra: str = "") -> str:
-    canonical = f"/clean/{slug}"
+def _clean_page(slug: str, extra: str = "", *, canonical: str | None = None) -> str:
+    canonical = canonical or f"/clean/{slug}"
     return _page(
         f"Clean {slug.title()} | SEOHEAD QA",
         f"<main><h1>Clean {slug.title()}</h1><p>Unique stable content for {slug}.</p>{extra}</main>",
@@ -68,6 +68,60 @@ def _broken_home() -> str:
     )
 
 
+def _fixed_home() -> str:
+    """Keep the broken frontier while repairing the pages it reaches."""
+    links = [
+        "/broken/duplicate-a", "/broken/duplicate-b", "/broken/thin", "/broken/no-main",
+        "/broken/noindex", "/broken/canonical-source", "/broken/hreflang", "/broken/images",
+        "/broken/structured", "/broken/links", "/broken/js-rendered", "/missing", "/gone",
+        "/server-error", "/redirect-one", "/loop-a", "/optional/rate-limited",
+    ]
+    anchors = "".join(f"<li><a href='{path}'>Fixture {path}</a></li>" for path in links)
+    return _page(
+        "QA fixed delta home | SEOHEAD",
+        "<main><h1>QA fixed delta home</h1><h2>Same bounded route frontier</h2>"
+        f"<ul>{anchors}</ul><a rel='nofollow' href='/broken/noindex'>nofollow internal</a>"
+        "<a href='#fixed-anchor'>fixed anchor</a><span id='fixed-anchor'>Anchor target</span>"
+        "<a href='https://external.example.test/outbound'>external fixture</a></main>",
+        head="<meta name='description' content='A repaired delta against the QA broken fixture.'><link rel='canonical' href='/'>",
+    )
+
+
+def _fixed_response(path: str, headers: dict[str, str]) -> tuple[int, dict[str, str], bytes] | None:
+    """Corrections for the same measurable paths as the broken capture."""
+    if path == "/":
+        return _html(_fixed_home(), headers)
+    if path in {"/missing", "/gone", "/server-error", "/optional/rate-limited"}:
+        slug = path.strip("/").replace("/", "-")
+        return _html(_clean_page(slug, canonical=path), headers)
+    if path == "/broken/duplicate-a":
+        return _html(_clean_page("duplicate-a", "<p>Distinct repaired content A.</p>", canonical=path), headers)
+    if path == "/broken/duplicate-b":
+        return _html(_clean_page("duplicate-b", "<p>Distinct repaired content B.</p>", canonical=path), headers)
+    if path == "/broken/thin":
+        return _html(_clean_page("thin", "<p>This repaired page has enough distinct explanatory text to be a useful QA document.</p>", canonical=path), headers)
+    if path == "/broken/no-main":
+        return _html(_clean_page("no-main", "<h2>Landmark restored</h2><p>Visible content now belongs to main.</p>", canonical=path), headers)
+    if path == "/broken/noindex":
+        return _html(_clean_page("noindex", "<p>The indexability directive has been removed.</p>", canonical=path), headers)
+    if path in {"/broken/canonical-source", "/broken/canonical-middle", "/broken/canonical-final", "/sitemap-noncanonical"}:
+        slug = path.rsplit("/", 1)[-1]
+        return _html(_clean_page(slug, canonical=path), headers)
+    if path == "/broken/hreflang":
+        head = "<link rel='canonical' href='/broken/hreflang'><link rel='alternate' hreflang='en' href='/broken/hreflang'><link rel='alternate' hreflang='x-default' href='/broken/hreflang'>"
+        return _html(_page("Hreflang repaired | QA", "<main><h1>Hreflang repaired</h1><p>Self and x-default point to the captured URL.</p></main>", head=head), headers)
+    if path == "/broken/images":
+        body = "<main><h1>Images repaired</h1><img src='/image-ok.svg' width='40' height='30' alt='QA fixture'><img src='/image-ok.svg' width='40' height='30' alt='QA alternate'></main>"
+        return _html(_page("Images repaired | QA", body, head="<link rel='canonical' href='/broken/images'>"), headers)
+    if path == "/broken/structured":
+        script = "<script type='application/ld+json'>{\"@context\":\"https://schema.org\",\"@type\":\"WebPage\",\"name\":\"QA repaired\"}</script>"
+        return _html(_page("Structured data repaired | QA", "<main><h1>Structured data repaired</h1></main>", head=script + "<link rel='canonical' href='/broken/structured'>"), headers)
+    if path == "/broken/links":
+        body = "<main><h1>Links repaired</h1><a href='/broken/duplicate-a'>Working link</a><a href='/broken/links#target'>Working anchor</a><span id='target'>Target</span><a rel='nofollow' href='/broken/duplicate-b'>Nofollow working link</a></main>"
+        return _html(_page("Links repaired | QA", body, head="<link rel='canonical' href='/broken/links'>"), headers)
+    return None
+
+
 def _clean_home() -> str:
     return _page(
         "SEOHEAD QA clean home",
@@ -80,6 +134,10 @@ def _clean_home() -> str:
 def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
     """Return a complete deterministic response without performing any I/O."""
     common_headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin"}
+    if profile == "fix-delta":
+        fixed = _fixed_response(path, common_headers)
+        if fixed is not None:
+            return fixed
     if path == "/robots.txt":
         return 200, {"Content-Type": "text/plain; charset=utf-8", **common_headers}, (
             "User-agent: *\nAllow: /\nDisallow: /private/\nSitemap: /sitemap.xml\n"
@@ -92,12 +150,12 @@ def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
         ).encode()
     if path == "/sitemap-main.xml":
         urls = ["/", "/broken/duplicate-a", "/broken/duplicate-b", "/broken/canonical-source", "/orphan"]
-        if profile != "broken":
+        if profile == "clean":
             urls = ["/", "/clean/alpha", "/clean/bravo"]
         return 200, {"Content-Type": "application/xml", **common_headers}, _urlset(urls).encode()
     if path == "/sitemap-extra.xml":
         urls = ["/broken/duplicate-a", "/sitemap-noncanonical", "/sitemap-missing"]
-        if profile != "broken":
+        if profile == "clean":
             urls = ["/clean/bravo"]
         return 200, {"Content-Type": "application/xml", **common_headers}, _urlset(urls).encode()
     if path == "/favicon.ico":
@@ -117,7 +175,7 @@ def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
     if path == "/redirect-one":
         return 301, {"Location": "/redirect-two", **common_headers}, b""
     if path == "/redirect-two":
-        return 302, {"Location": "/broken/duplicate-a" if profile == "broken" else "/clean/alpha", **common_headers}, b""
+        return 302, {"Location": "/clean/alpha" if profile == "clean" else "/broken/duplicate-a", **common_headers}, b""
     if path == "/loop-a":
         return 302, {"Location": "/loop-b", **common_headers}, b""
     if path == "/loop-b":
@@ -125,7 +183,7 @@ def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
     if path == "/optional/slow":
         return 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", **common_headers}, _page("Optional slow fixture", "<main><h1>Optional slow fixture</h1></main>").encode()
 
-    if profile != "broken":
+    if profile == "clean":
         if path == "/":
             return _html(_clean_home(), common_headers)
         if path == "/clean/alpha":
@@ -186,22 +244,22 @@ def catalogue(profile: str, base_url: str = "") -> dict[str, Any]:
     """Facts deliberately encoded in this fixture, with honest prerequisites."""
     if profile not in PROFILES:
         raise ValueError(f"unknown profile: {profile}")
-    active = profile == "broken"
+    broken = profile == "broken"
     return {
         "format": f"{FORMAT}.catalogue",
         "profile": profile,
         "origin": base_url.rstrip("/"),
         "deterministic": True,
         "scenarios": [
-            {"id": "http-statuses", "paths": ["/missing", "/gone", "/server-error"], "expected": {"/missing": 404, "/gone": 410, "/server-error": 503}, "active": active},
+            {"id": "http-statuses", "paths": ["/missing", "/gone", "/server-error"], "expected": {"/missing": 404 if broken else 200, "/gone": 410 if broken else 200, "/server-error": 503 if broken else 200}, "active": broken, "evidence": {"availability": "measured", "source": "native scan pages.status_code"}},
             {"id": "redirects", "paths": ["/redirect-one", "/redirect-two", "/loop-a", "/loop-b"], "expected": {"chain": [301, 302], "loop": [302, 302]}, "active": True},
-            {"id": "robots-and-sitemap", "paths": ["/robots.txt", "/sitemap.xml", "/sitemap-main.xml", "/sitemap-extra.xml"], "expected": {"robots_disallow": "/private/", "sitemap_duplicate": "/broken/duplicate-a" if active else "/clean/bravo", "sitemap_missing": "/sitemap-missing" if active else None}, "active": True},
-            {"id": "indexability-canonical-hreflang", "paths": ["/broken/noindex", "/broken/canonical-source", "/broken/canonical-middle", "/broken/hreflang"], "expected": {"noindex": "/broken/noindex", "canonical_chain": ["/broken/canonical-source", "/broken/canonical-middle", "/broken/canonical-final"], "hreflang_missing_target": "/missing"}, "active": active},
-            {"id": "content", "paths": ["/broken/duplicate-a", "/broken/duplicate-b", "/broken/thin", "/broken/no-main"], "expected": {"duplicate_pair": ["/broken/duplicate-a", "/broken/duplicate-b"], "thin": "/broken/thin", "no_main": "/broken/no-main"}, "active": active},
-            {"id": "links-and-orphans", "paths": ["/broken/links", "/orphan"], "expected": {"broken_target": "/missing", "nofollow_target": "/gone", "orphan": "/orphan", "external": "https://external.example.test/outbound"}, "active": active},
-            {"id": "images", "paths": ["/broken/images", "/image-ok.svg", "/missing-image.jpg"], "expected": {"missing_alt": "/image-ok.svg", "missing_resource": "/missing-image.jpg", "zero_dimensions": True}, "active": active},
-            {"id": "structured-data", "paths": ["/broken/structured"], "expected": {"valid_json_ld": 1, "malformed_json_ld": 1}, "active": active},
-            {"id": "rendering", "paths": ["/broken/js-rendered"], "expected": {"raw_marker": "unrendered", "rendered_marker": "rendered content", "console_error": "qa intentional console error"}, "active": active, "prerequisite": "A configured existing JS renderer; raw native capture cannot prove rendered DOM or browser console output.", "unavailable_without": "Rendering evidence is unavailable without rendering.mode=js and a working renderer."},
+            {"id": "robots-and-sitemap", "paths": ["/robots.txt", "/sitemap.xml", "/sitemap-main.xml", "/sitemap-extra.xml"], "expected": {"robots_disallow": "/private/", "sitemap_duplicate": "/broken/duplicate-a" if profile != "clean" else "/clean/bravo", "sitemap_missing": "/sitemap-missing" if profile != "clean" else None}, "active": True, "evidence": {"availability": "unavailable in ordinary raw capture", "reason": "the retained native captures were not seeded with --sitemap and save no sitemap declarations"}},
+            {"id": "indexability-canonical-hreflang", "paths": ["/broken/noindex", "/broken/canonical-source", "/broken/canonical-middle", "/broken/hreflang"], "expected": {"noindex": "/broken/noindex" if broken else None, "canonical_chain": ["/broken/canonical-source", "/broken/canonical-middle", "/broken/canonical-final"] if broken else [], "hreflang_missing_target": "/missing" if broken else None}, "active": broken, "evidence": {"availability": "measured or partial", "source": "native pages.meta_robots/canonical and audit checks NOINDEX, HREFLANG_BROKEN_TARGET"}},
+            {"id": "content", "paths": ["/broken/duplicate-a", "/broken/duplicate-b", "/broken/thin", "/broken/no-main"], "expected": {"duplicate_pair": ["/broken/duplicate-a", "/broken/duplicate-b"] if broken else [], "thin": "/broken/thin" if broken else None, "no_main": "/broken/no-main" if broken else None}, "active": broken, "evidence": {"availability": "measured", "source": "native pages.title/meta_description/h1 and audit TITLE_DUPLICATE, DESC_DUPLICATE, H1_DUPLICATE"}},
+            {"id": "links-and-orphans", "paths": ["/broken/links", "/orphan"], "expected": {"broken_target": "/missing" if broken else None, "nofollow_target": "/gone" if broken else "/broken/duplicate-b", "orphan": "/orphan", "external": "https://external.example.test/outbound"}, "active": broken, "evidence": {"availability": "partial", "source": "native links and fragment-link derivation; sitemap orphan requires saved sitemap declarations"}},
+            {"id": "images", "paths": ["/broken/images", "/image-ok.svg", "/missing-image.jpg"], "expected": {"missing_alt": "/image-ok.svg" if broken else None, "missing_resource": "/missing-image.jpg" if broken else None, "zero_dimensions": broken}, "active": broken, "evidence": {"availability": "measured", "source": "native pages.images_missing_alt_attr and audit IMG_MISSING_ALT_ATTRIBUTE"}},
+            {"id": "structured-data", "paths": ["/broken/structured"], "expected": {"valid_json_ld": 1, "malformed_json_ld": 1 if broken else 0}, "active": broken, "evidence": {"availability": "measured", "source": "native pages.jsonld_blocks_found/jsonld_blocks_parsed and audit STRUCTURED_DATA_PARSE_ERROR"}},
+            {"id": "rendering", "paths": ["/broken/js-rendered"], "expected": {"raw_marker": "unrendered", "rendered_marker": "rendered content", "console_error": "qa intentional console error"}, "active": broken, "prerequisite": "A configured existing JS renderer; raw native capture cannot prove rendered DOM or browser console output.", "unavailable_without": "Rendering evidence is unavailable without rendering.mode=js and a working renderer."},
             {"id": "headers-and-privacy", "paths": ["/broken/images", "/optional/slow"], "expected": {"cache_control": "no-store", "x_content_type_options": "nosniff", "referrer_policy": "same-origin"}, "active": True},
             {"id": "bounded-optional-transients", "paths": ["/optional/rate-limited", "/optional/slow"], "expected": {"status": 429, "retry_after": "1", "slow_seconds": "configured 0..5"}, "active": True, "prerequisite": "Enable /optional/slow explicitly with --slow-seconds; it is zero-delay by default.", "unavailable_without": "a capture policy that admits retries/timeouts"},
         ],

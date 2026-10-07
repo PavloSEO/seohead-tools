@@ -6,9 +6,13 @@ content and binds only to a loopback address. It is not a crawler, web console,
 or a replacement for the SEOHEAD CLI/MCP.
 
 The default `broken` profile intentionally contains concrete faults. `clean`
-is the fixed comparison corpus; `fix-delta` currently has the same served
-routes as `clean` and exists as an explicit profile name for before/after
-receipts. The source has no hard-coded machine path or public origin.
+is a small control corpus, not a healthy-score claim. `fix-delta` retains the
+broken profile's bounded hyperlink frontier and crawl settings while repairing
+the concrete status, duplicate content, noindex, canonical/hreflang, image,
+structured-data and link faults that raw native capture can measure. It is the
+before→after input; the independent `clean` snapshot is not comparable because
+it has a smaller URL population. The source has no hard-coded machine path or
+public origin.
 
 ## Start a bounded local fixture
 
@@ -55,9 +59,12 @@ shasum -a 256 "$RUNTIME_DIR"/*.json "$RUNTIME_DIR"/*.sqlite > "$RUNTIME_DIR/arti
 ```
 
 The retained SQLite artifact is the read-only input for `scan-reanalyze`,
-reports, exports, and comparison commands. Routine tests inspect fixture routes
-and generated manifests only; they never start a crawler. Start a new local
-server and make a new capture only after an explicit fixture/profile change.
+reports, exports, and comparison commands. For a meaningful delta, capture
+`broken` and `fix-delta` once against the same fixed loopback origin, with the
+same CLI settings and a new project/scan recorded by the core. Routine tests
+inspect fixture routes and generated manifests only; they never start a
+crawler. Start a new local server and make a new capture only after an explicit
+fixture/profile change.
 
 ## Scenario catalogue
 

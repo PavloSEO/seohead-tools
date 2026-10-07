@@ -49,6 +49,26 @@ class QaSiteTests(unittest.TestCase):
         sitemap = {item["id"]: item for item in qa.catalogue("clean")["scenarios"]}["robots-and-sitemap"]
         self.assertIsNone(sitemap["expected"]["sitemap_missing"])
 
+    def test_fix_delta_keeps_the_broken_frontier_and_repairs_measurable_facts(self):
+        _status, _headers, broken_home = qa._body("broken", "/")
+        _status, _headers, fixed_home = qa._body("fix-delta", "/")
+        for route in ("/broken/duplicate-a", "/broken/noindex", "/missing", "/server-error", "/optional/rate-limited"):
+            self.assertIn(route, broken_home.decode())
+            self.assertIn(route, fixed_home.decode())
+        status, _headers, body = qa._body("fix-delta", "/missing")
+        self.assertEqual(status, 200)
+        self.assertIn("Clean Missing", body.decode())
+        status, _headers, body = qa._body("fix-delta", "/broken/noindex")
+        self.assertEqual(status, 200)
+        self.assertNotIn("name='robots'", body.decode().lower())
+        self.assertIn("href='/broken/noindex'", body.decode())
+        status, _headers, body = qa._body("fix-delta", "/broken/structured")
+        self.assertEqual(status, 200)
+        self.assertNotIn("not valid json", body.decode())
+        scenarios = {item["id"]: item for item in qa.catalogue("fix-delta")["scenarios"]}
+        self.assertEqual(scenarios["http-statuses"]["expected"]["/missing"], 200)
+        self.assertEqual(scenarios["structured-data"]["expected"]["malformed_json_ld"], 0)
+
     def test_manifest_and_catalogue_are_repeatable_and_do_not_embed_machine_path(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
