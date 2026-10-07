@@ -338,3 +338,19 @@ def test_the_measured_record_states_both_blocking_results_and_the_criteria_it_mi
     assert "33,930 of 50,000 pages" in text
     assert "**Not met" in text, "the acceptance table no longer records an unmet criterion"
     assert "Partly met" in text, "the acceptance table no longer records a partial criterion"
+
+
+def test_the_acceptance_record_separates_later_native_receipts_from_historical_limits():
+    """A later streaming result must not erase the original blocked profile."""
+    text = (release.ROOT / "docs" / "SQLITE_ACCEPTANCE.md").read_text(encoding="utf-8")
+
+    for receipt in (
+        "71,047,134-byte `audit.v2` payload",
+        "2,000 pages and 24,001 forms",
+        "630,337,406-byte payload and 260,042 findings",
+    ):
+        assert receipt in text
+    assert "original full run failed because reanalysis inherited its deadline" in text
+    assert "records one absent reanalysis finding as skipped" in text
+    assert "`SITEMAP_STALE_LASTMOD`; it is not a verified SEO fix" in text
+    assert "do not rewrite either historical failure" in text

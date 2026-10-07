@@ -5,14 +5,14 @@ see [SCAN_CAPACITY_PROFILE.md](SCAN_CAPACITY_PROFILE.md). It records separate
 experimental admission and incomplete capacity outcomes without changing this
 release baseline.
 
-> **The capacity profile has been run and did not pass in full.** Two limits were
-> measured and are published by name below: the 64 MiB saved-audit ceiling stops
-> the whole path at 10,000 pages, and the 50,000-page case reaches the profiler's
-> 900-second stage ceiling while still filling the database. Nothing here changes
-> a default or promises a capacity. Do not treat this file's commands, a passing
-> unit test, or an earlier development profile as an acceptance decision: the
-> profile JSON, source manifest, child logs and retained snapshots are the
-> evidence, and the decision is the owner's.
+> **The historical release profile did not pass in full.** Its legacy saved-audit
+> JSON ceiling stopped its whole path at 10,000 pages, and its 50,000-page case
+> reached the 900-second stage ceiling while still filling the database. Later
+> native `audit.v2` receipts establish a separate, streaming representation and
+> consumer result; they do not rewrite either historical failure or raise the
+> 50,000-URL collector ceiling. Nothing here changes a default or promises a
+> capacity. Treat the versioned manifest, source identity, child logs and retained
+> snapshots as evidence, rather than a passing unit test or a console transcript.
 
 `scan.v1` is a local SQLite artifact for one captured crawl. It retains the saved
 audit, producer provenance, and, for native scans, the evidence available for
@@ -127,9 +127,11 @@ the canonical-chain pair and `og_url`. `NULL` means the observation was absent
 from that source, not a measured empty or zero value. This field-level state is
 distinct from `crawl_partial` and `corpus_partial`.
 
-The current audit bridge is bounded to 10,000 pages, 20,000 forms, and a 64 MiB
-saved audit JSON. A capture beyond those limits may retain collection evidence but
-must name an unavailable audit; report output cannot manufacture one.
+The legacy materialized audit bridge is bounded to 10,000 pages, 20,000 forms,
+and a 64 MiB saved JSON document. A capture beyond those limits must not
+manufacture a legacy audit. Native scans use the ordered `audit.v2` companion
+instead; it is streamed by the native readers and report/export consumers. This
+does not make the legacy `--out-dir` path a large-scale representation.
 
 ## Capacity acceptance: the measured release record
 
@@ -243,7 +245,7 @@ manufactured from an unsaved audit.
 Reproduce with the release command above, or by reading
 `10000-pages-300000-links-whole.stdout.log` in the log directory.
 
-### Audit-v2 storage and consumer checks (synthetic; native producer pending)
+### Audit-v2 storage and consumer checks
 
 On 2026-10-03, the `#816` offline fixture wrote 10,000 findings with 7,000-byte
 messages to an `audit.v2` companion and streamed a complete JSON export larger
@@ -257,11 +259,21 @@ The oversized JSON fixture test took 1.89 seconds inside pytest (4.98 seconds
 for the complete pytest process under `/usr/bin/time -lp`) and the pytest process
 reported 343,244,800 bytes maximum RSS. Environment: macOS 26.6.2 arm64, Python
 3.14.6, SQLite 3.53.3. This process RSS includes pytest and the synthetic scan
-fixture; it is not a stage-isolated producer or full crawl profile. The native
-producer still needs #817's pre-materialization selection and analyzer iterables.
-This result therefore verifies the versioned store and its current consumers;
-it does not clear the measured 10,000-page whole-path block above or claim
-native crawl, recovery, or capacity acceptance.
+fixture; it is not a stage-isolated producer or full crawl profile.
+
+Later retained native evidence was reviewed separately from this synthetic test:
+
+| Receipt | What it establishes | Qualification |
+|---|---|---|
+| 5,000-page producer | 5,000 retained bodies, 29,991 findings and a 71,047,134-byte `audit.v2` payload; report, log scan, coverage, comparison, reanalysis and recheck consumers completed | This is a real producer receipt above the legacy 64 MiB document limit, not a 10,000-page claim |
+| Independent form axis | 2,000 pages and 24,001 forms, with a 32,386,038-byte payload; declared consumers completed | It proves form population handling independently, but its payload is below 64 MiB |
+| 50,000-page producer and corrected consumer retry | 50,000 retained pages, 630,337,406-byte payload and 260,042 findings; readers, report and export streamed all rows, comparison accounted for 260,042/260,041 rows, and native/audit hashes remained unchanged | The original full run failed because reanalysis inherited its deadline. The later consumers-only retry has its own named revision and must not be relabelled as the original producer run |
+
+The corrected retry records one absent reanalysis finding as skipped
+`SITEMAP_STALE_LASTMOD`; it is not a verified SEO fix. These receipts substantiate
+the native representation and its consumers. They do not clear #817's legacy
+bridge/memory work, #815's dense storage matrix, #818's full 100k/1M capture
+gate, or the historical 10,000-page legacy saved-audit block above.
 
 ### Measured limit: 50,000 pages does not finish inside the 900-second stage ceiling
 
@@ -278,7 +290,7 @@ The whole-path run's own live progress line last read
 `14,319 fetched, 14,469 known (98%), 10.8 req/s, 14m31s, scan 216.4 MB`. Case
 wall: 1,808.437 s.
 
-This is a time result, not a memory or corruption result. Neither stage exceeded
+This is a historical time result, not a memory or corruption result. Neither stage exceeded
 a memory budget, neither database was damaged, and both snapshots reopen. What is
 unmeasured is everything after collection at this size: no 50,000-page audit,
 report, comparison or graph figure exists, and none may be inferred from the
@@ -297,15 +309,16 @@ Against the offline acceptance list in #384:
 |---|---|
 | Publish fixture generation, commands, SHA, Python/SQLite versions, platform, RSS units, cold/warm condition, page/edge/resource/body counts, disk including WAL/temp/backup, and timings | **Met.** Recorded above and in the retained JSON, manifest, logs and snapshots |
 | Tiny full-contract CI fixtures | **Met.** `tests/test_profile_scan_release.py` runs every stage for both densities at 3 pages, and `tests/test_scan_operator_workflow.py` runs the documented workflow offline |
-| Opt-in 10k/300k and 10k/1.5M profiles | **Met for collection, graph, analysis and report; not met for the whole-path saved audit**, which is blocked by the 64 MiB ceiling named above |
+| Opt-in 10k/300k and 10k/1.5M profiles | **Met for collection, graph, analysis and report; historically not met for the legacy whole-path saved audit**, which is blocked by the 64 MiB ceiling named above. The later native `audit.v2` receipts are separately recorded above. |
 | Opt-in 50k/7.5M profile within a declared <= 2048 MiB whole-process target, or a documented blocking result | **Not met; blocking result documented.** Both stages hit the 900-second ceiling. No memory budget was exceeded, but the target is unverified at this size because the run never completed |
 | Fixed-page edge growth <= 128 MiB, separating page/analysis/report memory | **Met.** Six separately measured stages, all inside the budget |
-| Outcomes across uninterrupted / resumed / imported / reanalyzed paths | **Partly met.** The capacity profile measures the uninterrupted path only. Resume, legacy import and offline reanalysis are covered by the offline contract suite (`tests/test_scan_native_recovery.py` and `tests/test_resume_completeness.py` for resume, `tests/test_scan_artifact.py` for legacy import, `tests/test_scan_reanalysis_integration.py` for offline reanalysis), not at 10,000 pages |
+| Outcomes across uninterrupted / resumed / imported / reanalyzed paths | **Partly met.** The historical profile measures its uninterrupted path only. The later 50,000-page native receipt has a source-hash-conserving consumers-only retry; it does not make its failed original reanalysis successful. Resume, legacy import and offline reanalysis also have their dedicated contract suites, not a full dense high-scale matrix. |
 | Raw / rendered coverage separated | **Partly met.** These fixtures are raw-HTML only; rendered-representation capacity is unmeasured, and the artifacts record it as such rather than as absent |
 | Every documented stdlib-reader and CLI/MCP scenario runs offline, with reports and `compare.v1` evidence compared | **Met.** `tests/test_scan_operator_workflow.py` executes the documented commands, compares all five report formats byte-for-byte between a scan and its snapshot, checks `compare.v1` output for both a snapshot and a reanalysis, and runs the SQL this page's companion publishes |
 | No default change, capacity promise, #354/#98 closure or automatic migration | **Met for the profiled source.** Default routing changed later in #676; nothing in this capacity record raises the #356 URL ceiling |
 
-The measured whole-path ceiling at 10,000 pages and the 50,000-page timeout are
-open results for owner review, not defects hidden behind a passing table. Do not
-fill any row here from a console transcript; rerun the command and attach the
-retained evidence.
+The historical 10,000-page legacy whole-path ceiling and 50,000-page timeout
+remain published limits, not defects hidden behind a passing table. The native
+`audit.v2` representation result is separate and does not claim completed 100k
+or 1M capture. Do not fill any row here from a console transcript; retain the
+versioned producer and consumer evidence for review.
