@@ -47,7 +47,16 @@ from bs4 import BeautifulSoup
 
 from seohead.tools.content_area import TEXT_EXCLUDED_TAGS
 
-SCOPES: tuple[str, ...] = ("raw", "text", "element", "xpath")
+SCOPES: tuple[str, ...] = (
+    "raw",
+    "text",
+    "element",
+    "xpath",
+    "raw_html",
+    "head_markup",
+    "body_text",
+    "selector_markup",
+)
 MODES: tuple[str, ...] = ("contains", "not_contains")
 KINDS: tuple[str, ...] = ("text", "regex")
 
@@ -102,6 +111,26 @@ def _element_text(html: str, selector: str) -> str:
     return " ".join(m.get_text(" ") for m in matches)
 
 
+def _head_markup(html: str) -> str:
+    """Return retained ``<head>`` source, including scripts and attributes.
+
+    This is deliberately markup rather than ``get_text()``: tracker snippets
+    commonly live in a script's source or an attribute and disappear from a
+    text-only extraction.
+    """
+    soup = BeautifulSoup(html or "", features="lxml")
+    return str(soup.head) if soup.head is not None else ""
+
+
+def _selector_markup(html: str, selector: str) -> str:
+    """Return full selected nodes so markup-only evidence remains searchable."""
+    soup = BeautifulSoup(html or "", features="lxml")
+    try:
+        return "\n".join(str(node) for node in soup.select(selector))
+    except Exception:
+        return ""
+
+
 def _xpath_text(html: str, expression: str) -> str:
     from lxml import etree
 
@@ -143,11 +172,15 @@ def _xpath_text(html: str, expression: str) -> str:
 def _target_text(document: dict[str, Any], scope: str, selector: str) -> str:
     """The string a filter's ``query`` is matched against, for one document."""
     html = document.get("html") or ""
-    if scope == "raw":
+    if scope in {"raw", "raw_html"}:
         return html
-    if scope == "text":
+    if scope in {"text", "body_text"}:
         text = document.get("text")
         return text if text is not None else _visible_text(html)
+    if scope == "head_markup":
+        return _head_markup(html)
+    if scope == "selector_markup":
+        return _selector_markup(html, selector)
     if scope == "element":
         return _element_text(html, selector)
     if scope == "xpath":
@@ -191,9 +224,11 @@ def run_filter(documents: list[dict[str, Any]], spec: dict[str, Any]) -> dict[st
         raise ValueError(f"unknown kind {kind!r}; expected one of {KINDS}")
     if scope not in SCOPES:
         raise ValueError(f"unknown scope {scope!r}; expected one of {SCOPES}")
-    if scope in ("element", "xpath") and not selector:
+    if scope in ("element", "xpath", "selector_markup") and not selector:
         raise ValueError(f"scope {scope!r} requires a selector")
-    if scope in ("element", "xpath"):
+    if scope in ("element", "selector_markup"):
+        _validate_selector_syntax("element", selector)
+    elif scope == "xpath":
         _validate_selector_syntax(scope, selector)
     if kind == "regex":
         try:
