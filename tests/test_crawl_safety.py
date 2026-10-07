@@ -370,6 +370,24 @@ def test_pinning_honours_the_named_host_allowlist_but_not_a_different_host(monke
         net.pinned_target("https://other-internal.example/")
 
 
+def test_pinning_prefers_a_vetted_ipv4_answer_for_an_ipv4_only_origin(monkeypatch):
+    """Dual-stack DNS must not select an unreachable IPv6 loopback first."""
+    from seohead.recon import net
+
+    records = [
+        (net.socket.AF_INET6, net.socket.SOCK_STREAM, 6, "", ("::1", 443, 0, 0)),
+        (net.socket.AF_INET, net.socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+    ]
+    monkeypatch.setattr(net.socket, "getaddrinfo", lambda *_args, **_kwargs: records)
+    monkeypatch.setenv(net.PRIVATE_HOST_ALLOWLIST_ENV, "crawl.localhost")
+
+    url, headers, extensions = net.pinned_target("https://crawl.localhost/")
+
+    assert url.startswith("https://127.0.0.1/")
+    assert headers == {"Host": "crawl.localhost"}
+    assert extensions == {"sni_hostname": "crawl.localhost"}
+
+
 def test_named_loopback_allowlist_survives_pre_pinned_collection(monkeypatch):
     """A vetted ``crawl.localhost`` connection must not become bare loopback.
 

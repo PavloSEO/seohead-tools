@@ -312,7 +312,13 @@ def pinned_target(url: str, *, policy: Any = None) -> tuple[str, dict[str, str],
         raise ValueError("no host to pin" if policy is not None else f"no host to pin in {url!r}")
     port = parts.port or (443 if parts.scheme == "https" else 80)
 
-    address = resolve_socket_addresses(host, port, policy=policy)[0][3][0].split("%", 1)[0]
+    addresses = resolve_socket_addresses(host, port, policy=policy)
+    # Every answer above is already vetted. Prefer IPv4 when both families are
+    # usable: local fixtures and IPv4-only staging servers commonly publish an
+    # IPv6 loopback answer too, but do not listen on it. This is selection among
+    # pinned answers, never a second DNS lookup or an unvetted fallback.
+    selected = next((item for item in addresses if item[0] == socket.AF_INET), addresses[0])
+    address = selected[3][0].split("%", 1)[0]
     literal = f"[{address}]" if ":" in address else address
     netloc = f"{literal}:{parts.port}" if parts.port else literal
     pinned = urlunsplit((parts.scheme, netloc, parts.path or "/", parts.query, ""))

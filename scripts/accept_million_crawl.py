@@ -926,7 +926,15 @@ def run_stage(
         "runtime": _runtime(),
         "loaded_code": loaded_code,
         "loaded_callable_code": loaded_callable_code,
-        "discovery_path_trace": discovery_path_trace,
+        # An intentional interrupted prefix is evidence about resume, while
+        # this final metric names the finished capture only. Keep both rather
+        # than silently merging populations from different lifecycle states.
+        "discovery_path_trace": [
+            item for item in discovery_path_trace if item["indexable_pages"] == pages
+        ],
+        "interruption_discovery_path_trace": [
+            item for item in discovery_path_trace if item["indexable_pages"] != pages
+        ],
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "peak_rss_mib": _peak_rss_mib(),
         "disk_bytes": _disk_bytes(scan),
