@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 from PyQt5.QtCore import (
     QEasingCurve,
+    QEvent,
     QSettings,
     QSortFilterProxyModel,
     Qt,
@@ -44,9 +45,11 @@ from PyQt5.QtWidgets import (
     QProgressBar,
     QPushButton,
     QShortcut,
+    QSizePolicy,
     QSpinBox,
     QTableView,
     QTabWidget,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -71,6 +74,16 @@ from .ui.presentation import (
     state_text,
     theme_tokens,
     value_text,
+)
+from .ui.workspace import (
+    LAYOUT_SCHEMA,
+    LAYOUTS,
+    PANEL_IDS,
+    VIEW_IDS,
+    ActionFinder,
+    ProjectMonitor,
+    keep_on_screen,
+    system_reduced_motion,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -172,7 +185,7 @@ class MainWindow(QMainWindow):
         if not isinstance(self.recent_projects, list):
             self.recent_projects = []
         self.recent_projects = [item for item in self.recent_projects[:20] if isinstance(item, dict) and isinstance(item.get("path"), str) and isinstance(item.get("label"), str)]
-        system_motion = QSettings(QSettings.NativeFormat, QSettings.UserScope, "com.apple.universalaccess").value("reduceMotion", False, type=bool) if sys.platform == "darwin" else False
+        system_motion = system_reduced_motion()
         self.system_reduced_motion = system_motion
         self.reduced_motion = system_motion or (self.settings.value("reduced_motion", False, type=bool) if self.settings else False)
         self._navigation_animation = QVariantAnimation(self)
@@ -181,6 +194,9 @@ class MainWindow(QMainWindow):
         self._navigation_animation.valueChanged.connect(lambda value: self.navigation.setFixedWidth(int(value)))
         self.observed_runs = []
         self.observed_at = None
+        self.monitor = None
+        self.current_layout = "url"
+        self._single_window_geometry = None
         self.scan_poll_timer = QTimer(self)
         self.scan_poll_timer.setInterval(self.poll_backoff_ms)
         self.scan_poll_timer.timeout.connect(self.poll_active_scan)
@@ -192,8 +208,10 @@ class MainWindow(QMainWindow):
         shell = QVBoxLayout(workspace)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
-        shell.addWidget(self.topbar())
-        shell.addWidget(self.contextbar())
+        self.add_workspace_toolbar("projectControls", self.topbar())
+        self.addToolBarBreak(Qt.TopToolBarArea)
+        self.add_workspace_toolbar("scanContext", self.contextbar())
+        workspace.installEventFilter(self)
         self.notice = InlineNotice()
         shell.addWidget(self.notice)
 
@@ -240,6 +258,7 @@ class MainWindow(QMainWindow):
             action.setChecked(True)
             action.toggled.connect(widget.setVisible)
             self.panel_actions[name] = action
+        self.panel_actions["Инспектор URL"].toggled.connect(self.inspector_toggle.setChecked)
         view_menu.addSeparator()
         view_menu.addAction("Развернуть таблицу / вернуть панели", self.toggle_focus_mode, "Ctrl+Shift+F")
         view_menu.addAction("Восстановить панели", self.restore_panels)
@@ -251,6 +270,15 @@ class MainWindow(QMainWindow):
             action.setChecked(density == "standard")
             density_group.addAction(action)
             action.triggered.connect(lambda checked, density=density: self.set_density(density))
+        layout_menu = view_menu.addMenu("Раскладка")
+        for identifier, title in LAYOUTS.items():
+            layout_menu.addAction(title, lambda checked=False, identifier=identifier: self.apply_layout(identifier))
+        layout_menu.addSeparator()
+        layout_menu.addAction("Сохранить расположение", self.save_workspace_layout)
+        layout_menu.addAction("Восстановить сохранённое", self.restore_workspace_layout)
+        view_menu.addAction("Монитор в отдельном окне", self.open_monitor_window)
+        self.action_finder_action = view_menu.addAction("Найти действие…", self.show_action_finder, "Ctrl+K")
+        self.action_finder_action.setShortcutContext(Qt.ApplicationShortcut)
         motion_action = view_menu.addAction("Уменьшить движение")
         motion_action.setCheckable(True)
         motion_action.setChecked(self.reduced_motion)
@@ -270,6 +298,17 @@ class MainWindow(QMainWindow):
                 if value:
                     (widget.restoreGeometry if widget is self else widget.restoreState)(value)
         self.table.selectRow(0)
+        if self.settings:
+            QTimer.singleShot(0, self.restore_workspace_layout)
+
+    def add_workspace_toolbar(self, name, content):
+        toolbar = QToolBar(self)
+        toolbar.setObjectName(name)
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(content)
+        self.addToolBar(Qt.TopToolBarArea, toolbar)
 
     def topbar(self):
         top = QWidget()
@@ -314,6 +353,15 @@ class MainWindow(QMainWindow):
         self.refresh_button.setEnabled(False)
         layout.addWidget(self.refresh_button)
         layout.addStretch()
+        self.action_finder_button = QToolButton()
+        self.action_finder_button.setText("Действия")
+        self.action_finder_button.setIcon(icon("search"))
+        self.action_finder_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.action_finder_button.setProperty("role", "quiet")
+        self.action_finder_button.setToolTip("Найти действие · Cmd/Ctrl+K")
+        self.action_finder_button.setAccessibleName("Найти действие или раскладку")
+        self.action_finder_button.clicked.connect(self.show_action_finder)
+        layout.addWidget(self.action_finder_button)
         self.cancel_button = QPushButton("Отменить чтение")
         self.cancel_button.setAccessibleName("Отменить чтение или остановить выбранный собственный запуск")
         self.cancel_button.clicked.connect(self.cancel_active_work)
@@ -464,6 +512,14 @@ class MainWindow(QMainWindow):
         self.search.setMaximumWidth(420)
         self.search.setAccessibleName("Поиск URL в загруженной странице")
         toolbar.addWidget(self.search)
+        self.inspector_toggle = QToolButton()
+        self.inspector_toggle.setText("Детали")
+        self.inspector_toggle.setProperty("role", "panelToggle")
+        self.inspector_toggle.setCheckable(True)
+        self.inspector_toggle.setChecked(True)
+        self.inspector_toggle.setAccessibleName("Показать или скрыть детали URL")
+        self.inspector_toggle.clicked.connect(lambda shown: self.set_panel_visible("Инспектор URL", shown))
+        toolbar.addWidget(self.inspector_toggle)
         settings = QToolButton()
         settings.setToolTip("Показать или скрыть сводку")
         settings.setAccessibleName("Показать или скрыть сводку")
@@ -497,6 +553,12 @@ class MainWindow(QMainWindow):
         area.addWidget(self.table)
         self.vertical.addWidget(table_area)
         self.inspector = QTabWidget()
+        hide_details = QToolButton()
+        hide_details.setText("Скрыть")
+        hide_details.setProperty("role", "quiet")
+        hide_details.setAccessibleName("Скрыть детали URL")
+        hide_details.clicked.connect(lambda: self.set_panel_visible("Инспектор URL", False))
+        self.inspector.setCornerWidget(hide_details, Qt.TopRightCorner)
         self.detail = plain()
         self.inspector.addTab(self.detail, "Сведения")
         self.debug_detail = plain()
@@ -779,6 +841,14 @@ class MainWindow(QMainWindow):
         self.comparison.clear("Выбран другой проект. Выберите два его сохранённых скана.")
         self.project_panels.panel("compare").set_scans([])
         self.last_observer_signature = None
+        self.observed_runs = []
+        self.observed_at = None
+        self.activity_model.replace([])
+        self.journal_model.replace([])
+        self.progress_text.setPlainText("Загрузка согласованного плана выбранного проекта…")
+        self.activity_text.setPlainText("Загрузка запусков выбранного проекта…")
+        self.activity_caption.setText("Запуски · загрузка")
+        self.journal_caption.setText("События проекта · загрузка")
         self.scan_model.replace([])
         self.task_model.replace([])
         self.inbox_model.replace([])
@@ -804,6 +874,8 @@ class MainWindow(QMainWindow):
         self.remember_project(label, self.project_directory)
         self.fill_project_picker(label)
         self.setWindowTitle(f"SEOHEAD · {label}")
+        if self.monitor is not None:
+            self.monitor.sync_context()
         self.source_badge.setText("Локальный проект · сохранённые данные")
         self.refresh_button.setEnabled(True)
         self.note_submit.setEnabled(True)
@@ -1383,6 +1455,137 @@ class MainWindow(QMainWindow):
                 self.load_inbox,
             )
 
+    def ensure_monitor(self):
+        if self.monitor is None:
+            self.monitor = ProjectMonitor(self, configure_table)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.monitor)
+            self.monitor.hide()
+        self.monitor.sync_context()
+        return self.monitor
+
+    def open_monitor_window(self):
+        monitor = self.ensure_monitor()
+        monitor.setFloating(True)
+        monitor.show()
+        screen = self.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry()
+        monitor.resize(min(540, available.width()), min(720, available.height()))
+        monitor.move(min(self.frameGeometry().right() + 12, available.right() - monitor.width() - 12), max(available.top(), self.frameGeometry().top()))
+        keep_on_screen(monitor, screen)
+        monitor.raise_()
+        monitor.activateWindow()
+        return monitor
+
+    def apply_layout(self, identifier):
+        if identifier not in LAYOUTS:
+            return
+        self.current_layout = identifier
+        self._focus_mode = False
+        if identifier != "monitor" and self.monitor is not None:
+            self.monitor.hide()
+            if self._single_window_geometry is not None:
+                self.restoreGeometry(self._single_window_geometry)
+                self._single_window_geometry = None
+        if identifier == "compare":
+            self.open_comparison()
+        else:
+            self.navigation.setCurrentRow(1)
+            self.set_panel_visible("Инспектор URL", identifier != "table")
+            self.set_panel_visible("Сводка", identifier == "url" and self.width() >= theme_tokens()["layout"]["compact_breakpoint"])
+            self.horizontal.setSizes([1000, 280])
+            self.vertical.setSizes([440, 230])
+        if identifier == "monitor":
+            if self._single_window_geometry is None:
+                self._single_window_geometry = self.saveGeometry()
+            if self.isFullScreen():
+                self.showNormal()
+            available = (self.screen() or QApplication.primaryScreen()).availableGeometry()
+            self.resize(max(self.minimumWidth(), min(self.width(), available.width() - 580)), min(self.height(), available.height()))
+            self.move(available.topLeft())
+            self.set_panel_visible("Сводка", False)
+            self.open_monitor_window()
+        keep_on_screen(self)
+        self.statusBar().showMessage("Раскладка: " + LAYOUTS[identifier])
+
+    def save_workspace_layout(self):
+        if not self.settings:
+            return
+        self.settings.setValue("workspace/schema", LAYOUT_SCHEMA)
+        self.settings.setValue("workspace/layout", self.current_layout)
+        self.settings.setValue("workspace/density", self._density)
+        self.settings.setValue("workspace/main_state", self.saveState(LAYOUT_SCHEMA))
+        self.settings.setValue("workspace/horizontal", self.horizontal.saveState())
+        self.settings.setValue("workspace/vertical", self.vertical.saveState())
+        self.settings.setValue("workspace/navigation_compact", bool(self.navigation.property("compact")))
+        for identifier, name in PANEL_IDS.items():
+            self.settings.setValue("workspace/panel/" + identifier, self.panel_actions[name].isChecked())
+        row = self.navigation.currentRow()
+        self.settings.setValue("workspace/view", VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else "url")
+        self.settings.setValue("workspace/monitor_exists", self.monitor is not None)
+        self.settings.setValue("workspace/monitor_visible", self.monitor is not None and not self.monitor.isHidden())
+        if self.monitor is not None:
+            self.settings.setValue("workspace/monitor_geometry", self.monitor.saveGeometry())
+        self.settings.sync()
+
+    def restore_workspace_layout(self):
+        if not self.settings or self.settings.value("workspace/schema", 0, type=int) != LAYOUT_SCHEMA:
+            return
+        if self.settings.value("workspace/monitor_exists", False, type=bool):
+            self.ensure_monitor()
+        state = self.settings.value("workspace/main_state")
+        if state:
+            self.restoreState(state, LAYOUT_SCHEMA)
+        for key, widget in (("horizontal", self.horizontal), ("vertical", self.vertical)):
+            saved = self.settings.value("workspace/" + key)
+            if saved:
+                widget.restoreState(saved)
+        for identifier, name in PANEL_IDS.items():
+            self.set_panel_visible(name, self.settings.value("workspace/panel/" + identifier, True, type=bool))
+        self.set_navigation_compact(self.settings.value("workspace/navigation_compact", False, type=bool))
+        density = self.settings.value("workspace/density", "standard")
+        if density in theme_tokens()["density"]:
+            self.set_density(density)
+        identifier = self.settings.value("workspace/layout", "url")
+        self.current_layout = identifier if identifier in LAYOUTS else "url"
+        view = self.settings.value("workspace/view", "url")
+        if view in VIEW_IDS:
+            self.navigation.setCurrentRow(VIEW_IDS.index(view))
+        if self.monitor is not None:
+            geometry = self.settings.value("workspace/monitor_geometry")
+            if geometry:
+                self.monitor.restoreGeometry(geometry)
+            self.monitor.setVisible(self.settings.value("workspace/monitor_visible", False, type=bool))
+            keep_on_screen(self.monitor)
+        keep_on_screen(self)
+
+    def action_registry(self):
+        actions = [
+            {"title": "Открыть проект…", "keywords": "open folder проект папка", "callback": self.choose_project},
+            {"title": "URL · найти в текущей странице", "keywords": "поиск url search", "callback": self.open_url_search},
+            {"title": "Сравнить сохранённые сканы", "keywords": "compare before after до после", "callback": self.open_comparison},
+            {"title": "Новый скан · открыть план", "keywords": "scan spider sitemap конфигурация настройки", "callback": self.scan_preview, "enabled": bool(self.project_directory), "reason": "Открывает план; скан запускается отдельной кнопкой" if self.project_directory else "Сначала откройте проект"},
+            {"title": "Монитор в отдельном окне", "keywords": "monitor окно второе два", "callback": self.open_monitor_window},
+            {"title": "Восстановить панели", "keywords": "панели restore reset", "callback": self.restore_panels},
+            {"title": "Обновить сохранённые данные", "keywords": "refresh чтение", "callback": self.refresh_project, "enabled": bool(self.project_directory), "reason": "Чтение текущего проекта"},
+        ]
+        for identifier, title in LAYOUTS.items():
+            actions.append({"title": "Раскладка · " + title, "keywords": "layout вид панели", "callback": lambda identifier=identifier: self.apply_layout(identifier)})
+        for identifier, title in (("compact", "Компактные строки · 28 px"), ("standard", "Обычные строки · 32 px"), ("comfortable", "Свободные строки · 40 px")):
+            actions.append({"title": title, "keywords": "density плотность таблица", "callback": lambda identifier=identifier: self.set_density(identifier)})
+        for label, keywords in (("GTM в head", "gtm tag manager"), ("GA4", "ga4 gtag analytics"), ("Яндекс Метрика", "metrika ym yandex"), ("Текст в сохранённом HTML", "literal текст строка")):
+            actions.append({"title": "Поиск · " + label, "keywords": "html body код теги search " + keywords, "callback": None, "enabled": False, "reason": "Поиск по сохранённому HTML ожидает подключения соответствующей возможности ядра"})
+        return actions
+
+    def show_action_finder(self):
+        dialog = ActionFinder(self.action_registry(), self)
+        if dialog.exec_() == QDialog.Accepted and dialog.selected_callback:
+            QTimer.singleShot(0, dialog.selected_callback)
+
+    def open_url_search(self):
+        self.navigation.setCurrentRow(1)
+        self.search.setFocus()
+        self.search.selectAll()
+
     def navigate(self, row):
         self.pages.setCurrentIndex(3 if row == 9 else row)
         if row == 9:
@@ -1456,14 +1659,23 @@ class MainWindow(QMainWindow):
         if action is not None:
             action.setChecked(visible)
 
+    def sync_workspace_width(self):
+        if not hasattr(self, "panel_actions"):
+            return
+        compact = self.centralWidget().width() < theme_tokens()["layout"]["compact_breakpoint"]
+        if compact != self._compact:
+            self._compact = compact
+            self.set_navigation_compact(compact)
+            self.set_panel_visible("Сводка", not compact and not self._focus_mode)
+            self.audit_workspace.right.setVisible(not compact and not self._focus_mode)
+
+    def eventFilter(self, watched, event):
+        if watched is self.centralWidget() and event.type() == QEvent.Resize:
+            self.sync_workspace_width()
+        return super().eventFilter(watched, event)
+
     def resizeEvent(self, event):
-        if hasattr(self, "panel_actions"):
-            compact = self.width() < theme_tokens()["layout"]["compact_breakpoint"]
-            if compact != self._compact:
-                self._compact = compact
-                self.set_navigation_compact(compact)
-                self.set_panel_visible("Сводка", not compact and not self._focus_mode)
-                self.audit_workspace.right.setVisible(not compact and not self._focus_mode)
+        self.sync_workspace_width()
         super().resizeEvent(event)
 
     def restore_panels(self):
@@ -1808,6 +2020,9 @@ class MainWindow(QMainWindow):
             self.settings.setValue("geometry", self.saveGeometry())
             self.settings.setValue("horizontal", self.horizontal.saveState())
             self.settings.setValue("vertical", self.vertical.saveState())
+        self.save_workspace_layout()
+        if self.monitor is not None:
+            self.monitor.hide()
         super().closeEvent(event)
 
     def _finish_owned_shutdown(self):

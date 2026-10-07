@@ -88,3 +88,16 @@ QWidget#inlineNotice QLabel { color: $on_error_container; }
 QWidget#comparisonHeader { background: $surface_container_lowest; border-bottom: 1px solid $outline_variant; }
 QLabel#comparisonStep { font-size: 12px; color: $on_surface_variant; font-weight: 500; }
 QLabel#comparisonValue { font-size: 18px; font-weight: 500; }
+
+QDockWidget { border: 1px solid $outline_variant; background: $surface; }
+QDockWidget::title { background: $surface_container_lowest; color: $on_surface_variant; padding: 8px 12px; text-align: left; }
+QDockWidget::close-button, QDockWidget::float-button { border: none; border-radius: 4px; background: transparent; padding: 3px; }
+QDockWidget::close-button:hover, QDockWidget::float-button:hover { background: $primary_container; }
+QLineEdit#actionSearch { font-size: 16px; padding: 10px 12px; }
+QListWidget#actionResults { border: none; background: $surface_container_lowest; outline: none; }
+QListWidget#actionResults::item { min-height: 32px; padding: 6px 10px; border-radius: 6px; border: 1px solid transparent; }
+QListWidget#actionResults::item:selected { color: $on_primary_container; background: $primary_container; }
+QListWidget#actionResults::item:focus { border: 1px solid $primary; }
+QListWidget#actionResults::item:hover { background: $surface_container_low; }
+
+QToolBar { border: none; padding: 0; spacing: 0; background: $surface_container_lowest; }
