@@ -376,6 +376,7 @@ def crawl_site_scan(
     scan_out: str,
     settings: dict[str, Any],
     sitemap: str | None = None,
+    sitemap_only: bool = False,
     producer_build: str | None = None,
     progress: Callable[[int, int], None] | None = None,
     progress_snapshot: Callable[[dict[str, int]], None] | None = None,
@@ -392,6 +393,8 @@ def crawl_site_scan(
     """
     if not isinstance(url, str) or not url:
         raise ValueError("url is required for a SQLite scan crawl")
+    if sitemap_only and not sitemap:
+        raise ValueError("sitemap_only requires an explicit sitemap")
     if not isinstance(scan_out, str) or not scan_out:
         raise ValueError("scan_out is required for a SQLite scan crawl")
     discovery = settings.get("discovery", {})
@@ -441,8 +444,11 @@ def crawl_site_scan(
         producer_version=producer_version,
         producer_revision=producer_revision,
         runtime_versions=runtime_versions,
-        initial_sitemaps=initial_sitemaps(sitemap),
+        initial_sitemaps=initial_sitemaps(
+            sitemap, source="sitemap-only" if sitemap_only else "explicit"
+        ),
         seed_loader=seed_loader,
+        sitemap_only=sitemap_only,
         progress=progress,
         progress_snapshot=progress_snapshot,
         shared_request_gate=shared_request_gate,

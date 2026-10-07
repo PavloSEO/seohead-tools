@@ -469,6 +469,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["user_agent"] = args.user_agent
         if getattr(args, "observer_run_id", None):
             kw["observer_run_id"] = args.observer_run_id
+        if getattr(args, "sitemap_only", False):
+            kw["sitemap_only"] = True
         for flag in (
             "config",
             "max_urls",
@@ -1590,6 +1592,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--sitemap",
             help="seed and reconcile sitemap URLs; auto-discovery uses --config",
+        )
+        sub.add_argument(
+            "--sitemap-only",
+            action="store_true",
+            help="native SQLite: fetch only explicit sitemap members; requires --sitemap",
         )
         sub.add_argument(
             "--config-help",

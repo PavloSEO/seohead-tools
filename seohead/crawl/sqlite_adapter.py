@@ -396,6 +396,7 @@ def crawl_to_scan(
     seed_urls: Iterable[str] = (),
     initial_sitemaps: tuple[tuple[str, str], ...] = (),
     seed_loader: Callable[..., None] | None = None,
+    sitemap_only: bool = False,
     content_area_config: dict[str, Any] | None = None,
     fetcher: Callable[[str], Any] | None = None,
     sleeper: Callable[[float], None] = time.sleep,
@@ -650,24 +651,28 @@ def crawl_to_scan(
                 throttle, dispatch_gate, snapshot
             )
             scan.recover_inflight()
+        sitemap_only = sitemap_only or any(
+            root["source"] == "sitemap-only" for root in selected_roots
+        )
         if not seeded:
             # Initial input chunks are replayed until the durable phase is complete.
             # D depends on C's atomic seed API: supply in chunks so sitemap expansion
             # never becomes a second Python frontier.  Until that API is integrated,
             # this intentionally fails instead of falling back to a deque/set.
-            scan.seed_frontier(
-                [
-                    {
-                        "requested_url": start,
-                        "frontier_url": start,
-                        "depth": 0,
-                        "reason": "",
-                        "source": "start",
-                        "reserve_query": False,
-                        "seed": False,
-                    }
-                ]
-            )
+            if not sitemap_only:
+                scan.seed_frontier(
+                    [
+                        {
+                            "requested_url": start,
+                            "frontier_url": start,
+                            "depth": 0,
+                            "reason": "",
+                            "source": "start",
+                            "reserve_query": False,
+                            "seed": False,
+                        }
+                    ]
+                )
 
             # Existing seed handling preserves the supplied request spelling; C
             # performs canonical membership internally without altering evidence.
@@ -914,7 +919,7 @@ def crawl_to_scan(
                             },
                         )
                     max_depth = max(max_depth, lease.depth)
-                    if (
+                    if not sitemap_only and (
                         settings["discovery"]["resolve_redirect_destination"]
                         and record.redirect_url
                     ):
@@ -949,7 +954,7 @@ def crawl_to_scan(
                     if (
                         start_page_gate is None
                         and lease.depth == 0
-                        and lease.url == start
+                        and (sitemap_only or lease.url == start)
                         and parsed is not None
                     ):
                         start_page_gate = {
@@ -974,14 +979,15 @@ def crawl_to_scan(
                         batch = _forms_only_batch(parsed, lease.url)
                     else:
                         batch = _DocumentBatch()
-                        _redirect_discovery(
-                            batch,
-                            record,
-                            depth=lease.depth,
-                            scope=scope,
-                            host=host,
-                            settings=settings,
-                        )
+                        if not sitemap_only:
+                            _redirect_discovery(
+                                batch,
+                                record,
+                                depth=lease.depth,
+                                scope=scope,
+                                host=host,
+                                settings=settings,
+                            )
                         links_batch = _document_batch(
                             parsed,
                             source_url=lease.url,
@@ -993,7 +999,8 @@ def crawl_to_scan(
                         batch.links.extend(links_batch.links)
                         batch.forms.extend(links_batch.forms)
                         batch.decisions.extend(links_batch.decisions)
-                        batch.candidates.extend(links_batch.candidates)
+                        if not sitemap_only:
+                            batch.candidates.extend(links_batch.candidates)
                         batch.partial_reasons.extend(links_batch.partial_reasons)
                         batch.route_observations.extend(links_batch.route_observations)
                         batch.route_coverage = links_batch.route_coverage

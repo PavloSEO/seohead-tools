@@ -10,8 +10,10 @@ from seohead.storage import ScanError
 from seohead.tools.sitemap import MAX_SITEMAPS, normalize_url
 
 
-def initial_sitemaps(explicit: str | None) -> tuple[tuple[str, str], ...]:
-    return ((normalize_url(explicit), "explicit"),) if explicit else ()
+def initial_sitemaps(
+    explicit: str | None, *, source: str = "explicit"
+) -> tuple[tuple[str, str], ...]:
+    return ((normalize_url(explicit), source),) if explicit else ()
 
 
 def load_sitemaps(
@@ -50,8 +52,16 @@ def load_sitemaps(
         declared=[],  # Membership is in SQLite; there is no second URL-list owner.
     )
     pending: list[str] = []
+    declared_count = 0
 
     def seed(url: str, _root: SourceRoot) -> None:
+        nonlocal declared_count
+        declared_count += 1
+        if (
+            any(root["source"] == "sitemap-only" for root in selected)
+            and declared_count > settings["limits"]["max_urls"]
+        ):
+            raise ScanError("sitemap-only population exceeds the configured URL budget")
         pending.append(url)
         if len(pending) >= 256:
             emit_seeds(pending)
@@ -71,3 +81,5 @@ def load_sitemaps(
         emit_seeds(pending)
     if any(not outcome.complete for outcome in outcomes):
         scan.interrupt("sitemap expansion is incomplete")
+    elif any(root["source"] == "sitemap-only" for root in selected) and not declared_count:
+        raise ScanError("sitemap-only source declared no crawlable URL members")

@@ -601,6 +601,7 @@ def crawl_site(
     robots: str | None = None,
     out_dir: str | None = None,
     sitemap: str | None = None,
+    sitemap_only: bool | None = None,
     scan_out: str | None = None,
     producer_build: str | None = None,
     overrides: dict[str, Any] | None = None,
@@ -646,13 +647,23 @@ def crawl_site(
     line than this one (see ``seohead.crawl.progress``).
     """
     project_root = None
+    if sitemap_only and not sitemap:
+        raise ValueError("sitemap_only requires an explicit sitemap")
     if project is not None:
         from seohead.projects.workspace import open_project
 
         opened = open_project(project)
         project_root = Path(opened["path"])
-        if resume is None and url is None and urls is None and urls_file is None:
+        if (
+            resume is None
+            and url is None
+            and urls is None
+            and urls_file is None
+            and not sitemap_only
+        ):
             url = opened["project"]["site"]["target"]
+    if sitemap_only and url is None:
+        url = sitemap
     if resume is not None:
         # ``is not None`` rather than truthiness: --min-delay 0 and --max-urls 0 are
         # settings the caller stated, and silently accepting them here would let a
@@ -670,6 +681,7 @@ def crawl_site(
                 ("robots", robots),
                 ("out_dir", out_dir),
                 ("sitemap", sitemap),
+                ("sitemap_only", sitemap_only),
                 ("overrides", overrides),
                 ("user_agent", user_agent),
             )
@@ -944,6 +956,7 @@ def crawl_site(
                 scan_out=scan_out,
                 settings=settings,
                 sitemap=sitemap,
+                sitemap_only=bool(sitemap_only),
                 producer_build=producer_build,
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
@@ -2054,7 +2067,10 @@ def crawl_describe_settings() -> dict[str, Any]:
     """
     from seohead.crawl import settings as crawl_config
 
-    return {"settings": crawl_config.describe_settings()}
+    return {
+        "settings": crawl_config.describe_settings(),
+        "capabilities": {"sitemap_only_retained": True},
+    }
 
 
 def images_download(
