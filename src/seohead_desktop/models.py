@@ -1,6 +1,9 @@
 """Bounded Qt presentation models for demo and retained core projections."""
 
 from PyQt5.QtCore import QAbstractTableModel, Qt
+from PyQt5.QtGui import QColor
+
+from .ui.presentation import field_text, state_text, theme_tokens, value_text
 
 
 class UrlModel(QAbstractTableModel):
@@ -28,7 +31,9 @@ class UrlModel(QAbstractTableModel):
             return None
         value = self.rows[index.row()].get(self.columns[index.column()][1])
         if role in (Qt.DisplayRole, Qt.ToolTipRole):
-            return value if value is not None else "Не измерено"
+            if self.columns[index.column()][1] == "indexability":
+                return state_text(value)
+            return value_text(value)
         if role == Qt.TextAlignmentRole and index.column() in (1, 5):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         return None
@@ -61,13 +66,19 @@ class RecordModel(QAbstractTableModel):
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
-        value = self.rows[index.row()].get(self.columns[index.column()][1])
-        if role in (Qt.DisplayRole, Qt.ToolTipRole):
+        key = self.columns[index.column()][1]
+        value = self.rows[index.row()].get(key)
+        if role == Qt.DisplayRole:
             if value is None:
-                return "—"
-            if isinstance(value, (list, tuple)):
-                return ", ".join(str(item) for item in value)
-            return str(value)
+                return "Не измерено"
+            return field_text(key, value)
+        if role == Qt.ToolTipRole:
+            return value_text(value)
+        if role == Qt.TextAlignmentRole and isinstance(value, (int, float)) and not isinstance(value, bool):
+            return int(Qt.AlignRight | Qt.AlignVCenter)
+        if role == Qt.ForegroundRole and key in {"state", "lifecycle"}:
+            color = "error" if value in {"failed", "error", "rejected"} else "primary" if value in {"running", "starting", "queued"} else "on_surface_variant"
+            return QColor(theme_tokens()["colors"][color])
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):

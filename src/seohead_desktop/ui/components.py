@@ -31,6 +31,13 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .presentation import (
+    COLUMN_LABELS,
+    ElidedLabel,
+    field_text,
+    panel_title,
+    theme_tokens,
+)
 from .tabcatalogue import filter_id
 
 PAGE_LIMIT = 100
@@ -101,8 +108,11 @@ class PageModel(QAbstractTableModel):
         ):
             return None
         value = self.rows[index.row()].get(self.columns[index.column()][0])
-        if role in (Qt.DisplayRole, Qt.ToolTipRole):
+        if role == Qt.ToolTipRole:
             return display_value(value)
+        if role == Qt.DisplayRole:
+            key = self.columns[index.column()][0]
+            return field_text(key, value) if value is not None and key in {"state", "lifecycle", "kind", "phase", "source_kind", "finished_at", "created_at"} else display_value(value)
         if role == Qt.UserRole:
             return (
                 value if isinstance(value, (str, float, int)) else display_value(value)
@@ -158,10 +168,10 @@ class TablePanel(QWidget):
         self.total = None
         self.has_more = False
         self.setObjectName("tablePanel")
-        self.setAccessibleName(spec.title)
+        self.setAccessibleName(panel_title(spec))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setSpacing(4)
         self.toolbar = QGridLayout()
         self.toolbar.setContentsMargins(0, 0, 0, 0)
         self.filter = QComboBox()
@@ -170,7 +180,7 @@ class TablePanel(QWidget):
         self.filter.setMinimumContentsLength(10)
         self.filter.setMaximumWidth(280)
         for label in spec.filters:
-            self.filter.addItem(label, filter_id(label))
+            self.filter.addItem("Все" if label == "All" else label, filter_id(label))
         self.search = QLineEdit()
         self.search.setAccessibleName(f"Поиск в загруженной странице {spec.title}")
         self.search.setPlaceholderText("Поиск в этой странице")
@@ -190,12 +200,12 @@ class TablePanel(QWidget):
         self._narrow = None
         self._arrange_toolbar(False)
         layout.addLayout(self.toolbar)
-        self.source_label = QLabel()
+        self.source_label = ElidedLabel()
         self.source_label.setObjectName("muted")
         self.source_label.setTextFormat(Qt.PlainText)
-        self.source_label.setWordWrap(True)
+        self.source_label.setWordWrap(False)
         layout.addWidget(self.source_label)
-        self.model = PageModel(spec.columns, self)
+        self.model = PageModel(tuple((key, COLUMN_LABELS.get(label, label)) for key, label in spec.columns), self)
         self.proxy = PageProxy(self)
         self.proxy.setSourceModel(self.model)
         self.proxy.setFilterKeyColumn(-1)
@@ -212,7 +222,11 @@ class TablePanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(30)
+        density = QApplication.instance().property("seohead.density") or "standard"
+        self.table.verticalHeader().setDefaultSectionSize(theme_tokens()["density"][density])
+        self.table.setShowGrid(False)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         header = self.table.horizontalHeader()
         header.setSectionsMovable(True)
         header.setSectionResizeMode(QHeaderView.Interactive)
@@ -332,7 +346,7 @@ class TablePanel(QWidget):
             bool(has_more),
         )
         self.source_label.setText(source or "Источник данных не подключён")
-        self.source_label.setToolTip(self.spec.evidence)
+        self.source_label.setToolTip((source + "\n" if source else "") + self.spec.evidence)
         self.filter.blockSignals(True)
         supported = set(available_filters)
         for index in range(self.filter.count()):
@@ -508,7 +522,7 @@ class TabConfigurationDialog(QDialog):
                 self._add(self.hidden_list, id)
 
     def _add(self, view, id):
-        item = QListWidgetItem(self.specs[id].title)
+        item = QListWidgetItem(panel_title(self.specs[id]))
         item.setData(Qt.UserRole, id)
         view.addItem(item)
 
@@ -628,9 +642,9 @@ class TabDeck(QWidget):
         while self.tabbar.count():
             self.tabbar.removeTab(0)
         for id in ids:
-            index = self.tabbar.addTab(self.specs[id].title)
+            index = self.tabbar.addTab(panel_title(self.specs[id]))
             self.tabbar.setTabData(index, id)
-            self.tabbar.setTabToolTip(index, self.specs[id].title)
+            self.tabbar.setTabToolTip(index, panel_title(self.specs[id]))
         self.visible_ids = ids
         index = ids.index(current) if current in ids else 0
         self.tabbar.setCurrentIndex(index)
@@ -664,7 +678,7 @@ class TabDeck(QWidget):
         )
         self.menu.addSeparator()
         for id, spec in self.specs.items():
-            action = self.menu.addAction(spec.title)
+            action = self.menu.addAction(panel_title(spec))
             action.setCheckable(True)
             action.setChecked(id == self.current_id)
             action.triggered.connect(lambda checked=False, id=id: self.select_tab(id))

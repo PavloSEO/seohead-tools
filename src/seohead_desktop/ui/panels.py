@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -272,6 +273,24 @@ class AuditWorkspace(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        controls = QHBoxLayout()
+        controls.setContentsMargins(12, 6, 12, 6)
+        heading = QLabel("Аудит сохранённых данных")
+        heading.setObjectName("sectionCaption")
+        controls.addWidget(heading, 1)
+        self.detail_toggle = QToolButton()
+        self.detail_toggle.setText("Детали")
+        self.detail_toggle.setToolTip("Скрыть или показать детали URL")
+        self.detail_toggle.setAccessibleName("Скрыть или показать детали URL")
+        self.detail_toggle.clicked.connect(lambda: self.detail.setVisible(self.detail.isHidden()))
+        controls.addWidget(self.detail_toggle)
+        self.right_toggle = QToolButton()
+        self.right_toggle.setText("Сводка")
+        self.right_toggle.setToolTip("Скрыть или показать сводку аудита")
+        self.right_toggle.setAccessibleName("Скрыть или показать сводку аудита")
+        self.right_toggle.clicked.connect(lambda: self.right.setVisible(self.right.isHidden()))
+        controls.addWidget(self.right_toggle)
+        layout.addLayout(controls)
         self.horizontal = QSplitter(Qt.Horizontal)
         self.vertical = QSplitter(Qt.Vertical)
         self.main = TabDeck(MAIN_TABS)
@@ -281,8 +300,8 @@ class AuditWorkspace(QWidget):
         self.vertical.addWidget(self.detail)
         self.horizontal.addWidget(self.vertical)
         self.horizontal.addWidget(self.right)
-        self.horizontal.setChildrenCollapsible(False)
-        self.vertical.setChildrenCollapsible(False)
+        self.horizontal.setChildrenCollapsible(True)
+        self.vertical.setChildrenCollapsible(True)
         self.vertical.setStretchFactor(0, 1)
         self.vertical.setStretchFactor(1, 1)
         self.horizontal.setStretchFactor(0, 3)
@@ -317,11 +336,12 @@ class AuditWorkspace(QWidget):
         self.detail.show()
         self.right.show()
         self.horizontal.setSizes([940, 330])
-        self.vertical.setSizes([480, 340])
+        self.vertical.setSizes([520, 300])
 
     def showEvent(self, event):
         if not self._shown:
-            self.restore_panels()
+            self.vertical.setSizes([520, 300])
+            self.horizontal.setSizes([940, 330])
             self._shown = True
         super().showEvent(event)
 
