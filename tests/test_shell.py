@@ -119,6 +119,15 @@ class ShellTests(unittest.TestCase):
         )
         self.assertEqual(self.window.model.rowCount(), before)
 
+    def test_scan_switch_clears_previous_url_evidence_before_next_page(self):
+        self.window.model.replace([{"url": "https://first.example.test/"}])
+        self.window.select_project_scan(
+            {"uuid": "next-scan", "path": "/retained/next.sqlite", "lifecycle": "finished"}
+        )
+        self.assertEqual(self.window.model.rowCount(), 0)
+        self.assertEqual(self.window.selected_scan_uuid, "next-scan")
+        self.assertEqual(self.window.audit_workspace.panel("internal").state, "loading")
+
     def test_retained_projection_pages_replace_demo_models(self):
         self.window.load_tasks(
             {

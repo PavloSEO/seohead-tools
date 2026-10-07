@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 
-from seohead_desktop.scan_manager import LocalScanManager
+from seohead_desktop.scan_manager import LocalScanManager, ManagedScan
 from tests.test_scan_runner import _SlowSite
 
 
@@ -101,8 +101,9 @@ class LocalScanManagerTests(unittest.TestCase):
                 first_scan = next((projects[0][0] / "scans").glob("*.sqlite"))
                 self.assertTrue(manager.stop(ids[0]))
                 wait_for(
-                    lambda: manager.detail(ids[0])["state"] in {"interrupted", "finished", "failed"},
-                    "selected owned capture did not reach a terminal state",
+                    lambda: manager.detail(ids[0])["state"] in {"awaiting_core_status", "finished", "failed"},
+                    lambda: "selected owned capture did not reach a terminal state: " + json.dumps(manager.detail(ids[0])),
+                    timeout=20,
                 )
                 self.assertGreaterEqual(manager.active_count, 1, "stopping one run stopped every capture")
 
@@ -117,7 +118,7 @@ class LocalScanManagerTests(unittest.TestCase):
                 )
                 wait_for(
                     lambda: all(
-                        item["state"] in {"finished", "failed", "interrupted"}
+                        item["state"] in {"awaiting_core_status", "finished", "failed", "interrupted"}
                         for item in manager.snapshot()
                     ),
                     "owned queue did not reach terminal states",
@@ -133,6 +134,68 @@ class LocalScanManagerTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_invalid_executable_releases_slots_and_drains_queue(self):
+        scratch_root = Path(__file__).resolve().parents[1] / ".build"
+        scratch_root.mkdir(exist_ok=True)
+
+        def wait_for(predicate, timeout=5):
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                self.app.processEvents()
+                if predicate():
+                    return
+                QTest.qWait(30)
+            self.fail("invalid process queue did not drain")
+
+        with tempfile.TemporaryDirectory(prefix="invalid-manager-", dir=scratch_root) as temporary:
+            root = Path(temporary)
+            manager = LocalScanManager("/missing/seohead", max_parallel=3)
+            ids = []
+            for index in range(4):
+                project = root / f"project-{index}"
+                project.mkdir()
+                (project / "project.json").write_text("{}", encoding="utf-8")
+                ids.append(
+                    manager.submit(
+                        project=str(project),
+                        project_uuid=f"project-{index}",
+                        max_urls=1,
+                        rendering_mode="raw",
+                        overrides=(("limits.max_requests", 1), ("limits.max_crawl_seconds", 1)),
+                        approve_large_crawl=False,
+                        max_urls_per_second=0.5,
+                    )
+                )
+            wait_for(lambda: all(manager.detail(item)["state"] == "failed" for item in ids))
+            self.assertEqual(manager.active_count, 0)
+
+    def test_observer_refreshes_same_bound_run_artifact(self):
+        scratch_root = Path(__file__).resolve().parents[1] / ".build"
+        scratch_root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="observer-manager-", dir=scratch_root) as temporary:
+            project = Path(temporary)
+            scans = project / "scans"
+            scans.mkdir(parents=True)
+            (project / "project.json").write_text("{}", encoding="utf-8")
+
+            class Process:
+                active = False
+
+                class process:
+                    @staticmethod
+                    def processId():
+                        return 77
+
+            manager = LocalScanManager("/unused", max_parallel=1)
+            run = ManagedScan("owned", str(project), "project-id", "crawl", process=Process())
+            manager._runs[run.id] = run
+            first = {"id": "core-run", "controller": {"pid": 77}, "artifact": "scans/first.sqlite", "state": "interrupted"}
+            second = {"id": "core-run", "controller": {"pid": 77}, "artifact": "scans/final.sqlite", "state": "interrupted"}
+            manager.observe("project-id", [first])
+            manager.observe("project-id", [second])
+            self.assertEqual(run.core_run_id, "core-run")
+            self.assertEqual(run.artifact, str((scans / "final.sqlite").resolve()))
 
 
 if __name__ == "__main__":

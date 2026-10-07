@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
         self.current_project_uuid = None
         self.selected_managed_run_id = None
         self.selected_scan_path = None
+        self.selected_scan_uuid = None
         self.last_observer_signature = None
         self.poll_backoff_ms = 500
         self.scan_poll_timer = QTimer(self)
@@ -684,6 +685,16 @@ class MainWindow(QMainWindow):
             self.scan_detail.setPlainText("Ядро не предоставило путь сохранённого скана.")
             return
         self.selected_scan_path = path
+        self.selected_scan_uuid = scan.get("uuid") if isinstance(scan.get("uuid"), str) else None
+        self.model.replace([])
+        self.search.clear()
+        self.search.setEnabled(False)
+        self.audit_workspace.set_page(
+            "internal", [], state="loading", source="Loading retained scan", reason="Selected scan changed"
+        )
+        self.audit_workspace.set_page(
+            "url_details", [], state="unavailable", reason="Selected scan changed"
+        )
         self.resume_scan_button.setEnabled(False)
         self.scan_detail.setPlainText(json.dumps(scan, ensure_ascii=False, indent=2))
         self.start_command(
@@ -738,7 +749,7 @@ class MainWindow(QMainWindow):
             total=None,
             offset=result.get("offset", 0),
             has_more=bool(result.get("has_more")),
-            source="Retained native scan · bounded page",
+            source=f"Retained scan {self.selected_scan_uuid or 'unknown'} · bounded page",
             available_filters=("all",),
         )
         if rows:

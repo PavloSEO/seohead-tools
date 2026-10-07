@@ -27,7 +27,9 @@ class ManagedScan:
     state: str = "queued"
     core_run_id: str | None = None
     artifact: str | None = None
+    core_state: str | None = None
     output: str = ""
+    slot_reserved: bool = field(default=False, repr=False)
     process: LocalScanProcess | None = field(default=None, repr=False)
 
     def public(self) -> dict:
@@ -39,6 +41,7 @@ class ManagedScan:
             "state": self.state,
             "core_run_id": self.core_run_id,
             "artifact": self.artifact,
+            "core_state": self.core_state,
             "max_urls": self.max_urls,
             "rendering_mode": self.rendering_mode,
             "resume_path": self.resume_path,
@@ -65,7 +68,7 @@ class LocalScanManager(QObject):
 
     @property
     def active_count(self) -> int:
-        return sum(run.state in {"starting", "running", "stop_requested"} for run in self._runs.values())
+        return sum(run.slot_reserved for run in self._runs.values())
 
     def submit(
         self,
@@ -134,22 +137,26 @@ class LocalScanManager(QObject):
             if not pid:
                 continue
             candidate = next(
-                (
-                    item
-                    for item in runs
-                    if self._matches_pid(item, pid)
-                    and item.get("id") != managed.core_run_id
-                ),
-                None,
+                (item for item in runs if item.get("id") == managed.core_run_id), None
             )
+            if candidate is None and managed.core_run_id is None:
+                candidate = next((item for item in runs if self._matches_pid(item, pid)), None)
             if candidate is None:
                 continue
             managed.core_run_id = candidate.get("id")
             artifact = candidate.get("artifact")
             if isinstance(artifact, str):
-                managed.artifact = str((Path(managed.project) / artifact).resolve())
-            if managed.state in {"starting", "running"}:
-                managed.state = candidate.get("state", managed.state)
+                resolved = (Path(managed.project) / artifact).resolve()
+                if resolved.is_relative_to((Path(managed.project) / "scans").resolve()):
+                    managed.artifact = str(resolved)
+            managed.core_state = candidate.get("state")
+            if not (managed.process and managed.process.active) and managed.core_state in {
+                "finished",
+                "partial",
+                "failed",
+                "interrupted",
+            }:
+                managed.state = managed.core_state
             self._emit(managed)
 
     @staticmethod
@@ -178,6 +185,7 @@ class LocalScanManager(QObject):
                 continue
             process = LocalScanProcess(self.executable, self)
             run.process = process
+            run.slot_reserved = True
             run.state = "starting"
             process.started.connect(lambda run=run: self._started(run))
             process.output.connect(lambda text, run=run: self._output(run, text))
@@ -211,11 +219,17 @@ class LocalScanManager(QObject):
         self.output.emit(run.id, text)
 
     def _failed(self, run: ManagedScan, text: str) -> None:
+        if run.process is None or not run.process.active:
+            run.state = "failed"
+            run.slot_reserved = False
+            self._emit(run)
+            self._drain()
         self.failed.emit(run.id, text)
 
     def _finished(self, run: ManagedScan, code: int, state: str) -> None:
+        run.slot_reserved = False
         if run.state == "stop_requested":
-            run.state = "interrupted"
+            run.state = "awaiting_core_status"
         elif code == 0 and state == "normal":
             run.state = "finished"
         else:
