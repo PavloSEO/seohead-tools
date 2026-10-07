@@ -458,6 +458,46 @@ def crawl_to_scan(
             format_version=settings["storage"]["format_version"],
         )
     )
+    interrupted_run: ScanRun | None = None
+
+    @contextmanager
+    def checkpoint_interrupt():
+        """Turn a terminal Ctrl-C into a durable native-scan checkpoint.
+
+        The executor exits before this context sees ``KeyboardInterrupt``, so
+        no worker remains in flight while the frontier is requeued.  This is a
+        CLI collector boundary, not a signal handler: MCP and worker threads
+        keep their existing cancellation ownership.
+        """
+
+        nonlocal interrupted_run
+        with scan_context as scan:
+            try:
+                yield scan
+            except KeyboardInterrupt:
+                scan.recover_inflight()
+                scan.record_events(adapter_events)
+                scan.record_request_count(dispatch_gate.requests_used)
+                scan.interrupt("operator interrupted (SIGINT)")
+                outcome = scan.resume_snapshot(include_edges=True)
+                interrupted_run = ScanRun(
+                    path=str(scan.path),
+                    pages=outcome["counts"]["pages"],
+                    links=outcome["counts"]["links"],
+                    forms=outcome["counts"]["forms"],
+                    lifecycle=outcome["scan"]["lifecycle"],
+                    finish_reason="interrupted",
+                    partial=True,
+                    resumed=existing,
+                    limitations=tuple(json.loads(outcome["scan"]["limitations_json"])),
+                    start_page_gate=start_page_gate
+                    or retained_start_gate(scan, settings, content_area_config),
+                    dispatch_gate=dispatch_gate,
+                    corpus_partial=bool(outcome["scan"]["corpus_partial"]),
+                    capabilities=json.loads(outcome["scan"]["capabilities_json"]),
+                    html_bodies=html_body_retention(scan.con),
+                )
+
     # A native crawl claims at most ``concurrency`` URLs per durable batch.  Keep
     # the workers alive across those batches: creating and joining a fresh pool
     # per batch makes the dispatcher itself the throughput limit at large URL
@@ -465,7 +505,7 @@ def crawl_to_scan(
     # futures in exactly the same lease order.
     with (
         _client_context(settings, fetcher, proxy_route) as client,
-        scan_context as scan,
+        checkpoint_interrupt() as scan,
         ThreadPoolExecutor(max_workers=max(1, throttle.concurrency)) as fetch_pool,
     ):
         scan.preflight_capture()
@@ -1069,6 +1109,10 @@ def crawl_to_scan(
             capabilities=json.loads(outcome["scan"]["capabilities_json"]),
             html_bodies=html_body_retention(scan.con),
         )
+
+    if interrupted_run is not None:
+        return interrupted_run
+    raise RuntimeError("native scan collector exited without an outcome")
 
 
 def retained_start_gate(scan, settings, content_area_config=None):

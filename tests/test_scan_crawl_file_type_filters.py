@@ -243,18 +243,19 @@ def test_filtered_decision_survives_native_resume_with_the_same_filters(tmp_path
         if pages:
             raise KeyboardInterrupt
 
-    with pytest.raises(KeyboardInterrupt):
-        crawl_to_scan(
-            start,
-            scan_out=str(scan_path),
-            settings=settings,
-            producer_version="3.0.0",
-            producer_revision="a" * 40,
-            runtime_versions=_runtime(),
-            fetcher=lambda url: (calls.append(url), response(url))[1],
-            progress=interrupt_after_start,
-            sleeper=lambda _seconds: None,
-        )
+    interrupted = crawl_to_scan(
+        start,
+        scan_out=str(scan_path),
+        settings=settings,
+        producer_version="3.0.0",
+        producer_revision="a" * 40,
+        runtime_versions=_runtime(),
+        fetcher=lambda url: (calls.append(url), response(url))[1],
+        progress=interrupt_after_start,
+        sleeper=lambda _seconds: None,
+    )
+    assert interrupted.finish_reason == "interrupted"
+    assert interrupted.partial is True
 
     first_calls = list(calls)
     calls.clear()
