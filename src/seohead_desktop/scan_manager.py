@@ -203,7 +203,7 @@ class LocalScanManager(QObject):
             )
             try:
                 if run.kind == "resume":
-                    process.resume(run.resume_path or "", run.project)
+                    process.resume(run.resume_path or "", run.project, run.observer_run_id)
                 else:
                     process.start(
                         run.project,
@@ -216,6 +216,7 @@ class LocalScanManager(QObject):
                     )
             except (RuntimeError, ValueError) as exc:
                 run.state = "rejected"
+                run.slot_reserved = False
                 self.failed.emit(run.id, str(exc))
                 self._emit(run)
 

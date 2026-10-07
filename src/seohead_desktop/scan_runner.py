@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import json
+import math
 import os
+import re
 import re
 import signal
 from pathlib import Path
@@ -137,11 +140,14 @@ def crawl_arguments(
         arguments.extend(("--observer-run-id", observer_run_id))
     if approve_large_crawl:
         arguments.append("--approve-large-crawl")
-    permitted = {"limits.max_requests", "limits.max_crawl_seconds"}
     for key, value in overrides:
-        if key not in permitted or type(value) is not int or value < 1:
+        if key in {"limits.max_urls", "rendering.mode"}:
+            continue
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_.]*", key):
+            raise ValueError("invalid validated crawl override path")
+        if not isinstance(value, (str, int, float, bool, list)) or isinstance(value, float) and not math.isfinite(value):
             raise ValueError("unsupported local crawl override")
-        arguments.extend(("--set", f"{key}={value}"))
+        arguments.extend(("--set", f"{key}={json.dumps(value)}"))
     if max_urls_per_second is not None:
         if not isinstance(max_urls_per_second, float) or not 0 < max_urls_per_second <= 2.0:
             raise ValueError("native request rate must be a finite value from 0 to 2")
