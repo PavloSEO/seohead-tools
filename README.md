@@ -166,6 +166,19 @@ Start from the [capability map](docs/README.md#capability-map), [scenarios](docs
 or [skill map](docs/SKILLS.md). Narrow requests such as robots, schema, rendering or saved-scan
 comparison go directly to their method; a full audit uses the controller.
 
+Search a saved native scan without another crawl. For example, find which retained HEADs
+contain a GTM marker; choose `--mode not_contains` to list measured absences instead:
+
+```bash
+seohead scan-content-search --scan ./scans/audit.sqlite --query GTM- --scope head_markup --out-dir ./reports/gtm-check
+seohead scan-content-search-page --package ./reports/gtm-check --offset 0 --limit 100
+```
+
+Coverage accompanies the result. A missing or unretained document is `unknown`, and a stored tag
+is not proof of execution. Rendered-body search needs captured rendered evidence. To collect only
+explicit sitemap members, use `crawl-site --sitemap https://example.com/sitemap.xml --sitemap-only`;
+this mode does not follow page links or redirect targets outside that list.
+
 Use `seohead <command> --help` for calling syntax and `seohead crawl-site --config-help` for the
 configurable collection/extraction surface. [Input contracts](docs/INPUTS.md) distinguish URLs,
 retained scans, inline data, provider queries and the separate operational stores.
