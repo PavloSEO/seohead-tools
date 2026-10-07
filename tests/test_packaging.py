@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -152,6 +153,8 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(payload["core"]["version"], "3.0.0")
             self.assertEqual(len(payload["core"]["commit"]), 40)
             self.assertEqual(len(payload["core"]["source_archive_sha256"]), 64)
+            self.assertIn("python", payload["build_environment"])
+            self.assertTrue(payload["build_environment"]["installed_distributions"])
             self.assertNotIn(str(source), manifest_path.read_text(encoding="utf-8"))
 
     def test_bundle_spec_requires_every_platform_layout(self):
@@ -160,6 +163,21 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(set(spec["platforms"]), {"macos", "linux", "windows"})
         for platform in spec["platforms"].values():
             self.assertTrue(platform["core_cli"].startswith("core/"))
+
+    def test_gpl_text_and_runtime_notice_contract_are_present(self):
+        self.assertEqual(
+            hashlib.sha256((ROOT / "LICENSE").read_bytes()).hexdigest(),
+            "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        )
+        notices = (ROOT / "scripts" / "copy_runtime_notices.py").read_text(
+            encoding="utf-8"
+        )
+        for notice in (
+            "Qt-LGPL-3.0.txt",
+            "PyQt5-sip-LICENSE.txt",
+            "PyInstaller-COPYING.txt",
+        ):
+            self.assertIn(notice, notices)
 
 
 if __name__ == "__main__":
