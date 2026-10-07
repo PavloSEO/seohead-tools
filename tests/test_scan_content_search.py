@@ -351,10 +351,16 @@ def test_content_search_cli_mcp_package_and_indexed_pagination(tmp_path, capsys)
     assert (package / "manifest.json").is_file()
     first = handlers.scan_content_search_page(str(package), limit=100)
     second = handlers.scan_content_search_page(str(package), offset=100, limit=100)
+    at_end = handlers.scan_content_search_page(str(package), offset=101, limit=100)
+    past_end = handlers.scan_content_search_page(str(package), offset=999, limit=100)
     assert len(first["records"]) == 100
     assert first["has_more"] is True
     assert len(second["records"]) == 1
     assert second["has_more"] is False
+    assert at_end["records"] == []
+    assert at_end["has_more"] is False
+    assert past_end["records"] == []
+    assert past_end["next_offset"] == 999
     assert all("snippet" not in record for record in first["records"])
 
     from seohead.servers.mcp_server import build_server
@@ -362,6 +368,13 @@ def test_content_search_cli_mcp_package_and_indexed_pagination(tmp_path, capsys)
     server = build_server()
     tool = server._tool_manager.get_tool("seo_scan_content_search_page")
     assert tool.fn(package=str(package), offset=100, limit=100) == second
+
+    records_path = package / "records.ndjson"
+    records_path.write_bytes(
+        records_path.read_bytes().replace(b"https://example.test/0", b"https://example.test/X", 1)
+    )
+    with pytest.raises(ValueError, match="record integrity"):
+        handlers.scan_content_search_page(str(package), limit=1)
 
 
 def test_content_search_partial_package_has_exit_two_and_retains_unknowns(tmp_path, capsys):

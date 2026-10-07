@@ -5641,6 +5641,7 @@ def scan_content_search(
                     + b"\n"
                 )
                 index.write(record_bytes.to_bytes(8, "big"))
+                index.write(hashlib.sha256(encoded).digest())
                 records.write(encoded)
                 digest.update(encoded)
                 record_bytes += len(encoded)
@@ -5674,6 +5675,7 @@ def scan_content_search(
                 "count": count,
                 "bytes": record_bytes,
                 "sha256": digest.hexdigest(),
+                "index_entry_bytes": 40,
             },
             "snippets": "included" if include_snippets else "omitted",
             "network": False,
@@ -5711,6 +5713,7 @@ def scan_content_search(
 
 def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
     """Read no more than 100 indexed derived content-search records without rescanning evidence."""
+    import hashlib
     import json
     import os
 
@@ -5737,8 +5740,11 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
         or not isinstance(records, dict)
         or type(records.get("count")) is not int
         or records["count"] < 0
+        or type(records.get("bytes")) is not int
+        or records["bytes"] < 0
         or not isinstance(records.get("file"), str)
         or not isinstance(records.get("index"), str)
+        or records.get("index_entry_bytes") != 40
         or Path(records["file"]).name != records["file"]
         or Path(records["index"]).name != records["index"]
     ):
@@ -5747,32 +5753,63 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
     index_path = root / records["index"]
     if any(path.is_symlink() or not path.is_file() for path in (records_path, index_path)):
         raise ValueError("content-search package records are unavailable")
-    if os.path.getsize(index_path) != records["count"] * 8:
+    if os.path.getsize(index_path) != records["count"] * records[
+        "index_entry_bytes"
+    ] or os.path.getsize(records_path) != records.get("bytes"):
         raise ValueError("content-search package index length is invalid")
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise ValueError("content-search package source identity is invalid")
+    if records["count"] and (
+        type(source.get("scan_uuid")) is not str or type(source.get("evidence_revision")) is not int
+    ):
+        raise ValueError("content-search package source identity is invalid")
+    if offset >= records["count"]:
+        return {
+            "ok": True,
+            "format": manifest["format"],
+            "source": source,
+            "offset": offset,
+            "records": [],
+            "has_more": False,
+            "next_offset": offset,
+        }
     rows: list[dict[str, Any]] = []
     with index_path.open("rb") as index, records_path.open("rb") as stream:
-        index.seek(offset * 8)
-        marker = index.read(8)
-        if marker:
-            stream.seek(int.from_bytes(marker, "big"))
+        index.seek(offset * records["index_entry_bytes"])
+        marker = index.read(records["index_entry_bytes"])
+        if len(marker) != records["index_entry_bytes"]:
+            raise ValueError("content-search package index is truncated")
+        stream.seek(int.from_bytes(marker[:8], "big"))
         for _ in range(limit):
             line = stream.readline(64 * 1024 + 1)
             if not line:
-                break
-            if len(line) > 64 * 1024:
-                raise ValueError("content-search package record exceeds 64 KiB")
+                raise ValueError("content-search package records are truncated")
+            if len(line) > 64 * 1024 or not line.endswith(b"\n"):
+                raise ValueError("content-search package record is truncated or exceeds 64 KiB")
+            entry = offset + len(rows)
+            index.seek(entry * records["index_entry_bytes"] + 8)
+            expected = index.read(32)
+            if len(expected) != 32 or hashlib.sha256(line).digest() != expected:
+                raise ValueError("content-search package record integrity is invalid")
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError("content-search package record is invalid") from exc
             if not isinstance(row, dict):
                 raise ValueError("content-search package record is invalid")
+            if row.get("scan_uuid") != source.get("scan_uuid") or row.get(
+                "evidence_revision"
+            ) != source.get("evidence_revision"):
+                raise ValueError("content-search package record source identity disagrees")
             rows.append(row)
+            if offset + len(rows) >= records["count"]:
+                break
     next_offset = offset + len(rows)
     return {
         "ok": True,
         "format": manifest["format"],
-        "source": manifest["source"],
+        "source": source,
         "offset": offset,
         "records": rows,
         "has_more": next_offset < records["count"],
