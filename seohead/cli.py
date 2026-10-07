@@ -2740,8 +2740,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # CLI boundary: report a concise error and exit non-zero.
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    json.dump(result, sys.stdout, ensure_ascii=False, indent=2, default=str)
-    sys.stdout.write("\n")
+    try:
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2, default=str)
+        sys.stdout.write("\n")
+    except KeyboardInterrupt:
+        # Collection may already be finished. Interrupting its JSON output must
+        # neither roll back retained evidence nor label a truncated stream successful.
+        print("interrupted while writing result; retained artifacts are unchanged", file=sys.stderr)
+        return 130
     if cmd == "log-scan" and isinstance(result, dict) and result.get("anomaly_count"):
         # A contradiction is a gate, not a report: a pipeline that produced numbers which
         # disagree with each other should stop rather than publish them. 2, not 1, so a
