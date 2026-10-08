@@ -205,6 +205,13 @@ def test_the_header_says_the_frontier_is_still_growing():
     assert "not an estimate of when the crawl will finish" in header
 
 
+def test_unlimited_progress_reports_the_discovered_population_without_a_zero_cap():
+    reporter = _reporter(budget=0)
+    assert "without a URL limit" in reporter._header()
+    assert "not of the site" in reporter._header()
+    assert "300 known (66%)" in reporter.line(200, 100, elapsed=1, rate=1.0)
+
+
 def test_the_known_set_is_capped_at_the_url_budget():
     """34 000 URLs found under a 200-URL budget is 200 URLs of work, not 34 000."""
     assert "200 known (50%)" in _reporter(budget=200).line(100, 34000, elapsed=1, rate=1.0)

@@ -152,16 +152,19 @@ class CrawlProgress:
             self._write(line + "\n")
 
     def _header(self) -> str:
+        population = (
+            f"capped at the {self.budget}-URL budget" if self.budget else "without a URL limit"
+        )
         return (
             "crawl-site: progress below is pages fetched of the URLs known so far "
-            f"(fetched + queued, capped at the {self.budget}-URL budget). The frontier grows "
+            f"(fetched + queued, {population}). The frontier grows "
             "as links are found, so the percentage is of what is known now, not of the site, "
             "and it is not an estimate of when the crawl will finish."
         )
 
     def line(self, fetched: int, queued: int, *, elapsed: float, rate: float | None) -> str:
         """The progress line itself, kept separate from writing it so a test can read it."""
-        known = min(fetched + queued, self.budget)
+        known = min(fetched + queued, self.budget) if self.budget else fetched + queued
         percent = f"{100 * fetched // known}%" if known > 0 else "n/a"
         fields = [
             f"{fetched} fetched",
