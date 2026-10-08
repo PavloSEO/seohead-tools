@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Иконка приложения · паук и поиск</title>
+<title>Логотип SEOHEAD</title>
 <script src="./support.js"></script>
 <link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
@@ -21,7 +21,7 @@
 </helmet>
 <div style="width: 1440px; height: 1000px; box-sizing: border-box; padding: 28px; background: #E9ECF1; font-family: Roboto, sans-serif; color: #1B1B1F; display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: 20px">
   <div style="display: flex; flex-direction: column; gap: 16px">
-    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Новые финалисты — чёрная вдова в паутине (с лупой и без); SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
+    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Утверждённый логотип и история вариантов; SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
       <sc-for list="{{vars}}" as="v" hint-placeholder-count="4">
         <button class="{{v.cls}}" onClick="{{v.pick}}" aria-pressed="{{v.on}}">
@@ -68,13 +68,13 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { v: 'w1' }; }
+  constructor(props) { super(props); this.state = { v: 'final' }; }
   renderVals() {
     const V = [
-      ['w1', 'Вдова в паутине · лупа', 'Паутина в линзе, справа головой вниз — чёрная вдова с красными «часами». Тёмный паук выделяется на белой паутине даже в 16 px.', '/_blob/bce3e94b48603d5d8de3a11a27b69aae', 'Новый · главный', 'b st-done'],
-      ['w2', 'Вдова в паутине · круг', 'Без ручки лупы: паутина в круге и та же вдова. Чище и симметричнее, крупнее паук.', '/_blob/cc4a78a69360a9a1e1e4328ccfac514a', 'Новый · без ручки', 'b st-run'],
-      ['c', 'C · Паутина в линзе', 'Прошлый выбор: паутина без паука. Самый спокойный.', '/_blob/a572d412378799e410d964ec07bc22ab', 'Запасной', 'b st-off'],
-      ['b', 'B · Паук-лупа', 'Тело паука — линза. Самый узнаваемый силуэт.', '/_blob/f548a497248c4a505018463bb5d7f783', 'Запасной', 'b st-off']
+      ['final', 'Логотип SEOHEAD · финал', 'Серебристая лупа, фактурная паутина в 3 витка, на ней чёрная вдова: суставы, педипальпы, глаза, красные «часы». Стоит аватаром GitHub.', '/_blob/9bbee7a83aa50baa041e02870d2402e4', 'Утверждён', 'b st-verified'],
+      ['w1', 'Вдова в паутине · жёлтая лупа', 'Промежуточный вариант — жёлтая лупа отклонена.', '/_blob/bce3e94b48603d5d8de3a11a27b69aae', 'Архив', 'b st-off'],
+      ['c', 'C · Паутина в линзе', 'Ранний вариант без паука.', '/_blob/a572d412378799e410d964ec07bc22ab', 'Архив', 'b st-off'],
+      ['b', 'B · Паук-лупа', 'Ранний вариант: тело паука — линза.', '/_blob/f548a497248c4a505018463bb5d7f783', 'Архив', 'b st-off']
     ];
     const vars = V.map(([id, name, note, src, badge, badgeCls]) => ({ name, note, src, badge, badgeCls, on: id === this.state.v, cls: 'var' + (id === this.state.v ? ' on' : ''), pick: () => this.setState({ v: id }) }));
     return { vars, cur: vars.find((v) => v.on) };

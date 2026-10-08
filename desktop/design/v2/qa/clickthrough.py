@@ -7,6 +7,13 @@ import os, shutil
 CANVAS = Path(__file__).resolve().parents[1] / "canvas"
 SITE = Path(os.environ.get("QA_SITE_DIR", "/tmp/seohead-canvas-qa"))
 BLOBS = {"4a414078cb0b30a9f33cd7ff3f95b4b1": "app.css", "91b098e33df1d5d3a71b967b3280aee7": "ext.css"}
+ICONS = {  # canvas asset id -> design/v2/brand file
+    "9bbee7a83aa50baa041e02870d2402e4": "seohead-logo.svg", "d9315c4d275086b182d8bb919224809e": "seohead-logo.svg",
+    "bce3e94b48603d5d8de3a11a27b69aae": "archive/icon-w1-widow-lens.svg", "cc4a78a69360a9a1e1e4328ccfac514a": "archive/icon-w2-widow-circle.svg",
+    "a572d412378799e410d964ec07bc22ab": "archive/icon-c-web-lens.svg", "f548a497248c4a505018463bb5d7f783": "archive/icon-b-lens-body.svg",
+    "a15a8fcad9ccfd0d1de09fe7968d08f3": "archive/icon-a-spider-in-lens.svg", "e390fd15cde18709247904bd3664f706": "archive/icon-c2-web-spider.svg",
+    "65933da0c68d185dbbf8237390427db0": "archive/icon-b-lens-body.svg", "2cce9143dda83fd5095c0f1c7facdb9c": "archive/icon-c-web-lens.svg",
+    "1df587c503f38ebcf8640574615fbdec": "archive/icon-d-grip.svg", "1fd8127680f28131e51c411820d47f57": "archive/icon-b-lens-body.svg"}
 
 def prepare_site():
     """Build a static mirror of the canvas: boards + CSS under their /_blob/ ids + the canvas runtime.
@@ -22,6 +29,8 @@ def prepare_site():
         shutil.copy(f, SITE / f.name)
     for blob, css in BLOBS.items():
         shutil.copy(CANVAS / "assets" / css, SITE / "_blob" / blob)
+    for blob, svg in ICONS.items():
+        shutil.copy(CANVAS.parent / "brand" / svg, SITE / "_blob" / blob)
     shutil.copy(runtime, SITE / "support.js")
 
 prepare_site()
@@ -32,7 +41,7 @@ canvas = json.loads((CANVAS / "canvas.json").read_text())
 class H(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
     def guess_type(self, p):
-        if "/_blob/" in str(p): return "text/css"
+        if "/_blob/" in str(p): return "image/svg+xml" if Path(str(p)).name in ICONS else "text/css"
         return super().guess_type(p)
 
 srv = socketserver.TCPServer(("127.0.0.1", 0), functools.partial(H, directory=str(SITE)))
