@@ -117,10 +117,12 @@ links. Beyond a bound, the command returns `audit_available: false` with exact
 counts and a reason while keeping the JSONL evidence. A prior `audit.json` or
 tasks file in that directory is renamed to a hidden `.stale-*` copy so it
 cannot be mistaken for the new run's report. The large-audit representation is
-tracked in #816; these collection bounds do not raise the 50,000-URL crawl cap.
-Native JS escalation reads page records from SQLite without first building a
-full PageRecord list; its later saved audit still follows the audit bridge's
-declared limits until #816 supplies a large-audit representation.
+implemented through audit.v2 for native SQLite scans, whose explicit admission
+ceiling is 1,000,000 URLs. Materialized list/eager APIs retain their separate
+50,000-URL safety bound. Native JS escalation reads page records from SQLite
+without first building a full PageRecord list; rendering has independent
+coverage and budgets. See [capacity acceptance](MILLION_CRAWL_ACCEPTANCE.md) for
+source-bound workload measurements, format bounds and the remaining list-mode gap.
 
 ## Saved scan artifact
 

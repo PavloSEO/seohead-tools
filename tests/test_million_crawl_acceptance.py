@@ -6,21 +6,19 @@ import pytest
 
 from scripts.accept_million_crawl import run_stage
 from seohead.crawl.settings import MAX_REQUESTS_CEILING, MAX_URLS_CEILING, ConfigError, load
-from seohead.crawl.sqlite_adapter import crawl_to_scan
 from seohead.storage import read_audit
-from tests.doc_fixtures.site_server import run_fixture_site
 
 
 def test_stable_capacity_configuration_keeps_url_gate_and_request_headroom():
-    settings = load(overrides={"limits.max_urls": 50_000, "limits.max_requests": 2_000_000})
-    assert MAX_URLS_CEILING == 50_000
+    settings = load(overrides={"limits.max_urls": 1_000_000, "limits.max_requests": 2_000_000})
+    assert MAX_URLS_CEILING == 1_000_000
     assert MAX_REQUESTS_CEILING == 2_000_000
     assert settings["limits"] == {
         **settings["limits"],
-        "max_urls": 50_000,
+        "max_urls": 1_000_000,
         "max_requests": 2_000_000,
     }
-    for requested in (50_001, 100_000, 1_000_000):
+    for requested in (1_000_001, 2_000_000):
         with pytest.raises(ConfigError, match="ceiling"):
             load(overrides={"limits.max_urls": requested})
 
@@ -37,6 +35,41 @@ def test_owned_mock_origin_runs_real_native_route_and_recovers(tmp_path):
     assert 0 < outcome["checkpoint"]["pages"] <= 24
     assert outcome["conservation"]["pages"] == outcome["conservation"]["sitemap_members"] == 64
     assert outcome["collector"]["audit_available"] is True
+
+
+def test_representative_group_rich_fixture_conserves_capture_and_consumers(tmp_path):
+    outcome = run_stage(
+        tmp_path / "representative",
+        pages=128,
+        shard_size=64,
+        interrupt_after=32,
+        consumers=True,
+        links_per_page=3,
+        forms_per_page=1,
+        body_padding_bytes=2048,
+        body_profile="catalogue-v1",
+        h1_families=1,
+        comparison_compression="gzip",
+    )
+    counts = outcome["conservation"]
+    assert counts["links"] == 384 and counts["forms"] == 129
+    assert counts["smallest_body_bytes"] >= 2048
+    consumers = outcome["consumers"]
+    assert consumers["audit_v2"]["/groups"] > 0
+    assert consumers["group_members"] >= 128
+    assert consumers["csv_readback"] == consumers["xlsx_readback"] == consumers["report_readback"]
+    assert consumers["task_coverage"]["source_findings"] == consumers["audit_v2"]["/issues"]
+
+
+@pytest.mark.parametrize("extra", [["--skip-consumers"], ["--loopback-only"]])
+def test_incompatible_consumer_retry_flags_fail_before_starting_worker(tmp_path, capsys, extra):
+    from scripts.accept_million_crawl import main
+
+    output = tmp_path / "absent"
+    with pytest.raises(SystemExit) as error:
+        main(["--out", str(output), "--input-scan", "retained.sqlite", *extra])
+    assert error.value.code == 2
+    assert not output.exists()
 
 
 def test_standard_native_handler_bounds_deep_discovery_paths(tmp_path):
@@ -100,28 +133,16 @@ def test_discovery_path_trace_preserves_short_standard_handler_paths(tmp_path):
     ]
 
 
-def test_owned_loopback_transport_smoke_uses_real_network_guarded_collector(tmp_path, monkeypatch):
-    """Separate smoke: loopback uses the real client, never the mock transport."""
-    monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_NETWORKS", "1")
-    with run_fixture_site() as origin:
-        scan = tmp_path / "loopback.sqlite"
-        run = crawl_to_scan(
-            origin + "/",
-            scan_out=str(scan),
-            settings=load(overrides={"limits.max_urls": 3, "speed.min_delay_seconds": 0}),
-            producer_version="test",
-            producer_revision="a" * 40,
-            runtime_versions={
-                "python": "test",
-                "sqlite": "test",
-                "httpx": "test",
-                "lxml": "test",
-                "beautifulsoup4": "test",
-            },
-            sleeper=lambda _seconds: None,
-        )
-    assert run.pages >= 1
-    assert scan.exists()
+def test_owned_loopback_transport_smoke_uses_real_network_guarded_collector(tmp_path):
+    """Separate smoke: exact HTTP/parser/storage scope and unchanged real pacing."""
+    from scripts.accept_million_crawl import run_loopback
+
+    result = run_loopback(tmp_path / "loopback")
+    assert result["status"] == "passed"
+    assert result["conservation"]["pages"] == result["conservation"]["sitemap_members"] == 8
+    assert result["private_refused_before_allowance"] is True
+    assert result["effective_max_requests_per_second"] == 2
+    assert result["minimum_observed_request_interval_seconds"] >= 0.45
 
 
 def test_density_fixture_declares_distinct_links_forms_and_body_padding():

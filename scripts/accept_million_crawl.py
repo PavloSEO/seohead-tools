@@ -15,9 +15,12 @@ exit means a requested stage did not prove readiness.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import itertools
 import json
 import math
+import os
 import platform
 import random
 import sqlite3
@@ -58,7 +61,12 @@ class SyntheticOrigin:
         forms_per_page: int = 0,
         body_padding_bytes: int = 0,
         body_profile: str = "padding",
+        base_url: str = f"https://{HOST}",
+        h1_families: int = 101,
     ) -> None:
+        if type(h1_families) is not int or h1_families < 1:
+            raise ValueError("h1_families must be a positive integer")
+        self.h1_families = h1_families
         if pages < 1:
             raise ValueError("pages must be positive")
         if shard_size < 1:
@@ -71,6 +79,7 @@ class SyntheticOrigin:
             raise ValueError("fixture density is outside its declared bounds")
         if body_profile not in {"padding", "catalogue-v1"}:
             raise ValueError("unknown synthetic body profile")
+        self.base_url = base_url.rstrip("/")
         self.body_profile = body_profile
         self.links_per_page = min(links_per_page, pages)
         self.forms_per_page = forms_per_page
@@ -101,7 +110,7 @@ class SyntheticOrigin:
         return self._xml(
             "sitemapindex",
             (
-                f"<sitemap><loc>https://{HOST}/sitemaps/{shard}.xml</loc></sitemap>"
+                f"<sitemap><loc>{self.base_url}/sitemaps/{shard}.xml</loc></sitemap>"
                 for shard in range(self.shard_count)
             ),
         )
@@ -114,7 +123,7 @@ class SyntheticOrigin:
         return self._xml(
             "urlset",
             (
-                f"<url><loc>https://{HOST}/p/{page}</loc><lastmod>2026-10-04</lastmod>"
+                f"<url><loc>{self.base_url}/p/{page}</loc><lastmod>2026-10-04</lastmod>"
                 "<changefreq>weekly</changefreq><priority>0.7</priority></url>"
                 for page in range(first, last)
             ),
@@ -194,7 +203,7 @@ class SyntheticOrigin:
         )
         title = "" if page % 997 == 0 else f"Synthetic catalogue page {page}"
         description = "" if page % 991 == 0 else f"Deterministic description for page {page}."
-        canonical = f"https://{HOST}/p/{page}"
+        canonical = f"{self.base_url}/p/{page}"
         extra = "".join(
             f"<form method='post' action='/lead/{form}'><input name='email'></form>"
             for form in range(self.forms_per_page)
@@ -208,7 +217,7 @@ class SyntheticOrigin:
             + f"<link rel='canonical' href='{canonical}'>"
             + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             + "</head><body><main>"
-            + f"<h1>Product family {page % 101}</h1><p>Owned synthetic content for URL {page}.</p>"
+            + f"<h1>Product family {page % self.h1_families}</h1><p>Owned synthetic content for URL {page}.</p>"
             + links
             + extra
             + self._body_extra(page)
@@ -231,7 +240,9 @@ class SyntheticOrigin:
         path = request.url.path
         if path == "/robots.txt":
             self.requests["robots"] += 1
-            content = (f"User-agent: *\nAllow: /\nSitemap: {SITEMAP_INDEX}\n").encode()
+            content = (
+                f"User-agent: *\nAllow: /\nSitemap: {self.base_url}/sitemap-index.xml\n"
+            ).encode()
             return self._response(request, 200, content, **{"content-type": "text/plain"})
         if path == "/sitemap-index.xml":
             self.requests["sitemap_index"] += 1
@@ -352,6 +363,13 @@ def _loaded_code() -> dict[str, dict[str, str]]:
     import importlib
 
     modules = (
+        "seohead.crawl.settings",
+        "seohead.crawl.collect",
+        "seohead.tools.parser",
+        "seohead.tools.sitemap",
+        "seohead.storage.audit_v2",
+        "seohead.sf.tasks",
+        "seohead.storage.scan_export",
         "seohead.sf.core.inlinks",
         "seohead.servers.scan_handlers",
         "seohead.crawl.sqlite_adapter",
@@ -473,24 +491,29 @@ def _synthetic_transport(origin: SyntheticOrigin) -> Iterator[None]:
         patch.object(sitemap_coverage, "http_client", sitemap_client),
         # The transport is the owned origin; this is the only no-DNS test seam.
         patch.object(sitemap_coverage, "validate_url", lambda _url: None),
+        patch(
+            "socket.socket.connect",
+            side_effect=AssertionError("synthetic stage attempted socket I/O"),
+        ),
     ):
         yield
 
 
 def _settings(pages: int, *, concurrency: int = 8) -> dict[str, Any]:
-    from seohead.crawl.settings import load
+    from seohead.crawl.settings import MAX_REQUESTS_CEILING, load
 
     return load(
         overrides={
             "limits.max_urls": pages,
             # One request per page plus robots, sitemap shards and bounded retries.
-            "limits.max_requests": min(2_000_000, pages + max(10_000, pages // 10)),
+            "limits.max_requests": min(MAX_REQUESTS_CEILING, pages + max(10_000, pages // 10)),
             "limits.max_depth": 1,
             "speed.min_delay_seconds": 0,
             "speed.concurrency": concurrency,
             "robots.policy": "respect",
             "sitemaps.auto_discover": False,
             "cache.mode": "off",
+            "storage.min_free_bytes": 12 * 1024**3,
         }
     )
 
@@ -540,6 +563,8 @@ def _assert_conservation(scan: Path, pages: int) -> dict[str, int]:
         or counts["retained_page_documents"] != pages
     ):
         raise AssertionError(f"retained population disagrees with declared scope: {counts}")
+    if any(counts[name] != pages for name in ("responses", "documents", "bodies")):
+        raise AssertionError(f"response/document/body population disagrees with capture: {counts}")
     if frontier.get("done", 0) != pages or frontier.get("queued", 0) or frontier.get("inflight", 0):
         raise AssertionError(f"frontier is not complete: {frontier}")
     return {**counts, **{f"frontier_{state}": int(count) for state, count in frontier.items()}}
@@ -663,12 +688,80 @@ def _consumer_phase(output: Path, phases: dict, name: str):
         persist()
 
 
+def _csv_rows(path: Path, *, delimiter: str = ",") -> int:
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        rows = csv.reader(stream, delimiter=delimiter)
+        next(rows)
+        return sum(1 for _ in rows)
+
+
+def _xlsx_rows(path: Path, expected: dict[str, int]) -> dict[str, int]:
+    """Read every exported worksheet row and validate its declared partition."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    counts: Counter[str] = Counter()
+    try:
+        for kind, sheet, first, last, declared in workbook["Partitions"].iter_rows(
+            min_row=2, values_only=True
+        ):
+            actual = sum(1 for _ in workbook[sheet].iter_rows(min_row=2, values_only=True))
+            if first != counts[kind] + 1 or last != counts[kind] + actual or actual != declared:
+                raise AssertionError(f"XLSX partition does not conserve rows: {kind}, {sheet}")
+            counts[kind] += actual
+    finally:
+        workbook.close()
+    if dict(counts) != expected:
+        raise AssertionError(f"XLSX readback differs from audit populations: {dict(counts)}")
+    return dict(counts)
+
+
+def _group_evidence(reader) -> dict[str, Any]:
+    """Count and hash every ordered member without rebuilding a group array."""
+    groups = members = payload = maximum = 0
+    digest = hashlib.sha256()
+    last_member = None
+    for ordinal, group in enumerate(reader.iter_collection("/groups")):
+        groups += 1
+        group_count = 0
+        stream = (
+            reader.iter_group_members(ordinal)
+            if hasattr(reader, "iter_group_members")
+            else group["urls"]
+        )
+        for member in stream:
+            encoded = json.dumps(member, ensure_ascii=False, separators=(",", ":")).encode()
+            digest.update(ordinal.to_bytes(8, "big"))
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+            group_count += 1
+            payload += len(encoded)
+            maximum = max(maximum, len(encoded))
+            last_member = member
+        if group_count != len(group["urls"]):
+            raise AssertionError("group member stream differs from its declared population")
+        if group_count and hasattr(reader, "group_members_page"):
+            final = reader.group_members_page(ordinal, offset=group_count - 1, limit=1)
+            if final["rows"] != [last_member] or final["has_more"]:
+                raise AssertionError("bounded group page cannot recover the final member")
+        members += group_count
+    return {
+        "groups": groups,
+        "members": members,
+        "ordered_sha256": digest.hexdigest(),
+        "member_payload_bytes": payload,
+        "largest_member_bytes": maximum,
+        "last_member": last_member,
+    }
+
+
 def _consumers(
     scan: Path, output: Path, revision: str, *, comparison_compression: str = "none"
 ) -> dict[str, Any]:
     from seohead.servers import handlers
     from seohead.sf.tasks import build_tasks_from_audit_v2
     from seohead.storage.audit_v2 import AuditV2Reader
+    from seohead.storage.history import snapshot_scan
 
     output.mkdir(parents=True, exist_ok=True)
     phases = {}
@@ -687,7 +780,34 @@ def _consumers(
             "largest_item_bytes": payload_bytes[1],
             "header_bytes": header_bytes,
         }
+        member_table = reader.con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_members'"
+        ).fetchone()
+        member_payload = (
+            reader.con.execute(
+                "SELECT COALESCE(SUM(length(CAST(value_json AS BLOB))),0) FROM group_members"
+            ).fetchone()[0]
+            if member_table
+            else 0
+        )
+        audit_sizes["separate_group_member_payload_bytes"] = member_payload
+        audit_sizes["total_payload_bytes"] = header_bytes + payload_bytes[0] + member_payload
         summary = reader.header["summary"]
+        issue_checks: Counter[str] = Counter()
+        occurrences: Counter[str] = Counter()
+        for issue in reader.iter_collection("/issues"):
+            issue_checks[issue["check"]] += 1
+            occurrences[issue["check"]] += issue.get("occurrences_count", 1)
+        if not issue_checks or "TITLE_MISSING" not in issue_checks:
+            raise AssertionError("fixture did not produce its known nontrivial findings")
+        group_evidence = _group_evidence(reader)
+        group_members = group_evidence["members"]
+        if (
+            member_table
+            and reader.con.execute("SELECT COUNT(*) FROM group_members").fetchone()[0]
+            != group_members
+        ):
+            raise AssertionError("audit member table and public member stream disagree")
         health = {
             "score": summary.get("health_score"),
             "scope": summary.get("health_score_scope"),
@@ -702,20 +822,87 @@ def _consumers(
     before_hash = _file_hash(scan)
     companion_path = scan.with_name(scan.name + ".audit-v2.sqlite")
     before_audit_hash = _file_hash(companion_path)
+    with _consumer_phase(output, phases, "integrity"):
+        integrity = {}
+        for name, source in (("scan", scan), ("audit", companion_path)):
+            con = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
+            try:
+                checks = [row[0] for row in con.execute("PRAGMA integrity_check")]
+                foreign_keys_valid = con.execute("PRAGMA foreign_key_check").fetchone() is None
+                if checks != ["ok"] or not foreign_keys_valid:
+                    raise AssertionError(f"{name} failed SQLite integrity: {checks!r}")
+                integrity[name] = {"integrity_check": "ok", "foreign_key_check": "ok"}
+            finally:
+                con.close()
+    with _consumer_phase(output, phases, "snapshot"):
+        snapshot_path = output / "snapshot.sqlite"
+        snapshot_scan(scan, snapshot_path)
+        snapshot_counts = _assert_conservation(snapshot_path, audit_v2["/pages"])
+        with AuditV2Reader(snapshot_path) as snapshot_reader:
+            snapshot_audit = {
+                pointer: snapshot_reader.count(pointer) for pointer in snapshot_reader.collections
+            }
+            if snapshot_audit != audit_v2:
+                raise AssertionError("public snapshot did not conserve every audit collection")
     with _consumer_phase(output, phases, "tasks"):
         task_backlog = build_tasks_from_audit_v2(str(scan))
+        tasks = task_backlog["tasks"]
+        if {task["check"] for task in tasks} != set(issue_checks):
+            raise AssertionError("tasks lost a source finding check")
+        for task in tasks:
+            if task["occurrences"] != occurrences[task["check"]]:
+                raise AssertionError("task occurrence total differs from full audit")
+            if (
+                task["urls"]
+                and len(task["urls"]) + task["urls_truncated"] != task["affected_count"]
+            ):
+                raise AssertionError("task URL coverage hides omitted members")
+        task_coverage = {
+            "source_findings": sum(issue_checks.values()),
+            "source_checks": len(issue_checks),
+            "source_occurrences": sum(occurrences.values()),
+            "returned_urls": sum(len(task["urls"]) for task in tasks),
+            "omitted_urls": sum(task["urls_truncated"] for task in tasks),
+        }
+    export_populations = {"pages": audit_v2["/pages"], "findings": audit_v2["/issues"]}
+    projection = {
+        "pages": ["url", "status_code", "title", "canonical"],
+        "findings": ["id", "check", "target_url", "severity"],
+    }
     with _consumer_phase(output, phases, "export"):
         export = handlers.scan_export(
             input_path=str(scan),
             out=str(output / "scan-export.csv"),
             format="csv",
-            records=["pages"],
-            fields={"pages": ["url", "status_code", "title", "canonical"]},
+            records=list(export_populations),
+            fields=projection,
         )
+        csv_counts = {
+            kind: _csv_rows(output / f"scan-export.{kind}.csv") for kind in export_populations
+        }
+        if csv_counts != export_populations or export.get("counts") != export_populations:
+            raise AssertionError("CSV export did not conserve the full source population")
+    with _consumer_phase(output, phases, "xlsx_export"):
+        xlsx = handlers.scan_export(
+            input_path=str(scan),
+            out=str(output / "scan-export.xlsx"),
+            format="xlsx",
+            records=list(export_populations),
+            fields=projection,
+        )
+        if not xlsx.get("ok") or xlsx.get("counts") != export_populations:
+            raise AssertionError(f"XLSX export failed: {xlsx!r}")
+        xlsx_counts = _xlsx_rows(output / "scan-export.xlsx", export_populations)
     with _consumer_phase(output, phases, "report"):
         report = handlers.report_build(
             audit=str(scan), fmt="csv", out=str(output / "audit-report.csv")
         )
+        report_counts = {
+            "findings": _csv_rows(output / "audit-report.csv", delimiter=";"),
+            "pages": _csv_rows(output / "audit-report.pages.csv", delimiter=";"),
+        }
+        if report_counts != export_populations:
+            raise AssertionError("CSV report did not conserve every source finding and page")
     with _consumer_phase(output, phases, "status"):
         status = handlers.scan_status(input_path=str(scan))
     with _consumer_phase(output, phases, "inspect"):
@@ -784,12 +971,25 @@ def _consumers(
         "source_sha256_after": after_hash,
         "source_audit_sha256_before": before_audit_hash,
         "source_audit_sha256_after": after_audit_hash,
+        "integrity": integrity,
+        "snapshot": {
+            "path": str(snapshot_path),
+            "conservation": snapshot_counts,
+            "audit_v2": snapshot_audit,
+        },
         "tasks": task_backlog["summary"],
+        "task_coverage": task_coverage,
+        "group_members": group_members,
+        "group_evidence": group_evidence,
         "health": health,
         "comparison": comparison,
         "comparison_roundtrip": comparison_roundtrip,
         "export": export,
+        "csv_readback": csv_counts,
+        "xlsx_export": xlsx,
+        "xlsx_readback": xlsx_counts,
         "report": report,
+        "report_readback": report_counts,
         "status": status,
         "inspection": {
             "offset": inspection["offset"],
@@ -816,6 +1016,7 @@ def run_stage(
     body_padding_bytes: int = 0,
     comparison_compression: str = "none",
     body_profile: str = "padding",
+    h1_families: int = 101,
 ) -> dict[str, Any]:
     """Run one measured stage; exceptions intentionally make its status failed."""
     from seohead.servers.scan_handlers import crawl_site_scan
@@ -838,6 +1039,7 @@ def run_stage(
         forms_per_page=forms_per_page,
         body_padding_bytes=body_padding_bytes,
         body_profile=body_profile,
+        h1_families=h1_families,
     )
     # A synthetic KeyboardInterrupt must reach the real collector coordinator,
     # not be retained as one failed member of a concurrent fixture batch.
@@ -870,6 +1072,7 @@ def run_stage(
             try:
                 row = con.execute("SELECT lifecycle,finish_reason FROM scan").fetchone()
                 committed = int(con.execute("SELECT COUNT(*) FROM pages").fetchone()[0])
+                frontier = dict(con.execute("SELECT state,COUNT(*) FROM frontier GROUP BY state"))
             finally:
                 con.close()
             if not 0 < committed < pages or row["lifecycle"] == "finished":
@@ -880,6 +1083,7 @@ def run_stage(
                 "pages": committed,
                 "lifecycle": row["lifecycle"],
                 "finish_reason": row["finish_reason"],
+                "frontier": frontier,
             }
             origin.resume()
         result = crawl_site_scan(
@@ -904,6 +1108,13 @@ def run_stage(
         raise AssertionError(
             f"requested scope or retained corpus is incomplete: {_collector_summary(result)!r}"
         )
+    if interrupt_after is not None and not result.get("resumed"):
+        raise AssertionError("interrupted scan was recollected instead of resumed")
+    expected_requests = pages + int(interrupt_after is not None)
+    if origin.page_requests != expected_requests:
+        raise AssertionError(
+            f"resume refetched pages: {origin.page_requests} != {expected_requests}"
+        )
     counts = _assert_conservation(scan, pages)
     if (
         counts["links"] != pages * origin.links_per_page
@@ -912,12 +1123,14 @@ def run_stage(
         raise AssertionError(f"retained links/forms disagree with generated source: {counts}")
     record: dict[str, Any] = {
         "status": "passed",
+        "acceptance_scope": "producer_and_consumers" if consumers else "producer_only",
         "pages_requested": pages,
         "shard_size": shard_size,
         "body_profile_sample": _body_profile_summary(origin),
         "fixture": {
             "schema": "seohead.synthetic-crawl.v3",
             "body_profile": body_profile,
+            "h1_families": h1_families,
             "links_per_page": origin.links_per_page,
             "forms_per_page": forms_per_page,
             "body_padding_bytes": body_padding_bytes,
@@ -929,12 +1142,8 @@ def run_stage(
         # An intentional interrupted prefix is evidence about resume, while
         # this final metric names the finished capture only. Keep both rather
         # than silently merging populations from different lifecycle states.
-        "discovery_path_trace": [
-            item for item in discovery_path_trace if item["indexable_pages"] == pages
-        ],
-        "interruption_discovery_path_trace": [
-            item for item in discovery_path_trace if item["indexable_pages"] != pages
-        ],
+        "discovery_path_trace": discovery_path_trace[-1:],
+        "interruption_discovery_path_trace": discovery_path_trace[:-1],
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "peak_rss_mib": _peak_rss_mib(),
         "disk_bytes": _disk_bytes(scan),
@@ -1020,6 +1229,125 @@ def run_consumers_only(
     return result
 
 
+def run_loopback(output: Path, *, pages: int = 8) -> dict[str, Any]:
+    """Exercise the owned HTTP origin with the actual guarded client and pacing."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from seohead.crawl.settings import effective_request_rate, load
+    from seohead.recon.net import validate_url
+    from seohead.servers.scan_handlers import crawl_site_scan
+
+    if not 2 <= pages <= 100:
+        raise ValueError("loopback acceptance is a separate 2..100-page transport smoke")
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("loopback output must be empty or new")
+    output.mkdir(parents=True, exist_ok=True)
+    received: list[float] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            received.append(time.monotonic())
+            response = origin.handle(httpx.Request("GET", origin.base_url + self.path))
+            body = response.read()
+            self.send_response(response.status_code)
+            for name, value in response.headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    base_url = f"http://127.0.0.1:{server.server_port}"
+    origin = SyntheticOrigin(pages, max(1, pages // 2), base_url=base_url, links_per_page=3)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    started = time.monotonic()
+    settings = load(overrides={"limits.max_urls": pages, "limits.max_requests": pages + 20})
+    scan = output / "loopback.sqlite"
+    try:
+        with patch.dict(
+            os.environ, {"SEOHEAD_ALLOW_PRIVATE_NETWORKS": "0", "SEOHEAD_ALLOW_PRIVATE_HOSTS": ""}
+        ):
+            try:
+                validate_url(base_url)
+            except ValueError:
+                private_refused = True
+            else:
+                raise AssertionError("guard admitted loopback without the owned-host allowance")
+        with patch.dict(
+            os.environ,
+            {"SEOHEAD_ALLOW_PRIVATE_NETWORKS": "0", "SEOHEAD_ALLOW_PRIVATE_HOSTS": "127.0.0.1"},
+        ):
+            result = crawl_site_scan(
+                base_url + "/p/0",
+                scan_out=str(scan),
+                settings=settings,
+                sitemap=base_url + "/sitemap-index.xml",
+                producer_build=_revision(),
+            )
+        if (
+            result.get("partial")
+            or not result.get("audit_available")
+            or not result.get("finalized")
+        ):
+            raise AssertionError(
+                f"guarded HTTP collection did not finish: {_collector_summary(result)}"
+            )
+        counts = _assert_conservation(scan, pages)
+        if (
+            counts["links"] != pages * origin.links_per_page
+            or counts["forms"] != (pages + 4095) // 4096
+        ):
+            raise AssertionError("owned HTTP fixture did not retain every parsed link and form")
+        from seohead.storage.audit_v2 import AuditV2Reader
+
+        with AuditV2Reader(scan) as reader:
+            title_missing = sum(
+                item["check"] == "TITLE_MISSING" for item in reader.iter_collection("/issues")
+            )
+        if title_missing != 1:
+            raise AssertionError("owned HTTP fixture lost its known title finding")
+        intervals = [after - before for before, after in itertools.pairwise(received)]
+        if effective_request_rate(settings) > 2 or min(intervals) < 0.45:
+            raise AssertionError(
+                "owned HTTP fixture did not preserve the default 2-request/s pacing"
+            )
+        receipt = {
+            "status": "passed",
+            "mode": "guarded_loopback",
+            "source_revision": _revision(),
+            "loaded_code": _loaded_code(),
+            "runtime": _runtime(),
+            "private_refused_before_allowance": private_refused,
+            "allowed_private_host": "127.0.0.1",
+            "transport": "real guarded http_client",
+            "effective_max_requests_per_second": effective_request_rate(settings),
+            "minimum_observed_request_interval_seconds": min(intervals),
+            "requests": len(received),
+            "known_title_missing_findings": title_missing,
+            "conservation": counts,
+            "elapsed_seconds": time.monotonic() - started,
+            "peak_rss_mib": _peak_rss_mib(),
+        }
+        (output / "result.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+        return receipt
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _check_peak_rss(result: dict[str, Any], limit: float, path: Path) -> None:
+    if result["peak_rss_mib"] > limit:
+        result.update(status="blocked", reason="operating_system_peak_rss_budget")
+        path.write_text(json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")
+        raise RuntimeError("stage exceeded the operating-system peak RSS budget")
+
+
 def _parse_stages(value: str) -> list[int]:
     try:
         stages = [int(item) for item in value.split(",") if item]
@@ -1047,12 +1375,27 @@ def main(argv: list[str] | None = None) -> int:
         help="retry all consumers on an existing owned synthetic capture; never recollect it",
     )
     parser.add_argument("--skip-consumers", action="store_true")
-    parser.add_argument("--links-per-page", type=int, default=1)
-    parser.add_argument("--forms-per-page", type=int, default=0)
-    parser.add_argument("--body-padding-bytes", type=int, default=0)
+    parser.add_argument(
+        "--loopback-only", action="store_true", help="explicit owned HTTP smoke with default pacing"
+    )
+    parser.add_argument("--links-per-page", type=int, default=3)
+    parser.add_argument("--forms-per-page", type=int, default=1)
+    parser.add_argument("--h1-families", type=int, default=1)
+    parser.add_argument("--body-padding-bytes", type=int, default=2048)
     parser.add_argument("--comparison-compression", choices=("none", "gzip"), default="none")
-    parser.add_argument("--body-profile", choices=("padding", "catalogue-v1"), default="padding")
+    parser.add_argument(
+        "--body-profile", choices=("padding", "catalogue-v1"), default="catalogue-v1"
+    )
+    parser.add_argument("--max-seconds", type=float, default=1800)
+    parser.add_argument("--max-rss-mib", type=float, default=4096)
+    parser.add_argument("--max-disk-mib", type=float, default=32768)
+    parser.add_argument("--min-free-mib", type=float, default=12288)
+    parser.add_argument("--stage-worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.input_scan is not None and args.skip_consumers:
+        parser.error("--input-scan cannot skip consumers")
+    if args.input_scan is not None and args.loopback_only:
+        parser.error("--input-scan and --loopback-only are mutually exclusive")
     if args.interrupt_after < 1:
         parser.error("--interrupt-after must be positive")
     if args.out.exists() and any(args.out.iterdir()):
@@ -1066,6 +1409,102 @@ def main(argv: list[str] | None = None) -> int:
     )
     if status.stdout.strip():
         parser.error("capacity acceptance requires a clean, frozen source checkout")
+    if not args.stage_worker:
+        from scripts.capacity_watchdog import supervise
+
+        args.out.mkdir(parents=True, exist_ok=True)
+        stages = [None] if args.input_scan is not None or args.loopback_only else args.stages
+        results = []
+        for pages in stages:
+            stage = args.out / (
+                str(pages) if pages is not None else "consumers" if args.input_scan else "loopback"
+            )
+            temporary = stage / "tmp"
+            temporary.mkdir(parents=True)
+            child_out = stage / "artifacts"
+            command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--stage-worker",
+                "--out",
+                str(child_out),
+            ]
+            if args.input_scan:
+                command += ["--input-scan", str(args.input_scan.resolve())]
+            elif args.loopback_only:
+                command.append("--loopback-only")
+            else:
+                command += [
+                    "--stages",
+                    str(pages),
+                    "--shard-size",
+                    str(args.shard_size),
+                    "--interrupt-after",
+                    str(args.interrupt_after),
+                    "--links-per-page",
+                    str(args.links_per_page),
+                    "--forms-per-page",
+                    str(args.forms_per_page),
+                    "--h1-families",
+                    str(args.h1_families),
+                    "--body-padding-bytes",
+                    str(args.body_padding_bytes),
+                    "--body-profile",
+                    args.body_profile,
+                ]
+                if args.skip_consumers:
+                    command.append("--skip-consumers")
+            command += [
+                "--comparison-compression",
+                args.comparison_compression,
+                "--max-rss-mib",
+                str(args.max_rss_mib),
+            ]
+            receipt = supervise(
+                command,
+                cwd=PROJECT_ROOT,
+                output=stage / "watchdog",
+                disk_dir=stage,
+                env={
+                    **os.environ,
+                    "TMPDIR": str(temporary),
+                    "SQLITE_TMPDIR": str(temporary),
+                    "TMP": str(temporary),
+                    "TEMP": str(temporary),
+                },
+                max_seconds=args.max_seconds,
+                max_rss_mib=args.max_rss_mib,
+                max_disk_mib=args.max_disk_mib,
+                min_free_mib=args.min_free_mib,
+                measured_paths={"temporary_spools": temporary, "artifacts": child_out},
+            )
+            results.append(
+                {
+                    "pages_requested": pages,
+                    "watchdog": str(stage / "watchdog/watchdog.json"),
+                    **receipt,
+                }
+            )
+            if receipt["status"] != "passed":
+                break
+        manifest = {
+            "format": "seohead.million-crawl-acceptance.v2",
+            "source_revision": _revision(),
+            "results": results,
+        }
+        (args.out / "manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
+        print(json.dumps(manifest, indent=2))
+        return (
+            0
+            if len(results) == len(stages) and all(item["status"] == "passed" for item in results)
+            else 1
+        )
+    if args.loopback_only:
+        result = run_loopback(args.out)
+        _check_peak_rss(result, args.max_rss_mib, args.out / "result.json")
+        return 0
     if args.input_scan is not None:
         if args.skip_consumers:
             parser.error("--input-scan cannot skip consumers")
@@ -1073,6 +1512,7 @@ def main(argv: list[str] | None = None) -> int:
             result = run_consumers_only(
                 args.input_scan, args.out, comparison_compression=args.comparison_compression
             )
+            _check_peak_rss(result, args.max_rss_mib, args.out / "result.json")
         except BaseException:
             import traceback
 
@@ -1098,8 +1538,10 @@ def main(argv: list[str] | None = None) -> int:
                     body_padding_bytes=args.body_padding_bytes,
                     comparison_compression=args.comparison_compression,
                     body_profile=args.body_profile,
+                    h1_families=args.h1_families,
                 )
             )
+            _check_peak_rss(results[-1], args.max_rss_mib, args.out / str(pages) / "result.json")
         except BaseException as exc:
             import traceback
 

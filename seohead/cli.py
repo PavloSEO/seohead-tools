@@ -1608,7 +1608,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--urls-file",
             help="list mode: TXT/CSV/XLSX/XML URL file",
         )
-        sub.add_argument("--max-urls", type=int, help="URL budget (default 200)")
+        sub.add_argument("--max-urls", type=int, help="URL budget, at most 1,000,000 (default 200)")
         sub.add_argument(
             "--out-dir",
             help="legacy directory output; disables default scan",

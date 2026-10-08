@@ -31,8 +31,9 @@ than a command total or an unsupported percentage of "SEO tasks automated":
 | Reporting and integrations | [reports](../examples/reports/README.md), [providers](PROVIDERS.md), [BI](BI.md) | Requested output actually produced, provider grain/availability preserved, destination validated if used |
 | Operations and capacity | [platforms](PLATFORMS.md), [capacity profile](SCAN_CAPACITY_PROFILE.md) | Complete retained runtime evidence for the actual build, workload and environment |
 
-The stable live crawler currently admits at most 50,000 URLs. That limit is an admission guard,
-not a benchmark showing every 50,000-URL workload completes. Million-URL end-to-end delivery and
+The native SQLite crawler admits explicit configurations up to 1,000,000 URLs. This is an
+admission bound, not a benchmark showing every such workload completes. Materialized legacy
+APIs retain a separate 50,000-URL safety bound. Million-URL end-to-end delivery and
 full feature/performance parity remain unaccepted; the [capacity record](SCAN_CAPACITY_PROFILE.md)
 names the measured limits. Configurability means supported settings, views and policies, not an
 arbitrary plugin runtime or autonomous code rewriting.

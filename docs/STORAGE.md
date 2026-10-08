@@ -68,32 +68,30 @@ The native default is `storage.body_mode=captured_entity_bytes`; the only other
 supported value is `off`. The recorded retention policy, body state, and
 capability state determine what a particular scan actually retained.
 
-## Experimental synthetic capacity admission
+## Native capacity admission and retained experimental profiles
 
-The stable live crawler ceiling remains **50,000 URLs**. The optional
-`storage.capacity_profile="experimental_synthetic"` marker admits a declared
-`limits.max_urls` up to 1,000,000 for direct `NativeScan` synthetic storage
-profiles. It is persisted in `scan.config_json` and the configuration
-fingerprint, and is validated on create, inspect, reopen, snapshot, and resume.
-Older scans with no marker retain their original fingerprint and read as stable.
-The marker is rejected by live CLI/MCP crawl handlers and the SQLite collector,
-even below 50,000 URLs. It does not change `checked_url_budget`, actual crawl
-admission, audit/report limits, or release support.
+Explicit native SQLite site scans admit up to **1,000,000 URLs** through settings,
+CLI, MCP, remote submission and workers. Values above the shared ceiling fail
+before collection; request budgets may separately reach 2,000,000 attempts to
+cover robots, sitemaps, redirects and retries. Default request and politeness
+settings stay unchanged. Admission alone does not establish capacity: see the
+[source-bound end-to-end gate](MILLION_CRAWL_ACCEPTANCE.md).
 
-Use this mode only for predeclared offline profile cases with explicit page,
-link-density, body/DOM, time, memory, disk and interruption budgets. A profile
-that writes 100,000 or 1,000,000 synthetic rows establishes only the stages it
-actually completed. The #818 end-to-end gate remains **unmet** until #815 has
-recorded the required 10k/50k/100k/1M matrix, #816 has a measured large-audit
-representation, and #817 has measured bounded collection, resume, JS and
-audit-bridge behavior at multiple link densities. Each stage must pass its
-frozen budget with complete URL/link evidence, honest finish and partialness
-states, restart recovery, and working downstream compare/report consumers
-before proposing any live cap change. The published 50,000-page attempt below
-remains blocked by its 900-second stage ceiling. No benchmark result promotes
-the ceiling automatically: a specialist must review the frozen manifests,
-failed/skipped stages and retained artifacts, then explicitly approve a
-separate cap/configuration change.
+The compatible `storage.capacity_profile="experimental_synthetic"` marker is
+reserved for direct `NativeScan` storage fixtures. Its limit is also 1,000,000;
+public crawl handlers still refuse the marker. Existing stored fingerprints,
+including scans written before the marker existed, remain valid.
+
+Materialized legacy APIs (explicit URL lists and direct eager spider calls) keep
+an explicit 50,000-URL safety ceiling. Their audit bridge has separate limits.
+They cannot inherit native SQLite capacity results. A complete streamed list-mode
+workflow and its capacity acceptance remain tracked separately from native site
+and sitemap collection; no population is silently reduced to make it pass.
+
+The historical 50,000-page attempts below retain their original failed budgets.
+Their outcomes and sparse direct-storage measurements do not become complete
+end-to-end evidence when admission changes. Each new measurement must preserve its
+source commits, resource budgets, interruption/recovery and full consumer counts.
 
 ## Explicit local history operations
 
@@ -821,10 +819,15 @@ for sitemap seeds and ordinary links. Interrupted work can be fetched again;
 committed pages are not issued again.
 
 The native analyzer consumes SQL graph projections and disk-backed page, finding
-and group collections. Its audit.v2 path is independent of the legacy materialized
-bridge's 10,000-page and 20,000-form bounds. The separately measured page, form and
-payload populations are recorded in [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md);
-they do not establish a one-million-URL collector capacity. Sitemap capture streams membership
+and group collections without rebuilding `all_inlinks` or a complete Python edge
+list. Its audit.v2 path is independent of the **legacy materialized audit bridge**,
+which is limited to 10,000 pages, 20,000 forms and 1,500,000 links. Beyond those
+bounds the legacy bridge preserves collection evidence with `audit_available=false`
+and a recorded reason. These limits do not cap the native audit.v2 page population
+and are not a memory guarantee for arbitrary field lengths or finding populations.
+Separately measured page, form and payload populations are recorded in
+[SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md); they do not establish a
+one-million-URL collector capacity. Sitemap capture streams membership
 in chunks of 256, with the existing per-root expansion limits; it no longer
 allocates the full declared-URL list before an admission check.
 

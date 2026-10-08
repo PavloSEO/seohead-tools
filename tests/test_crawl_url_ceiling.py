@@ -73,8 +73,8 @@ def test_configuration_refuses_the_same_number_with_the_same_reason() -> None:
     assert "scope" in message  # says what to do instead, not only what is wrong
 
 
-def test_the_ceiling_is_the_documented_50_000() -> None:
-    assert MAX_URLS_CEILING == 50_000
+def test_the_ceiling_is_the_documented_one_million() -> None:
+    assert MAX_URLS_CEILING == 1_000_000
     described = {row["path"]: row["description"] for row in settings.describe_settings()}
     assert f"{MAX_URLS_CEILING:,}" in described["limits.max_urls"]
 

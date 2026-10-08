@@ -29,10 +29,8 @@ def _experimental(pages: int) -> dict:
 
 def test_stable_ceiling_and_experimental_admission_are_explicit():
     for pages in (50_001, 100_000, 1_000_000):
-        with pytest.raises(settings.ConfigError, match="ceiling"):
-            settings.load(overrides={"limits.max_urls": pages})
-        with pytest.raises(ValueError, match="ceiling"):
-            settings.checked_url_budget(pages)
+        assert settings.load(overrides={"limits.max_urls": pages})["limits"]["max_urls"] == pages
+        assert settings.checked_url_budget(pages) == pages
         resolved = _experimental(pages)
         assert resolved["limits"]["max_urls"] == pages
         assert settings.manifest(resolved)["storage.capacity_profile"] == "experimental_synthetic"

@@ -231,7 +231,7 @@ def test_request_boundary_hides_secret_values_and_rejects_unsafe_inputs():
     assert bad.status_code == 422 and "secret" not in bad.text
     assert submit(api, url="http://example.test/#fragment").status_code == 422
     assert submit(api, url="file:///etc/passwd").status_code == 422
-    assert submit(api, options={"max_urls": 50_001}).status_code == 422
+    assert submit(api, options={"max_urls": 1_000_001}).status_code == 422
     assert submit(api, options={"http": {"credential_headers": []}}).status_code == 422
     denied = submit(api, url="https://example.test/denied")
     assert denied.status_code == 403

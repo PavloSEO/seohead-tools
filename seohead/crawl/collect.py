@@ -31,7 +31,7 @@ from seohead.crawl.settings import (
     checked_url_budget,
     resolve_credential_headers,
 )
-from seohead.crawl.throttle import MAX_DELAY_S, DispatchGate, Throttle
+from seohead.crawl.throttle import MAX_DELAY_S, DispatchGate, RequestBudgetExhausted, Throttle
 from seohead.recon.net import (
     UA,
     BlockedRedirectError,
@@ -975,6 +975,8 @@ def _robots_blocks(
             status = getattr(response, "status_code", None)
             if status is not None and status < 300:
                 text = getattr(response, "text", "") or ""
+        except RequestBudgetExhausted:
+            raise
         except Exception:
             text = ""  # unreadable robots.txt: treated as no restrictions, same as a 4xx
         robots_cache[key] = parse_robots(text)
@@ -1011,6 +1013,7 @@ def _resolve_redirect_destination(
     visited = {record.url}
     current = record.redirect_url
     chain: list[dict[str, Any]] = []
+    record.redirect_chain = chain
     while current and current not in visited and len(chain) < MAX_REDIRECT_CHAIN_HOPS:
         visited.add(current)
         hop, _ = fetch_one(
@@ -1032,6 +1035,7 @@ def _resolve_redirect_destination(
             ),
         )
         chain.append({"url": hop.url, "status_code": hop.status_code, "error": hop.error})
+        record.final_url = hop.url
         if not hop.redirect_url:
             break
         current = hop.redirect_url
@@ -1053,6 +1057,7 @@ def _resolve_canonical_destination(
     parse_options: dict[str, Any] | None,
     cache: ResponseCache | None,
     sleeper: Callable[[float], None],
+    wait: Callable[[], None] | None = None,
 ) -> None:
     """Follow canonical declarations as bounded per-row evidence.
 
@@ -1064,6 +1069,7 @@ def _resolve_canonical_destination(
     visited = {record.url}
     current = record.canonical
     chain: list[dict[str, Any]] = []
+    record.canonical_chain = chain
     while current and current not in visited and len(chain) < MAX_REDIRECT_CHAIN_HOPS:
         visited.add(current)
         hop, _ = fetch_one(
@@ -1077,7 +1083,7 @@ def _resolve_canonical_destination(
             retry_on_timeout=retry_on_timeout,
             parse_options=parse_options,
             cache=cache,
-            wait=(lambda: sleeper(throttle.delay)) if throttle.delay else None,
+            wait=wait or ((lambda: sleeper(throttle.delay)) if throttle.delay else None),
         )
         chain.append(
             {
@@ -1087,6 +1093,7 @@ def _resolve_canonical_destination(
                 "error": hop.error,
             }
         )
+        record.final_canonical = hop.url
         current = hop.canonical
     record.canonical_chain = chain
     if chain:
@@ -1097,6 +1104,7 @@ def collect_urls(
     urls: Iterable[str],
     *,
     max_urls: int = 500,
+    max_requests: int = 0,
     max_seconds: float = 0,
     timeout: float = DEFAULT_TIMEOUT_S,
     min_delay: float = 0.0,
@@ -1150,10 +1158,10 @@ def collect_urls(
     redirect option: it follows a page's canonical declaration through a
     bounded chain without adding any target to ``result.pages``.
     """
-    limit = checked_url_budget(max_urls)
+    limit = checked_url_budget(max_urls, materialized=True)
     result = CrawlResult()
     throttle = Throttle(min_delay=min_delay, max_delay=max_delay_seconds, adaptive=adaptive)
-    dispatch_gate = DispatchGate(throttle, sleeper, clock)
+    dispatch_gate = DispatchGate(throttle, sleeper, clock, max_requests=max_requests)
     started = clock()
 
     seen: set[str] = set()
@@ -1210,37 +1218,25 @@ def collect_urls(
                 continue
             seen.add(url)
 
-            if robots_policy != "ignore" and _robots_blocks(
-                url,
-                robots_cache=robots_cache,
-                client=client,
-                fetcher=fetcher,
-                user_agent=user_agent,
-                robots_token=robots_token,
-                wait=dispatch_gate.wait_turn,
-            ):
-                result.robots_blocked.append(url)
-                if robots_policy == "respect":
-                    continue  # report_only still fetches it below
+            record = None
+            try:
+                if robots_policy != "ignore" and _robots_blocks(
+                    url,
+                    robots_cache=robots_cache,
+                    client=client,
+                    fetcher=fetcher,
+                    user_agent=user_agent,
+                    robots_token=robots_token,
+                    wait=dispatch_gate.wait_turn,
+                ):
+                    result.robots_blocked.append(url)
+                    if robots_policy == "respect":
+                        continue  # report_only still fetches it below
 
-            # http.headers goes on every request; a credential is bound to one host.
-            extra_headers = headers_for_url(url)
-            record, _ = fetch_one(
-                url,
-                client=client,
-                fetcher=fetcher,
-                throttle=throttle,
-                extra_headers=extra_headers,
-                user_agent=user_agent,
-                max_response_bytes=max_response_bytes,
-                retry_on_timeout=retry_on_timeout,
-                parse_options=parse_options,
-                cache=cache,
-                wait=dispatch_gate.wait_turn,
-            )
-            if resolve_redirect_destination and record.redirect_url:
-                _resolve_redirect_destination(
-                    record,
+                # http.headers goes on every request; a credential is bound to one host.
+                extra_headers = headers_for_url(url)
+                record, _ = fetch_one(
+                    url,
                     client=client,
                     fetcher=fetcher,
                     throttle=throttle,
@@ -1251,22 +1247,45 @@ def collect_urls(
                     parse_options=parse_options,
                     cache=cache,
                     wait=dispatch_gate.wait_turn,
-                    headers_for_url=headers_for_url,
                 )
-            if resolve_canonical_destination and record.canonical:
-                _resolve_canonical_destination(
-                    record,
-                    client=client,
-                    fetcher=fetcher,
-                    throttle=throttle,
-                    extra_headers=extra_headers,
-                    user_agent=user_agent,
-                    max_response_bytes=max_response_bytes,
-                    retry_on_timeout=retry_on_timeout,
-                    parse_options=parse_options,
-                    cache=cache,
-                    sleeper=sleeper,
-                )
+                if resolve_redirect_destination and record.redirect_url:
+                    _resolve_redirect_destination(
+                        record,
+                        client=client,
+                        fetcher=fetcher,
+                        throttle=throttle,
+                        extra_headers=extra_headers,
+                        user_agent=user_agent,
+                        max_response_bytes=max_response_bytes,
+                        retry_on_timeout=retry_on_timeout,
+                        parse_options=parse_options,
+                        cache=cache,
+                        wait=dispatch_gate.wait_turn,
+                        headers_for_url=headers_for_url,
+                    )
+                if resolve_canonical_destination and record.canonical:
+                    _resolve_canonical_destination(
+                        record,
+                        client=client,
+                        fetcher=fetcher,
+                        throttle=throttle,
+                        extra_headers=extra_headers,
+                        user_agent=user_agent,
+                        max_response_bytes=max_response_bytes,
+                        retry_on_timeout=retry_on_timeout,
+                        parse_options=parse_options,
+                        cache=cache,
+                        sleeper=sleeper,
+                        wait=dispatch_gate.wait_turn,
+                    )
+            except RequestBudgetExhausted:
+                if record is not None:
+                    result.pages.append(record)
+                    _write(handle, record)
+                result.partial = True
+                result.finish_reason = "request_limit"
+                result.stopped_reason = f"total HTTP request budget reached ({max_requests})"
+                break
             result.pages.append(record)
             _write(handle, record)
 
