@@ -294,6 +294,31 @@ def test_scan_projection_conserves_pages_findings_links_and_provider_grain(tmp_p
     assert _files(package) == _files(Path(repeated["output_directory"]))
 
 
+def test_scan_export_renews_statement_budget_beyond_open_deadline(tmp_path, monkeypatch):
+    """A streamed export must not inherit the open-and-validate wall deadline.
+
+    ``open_scan`` arms one validation deadline proportional to artifact size;
+    consumers that keep the connection for a whole export re-budget per
+    statement, as ``content_search``, ``reanalysis`` and ``history`` do.
+    """
+    from seohead.storage import READ_TIMEOUT_SECONDS
+
+    scan_path = _crawl_with_audit(tmp_path, monkeypatch)
+    opened: dict = {}
+    original = bi_report.open_scan
+
+    def recording(path, **kwargs):
+        opened.update(kwargs)
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(bi_report, "open_scan", recording)
+    export_bi(scan=scan_path, out_dir=tmp_path / "bi-package")
+    assert opened == {
+        "require_audit": False,
+        "query_timeout_seconds": READ_TIMEOUT_SECONDS,
+    }
+
+
 def test_audit_v2_page_overlay_is_keyed_not_positional(tmp_path, monkeypatch):
     """A valid audit.v2 collection may be ordered independently from the crawl."""
     from seohead.storage.audit_v2 import write_audit_v2

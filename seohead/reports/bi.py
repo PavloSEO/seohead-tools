@@ -26,7 +26,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from seohead.storage import open_scan
+from seohead.storage import READ_TIMEOUT_SECONDS, open_scan
 from seohead.storage.inputs import is_sqlite_input
 from seohead.tools.external_join import normalize_join_key
 
@@ -3172,7 +3172,12 @@ def _scan_run(
     from contextlib import closing
 
     try:
-        con = open_scan(path, require_audit=False)
+        # The open deadline is sized for the validate pass alone; a streamed
+        # export keeps the connection far longer, so it must re-budget per
+        # statement like the other long consumers.
+        con = open_scan(
+            path, require_audit=False, query_timeout_seconds=READ_TIMEOUT_SECONDS
+        )
     except Exception as exc:
         raise BIExportError(f"scan input failed validation: {exc}") from exc
     with closing(con):
