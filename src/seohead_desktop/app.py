@@ -225,6 +225,10 @@ class MainWindow(QMainWindow):
         self.observed_at = None
         self._work_progress = {}
         self._run_envelope = {}
+        self._run_history_offset = 0
+        self._run_history_limit = 20
+        self._run_history_supported = False
+        self._run_history_controls = []
         self.monitor = None
         self.current_layout = "url"
         self._single_window_geometry = None
@@ -504,6 +508,7 @@ class MainWindow(QMainWindow):
         self.activity_table.selectionModel().currentRowChanged.connect(self.show_observed_run)
         self.activity_table.clicked.connect(lambda index: self.show_observed_run(index, None))
         activity_layout.addWidget(self.activity_table, 1)
+        activity_layout.addWidget(self.run_history_controls())
         self.activity_text = plain("Нет измерений активности. История появится из сохранённых запусков проекта.")
         self.activity_text.setAccessibleName("Измерения выбранного запуска")
         activity_layout.addWidget(self.activity_text, 1)
@@ -556,7 +561,63 @@ class MainWindow(QMainWindow):
         for column, width in enumerate((220, 300, 160)):
             self.journal_table.setColumnWidth(column, width)
         layout.addWidget(self.journal_table, 1)
+        layout.addWidget(self.run_history_controls())
         return page
+
+    def run_history_controls(self):
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel("История запусков загружается…")
+        label.setObjectName("metadata")
+        label.setWordWrap(True)
+        previous = QPushButton("Новее")
+        following = QPushButton("Старее")
+        previous.setIcon(icon("chevron_left"))
+        following.setIcon(icon("chevron_right"))
+        previous.clicked.connect(lambda: self.change_run_history(-1))
+        following.clicked.connect(lambda: self.change_run_history(1))
+        layout.addWidget(label, 1)
+        layout.addWidget(previous)
+        layout.addWidget(following)
+        self._run_history_controls.append((container, label, previous, following))
+        container.hide()
+        return container
+
+    def observer_arguments(self):
+        arguments = {"directory": self.project_directory, "consumer": CONSUMER_ID, "scan_limit": 20}
+        if self._run_history_supported:
+            arguments.update(run_offset=self._run_history_offset, run_limit=self._run_history_limit)
+        return arguments
+
+    def update_run_history_controls(self):
+        pagination = self._run_envelope.get("pagination")
+        self._run_history_supported = isinstance(pagination, dict) and all(
+            type(pagination.get(key)) is int and pagination[key] >= 0
+            for key in ("offset", "limit", "total")
+        ) and 1 <= pagination["limit"] <= 100
+        for container, label, previous, following in self._run_history_controls:
+            container.setVisible(self._run_history_supported and bool(self.project_directory))
+            if not self._run_history_supported:
+                continue
+            offset, total = pagination["offset"], pagination["total"]
+            end = min(offset + pagination["limit"], total)
+            selected = f"{offset + 1}–{end} из {total}" if end > offset else "нет записей"
+            retained = (self._run_envelope.get("retention") or {}).get("max_runs")
+            label.setText(f"Завершённые: {selected} · активные: {value_text(self._run_envelope.get('active_total'))}" + (f" · история: до {retained} запусков" if retained else ""))
+            previous.setEnabled(offset > 0)
+            following.setEnabled(pagination.get("has_more") is True)
+
+    def change_run_history(self, direction):
+        if not self._run_history_supported or self._project_loading or self._pending_note is not None:
+            return
+        pagination = self._run_envelope["pagination"]
+        if direction > 0 and pagination.get("next_offset") is None:
+            return
+        self.cancel_requests()
+        self._run_history_offset = max(0, self._run_history_offset - self._run_history_limit) if direction < 0 else pagination["next_offset"]
+        self.last_observer_signature = None
+        self.poll_active_scan()
 
     def audit_page(self):
         self.audit_workspace = AuditWorkspace()
@@ -1005,6 +1066,10 @@ class MainWindow(QMainWindow):
         self.observed_at = None
         self._work_progress = {}
         self._run_envelope = {}
+        restored_offset = (self._workspace_restore or {}).get("state", {}).get("run_history_offset", 0)
+        self._run_history_offset = restored_offset if type(restored_offset) is int and 0 <= restored_offset <= 100 else 0
+        self._run_history_supported = False
+        self.update_run_history_controls()
         self.clear_work_monitor()
         self.activity_model.replace([])
         self.journal_model.replace([])
@@ -1092,7 +1157,7 @@ class MainWindow(QMainWindow):
         self.start_command(
             "observer",
             "seo_project_observe",
-            {"directory": directory, "consumer": CONSUMER_ID, "scan_limit": 20},
+            self.observer_arguments(),
             self.load_observer,
         )
         self.start_command(
@@ -1109,6 +1174,11 @@ class MainWindow(QMainWindow):
         scans = result.get("scans") or {}
         inbox = result.get("inbox") or {}
         run_envelope = result.get("runs")
+        pagination = run_envelope.get("pagination") if isinstance(run_envelope, dict) else None
+        if isinstance(pagination, dict) and type(pagination.get("offset")) is int and pagination["offset"] != self._run_history_offset:
+            self._run_history_supported = True
+            QTimer.singleShot(0, self.poll_active_scan)
+            return
         runs = run_envelope.get("items", []) if isinstance(run_envelope, dict) else run_envelope if isinstance(run_envelope, list) else []
         signature = (
             progress.get("revision"),
@@ -1125,6 +1195,7 @@ class MainWindow(QMainWindow):
             return
         self.last_observer_signature = signature
         self._run_envelope = run_envelope if isinstance(run_envelope, dict) else {"items": runs}
+        self.update_run_history_controls()
         self._work_progress = progress
         if progress.get("revision") != previous_progress_revision and "tasks" not in self.active_commands:
             self.start_command("tasks", "seo_project_checklist_page", {"directory": self.project_directory, "limit": PAGE_LIMIT}, self.load_tasks)
@@ -1976,6 +2047,7 @@ class MainWindow(QMainWindow):
         decks = {"audit_main": self.audit_workspace.main, "audit_detail": self.audit_workspace.detail,
                  "audit_right": self.audit_workspace.right, "project": self.project_panels}
         state = {"url_search": self.search.text(), "url_offset": self._url_page_offset,
+                 "run_history_offset": self._run_history_offset,
                  "selected_url": self.selected_url, "url_sort_column": self.proxy.sortColumn(),
                  "url_sort_order": int(self.proxy.sortOrder()), "url_columns": list(self._url_column_bases),
                  "horizontal": bytes(self.horizontal.saveState()), "vertical": bytes(self.vertical.saveState()),
@@ -2060,6 +2132,9 @@ class MainWindow(QMainWindow):
         self.last_observer_signature = None
         self._work_progress = {}
         self._run_envelope = {}
+        self._run_history_offset = 0
+        self._run_history_supported = False
+        self.update_run_history_controls()
         self.clear_work_monitor()
         self.activity_model.replace([])
         self.journal_model.replace([])
@@ -3069,7 +3144,7 @@ class MainWindow(QMainWindow):
         self.start_command(
             "observer",
             "seo_project_observe",
-            {"directory": self.project_directory, "consumer": CONSUMER_ID, "scan_limit": 20},
+            self.observer_arguments(),
             self.load_observer,
         )
 
