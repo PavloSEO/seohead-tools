@@ -2279,10 +2279,10 @@ def _provider_collection(header: dict[str, Any]) -> dict[str, Any]:
     origins = header.get("field_origins") or {}
     if not isinstance(collection, dict) or not isinstance(origins, dict):
         raise BIExportError("provider source has malformed collection metadata or field origins")
-    if not collection.get("state") or origins.get("collection_state") not in {
+    if not collection.get("state") or origins.get("collection_state") not in (
         "declared",
         "envelope",
-    }:
+    ):
         return {
             **collection,
             "state": "unknown",
@@ -2533,7 +2533,7 @@ def _quadrant_candidates(
             "provenance": {
                 "fields": {
                     name: {
-                        "value": value if origins.get(name) in {"declared", "envelope"} else None
+                        "value": value if origins.get(name) in ("declared", "envelope") else None
                     }
                     for name, value in header.items()
                 }
@@ -2544,7 +2544,7 @@ def _quadrant_candidates(
         if collection.get("state") != "complete":
             collection_reason = collection.get("reason") or "provider collection is not complete"
         elif any(
-            collection.get(flag) is not False or origins.get(flag) not in {"declared", "envelope"}
+            collection.get(flag) is not False or origins.get(flag) not in ("declared", "envelope")
             for flag in ("sampled", "thresholded", "truncated")
         ):
             collection_reason = (

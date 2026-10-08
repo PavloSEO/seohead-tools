@@ -111,6 +111,7 @@ def test_explicit_measurements_keep_all_four_quadrants_and_axis_context(
     "case,reason",
     [
         ("unknown_collection", "collection_state"),
+        ("malformed_collection_origin", "collection_state"),
         ("unknown_flags", "explicitly"),
         ("unknown_flag_origin", "explicitly"),
         ("partial", "not complete"),
@@ -139,6 +140,8 @@ def test_incomplete_or_incompatible_observations_do_not_enter_zero_quadrants(
     if case == "unknown_collection":
         # The normalizer retains this default, but records that it is not evidence.
         origins["collection_state"] = {"value": None, "origin": "unknown"}
+    elif case == "malformed_collection_origin":
+        origins["collection_state"]["origin"] = {"not": "a source attestation"}
     elif case == "unknown_flags":
         for flag in ("sampled", "thresholded", "truncated"):
             collection[flag] = None
