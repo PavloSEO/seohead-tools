@@ -118,9 +118,9 @@ def test_explicit_measurements_keep_all_four_quadrants_and_axis_context(
         ("failed", "not complete"),
         ("skipped", "not complete"),
         ("not_configured", "not complete"),
-        ("sampled", "explicitly"),
-        ("thresholded", "explicitly"),
-        ("truncated", "explicitly"),
+        ("sampled", "sampled"),
+        ("thresholded", "thresholded"),
+        ("truncated", "truncated"),
         ("missing_attribution", "unverified_scope"),
         ("unknown_attribution_origin", "unverified_scope"),
         ("negative_clicks", "nonnegative"),
@@ -174,19 +174,35 @@ def test_incomplete_or_incompatible_observations_do_not_enter_zero_quadrants(
     assert reason in row["reason"]
     assert row["value_label"] == row["search_value"] == row["sessions_value"] == ""
     assert len(datasets["metrics"]) == 2
-    if case == "unknown_collection":
+    collection_cases = {
+        "unknown_collection": "unknown",
+        "malformed_collection_origin": "unknown",
+        "unknown_flags": "unknown",
+        "unknown_flag_origin": "unknown",
+        "sampled": "partial",
+        "thresholded": "partial",
+        "truncated": "partial",
+        "partial": "partial",
+        "failed": "failed",
+        "skipped": "skipped",
+        "not_configured": "not_configured",
+    }
+    if case in collection_cases:
         metric = next(item for item in datasets["metrics"] if item["provider"] == "gsc")
-        assert metric["collection_state"] == "unknown"
-        assert "collection_state" in metric["collection_reason"]
+        expected_state = collection_cases[case]
+        assert metric["collection_state"] == expected_state
+        if case not in {"partial", "failed", "skipped", "not_configured"}:
+            assert reason in metric["collection_reason"]
         source_id = metric["provider_source_id"]
         rows = [item for item in datasets["coverage"] if item["evidence_source_id"] == source_id]
-        assert rows and {item["state"] for item in rows} == {"unknown"}
-        assert all("collection_state" in item["reason"] for item in rows)
+        assert rows and {item["state"] for item in rows} == {expected_state}
+        if case not in {"partial", "failed", "skipped", "not_configured"}:
+            assert all(reason in item["reason"] for item in rows)
         source = next(
             item for item in manifest["provider_sources"] if item["provider_source_id"] == source_id
         )
-        assert source["state"] == "unknown"
-        assert source["evidence"]["collection"]["state"] == "complete"
+        assert source["state"] == expected_state
+        assert source["evidence"]["collection"]["state"] == gsc["mapping"]["collection"]["state"]
 
 
 def test_declared_cross_source_differences_are_retained_on_each_axis(tmp_path):

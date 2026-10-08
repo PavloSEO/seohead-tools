@@ -2279,14 +2279,41 @@ def _provider_collection(header: dict[str, Any]) -> dict[str, Any]:
     origins = header.get("field_origins") or {}
     if not isinstance(collection, dict) or not isinstance(origins, dict):
         raise BIExportError("provider source has malformed collection metadata or field origins")
-    if not collection.get("state") or origins.get("collection_state") not in (
+    state = collection.get("state")
+    reason = None
+    if not state or origins.get("collection_state") not in (
         "declared",
         "envelope",
     ):
+        state, reason = "unknown", "source did not establish collection_state"
+    elif state == "complete":
+        flags = ("sampled", "thresholded", "truncated")
+        unknown = [
+            flag
+            for flag in flags
+            if type(collection.get(flag)) is not bool
+            or origins.get(flag) not in ("declared", "envelope")
+        ]
+        degraded = [flag for flag in flags if collection.get(flag) is True and flag not in unknown]
+        if degraded:
+            state, reason = "partial", "provider collection is degraded: " + ", ".join(degraded)
+        if unknown:
+            state = "partial" if degraded else "unknown"
+            reason = "; ".join(
+                filter(
+                    None,
+                    (
+                        reason,
+                        "source did not explicitly establish collection flags: "
+                        + ", ".join(unknown),
+                    ),
+                )
+            )
+    if reason:
         return {
             **collection,
-            "state": "unknown",
-            "reason": collection.get("reason") or "source did not establish collection_state",
+            "state": state,
+            "reason": "; ".join(filter(None, (reason, collection.get("reason")))),
         }
     return collection
 
@@ -2543,13 +2570,6 @@ def _quadrant_candidates(
         collection_reason = None
         if collection.get("state") != "complete":
             collection_reason = collection.get("reason") or "provider collection is not complete"
-        elif any(
-            collection.get(flag) is not False or origins.get(flag) not in ("declared", "envelope")
-            for flag in ("sampled", "thresholded", "truncated")
-        ):
-            collection_reason = (
-                "provider collection must explicitly be unsampled, unthresholded and untruncated"
-            )
         for observation in observations:
             row = observation["row"]
             url = observation["url"]

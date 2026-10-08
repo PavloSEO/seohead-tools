@@ -45,7 +45,10 @@ evidence is an explicit unclassified/incomplete row. The exported source-observa
 references retain the two labelled axes, dates and timezone.
 
 An import default with unknown collection provenance stays `unknown` in metric rows,
-coverage and the provider manifest. Unknown quality flags cannot qualify a quadrant;
+coverage and the provider manifest. Otherwise complete sources with unverified quality
+flags also remain `unknown`; confirmed sampling, thresholding or truncation produces
+effective `partial` coverage with its reason, while raw source metadata stays intact.
+Unknown quality flags cannot qualify a quadrant;
 each flag must explicitly be false. Clicks, impressions and sessions must be nonnegative
 count measurements. Source scopes use the existing strict calendar compatibility and
 cross-source juxtaposition policy: unknown attribution prevents classification, while
