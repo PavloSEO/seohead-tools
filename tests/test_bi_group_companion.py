@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from collections.abc import Sequence
 
 import pytest
 
@@ -108,3 +109,31 @@ def test_finding_reference_must_agree_with_its_row_identity_and_count(tmp_path, 
         writer.writerows(rows)
     with pytest.raises(BIExportError, match="row differs"):
         verify_group_member_references(directory, manifest)
+
+
+def test_small_group_with_large_atomic_members_uses_complete_companion_not_oversized_cell(tmp_path):
+    class LargeMembers(Sequence):
+        def __len__(self):
+            return 6
+
+        def __getitem__(self, index):
+            if not 0 <= index < len(self):
+                raise IndexError(index)
+            return f"https://example.test/{index}/" + "x" * 1_500_000
+
+    with sqlite3.connect(":memory:") as con:
+        index = GroupIndex(con, [{"group_id": "GROUP", "count": 6, "urls": LargeMembers()}])
+        descriptor = write_group_members_companion(
+            index,
+            tmp_path,
+            run_id="test-run",
+            source_audit_sha256="a" * 64,
+            max_rows_per_file=25,
+            max_bytes_per_file=8 * 1024 * 1024,
+            budget=_OutputBudget(32 * 1024 * 1024),
+        )
+        assert descriptor["inline_member_bytes"] == 64 * 1024
+        assert descriptor["members"]["row_count"] == 6
+        assert descriptor["members"]["bytes"] > 8 * 1024 * 1024
+        assert index.get("GROUP")["urls"]["schema"] == "bi-group-members.v1"
+        assert verify_group_members_companion(tmp_path, descriptor)["members"] == 6

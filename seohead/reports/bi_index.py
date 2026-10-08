@@ -15,6 +15,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
+INLINE_MEMBER_LIMIT = 25
+INLINE_MEMBER_BYTES = 64 * 1024
+
 
 @contextmanager
 def projection_index(parent: Path, max_bytes: int):
@@ -105,22 +108,24 @@ class GroupIndex:
         self.con.execute("UPDATE groups SET linked=1 WHERE id=? AND linked=0", (key,))
         group = json.loads(row[0])
         group["member_count"] = row[1]
-        group["urls"] = (
-            [
-                json.loads(member[0])
-                for member in self.con.execute(
-                    "SELECT value_json FROM group_members WHERE group_id=? ORDER BY ordinal", (key,)
-                )
-            ]
-            if row[1] <= 25
-            else {
-                **self.reference,
-                "schema": "bi-group-members.v1",
-                "group_id": key,
-                "member_count": row[1],
-                "members_sha256": row[2],
-            }
-        )
+        group["urls"] = {
+            **self.reference,
+            "schema": "bi-group-members.v1",
+            "group_id": key,
+            "member_count": row[1],
+            "members_sha256": row[2],
+        }
+        if row[1] <= INLINE_MEMBER_LIMIT:
+            members, size = [], 2
+            for member in self.con.execute(
+                "SELECT value_json FROM group_members WHERE group_id=? ORDER BY ordinal", (key,)
+            ):
+                size += len(member[0].encode("utf-8")) + int(bool(members))
+                if size > INLINE_MEMBER_BYTES:
+                    break
+                members.append(json.loads(member[0]))
+            else:
+                group["urls"] = members
         return group
 
     def companion_rows(self, run_id, kind):
@@ -196,7 +201,8 @@ def write_group_members_companion(
         "format": "bi-group-members.v1",
         "run_id": run_id,
         "source_audit_sha256": source_audit_sha256,
-        "inline_member_limit": 25,
+        "inline_member_limit": INLINE_MEMBER_LIMIT,
+        "inline_member_bytes": INLINE_MEMBER_BYTES,
         "publication": "local companion; not included in the six published datasets",
     }
     for kind in ("groups", "members"):

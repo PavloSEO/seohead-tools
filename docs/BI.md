@@ -21,7 +21,7 @@ manifest.group_members companion (bi-group-members.v1). Its group-metadata and
 member CSV partitions declare exact counts, member order, file hashes, group
 digests, run_id and the source audit digest. The six main datasets keep their
 existing schemas. A group_urls_json cell is either an inline complete array of
-at most 25 members or an explicit versioned reference with group identity, complete
+at most 25 members and 64 KiB or an explicit versioned reference with group identity, complete
 member count, source audit hash and companion hash. It is never a sampled prefix.
 group_url_count always names the full membership.
 
