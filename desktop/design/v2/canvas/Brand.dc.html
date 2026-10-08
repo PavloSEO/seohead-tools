@@ -21,7 +21,7 @@
 </helmet>
 <div style="width: 1440px; height: 1000px; box-sizing: border-box; padding: 28px; background: #E9ECF1; font-family: Roboto, sans-serif; color: #1B1B1F; display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: 20px">
   <div style="display: flex; flex-direction: column; gap: 16px">
-    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Финалисты C и B, SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
+    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Новые финалисты — чёрная вдова в паутине (с лупой и без); SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
       <sc-for list="{{vars}}" as="v" hint-placeholder-count="4">
         <button class="{{v.cls}}" onClick="{{v.pick}}" aria-pressed="{{v.on}}">
@@ -30,9 +30,17 @@
         </button>
       </sc-for>
     </div>
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <div class="sec" style="margin: 0">Примерка на фонах · выбранный вариант</div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <div style="height: 150px; border-radius: 12px; background: #FFFFFF; border: 1px solid #DDE1E7; display: flex; align-items: center; justify-content: center; gap: 14px"><img src="{{cur.src}}" alt="" width="96" height="96"><img src="{{cur.src}}" alt="" width="32" height="32"><img src="{{cur.src}}" alt="" width="16" height="16"></div>
+        <div style="height: 150px; border-radius: 12px; background: #16181D; display: flex; align-items: center; justify-content: center; gap: 14px"><img src="{{cur.src}}" alt="" width="96" height="96"><img src="{{cur.src}}" alt="" width="32" height="32"><img src="{{cur.src}}" alt="" width="16" height="16"></div>
+        <div style="height: 150px; border-radius: 12px; background: #1565C0; display: flex; align-items: center; justify-content: center; gap: 14px"><img src="{{cur.src}}" alt="" width="96" height="96" style="filter: drop-shadow(0 4px 10px rgba(0,0,0,.25))"><img src="{{cur.src}}" alt="" width="32" height="32"><img src="{{cur.src}}" alt="" width="16" height="16"></div>
+      </div>
+    </div>
     <div class="card" style="padding: 16px; font: 400 13px/1.55 Roboto, sans-serif; color: #45464F">
       <div class="sec">Правила знака</div>
-      Квадрат со скруглением 23 % и primary <span class="mono">#1565C0</span>, белая обводка, толщина линз и ручки — как у Material Symbols, увеличенная пропорционально. До 32 px мелкие детали (лапки, паутина) должны оставаться различимыми или упрощаться: для 16 px можно сделать отдельный рисунок с двумя парами лапок. Экспорт: <span class="mono">.icns</span> (16…1024), <span class="mono">.ico</span> (16, 24, 32, 48, 256), PNG для Linux. Без лягушки, буквы G и эмодзи.
+      Квадрат со скруглением 23 % и primary <span class="mono">#1565C0</span>, белые паутина и обводка; паук — тёмный (#0E1116) с красными «часами» (#E5393B) и синей подложкой, чтобы не сливаться с паутиной; сидит справа головой вниз. До 32 px мелкие детали (лапки, паутина) должны оставаться различимыми или упрощаться: для 16 px можно сделать отдельный рисунок с двумя парами лапок. Экспорт: <span class="mono">.icns</span> (16…1024), <span class="mono">.ico</span> (16, 24, 32, 48, 256), PNG для Linux. Без лягушки, буквы G и эмодзи.
     </div>
   </div>
 
@@ -60,13 +68,13 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { v: 'c' }; }
+  constructor(props) { super(props); this.state = { v: 'w1' }; }
   renderVals() {
     const V = [
-      ['c', 'C · Паутина в линзе', 'Крупная линза, настоящая паутина с провисающими нитями. Деловой и чистый, отлично читается в 24–64 px.', '/_blob/a572d412378799e410d964ec07bc22ab', 'Выбор Павла', 'b st-done'],
-      ['c2', 'C · Паутина + паук', 'Та же линза, в центре паутины — паук. Больше характера, в 16 px паук сливается с паутиной.', '/_blob/e390fd15cde18709247904bd3664f706', 'Вариант', 'b st-run'],
-      ['b', 'B · Паук-лупа', 'Тело паука — линза, ручка заменяет заднюю лапку. Самый узнаваемый силуэт, читается и в 16 px.', '/_blob/f548a497248c4a505018463bb5d7f783', 'Самый узнаваемый', 'b st-agent'],
-      ['a', 'A · Паук в лупе', 'Первый вариант: маленький паук внутри линзы.', '/_blob/a15a8fcad9ccfd0d1de09fe7968d08f3', 'Архив', 'b st-off']
+      ['w1', 'Вдова в паутине · лупа', 'Паутина в линзе, справа головой вниз — чёрная вдова с красными «часами». Тёмный паук выделяется на белой паутине даже в 16 px.', '/_blob/bce3e94b48603d5d8de3a11a27b69aae', 'Новый · главный', 'b st-done'],
+      ['w2', 'Вдова в паутине · круг', 'Без ручки лупы: паутина в круге и та же вдова. Чище и симметричнее, крупнее паук.', '/_blob/cc4a78a69360a9a1e1e4328ccfac514a', 'Новый · без ручки', 'b st-run'],
+      ['c', 'C · Паутина в линзе', 'Прошлый выбор: паутина без паука. Самый спокойный.', '/_blob/a572d412378799e410d964ec07bc22ab', 'Запасной', 'b st-off'],
+      ['b', 'B · Паук-лупа', 'Тело паука — линза. Самый узнаваемый силуэт.', '/_blob/f548a497248c4a505018463bb5d7f783', 'Запасной', 'b st-off']
     ];
     const vars = V.map(([id, name, note, src, badge, badgeCls]) => ({ name, note, src, badge, badgeCls, on: id === this.state.v, cls: 'var' + (id === this.state.v ? ' on' : ''), pick: () => this.setState({ v: id }) }));
     return { vars, cur: vars.find((v) => v.on) };
