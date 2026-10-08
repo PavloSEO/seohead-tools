@@ -3,7 +3,7 @@
 This change prepares reusable Qt Widgets and a runnable offline component gallery.
 It does not connect all panels to the core, implement an analyzer, or claim parity
 with every Screaming Frog release. The working application adapter remains owned
-by `app.py` / `gateway.py`; the new widgets accept projections and emit intents.
+by `app.py` / `mcp_gateway.py`; the new widgets accept projections and emit intents.
 
 ## Verified input and scope
 
