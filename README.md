@@ -71,3 +71,9 @@ large-crawl/million-row readiness and final product design are not claimed.
 `design/source/Untitled.fig` is preserved as the original input. The Qt
 component catalogue is in `design/tab-contracts.md`; it provides native bounded
 tables and panels without a web view or Electron runtime.
+
+The Work table gives browsing priority at the minimum 800×720 window size.
+Plan/actions and selected-run details open explicitly into one resizable inspector;
+closing it returns the space to the table. The history pager stays visible, and
+refreshes keep the inspector closed until requested. Hidden details still update
+from the shared project models and remain available in the second monitor window.

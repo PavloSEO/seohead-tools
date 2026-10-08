@@ -51,6 +51,7 @@ from PyQt5.QtWidgets import (
     QShortcut,
     QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QTableView,
     QTabWidget,
     QToolBar,
@@ -491,10 +492,28 @@ class MainWindow(QMainWindow):
         self.progress_text = plain("Откройте проект, чтобы увидеть сохранённые задачи и согласованный план.\n\nДемо не содержит измеренного прогресса проекта.")
         self.progress_text.setAccessibleName("Прогресс задач проекта")
         self.progress_text.setProperty("role", "summary")
-        self.work_splitter.addWidget(self.progress_text)
         activity = QWidget()
         activity_layout = QVBoxLayout(activity)
-        activity_layout.setContentsMargins(0, 10, 0, 0)
+        activity_layout.setContentsMargins(0, 8, 0, 0)
+        controls = QHBoxLayout()
+        self.work_plan_toggle = QToolButton()
+        self.work_detail_toggle = QToolButton()
+        for button, text, name, kind in (
+            (self.work_plan_toggle, "План и действия", "fact_check", "plan"),
+            (self.work_detail_toggle, "Детали запуска", "info", "detail"),
+        ):
+            button.setText(text)
+            button.setIcon(icon(name))
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setCheckable(True)
+            button.setProperty("role", "panelToggle")
+            button.setAccessibleName("Показать или скрыть: " + text)
+            button.toggled.connect(lambda visible, panel=kind: self.toggle_work_inspector(panel, visible))
+            controls.addWidget(button)
+        self.work_plan_summary = ElidedLabel("План не загружен")
+        self.work_plan_summary.setObjectName("metadata")
+        controls.addWidget(self.work_plan_summary, 1)
+        activity_layout.addLayout(controls)
         self.activity_caption = QLabel("Запуски · источник не подключён")
         self.activity_caption.setObjectName("sectionCaption")
         activity_layout.addWidget(self.activity_caption)
@@ -507,13 +526,18 @@ class MainWindow(QMainWindow):
             self.activity_table.setColumnWidth(column, width)
         self.activity_table.selectionModel().currentRowChanged.connect(self.show_observed_run)
         self.activity_table.clicked.connect(lambda index: self.show_observed_run(index, None))
-        activity_layout.addWidget(self.activity_table, 1)
-        activity_layout.addWidget(self.run_history_controls())
+        self.work_splitter.addWidget(self.activity_table)
         self.activity_text = plain("Нет измерений активности. История появится из сохранённых запусков проекта.")
         self.activity_text.setAccessibleName("Измерения выбранного запуска")
-        activity_layout.addWidget(self.activity_text, 1)
-        self.work_splitter.addWidget(activity)
-        self.work_splitter.setSizes([220, 480])
+        self.work_inspector = QStackedWidget()
+        self.work_inspector.addWidget(self.progress_text)
+        self.work_inspector.addWidget(self.activity_text)
+        self.work_splitter.addWidget(self.work_inspector)
+        self.work_splitter.setStretchFactor(0, 1)
+        self.work_splitter.setStretchFactor(1, 0)
+        self.work_inspector.hide()
+        activity_layout.addWidget(self.work_splitter, 1)
+        activity_layout.addWidget(self.run_history_controls())
         self.work_views = QTabWidget()
         self.work_monitor = WorkMonitor()
         self.work_monitor.set_reduced_motion(self.reduced_motion)
@@ -523,11 +547,28 @@ class MainWindow(QMainWindow):
         self.work_monitor.runSelected.connect(self.select_observed_identity)
         self.work_monitor.showResult.connect(self.open_observed_result)
         self.work_views.addTab(self.work_monitor, icon("dashboard"), "Монитор")
-        self.work_views.addTab(self.work_splitter, icon("table_chart"), "Таблица и детали")
+        self.work_views.addTab(activity, icon("table_chart"), "Таблица и детали")
         self.work_monitor.allRunsRequested.connect(lambda: self.work_views.setCurrentIndex(1))
         self.work_views.tabBar().setVisible(bool(self.project_directory))
         layout.addWidget(self.work_views, 1)
         return page
+
+    def toggle_work_inspector(self, kind, visible):
+        buttons = (self.work_plan_toggle, self.work_detail_toggle)
+        selected = buttons[0] if kind == "plan" else buttons[1]
+        if visible:
+            for button in buttons:
+                if button is not selected:
+                    button.blockSignals(True)
+                    button.setChecked(False)
+                    button.blockSignals(False)
+            self.work_inspector.setCurrentWidget(self.progress_text if kind == "plan" else self.activity_text)
+            was_hidden = self.work_inspector.isHidden()
+            self.work_inspector.show()
+            if was_hidden:
+                self.work_splitter.setSizes([max(180, self.work_splitter.height() - 144), 144])
+        elif not any(button.isChecked() for button in buttons):
+            self.work_inspector.hide()
 
     def reports_page(self):
         page = QWidget()
@@ -1074,6 +1115,7 @@ class MainWindow(QMainWindow):
         self.activity_model.replace([])
         self.journal_model.replace([])
         self.progress_text.setPlainText("Загрузка согласованного плана выбранного проекта…")
+        self.work_plan_summary.setText("План загружается…")
         self.activity_text.setPlainText("Загрузка запусков выбранного проекта…")
         self.activity_caption.setText("Запуски · загрузка")
         self.journal_caption.setText("События проекта · загрузка")
@@ -1211,7 +1253,8 @@ class MainWindow(QMainWindow):
         counts = result.get("counts") or {}
         completion = result.get("audit_task_completion") or {}
         numerator, denominator = completion.get("numerator"), completion.get("denominator")
-        if completion.get("state") == "measured" and isinstance(numerator, (int, float)) and isinstance(denominator, (int, float)) and denominator > 0:
+        measured = completion.get("state") == "measured" and isinstance(numerator, (int, float)) and isinstance(denominator, (int, float)) and denominator > 0
+        if measured:
             completion_text = f"{value_text(numerator)} из {value_text(denominator)} согласованных задач"
         else:
             reason = completion.get("reason") or "Нет подтверждённого знаменателя согласованного плана."
@@ -1229,6 +1272,8 @@ class MainWindow(QMainWindow):
         if not result.get("next_actions"):
             lines.append("Ядро не объявило следующих действий.")
         self.progress_text.setPlainText("\n".join(lines))
+        self.work_plan_summary.setText("План: " + completion_text if measured else state_text(result.get("state")))
+        self.work_plan_summary.setToolTip(completion_text)
 
     def update_work_project_state(self):
         available = bool(self.project_directory)
@@ -2139,6 +2184,7 @@ class MainWindow(QMainWindow):
         self.activity_model.replace([])
         self.journal_model.replace([])
         self.progress_text.setPlainText(reason)
+        self.work_plan_summary.setText("План недоступен")
         self.activity_text.setPlainText(reason)
         self.inbox_detail.setPlainText(reason)
         self.task_detail.setPlainText(reason)
