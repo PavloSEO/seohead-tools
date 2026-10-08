@@ -12,6 +12,8 @@ import pytest
 from seohead.crawl.capture import CaptureEvent
 from seohead.storage.bodies import read_document
 from seohead.storage.corpus import (
+    _reserve_unique_bytes,
+    _retained_body_bytes,
     corpus_summary,
     rendered_body_retention,
     store_rendered_document,
@@ -95,6 +97,79 @@ def _renderer(**values):
     }
     row.update(values)
     return row
+
+
+def _encoded(size, key):
+    return {
+        "sha256": f"{key:064x}",
+        "codec": "identity",
+        "decoded_bytes": size,
+        "stored_bytes": size,
+        "data": b"x" * size,
+    }
+
+
+def test_body_budget_counts_existing_bytes_once_and_keeps_deduplication():
+    con = _con()
+    con.executemany(
+        "INSERT INTO bodies VALUES(?, 'identity', 1, 1, X'78')",
+        [(f"{key:064x}",) for key in range(2000)],
+    )
+    statements = []
+    con.set_trace_callback(statements.append)
+    policy = _policy(max_body_store_bytes=2010)
+    for key in range(2000, 2010):
+        assert _reserve_unique_bytes(con, _encoded(1, key), policy)
+    assert not _reserve_unique_bytes(con, _encoded(1, 2010), policy)
+    assert _reserve_unique_bytes(con, _encoded(1, 2000), policy)
+    assert _retained_body_bytes(con) == 2010
+    sums = [sql for sql in statements if "SUM(stored_bytes)" in sql]
+    assert len(sums) == 1
+
+
+@pytest.mark.parametrize("outer_transaction", [False, True])
+def test_body_byte_counter_follows_rollback_savepoint_delete_and_update(outer_transaction):
+    con = _con()
+    policy = _policy(max_body_store_bytes=10)
+    if outer_transaction:
+        con.execute("BEGIN")
+    assert _reserve_unique_bytes(con, _encoded(4, 1), policy)
+    assert con.in_transaction
+    con.rollback()  # May also undo initialization; either path must rebuild safely.
+    assert _retained_body_bytes(con) == 0
+    con.commit()
+    assert _reserve_unique_bytes(con, _encoded(4, 1), policy)
+    con.commit()
+    con.execute("SAVEPOINT body_write")
+    assert _reserve_unique_bytes(con, _encoded(6, 2), policy)
+    assert not _reserve_unique_bytes(con, _encoded(1, 3), policy)
+    con.execute("ROLLBACK TO body_write")
+    con.execute("RELEASE body_write")
+    assert _retained_body_bytes(con) == 4
+    assert _reserve_unique_bytes(con, _encoded(6, 2), policy)
+    con.execute("DELETE FROM bodies WHERE sha256=?", (f"{1:064x}",))
+    assert _retained_body_bytes(con) == 6
+    con.execute("UPDATE bodies SET data=X'7878',stored_bytes=2 WHERE sha256=?", (f"{2:064x}",))
+    assert _retained_body_bytes(con) == 2
+    con.rollback()
+    assert _retained_body_bytes(con) == 4
+
+
+def test_body_byte_counter_rebuilds_on_reopen_without_changing_durable_schema(tmp_path):
+    path = tmp_path / "bodies.sqlite"
+    con = sqlite3.connect(path)
+    con.executescript(Path("seohead/storage/scan_v1.sql").read_text())
+    schema = list(con.execute("SELECT name,sql FROM sqlite_master ORDER BY name"))
+    assert _reserve_unique_bytes(con, _encoded(7, 1), _policy())
+    con.commit()
+    assert list(con.execute("SELECT name,sql FROM sqlite_master ORDER BY name")) == schema
+    con.close()
+    con = sqlite3.connect(path)
+    assert _retained_body_bytes(con) == 7
+    assert not _reserve_unique_bytes(con, _encoded(4, 2), _policy(max_body_store_bytes=10))
+    assert _reserve_unique_bytes(con, _encoded(3, 2), _policy(max_body_store_bytes=10))
+    assert _retained_body_bytes(con) == 10
+    con.close()
 
 
 def test_complete_zero_and_duplicate_bodies_are_deduplicated_but_responses_remain_distinct():
