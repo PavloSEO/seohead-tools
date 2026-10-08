@@ -9,6 +9,9 @@ The default remains 200 URLs, 20,000 requests and at most two requests per secon
 Remote project defaults remain 10,000 URLs and 20,000 requests; the operator must
 explicitly authorize a higher project budget. Render, elapsed-time and disk limits
 still apply independently. No provider or paid call is enabled by higher admission.
+Remote duration can be explicitly authorized up to 14 days (1,209,600 seconds),
+with the one-hour default preserved. The operator's project duration and per-origin
+request limits must also admit the planned workload; the submission cannot raise them.
 
 This configuration contract does **not** establish completed runtime capacity.
 Issue #818 remains open until the source-bound stages below pass. Historical

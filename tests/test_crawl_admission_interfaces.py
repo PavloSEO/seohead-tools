@@ -12,6 +12,7 @@ from seohead import cli
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.settings import DEFAULTS, MAX_URLS_CEILING, checked_url_budget, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
+from seohead.job_contracts import MAX_REMOTE_CRAWL_SECONDS, ScanOptions
 from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
 from seohead.servers import handlers
 from seohead.servers.mcp_server import build_server
@@ -21,8 +22,9 @@ from tests.test_remote_backend import SCANS_A, SITE, _api, _headers, _network
 
 @pytest.mark.parametrize("pages", [50_000, 100_000, 1_000_000])
 @pytest.mark.parametrize("interface", ["cli", "mcp"])
+@pytest.mark.parametrize("seconds", [7 * 24 * 60 * 60, MAX_REMOTE_CRAWL_SECONDS])
 def test_explicit_native_ceiling_reaches_shared_handler_unchanged(
-    tmp_path, monkeypatch, capsys, pages, interface
+    tmp_path, monkeypatch, capsys, pages, interface, seconds
 ):
     from seohead.servers import scan_handlers
 
@@ -37,7 +39,7 @@ def test_explicit_native_ceiling_reaches_shared_handler_unchanged(
         "url": "https://example.test/",
         "max_urls": pages,
         "scan_out": str(tmp_path / "not-created.sqlite"),
-        "overrides": {"limits.max_requests": 2_000_000},
+        "overrides": {"limits.max_requests": 2_000_000, "limits.max_crawl_seconds": seconds},
         "producer_build": "a" * 40,
     }
     if interface == "cli":
@@ -55,6 +57,8 @@ def test_explicit_native_ceiling_reaches_shared_handler_unchanged(
                     "a" * 40,
                     "--set",
                     "limits.max_requests=2000000",
+                    "--set",
+                    f"limits.max_crawl_seconds={seconds}",
                 ]
             )
             == 0
@@ -64,6 +68,7 @@ def test_explicit_native_ceiling_reaches_shared_handler_unchanged(
         asyncio.run(tool.run(options))
     assert accepted[0]["limits"]["max_urls"] == pages
     assert accepted[0]["limits"]["max_requests"] == 2_000_000
+    assert accepted[0]["limits"]["max_crawl_seconds"] == seconds
     assert accepted[0]["speed"] == DEFAULTS["speed"]
     assert accepted[0]["rendering"] == DEFAULTS["rendering"]
     assert accepted[0]["resources"] == DEFAULTS["resources"]
@@ -150,9 +155,73 @@ def test_remote_api_queue_and_worker_preserve_explicit_ceiling(tmp_path, monkeyp
 def test_remote_project_defaults_and_global_bounds_stay_independent():
     assert RemoteProjectLimits().max_urls == 10_000
     assert RemoteProjectLimits().max_requests == 20_000
+    assert RemoteProjectLimits().max_job_seconds == ScanOptions().max_crawl_seconds == 3_600
     for kwargs in ({"max_urls": 1_000_001}, {"max_requests": 2_000_001}):
         with pytest.raises(ValueError, match="ceiling"):
             RemoteProjectLimits(**kwargs)
+
+
+@pytest.mark.parametrize("seconds", [7 * 24 * 60 * 60, MAX_REMOTE_CRAWL_SECONDS])
+def test_remote_long_duration_requires_project_authorization_and_reaches_worker(
+    tmp_path, monkeypatch, seconds
+):
+    requests = _network(monkeypatch)
+    payload = {
+        "target_url": SITE,
+        "options": {
+            "max_urls": 1_000_000,
+            "max_requests": 1_100_000,
+            "max_crawl_seconds": seconds,
+        },
+    }
+    ordinary = SQLiteJobBackend(
+        tmp_path / "ordinary",
+        {
+            "alpha": RemoteProjectLimits(max_urls=1_000_000, max_requests=2_000_000),
+        },
+        producer_build="a" * 40,
+    )
+    refused = _api(ordinary).post(SCANS_A, headers=_headers(), json=payload)
+    assert refused.status_code == 422 and refused.json()["error"]["code"] == "budget_exceeded"
+    assert ordinary.list_jobs("alpha", 0, 10) == [] and requests == []
+
+    accepted = []
+    from seohead.servers.scan_handlers import crawl_site_scan
+
+    def runner(*args, **kwargs):
+        accepted.append(kwargs["settings"])
+        return crawl_site_scan(*args, **kwargs)
+
+    authorized = SQLiteJobBackend(
+        tmp_path / "authorized",
+        {
+            "alpha": RemoteProjectLimits(
+                max_urls=1_000_000,
+                max_requests=2_000_000,
+                max_requests_per_origin=1_100_000,
+                max_job_seconds=seconds,
+            )
+        },
+        producer_build="a" * 40,
+        runner=runner,
+    )
+    sent = _api(authorized).post(SCANS_A, headers=_headers(), json=payload)
+    assert sent.status_code == 202
+    outcome = authorized.run_one("explicit-duration")
+    assert outcome.state == "finished" and len(requests) == 2
+    assert accepted[0]["limits"]["max_crawl_seconds"] == seconds
+    assert accepted[0]["limits"]["max_requests"] == 1_100_000
+    assert accepted[0]["speed"]["min_delay_seconds"] == 0.5
+    rendered = ScanOptions(max_crawl_seconds=seconds, rendering_mode="js").effective_config()
+    assert rendered["rendering"]["escalation"]["max_render_seconds"] == 300
+
+
+@pytest.mark.parametrize("seconds", [0, True, MAX_REMOTE_CRAWL_SECONDS + 1])
+def test_remote_duration_ceiling_and_types_fail_before_io(seconds):
+    with pytest.raises(ValueError):
+        ScanOptions(max_crawl_seconds=seconds)
+    with pytest.raises(ValueError):
+        RemoteProjectLimits(max_job_seconds=seconds)
 
 
 def test_eager_legacy_population_is_refused_before_fetching():

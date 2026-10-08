@@ -76,3 +76,12 @@ the public URL ceiling fail validation rather than being clamped. The [capacity 
 separately; schema admission and a small queue/worker roundtrip do not prove
 one-million-page runtime capacity. Real remote jobs keep their configured time,
 disk, rendering and per-origin limits.
+
+An explicit remote `max_crawl_seconds` may be at most **1,209,600 seconds (14 days)**;
+the default remains 3,600 seconds. At two requests per second, one million page
+requests alone take at least 500,000 seconds, so a one-day ceiling would prevent
+the declared workload from finishing. The service operator must separately raise
+the project's `max_job_seconds`, URL, total-request and per-origin request budgets.
+Larger, zero and boolean duration values are refused. This does not authorize a
+long crawl by default, change worker leases/heartbeats or extend the independent
+browser rendering budget.

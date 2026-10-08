@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from seohead.crawl.settings import MAX_REQUESTS_CEILING, checked_url_budget
+from seohead.job_contracts import MAX_REMOTE_CRAWL_SECONDS
 from seohead.recon.remote_policy import RemoteEgressPolicy
 from seohead.remote_api.contracts import (
     ArtifactReference,
@@ -98,6 +99,10 @@ class RemoteProjectLimits:
         checked_url_budget(self.max_urls)
         if self.max_requests > MAX_REQUESTS_CEILING:
             raise ValueError(f"remote project request ceiling is {MAX_REQUESTS_CEILING:,}")
+        if self.max_job_seconds > MAX_REMOTE_CRAWL_SECONDS:
+            raise ValueError(
+                f"remote project duration ceiling is {MAX_REMOTE_CRAWL_SECONDS:,} seconds"
+            )
         if self.browser_transport is not None:
             from seohead.tools.browser_transport import validate_config
 

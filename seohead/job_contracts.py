@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from seohead.crawl.settings import DEFAULTS, MAX_REQUESTS_CEILING, MAX_URLS_CEILING
 from seohead.crawl.settings import validate as validate_crawl_config
 
+# A million pages at the default 2 requests/s needs more than five days, before
+# bootstrap and retry overhead. This is an explicit admission bound, not a default.
+MAX_REMOTE_CRAWL_SECONDS = 14 * 24 * 60 * 60
+
 Permission = Literal["scan:submit", "scan:list", "scan:read", "scan:cancel", "scan:result"]
 JobState = Literal[
     "queued", "running", "cancel_requested", "cancelled", "finished", "partial", "failed"
@@ -30,7 +34,7 @@ class ScanOptions(BaseModel):
     max_urls: int = Field(default=200, ge=1, le=MAX_URLS_CEILING)
     max_depth: int = Field(default=5, ge=0, le=20)
     max_requests: int = Field(default=20_000, ge=1, le=MAX_REQUESTS_CEILING)
-    max_crawl_seconds: int = Field(default=3_600, ge=1, le=86_400)
+    max_crawl_seconds: int = Field(default=3_600, ge=1, le=MAX_REMOTE_CRAWL_SECONDS)
     concurrency: int = Field(default=1, ge=1, le=4)
     rendering_mode: Literal["raw", "js"] = "raw"
 
