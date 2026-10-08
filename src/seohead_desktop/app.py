@@ -517,12 +517,12 @@ class MainWindow(QMainWindow):
         self.activity_caption = QLabel("Запуски · источник не подключён")
         self.activity_caption.setObjectName("sectionCaption")
         activity_layout.addWidget(self.activity_caption)
-        self.activity_model = RecordModel((("Запуск", "id"), ("Источник", "kind"), ("Состояние", "state"), ("Этап", "phase"), ("Получено", "fetched"), ("Очередь", "queued"), ("В работе", "inflight"), ("Сейчас", "rate"), ("Лимит, запр./с", "rate_limit")), parent=self)
+        self.activity_model = RecordModel((("Запуск", "label"), ("Источник", "kind"), ("Состояние", "state"), ("Этап", "phase"), ("Получено", "fetched"), ("Очередь", "queued"), ("В работе", "inflight"), ("Сейчас", "rate"), ("Лимит, запр./с", "rate_limit")), parent=self)
         self.activity_table = QTableView()
         self.activity_table.setAccessibleName("Отдельные запуски проекта")
         self.activity_table.setModel(self.activity_model)
         configure_table(self.activity_table)
-        for column, width in enumerate((140, 85, 160, 140, 80, 80, 80, 140, 110)):
+        for column, width in enumerate((180, 85, 160, 140, 80, 80, 80, 140, 110)):
             self.activity_table.setColumnWidth(column, width)
         self.activity_table.selectionModel().currentRowChanged.connect(self.show_observed_run)
         self.activity_table.clicked.connect(lambda index: self.show_observed_run(index, None))

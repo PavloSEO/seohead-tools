@@ -73,7 +73,7 @@ class RecordModel(QAbstractTableModel):
                 return "Не измерено"
             return field_text(key, value)
         if role == Qt.ToolTipRole:
-            return value_text(value)
+            return self.rows[index.row()].get(key + "_tooltip", value_text(value))
         if role == Qt.TextAlignmentRole and isinstance(value, (int, float)) and not isinstance(value, bool):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.ForegroundRole and key in {"state", "lifecycle"}:

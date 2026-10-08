@@ -226,8 +226,21 @@ def run_projection(run):
         rate_text = "Нет текущей"
     elif telemetry.get("state") == "stale":
         rate_text = "Устарело"
+    label = "Запуск"
+    if isinstance(run.get("started_at"), str):
+        try:
+            started = datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
+            if started.tzinfo is not None:
+                label = started.astimezone().strftime("%d.%m %H:%M")
+        except ValueError:
+            pass
+    identity = run.get("id")
+    if isinstance(identity, str) and identity:
+        label += " · " + identity[:8]
     return {
-        "id": run.get("id"), "kind": run.get("kind"), "state": run.get("state"),
+        "id": identity, "label": label,
+        "label_tooltip": f"Начало: {field_text('started_at', run.get('started_at'))}\nID: {value_text(identity)}",
+        "kind": run.get("kind"), "state": run.get("state"),
         "phase": (run.get("events") or [{}])[-1].get("phase"),
         "fetched": counters.get("fetched"), "queued": counters.get("queued"),
         "inflight": counters.get("inflight"), "rate": rate_text,

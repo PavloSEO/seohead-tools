@@ -105,7 +105,7 @@ class ProjectMonitor(QDockWidget):
         configure_table(self.table)
         for column in (1, 3, 5, 6):
             self.table.setColumnHidden(column, True)
-        for column, width in ((0, 90), (2, 140), (4, 75), (7, 110), (8, 90)):
+        for column, width in ((0, 180), (2, 140), (4, 75), (7, 110), (8, 90)):
             self.table.setColumnWidth(column, width)
         splitter.addWidget(self.table)
         self.detail = QPlainTextEdit()

@@ -7,6 +7,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.ui.presentation import run_projection
 
 
 class WorkTableSpaceTests(unittest.TestCase):
@@ -67,3 +68,24 @@ class WorkTableSpaceTests(unittest.TestCase):
         self.window.activity_text.setPlainText("Updated retained run")
         self.assertEqual(monitor.progress.toPlainText(), "Updated retained plan")
         self.assertEqual(monitor.detail.toPlainText(), "Updated retained run")
+
+    def test_same_display_labels_keep_exact_full_identity_and_tooltips(self):
+        runs = [{"id": "12345678" + suffix, "state": "partial",
+                 "started_at": "2026-10-08T17:45:12Z"} for suffix in ("aaaa", "bbbb")]
+        self.window.present_observed_runs(runs, None)
+        model = self.window.activity_model
+        self.assertEqual(model.data(model.index(0, 0)), model.data(model.index(1, 0)))
+        for index, run in enumerate(runs):
+            cell = model.index(index, 0)
+            QTest.mouseClick(self.window.activity_table.viewport(), Qt.LeftButton,
+                            pos=self.window.activity_table.visualRect(cell).center())
+            self.assertEqual(self.window.selected_observed_run_id, run["id"])
+            self.assertIn(run["id"], model.data(model.index(index, 0), Qt.ToolTipRole))
+            self.assertIn(run["id"], self.window.activity_text.toPlainText())
+        self.assertEqual(runs[0]["id"], "12345678aaaa")
+
+    def test_missing_or_invalid_start_does_not_invent_a_timestamp(self):
+        for started in (None, "invalid", "2026-10-08T17:45:12"):
+            row = run_projection({"id": "12345678abcdef", "started_at": started})
+            self.assertEqual(row["label"], "Запуск · 12345678")
+            self.assertIsNone(row["fetched"])
