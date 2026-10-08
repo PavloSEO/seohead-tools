@@ -181,7 +181,7 @@ it does not prove a state was observed in the current fixture.
   is not the provider collection time; the declared period and timezone above are the
   source-of-truth window."
 - Show "Provider collection time: unknown" for the committed fixture, whose
-  `source_metadata_json.collected_at` is null. If a future source supplies that time,
+  `source_metadata_json.collection.collected_at` is null. If a future source supplies that time,
   show its recorded value beside the provider context. Never substitute the crawl's
   `finished_at` or the connector refresh time for a missing provider collection time.
 
