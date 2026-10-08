@@ -9,8 +9,8 @@ redirect destinations or canonical targets as page rows.
 
 ```sh
 seohead crawl-site --urls-file input.txt --scan-out list.seohead --max-urls 1000000 --set limits.max_requests=2000000
-seohead crawl-site --resume list.seohead
 seohead scan-inspect --scan list.seohead --limit 20
+seohead crawl-site --resume list.seohead
 ```
 
 Native list capture uses the same SQLite frontier, page writer, typed response
