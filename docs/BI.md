@@ -44,6 +44,15 @@ clicks with sessions. Missing, suppressed, partial, duplicate-window or incompat
 evidence is an explicit unclassified/incomplete row. The exported source-observation
 references retain the two labelled axes, dates and timezone.
 
+An import default with unknown collection provenance stays `unknown` in metric rows,
+coverage and the provider manifest. Unknown quality flags cannot qualify a quadrant;
+each flag must explicitly be false. Clicks, impressions and sessions must be nonnegative
+count measurements. Source scopes use the existing strict calendar compatibility and
+cross-source juxtaposition policy: unknown attribution prevents classification, while
+known attribution or search-scope differences remain labelled on each separate axis.
+Cohort references retain the provider source ID, metric/unit, reporting identity,
+attribution, engine/type, collection facts and both policy names.
+
 ## Reporting consumers
 
 The local package is the source of truth. The optional Google Sheets transport preflights
