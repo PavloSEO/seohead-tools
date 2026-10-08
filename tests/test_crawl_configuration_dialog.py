@@ -172,7 +172,7 @@ class ConfigurationDialogTests(unittest.TestCase):
         dialog.override_table.selectRow(0)
         dialog.remove_selected()
         dialog.select_path("limits.max_urls")
-        dialog.int_editor.setText("50001")
+        dialog.int_editor.setText("1000001")
         self.assertFalse(dialog.apply_button.isEnabled())
         dialog.int_editor.setText("1.5")
         self.assertFalse(dialog.apply_button.isEnabled())

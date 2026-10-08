@@ -231,8 +231,8 @@ class LocalScanRunnerTests(unittest.TestCase):
                     try:
                         dialog = self.app.activeModalWidget()
                         self.assertIsInstance(dialog, QDialog)
-                        self.assertEqual(dialog.findChild(QSpinBox, "scanRequestBudget").value(), 100)
-                        self.assertEqual(dialog.findChild(QSpinBox, "scanDurationBudget").value(), 60)
+                        self.assertIsNone(dialog.findChild(QSpinBox, "scanRequestBudget"))
+                        self.assertIsNone(dialog.findChild(QSpinBox, "scanDurationBudget"))
                         QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
                     except BaseException as exc:
                         errors.append(exc)

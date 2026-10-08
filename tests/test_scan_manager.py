@@ -40,7 +40,7 @@ class LocalScanManagerTests(unittest.TestCase):
 
     def test_rejected_arguments_do_not_reserve_queue_capacity(self):
         manager = LocalScanManager("/missing/seohead", max_parallel=1)
-        rejected = [self.submit(manager, max_urls=0) for _ in range(4)]
+        rejected = [self.submit(manager, max_urls=-1) for _ in range(4)]
         self.assertTrue(all(manager.detail(item)["state"] == "rejected" for item in rejected))
         self.assertEqual(manager.active_count, 0)
         admitted = self.submit(manager)
