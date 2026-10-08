@@ -500,6 +500,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("project_directory", "directory"),
         _form("selector", "consumer", note="Optional scoped unread-notice recipient."),
         _form("inline_json", "scan_limit", note="Bounded retained scan-history page."),
+        _form(
+            "inline_json",
+            "run_offset",
+            "run_limit",
+            note="Per-site terminal run page; all stored running records remain visible.",
+        ),
     ),
     _command(
         "project-inbox-submit",

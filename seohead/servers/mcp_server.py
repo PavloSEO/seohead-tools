@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic import StrictInt
+
 from seohead import runlog
 from seohead.models import ParseManyResult, RobotsCheckResult
 from seohead.servers import handlers
@@ -1605,7 +1607,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_observe(
-        directory: str, consumer: str | None = None, scan_limit: int = 20
+        directory: str,
+        consumer: str | None = None,
+        scan_limit: int = 20,
+        run_offset: StrictInt = 0,
+        run_limit: StrictInt = 20,
     ) -> dict[str, Any]:
         """Read the bounded project observer snapshot: tasks, methods, competitors,
         retained scan state and the execution-log tail.  It never starts work or
@@ -1613,12 +1619,19 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         Workflow/checklist receipt observations are metadata-only, not fresh byte
         verification. Missing historical receipts remain unverified. Explicit
         project-status and workflow-status retain byte verification by default.
+        Run pagination applies independently per site: all stored running records
+        plus one terminal page, newest admitted first. run_offset must be nonnegative
+        and run_limit 1..100. Totals cover at most 100 retained records per site,
+        not lifetime history; earlier evictions were not counted. A changed runs
+        revision requires the caller to restart terminal pagination.
         """
         return _checked(
             handlers.project_observe(
                 directory=directory,
                 consumer=bound_consumer(directory, consumer),
                 scan_limit=scan_limit,
+                run_offset=run_offset,
+                run_limit=run_limit,
             )
         )
 

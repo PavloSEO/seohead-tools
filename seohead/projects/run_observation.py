@@ -128,6 +128,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
         or len(document["runs"]) > MAX_RUNS
     ):
         raise ValueError("run observation document has an unsupported shape")
+    ids = set()
     for run in document["runs"]:
         if not isinstance(run, dict) or set(run) != {
             "id",
@@ -151,6 +152,9 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
         }:
             raise ValueError("run observation contains an unsupported run")
         _text(run["id"], "run id", 64)
+        if run["id"] in ids:
+            raise ValueError("run observation contains duplicate run IDs")
+        ids.add(run["id"])
         if run["kind"] not in _KINDS or run["state"] not in _STATES:
             raise ValueError("run observation has an unsupported kind or state")
         if type(run["pid"]) is not int or run["pid"] <= 0:
@@ -648,15 +652,22 @@ def _runtime_state(pid: int | None, identity: str | None, *, running: bool) -> s
     return "live"
 
 
-def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
-    """Read a bounded current/retained collector view without writing anything."""
+def status(directory: str | Path, *, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    """Read all stored running records and one terminal page without writing.
+
+    Offset counts terminal records in reverse admission order. Retention is
+    bounded; totals describe the current document, not the project's lifetime.
+    """
     if type(limit) is not int or not 1 <= limit <= MAX_RUNS:
         raise ValueError(f"run observation limit must be 1..{MAX_RUNS}")
+    _counter(offset, "run observation offset")
     _root, _project, document = _load(directory)
     rows = []
     active = [run for run in document["runs"] if run["state"] == "running"]
-    terminal = [run for run in document["runs"] if run["state"] != "running"][-limit:]
-    selected_ids = {run["id"] for run in active + terminal}
+    terminal = [run for run in reversed(document["runs"]) if run["state"] != "running"]
+    page = terminal[offset : offset + limit]
+    selected_ids = {run["id"] for run in active + page}
+    has_more = offset + len(page) < len(terminal)
     runtime_cache: dict[tuple, str] = {}
 
     def runtime(pid, identity, running):
@@ -727,8 +738,21 @@ def status(directory: str | Path, *, limit: int = 20) -> dict[str, Any]:
         "revision": document["revision"],
         "total": len(document["runs"]),
         "active_total": len(active),
+        "terminal_total": len(terminal),
         "items": rows,
-        "has_more": len(document["runs"]) > len(rows),
+        "has_more": has_more,
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "total": len(terminal),
+            "next_offset": offset + len(page) if has_more else None,
+            "has_more": has_more,
+        },
+        "retention": {
+            "max_runs": MAX_RUNS,
+            "eviction": "oldest_terminal_on_start",
+            "evicted_total": None,
+        },
     }
 
 

@@ -672,11 +672,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "unacknowledged_only", False):
             kw["include_acknowledged"] = False
     elif cmd == "project-observe":
-        kw["directory"] = args.directory
-        if args.consumer is not None:
-            kw["consumer"] = args.consumer
-        if args.scan_limit is not None:
-            kw["scan_limit"] = args.scan_limit
+        for name in ("directory", "consumer", "scan_limit", "run_offset", "run_limit"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
     elif cmd in {"skill-show", "scenario-show"}:
         if getattr(args, "name", None) or getattr(args, "playbook_name", None):
             kw["name"] = getattr(args, "name", None) or args.playbook_name
@@ -2079,7 +2077,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "project-observe":
         _source_flag(sub, "--directory", help="validated local project workspace")
         sub.add_argument("--consumer", help="stable local agent/session consumer id")
-        sub.add_argument("--scan-limit", type=int, default=20)
+        sub.add_argument("--scan-limit", type=int, help="retained scans per site (default: 20)")
+        sub.add_argument("--run-offset", type=int, help="terminal run offset per site (default: 0)")
+        sub.add_argument(
+            "--run-limit", type=int, help="terminal runs per site, 1..100 (default: 20)"
+        )
     if cmd.startswith("project-inbox-"):
         _source_flag(sub, "--directory", help="validated local project workspace")
     if cmd == "project-inbox-submit":

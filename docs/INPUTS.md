@@ -109,7 +109,7 @@ and this decision makes no backend migration.
 | `project-open` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
 | `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
-| `project-observe` | Project directory (`directory`)<br>Selector (`consumer`)<br>Inline JSON (`scan_limit`) | Optional scoped unread-notice recipient.; Bounded retained scan-history page. |
+| `project-observe` | Project directory (`directory`)<br>Selector (`consumer`)<br>Inline JSON (`scan_limit`)<br>Inline JSON (`run_offset, run_limit`) | Optional scoped unread-notice recipient.; Bounded retained scan-history page.; Per-site terminal run page; all stored running records remain visible. |
 | `project-inbox-submit` | Project directory (`directory`)<br>Inline text (`text`)<br>Selector (`kind, references, author_role`) | — |
 | `project-inbox-list` | Project directory (`directory`)<br>Selector (`consumer, offset, limit, include_acknowledged`) | — |
 | `project-inbox-read` | Project directory (`directory`)<br>Selector (`consumer, entry_ids, expected_revision`) | — |

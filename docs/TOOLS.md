@@ -753,6 +753,12 @@ seohead mcp        # stdio
 
 `remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`. See the generated tool reference for exact inputs, limits and side effects.
 
+`project-observe` accepts `run_offset`/`run_limit` (`--run-offset`/`--run-limit`
+in CLI) for each site's terminal-run history. Stored running records remain
+visible on every page. Defaults are offset 0 and 20 terminal rows; totals cover
+the retained 100-record store, not lifetime history. See [Projects](PROJECTS.md)
+for pagination, revision and retention semantics.
+
 ## Explicit retained-audit PDF overview
 
 `report-build --audit scan.sqlite --format pdf --pdf-policy overview-v1 --out report.pdf`

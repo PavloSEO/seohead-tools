@@ -444,6 +444,8 @@ def _site_projection(
     candidate_state: str | None = None,
     directory: str = ".",
     scan_limit: int,
+    run_offset: int = 0,
+    run_limit: int = 20,
 ) -> dict[str, Any]:
     """Build one read-only own-site or competitor observation row."""
     from .run_observation import status as run_status
@@ -463,12 +465,18 @@ def _site_projection(
         "coverage": _coverage_summary(checklist),
         "methods": _method_coverage(checklist),
         "scans": _site_scans(root, scans, limit=scan_limit),
-        "runs": run_status(root),
+        "runs": run_status(root, offset=run_offset, limit=run_limit),
     }
 
 
 def _competitor_sites(
-    root: Path, preparation: dict[str, Any], *, scan_limit: int, coverage_views: dict | None = None
+    root: Path,
+    preparation: dict[str, Any],
+    *,
+    scan_limit: int,
+    coverage_views: dict | None = None,
+    run_offset: int = 0,
+    run_limit: int = 20,
 ) -> list[dict]:
     """Read declared competitor workspaces only; absent or damaged work stays explicit."""
     from seohead.storage.history import list_scans
@@ -500,6 +508,8 @@ def _competitor_sites(
                     candidate_state=candidate.get("state"),
                     directory=directory,
                     scan_limit=scan_limit,
+                    run_offset=run_offset,
+                    run_limit=run_limit,
                 )
             )
         except (OSError, ValueError) as exc:
@@ -810,10 +820,18 @@ def saved_view_page(
     return {"ok": True, "scan_uuid": row["uuid"], "result": result}
 
 
-def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20) -> dict[str, Any]:
+def observe(
+    directory: str,
+    *,
+    consumer: str | None = None,
+    scan_limit: int = 20,
+    run_offset: int = 0,
+    run_limit: int = 20,
+) -> dict[str, Any]:
     """Return a bounded observer snapshot without changing project evidence."""
     if type(scan_limit) is not int or not 1 <= scan_limit <= 100:
         raise ValueError("scan_limit must be from 1 to 100")
+    _pagination(0, run_offset, run_limit)
     root, project = _load(directory)
     coverage_views: dict = {}
     status = project_status(root, _coverage_views=coverage_views, _verify_evidence=False)
@@ -833,10 +851,19 @@ def observe(directory: str, *, consumer: str | None = None, scan_limit: int = 20
             status["scans"],
             role="primary",
             scan_limit=scan_limit,
+            run_offset=run_offset,
+            run_limit=run_limit,
         )
     ]
     sites.extend(
-        _competitor_sites(root, preparation, scan_limit=scan_limit, coverage_views=coverage_views)
+        _competitor_sites(
+            root,
+            preparation,
+            scan_limit=scan_limit,
+            coverage_views=coverage_views,
+            run_offset=run_offset,
+            run_limit=run_limit,
+        )
     )
     site_identities = {
         item["project_uuid"]: {"role": item["role"], "target": item["site"]["target"]}
