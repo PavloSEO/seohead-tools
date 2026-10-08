@@ -18,7 +18,6 @@ from PyQt5.QtGui import QKeySequence, QMouseEvent
 from PyQt5.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
-    QLineEdit,
     QMenu,
     QShortcut,
     QSizePolicy,
@@ -389,13 +388,15 @@ class WorkspaceTabs(QWidget):
         if id not in self._contexts:
             return
         context = self._contexts[id]
-        title, accepted = QInputDialog.getText(
-            self,
-            "Переименовать вкладку",
-            "Название (пустое — по проекту):",
-            QLineEdit.Normal,
-            context.display_alias or self._titles[id],
-        )
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Переименовать вкладку")
+        dialog.setLabelText("Название (пустое — по проекту):")
+        dialog.setTextValue(context.display_alias or self._titles[id])
+        dialog.setOkButtonText("Сохранить")
+        dialog.setCancelButtonText("Отмена")
+        accepted = dialog.exec_()
+        title = dialog.textValue()
+        dialog.deleteLater()
         if accepted and id in self._contexts:
             self.set_alias(id, title)
 

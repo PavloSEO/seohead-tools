@@ -294,27 +294,22 @@ class WorkspaceTabsTests(unittest.TestCase):
         self.tabs._show_context_menu(self.tabs.tabbar.tabRect(0).center())
         self.assertEqual(self.tabs.current_id, "b")
         actions = {action.text(): action for action in self.tabs.context_menu.actions()}
-        with patch(
-            "seohead_desktop.ui.workspace_tabs.QInputDialog.getText",
-            return_value=("Review A", True),
-        ):
+        with patch("seohead_desktop.ui.workspace_tabs.QInputDialog") as factory:
+            dialog = factory.return_value
+            dialog.exec_.side_effect = [1, 0, 1]
+            dialog.textValue.side_effect = ["Review A", "Cancelled", ""]
             actions["Переименовать вкладку…"].trigger()
-        self.tabs.context_menu.close()
-        self.assertEqual(self.tabs.contexts()[0].display_alias, "Review A")
-        actions["Закрепить вкладку"].trigger()
-        self.assertTrue(self.tabs.contexts()[0].pinned)
-        self.assertEqual(self.tabs.current_id, "b")
-        with patch(
-            "seohead_desktop.ui.workspace_tabs.QInputDialog.getText",
-            return_value=("Cancelled", False),
-        ):
+            self.tabs.context_menu.close()
+            self.assertEqual(self.tabs.contexts()[0].display_alias, "Review A")
+            actions["Закрепить вкладку"].trigger()
+            self.assertTrue(self.tabs.contexts()[0].pinned)
+            self.assertEqual(self.tabs.current_id, "b")
             self.tabs.request_rename("a")
-        self.assertEqual(self.tabs.contexts()[0].display_alias, "Review A")
-        with patch(
-            "seohead_desktop.ui.workspace_tabs.QInputDialog.getText",
-            return_value=("", True),
-        ):
+            self.assertEqual(self.tabs.contexts()[0].display_alias, "Review A")
             self.tabs.request_rename("a")
+            dialog.setCancelButtonText.assert_called_with("Отмена")
+            dialog.setOkButtonText.assert_called_with("Сохранить")
+            self.assertEqual(dialog.deleteLater.call_count, 3)
         self.assertIsNone(self.tabs.contexts()[0].display_alias)
 
     def test_context_rejects_invalid_alias_and_pin_types(self):
