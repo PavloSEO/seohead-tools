@@ -14,7 +14,7 @@ Live, clickable version: the Design canvas (owner's link). Source files here are
 | `canvas/canvas.json` | Board layout of the canvas |
 | `DESIGN-SYSTEM.ru.md` | Design system (Russian): tokens, components → QSS properties, screens → core data, gaps |
 | `READINESS-2026-10-09.ru.md` | How ready the current code is for v2, area by area, with file:line references and order of work |
-| `brand/icon-*.svg` | App icon variants: spider + search (A recommended) |
+| `brand/icon-*.svg` | App icon: **C (web in the lens) chosen**; C2, B, A, D kept as alternatives |
 | `qa/clickthrough.py`, `qa/scenarios.py` | Playwright checks: every board renders without errors, no dead links, 28 behaviour scenarios pass |
 
 ## Porting rules (canvas → Qt)

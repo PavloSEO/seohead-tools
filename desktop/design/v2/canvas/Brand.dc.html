@@ -21,7 +21,7 @@
 </helmet>
 <div style="width: 1440px; height: 1000px; box-sizing: border-box; padding: 28px; background: #E9ECF1; font-family: Roboto, sans-serif; color: #1B1B1F; display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: 20px">
   <div style="display: flex; flex-direction: column; gap: 16px">
-    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Четыре варианта, SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
+    <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Иконка приложения · паук + поиск</h1><div style="font: 400 13px Roboto, sans-serif; color: #45464F">SEOHEAD — это краулер (spider) и поиск проблем. Финалисты C и B, SVG-исходники в <span class="mono">desktop/design/v2/brand/</span>. Нажмите на вариант, чтобы примерить.</div></div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
       <sc-for list="{{vars}}" as="v" hint-placeholder-count="4">
         <button class="{{v.cls}}" onClick="{{v.pick}}" aria-pressed="{{v.on}}">
@@ -60,13 +60,13 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { v: 'a' }; }
+  constructor(props) { super(props); this.state = { v: 'c' }; }
   renderVals() {
     const V = [
-      ['a', 'A · Паук в лупе', 'Самый понятный: «ищем пауком». Хорошо в 64+ px; в 16 px паук превращается в точку.', '/_blob/a15a8fcad9ccfd0d1de09fe7968d08f3', 'Рекомендую', 'b st-done'],
-      ['b', 'B · Линза — тело паука', 'Самый характерный силуэт; паук целиком, лупа из него. Читается и в 24 px.', '/_blob/65933da0c68d185dbbf8237390427db0', 'Самый узнаваемый', 'b st-agent'],
-      ['c', 'C · Паутина в линзе', 'Краул как сеть ссылок. Спокойный, деловой; в мелких размерах — просто лупа.', '/_blob/2cce9143dda83fd5095c0f1c7facdb9c', 'Деловой', 'b st-off'],
-      ['d', 'D · Паук держит лупу', 'Жирные линии, лучше всех в 16 px. Менее изящный в крупном размере.', '/_blob/1df587c503f38ebcf8640574615fbdec', 'Для 16 px', 'b st-off']
+      ['c', 'C · Паутина в линзе', 'Крупная линза, настоящая паутина с провисающими нитями. Деловой и чистый, отлично читается в 24–64 px.', '/_blob/a572d412378799e410d964ec07bc22ab', 'Выбор Павла', 'b st-done'],
+      ['c2', 'C · Паутина + паук', 'Та же линза, в центре паутины — паук. Больше характера, в 16 px паук сливается с паутиной.', '/_blob/e390fd15cde18709247904bd3664f706', 'Вариант', 'b st-run'],
+      ['b', 'B · Паук-лупа', 'Тело паука — линза, ручка заменяет заднюю лапку. Самый узнаваемый силуэт, читается и в 16 px.', '/_blob/f548a497248c4a505018463bb5d7f783', 'Самый узнаваемый', 'b st-agent'],
+      ['a', 'A · Паук в лупе', 'Первый вариант: маленький паук внутри линзы.', '/_blob/a15a8fcad9ccfd0d1de09fe7968d08f3', 'Архив', 'b st-off']
     ];
     const vars = V.map(([id, name, note, src, badge, badgeCls]) => ({ name, note, src, badge, badgeCls, on: id === this.state.v, cls: 'var' + (id === this.state.v ? ' on' : ''), pick: () => this.setState({ v: id }) }));
     return { vars, cur: vars.find((v) => v.on) };
