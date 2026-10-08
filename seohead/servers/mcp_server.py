@@ -1887,6 +1887,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         finding_key: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        source_scan_id: int | None = None,
+        group_ref: str | None = None,
+        max_bytes: int | None = None,
     ) -> dict[str, Any]:
         """Read a bounded page of exact remediation cases and decision history."""
         return _checked(
@@ -1897,6 +1900,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 finding_key=finding_key,
                 limit=limit,
                 offset=offset,
+                source_scan_id=source_scan_id,
+                group_ref=group_ref,
+                max_bytes=max_bytes,
             )
         )
 

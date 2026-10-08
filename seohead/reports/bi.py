@@ -725,6 +725,7 @@ class _RunInput:
     links_source_reason: str | None
     coverage_rows: list[dict[str, Any]]
     link_count: int | None
+    audit_sha256: str | None = None
     close: Any = None
 
 
@@ -940,6 +941,7 @@ def _audit_source(document: dict[str, Any], raw: bytes, source_name: str | None)
         groups = []
     if not isinstance(groups, list) or any(not isinstance(group, dict) for group in groups):
         raise BIExportError("audit groups must be a list of objects")
+    metadata["audit_sha256"] = raw_sha
     return _RunInput(
         run_id=run_id,
         source_kind=kind,
@@ -958,6 +960,7 @@ def _audit_source(document: dict[str, Any], raw: bytes, source_name: str | None)
         links_source_reason=unavailable_links,
         coverage_rows=coverage_rows,
         link_count=None,
+        audit_sha256=raw_sha,
     )
 
 
@@ -1038,7 +1041,9 @@ def _scan_source(
         raise BIExportError("validated scan is missing its run manifest")
     scan = dict(row)
     try:
-        audit_row = con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
+        audit_row = con.execute(
+            "SELECT document_json,sha256 FROM audit WHERE singleton=1"
+        ).fetchone()
         from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
         audit_reader = AuditV2Reader(path) if audit_v2_path(path).exists() else None
@@ -1220,6 +1225,11 @@ def _scan_source(
         "retention": retention,
         "evidence_revision": scan.get("evidence_revision"),
         "audit_available": isinstance(audit, dict),
+        "audit_sha256": audit_reader.sha256
+        if audit_reader is not None
+        else audit_row[1]
+        if audit_row
+        else None,
     }
 
     def links_factory() -> Iterator[dict[str, Any]]:
@@ -1288,6 +1298,11 @@ def _scan_source(
         links_source_reason=links_reason,
         coverage_rows=coverage_rows,
         link_count=link_count if links_state in {"complete", "partial"} else None,
+        audit_sha256=audit_reader.sha256
+        if audit_reader is not None
+        else audit_row[1]
+        if audit_row
+        else None,
         close=close if audit_reader is not None or audit_overlay_temp is not None else None,
     )
 
@@ -1783,7 +1798,9 @@ def _finding_source(
         "group_id": group_id,
         "group_state": "grouped" if group else "not_grouped",
         "group_value": group.get("value") if group else None,
-        "group_url_count": len(group.get("urls") or []) if group else None,
+        "group_url_count": group.get("member_count", len(group.get("urls") or []))
+        if group
+        else None,
         "group_urls_json": group.get("urls") if group else None,
         "locations_json": locations if locations is not None else [],
         "details_json": details if details is not None else {},
@@ -3286,6 +3303,21 @@ def _write_package(
         stage = Path(temp)
         os.chmod(stage, 0o700)
         budget = _OutputBudget(max_output_bytes)
+        from seohead.reports.bi_index import write_group_members_companion
+
+        group_companion = (
+            write_group_members_companion(
+                group_map,
+                stage,
+                run_id=run.run_id,
+                source_audit_sha256=run.audit_sha256,
+                max_rows_per_file=max_rows_per_file,
+                max_bytes_per_file=max_bytes_per_file,
+                budget=budget,
+            )
+            if group_map.source_count
+            else None
+        )
         dataset_outputs: dict[str, dict[str, Any]] = {}
         row_sources = {
             "pages": page_rows(),
@@ -3525,6 +3557,11 @@ def _write_package(
             },
             "datasets": datasets,
         }
+        if group_companion is not None:
+            manifest["group_members"] = group_companion
+            from seohead.reports.bi_index import verify_group_member_references
+
+            verify_group_member_references(stage, manifest)
         manifest_path = stage / "manifest.json"
         manifest_bytes = (
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)

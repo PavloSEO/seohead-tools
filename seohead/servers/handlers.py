@@ -4483,9 +4483,26 @@ def remediation_cases(
     finding_key: str | None = None,
     limit: int | None = 100,
     offset: int = 0,
+    source_scan_id: int | None = None,
+    group_ref: str | None = None,
+    max_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Read paginated ledger cases and immutable observation/decision history."""
-    from seohead.storage.ledger import read_cases
+    from seohead.storage.ledger import LedgerError, read_cases, read_group_members
+
+    if source_scan_id is not None or group_ref is not None:
+        if check is not None or url is not None or finding_key is not None:
+            raise LedgerError("group member selection cannot be combined with finding selectors")
+        return read_group_members(
+            ledger,
+            source_scan_id=source_scan_id,
+            group_ref=group_ref,
+            offset=offset,
+            limit=limit,
+            max_bytes=1024 * 1024 if max_bytes is None else max_bytes,
+        )
+    if max_bytes is not None:
+        raise LedgerError("max_bytes requires source_scan_id and group_ref")
 
     return read_cases(
         ledger, check=check, url=url, finding_key=finding_key, limit=limit, offset=offset

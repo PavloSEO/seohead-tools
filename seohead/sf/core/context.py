@@ -13,7 +13,7 @@ import sqlite3
 import sys
 import tempfile
 from collections import OrderedDict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any
 
@@ -537,6 +537,32 @@ class _SuppressedIssueView:
         return self.results.suppressed_slice(index)
 
 
+class _GroupURLs(Sequence[str]):
+    def __init__(self, con, group_ordinal: int, count: int) -> None:
+        self.con, self.group_ordinal, self.count = con, group_ordinal, count
+
+    def __len__(self):
+        return self.count
+
+    def __iter__(self):
+        for row in self.con.execute(
+            "SELECT url FROM members WHERE group_ordinal=? ORDER BY ordinal", (self.group_ordinal,)
+        ):
+            yield row[0]
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            raise TypeError("stored group URLs support iteration or a single ordinal")
+        index = index if index >= 0 else self.count + index
+        row = self.con.execute(
+            "SELECT url FROM members WHERE group_ordinal=? AND ordinal=?",
+            (self.group_ordinal, index),
+        ).fetchone()
+        if row is None:
+            raise IndexError(index)
+        return row[0]
+
+
 class _DiskGroups:
     """Ordered duplicate/content groups held on disk until report serialization."""
 
@@ -546,17 +572,31 @@ class _DiskGroups:
         self.path, self.closed = name, False
         self.con = sqlite3.connect(name)
         self.con.execute("CREATE TABLE groups (ordinal INTEGER PRIMARY KEY, value_json TEXT)")
+        self.con.execute(
+            "CREATE TABLE members (group_ordinal INTEGER, ordinal INTEGER, url TEXT, PRIMARY KEY(group_ordinal,ordinal))"
+        )
 
     def append(self, group: Group) -> None:
         ordinal = self.con.execute("SELECT COALESCE(MAX(ordinal) + 1, 0) FROM groups").fetchone()[0]
         self.con.execute(
             "INSERT INTO groups VALUES (?,?)",
-            (ordinal, json.dumps(group.__dict__, ensure_ascii=False)),
+            (
+                ordinal,
+                json.dumps(
+                    {key: value for key, value in group.__dict__.items() if key != "urls"},
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+        self.con.executemany(
+            "INSERT INTO members VALUES (?,?,?)",
+            ((ordinal, index, url) for index, url in enumerate(group.urls)),
         )
 
     def __iter__(self) -> Iterator[Group]:
-        for row in self.con.execute("SELECT value_json FROM groups ORDER BY ordinal"):
-            yield Group(**json.loads(row[0]))
+        for row in self.con.execute("SELECT ordinal,value_json FROM groups ORDER BY ordinal"):
+            group = json.loads(row[1])
+            yield Group(**group, urls=_GroupURLs(self.con, row[0], group["count"]))
 
     def __len__(self) -> int:
         return self.con.execute("SELECT COUNT(*) FROM groups").fetchone()[0]

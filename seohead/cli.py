@@ -601,6 +601,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "after",
             "config",
             "task_id",
+            "source_scan_id",
+            "group_ref",
+            "max_bytes",
         ):
             value = getattr(args, name, None)
             if value is not None:
@@ -2160,6 +2163,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--finding-key", dest="finding_key", help="exact finding SHA-256 key")
         sub.add_argument("--limit", type=int, default=100, help="findings per page (1..1000)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based finding offset")
+        sub.add_argument(
+            "--source-scan-id", type=int, help="source revision for a group member page"
+        )
+        sub.add_argument(
+            "--group-ref", help="exact source group reference; requires --source-scan-id"
+        )
+        sub.add_argument("--max-bytes", type=int, help="group member page byte bound (up to 8 MiB)")
     if cmd == "remediation-transition":
         sub.add_argument("--occurrence-key", dest="occurrence_key", help="case SHA-256 key")
         sub.add_argument("--state", help="next lifecycle state")

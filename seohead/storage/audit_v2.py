@@ -9,9 +9,10 @@ import re
 import sqlite3
 import stat
 import tempfile
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, suppress
 from importlib.resources import files
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +21,10 @@ from seohead import filesystem
 from . import ScanError, open_scan
 
 APPLICATION_ID = (ord("A") << 24) | (ord("U") << 16) | (ord("D") << 8) | ord("V")
-USER_VERSION = 2
+USER_VERSION = 3
 FORMAT_VERSION = "audit.v2"
 COLLECTION_MARKER = "$audit_v2_collection"
+GROUP_MEMBERS_MARKER = "$audit_v2_group_members"
 MAX_HEADER_BYTES = 64 * 1024 * 1024
 MAX_ITEM_BYTES = 8 * 1024 * 1024
 
@@ -35,14 +37,58 @@ _SCHEMA = tuple(
     if statement.strip()
 )
 _EXPECTED_SCHEMA = tuple(
-    ("table", name, statement)
-    for name, statement in zip(("audit_meta", "collections", "items"), _SCHEMA, strict=True)
+    sorted(
+        ("table", name, statement)
+        for name, statement in zip(
+            ("audit_meta", "collections", "items", "group_members"), _SCHEMA, strict=True
+        )
+    )
 )
+_V2_SCHEMA = tuple(row for row in _EXPECTED_SCHEMA if row[1] != "group_members")
 _ENCODER = json.JSONEncoder(ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
 class AuditV2Error(ScanError):
     """An audit.v2 companion is invalid, inconsistent, or exceeds an explicit boundary."""
+
+
+class AuditGroupMembers(Sequence[Any]):
+    """Ordered disk-backed group members; iteration never builds the full URL list."""
+
+    def __init__(self, reader, group_ordinal: int, count: int) -> None:
+        self.reader, self.group_ordinal, self.count = reader, group_ordinal, count
+
+    def __len__(self) -> int:
+        return self.count
+
+    def __iter__(self):
+        return self.reader.iter_group_members(self.group_ordinal)
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            start, stop, step = index.indices(self.count)
+            if step != 1 or stop - start > 1000:
+                raise AuditV2Error("group member slices require a forward page of at most 1000")
+            page = (
+                self.reader.group_members_page(
+                    self.group_ordinal, offset=start, limit=max(1, stop - start)
+                )
+                if stop > start
+                else {"rows": [], "returned": 0}
+            )
+            if page["returned"] != stop - start:
+                raise AuditV2Error("group slice exceeds its byte bound; use group_members_page")
+            return page["rows"]
+        ordinal = index if index >= 0 else self.count + index
+        if not 0 <= ordinal < self.count:
+            raise IndexError(index)
+        return next(self.reader.iter_group_members(self.group_ordinal, offset=ordinal, limit=1))
+
+    def __eq__(self, other):
+        if not isinstance(other, Sequence) or len(self) != len(other):
+            return False
+        missing = object()
+        return all(a == b for a, b in zip_longest(self, other, fillvalue=missing))
 
 
 def audit_v2_path(scan_path: str | Path) -> Path:
@@ -120,6 +166,16 @@ def _contains_marker(value: Any) -> bool:
     return bool(_collection_markers(value))
 
 
+def _contains_group_marker(value: Any) -> bool:
+    if isinstance(value, dict):
+        return GROUP_MEMBERS_MARKER in value or any(
+            _contains_group_marker(child) for child in value.values()
+        )
+    if isinstance(value, list):
+        return any(_contains_group_marker(child) for child in value)
+    return False
+
+
 def _bind_to_scan(scan_path: Path, binding: Mapping[str, Any]) -> dict[str, Any]:
     expected_keys = {"scan_uuid", "evidence_revision", "analyzer_version", "analyzer_revision"}
     if not isinstance(binding, Mapping) or set(binding) != expected_keys:
@@ -143,9 +199,10 @@ def _bind_to_scan(scan_path: Path, binding: Mapping[str, Any]) -> dict[str, Any]
     return actual
 
 
-def _digest_start(binding_json: str, header_json: str) -> hashlib._Hash:
+def _digest_start(binding_json: str, header_json: str, version: int = 2) -> hashlib._Hash:
     digest = hashlib.sha256()
-    for value in (FORMAT_VERSION, binding_json, header_json):
+    identity = FORMAT_VERSION if version == 2 else f"{FORMAT_VERSION}:storage-{version}"
+    for value in (identity, binding_json, header_json):
         raw = value.encode("utf-8")
         digest.update(len(raw).to_bytes(8, "big"))
         digest.update(raw)
@@ -179,7 +236,7 @@ def write_audit_v2(
     if not isinstance(header, Mapping) or not isinstance(collections, Mapping) or not collections:
         raise AuditV2Error("audit.v2 needs an object header and at least one collection")
     stored_header = json.loads(_canonical(dict(header)))
-    if _contains_marker(stored_header):
+    if _contains_marker(stored_header) or _contains_group_marker(stored_header):
         raise AuditV2Error("audit.v2 header uses a reserved collection marker")
     normalized = {}
     for pointer, rows in collections.items():
@@ -234,6 +291,31 @@ def write_audit_v2(
                 con.execute("INSERT INTO collections(pointer,item_count) VALUES (?,0)", (pointer,))
                 count = 0
                 for row in rows:
+                    if _contains_group_marker(row):
+                        raise AuditV2Error("audit.v2 input uses a reserved group marker")
+                    if pointer == "/groups" and isinstance(row, dict):
+                        urls = row.get("urls")
+                        if isinstance(urls, Sequence) and not isinstance(urls, (str, bytes)):
+                            row = dict(row)
+                            row.pop("urls")
+                            member_count = 0
+                            for member in urls:
+                                if _contains_group_marker(member):
+                                    raise AuditV2Error(
+                                        "audit.v2 input uses a reserved group marker"
+                                    )
+                                member_json = _canonical(member)
+                                if len(member_json.encode("utf-8")) > MAX_ITEM_BYTES:
+                                    raise AuditV2Error("audit.v2 group member exceeds 8 MiB")
+                                con.execute(
+                                    "INSERT INTO group_members VALUES('/groups',?,?,?)",
+                                    (count, member_count, member_json),
+                                )
+                                member_count += 1
+                            row["urls"] = {
+                                GROUP_MEMBERS_MARKER: count,
+                                "count": member_count,
+                            }
                     try:
                         raw = _ENCODER.encode(row)
                     except (TypeError, ValueError) as exc:
@@ -254,13 +336,17 @@ def write_audit_v2(
             header_json = _canonical(stored_header)
             if len(header_json.encode("utf-8")) > MAX_HEADER_BYTES:
                 raise AuditV2Error("audit.v2 header exceeds its explicit 64 MiB limit")
-            digest = _digest_start(binding_json, header_json)
+            digest = _digest_start(binding_json, header_json, USER_VERSION)
             for pointer in sorted(normalized):
                 for ordinal, raw in con.execute(
                     "SELECT ordinal,value_json FROM items WHERE pointer=? ORDER BY ordinal",
                     (pointer,),
                 ):
                     _digest_item(digest, pointer, ordinal, raw)
+            for group_ordinal, ordinal, raw in con.execute(
+                "SELECT group_ordinal,ordinal,value_json FROM group_members ORDER BY group_ordinal,ordinal"
+            ):
+                _digest_item(digest, f"@group-members/{group_ordinal}", ordinal, raw)
             con.execute(
                 "INSERT INTO audit_meta VALUES (1,?,?,?,?)",
                 (FORMAT_VERSION, binding_json, header_json, digest.hexdigest()),
@@ -322,10 +408,10 @@ class AuditV2Reader:
             raise
 
     def _validate(self, *, verify_binding: bool) -> None:
-        if (
-            self.con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID
-            or self.con.execute("PRAGMA user_version").fetchone()[0] != USER_VERSION
-        ):
+        self.storage_version = self.con.execute("PRAGMA user_version").fetchone()[0]
+        if self.con.execute("PRAGMA application_id").fetchone()[
+            0
+        ] != APPLICATION_ID or self.storage_version not in (2, USER_VERSION):
             raise AuditV2Error("unsupported audit.v2 companion identity or version")
         objects = tuple(
             tuple(row)
@@ -333,12 +419,23 @@ class AuditV2Reader:
                 "SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
             )
         )
-        if objects != _EXPECTED_SCHEMA:
+        if objects != (_V2_SCHEMA if self.storage_version == 2 else _EXPECTED_SCHEMA):
             raise AuditV2Error("audit.v2 companion schema differs")
         if self.con.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise AuditV2Error("audit.v2 companion failed SQLite quick_check")
         if self.con.execute("PRAGMA foreign_key_check").fetchone():
             raise AuditV2Error("audit.v2 companion has inconsistent foreign keys")
+        if self.con.execute(
+            "SELECT 1 FROM items WHERE typeof(ordinal)!='integer' LIMIT 1"
+        ).fetchone():
+            raise AuditV2Error("audit.v2 collection ordinals must be integers")
+        if (
+            self.storage_version == 3
+            and self.con.execute(
+                "SELECT 1 FROM group_members WHERE typeof(ordinal)!='integer' OR typeof(group_ordinal)!='integer' LIMIT 1"
+            ).fetchone()
+        ):
+            raise AuditV2Error("audit.v2 group member ordinals must be integers")
         row = self.con.execute("SELECT * FROM audit_meta WHERE singleton=1").fetchone()
         if row is None or row["format_version"] != FORMAT_VERSION:
             raise AuditV2Error("audit.v2 companion has no matching format header")
@@ -375,17 +472,67 @@ class AuditV2Reader:
         markers = _collection_markers(self.header)
         if markers != set(self.collections):
             raise AuditV2Error("audit.v2 header and collection index have different paths")
-        digest = _digest_start(row["binding_json"], row["header_json"])
+        digest = _digest_start(row["binding_json"], row["header_json"], self.storage_version)
         for item in self.con.execute(
             "SELECT pointer,ordinal,value_json FROM items ORDER BY pointer,ordinal"
         ):
             try:
-                json.loads(item["value_json"])
+                value = json.loads(item["value_json"])
             except json.JSONDecodeError as exc:
                 raise AuditV2Error("audit.v2 row is invalid JSON") from exc
             if len(item["value_json"].encode("utf-8")) > MAX_ITEM_BYTES:
                 raise AuditV2Error("audit.v2 row exceeds 8 MiB")
+            if (
+                self.storage_version == 3
+                and _contains_group_marker(value)
+                and (
+                    item["pointer"] != "/groups"
+                    or not isinstance(value, dict)
+                    or not isinstance(value.get("urls"), dict)
+                    or _contains_group_marker({k: v for k, v in value.items() if k != "urls"})
+                )
+            ):
+                raise AuditV2Error("audit.v2 group marker occurs outside its member array")
+            if self.storage_version == 3 and item["pointer"] == "/groups":
+                marker = value.get("urls") if isinstance(value, dict) else None
+                if isinstance(marker, dict) and GROUP_MEMBERS_MARKER in marker:
+                    if (
+                        set(marker) != {GROUP_MEMBERS_MARKER, "count"}
+                        or type(marker["count"]) is not int
+                        or marker["count"] < 0
+                        or type(marker[GROUP_MEMBERS_MARKER]) is not int
+                        or marker[GROUP_MEMBERS_MARKER] != item["ordinal"]
+                    ):
+                        raise AuditV2Error("audit.v2 group member marker is invalid")
+                    actual, low, high = self.con.execute(
+                        "SELECT COUNT(*),MIN(ordinal),MAX(ordinal) FROM group_members WHERE group_ordinal=?",
+                        (item["ordinal"],),
+                    ).fetchone()
+                    if actual != marker["count"] or (actual and (low, high) != (0, actual - 1)):
+                        raise AuditV2Error("audit.v2 group members are incomplete or unordered")
+                elif self.con.execute(
+                    "SELECT 1 FROM group_members WHERE group_ordinal=? LIMIT 1", (item["ordinal"],)
+                ).fetchone():
+                    raise AuditV2Error("audit.v2 group members lack their marker")
             _digest_item(digest, item["pointer"], item["ordinal"], item["value_json"])
+        if self.storage_version == 3:
+            for member in self.con.execute(
+                "SELECT group_ordinal,ordinal,value_json FROM group_members ORDER BY group_ordinal,ordinal"
+            ):
+                try:
+                    value = json.loads(member["value_json"])
+                except json.JSONDecodeError as exc:
+                    raise AuditV2Error("audit.v2 group member is invalid JSON") from exc
+                if len(member["value_json"].encode("utf-8")) > MAX_ITEM_BYTES:
+                    raise AuditV2Error("audit.v2 group member exceeds 8 MiB")
+                if _contains_group_marker(value):
+                    raise AuditV2Error("audit.v2 group member contains a reserved marker")
+                _digest_item(
+                    digest,
+                    f"@group-members/{member['group_ordinal']}",
+                    member["ordinal"],
+                    member["value_json"],
+                )
         if digest.hexdigest() != row["sha256"]:
             raise AuditV2Error("audit.v2 content hash does not match")
         if verify_binding and _bind_to_scan(self.scan_path, self.binding) != self.binding:
@@ -404,7 +551,73 @@ class AuditV2Reader:
             "SELECT value_json FROM items WHERE pointer=? ORDER BY ordinal", (pointer,)
         )
         for row in cursor:
-            yield json.loads(row[0])
+            yield self._decode_item(pointer, row[0])
+
+    def _decode_item(self, pointer: str, raw: str) -> Any:
+        value = json.loads(raw)
+        if self.storage_version == 3 and pointer == "/groups" and isinstance(value, dict):
+            marker = value.get("urls")
+            if isinstance(marker, dict) and GROUP_MEMBERS_MARKER in marker:
+                value["urls"] = AuditGroupMembers(
+                    self, marker[GROUP_MEMBERS_MARKER], marker["count"]
+                )
+        return value
+
+    def iter_group_members(self, group_ordinal: int, *, offset: int = 0, limit: int | None = None):
+        """Stream exact ordered members, including old storage revision 2 groups."""
+        if (
+            type(offset) is not int
+            or offset < 0
+            or (limit is not None and (type(limit) is not int or limit < 1))
+        ):
+            raise AuditV2Error("invalid group member range")
+        group = self.get_item("/groups", group_ordinal)
+        urls = group.get("urls") if isinstance(group, dict) else None
+        if isinstance(urls, AuditGroupMembers):
+            for row in self.con.execute(
+                "SELECT value_json FROM group_members WHERE group_ordinal=? AND ordinal>=? ORDER BY ordinal LIMIT ?",
+                (group_ordinal, offset, -1 if limit is None else limit),
+            ):
+                yield json.loads(row[0])
+        elif isinstance(urls, list):
+            stop = len(urls) if limit is None else min(len(urls), offset + limit)
+            for ordinal in range(offset, stop):
+                yield urls[ordinal]
+        else:
+            raise AuditV2Error("audit.v2 group has no member array")
+
+    def group_members_page(
+        self, group_ordinal: int, *, offset: int = 0, limit: int = 100, max_bytes: int = 1024 * 1024
+    ) -> dict[str, Any]:
+        """Return an explicit count- and byte-bounded member page."""
+        if (
+            type(limit) is not int
+            or not 1 <= limit <= 1000
+            or type(max_bytes) is not int
+            or not 1 <= max_bytes <= MAX_ITEM_BYTES
+        ):
+            raise AuditV2Error("group member page exceeds its count or byte bound")
+        group = self.get_item("/groups", group_ordinal)
+        urls = group.get("urls") if isinstance(group, dict) else None
+        if not isinstance(urls, (list, AuditGroupMembers)):
+            raise AuditV2Error("audit.v2 group has no member array")
+        output, used = [], 0
+        for member in self.iter_group_members(group_ordinal, offset=offset, limit=limit):
+            size = len(_canonical(member).encode("utf-8"))
+            if used + size > max_bytes:
+                if not output:
+                    raise AuditV2Error("one group member exceeds the requested page byte bound")
+                break
+            output.append(member)
+            used += size
+        return {
+            "rows": output,
+            "total": len(urls),
+            "offset": offset,
+            "returned": len(output),
+            "has_more": offset + len(output) < len(urls),
+            "bytes": used,
+        }
 
     def get_item(self, pointer: str, ordinal: int) -> Any:
         """Read one bounded row by its exact collection key in the validated snapshot."""
@@ -417,7 +630,7 @@ class AuditV2Reader:
         ).fetchone()
         if row is None:
             raise AuditV2Error(f"audit.v2 collection row is missing: {pointer}[{ordinal}]")
-        return json.loads(row[0])
+        return self._decode_item(pointer, row[0])
 
     def document_chunks(self, *, max_bytes: int | None = None) -> Iterator[str]:
         """Yield a compact, complete JSON document; optionally enforce a byte ceiling."""
@@ -430,8 +643,19 @@ class AuditV2Reader:
                 raise AuditV2Error(f"legacy JSON export exceeds its {max_bytes}-byte limit")
             yield chunk
 
-        def walk(value: Any) -> Iterator[str]:
-            if isinstance(value, dict) and set(value) == {COLLECTION_MARKER, "count"}:
+        def walk(value: Any, *, header_markers: bool = True) -> Iterator[str]:
+            if isinstance(value, AuditGroupMembers):
+                yield from emit("[")
+                for index, child in enumerate(value):
+                    if index:
+                        yield from emit(",")
+                    yield from emit(_ENCODER.encode(child))
+                yield from emit("]")
+            elif (
+                header_markers
+                and isinstance(value, dict)
+                and set(value) == {COLLECTION_MARKER, "count"}
+            ):
                 pointer = value[COLLECTION_MARKER]
                 if pointer not in self.collections or value["count"] != self.collections[pointer]:
                     raise AuditV2Error("audit.v2 document marker does not match collection index")
@@ -440,7 +664,10 @@ class AuditV2Reader:
                 for item in self.iter_collection(pointer):
                     if not first:
                         yield from emit(",")
-                    yield from emit(_ENCODER.encode(item))
+                    if pointer == "/groups":
+                        yield from walk(item, header_markers=False)
+                    else:
+                        yield from emit(_ENCODER.encode(item))
                     first = False
                 yield from emit("]")
             elif isinstance(value, dict):
@@ -450,14 +677,14 @@ class AuditV2Reader:
                         yield from emit(",")
                     yield from emit(_ENCODER.encode(key))
                     yield from emit(":")
-                    yield from walk(child)
+                    yield from walk(child, header_markers=header_markers)
                 yield from emit("}")
             elif isinstance(value, list):
                 yield from emit("[")
                 for index, child in enumerate(value):
                     if index:
                         yield from emit(",")
-                    yield from walk(child)
+                    yield from walk(child, header_markers=header_markers)
                 yield from emit("]")
             else:
                 yield from emit(_ENCODER.encode(value))

@@ -1723,6 +1723,9 @@ Read a bounded page of exact remediation cases and decision history.
 | `finding_key` | `str | None` | `None` |
 | `limit` | `int` | `100` |
 | `offset` | `int` | `0` |
+| `source_scan_id` | `int | None` | `None` |
+| `group_ref` | `str | None` | `None` |
+| `max_bytes` | `int | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

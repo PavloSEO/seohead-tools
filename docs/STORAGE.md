@@ -820,26 +820,38 @@ reservations retain legacy ordering, including the different seen/query order
 for sitemap seeds and ordinary links. Interrupted work can be fetched again;
 committed pages are not issued again.
 
-The existing analyzer now consumes SQL graph projections without rebuilding
-`all_inlinks` or a complete Python edge list. Pages and final audit/report data
-still materialize: the native audit admits at most 10,000 pages and 20,000 forms.
-Above those output-population limits, the scan is retained with
-`audit_available=false` and a recorded reason. There is no separate 100,000-link
-admission limit. These are finite operating bounds, not a memory guarantee for
-arbitrary field lengths or finding populations. Sitemap capture streams membership
+The native analyzer consumes SQL graph projections and disk-backed page, finding
+and group collections. Its audit.v2 path is independent of the legacy materialized
+bridge's 10,000-page and 20,000-form bounds. The separately measured page, form and
+payload populations are recorded in [SQLITE_ACCEPTANCE.md](SQLITE_ACCEPTANCE.md);
+they do not establish a one-million-URL collector capacity. Sitemap capture streams membership
 in chunks of 256, with the existing per-root expansion limits; it no longer
 allocates the full declared-URL list before an admission check.
 
 The inline `audit.document_json` contract still has its existing 64 MiB limit.
 Its writer checks the exact serialized size before replacing the row. Audit-v2
 stores ordered collection rows in the adjacent SQLite companion, with a 64 MiB
-header ceiling and an 8 MiB ceiling per row; the collection population has no
-64 MiB total limit. Each row has a stable ordinal, and a SHA-256 digest covers
-the header, binding, collection paths, order, and exact JSON row text. Readers
+header ceiling and an 8 MiB ceiling per atomic row; the collection population has no
+64 MiB total limit. Storage revision 3 normalizes group URL arrays into ordered
+group_members rows, so a logical group can exceed the atomic-row limit without
+losing a member or reconstructing its complete URL list. The group row retains a
+count-bearing reference; every member has its group ordinal and member ordinal.
+Each row has a stable ordinal, and a SHA-256 digest covers
+the storage revision, header, binding, collection paths, order, and exact JSON row
+and group-member text. Readers
 validate the scan binding, SQLite schema, foreign keys, row counts, ordering,
 and digest before exposing any collection. The four reconciliation arrays under
 `summary.sitemap` are separate collections too; they must not be truncated into
 an apparently complete summary.
+
+New readers also accept storage revision 2 without changing its bytes or legacy
+digest. Old readers refuse revision 3 explicitly. AuditV2Reader.iter_collection
+returns group URLs as a lazy sequence for revision 3; iter_group_members streams
+the complete membership, while group_members_page exposes count- and byte-bounded
+pages with exact total, returned and has_more. JSON export reconstructs the
+complete array incrementally; only the explicitly bounded compatibility
+materializer builds an ordinary JSON document. Offline reanalysis records the
+source companion digest as source_audit_sha256.
 
 `report-build` and `compare-crawls` accept an audit-v2 scan path. JSON output
 streams the complete document; CSV, XLSX, Markdown and DOCX consume ordered rows

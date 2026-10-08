@@ -15,3 +15,11 @@ CREATE TABLE items (
     value_json TEXT NOT NULL,
     PRIMARY KEY (pointer, ordinal)
 );
+CREATE TABLE group_members (
+    pointer TEXT NOT NULL CHECK (pointer = '/groups'),
+    group_ordinal INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    value_json TEXT NOT NULL,
+    PRIMARY KEY (group_ordinal, ordinal),
+    FOREIGN KEY (pointer, group_ordinal) REFERENCES items(pointer, ordinal)
+);

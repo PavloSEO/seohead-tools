@@ -1043,7 +1043,7 @@ def test_scan_without_audit_is_refused(tmp_path):
 def test_unknown_and_future_ledger_versions_refuse_without_mutation(tmp_path):
     ledger = _ledger(tmp_path)
     con = sqlite3.connect(ledger)
-    con.execute("PRAGMA user_version=5")
+    con.execute("PRAGMA user_version=6")
     con.commit()
     con.close()
     digest = _file_sha(ledger)
@@ -1086,7 +1086,7 @@ def test_v1_ledger_migrates_only_on_a_write_open_and_keeps_header_identity(tmp_p
     assert _file_sha(path) == original
     upgraded = open_ledger(path, write=True)
     try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 5
         assert upgraded.execute("SELECT format_version FROM ledger").fetchone()[0] == "ledger.v1"
         assert upgraded.execute("SELECT COUNT(*) FROM verification_artifact").fetchone()[0] == 0
     finally:
@@ -1139,7 +1139,14 @@ def test_audit_v2_ingest_streams_large_issue_population_without_legacy_materiali
                     }
                     for index in range(10_001)
                 ),
-                "/groups": [{"group_id": "GROUP-ONE", "check": "TITLE_MISSING", "count": 1}],
+                "/groups": [
+                    {
+                        "group_id": "GROUP-ONE",
+                        "check": "TITLE_MISSING",
+                        "count": 1,
+                        "urls": ["https://example.test/page-0"],
+                    }
+                ],
             },
         )
         scan.finish_without_audit("synthetic large audit.v2")
