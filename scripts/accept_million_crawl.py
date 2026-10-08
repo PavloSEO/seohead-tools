@@ -1319,11 +1319,7 @@ def run_loopback(output: Path, *, pages: int = 8) -> dict[str, Any]:
         intervals = [after - before for before, after in itertools.pairwise(received)]
         paced_window = received[-1] - received[0]
         mean_interval = paced_window / len(intervals)
-        if (
-            effective_request_rate(settings) > 2
-            or min(intervals) < 0.2
-            or mean_interval < 0.45
-        ):
+        if effective_request_rate(settings) > 2 or min(intervals) < 0.2 or mean_interval < 0.45:
             raise AssertionError(
                 "owned HTTP fixture did not preserve the default 2-request/s pacing"
             )
