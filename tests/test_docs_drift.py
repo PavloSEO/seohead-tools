@@ -274,6 +274,16 @@ def test_every_cli_command_is_documented_in_tools_reference():
     assert not missing, f"commands missing from docs/TOOLS.md: {missing}"
 
 
+def test_every_cli_command_is_grouped_in_the_cli_overview():
+    """docs/CLI.md is the by-job map the README links to; a new command must land in a group."""
+    overview = (ROOT / "docs" / "CLI.md").read_text(encoding="utf-8")
+    grouped = set(re.findall(r"^\| `([a-z0-9-]+)` \|", overview, re.M))
+    missing = sorted(set(COMMANDS) - grouped)
+    stale = sorted(grouped - set(COMMANDS) - EXTRA_COMMANDS)
+    assert not missing, f"commands missing from docs/CLI.md: {missing}"
+    assert not stale, f"docs/CLI.md names unregistered commands: {stale}"
+
+
 def test_severity_breakdown_in_tools_reference_matches_the_registry():
     from collections import Counter
 
