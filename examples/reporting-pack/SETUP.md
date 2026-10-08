@@ -6,8 +6,8 @@ Looker Studio step: Google provides no report-creation API, and this repository 
 no Apps Script or Looker API dependency. Everything here is point-and-click work by a
 person signed in to the Google account that will own the template.
 
-Estimated effort: about 30 minutes. No script is required or permitted to perform these
-steps on your behalf.
+Use the native editor for report creation. The local link builder below only formats a
+URL after the original report exists; it does not automate these steps.
 
 ## Inputs
 
@@ -77,6 +77,15 @@ worksheets no longer match the toolkit's BI projection. All data is synthetic
    `search_value`, `sessions_value` are Number; `period_start`/`period_end` are Date.
    Blank numeric cells are missing values, not zero — never type-override them into a
    default.
+6. **Before adding charts**, open **Resource → Manage field names and IDs** and add
+   an override for each source's `run_id`. Set **New ID** to `seohead_run_id` on all
+   six sources and keep the type **Text**. The same column name in six Sheets sources
+   does not make a shared filter: Looker Studio matches internal field IDs. Adding
+   the overrides after building charts can break existing field selections; repair
+   those selections if needed. See Google's
+   [cross-source filter instructions](https://docs.cloud.google.com/data-studio/use-controls-across-data-sources).
+   Do not unify `state` across sources: coverage states and cohort states describe
+   different populations.
 
 ## Step 3 — Build the five pages
 
@@ -84,13 +93,26 @@ Keep a text box in the top-left of every page stating the page's source dataset(
 selected `run_id` or provider period, and the coverage state it is responsible for
 disclosing. Match `layout-preview.svg` for arrangement, using original wording.
 
+Add a small `coverage` table to every page, filtered to the relevant dataset(s), with
+`dataset`, `evidence_source_id`, `population`, `state`, and `reason`. Show the exact
+state supplied by the source; do not relabel `available` as a completed crawl. The
+fixture's crawl state is `unknown`. Distinguish these labels in a visible legend:
+`complete` means the declared collection completed, `partial` means some collection
+is missing, `unavailable` means no usable evidence, `skipped` means not evaluated, and
+`not_configured` means no source was configured. A legend documents supported states;
+it does not prove a state was observed in the current fixture.
+
 ### Page 1 — Run scope and coverage (`coverage`)
 
-- Report-level control: drop-down on `run_id` (applies to every page's charts).
+- Report-level control: single-select drop-down on the unified `run_id` field. Set
+  the fixture run as its initial selection. Verify it applies to every page's charts.
 - Drop-down on `state` for completeness disclosure.
-- Table "Dataset coverage": dimensions `dataset`, `population`, `state`, `reason`;
+- Table "Evidence coverage": dimensions `dataset`, `evidence_source_id`, `population`, `state`, `reason`;
   metrics `source_rows`, `exported_rows`, `unavailable_rows` (all SUM).
-- Bar chart "Rows by state": dimension `state`, metric SUM(`exported_rows`).
+- Stacked bar chart "Exported dataset rows": dimension `dataset`, breakdown `state`,
+  metric SUM(`exported_rows`), filter `population = 'dataset'`. Coverage populations
+  overlap; summing dataset, provider and matched populations would count observations
+  repeatedly. Keep the broader populations in the evidence coverage table.
 - Text: the run's `finished_at` from `manifest.json` (`run.finished_at`) and the note
   "BI export time is not source collection time; provider periods appear on page 5."
 
@@ -128,11 +150,22 @@ disclosing. Match `layout-preview.svg` for arrangement, using original wording.
 
 ### Page 5 — Search Console and Analytics evidence (`metrics`, `cohorts`)
 
-- Table "Provider metric observations": `provider`, `metric_name`, `url_resolved`,
+- Two tables "Search metric observations" and "Analytics metric observations",
+  filtered to `provider = 'gsc'` and `provider = 'ga4'` respectively:
+  `provider`, `provider_source_id`, `metric_name`, `url_resolved`,
   `value_number`, `value_state`, `value_reason`, `is_measured_zero` (calculated field),
   `population_state`, `collection_state`, `period_start`, `period_end`, `timezone`.
-- Date-range control bound to `period_start` on the `metrics` data source only. It is a
-  provider-period control; it does not describe the crawl's `finished_at`.
+  Keep each provider's source ID, period and timezone visible in a companion table if
+  the metric table cannot show all columns legibly.
+- Set `period_start` as the **Date Range Dimension** on both metric tables. Add one
+  date-range control per provider and **group each control with only that provider's
+  table and companion context table** (Arrange → Group). The blueprint calls these
+  groups `gsc_observations` and `ga4_observations`. Leave the cohort charts and coverage
+  tables outside both groups. An ungrouped date control affects the whole page;
+  choosing a date field on one chart does not restrict the control to that chart.
+  See Google's [date control scope](https://docs.cloud.google.com/data-studio/date-range-control).
+  These controls select observations by their declared period start; they do not
+  prorate monthly observations into daily values or describe the crawl's `finished_at`.
 - Table "Search vs sessions cohort": filter `cohort_id =
   'search_visibility_vs_sessions'`; dimensions `url`, `value_label`, `membership`,
   `state`, `reason`; metrics `search_value`, `sessions_value` with their `*_state`
@@ -140,10 +173,17 @@ disclosing. Match `layout-preview.svg` for arrangement, using original wording.
 - Scatter chart for `membership = 'member'` rows: `search_value` on X, `sessions_value`
   on Y. Search clicks/impressions and GA4 sessions remain separate axes — never blend or
   sum them.
+- Keep the cohort's `period_start`, `period_end` and `timezone` visible beside its
+  table and scatter chart. Its declared comparison window stays independent of the two
+  provider table controls.
 - Text: "GSC clicks/impressions are search observations; GA4 sessions are analytics
   observations. Counts are not rates. The connector refresh time shown by Looker Studio
   is not the provider collection time; the declared period and timezone above are the
   source-of-truth window."
+- Show "Provider collection time: unknown" for the committed fixture, whose
+  `source_metadata_json.collection.collected_at` is null. If a future source supplies that time,
+  show its recorded value beside the provider context. Never substitute the crawl's
+  `finished_at` or the connector refresh time for a missing provider collection time.
 
 ## Step 4 — Calculated fields
 
@@ -158,9 +198,11 @@ Add exactly the two blueprint fields, verbatim from `looker-studio-blueprint.jso
 
 ## Step 5 — Share with copy permission and record the template link
 
-1. Share the report: "Anyone with the link — Viewer". In the share dialog's advanced
-   settings, leave "download, print and copy" allowed for viewers — that is what makes
-   the template copyable.
+1. Keep the report's approved visibility: restricted access for the authorized copying
+   viewer, or "Anyone with the link — Viewer" when the owner has explicitly approved
+   a public synthetic template. In the share dialog's advanced settings, leave
+   "download, print and copy" allowed for viewers. Copying requires view permission;
+   it does not require making the report public.
 2. The template link is the report URL
    `https://lookerstudio.google.com/reporting/<report-id>`. Generate its configured
    Linking API URL with `seohead.reports.looker_link.build_looker_copy_link`, using
@@ -180,14 +222,31 @@ In a different account or an incognito session where the original is only *viewa
    the configured copy. A manual copy of the original template does not verify the
    Linking API mapping; if the generated link fails, correct the original aliases or local
    mapping and repeat this check from a fresh session.
-2. Confirm all five pages render, the report-level `run_id` control and the page-5 date
-   control work, and no chart shows a broken-data-source badge.
-3. Confirm the states contract on the copy: `link_occurrences` shows `unavailable`, the
+2. Confirm all five pages render and no chart shows a broken-data-source badge.
+   In the copy, temporarily add a report-level input filter with **Equals** on the
+   unified `run_id`. Enter `seohead-no-such-run`: all populated source charts and
+   coverage tables must become empty on every page. Clear and remove this temporary
+   control, then verify the original single-select control restores the fixture run.
+   Record the field-override list and both outcomes. A single-run fixture that merely
+   renders does not prove a cross-source filter works.
+3. Set the GSC group's date control outside the declared provider window. Only its
+   observation/context tables must empty; GA4, cohorts and coverage must remain
+   unchanged. Restore it and repeat for GA4. Confirm that the declared monthly period
+   remains visible when a row is shown. Record each control's group and outcome.
+4. Confirm the states contract on the copy: `link_occurrences` shows `unavailable`, the
    measured-zero GSC clicks row for `https://example.com/page-a` shows `0` with
    `value_state = measured` (not blank), the suppressed `page-b` impressions cell is
    blank with `value_state = unavailable` — it must not plot as zero — and quadrant rows
    for URLs without a complete pair show `incomplete`, not zero.
-4. Record the template link, report ID and this checklist's outcome in the issue, including
+5. Check the `link_occurrences` source itself, even though its worksheet has no data
+   rows: it must register with the native connector and preserve the `links_sheet`
+   alias. Never insert a fabricated edge to make a chart render. If the connector rejects
+   the header-only worksheet, record that as a blocked source, not a passing template.
+6. Record separately which states were actually observed. The committed fixture has
+   `complete`, `unavailable` and `skipped` coverage examples, but no coverage row for
+   `partial` or `not_configured`. Do not claim those states passed from the legend alone;
+   use a separately authorized synthetic variant before full state acceptance.
+7. Record the template link, report ID and this checklist's outcome in the issue, including
    that the generated Linking API URL resolved all six sources without manual repair. Until
    then the deliverable state stays `template_state: missing` even though every local
    artifact below is complete.
