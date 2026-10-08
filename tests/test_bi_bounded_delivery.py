@@ -174,7 +174,7 @@ def test_quadrants_stream_repeated_observations_and_keep_ambiguity(tmp_path):
         for i in range(count):
             yield {
                 "row": {"dimensions": {}, "row_index": i},
-                "metric": {"name": metric},
+                "metric": {"name": metric, "unit": "count"},
                 "entry": {"state": "measured", "value": 0},
                 "population": "matched",
                 "url": {"state": "keyed", "normalized": "https://example.test/a"},
@@ -183,12 +183,21 @@ def test_quadrants_stream_repeated_observations_and_keep_ambiguity(tmp_path):
 
     def source(provider, metric, count):
         return (
-            object(),
+            SimpleNamespace(source_id=provider),
             observations(metric, count),
             {
                 "evidence": {
                     "provider": provider,
-                    "collection": {"state": "complete"},
+                    "collection": {
+                        "state": "complete",
+                        "sampled": False,
+                        "thresholded": False,
+                        "truncated": False,
+                    },
+                    "field_origins": {
+                        name: "declared"
+                        for name in ("collection_state", "sampled", "thresholded", "truncated")
+                    },
                     "timezone": "UTC",
                     "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
                 }

@@ -12,7 +12,7 @@
   },
   "datasets": {
     "cohorts": {
-      "bytes": 14568,
+      "bytes": 21954,
       "coverage": {
         "page_rows": 6,
         "search_metric": "clicks"
@@ -192,10 +192,10 @@
       "partition_count": 1,
       "partitions": [
         {
-          "bytes": 14568,
+          "bytes": 21954,
           "path": "cohorts-0001.csv",
           "rows": 30,
-          "sha256": "0928d18c76abd124f8b321f0ee28566cd3d5b2c98a66e2517603ea5d8dfc4745"
+          "sha256": "cadff9c2d3400d75e99e99af3f82e8ae7704df58247aed79b04518bbf620259e"
         }
       ],
       "primary_key": [
@@ -1683,6 +1683,7 @@
       "file": "provider-00.json",
       "format": "seohead.evidence-join.v1",
       "provider_source_id": "762e5de812021ad303469a65a82ec6508de388fcf5b7dde4c97d2c6cffdf6a41",
+      "reason": null,
       "sha256": "762e5de812021ad303469a65a82ec6508de388fcf5b7dde4c97d2c6cffdf6a41",
       "state": "complete",
       "summary": {
@@ -1766,6 +1767,7 @@
       "file": "provider-01.json",
       "format": "seohead.evidence-join.v1",
       "provider_source_id": "f617bbcc539d5a3ad11bfe729db446a8b46b56bda77683d681c6b395e9274126",
+      "reason": null,
       "sha256": "f617bbcc539d5a3ad11bfe729db446a8b46b56bda77683d681c6b395e9274126",
       "state": "complete",
       "summary": {

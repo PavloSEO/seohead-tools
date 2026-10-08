@@ -722,13 +722,20 @@ def test_cohorts_keep_zero_quadrants_separate_from_unconfigured_provider_evidenc
                     "operation": "synthetic",
                     "privacy": "supplied",
                     "timezone": timezone,
+                    "reporting_identity": f"synthetic-{provider}",
+                    "attribution": "last-click",
                 },
                 "url": {"field": "url", "kind": "absolute"},
                 "row_shape": "flat",
                 "dimensions": [],
                 "metrics": [{"name": metric, "type": "number", "unit": "count"}],
                 "period": {"start_date": "2026-01-01", "end_date": "2026-01-07"},
-                "collection": {"state": "complete"},
+                "collection": {
+                    "state": "complete",
+                    "sampled": False,
+                    "thresholded": False,
+                    "truncated": False,
+                },
             },
         )
 
@@ -875,7 +882,7 @@ def test_quadrant_pairing_refuses_cursor_backed_multi_page_match(tmp_path):
     def observation(metric, value):
         return {
             "row": {"dimensions": {}},
-            "metric": {"name": metric},
+            "metric": {"name": metric, "unit": "count"},
             "entry": {"state": "measured", "value": value},
             "population": "matched",
             "url": {"state": "keyed", "normalized": "https://example.test/a"},
@@ -884,7 +891,7 @@ def test_quadrant_pairing_refuses_cursor_backed_multi_page_match(tmp_path):
 
     def source(provider, metric, value):
         return (
-            object(),
+            SimpleNamespace(source_id=provider),
             bi_report._ObservationStream(lambda: iter((observation(metric, value),)), 1),
             {
                 "evidence": {

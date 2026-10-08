@@ -2290,6 +2290,51 @@ def _safe_dimension_fields(names: Iterable[str]) -> dict[str, str]:
     return result
 
 
+def _provider_collection(header: dict[str, Any]) -> dict[str, Any]:
+    """Interpret collection provenance without upgrading an import default to evidence."""
+    collection = header.get("collection") or {}
+    origins = header.get("field_origins") or {}
+    if not isinstance(collection, dict) or not isinstance(origins, dict):
+        raise BIExportError("provider source has malformed collection metadata or field origins")
+    state = collection.get("state")
+    reason = None
+    if not state or origins.get("collection_state") not in (
+        "declared",
+        "envelope",
+    ):
+        state, reason = "unknown", "source did not establish collection_state"
+    elif state == "complete":
+        flags = ("sampled", "thresholded", "truncated")
+        unknown = [
+            flag
+            for flag in flags
+            if type(collection.get(flag)) is not bool
+            or origins.get(flag) not in ("declared", "envelope")
+        ]
+        degraded = [flag for flag in flags if collection.get(flag) is True and flag not in unknown]
+        if degraded:
+            state, reason = "partial", "provider collection is degraded: " + ", ".join(degraded)
+        if unknown:
+            state = "partial" if degraded else "unknown"
+            reason = "; ".join(
+                filter(
+                    None,
+                    (
+                        reason,
+                        "source did not explicitly establish collection flags: "
+                        + ", ".join(unknown),
+                    ),
+                )
+            )
+    if reason:
+        return {
+            **collection,
+            "state": state,
+            "reason": "; ".join(filter(None, (reason, collection.get("reason")))),
+        }
+    return collection
+
+
 def _metric_rows(
     run: _RunInput,
     sources: list[tuple[_ProviderInput, list[dict[str, Any]], dict[str, Any]]],
@@ -2313,12 +2358,7 @@ def _metric_rows(
                 raise BIExportError(
                     f"provider source {provider.source_id} has invalid period dates"
                 ) from exc
-        collection = header.get("collection") or {}
-        if not isinstance(collection, dict):
-            raise BIExportError(
-                f"provider source {provider.source_id} has malformed collection metadata"
-            )
-        collection_state = collection.get("state") or "unknown"
+        collection = _provider_collection(header)
         field_origins = header.get("field_origins") or {}
         if not isinstance(field_origins, dict):
             raise BIExportError(f"provider source {provider.source_id} has malformed field origins")
@@ -2391,7 +2431,7 @@ def _metric_rows(
                 "search_type": header.get("search_type"),
                 "search_type_state": fact("search_type", header.get("search_type"))[0],
                 "search_type_reason": fact("search_type", header.get("search_type"))[1],
-                "collection_state": collection_state,
+                "collection_state": collection["state"],
                 "collection_reason": collection.get("reason"),
                 "collection_sampled": collection.get("sampled"),
                 "collection_thresholded": collection.get("thresholded"),
@@ -2493,6 +2533,7 @@ def _quadrant_candidates(
     """
     if search_metric not in {"clicks", "impressions"}:
         return {}, "choose search_metric 'clicks' or 'impressions' to enable quadrants", {}
+    from seohead.data_sources.evidence_join import evidence_compatibility
     from seohead.reports.bi_index import QuadrantLookup
 
     con.execute(
@@ -2505,22 +2546,47 @@ def _quadrant_candidates(
     def block(key: str, reason: str) -> None:
         con.execute("INSERT OR IGNORE INTO blocked VALUES (?,?)", (key, reason))
 
-    for _provider, observations, info in sources:
+    source_contexts = {}
+    for provider, observations, info in sources:
         header = info["evidence"]
         provider_name = str(header.get("provider") or "").casefold()
-        collection = header.get("collection") or {}
+        collection = _provider_collection(header)
         period = header.get("period") or {}
         timezone = header.get("timezone")
-        if (
-            collection.get("state") != "complete"
-            or collection.get("sampled")
-            or collection.get("thresholded")
-            or collection.get("truncated")
-            or not isinstance(timezone, str)
-            or not isinstance(period.get("start_date"), str)
-            or not isinstance(period.get("end_date"), str)
-        ):
+        if provider_name not in {
+            "gsc",
+            "google_search_console",
+            "search_console",
+            "ga4",
+            "google_analytics_4",
+            "google_analytics",
+        }:
             continue
+        origins = header.get("field_origins") or {}
+        # Only at most MAX_PROVIDER_SOURCES headers reach the compatibility engine;
+        # URL populations continue to stream through the existing SQLite index.
+        source_contexts[provider.source_id] = {
+            "format": NORMALIZED_FORMAT,
+            "mapping": {
+                "source": header,
+                "period": period,
+                "collection": collection,
+                "dimensions": header.get("dimensions") or [],
+                "metrics": header.get("metrics") or [],
+            },
+            "provenance": {
+                "fields": {
+                    name: {
+                        "value": value if origins.get(name) in ("declared", "envelope") else None
+                    }
+                    for name, value in header.items()
+                }
+            },
+            "rows": [],
+        }
+        collection_reason = None
+        if collection.get("state") != "complete":
+            collection_reason = collection.get("reason") or "provider collection is not complete"
         for observation in observations:
             row = observation["row"]
             url = observation["url"]
@@ -2529,7 +2595,6 @@ def _quadrant_candidates(
             if (
                 observation["population"] != "matched"
                 or url.get("state") != "keyed"
-                or entry.get("state") != "measured"
                 or row.get("dimensions")
             ):
                 continue
@@ -2554,17 +2619,6 @@ def _quadrant_candidates(
                     "provider source marks this normalized URL row as ambiguous",
                 )
                 continue
-            source = {
-                "provider": header.get("provider"),
-                "metric": metric.get("name"),
-                "source_row_index": row.get("row_index"),
-                "natural_key_sha256": row.get("natural_key_sha256"),
-                "value": entry.get("value"),
-                "period_start": period["start_date"],
-                "period_end": period["end_date"],
-                "timezone": timezone,
-            }
-            window = (key, period["start_date"], period["end_date"], timezone)
             if (
                 provider_name in {"gsc", "google_search_console", "search_console"}
                 and metric.get("name") == search_metric
@@ -2577,6 +2631,47 @@ def _quadrant_candidates(
                 axis = "sessions"
             else:
                 continue
+            if collection_reason:
+                block(key, collection_reason)
+                continue
+            if entry.get("state") != "measured":
+                block(key, "provider did not measure the selected metric")
+                continue
+            if (metric.get("unit") or entry.get("unit")) != "count":
+                block(key, "search clicks/impressions and sessions require declared count units")
+                continue
+            if entry["value"] < 0:
+                block(key, "search clicks/impressions and sessions must be nonnegative counts")
+                continue
+            if (
+                not isinstance(timezone, str)
+                or not isinstance(period.get("start_date"), str)
+                or not isinstance(period.get("end_date"), str)
+            ):
+                block(key, "provider period and timezone must be established")
+                continue
+            source = {
+                "provider_source_id": provider.source_id,
+                "provider": header.get("provider"),
+                "operation": header.get("operation"),
+                "reporting_identity": header.get("reporting_identity"),
+                "metric": metric.get("name"),
+                "metric_unit": metric.get("unit") or entry.get("unit"),
+                "source_row_index": row.get("row_index"),
+                "natural_key_sha256": row.get("natural_key_sha256"),
+                "value": entry.get("value"),
+                "period_start": period["start_date"],
+                "period_end": period["end_date"],
+                "timezone": timezone,
+                "attribution": header.get("attribution"),
+                "search_engine": header.get("search_engine"),
+                "search_type": header.get("search_type"),
+                "collection": collection,
+                "field_origins": origins,
+                "boundary_policy": "strict",
+                "cross_source_policy": "juxtapose",
+            }
+            window = (key, period["start_date"], period["end_date"], timezone)
             encoded = _canonical_json(source)
             if len(encoded.encode("utf-8")) > MAX_CELL_BYTES:
                 raise BIExportError("one quadrant observation exceeds the BI cell bound")
@@ -2597,6 +2692,31 @@ def _quadrant_candidates(
         "WHERE search_count=1 AND sessions_count=1 GROUP BY url HAVING COUNT(*)>1",
         ("more than one compatible provider period is retained for this normalized URL key",),
     )
+    compatibility_cache = {}
+    for key, search_json, sessions_json in con.execute(
+        "SELECT url,search_json,sessions_json FROM candidates WHERE search_count=1 AND sessions_count=1"
+    ):
+        pair_ids = tuple(
+            json.loads(value)["provider_source_id"] for value in (search_json, sessions_json)
+        )
+        if pair_ids not in compatibility_cache:
+            decision = evidence_compatibility(
+                *(source_contexts[source_id] for source_id in pair_ids),
+                policy={
+                    "boundary_policy": "strict",
+                    "cross_source": "juxtapose",
+                    "quadrant": {"left_metric": search_metric, "right_metric": "sessions"},
+                },
+            )
+            compatibility_cache[pair_ids] = decision
+        decision = compatibility_cache[pair_ids]
+        if not decision["quadrant"]["eligible"]:
+            reasons = decision["quadrant"]["reasons"] + [
+                aspect["reason"]
+                for aspect in decision["reasons"]
+                if aspect.get("unverified") or aspect["verdict"] != "compatible"
+            ]
+            block(key, "provider scope is not qualified: " + ", ".join(reasons))
     return QuadrantLookup(con), None, QuadrantLookup(con, blocked=True)
 
 
@@ -2624,7 +2744,9 @@ def _cohort_rows(
     definition_quadrant = (
         "Search Console {metric} and GA sessions are separate axes. A quadrant needs one measured "
         "dimensionless URL value from each complete source for the same inclusive local-date window "
-        "and timezone; values are never summed."
+        "and timezone, with explicit unsampled/unthresholded/untruncated collection and known "
+        "attribution. Nonnegative counts and source scopes remain separately labelled under "
+        "strict calendar and cross-source juxtaposition policies; values are never summed."
     )
     if search_metric is None:
         pairs, pair_reason, blocked_keys = (
@@ -2946,8 +3068,8 @@ def _coverage_rows(
             continue
         summary = join.get("summary") or {}
         evidence = join.get("evidence") or {}
-        collection = evidence.get("collection") or {}
-        collection_state = collection.get("state") or "unknown"
+        collection = _provider_collection(evidence)
+        collection_state = collection["state"]
         for population, key, state, reason in (
             ("matched", "matched_rows", "measured", None),
             ("crawl_only", "crawl_only", "unavailable", "no provider row matched this crawl URL"),
@@ -2984,7 +3106,6 @@ def _coverage_rows(
         unavailable_metrics = sum(
             1 for observation in observations if observation["entry"].get("state") != "measured"
         )
-        collection_state = collection.get("state") or "unknown"
         yield _coverage_row(
             run.run_id,
             "metrics",
@@ -3498,9 +3619,8 @@ def _write_package(
                     "file": provider.name,
                     "sha256": provider.sha256,
                     "bytes": provider.byte_count,
-                    "state": (join.get("evidence") or {})
-                    .get("collection", {})
-                    .get("state", "unknown"),
+                    "state": _provider_collection(join.get("evidence") or {})["state"],
+                    "reason": _provider_collection(join.get("evidence") or {}).get("reason"),
                     "format": join.get("format"),
                     "evidence": join.get("evidence"),
                     "summary": join.get("summary"),
