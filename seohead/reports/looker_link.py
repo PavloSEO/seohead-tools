@@ -203,7 +203,7 @@ def build_looker_copy_link(
         if not isinstance(source, dict):
             raise LookerLinkError("data-source mappings must be objects")
         dataset, source_params = _source_parameters(source, datasets)
-        alias = source["alias"]
+        alias = source["alias"].strip()
         if dataset in mapped or alias in aliases:
             raise LookerLinkError(
                 "each BI dataset and data-source alias must be mapped exactly once"
@@ -232,6 +232,7 @@ def build_looker_copy_link(
         "field_schema": fields,
         "five_page_import_checklist": blueprint["pages"],
         "global_controls": blueprint.get("global_controls", []),
+        "date_controls": blueprint.get("date_controls", []),
         "calculated_fields": blueprint.get("calculated_fields", []),
         "filter_rules": blueprint.get("filter_rules", []),
     }

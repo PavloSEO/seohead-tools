@@ -15,5 +15,12 @@ This guide fixes the fields consumed by the synthetic Looker blueprint.
 Use `state` and `reason` as dimensions/tooltip fields, never a calculated-zero fallback. The
 blueprint's only calculated fields are `is_measured_zero` and `observed_inlink_share_label`; both
 are defined in `looker-studio-blueprint.json`. A report filter may restrict `run_id`, but it must
-not mix runs. A metric date control applies only to that provider's `period_start`, `period_end`
-and `timezone`; it is not a crawl-date control.
+not mix runs. Assign all six `run_id` fields the report-level ID `seohead_run_id`, with
+type Text, before adding charts; identical display names do not establish filter scope.
+Keep `state` IDs separate because coverage and cohort states describe different populations.
+
+Group each metric date control with its own provider-filtered table, using `period_start`
+as that chart's date range dimension. Display `provider_source_id`, `period_start`,
+`period_end` and `timezone` with the observations. The control selects whole observations
+by period start; it does not slice a monthly total into daily measurements. Keep cohort
+and crawl charts outside the provider date groups.

@@ -6,6 +6,7 @@ import csv
 import json
 from functools import partial
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree
 
 import pytest
@@ -153,6 +154,35 @@ def test_copy_link_refuses_missing_template_and_incomplete_source_mapping():
             report_name="Synthetic SEOHEAD Evidence Reporting Pack",
             data_sources=_sources(),
         )
+
+
+def test_copy_link_deduplicates_the_alias_used_in_url_parameters():
+    sources = _sources()
+    sources[1]["alias"] = " coverage_sheet "
+    with pytest.raises(LookerLinkError, match="exactly once"):
+        build_looker_copy_link(
+            blueprint=load_blueprint(PACK_DIR / "looker-studio-blueprint.json"),
+            original_report_id="synthetic-report-836",
+            original_report_confirmed=True,
+            report_name="Synthetic reporting pack",
+            data_sources=sources,
+        )
+
+
+def test_copy_link_returns_the_normalized_alias_used_in_url_parameters():
+    sources = _sources()
+    sources[0]["alias"] = " coverage_sheet "
+    result = build_looker_copy_link(
+        blueprint=load_blueprint(PACK_DIR / "looker-studio-blueprint.json"),
+        original_report_id="synthetic-report-836",
+        original_report_confirmed=True,
+        report_name="Synthetic reporting pack",
+        data_sources=sources,
+    )
+    query = parse_qs(urlsplit(result["copy_link"]).query)
+    assert "coverage_sheet" in result["data_source_aliases"]
+    assert " coverage_sheet " not in result["data_source_aliases"]
+    assert query["ds.coverage_sheet.worksheetId"] == ["2"]
 
 
 def _worksheet_rows(dataset: str) -> list[dict[str, str]]:
