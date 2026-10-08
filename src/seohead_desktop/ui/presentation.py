@@ -176,8 +176,10 @@ def field_text(key, value):
     if (key.endswith("_at") or key == "at") and isinstance(value, str):
         try:
             stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                return value + " · часовой пояс не задан"
             return stamp.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z")
-        except ValueError:
+        except (ValueError, OverflowError):
             pass
     return value_text(value)
 
@@ -232,7 +234,7 @@ def run_projection(run):
             started = datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
             if started.tzinfo is not None:
                 label = started.astimezone().strftime("%d.%m %H:%M")
-        except ValueError:
+        except (ValueError, OverflowError):
             pass
     identity = run.get("id")
     if isinstance(identity, str) and identity:
