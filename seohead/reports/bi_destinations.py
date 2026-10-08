@@ -215,6 +215,7 @@ def _result_from_state(state: dict[str, Any], *, reason: str | None = None) -> d
             - values["failed_rows"]
             for name, values in accounting.items()
         },
+        "external_companion_refs": state.get("external_companion_refs", []),
     }
     if reason:
         result["reason"] = reason
@@ -1430,6 +1431,7 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
         columns = value.get("columns")
         partitions = value.get("partitions")
         row_count = value.get("row_count")
+        source = value.get("source")
         if (
             not isinstance(name, str)
             or name not in DATASET_SPECS
@@ -1438,6 +1440,7 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             or not isinstance(partitions, list)
             or type(row_count) is not int
             or row_count < 0
+            or (source is not None and not isinstance(source, dict))
         ):
             raise BIDestinationError("selected BI projection manifest is invalid")
         expected = _fields_for_manifest(name, value.get("metrics_dimension_columns"))
@@ -1499,6 +1502,8 @@ def _manifest(package: str | Path) -> tuple[Path, dict[str, Any]]:
             "source_package_format": "seohead.bi-filter.v1",
             "selected_projection": True,
             "source": value.get("source"),
+            "run": (source or {}).get("run"),
+            "group_members": value.get("group_members"),
             "source_coverage": value.get("source_coverage"),
             "conservation": value.get("conservation"),
             "metrics_dimension_columns": value.get("metrics_dimension_columns"),
@@ -1626,7 +1631,34 @@ def _verify_partitions(root: Path, manifest: dict[str, Any]) -> dict[str, dict[s
         if rows != dataset.get("row_count") or bytes_count != dataset.get("bytes"):
             raise BIDestinationError(f"dataset {name!r} partition totals do not match manifest")
         datasets[name] = {"rows": rows, "fields": len(fields), "bytes": bytes_count}
+    from seohead.reports.bi_index import verify_group_member_references
+
+    try:
+        verify_group_member_references(root, manifest)
+    except BIExportError as exc:
+        raise BIDestinationError(str(exc)) from exc
     return datasets
+
+
+def _external_companion_refs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Disclose complete local companions excluded from destination datasets."""
+    companion = manifest.get("group_members")
+    if companion is None:
+        return []
+    return [
+        {
+            "format": companion["format"],
+            "sha256": companion["sha256"],
+            "run_id": companion["run_id"],
+            "source_audit_sha256": companion["source_audit_sha256"],
+            "manifest_reference": "manifest.json#/group_members",
+            "groups": companion["groups"]["row_count"],
+            "members": companion["members"]["row_count"],
+            "publication": "local_only",
+            "published": False,
+            "reason": "Complete group membership remains in the local package; only main datasets are published",
+        }
+    ]
 
 
 def sheets_plan(package: str | Path, *, max_cells: int = SHEETS_MAX_CELLS) -> dict[str, Any]:
@@ -1657,6 +1689,7 @@ def sheets_plan(package: str | Path, *, max_cells: int = SHEETS_MAX_CELLS) -> di
         "apply": False,
         "package_schema_version": manifest["schema_version"],
         "worksheets": worksheets,
+        "external_companion_refs": _external_companion_refs(manifest),
         "required_cells": used_cells,
         "capacity_cells": max_cells,
         "state": "ready" if used_cells <= max_cells else "unavailable",
@@ -1689,6 +1722,7 @@ def bigquery_plan(
             {"table": f"seohead_{name}_v1", "rows": info["rows"], "columns": info["fields"]}
             for name, info in datasets.items()
         ],
+        "external_companion_refs": _external_companion_refs(manifest),
         "required_authorization": "explicit billed project/dataset target and separate cost plus apply confirmation",
     }
 
@@ -1776,6 +1810,7 @@ def destination_preview(
             name: {"rows": info["rows"], "columns": info["fields"], "bytes": info["bytes"]}
             for name, info in datasets.items()
         },
+        "external_companion_refs": _external_companion_refs(manifest),
         "required_action": "rerun with apply=true after reviewing this exact target and operation",
     }
 
@@ -2037,6 +2072,8 @@ def apply_with_client(
             json.dumps(target_identity(), sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
     state = _load_state(checkpoint, expected=expected)
+    if state is not None:
+        state["external_companion_refs"] = _external_companion_refs(manifest)
     if state is not None and state.get("status") == "committed":
         result = _result_from_state(state)
         result.update({"dataset_sha256": _dataset_hashes(manifest), "row_conservation": "verified"})
@@ -2053,6 +2090,7 @@ def apply_with_client(
             transaction=None,
         )
         state.update(expected)
+        state["external_companion_refs"] = _external_companion_refs(manifest)
         state["status"] = "begin_pending"
         state["pending"] = {"kind": "begin"}
         _save_state(checkpoint, state)
@@ -2397,7 +2435,13 @@ def filter_package(
             ):
                 raise BIDestinationError("source package changed during selection")
             coverage_companion = None
+            group_companion = None
             if dataset == "findings":
+                from seohead.reports.bi_index import copy_group_members_companion
+
+                group_companion = copy_group_members_companion(
+                    root, stage, manifest.get("group_members"), budget
+                )
                 source_coverage = manifest["datasets"].get("coverage")
                 if not isinstance(source_coverage, dict):
                     raise BIDestinationError("source package has no immutable coverage dataset")
@@ -2421,6 +2465,7 @@ def filter_package(
                     ):
                         raise BIDestinationError("source coverage partition is invalid")
                     budget.reserve_bytes(byte_count)
+                    budget.reserve_partition()
                     source_path, copied_path = root / relative, stage / relative
                     copied_path.parent.mkdir(parents=True, exist_ok=True)
                     with source_path.open("rb") as source, copied_path.open("xb") as copied:
@@ -2469,6 +2514,10 @@ def filter_package(
                     for key in ("state", "reason", "source_population", "coverage")
                 },
                 "coverage_companion": coverage_companion,
+                "group_members": group_companion,
+                "external_companion_refs": _external_companion_refs(
+                    {"group_members": group_companion}
+                ),
                 "conservation": {
                     "source_rows": source_rows,
                     "selected_rows": output["row_count"],
@@ -2494,6 +2543,8 @@ def filter_package(
             budget.reserve_bytes(len(encoded))
             (stage / "manifest.json").write_bytes(encoded)
             os.chmod(stage / "manifest.json", 0o600)
+            _selected_root, selected_manifest = _manifest(stage)
+            _verify_partitions(stage, selected_manifest)
             os.replace(stage, destination)
         except BIExportError as exc:
             raise BIDestinationError(str(exc)) from exc
@@ -2652,6 +2703,7 @@ def export_bi_xlsx(
             "output": str(destination),
             "source_schema_version": manifest["schema_version"],
             "index": str(index_path),
+            "external_companion_refs": _external_companion_refs(manifest),
         }
         index = {
             "format": "seohead.bi-xlsx-index.v1",
@@ -2674,6 +2726,7 @@ def export_bi_xlsx(
             "header_rows_per_sheet": 1,
             "ranges": ranges,
             "max_output_bytes": max_output_bytes,
+            "external_companion_refs": _external_companion_refs(manifest),
         }
         encoded = (json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
             "utf-8"
