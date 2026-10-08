@@ -19,6 +19,7 @@ layouts are specified, but neither has a packaged runtime acceptance yet.
 - public source remote, exact Git commit, and SHA-256 of `git archive HEAD`;
 - a relative core executable path and its SHA-256 after freezing.
 - the exact build Python version and installed distribution/version inventory;
+- the Desktop commit, exact source file hashes, and release/preview mode;
 - the source-declared optional core dependencies, which are provenance data,
   not a claim that every optional capability passed runtime acceptance.
 
@@ -53,6 +54,39 @@ freezes the core CLI, adds that whole one-directory bundle below the desktop
 app's `Contents/Resources/core/`, copies both projects' notices, writes the
 provenance manifest, then runs a no-network `seohead --version` smoke test.
 It does not start a crawl, submit a job, open a project, or call a provider.
+
+Release builds additionally require a clean Desktop checkout. Both source
+identities are checked before freezing and compared again before finalizing;
+a source change while a build runs rejects the result. No existing artifact is
+replaced. Use [the source launcher](source-install.md) for an immediate editable
+preview without a frozen build.
+The preflight also verifies that the build interpreter imports Desktop and
+core from the named checkouts; an unrelated installed copy is rejected before
+PyInstaller collects its code or data.
+
+For repeated macOS bundle previews add `--incremental`:
+
+```bash
+scripts/build_macos.sh --core-source /path/to/seohead-tools \
+  --output "/new/path/SEOHEAD Desktop.preview.app" --incremental
+```
+
+This keeps PyInstaller analysis/work files under `.build/macos-preview-cache/`.
+Cache keys include the relevant source identity, Python/dependency inventory
+and packaging scripts; changed core, dependencies or build rules invalidate
+their cache. Desktop previews may include local edits, whose exact file hashes
+are recorded. They are labeled `developer-preview`. Every invocation still
+runs PyInstaller, verifies source stability, hashes the complete core/agent
+payloads and runs the same smoke. The default release path uses `--clean` and
+fresh scratch directories. Cache reuse is not a release-test bypass.
+
+The app icon is the original SEOHEAD website favicon SVG, with source commit
+and SHA-256 in `assets/asset-manifest.json`. `scripts/render_app_icon.py` renders
+each PNG size directly with Qt; the ICO contains 16–256 px frames and `iconutil`
+produces the macOS ICNS through 1024 px. The macOS and Windows freeze commands
+use their native containers. Linux has no executable icon resource: the bundle
+includes `seohead.svg` for desktop launcher integration, and Qt uses the app
+icon at runtime. No system launcher is installed by the packaging scripts.
 
 Linux and Windows use the same bundle specification, manifest generator,
 notice copier, and smoke check:

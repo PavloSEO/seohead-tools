@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SEOHead.tech — терминальный знак >_ (в цвет apple-touch-icon / web-app-manifest) -->
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#151A25"/>
+  <g fill="none" stroke="#BDDDF5" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="19,22 31,32 19,42"/>
+    <line x1="35" y1="43" x2="47" y2="43"/>
+  </g>
+</svg>

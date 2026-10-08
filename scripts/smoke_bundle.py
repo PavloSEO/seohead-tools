@@ -72,6 +72,8 @@ def check_bundle(bundle: Path) -> dict:
         raise ValueError("missing bundled Desktop control agent")
     agent_executable = (resources / str(agent.get("executable_relpath", ""))).resolve()
     agent_root = (resources / str(agent.get("root_relpath", ""))).resolve()
+    agent_executable.relative_to(resources.resolve())
+    agent_root.relative_to(resources.resolve())
     if (
         not agent_executable.is_file()
         or agent_executable.parent != agent_root

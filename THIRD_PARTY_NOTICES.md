@@ -31,3 +31,8 @@ The bundled Material Symbols SVG files come from Google Material Design Icons
 under Apache License 2.0. The exact source URLs and SHA-256 hashes are retained
 in `src/seohead_desktop/assets/asset-manifest.json`; the upstream Apache 2.0
 text is copied as `licenses/Material-Design-Icons-Apache-2.0.txt`.
+
+The SEOHEAD application mark is the project's existing website favicon,
+reused with the project owner's authorization. Its original SVG bytes and
+website source commit are recorded in the same asset manifest. PNG, ICO and
+ICNS variants are generated from that SVG by `scripts/render_app_icon.py`.

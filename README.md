@@ -5,21 +5,23 @@ second crawler, task store, or HTTP service: collection, retained SQLite
 evidence, project state, reports and policy validation stay in the co-shipped
 core.
 
-The current development baseline is compatible with SEOHEAD core
-`ceb2eab716c0077355d96b3a99f92ea1eb0bc0b6`. An external development core must
+The tested development core is pinned in `packaging/source-install.json`.
+An external development core must
 be a clean checkout; a frozen bundle verifies its manifest, executable digest
 and producer commit before it supplies `--producer-build`.
 
 ## Run from source
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -e ".[build]"
-.venv/bin/seohead-desktop --core-cli /absolute/path/to/seohead
+python3.12 scripts/source.py install --core-source /path/to/compatible/seohead-tools
+python3.12 scripts/source.py run --project /path/to/existing/project
 ```
 
 The application starts one local stdio MCP connection to the supplied core.
 It does not open an HTTP listener. A project is opened explicitly from disk.
+The source bootstrap installs Desktop and the compatible core together into
+one local virtual environment. See [source installation](docs/source-install.md)
+for the Git pin, existing-environment guard, logs and opt-in agent control.
 
 ## Functional scope
 

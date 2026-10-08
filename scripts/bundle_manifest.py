@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 import subprocess
@@ -55,6 +56,44 @@ def _core_identity(source: Path) -> dict[str, str]:
     }
 
 
+def desktop_identity(source: Path, *, require_clean: bool = True) -> dict:
+    """Record the exact tracked/source bytes, including a local preview diff."""
+    root = Path(_run("git", "rev-parse", "--show-toplevel", cwd=source))
+    dirty = bool(_run("git", "status", "--porcelain", cwd=root))
+    if dirty and require_clean:
+        raise ValueError("desktop release source must be a clean Git checkout")
+    names = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root
+    ).decode("utf-8").split("\0")
+    entries = []
+    for name in sorted(set(filter(None, names))):
+        path = root / name
+        if path.is_symlink():
+            raise ValueError("desktop source must not contain symlinks")
+        if path.is_file():
+            entries.append({"path": name, "sha256": _sha256_file(path)})
+    identity = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "distribution": "seohead-desktop",
+        "commit": _run("git", "rev-parse", "HEAD", cwd=root),
+        "dirty": dirty,
+        "source_tree_sha256": hashlib.sha256(identity).hexdigest(),
+        "inventory": entries,
+    }
+
+
+def verify_import_sources(core_source: Path, desktop_source: Path) -> None:
+    """PyInstaller collection must use the source checkouts named by the manifest."""
+    expected = {
+        "seohead": core_source / "seohead" / "__init__.py",
+        "seohead_desktop": desktop_source / "src" / "seohead_desktop" / "__init__.py",
+    }
+    for package, path in expected.items():
+        spec = importlib.util.find_spec(package)
+        if spec is None or spec.origin is None or Path(spec.origin).resolve() != path.resolve():
+            raise ValueError(f"build environment imports {package} from a different source; install the selected checkout into this environment")
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -78,7 +117,10 @@ def _inventory(root: Path) -> list[dict]:
     return entries
 
 
-def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
+def create_manifest(
+    core_source: Path, output: Path, platform: str,
+    desktop_source: Path | None = None, *, preview: bool = False,
+) -> dict:
     payload = {
         "schema": "seohead.desktop.core-manifest.v1",
         "platform": platform,
@@ -97,6 +139,9 @@ def create_manifest(core_source: Path, output: Path, platform: str) -> dict:
             ),
         },
     }
+    if desktop_source is not None:
+        payload["desktop"] = desktop_identity(desktop_source, require_clean=not preview)
+        payload["build_mode"] = "developer-preview" if preview else "release"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
@@ -124,6 +169,26 @@ def finalize_manifest(manifest: Path, cli: Path, agent: Path | None = None) -> d
     return payload
 
 
+def verify_sources(manifest: Path, core_source: Path, desktop_source: Path) -> None:
+    """A source edit during freezing invalidates the artifact instead of relabeling it."""
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    if payload["core"] != _core_identity(core_source):
+        raise ValueError("core source changed during the build")
+    if payload.get("desktop") != desktop_identity(
+        desktop_source, require_clean=payload.get("build_mode") != "developer-preview"
+    ):
+        raise ValueError("desktop source changed during the build")
+
+
+def cache_key(manifest: Path, component: str) -> str:
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    inputs = {"platform": payload["platform"], "environment": payload["build_environment"]}
+    inputs["source"] = payload["core"] if component == "core" else payload["desktop"]
+    # A build-contract change invalidates every component, including core caches.
+    inputs["packaging"] = [entry for entry in payload["desktop"]["inventory"] if entry["path"].startswith(("scripts/", "packaging/"))]
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -131,13 +196,32 @@ def main() -> int:
     create.add_argument("--core-source", type=Path, required=True)
     create.add_argument("--output", type=Path, required=True)
     create.add_argument("--platform", choices=("macos", "linux", "windows"), required=True)
+    create.add_argument("--desktop-source", type=Path)
+    create.add_argument("--preview", action="store_true")
+    create.add_argument("--verify-imports", action="store_true")
+    verify = commands.add_parser("verify-sources")
+    verify.add_argument("--manifest", type=Path, required=True)
+    verify.add_argument("--core-source", type=Path, required=True)
+    verify.add_argument("--desktop-source", type=Path, required=True)
+    cache = commands.add_parser("cache-key")
+    cache.add_argument("--manifest", type=Path, required=True)
+    cache.add_argument("--component", choices=("core", "agent", "app"), required=True)
     finalize = commands.add_parser("finalize")
     finalize.add_argument("--manifest", type=Path, required=True)
     finalize.add_argument("--cli", type=Path, required=True)
     finalize.add_argument("--agent", type=Path)
     args = parser.parse_args()
     if args.command == "create":
-        create_manifest(args.core_source, args.output, args.platform)
+        if args.verify_imports:
+            if args.desktop_source is None:
+                parser.error("--verify-imports requires --desktop-source")
+            verify_import_sources(args.core_source, args.desktop_source)
+        create_manifest(args.core_source, args.output, args.platform, args.desktop_source, preview=args.preview)
+    elif args.command == "verify-sources":
+        verify_import_sources(args.core_source, args.desktop_source)
+        verify_sources(args.manifest, args.core_source, args.desktop_source)
+    elif args.command == "cache-key":
+        print(cache_key(args.manifest, args.component))
     else:
         finalize_manifest(args.manifest, args.cli, args.agent)
     return 0
