@@ -75,12 +75,38 @@ def collect(
         }
     except (urllib.error.URLError, TimeoutError, ValueError):
         return {"ok": False, "state": "failed", "error": "Bing Webmaster request failed"}
-    if not isinstance(body, dict) or "d" not in body:
+    data = body.get("d") if isinstance(body, dict) else None
+    rows = data.get("Links") if operation == "links" and isinstance(data, dict) else data
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
         return {"ok": False, "state": "failed", "error": "malformed Bing Webmaster JSON response"}
+    pagination = {}
+    if operation == "links":
+        total_pages = data.get("TotalPages") if isinstance(data, dict) else None
+        if (
+            type(total_pages) is not int
+            or total_pages < 0
+            or (total_pages == 0 and (rows or page != 0))
+            or (total_pages > 0 and page >= total_pages)
+        ):
+            return {
+                "ok": False,
+                "state": "failed",
+                "error": "malformed Bing Webmaster pagination",
+            }
+        pagination = {
+            "page": page,
+            "total_pages": total_pages,
+            "next_page": page + 1 if page + 1 < total_pages else None,
+        }
+    partial = operation == "links" and pagination["total_pages"] > 1
     return {
         "ok": True,
-        "state": "complete",
+        "state": "partial" if partial else "complete",
         "operation": operation,
-        "data": body["d"],
+        "data": data,
+        "rows": rows,
+        "returned": len(rows),
+        "truncated": partial,
+        **pagination,
         "read_only": True,
     }

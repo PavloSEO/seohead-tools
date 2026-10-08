@@ -210,3 +210,19 @@ marks rows left unread (a `max_rows` cut, a single first page, or a page that en
 `count`) and reports `partial`, while a page without the documented list or count, or whose
 `count` is below the rows it returned, fails —
 a paged operation never reports a complete zero-row collection while rows remain.
+
+## Bing Webmaster response and page coverage
+
+Bing site, crawl-issue and query-stat responses contain an array of row objects. A null,
+scalar or malformed row container is failed evidence; an explicit empty array is a valid
+zero-row response. The saved result preserves the original `data` and exposes the same
+source rows in `rows`, with an exact `returned` count. Numeric zero and null metric values
+remain distinct, and raw rows stay in the restricted artifact.
+
+The [GetLinkCounts JSON contract](https://learn.microsoft.com/en-us/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi.getlinkcounts?view=bing-webmaster-dotnet)
+instead wraps its row array in `Links` with `TotalPages`. SEOHEAD reads one explicitly requested,
+zero-based `page`; the saved result retains `page`, `total_pages` and `next_page`. Any response
+from a multi-page population is partial/truncated, including the last page because earlier
+pages were not collected by that call. An empty selected page does not prove an empty link
+population. A valid zero-page envelope has empty `Links`; inconsistent page metadata fails
+without inventing a complete result. This operation never starts a pagination loop implicitly.
