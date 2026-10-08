@@ -21,6 +21,7 @@ from seohead.build_provenance import BuildProvenanceError, packaged_provenance
 MAX_AUDIT_PAGES = 10_000
 MAX_AUDIT_FORMS = 20_000
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
+_POST_CAPTURE_INTERRUPT = "post-collection processing interrupted; retained capture can be resumed"
 
 # scan.v1 (evidence_version crawl.v1) retains no robots.txt or sitemap document
 # (that is child H/#381 scope), so these seven checks cannot be re-measured
@@ -256,6 +257,53 @@ def _audit_failure_reason(exc: BaseException, run) -> str:
     if len(reason) > _AUDIT_FAILURE_REASON_MAX:
         reason = reason[: _AUDIT_FAILURE_REASON_MAX - 1] + "…"
     return reason
+
+
+def _interrupted_capture(run) -> dict[str, Any]:
+    """Checkpoint only the returned capture, after owned phase contexts unwind."""
+    from contextlib import closing
+    from dataclasses import replace
+
+    from seohead.storage import ScanError, open_scan
+    from seohead.storage.native_scan import NativeScan
+
+    snapshot = NativeScan.inspect(run.path)
+    header, counts = snapshot["scan"], snapshot["counts"]
+    retained = replace(
+        run,
+        pages=counts["pages"],
+        links=counts["links"],
+        forms=counts["forms"],
+        lifecycle=header["lifecycle"],
+        partial=bool(header["crawl_partial"]),
+        finish_reason=header["finish_reason"],
+    )
+    if header["lifecycle"] in {"finished", "failed"}:
+        # SIGINT may arrive after the final commit. Never reopen an immutable
+        # artifact or replace its completed state with an invented interruption.
+        try:
+            with closing(open_scan(run.path)):
+                pass
+        except ScanError as exc:
+            available, reason = False, str(exc)
+        else:
+            available, reason = True, "capture finalized before interruption"
+        return _response(
+            retained,
+            audit_available=available,
+            audit_reason=reason,
+            finalized=header["lifecycle"] == "finished",
+        )
+    reason = _POST_CAPTURE_INTERRUPT
+    with NativeScan.open(run.path) as scan:
+        scan.interrupt("interrupted")
+        scan.note_audit_unavailable(reason)
+    return _response(
+        replace(retained, lifecycle="interrupted", partial=True, finish_reason="interrupted"),
+        audit_available=False,
+        audit_reason=reason,
+        finalized=False,
+    )
 
 
 def resume_inputs(scan_path: str) -> dict[str, Any]:
@@ -567,262 +615,304 @@ def crawl_site_scan(
             return
 
     announce("collection")
-    run = crawl_to_scan(
-        url,
-        scan_out=scan_out,
-        settings=settings,
-        producer_version=producer_version,
-        producer_revision=producer_revision,
-        runtime_versions=runtime_versions,
-        initial_sitemaps=initial_sitemaps(
-            sitemap, source="sitemap-only" if sitemap_only else "explicit"
-        ),
-        seed_loader=seed_loader,
-        sitemap_only=sitemap_only,
-        progress=progress,
-        progress_snapshot=progress_snapshot,
-        shared_request_gate=shared_request_gate,
-        proxy_route=proxy_route,
-    )
-    external_summary = None
-    if external_crawl:
-        announce("external")
-        from time import monotonic
-        from urllib.parse import urlsplit
-
-        from seohead.crawl.external import ExternalCheck, ExternalPolicy, run_external_checks
-        from seohead.crawl.spider import Scope
-        from seohead.crawl.sql_graph import StoredGraph
-        from seohead.recon.net import http_client
-
-        rules = Scope.from_config(settings["scope"])
-        start_host = (urlsplit(url).hostname or "").lower()
-        started = monotonic()
-        client, _http2 = http_client(
-            settings["http"]["timeout_seconds"],
-            headers={"User-Agent": settings["http"]["user_agent"]},
+    run = None
+    _response_data = {}
+    try:
+        run = crawl_to_scan(
+            url,
+            scan_out=scan_out,
+            settings=settings,
+            producer_version=producer_version,
+            producer_revision=producer_revision,
+            runtime_versions=runtime_versions,
+            initial_sitemaps=initial_sitemaps(
+                sitemap, source="sitemap-only" if sitemap_only else "explicit"
+            ),
+            seed_loader=seed_loader,
+            sitemap_only=sitemap_only,
+            progress=progress,
+            progress_snapshot=progress_snapshot,
+            shared_request_gate=shared_request_gate,
+            proxy_route=proxy_route,
         )
-        try:
-            with (
-                NativeScan.open(run.path) as external_scan,
-                StoredGraph(external_scan.con) as graph,
-            ):
-                done = [ExternalCheck.from_dict(item) for item in external_scan.external_checks()]
+        external_summary = None
+        if external_crawl:
+            announce("external")
+            from time import monotonic
+            from urllib.parse import urlsplit
 
-                def emit(check: ExternalCheck) -> None:
-                    external_scan.record_external_check(len(done), check.as_dict())
-                    done.append(check)
+            from seohead.crawl.external import ExternalCheck, ExternalPolicy, run_external_checks
+            from seohead.crawl.spider import Scope
+            from seohead.crawl.sql_graph import StoredGraph
+            from seohead.recon.net import http_client
 
-                external_summary = run_external_checks(
-                    graph.iter_links(),
-                    policy=ExternalPolicy.from_config(settings["external_checks"]),
-                    is_internal=lambda target: rules.is_internal(target, start_host),
-                    excluded_host=lambda target: bool(
-                        any(
-                            (urlsplit(target).hostname or "").lower() == host
-                            or (urlsplit(target).hostname or "").lower().endswith("." + host)
-                            for host in rules.exclude_hosts
-                        )
-                    ),
-                    emit=emit,
-                    done=done,
-                    client=client,
-                    headers_for_url=lambda target: {},
-                    user_agent=settings["http"]["user_agent"],
-                    max_response_bytes=settings["limits"]["max_response_bytes"],
-                    retry_on_timeout=settings["http"]["retry_on_timeout"],
-                    dispatch_gate=run.dispatch_gate,
-                    time_exhausted=lambda: (
-                        settings["limits"]["max_crawl_seconds"] > 0
-                        and monotonic() - started >= settings["limits"]["max_crawl_seconds"]
-                    ),
-                )
-                external_scan.record_external_checks_summary(external_summary)
-        finally:
-            client.close()
-    if (
-        settings.get("rendering", {}).get("rendered_links", {}).get("crawl", False)
-        and settings.get("rendering", {}).get("mode", "raw") != "raw"
-    ):
-        announce("render")
-        from dataclasses import replace
-
-        from seohead.crawl.sqlite_render import run_render_escalation
-
-        initial_start_page_gate = run.start_page_gate
-        render_cycles = 0
-        while True:
-            with NativeScan.open(run.path) as rendered_scan:
-                rendered_result = SimpleNamespace(pages=_StoredPages(rendered_scan.con), links=[])
-                run_render_escalation(
-                    rendered_scan,
-                    rendered_result,
-                    settings,
-                    request_gate=run.dispatch_gate.wait_turn
-                    if run.dispatch_gate is not None
-                    else None,
-                    proxy_route=proxy_route,
-                )
-                queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
-            if not queued_before or run.partial:
-                break
-            prior_pages = run.pages
-            run = crawl_to_scan(
-                url,
-                scan_out=scan_out,
-                settings=settings,
-                producer_version=producer_version,
-                producer_revision=producer_revision,
-                runtime_versions=runtime_versions,
-                progress=progress,
-                progress_snapshot=progress_snapshot,
-                shared_request_gate=shared_request_gate,
-                proxy_route=proxy_route,
+            rules = Scope.from_config(settings["scope"])
+            start_host = (urlsplit(url).hostname or "").lower()
+            started = monotonic()
+            client, _http2 = http_client(
+                settings["http"]["timeout_seconds"],
+                headers={"User-Agent": settings["http"]["user_agent"]},
             )
-            render_cycles += 1
-            run = replace(run, start_page_gate=initial_start_page_gate)
-            if (
-                run.partial
-                or run.pages <= prior_pages
-                or render_cycles >= settings["rendering"]["escalation"]["max_render_urls"]
-            ):
-                break
-    with NativeScan.open(run.path) as scan:
-        snapshot = scan.resume_snapshot(include_edges=True)
-        roots = scan.sitemap_roots()
-        resumed_sitemap_only = bool(getattr(run, "resumed", False)) and any(
-            root["source"] == "sitemap-only" for root in roots
-        )
-        sitemap_seed.update(
-            sitemap_url=roots[0]["url"] if roots else None,
-            sitemap_urls=[root["url"] for root in roots],
-            declared=[],
-        )
-        counts = {table: snapshot["counts"][table] for table in ("pages", "links", "forms")}
-        reason = _bridge_reason(counts, run.start_page_gate)
-        if reason is not None and run.start_page_gate is None and _has_saved_audit(scan):
-            finalized = scan.finish_capture(reason="finished")
-            return _response(
-                run,
-                audit_available=True,
-                audit_reason="reused current saved audit after interrupted finalization",
-                finalized=finalized,
-            )
-        if reason is not None:
-            scan.note_audit_unavailable(reason)
-            finalized = scan.finish_capture(reason=run.finish_reason)
-            return _response(run, audit_available=False, audit_reason=reason, finalized=finalized)
-        # The audit consumes the retained scan. Keep its first input layer on
-        # disk instead of rebuilding a PageRecord list only for build_evidence
-        # to immediately project it into the analyzer frame.
-        result = _rebuild_page_result(scan, page_view=True)
-        # ``_rebuild_page_result`` deliberately reconstructs only crawl-page
-        # evidence.  The opt-in external phase is a separate, typed v2 table,
-        # so attach its just-captured coverage explicitly before the shared
-        # audit assembler writes the run header.
-        result.external_summary = external_summary
-        result.start_page_evidence = dict(run.start_page_gate)
-        result.resumed = getattr(run, "resumed", False)
-        result.finish_reason = run.finish_reason
-        if result.partial and result.stopped_reason in {"running", "finished", ""}:
-            result.stopped_reason = (
-                "; ".join(note for note in run.limitations if "observations_omitted" in note)
-                or "collection evidence is partial"
-            )
-        discovery = {
-            "mode": "spider",
-            "directive_policy": settings["robots"]["policy"],
-            "robots_blocked": len(result.robots_blocked),
-            "sitemap_url": sitemap_seed["sitemap_url"],
-            "sitemap_urls": sitemap_seed["sitemap_urls"],
-            "sitemap_seeded": len(result.seed_urls),
-        }
-        if external_summary is not None:
-            discovery["external_checks"] = external_summary
-        from dataclasses import replace
+            try:
+                with (
+                    NativeScan.open(run.path) as external_scan,
+                    StoredGraph(external_scan.con) as graph,
+                ):
+                    done = [
+                        ExternalCheck.from_dict(item) for item in external_scan.external_checks()
+                    ]
 
-        from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
-        from seohead.servers.handlers import _audit_crawl_result
-        from seohead.storage.native_audit import AuditSizeError
+                    def emit(check: ExternalCheck) -> None:
+                        external_scan.record_external_check(len(done), check.as_dict())
+                        done.append(check)
 
-        # Collection already committed its rows and closed successfully by this point
-        # (``run`` above), so anything raised from here on is the *audit* misbehaving,
-        # never the crawl -- and the 600-page artifact behind #627 proves collection's
-        # own evidence survives an audit crash untouched. An operator reading a bare
-        # exception (a KeyError's str() is just the key) has no way to tell that apart
-        # from a lost crawl, so an unexpected failure here is named by phase and points
-        # at the retained, re-analysable artifact instead of propagating as-is.
-        try:
-            announce("analysis")
-            with prepare_sitemap_reconciliation(scan.con, start_url=url) as reconciliation:
-                _response_data, audit = _audit_crawl_result(
-                    result,
+                    external_summary = run_external_checks(
+                        graph.iter_links(),
+                        policy=ExternalPolicy.from_config(settings["external_checks"]),
+                        is_internal=lambda target: rules.is_internal(target, start_host),
+                        excluded_host=lambda target: bool(
+                            any(
+                                (urlsplit(target).hostname or "").lower() == host
+                                or (urlsplit(target).hostname or "").lower().endswith("." + host)
+                                for host in rules.exclude_hosts
+                            )
+                        ),
+                        emit=emit,
+                        done=done,
+                        client=client,
+                        headers_for_url=lambda target: {},
+                        user_agent=settings["http"]["user_agent"],
+                        max_response_bytes=settings["limits"]["max_response_bytes"],
+                        retry_on_timeout=settings["http"]["retry_on_timeout"],
+                        dispatch_gate=run.dispatch_gate,
+                        time_exhausted=lambda: (
+                            settings["limits"]["max_crawl_seconds"] > 0
+                            and monotonic() - started >= settings["limits"]["max_crawl_seconds"]
+                        ),
+                    )
+                    external_scan.record_external_checks_summary(external_summary)
+            finally:
+                client.close()
+        if (
+            settings.get("rendering", {}).get("rendered_links", {}).get("crawl", False)
+            and settings.get("rendering", {}).get("mode", "raw") != "raw"
+        ):
+            announce("render")
+            from dataclasses import replace
+
+            from seohead.crawl.sqlite_render import run_render_escalation
+
+            initial_start_page_gate = run.start_page_gate
+            render_cycles = 0
+            while True:
+                with NativeScan.open(run.path) as rendered_scan:
+                    rendered_result = SimpleNamespace(
+                        pages=_StoredPages(rendered_scan.con), links=[]
+                    )
+                    run_render_escalation(
+                        rendered_scan,
+                        rendered_result,
+                        settings,
+                        request_gate=run.dispatch_gate.wait_turn
+                        if run.dispatch_gate is not None
+                        else None,
+                        proxy_route=proxy_route,
+                    )
+                    queued_before = rendered_scan.resume_snapshot()["counts"]["queued"]
+                if not queued_before or run.partial:
+                    break
+                prior_pages = run.pages
+                run = crawl_to_scan(
+                    url,
+                    scan_out=scan_out,
                     settings=settings,
-                    url=url,
-                    sitemap_seed=sitemap_seed,
-                    discovery=discovery,
-                    out_dir=None,
-                    pages_resume_path=None,
-                    stored_scan=scan,
-                    stored_sitemap=reconciliation,
-                    # A resumed sitemap-only scan owns a complete retained XML
-                    # population. Re-fetching the root would mix a changed live
-                    # declaration into that resumed population.
-                    offline=resumed_sitemap_only,
-                    dispatch_gate=run.dispatch_gate,
+                    producer_version=producer_version,
+                    producer_revision=producer_revision,
+                    runtime_versions=runtime_versions,
+                    progress=progress,
+                    progress_snapshot=progress_snapshot,
+                    shared_request_gate=shared_request_gate,
                     proxy_route=proxy_route,
-                    # Finding density is independent of URL count. Keep every
-                    # retained-native audit streamed, including small dense scans.
-                    streaming=True,
                 )
+                render_cycles += 1
+                run = replace(run, start_page_gate=initial_start_page_gate)
+                if (
+                    run.partial
+                    or run.pages <= prior_pages
+                    or render_cycles >= settings["rendering"]["escalation"]["max_render_urls"]
+                ):
+                    break
+        with NativeScan.open(run.path) as scan:
+            snapshot = scan.resume_snapshot(include_edges=True)
+            stored = snapshot.get("scan", {})
+            if (
+                getattr(run, "resumed", False)
+                and run.finish_reason == "finished"
+                and stored.get("lifecycle") == "interrupted"
+                and stored.get("finish_reason") == "interrupted"
+                and not snapshot["counts"].get("queued", 0)
+                and not snapshot["counts"].get("inflight", 0)
+                and any(
+                    note in json.loads(stored["limitations_json"])
+                    for note in (
+                        "audit unavailable: " + _POST_CAPTURE_INTERRUPT,
+                        "audit unavailable: analysis interrupted; retained capture can be resumed",
+                    )
+                )
+            ):
+                # A drained frontier makes the collector skip begin_collection.
+                # Explicit resume still owns the unfinished analysis/finalization;
+                # reset only that stop while retaining measured omission flags.
+                from dataclasses import replace
 
-            if settings.get("rendering", {}).get("mode", "raw") != "raw":
-                from seohead.storage.corpus import rendered_body_retention
-
-                current = scan.resume_snapshot(include_edges=True)
+                scan.begin_collection()
+                snapshot = scan.resume_snapshot(include_edges=True)
                 run = replace(
                     run,
-                    partial=bool(current["scan"]["crawl_partial"]),
-                    links=current["counts"]["links"],
-                    forms=current["counts"]["forms"],
-                    limitations=tuple(json.loads(current["scan"]["limitations_json"])),
-                    corpus_partial=bool(current["scan"]["corpus_partial"]),
-                    capabilities=json.loads(current["scan"]["capabilities_json"]),
-                    # Rendered documents are written by the escalation that just
-                    # ran, not by the collector, so this is the first point where
-                    # the corpus can be asked how many DOMs it kept (#656).
-                    rendered_bodies=rendered_body_retention(scan.con),
+                    lifecycle=snapshot["scan"]["lifecycle"],
+                    partial=bool(snapshot["scan"]["crawl_partial"]),
+                    capabilities=json.loads(snapshot["scan"]["capabilities_json"]),
                 )
-
-            if isinstance(audit, tuple):
-                header, collections = audit
-                scan.save_audit_v2(header, collections)
-            else:  # compatibility for injected audit bridges
-                scan.save_audit(audit)
-        except KeyboardInterrupt:
-            reason = "analysis interrupted; retained capture can be resumed"
-            scan.note_audit_unavailable(reason)
-            scan.interrupt("interrupted")
-            interrupted = replace(run, partial=True, finish_reason="interrupted")
-            return _response(
-                interrupted, audit_available=False, audit_reason=reason, finalized=False
+            roots = scan.sitemap_roots()
+            resumed_sitemap_only = bool(getattr(run, "resumed", False)) and any(
+                root["source"] == "sitemap-only" for root in roots
             )
-        except AuditSizeError as exc:
-            reason = str(exc)
-            scan.note_audit_unavailable(reason)
+            sitemap_seed.update(
+                sitemap_url=roots[0]["url"] if roots else None,
+                sitemap_urls=[root["url"] for root in roots],
+                declared=[],
+            )
+            counts = {table: snapshot["counts"][table] for table in ("pages", "links", "forms")}
+            reason = _bridge_reason(counts, run.start_page_gate)
+            if reason is not None and run.start_page_gate is None and _has_saved_audit(scan):
+                finalized = scan.finish_capture(reason="finished")
+                return _response(
+                    run,
+                    audit_available=True,
+                    audit_reason="reused current saved audit after interrupted finalization",
+                    finalized=finalized,
+                )
+            if reason is not None:
+                scan.note_audit_unavailable(reason)
+                finalized = scan.finish_capture(reason=run.finish_reason)
+                return _response(
+                    run, audit_available=False, audit_reason=reason, finalized=finalized
+                )
+            # The audit consumes the retained scan. Keep its first input layer on
+            # disk instead of rebuilding a PageRecord list only for build_evidence
+            # to immediately project it into the analyzer frame.
+            result = _rebuild_page_result(scan, page_view=True)
+            # ``_rebuild_page_result`` deliberately reconstructs only crawl-page
+            # evidence.  The opt-in external phase is a separate, typed v2 table,
+            # so attach its just-captured coverage explicitly before the shared
+            # audit assembler writes the run header.
+            result.external_summary = external_summary
+            result.start_page_evidence = dict(run.start_page_gate)
+            result.resumed = getattr(run, "resumed", False)
+            result.finish_reason = run.finish_reason
+            if result.partial and result.stopped_reason in {"running", "finished", ""}:
+                result.stopped_reason = (
+                    "; ".join(note for note in run.limitations if "observations_omitted" in note)
+                    or "collection evidence is partial"
+                )
+            discovery = {
+                "mode": "spider",
+                "directive_policy": settings["robots"]["policy"],
+                "robots_blocked": len(result.robots_blocked),
+                "sitemap_url": sitemap_seed["sitemap_url"],
+                "sitemap_urls": sitemap_seed["sitemap_urls"],
+                "sitemap_seeded": len(result.seed_urls),
+            }
+            if external_summary is not None:
+                discovery["external_checks"] = external_summary
+            from dataclasses import replace
+
+            from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
+            from seohead.servers.handlers import _audit_crawl_result
+            from seohead.storage.native_audit import AuditSizeError
+
+            # Collection already committed its rows and closed successfully by this point
+            # (``run`` above), so anything raised from here on is the *audit* misbehaving,
+            # never the crawl -- and the 600-page artifact behind #627 proves collection's
+            # own evidence survives an audit crash untouched. An operator reading a bare
+            # exception (a KeyError's str() is just the key) has no way to tell that apart
+            # from a lost crawl, so an unexpected failure here is named by phase and points
+            # at the retained, re-analysable artifact instead of propagating as-is.
+            try:
+                announce("analysis")
+                with prepare_sitemap_reconciliation(scan.con, start_url=url) as reconciliation:
+                    _response_data, audit = _audit_crawl_result(
+                        result,
+                        settings=settings,
+                        url=url,
+                        sitemap_seed=sitemap_seed,
+                        discovery=discovery,
+                        out_dir=None,
+                        pages_resume_path=None,
+                        stored_scan=scan,
+                        stored_sitemap=reconciliation,
+                        # A resumed sitemap-only scan owns a complete retained XML
+                        # population. Re-fetching the root would mix a changed live
+                        # declaration into that resumed population.
+                        offline=resumed_sitemap_only,
+                        dispatch_gate=run.dispatch_gate,
+                        proxy_route=proxy_route,
+                        # Finding density is independent of URL count. Keep every
+                        # retained-native audit streamed, including small dense scans.
+                        streaming=True,
+                    )
+
+                if settings.get("rendering", {}).get("mode", "raw") != "raw":
+                    from seohead.storage.corpus import rendered_body_retention
+
+                    current = scan.resume_snapshot(include_edges=True)
+                    run = replace(
+                        run,
+                        partial=bool(current["scan"]["crawl_partial"]),
+                        links=current["counts"]["links"],
+                        forms=current["counts"]["forms"],
+                        limitations=tuple(json.loads(current["scan"]["limitations_json"])),
+                        corpus_partial=bool(current["scan"]["corpus_partial"]),
+                        capabilities=json.loads(current["scan"]["capabilities_json"]),
+                        # Rendered documents are written by the escalation that just
+                        # ran, not by the collector, so this is the first point where
+                        # the corpus can be asked how many DOMs it kept (#656).
+                        rendered_bodies=rendered_body_retention(scan.con),
+                    )
+
+                if isinstance(audit, tuple):
+                    header, collections = audit
+                    scan.save_audit_v2(header, collections)
+                else:  # compatibility for injected audit bridges
+                    scan.save_audit(audit)
+            except AuditSizeError as exc:
+                reason = str(exc)
+                scan.note_audit_unavailable(reason)
+                finalized = scan.finish_capture(reason=run.finish_reason)
+                return _response(
+                    run, audit_available=False, audit_reason=reason, finalized=finalized
+                )
+            except Exception as exc:
+                reason = _audit_failure_reason(exc, run)
+                scan.note_audit_unavailable(reason)
+                finalized = scan.finish_capture(reason=run.finish_reason)
+                return _response(
+                    run, audit_available=False, audit_reason=reason, finalized=finalized
+                )
+            announce("finalizing")
             finalized = scan.finish_capture(reason=run.finish_reason)
-            return _response(run, audit_available=False, audit_reason=reason, finalized=finalized)
-        except Exception as exc:
-            reason = _audit_failure_reason(exc, run)
-            scan.note_audit_unavailable(reason)
-            finalized = scan.finish_capture(reason=run.finish_reason)
-            return _response(run, audit_available=False, audit_reason=reason, finalized=finalized)
-        announce("finalizing")
-        finalized = scan.finish_capture(reason=run.finish_reason)
-    _response_data.update(
-        _response(run, audit_available=True, audit_reason="", finalized=finalized)
-    )
-    return _response_data
+        _response_data.update(
+            _response(run, audit_available=True, audit_reason="", finalized=finalized)
+        )
+        return _response_data
+    except KeyboardInterrupt:
+        # The collector owns its interruption/checkpoint context. Only a returned
+        # capture belongs to this post-collection boundary, never an arbitrary
+        # pre-existing --scan-out path from an interrupted admission.
+        if run is None:
+            raise
+        interrupted = _interrupted_capture(run)
+        return {**_response_data, **interrupted} if interrupted["finalized"] else interrupted
 
 
 def _sha256_file(path: str) -> str:

@@ -42,6 +42,13 @@ class _Scan:
     def open(cls, *_args, **_kwargs):
         return cls.current
 
+    @classmethod
+    def inspect(cls, *_args, **_kwargs):
+        return {
+            "scan": {"lifecycle": "running", "crawl_partial": 0, "finish_reason": "running"},
+            "counts": cls.current.con.counts,
+        }
+
     def __enter__(self):
         return self
 

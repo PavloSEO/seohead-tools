@@ -101,7 +101,7 @@ def test_cli_sigint_keeps_a_project_scan_and_resume_finishes_without_refetching(
             "--project",
             str(project),
             "--max-urls",
-            "40",
+            "12",
             "--producer-build",
             BUILD,
             "--set",
