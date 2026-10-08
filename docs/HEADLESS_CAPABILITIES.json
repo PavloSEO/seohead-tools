@@ -117,11 +117,11 @@
       "results_affecting": true,
       "description": "After the internal frontier closes, check each recorded external destination once — opt-in, bounded by external_checks.*, never recursive. Requires discovery.external.store and a site crawl (--url); refused on the native SQLite route and in list mode.",
       "family": "discovery",
-      "implementation": "seohead/crawl/sqlite_adapter.py",
+      "implementation": "seohead/servers/handlers.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
       "mcp": "seo_crawl_site overrides/config; inventory: seo_crawl_describe_settings",
       "configuration_test": "tests/test_crawl_settings.py::test_defaults_load_and_validate",
-      "behavioral_test_reference": "tests/test_crawl_settings_wired.py",
+      "behavioral_test_reference": "tests/test_crawl_external.py",
       "acceptance_state": "declared_surface; verify behavioral scope before claiming support",
       "linked_acceptance_gaps": [
         "https://github.com/PavloSEO/seohead-tools/issues/746",
@@ -2089,12 +2089,12 @@
     },
     {
       "capability": "run_isolation",
-      "implementation": "seohead/remote_api/backend.py",
+      "implementation": "seohead/storage/native_scan.py",
       "cli": "crawl-site",
       "mcp": "seo_crawl_site",
-      "behavioral_test_reference": "tests/test_remote_backend.py",
+      "behavioral_test_reference": "tests/test_cli_parallel_project_scans.py",
       "linked_acceptance_gaps": [
-        "https://github.com/PavloSEO/seohead-tools/issues/767"
+        "https://github.com/PavloSEO/seohead-tools/issues/743"
       ],
       "acceptance_state": "implementation_reference; source-specific acceptance required"
     },
