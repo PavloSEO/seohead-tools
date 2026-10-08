@@ -107,18 +107,18 @@ class CrawlConfigurationTests(unittest.TestCase):
             validate_overrides(descriptor(), {"limits.max_depth": 0}),
             {"limits.max_depth": 0},
         )
-        for value in (True, "10", 1.5, None, 50001, 0):
+        for value in (True, "10", 1.5, None, 1000001, -1):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_overrides(descriptor(), {"limits.max_urls": value})
 
-    def test_desktop_requires_explicit_positive_time_and_request_limits(self):
-        for path in ("limits.max_requests", "limits.max_crawl_seconds"):
-            with self.subTest(path=path), self.assertRaises(ValueError):
-                validate_overrides(descriptor(), {path: 0})
+    def test_desktop_preserves_disabled_native_population_and_time_limits(self):
+        for path in ("limits.max_urls", "limits.max_requests", "limits.max_crawl_seconds"):
+            with self.subTest(path=path):
+                self.assertEqual(validate_overrides(descriptor(), {path: 0}), {path: 0})
         self.assertEqual(validate_overrides(descriptor(), {}), {})
 
     def test_delay_admission_rejects_fast_nonfinite_and_overflow_values(self):
-        for value in (0, 0.1, True, float("inf"), float("nan"), 10**1000):
+        for value in (-0.1, True, float("inf"), float("nan"), 10**1000):
             with (
                 self.subTest(value=type(value).__name__),
                 self.assertRaises(ValueError),
@@ -128,6 +128,7 @@ class CrawlConfigurationTests(unittest.TestCase):
             validate_overrides(descriptor(), {"speed.min_delay_seconds": 2}),
             {"speed.min_delay_seconds": 2.0},
         )
+        self.assertEqual(validate_overrides(descriptor(), {"speed.min_delay_seconds": 0.1}), {"speed.min_delay_seconds": 0.1})
 
     def test_invalid_enum_regex_suffix_and_media_types_are_rejected(self):
         for path, value in (

@@ -251,11 +251,11 @@ def validate_arguments(operation: str, arguments: dict) -> dict:
             {"approve_large_crawl", "configuration_overrides", "sitemap_url"},
         )
         for key, maximum in (
-            ("max_urls", 50_000),
+            ("max_urls", 1_000_000),
             ("max_requests", 2_000_000),
             ("max_seconds", 2**31 - 1),
         ):
-            if type(config[key]) is not int or not 1 <= config[key] <= maximum:
+            if type(config[key]) is not int or not 0 <= config[key] <= maximum:
                 raise ControlError(
                     "invalid_request", f"config.{key} is outside Desktop bounds"
                 )

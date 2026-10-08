@@ -126,8 +126,8 @@ def crawl_arguments(
         raise ValueError("selected scan project is unavailable")
     if rendering_mode not in {"raw", "js"}:
         raise ValueError("desktop supports only declared native raw or js modes")
-    if type(max_urls) is not int or not 1 <= max_urls <= 50_000:
-        raise ValueError("scan URL limit must be from 1 to 50,000")
+    if type(max_urls) is not int or not 0 <= max_urls <= 1_000_000:
+        raise ValueError("scan URL limit must be from 0 to 1,000,000; 0 disables the limit")
     arguments = [
         "crawl-site",
         "--project",
@@ -141,7 +141,7 @@ def crawl_arguments(
         parsed = urlsplit(sitemap_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
             raise ValueError("Sitemap URL must be absolute HTTP(S), without credentials or fragment")
-        parsed.port  # Validate malformed port syntax before starting the child.
+        _ = parsed.port  # Validate malformed port syntax before starting the child.
         arguments.extend(("--sitemap-only", "--sitemap", sitemap_url))
     if producer_build is not None:
         arguments.extend(("--producer-build", producer_build))
@@ -158,9 +158,14 @@ def crawl_arguments(
         if not isinstance(value, (str, int, float, bool, list)) or isinstance(value, float) and not math.isfinite(value):
             raise ValueError("unsupported local crawl override")
         typed_overrides[key] = value
+    if max_urls == 0:
+        typed_overrides.setdefault("limits.max_depth", -1)
+        typed_overrides.setdefault("limits.max_requests", 0)
+        typed_overrides.setdefault("limits.max_crawl_seconds", 0)
+        typed_overrides.setdefault("storage.min_free_bytes", 12 * 1024**3)
     if max_urls_per_second is not None:
-        if not isinstance(max_urls_per_second, float) or not 0 < max_urls_per_second <= 2.0:
-            raise ValueError("native request rate must be a finite value from 0 to 2")
+        if type(max_urls_per_second) not in (int, float) or not math.isfinite(max_urls_per_second) or max_urls_per_second <= 0:
+            raise ValueError("native request rate must be a finite positive value")
         typed_overrides["speed.min_delay_seconds"] = max(
             typed_overrides.get("speed.min_delay_seconds", 0), 1 / max_urls_per_second
         )

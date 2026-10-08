@@ -1,10 +1,7 @@
 """Real owned-loopback acceptance for CLI checkpoint and Qt launch control."""
 
-from contextlib import contextmanager, closing
 import json
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
@@ -13,8 +10,11 @@ import threading
 import time
 import unittest
 import uuid
+from contextlib import closing, contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog, QPushButton, QSpinBox
 
@@ -138,6 +138,19 @@ def close_window(case, window):
 
 
 class LocalScanRunnerTests(unittest.TestCase):
+    def test_full_site_arguments_disable_user_budgets_and_keep_selected_speed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "project.json").write_text("{}")
+            args = crawl_arguments(str(project), 0, "raw", max_urls_per_second=10.0)
+            self.assertEqual(args[args.index("--max-urls") + 1], "0")
+            overrides = json.loads(args[args.index("--input") + 1])["overrides"]
+            self.assertEqual(overrides["limits.max_depth"], -1)
+            self.assertEqual(overrides["limits.max_requests"], 0)
+            self.assertEqual(overrides["limits.max_crawl_seconds"], 0)
+            self.assertEqual(overrides["speed.min_delay_seconds"], 0.1)
+            self.assertEqual(overrides["storage.min_free_bytes"], 12 * 1024**3)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

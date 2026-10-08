@@ -68,14 +68,13 @@ _CHOICES = {
     "rendering.escalation.policy": ("sampled", "full"),
     "storage.body_mode": ("off", "captured_entity_bytes"),
 }
-# Core ceilings are retained. Positive time/request limits and the 2 request/s
-# floor are stricter Desktop admission policy, not inferred SF or core defaults.
+# Match the native SQLite core: zero disables user population/time budgets.
 _INTEGER_BOUNDS = {
     "http.retry_on_timeout": (0, None),
-    "limits.max_urls": (1, 50_000),
-    "limits.max_requests": (1, 2_000_000),
-    "limits.max_crawl_seconds": (1, None),
-    "limits.max_depth": (0, None),
+    "limits.max_urls": (0, 1_000_000),
+    "limits.max_requests": (0, 2_000_000),
+    "limits.max_crawl_seconds": (0, None),
+    "limits.max_depth": (-1, None),
     "limits.max_query_variants_per_path": (0, None),
     "limits.max_response_bytes": (1, None),
     "limits.max_url_length": (1, None),
@@ -97,7 +96,7 @@ _INTEGER_BOUNDS = {
 }
 _FLOAT_BOUNDS = {
     "http.timeout_seconds": (0, None),
-    "speed.min_delay_seconds": (0.5, None),
+    "speed.min_delay_seconds": (0, None),
     "speed.max_delay_seconds": (0.5, None),
     "rendering.browser.device_pixel_ratio": (0, None),
     "rendering.browser.script_timeout_seconds": (0, None),
