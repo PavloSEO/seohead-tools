@@ -99,6 +99,14 @@ request remains pending: it is never replayed automatically. Re-run the same rev
 with `--apply --reconcile` to read the exact staged range or deterministic BigQuery job first;
 only a confirmed absent request can be sent again. An unresolved final Sheets switch remains
 `reconciliation_required` for operator review rather than being labelled committed.
+Results also expose `pending_rows`: rows not yet confirmed written, skipped or failed. These
+four counts reconcile with `input_rows`, including a quota failure while writing only a header.
+Written counts describe verified staged rows until the overall state is `committed`.
+
+Sheets checkpoints additionally bind the configured spreadsheet ID and worksheet mapping.
+Changing either under an existing target alias fails before recovery or a cached success is
+returned. Use a distinct reviewed host target for another spreadsheet. Older checkpoints without
+this identity must be reviewed against their original target; they are not trusted automatically.
 
 Each configured Sheets target has `kind: google_sheets_service_account`, one
 `spreadsheet_id`, and an exact `worksheets` mapping for every package dataset:
@@ -115,6 +123,26 @@ worksheet IDs and deletes the temporary sheets. Formatting, data-source referenc
 configuration remain attached to the original IDs. A response timeout at this final request is
 reported as `reconciliation_required`, never as a successful publish. Sheets append is deliberately
 refused because the API has no local idempotency ledger for an exact package replay.
+Two datasets cannot share a worksheet ID or title. Capacity preflight includes existing allocated
+cells, temporary sheets and any required growth of the target grids. Grid growth occurs in the
+same atomic publication batch as the value copy, preserving the existing worksheet IDs.
+
+Numeric and boolean CSV cells are decoded only according to the declared BI field types and
+written with `RAW`; text, ISO dates and JSON stay literal, including formula-safety apostrophes.
+Empty values remain blank, distinct from numeric zero and boolean false. Non-finite numbers and
+integers outside the exact binary64 range fail instead of being rounded silently. Readback uses
+`UNFORMATTED_VALUE` and accounts for Google's omitted empty trailing cells and rows while still
+rejecting changed values, stringified numbers and boolean/numeric substitutions.
+
+Retryable quota/server responses use at most three retries with exponential waits of 1, 2 and 4
+seconds plus up to one second of jitter. `Retry-After` is respected up to a 60-second wait budget;
+longer delays return control for a later reconciliation. Exhaustion preserves staging and returns a pending state;
+retry later with `--apply --reconcile` after the quota recovers. Google documents per-minute
+read/write quotas (300 per project and 60 per user per project) and recommends requests around
+2 MB. This adapter bounds source chunks to 1,000 rows or 2 MiB and encoded requests to 4 MiB;
+these local bounds do not reserve quota or guarantee that Google accepts a request. See Google's
+[usage limits](https://developers.google.com/workspace/sheets/api/limits) and
+[ValueRange contract](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values).
 
 Each configured BigQuery target has `kind: google_bigquery_service_account`, a fixed
 `project_id`, `dataset_id`, optional `location`, and an exact `tables` mapping. It uploads

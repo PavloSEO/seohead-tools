@@ -11,7 +11,9 @@ import copy
 import csv
 import hashlib
 import json
+import math
 import os
+import random
 import shutil
 import tempfile
 import time
@@ -20,6 +22,7 @@ import urllib.request
 import uuid
 from collections import Counter
 from contextlib import ExitStack, suppress
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -205,6 +208,13 @@ def _result_from_state(state: dict[str, Any], *, reason: str | None = None) -> d
         "input_rows": {name: values["input_rows"] for name, values in accounting.items()},
         "skipped_rows": {name: values["skipped_rows"] for name, values in accounting.items()},
         "failed_rows": {name: values["failed_rows"] for name, values in accounting.items()},
+        "pending_rows": {
+            name: values["input_rows"]
+            - values["written_rows"]
+            - values["skipped_rows"]
+            - values["failed_rows"]
+            for name, values in accounting.items()
+        },
     }
     if reason:
         result["reason"] = reason
@@ -238,6 +248,26 @@ def _require_dataset_mapping(
             raise BIDestinationError(f"{label} mapping for {name!r} is invalid")
         mapped[name] = value
     return mapped
+
+
+def _google_backoff(attempt: int, retry_after: str | None = None) -> None:
+    """Respect a bounded server delay without keeping a publication asleep indefinitely."""
+    delay = 2**attempt + random.random()
+    if retry_after:
+        try:
+            seconds = float(retry_after)
+        except ValueError:
+            try:
+                seconds = parsedate_to_datetime(retry_after).timestamp() - time.time()
+            except (TypeError, ValueError, OverflowError):
+                seconds = 0
+        if math.isfinite(seconds):
+            if seconds > 60:
+                raise BIDestinationCommitUncertain(
+                    "Google Retry-After exceeds the 60-second wait budget; reconcile later"
+                )
+            delay = max(delay, seconds)
+    time.sleep(delay)
 
 
 class _GoogleRESTClient:
@@ -311,8 +341,12 @@ class _GoogleRESTClient:
                     and exc.code in {429, 500, 502, 503, 504}
                     and attempt < _GOOGLE_RETRIES
                 ):
-                    time.sleep(0.1 * (attempt + 1))
+                    _google_backoff(attempt, (exc.headers or {}).get("Retry-After"))
                     continue
+                if exc.code in {429, 500, 502, 503, 504}:
+                    raise BIDestinationCommitUncertain(
+                        f"Google API is temporarily unavailable (HTTP {exc.code}); reconcile before retrying"
+                    ) from exc
                 raise BIDestinationError(
                     f"Google API rejected the request with HTTP {exc.code}"
                 ) from exc
@@ -329,8 +363,12 @@ class _GoogleRESTClient:
             error = response.get("error")
             code = error.get("code") if isinstance(error, dict) else None
             if retryable and code in {429, 500, 502, 503, 504} and attempt < _GOOGLE_RETRIES:
-                time.sleep(0.1 * (attempt + 1))
+                _google_backoff(attempt)
                 continue
+            if code in {429, 500, 502, 503, 504}:
+                raise BIDestinationCommitUncertain(
+                    f"Google API is temporarily unavailable (HTTP {code}); reconcile before retrying"
+                )
             if error:
                 raise BIDestinationError(f"Google API rejected the request: {error}")
             return response
@@ -357,6 +395,10 @@ class GoogleSheetsClient(_GoogleRESTClient):
     def authorize_target(self, target: str) -> bool:
         return target == self.target
 
+    def checkpoint_identity(self) -> dict[str, Any]:
+        """Bind recovery to the configured spreadsheet and worksheet mapping."""
+        return {"spreadsheet_id": self.spreadsheet_id, "worksheets": self.worksheets}
+
     def begin(
         self,
         *,
@@ -371,20 +413,11 @@ class GoogleSheetsClient(_GoogleRESTClient):
             raise BIDestinationError(
                 "Google Sheets append is unavailable: use replace so every package is reconciled"
             )
-        mapping = _require_dataset_mapping(
+        mapping = _sheets_mapping(
             self.worksheets,
             datasets,
-            label="Google Sheets worksheet",
-            id_name="worksheet_id",
             allow_extra=selected_projection,
         )
-        for name, value in mapping.items():
-            if (
-                not isinstance(value.get("worksheet_id"), int)
-                or not isinstance(value.get("worksheet_title"), str)
-                or not value["worksheet_title"]
-            ):
-                raise BIDestinationError(f"Google Sheets worksheet mapping for {name!r} is invalid")
         metadata = self._request(
             "GET",
             f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}?fields=sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))",
@@ -419,7 +452,19 @@ class GoogleSheetsClient(_GoogleRESTClient):
             (int(dataset.get("row_count") or 0) + 1) * len(dataset.get("fields") or [])
             for dataset in datasets.values()
         )
-        if existing_cells + stage_cells > SHEETS_MAX_CELLS:
+        target_grids = {}
+        growth_cells = 0
+        for name, value in mapping.items():
+            grid = existing[value["worksheet_id"], value["worksheet_title"]]
+            target_grids[name] = {
+                "rowCount": max(grid["rowCount"], datasets[name]["row_count"] + 1),
+                "columnCount": max(grid["columnCount"], len(datasets[name]["fields"])),
+            }
+            growth_cells += (
+                target_grids[name]["rowCount"] * target_grids[name]["columnCount"]
+                - grid["rowCount"] * grid["columnCount"]
+            )
+        if existing_cells + stage_cells + growth_cells > SHEETS_MAX_CELLS:
             raise BIDestinationError("Google Sheets target cannot hold the required staging cells")
         nonce = package_sha256[:12]
         response = self._request(
@@ -458,6 +503,8 @@ class GoogleSheetsClient(_GoogleRESTClient):
                 "package_sha256": package_sha256,
                 "stages": stages,
                 "worksheets": mapping,
+                "fields": {name: value["fields"] for name, value in datasets.items()},
+                "target_grids": target_grids,
                 "headers": {},
                 "rows": {name: 0 for name in datasets},
             }
@@ -477,16 +524,14 @@ class GoogleSheetsClient(_GoogleRESTClient):
         """Recover deterministic stage sheets after a lost begin response."""
         if operation != "replace":
             raise BIDestinationError("Google Sheets append is unavailable: use replace")
-        mapping = _require_dataset_mapping(
+        mapping = _sheets_mapping(
             self.worksheets,
             datasets,
-            label="Google Sheets worksheet",
-            id_name="worksheet_id",
             allow_extra=selected_projection,
         )
         metadata = self._request(
             "GET",
-            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}?fields=sheets.properties(sheetId,title)",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}?fields=sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))",
             retryable=True,
         )
         properties = [
@@ -508,12 +553,28 @@ class GoogleSheetsClient(_GoogleRESTClient):
             for stage in present
         ):
             return "uncertain"
+        targets = {(item.get("sheetId"), item.get("title")): item for item in properties}
+        target_grids = {}
+        for name, value in mapping.items():
+            grid = (targets.get((value["worksheet_id"], value["worksheet_title"])) or {}).get(
+                "gridProperties"
+            )
+            if not isinstance(grid, dict) or any(
+                type(grid.get(key)) is not int for key in ("rowCount", "columnCount")
+            ):
+                return "uncertain"
+            target_grids[name] = {
+                "rowCount": max(grid["rowCount"], datasets[name]["row_count"] + 1),
+                "columnCount": max(grid["columnCount"], len(datasets[name]["fields"])),
+            }
         return {
             "target": target,
             "schema_version": schema_version,
             "package_sha256": package_sha256,
             "stages": stages,
             "worksheets": mapping,
+            "fields": {name: value["fields"] for name, value in datasets.items()},
+            "target_grids": target_grids,
             "headers": {},
             "rows": {name: 0 for name in datasets},
         }
@@ -523,6 +584,7 @@ class GoogleSheetsClient(_GoogleRESTClient):
             raise BIDestinationError("Google Sheets write named an undeclared dataset")
         if not rows:
             return
+        values = _sheets_values(transaction, dataset, rows)
         header = transaction["headers"].get(dataset)
         if header is None:
             transaction["headers"][dataset] = rows[0]
@@ -542,7 +604,7 @@ class GoogleSheetsClient(_GoogleRESTClient):
                 {
                     "range": f"'{title}'!A{start}:{width}{end}",
                     "majorDimension": "ROWS",
-                    "values": rows,
+                    "values": values,
                 }
             ],
         }
@@ -557,11 +619,10 @@ class GoogleSheetsClient(_GoogleRESTClient):
         transaction["rows"][dataset] += len(rows)
         readback = self._request(
             "GET",
-            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/'{title}'!A{start}:{width}{end}",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/'{title}'!A{start}:{width}{end}?valueRenderOption=UNFORMATTED_VALUE",
             retryable=True,
         )
-        values = readback.get("values")
-        if values != rows:
+        if not _sheets_readback_matches(readback.get("values", []), values):
             raise BIDestinationError("Google Sheets staged-row readback does not conserve values")
 
     def pending_write(
@@ -570,6 +631,7 @@ class GoogleSheetsClient(_GoogleRESTClient):
         """Describe one fixed stage range before its idempotent bounded write."""
         if dataset not in transaction["stages"] or not rows:
             raise BIDestinationError("Google Sheets pending write is invalid")
+        _sheets_values(transaction, dataset, rows)
         header = transaction["headers"].get(dataset) or rows[0]
         if any(len(row) != len(header) for row in rows):
             raise BIDestinationError("Google Sheets row width differs from the declared header")
@@ -610,10 +672,12 @@ class GoogleSheetsClient(_GoogleRESTClient):
             raise BIDestinationError("Sheets pending write has an invalid range")
         readback = self._request(
             "GET",
-            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/'{title}'!A{start}:{width}{end}",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}/values/'{title}'!A{start}:{width}{end}?valueRenderOption=UNFORMATTED_VALUE",
             retryable=True,
         )
-        if readback.get("values") != rows:
+        if not _sheets_readback_matches(
+            readback.get("values", []), _sheets_values(transaction, pending["dataset"], rows)
+        ):
             return "not_applied"
         dataset = pending["dataset"]
         if transaction["headers"].get(dataset) is None:
@@ -649,6 +713,15 @@ class GoogleSheetsClient(_GoogleRESTClient):
             original = transaction["worksheets"][name]
             requests.extend(
                 [
+                    {
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": original["worksheet_id"],
+                                "gridProperties": transaction["target_grids"][name],
+                            },
+                            "fields": "gridProperties.rowCount,gridProperties.columnCount",
+                        }
+                    },
                     {
                         "updateCells": {
                             "range": {"sheetId": original["worksheet_id"]},
@@ -706,6 +779,79 @@ class GoogleSheetsClient(_GoogleRESTClient):
 
 # The old name remains import-compatible for hosts that loaded the prior packet.
 GoogleSheetsAppendClient = GoogleSheetsClient
+
+
+def _sheets_mapping(
+    supplied: Any, datasets: dict[str, Any], *, allow_extra: bool = False
+) -> dict[str, dict[str, Any]]:
+    mapping = _require_dataset_mapping(
+        supplied,
+        datasets,
+        label="Google Sheets worksheet",
+        id_name="worksheet_id",
+        allow_extra=allow_extra,
+    )
+    for name, value in mapping.items():
+        if (
+            type(value.get("worksheet_id")) is not int
+            or value["worksheet_id"] < 0
+            or not isinstance(value.get("worksheet_title"), str)
+            or not value["worksheet_title"]
+        ):
+            raise BIDestinationError(f"Google Sheets worksheet mapping for {name!r} is invalid")
+    for key in ("worksheet_id", "worksheet_title"):
+        if len({value[key] for value in mapping.values()}) != len(mapping):
+            raise BIDestinationError(
+                "Google Sheets datasets must map to distinct worksheet IDs/titles"
+            )
+    return mapping
+
+
+def _sheets_values(
+    transaction: dict[str, Any], dataset: str, rows: list[list[str]]
+) -> list[list[Any]]:
+    """Keep text literal while decoding only declared numeric and boolean cells."""
+    fields = (transaction.get("fields") or {}).get(dataset)
+    if not isinstance(fields, list) or not fields:
+        raise BIDestinationError("Sheets checkpoint has no typed fields; review its staged data")
+    if any(len(row) != len(fields) for row in rows):
+        raise BIDestinationError("Google Sheets row width differs from the declared header")
+    if transaction["rows"][dataset] == 0:
+        if rows != [[field["name"] for field in fields]]:
+            raise BIDestinationError("Google Sheets header differs from the declared BI schema")
+        return rows
+    values: list[list[Any]] = []
+    for row in rows:
+        decoded = []
+        for value, field in zip(row, fields, strict=True):
+            kind = field["type"]
+            cell = (
+                _bq_value(value, kind)
+                if value != "" and kind in {"boolean", "integer", "number"}
+                else value
+            )
+            if kind == "integer" and cell != "" and abs(cell) > 2**53 - 1:
+                raise BIDestinationError("BI integer exceeds exact Sheets numeric precision")
+            if kind == "number" and cell != "" and not math.isfinite(cell):
+                raise BIDestinationError("BI number must be finite for Google Sheets")
+            decoded.append(cell)
+        values.append(decoded)
+    return values
+
+
+def _sheets_readback_matches(actual: Any, expected: list[list[Any]]) -> bool:
+    """Google omits empty trailing cells/rows; it must not coerce other values."""
+    if not isinstance(actual, list) or len(actual) > len(expected):
+        return False
+    for index, row in enumerate(expected):
+        observed = actual[index] if index < len(actual) else []
+        if not isinstance(observed, list) or len(observed) > len(row):
+            return False
+        for column, value in enumerate(row):
+            cell = observed[column] if column < len(observed) else ""
+            if cell != value or isinstance(cell, bool) != isinstance(value, bool):
+                return False
+    return True
 
 
 def _a1_column(width: int) -> str:
@@ -1168,22 +1314,13 @@ def _resolved_target_mapping(
     target_config = _host_target_config(destination, target)
     if destination == "sheets" and target_config.get("kind") == "google_sheets_service_account":
         spreadsheet_id = target_config.get("spreadsheet_id")
-        worksheets = _require_dataset_mapping(
+        worksheets = _sheets_mapping(
             target_config.get("worksheets"),
             datasets,
-            label="Google Sheets worksheet",
-            id_name="worksheet_id",
             allow_extra=selected_projection,
         )
         if not isinstance(spreadsheet_id, str) or not spreadsheet_id:
             raise BIDestinationError("Google Sheets target has no valid spreadsheet ID")
-        for name, value in worksheets.items():
-            if (
-                not isinstance(value.get("worksheet_id"), int)
-                or not isinstance(value.get("worksheet_title"), str)
-                or not value["worksheet_title"]
-            ):
-                raise BIDestinationError(f"Google Sheets worksheet mapping for {name!r} is invalid")
         return {
             "kind": "google_sheets_service_account",
             "spreadsheet_id": spreadsheet_id,
@@ -1452,6 +1589,16 @@ def _verify_partitions(root: Path, manifest: dict[str, Any]) -> dict[str, dict[s
             selected_projection=manifest.get("selected_projection") is True,
             dimensions=manifest.get("metrics_dimension_columns"),
         )
+        if manifest.get("selected_projection") is not True:
+            _, grain, primary_key = DATASET_SPECS[name]
+            if (
+                dataset.get("schema_version") != f"seohead.bi.{name}.v1"
+                or dataset.get("grain") != grain
+                or dataset.get("primary_key") != list(primary_key)
+            ):
+                raise BIDestinationError(
+                    f"dataset {name!r} version, grain or key differs from the BI schema"
+                )
         if type(dataset.get("row_count")) is not int or dataset["row_count"] < 0:
             raise BIDestinationError(f"dataset {name!r} row count is invalid")
         if type(dataset.get("bytes")) is not int or dataset["bytes"] < 0:
@@ -1792,7 +1939,7 @@ def _reconcile_begin(
     reconcile: bool,
 ) -> dict[str, Any] | None:
     """Resolve an interrupted begin before another remote staging attempt."""
-    if state.get("status") != "begin_pending":
+    if state.get("pending") != {"kind": "begin"}:
         return None
     if not reconcile:
         state["status"] = "reconciliation_required"
@@ -1878,15 +2025,18 @@ def apply_with_client(
         operation=operation,
         manifest_sha256=manifest_sha256,
     )
-    state = _load_state(
-        checkpoint,
-        expected={
-            "destination": destination,
-            "target": target,
-            "operation": operation,
-            "manifest_sha256": manifest_sha256,
-        },
-    )
+    expected = {
+        "destination": destination,
+        "target": target,
+        "operation": operation,
+        "manifest_sha256": manifest_sha256,
+    }
+    target_identity = getattr(client, "checkpoint_identity", None)
+    if target_identity is not None:
+        expected["target_sha256"] = hashlib.sha256(
+            json.dumps(target_identity(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    state = _load_state(checkpoint, expected=expected)
     if state is not None and state.get("status") == "committed":
         result = _result_from_state(state)
         result.update({"dataset_sha256": _dataset_hashes(manifest), "row_conservation": "verified"})
@@ -1902,6 +2052,7 @@ def apply_with_client(
             datasets=datasets,
             transaction=None,
         )
+        state.update(expected)
         state["status"] = "begin_pending"
         state["pending"] = {"kind": "begin"}
         _save_state(checkpoint, state)
@@ -1920,7 +2071,7 @@ def apply_with_client(
             state["reason"] = "destination begin failed after its durable pre-request checkpoint"
             _save_state(checkpoint, state)
             raise
-    elif state.get("status") == "begin_pending":
+    elif state.get("pending") == {"kind": "begin"}:
         try:
             begun = _reconcile_begin(
                 state=state,
