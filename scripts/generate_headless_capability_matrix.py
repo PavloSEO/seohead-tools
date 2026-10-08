@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "docs" / "HEADLESS_CAPABILITIES.json"
 
-# A family maps to implementation and test entrypoints, not blanket readiness.
+# A setting or family maps to implementation and tests, not blanket readiness.
 FAMILIES = {
     "http": ("seohead/recon/net.py", "tests/test_crawl_proxy.py", [709, 745]),
     "rendering": (
@@ -22,6 +22,11 @@ FAMILIES = {
     "discovery": (
         "seohead/crawl/sqlite_adapter.py",
         "tests/test_crawl_settings_wired.py",
+        [746, 743],
+    ),
+    "discovery.external.crawl": (
+        "seohead/servers/handlers.py",
+        "tests/test_crawl_external.py",
         [746, 743],
     ),
     "scope": ("seohead/crawl/spider.py", "tests/test_crawl_settings_wired.py", [749]),
@@ -56,11 +61,11 @@ WORKFLOWS = (
     ),
     (
         "run_isolation",
-        "seohead/remote_api/backend.py",
+        "seohead/storage/native_scan.py",
         "crawl-site",
         "seo_crawl_site",
-        "tests/test_remote_backend.py",
-        [767],
+        "tests/test_cli_parallel_project_scans.py",
+        [743],
     ),
     (
         "interruption_recovery",
@@ -109,7 +114,10 @@ def document() -> dict:
     for setting in inventory:
         family = setting["path"].split(".")[0]
         implementation, test, gaps = FAMILIES.get(
-            family, ("seohead/crawl/settings.py", "tests/test_crawl_settings_wired.py", [743])
+            setting["path"],
+            FAMILIES.get(
+                family, ("seohead/crawl/settings.py", "tests/test_crawl_settings_wired.py", [743])
+            ),
         )
         rows.append(
             {
