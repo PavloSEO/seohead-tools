@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Новый скан</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&amp;family=Roboto+Mono:wght@400;500&amp;family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0&amp;display=swap">
+<style>body{margin:0}
+.src{border:1px solid #DDE1E7;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;background:#FFFFFF;cursor:pointer;text-align:left;font:inherit;color:inherit;transition:border-color 120ms,background-color 120ms}
+.src:hover{border-color:#A9B6C9;background:#FAFBFD}
+.src.on{border:2px solid #1565C0;padding:11px;background:#F3F8FF}
+.seg{display:flex;background:#F4F6FA;border-radius:10px;padding:3px;gap:2px}
+.seg button{flex:1;height:30px;border:0;border-radius:8px;background:transparent;font:500 13px Roboto,sans-serif;color:#45464F;cursor:pointer}
+.seg button.on{background:#FFFFFF;color:#0B4A94;box-shadow:0 1px 2px rgba(10,20,40,.12)}
+.sw{width:36px;height:20px;border-radius:10px;background:#C4C8D0;position:relative;border:0;cursor:pointer;flex-shrink:0;padding:0}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#FFFFFF;transition:left 120ms}
+.sw.on{background:#1565C0}.sw.on i{left:18px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:7px 0;border-bottom:1px solid #EEF0F3;font:400 13px Roboto,sans-serif}
+.row2 span:first-child{color:#45464F}.row2 span:last-child{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #FDFCFF; font-family: Roboto, sans-serif">
+  <div aria-hidden="true" style="position: absolute; inset: 0; display: flex; flex-direction: column">
+    <div style="height: 88px; background: #FFFFFF; border-bottom: 1px solid #DDE1E7"></div>
+    <div style="flex: 1; display: flex"><div style="width: 200px; background: #F4F6FA; border-right: 1px solid #DDE1E7"></div><div style="flex: 1; background: #FFFFFF"></div><div style="width: 296px; border-left: 1px solid #DDE1E7"></div></div>
+  </div>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" style="left: 220px; top: 40px; width: 1000px; height: 820px">
+    <div style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 24px; border-bottom: 1px solid #EEF0F3">
+      <span class="ms s24" aria-hidden="true" style="color: #1565C0">play_circle</span>
+      <div style="flex: 1">
+        <h2 id="dlg-title" style="margin: 0; font: 500 18px Roboto, sans-serif">Новый скан</h2>
+        <div style="font: 400 12px Roboto, sans-serif; color: #5D6069">Мебельный магазин · shop.example.test · основной сайт</div>
+      </div>
+      <a class="ib" href="/Main.dc.html" aria-label="Закрыть без запуска"><span class="ms" aria-hidden="true">close</span></a>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px">
+      <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 18px; overflow: hidden">
+        <div>
+          <div class="sec">Что сканировать</div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+            <sc-for list="{{srcs}}" as="c" hint-placeholder-count="4">
+              <button class="{{c.cls}}" onClick="{{c.pick}}" aria-pressed="{{c.on}}">
+                <span style="display: flex; align-items: center; gap: 8px; font: 500 13px Roboto, sans-serif"><span class="ms" aria-hidden="true" style="color: #1565C0">{{c.icon}}</span>{{c.name}}</span>
+                <span style="font: 400 12px/1.4 Roboto, sans-serif; color: #5D6069">{{c.desc}}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{isSite}}" hint-placeholder-val="{{true}}">
+          <div>
+            <label class="lbl" for="start">Стартовый URL</label>
+            <div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">link</span><input id="start" value="https://shop.example.test/"><span class="b ok" style="height: 20px"><span class="ms" aria-hidden="true">check</span>Сайт проекта</span></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{isSitemap}}" hint-placeholder-val="{{false}}">
+          <div>
+            <label class="lbl" for="sm">Адрес sitemap</label>
+            <div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">account_tree</span><input id="sm" value="https://shop.example.test/sitemap.xml"></div>
+            <div class="hint">Найдено в robots.txt · 3 вложенных файла · 1 412 URL</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{isList}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <label class="lbl" for="list" style="margin: 0; flex: 1">Список URL · по одному в строке</label>
+              <button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">upload_file</span>Из файла .txt / .csv</button>
+              <button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">content_paste</span>Вставить</button>
+            </div>
+            <textarea id="list" class="area" rows="5" aria-describedby="list-hint">https://shop.example.test/catalog/chair-oak/
+https://shop.example.test/blog/kak-vybrat-stul/
+https://shop.example.test/blog/uhod-za-derevom/
+https://shop.example.test/missing/
+shop.example.test/old-product/
+https://other-site.test/page/
+https://shop.example.test/catalog/chair-oak/</textarea>
+            <div id="list-hint" style="display: flex; gap: 8px; flex-wrap: wrap">
+              <span class="b ok"><span class="ms" aria-hidden="true">check</span>4 готовы</span>
+              <span class="b info"><span class="ms" aria-hidden="true">auto_fix</span>1 дополнен https://</span>
+              <span class="b mut"><span class="ms" aria-hidden="true">content_copy</span>1 дубль убран</span>
+              <span class="b warn"><span class="ms" aria-hidden="true">public_off</span>1 чужой домен — пропущен</span>
+              <button class="btn txt" style="height: 22px; font-size: 12px; padding: 0 6px">Взять 4xx из скана №2</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{isSf}}" hint-placeholder-val="{{false}}">
+          <div class="note w"><span class="ms" aria-hidden="true" style="color: #7A4F00">warning</span><div><b style="font-weight: 500">Screaming Frog CLI найден, лицензия не проверена.</b> Без лицензии лимит SF — 500 URL. Результат импортируется в проект как обычный запуск. <a href="/Modals.dc.html">Диагностика SF</a></div></div>
+        </sc-if>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 20px">
+          <div>
+            <span class="lbl">Режим</span>
+            <div class="seg" role="radiogroup" aria-label="Режим загрузки">
+              <button class="{{rawCls}}" onClick="{{pickRaw}}" role="radio" aria-checked="{{isRaw}}">Исходный HTML</button>
+              <button class="{{jsCls}}" onClick="{{pickJs}}" role="radio" aria-checked="{{isJs}}">С рендерингом JS</button>
+            </div>
+            <div class="hint">{{modeHint}}</div>
+          </div>
+          <div>
+            <label class="lbl" for="prof">Профиль настроек</label>
+            <div class="fld" style="justify-content: space-between"><span id="prof">Каталог · стандарт</span><span class="ms" aria-hidden="true" style="color: #6A6D76">expand_more</span></div>
+          </div>
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 10px">
+            <div>
+              <label class="lbl" for="rps">Запросов/с</label>
+              <div class="{{rpsCls}}"><input id="rps" value="{{rps}}" aria-invalid="{{rpsBad}}" aria-describedby="rps-h"><button class="ib" style="width: 24px; height: 24px" aria-label="Меньше" onClick="{{rpsDown}}"><span class="ms s18" aria-hidden="true">remove</span></button><button class="ib" style="width: 24px; height: 24px" aria-label="Больше" onClick="{{rpsUp}}"><span class="ms s18" aria-hidden="true">add</span></button></div>
+            </div>
+            <div>
+              <label class="lbl" for="thr">Потоки</label>
+              <div class="fld"><input id="thr" value="1"></div>
+            </div>
+            <div id="rps-h" class="{{rpsHintCls}}" style="grid-column: 1 / -1; margin-top: -4px">{{rpsHint}}</div>
+          </div>
+          <div>
+            <span class="lbl">Ограничения</span>
+            <div style="display: flex; flex-direction: column; gap: 10px">
+              <label style="display: flex; align-items: center; gap: 10px; font: 400 13px Roboto, sans-serif"><button class="{{limCls}}" onClick="{{toggleLim}}" role="switch" aria-checked="{{lim}}" aria-label="Лимит URL"><i></i></button>Лимит URL<sc-if value="{{lim}}" hint-placeholder-val="{{true}}"><span class="fld" style="width: 110px; height: 30px; margin-left: auto"><input value="1 500" aria-label="Лимит URL"></span></sc-if></label>
+              <label style="display: flex; align-items: center; gap: 10px; font: 400 13px Roboto, sans-serif"><button class="{{htmlCls}}" onClick="{{toggleHtml}}" role="switch" aria-checked="{{html}}" aria-label="Сохранять HTML"><i></i></button>Сохранять HTML страниц<span class="hint" style="margin: 0 0 0 auto">для поиска и сравнений</span></label>
+            </div>
+          </div>
+          <div style="grid-column: 1 / -1">
+            <label class="lbl" for="task">Зачем этот скан</label>
+            <div class="fld" style="justify-content: space-between"><span id="task">Перепроверка задач: перелинковка блога, ссылки на 404</span><span class="ms" aria-hidden="true" style="color: #6A6D76">expand_more</span></div>
+            <div class="hint">Агент увидит запуск в MCP и свяжет результат с задачами</div>
+          </div>
+        </div>
+        <a href="/Modals.dc.html" style="display: inline-flex; align-items: center; gap: 6px; font: 500 13px Roboto, sans-serif; text-decoration: none; width: max-content"><span class="ms s18" aria-hidden="true">tune</span>Расширенные настройки · 42 параметра ядра</a>
+      </div>
+
+      <aside style="background: #F7F8FB; border-left: 1px solid #EEF0F3; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+        <div class="sec" style="margin: 0">Что произойдёт</div>
+        <div>
+          <div class="row2"><span>Источник</span><span>{{srcName}}</span></div>
+          <div class="row2"><span>Запросов к сайту, до</span><span>{{reqs}}</span></div>
+          <div class="row2"><span>Длительность, оценка</span><span>{{dur}}</span></div>
+          <div class="row2"><span>Место на диске, до</span><span>{{disk}}</span></div>
+          <div class="row2"><span>Платные провайдеры</span><span>нет</span></div>
+          <div class="row2"><span>Влияние на сайт</span><span>только чтение</span></div>
+        </div>
+        <div class="note i"><span class="ms" aria-hidden="true" style="color: #1565C0">info</span><div>Запуск получит ID, появится в «Сканах», у наблюдателя и у агента в MCP. Повторное нажатие не создаёт дубль.</div></div>
+        <div style="flex: 1"></div>
+        <label style="display: flex; gap: 10px; align-items: flex-start; font: 400 13px/1.4 Roboto, sans-serif; cursor: pointer">
+          <input type="checkbox" checked="{{confirmed}}" onChange="{{toggle}}" style="width: 18px; height: 18px; margin: 1px 0 0; accent-color: #1565C0">
+          Я проверил объём и разрешаю обращаться к сайту
+        </label>
+      </aside>
+    </div>
+
+    <div style="height: 68px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 24px; border-top: 1px solid #EEF0F3">
+      <sc-if value="{{rpsBad}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: center; gap: 6px; font: 400 12px Roboto, sans-serif; color: #B3261E"><span class="ms s18" aria-hidden="true">error</span>Исправьте «Запросов/с»</span></sc-if>
+      <button class="btn txt" style="color: #45464F"><span class="ms s18" aria-hidden="true">bookmark_add</span>Сохранить как профиль</button>
+      <div style="flex: 1"></div>
+      <a class="btn lg" href="/Main.dc.html" style="border-color: transparent">Отмена</a>
+      <sc-if value="{{ready}}" hint-placeholder-val="{{false}}"><a class="btn lg pri" href="/Scans.dc.html"><span class="ms" aria-hidden="true">play_arrow</span>Запустить</a></sc-if><sc-if value="{{notReady}}" hint-placeholder-val="{{true}}"><button class="btn lg off" disabled title="Подтвердите объём и исправьте поля"><span class="ms" aria-hidden="true">play_arrow</span>Запустить</button></sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["site","sitemap","list","sf"],"default":"site"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { src: null, js: false, rps: 2, lim: true, html: true, confirmed: false }; }
+  renderVals() {
+    const s = this.state;
+    const src = s.src ?? this.props.mode ?? 'site';
+    const defs = [
+      ['site', 'travel_explore', 'Сайт целиком', 'Native crawler: обход по ссылкам со стартового URL'],
+      ['sitemap', 'account_tree', 'По sitemap', 'Только URL из sitemap.xml, без обхода ссылок'],
+      ['list', 'format_list_bulleted', 'Список URL', 'Вставить или загрузить свой список адресов'],
+      ['sf', 'bug_report', 'Screaming Frog', 'Скан лицензионным SF CLI с импортом в проект']
+    ];
+    const srcs = defs.map(([id, icon, name, desc]) => ({ icon, name, desc, on: id === src, cls: 'src' + (id === src ? ' on' : ''), pick: () => this.setState({ src: id }) }));
+    const rpsBad = s.rps > 2;
+    const ready = s.confirmed && !rpsBad;
+    const est = { site: ['1 500', '12–15 мин', '~ 380 МБ'], sitemap: ['1 412', '11–13 мин', '~ 360 МБ'], list: ['4', '< 1 мин', '~ 2 МБ'], sf: ['1 500', '15–20 мин', '~ 520 МБ'] }[src];
+    return {
+      srcs,
+      isSite: src === 'site', isSitemap: src === 'sitemap', isList: src === 'list', isSf: src === 'sf',
+      srcName: defs.find((d) => d[0] === src)[2],
+      reqs: est[0], dur: s.js ? est[1].replace(/\d+/g, (n) => String(Number(n) * 3)) : est[1], disk: est[2],
+      isRaw: !s.js, isJs: s.js,
+      rawCls: s.js ? '' : 'on', jsCls: s.js ? 'on' : '',
+      pickRaw: () => this.setState({ js: false }), pickJs: () => this.setState({ js: true }),
+      modeHint: s.js ? 'Медленнее примерно в 3 раза; сохраняет Rendered DOM' : 'Быстро; Rendered DOM не сохраняется',
+      rps: s.rps, rpsBad,
+      rpsCls: 'fld' + (rpsBad ? ' bad' : ''),
+      rpsHint: rpsBad ? 'Для боевого сайта не больше 2 запросов/с' : 'Бережно для боевого сайта',
+      rpsHintCls: 'hint' + (rpsBad ? ' bad' : ''),
+      rpsUp: () => this.setState({ rps: s.rps + 1 }), rpsDown: () => this.setState({ rps: Math.max(1, s.rps - 1) }),
+      lim: s.lim, limCls: 'sw' + (s.lim ? ' on' : ''), toggleLim: () => this.setState({ lim: !s.lim }),
+      html: s.html, htmlCls: 'sw' + (s.html ? ' on' : ''), toggleHtml: () => this.setState({ html: !s.html }),
+      confirmed: s.confirmed, toggle: () => this.setState({ confirmed: !s.confirmed }),
+      ready, notReady: !ready
+    };
+  }
+}
+</script>
+</body>
+</html>

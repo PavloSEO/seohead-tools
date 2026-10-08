@@ -1,79 +1,65 @@
 # SEOHEAD Desktop
 
-Native PyQt5/Qt Widgets desktop adapter for the local SEOHEAD core. It is not a
-second crawler, task store, or HTTP service: collection, retained SQLite
-evidence, project state, reports and policy validation stay in the co-shipped
-core.
+Native desktop app for the SEOHEAD toolkit, written in **Python + PyQt5 (Qt Widgets) + QSS**.
+No web view, no Electron, no JavaScript framework: every screen is a Qt widget, styled by one
+QSS theme generated from design tokens. The app is a *presentation adapter* — crawling,
+analysis, projects and tasks live in the core (`../seohead`) and are reached through the
+same CLI/MCP contracts the agents use.
 
-The tested development core is pinned in `packaging/source-install.json`.
-An external development core must
-be a clean checkout; a frozen bundle verifies its manifest, executable digest
-and producer commit before it supplies `--producer-build`.
+> **Status (2026-10-09): redesign in progress.** The code here is the first functional
+> skeleton (project console, URL workbench, scan runner, MCP gateway). Its visual layer is
+> being replaced by **design v2** in [`design/v2/`](design/v2/). Treat the current UI as
+> outdated; treat `design/v2` as the target.
 
-## Run from source
+## What lives where
 
-```bash
-python3.12 scripts/source.py install --core-source /path/to/compatible/seohead-tools
-python3.12 scripts/source.py run --project /path/to/existing/project
-```
+| Path | What it is |
+|---|---|
+| `src/seohead_desktop/app.py` | Main window: top bars, navigation, pages, wiring of signals (≈3.3k lines; to be split into modules — see design/v2 readiness report) |
+| `src/seohead_desktop/ui/` | Reusable widgets: `components.py` (buttons, badges, panels), `workspace_tabs.py` (workspace tabs), `tabcatalogue.py` (SF-style tab/column contracts), `work_monitor.py` (scan observer), `crawl_configuration_dialog.py` (advanced scan settings), `content_search_panel.py`, `comparison_summary.py`, `help_guide.py`, `icons.py` (Material Symbols registry), `gallery.py` (component gallery for screenshots) |
+| `src/seohead_desktop/theme/` | `tokens.json` (single source of colours, sizes, density, motion) → `theme.qss` |
+| `src/seohead_desktop/models.py` | Qt table models (no widget per cell) |
+| `src/seohead_desktop/mcp_gateway.py` | Talks to the core over local stdio MCP; allow-list of tools the app may call |
+| `src/seohead_desktop/scan_manager.py`, `scan_runner.py` | Starts/observes scans owned by the app (QProcess), queue of up to 3 |
+| `src/seohead_desktop/crawl_configuration.py` | Turns the core's `crawl-describe-settings` into validated controls |
+| `src/seohead_desktop/comparison.py`, `content_search.py` | Compare two scans; search inside saved HTML |
+| `src/seohead_desktop/local_control.py`, `control_cli.py` | Opt-in local control channel so an agent can drive the window (`seohead-desktop-agent`) |
+| `src/seohead_desktop/bundle.py` | Locates the bundled core inside a frozen app |
+| `src/seohead_desktop/fixtures/` | Labelled synthetic demo data (only for `--capture` and tests) |
+| `tests/` | Offscreen Qt tests (`QT_QPA_PLATFORM=offscreen`) |
+| `examples/qa-site/` | Local loopback SEO test site with profiles `broken`, `clean`, `fix-delta`, `tracking` — the only site real scans are tested on |
+| `packaging/`, `scripts/build_*.sh/.ps1`, `SEOHEAD Desktop.spec` | PyInstaller bundle that ships app + compatible core + `seohead` CLI together |
+| `docs/` | User guide, workspace/tab contracts, local control, packaging, source install |
+| `design/v2/` | **Target design**: interactive mock-ups (35 boards), design system, readiness report, QA scripts |
+| `design/` (rest) | Earlier design notes and the first Qt skeleton |
 
-The application starts one local stdio MCP connection to the supplied core.
-It does not open an HTTP listener. A project is opened explicitly from disk.
-The source bootstrap installs Desktop and the compatible core together into
-one local virtual environment. See [source installation](docs/source-install.md)
-for the Git pin, existing-environment guard, logs and opt-in agent control.
-
-## Functional scope
-
-User-facing interfaces are the CLI/terminal and this native PyQt5 application.
-Local stdio MCP serves AI agents. The browser/web console was cancelled by the
-owner on 2026-10-07 and is removed from the roadmap.
-
-| Area | Current behaviour |
-| --- | --- |
-| Project observer | Retained progress, task page/detail, scan history, activity and durable inbox load through one persistent local MCP session. Reads are bounded and generation-scoped; each operation keeps one in-flight request and one latest pending intent. |
-| URL evidence | A retained scan supplies paged URL rows, a redacted URL detail, scan status and bounded inlinks. Selecting another project, scan or URL clears previous evidence before the next result arrives. Observer refreshes preserve the selected retained scan. |
-| Native scan plan | The user explicitly confirms a project-bound native crawl. The dialog shows URL, HTTP-request and time budgets plus raw/JS mode. Advanced settings use the core descriptor and existing typed JSON CLI input, including scope patterns, content selectors and request delay. Opening or refreshing a project never starts a crawl. |
-| Local run control | Desktop owns only QProcesses it started. It runs up to three native children concurrently, queues later requests and records separate local output per run. Stop targets the selected owned run. Closing cancels queued work and waits for owned children to save checkpoints; work started outside Desktop is left alone. |
-| Progress | `project-observe` is polled at 0.5 seconds while the selected project has active children or awaits a final core status. A child exit alone cannot claim completeness. A missing terminal record is explicitly unavailable after 10 seconds; project UUID plus run UUID is the identity, including after PID exit. |
-| Resume | Resume is offered only after core reports a retained scan with `source.lifecycle: interrupted`; Desktop keeps project binding and stored scope/configuration, and supplies a fresh observer UUID for each resumed attempt. |
-| Notes | A note or proposed goal is stored only after an explicit click and revision-aware core confirmation. It never launches a scan or injects chat text. |
-
-Desktop preserves the configured minimum request delay; its editor admits
-a delay of at least 0.5 seconds. Core enforces the shared per-origin gate. The core remains the authority for final
-admission, stored settings, scope, authentication and evidence completeness.
-
-## Verification
+## Build and run from source (monorepo)
 
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests -v
-SEOHEAD_DESKTOP_CORE_CLI=/absolute/path/to/seohead \
-  QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests -v
+# from the repository root
+python3.12 -m venv .venv-desktop
+.venv-desktop/bin/pip install -e ".[all]" -e desktop
+.venv-desktop/bin/seohead-desktop --project /path/to/existing/project
 ```
 
-The real-core gate creates only owned `crawl.localhost` loopback projects. It
-verifies three concurrent bounded captures in one MainWindow/project over MCP,
-selecting two retained artifacts, stopping/resuming with a fresh run UUID, typed
-Advanced settings in actual scan evidence, and closing with two active children
-plus queued work while an external crawl remains alive. No public site, provider, cloud account or paid API is used.
+Tests: `QT_QPA_PLATFORM=offscreen .venv-desktop/bin/python -m unittest discover -s desktop/tests`.
+Bundle (macOS): `desktop/scripts/build_macos.sh` → `desktop/dist/SEOHEAD Desktop.app` (ignored by git).
 
-## Packaging and platforms
+`desktop/` is excluded from the core's ruff/pytest/packaging; it has its own toolchain.
+`packaging/source-install.json` still pins a core commit from the time this was a separate
+repository — inside the monorepo the core is `..`; updating that flow is part of the redesign.
 
-`scripts/build_macos.sh` builds an application plus an exact core payload and
-writes a provenance manifest. See [docs/packaging.md](docs/packaging.md) for
-the required build arguments and clean-machine smoke check.
+## Design v2 in one paragraph
 
-macOS is the only runtime currently exercised. Windows and Linux compatibility,
-large-crawl/million-row readiness and final product design are not claimed.
+Two modes — **Projects** (work with an AI agent: goals, tasks, inbox, scans, compare
+"before/after", reports to developers/SEO/content) and **Crawler** (Screaming-Frog-like, no
+project, enter URL → Start). One 52 px top bar, workspace tabs, 200/64 px navigation with a
+profile/settings button bottom-left, honest data states ("not measured" ≠ "0"), 17 statuses,
+3 themes (light, dark, high contrast), RU/EN, local MCP server switch shared with the CLI
+(`seohead mcp status`), installer that puts the app and the `seohead` CLI on the machine
+together. Start with [`design/v2/README.md`](design/v2/README.md).
 
-## Design input
+## Licence
 
-`design/source/Untitled.fig` is preserved as the original input. The Qt
-component catalogue is in `design/tab-contracts.md`; it provides native bounded
-tables and panels without a web view or Electron runtime.
-
-The Work table gives browsing priority at the minimum 800×720 window size.
-Plan/actions and selected-run details open explicitly into one resizable inspector;
-closing it returns the space to the table. The history pager stays visible, and
-refreshes keep the inspector closed until requested. Hidden details still update
-from the shared project models and remain available in the second monitor window.
+GPL-3.0-or-later (required by PyQt5) — see `LICENSE` here. The core toolkit at the repository
+root is MIT.
