@@ -10,10 +10,14 @@ agent control. Navigation buttons only request an existing view.
 1. Open an existing SEOHEAD project with the folder button. Check the project and
    saved scan in the top bars before interpreting a table.
 2. Select a retained scan to inspect existing evidence. To collect new data,
-   choose **Новый скан**, review the URL source, URL/request/time budgets and
-   raw/JavaScript mode, then explicitly confirm the launch. Advanced settings
-   require the current core descriptor. Sitemap mode is available only when the
-   connected core advertises it.
+   choose **Новый скан**, review the URL source, raw/JavaScript mode, request
+   rate and concurrency, then explicitly start collection. The URL cap starts
+   disabled; enable it to request a bounded scan. HTTP and time budgets are in
+   Advanced settings and start at zero (disabled). Full native collection uses
+   unlimited depth and a 12 GiB free-disk reserve. Both full and sitemap-only
+   modes require the corresponding connected-core capability. An older core
+   can still accept a supported bounded plan. The settings are controls, not a
+   claim that million-URL performance has been verified.
 3. Use **URL** for saved rows and **Аудит** for topical views. Select a row to
    inspect its message, affected URL and evidence. Table filtering applies to
    the loaded page; it is not a global site query.

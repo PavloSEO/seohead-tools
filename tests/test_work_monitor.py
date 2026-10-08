@@ -159,6 +159,30 @@ class WorkMonitorTests(unittest.TestCase):
         self.app.processEvents()
         self.assertLessEqual(next(iter(self.monitor.run_cards.values())).width(), 380)
 
+    def test_wrapped_overview_rows_keep_natural_height_after_resize(self):
+        for count in (3, 6):
+            self.monitor.set_observation([observed(str(index), state="finished", finished_at="2026-10-07T16:00:00Z") for index in range(count)], {}, None)
+            for width in (1440, 740, 685, 1440, 740):
+                self.monitor.resize(width, 740)
+                QTest.qWait(20)
+                cards = list(self.monitor.run_cards.values())
+                columns = self.monitor._columns
+                if count > columns:
+                    first_bottom = max(card.geometry().bottom() for card in cards[:columns])
+                    gap = cards[columns].y() - first_bottom - 1
+                    self.assertLessEqual(gap, self.monitor.cards.verticalSpacing() + 1)
+                    self.assertGreaterEqual(gap, 0)
+                self.assertLessEqual(self.monitor.cards_scroll.height(), 2 * max(card.height() for card in cards) + self.monitor.cards.verticalSpacing() + 1)
+
+    def test_unknown_plan_is_one_line_but_measured_zero_task_counts_remain(self):
+        self.monitor.set_observation([observed()], {"counts": {"complete": None, "remaining": None, "stale": None}}, None)
+        self.assertFalse(self.monitor.plan_note.isVisible())
+        self.assertIn("не измерено", self.monitor.plan_label.text())
+        self.assertIn("согласованный план", self.monitor.plan_label.toolTip())
+        self.monitor.set_observation([observed()], {"counts": {"complete": 0, "remaining": 0, "stale": 0}}, None)
+        self.assertTrue(self.monitor.plan_note.isVisible())
+        self.assertIn("Завершено: 0", self.monitor.plan_note.text())
+
     def test_native_selection_and_result_intents_do_not_dispatch(self):
         selected, result = QSignalSpy(self.monitor.runSelected), QSignalSpy(self.monitor.showResult)
         with patch("subprocess.run", side_effect=AssertionError("View cannot dispatch")):

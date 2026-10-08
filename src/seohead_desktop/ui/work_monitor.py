@@ -270,6 +270,7 @@ class WorkMonitor(QWidget):
         self.cards = QGridLayout(self.cards_widget)
         self.cards.setContentsMargins(0, 0, 0, 0)
         self.cards.setSpacing(16)
+        self.cards.setAlignment(Qt.AlignTop)
         self.cards_scroll.setWidget(self.cards_widget)
         self.cards_scroll.viewport().installEventFilter(self)
         self.body.addWidget(self.cards_scroll)
@@ -398,9 +399,14 @@ class WorkMonitor(QWidget):
             self.cards.setColumnMinimumWidth(column, card_width)
         self.cards.setColumnStretch(columns, 1)
         self._columns = columns
-        rows = (len(self.run_cards) + columns - 1) // columns
-        height = max((card.sizeHint().height() for card in self.run_cards.values()), default=120)
-        self.cards_scroll.setFixedHeight(min(rows, 2) * (height + 10) + 4)
+        row_heights = []
+        for index, card in enumerate(self.run_cards.values()):
+            if index % columns == 0:
+                row_heights.append(0)
+            height = card.heightForWidth(card_width)
+            row_heights[-1] = max(row_heights[-1], height if height >= 0 else card.sizeHint().height())
+        visible_rows = row_heights[:2]
+        self.cards_scroll.setFixedHeight(sum(visible_rows) + max(0, len(visible_rows) - 1) * self.cards.verticalSpacing())
 
     def set_reduced_motion(self, enabled):
         self.reduced_motion = bool(enabled) or self.system_reduced_motion
@@ -450,10 +456,13 @@ class WorkMonitor(QWidget):
         else:
             self.plan_label.setText("План аудита · выполнение не измерено")
         counts = _mapping(progress.get("counts"))
+        has_counts = any(_counter(counts.get(key)) is not None for key in ("complete", "remaining", "stale"))
         self.plan_note.setText(
             f"Задачи проекта · Завершено: {_display(_counter(counts.get('complete')))} · Осталось: {_display(_counter(counts.get('remaining')))} · Устарело: {_display(_counter(counts.get('stale')))}"
-            if counts else "Для доли выполнения нужен согласованный план с известным числом задач"
+            if has_counts else "Для доли выполнения нужен согласованный план с известным числом задач"
         )
+        self.plan_note.setVisible(has_counts)
+        self.plan_label.setToolTip("" if has_counts else self.plan_note.text())
 
     def _select(self, identity):
         self.set_selected_run(identity)

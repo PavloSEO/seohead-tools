@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import shlex
 import shutil
 import sys
@@ -30,7 +31,6 @@ from PyQt5.QtWidgets import (
     QAbstractItemView,
     QActionGroup,
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -80,6 +80,7 @@ from .ui.presentation import (
     ElidedLabel,
     InlineNotice,
     StateBadge,
+    SwitchCheckBox,
     WorkspaceSplitter,
     field_text,
     content_spacing,
@@ -2372,6 +2373,8 @@ class MainWindow(QMainWindow):
             config = dict(arguments["config"])
             if self.crawl_descriptor is None:
                 raise ControlError("capability_unavailable", "Настройки ядра ещё не получены")
+            if config["max_urls"] == 0 and (self.crawl_descriptor.get("capabilities") or {}).get("full_site_native_sqlite") is not True:
+                raise ControlError("capability_unavailable", "Ядро не поддерживает обход без лимита URL")
             if config.get("sitemap_url") and (self.crawl_descriptor.get("capabilities") or {}).get("sitemap_only_retained") is not True:
                 raise ControlError("capability_unavailable", "Ядро не поддерживает sitemap-only retained scan")
             overrides = {**config.get("configuration_overrides", {}), "limits.max_urls": config["max_urls"], "limits.max_requests": config["max_requests"], "limits.max_crawl_seconds": config["max_seconds"], "rendering.mode": config["rendering_mode"]}
@@ -2656,81 +2659,135 @@ class MainWindow(QMainWindow):
         project_key = self.note_project_key()
         draft = self._scan_drafts.get(project_key, {})
         dialog = QDialog(self)
-        dialog.setWindowTitle("Новый скан · явный план")
-        dialog.resize(620, 570)
+        dialog.setWindowTitle("Новый скан")
+        dialog.resize(640, 470)
         layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(12)
         target = ((self.project_result or {}).get("project") or {}).get("site", {}).get("target") or "Не измерено"
         target_input = QLineEdit(target)
         target_input.setReadOnly(True)
-        form.addRow("Проектный URL", target_input)
+        target_input.setToolTip("Адрес выбранного проекта")
+        form.addRow("URL проекта", target_input)
         source_mode = QComboBox()
         source_mode.setObjectName("scanSourceMode")
         source_mode.setAccessibleName("Источник URL: спайдер или sitemap")
         source_mode.addItem("Спайдер · переход по ссылкам", "spider")
         source_mode.addItem("Только URL из sitemap", "sitemap")
         source_mode.setCurrentIndex(max(0, source_mode.findData(draft.get("source", "spider"))))
-        form.addRow("Источник URL", source_mode)
+        form.addRow("Источник", source_mode)
         sitemap_input = QLineEdit(draft.get("sitemap", ""))
         sitemap_input.setObjectName("scanSitemapUrl")
-        sitemap_input.setAccessibleName("Адрес sitemap для сканирования")
+        sitemap_input.setAccessibleName("Адрес sitemap")
         sitemap_input.setPlaceholderText("https://example.com/sitemap.xml")
         form.addRow("Sitemap", sitemap_input)
         mode = QComboBox()
-        mode.addItem("Native raw HTML", "raw")
-        mode.addItem("Native JavaScript", "js")
+        mode.setObjectName("scanRenderingMode")
+        mode.addItem("Исходный HTML", "raw")
+        mode.addItem("С JavaScript", "js")
         mode.setCurrentIndex(max(0, mode.findData(draft.get("mode", "raw"))))
         form.addRow("Режим", mode)
-        limit = QSpinBox(); limit.setRange(1, 50000); limit.setValue(draft.get("limit", 40)); limit.setObjectName("scanUrlLimit")
-        requests = QSpinBox(); requests.setRange(1, 2_000_000); requests.setValue(draft.get("requests", 100)); requests.setObjectName("scanRequestBudget")
-        duration = QSpinBox(); duration.setRange(1, 86_400); duration.setValue(draft.get("duration", 60)); duration.setSuffix(" с"); duration.setObjectName("scanDurationBudget")
-        form.addRow("Лимит URL", limit); form.addRow("Лимит HTTP-запросов", requests); form.addRow("Лимит времени", duration)
+        speed_row = QHBoxLayout()
+        rate = QComboBox()
+        rate.setEditable(True)
+        rate.addItems(["2", "5", "10"])
+        rate.setCurrentText(str(draft.get("rps", "2")))
+        rate.setObjectName("scanRequestRate")
+        rate.setAccessibleName("Предельное число запросов в секунду")
+        threads = QSpinBox()
+        threads.setRange(1, 1024)
+        threads.setValue(draft.get("threads", 1))
+        threads.setObjectName("scanConcurrency")
+        threads.setAccessibleName("Число потоков сканирования")
+        speed_row.addWidget(rate, 1)
+        speed_row.addWidget(QLabel("Потоки"))
+        speed_row.addWidget(threads, 1)
+        form.addRow("Запросов/с", speed_row)
+        limit_row = QHBoxLayout()
+        limit_enabled = SwitchCheckBox("Включить")
+        limit_enabled.setObjectName("scanLimitEnabled")
+        limit_enabled.setChecked(draft.get("limit_enabled", False))
+        limit_enabled.setAccessibleName("Ограничить число URL")
+        limit = QSpinBox()
+        limit.setRange(1, 1_000_000)
+        limit.setValue(max(1, draft.get("limit", 2000)))
+        limit.setSuffix(" URL")
+        limit.setObjectName("scanUrlLimit")
+        limit_row.addWidget(limit_enabled)
+        limit_row.addWidget(limit, 1)
+        form.addRow("Лимит URL", limit_row)
         layout.addLayout(form)
-        approval = QCheckBox("Подтверждаю запуск с повышенным бюджетом")
-        approval.setObjectName("scanLargeApproval")
-        layout.addWidget(approval)
         advanced_overrides = dict(draft.get("overrides", {}))
+        advanced_overrides.setdefault("limits.max_requests", draft.get("requests", 0))
+        advanced_overrides.setdefault("limits.max_crawl_seconds", draft.get("duration", 0))
         advanced = QPushButton("Расширенные настройки…")
         advanced.setObjectName("scanAdvancedSettings")
+        advanced.setProperty("role", "quiet")
         advanced.setIcon(icon("settings"))
-        layout.addWidget(advanced)
+        layout.addWidget(advanced, 0, Qt.AlignLeft)
         message = QLabel()
+        message.setObjectName("metadata")
         message.setWordWrap(True)
         message.setTextFormat(Qt.PlainText)
+        message.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(message)
         feedback = QLabel()
         feedback.setObjectName("scanValidationFeedback")
         feedback.setWordWrap(True)
         feedback.setTextFormat(Qt.PlainText)
+        feedback.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(feedback)
         retry = QPushButton("Повторить загрузку настроек")
         retry.clicked.connect(self.load_crawl_descriptor)
-        layout.addWidget(retry)
+        layout.addWidget(retry, 0, Qt.AlignLeft)
+        layout.addStretch(1)
         buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
         buttons.button(QDialogButtonBox.Cancel).setText("Отмена")
         start_button = buttons.button(QDialogButtonBox.Ok)
-        start_button.setText("Запустить"); start_button.setObjectName("scanStartButton"); start_button.setProperty("role", "primary")
+        start_button.setText("Запустить")
+        start_button.setObjectName("scanStartButton")
+        start_button.setProperty("role", "primary")
         layout.addWidget(buttons)
         accepted = []
 
+        def values():
+            try:
+                rps = float(rate.currentText().strip().replace(",", "."))
+            except ValueError:
+                raise ValueError("Введите положительное число запросов в секунду") from None
+            if not math.isfinite(rps) or rps <= 0:
+                raise ValueError("Введите положительное конечное число запросов в секунду")
+            full_capability = ((self.crawl_descriptor or {}).get("capabilities") or {}).get("full_site_native_sqlite") is True
+            defaults = {"limits.max_requests": 0, "limits.max_crawl_seconds": 0}
+            if full_capability:
+                defaults.update({"limits.max_depth": -1, "storage.min_free_bytes": 12 * 1024**3})
+            return {**defaults, **advanced_overrides,
+                    "limits.max_urls": limit.value() if limit_enabled.isChecked() else 0,
+                    "rendering.mode": mode.currentData(),
+                    "speed.min_delay_seconds": 1 / rps, "speed.concurrency": threads.value()}
+
         def prepare():
             if self.note_project_key() != project_key or self._project_loading:
-                raise ValueError("Проект изменился. Закройте план и откройте его для текущего проекта.")
+                raise ValueError("Проект изменился. Откройте план для текущего проекта.")
             if self.crawl_descriptor is None:
                 raise ValueError(self._crawl_descriptor_error or "Параметры ядра загружаются…")
+            settings = values()
+            if settings["limits.max_urls"] == 0 and (self.crawl_descriptor.get("capabilities") or {}).get("full_site_native_sqlite") is not True:
+                raise ValueError("Это ядро не поддерживает обход без лимита URL. Включите явный лимит или используйте обновлённый комплект.")
             sitemap = sitemap_input.text().strip() if source_mode.currentData() == "sitemap" else None
-            if sitemap is not None and ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is not True:
+            if sitemap is not None and (self.crawl_descriptor.get("capabilities") or {}).get("sitemap_only_retained") is not True:
                 raise ValueError("Подключённое ядро не поддерживает сохранённый sitemap-скан")
-            values = {**advanced_overrides, "limits.max_urls": limit.value(), "limits.max_requests": requests.value(), "limits.max_crawl_seconds": duration.value(), "rendering.mode": mode.currentData()}
-            preview = preview_configuration(self.crawl_descriptor, values)
-            crawl_arguments(self.project_directory, limit.value(), mode.currentData(), overrides=tuple(preview["overrides"].items()), approve_large_crawl=approval.isChecked(), sitemap_url=sitemap)
-            return (limit.value(), mode.currentData(), requests.value(), duration.value(), approval.isChecked(), dict(advanced_overrides), sitemap)
+            preview = preview_configuration(self.crawl_descriptor, settings)
+            crawl_arguments(self.project_directory, settings["limits.max_urls"], mode.currentData(), overrides=tuple(preview["overrides"].items()), approve_large_crawl=True, sitemap_url=sitemap)
+            return (settings["limits.max_urls"], mode.currentData(), settings["limits.max_requests"], settings["limits.max_crawl_seconds"], True, settings, sitemap)
 
         def explain(error):
             text = str(error)
             if "Sitemap URL" in text:
-                return "Укажите полный HTTP(S)-адрес sitemap до 4096 символов, без логина, пароля, #фрагмента и управляющих символов."
+                return "Укажите полный HTTP(S)-адрес sitemap без логина, пароля и #фрагмента, до 4096 символов."
             if "port" in text.lower():
                 return "В адресе sitemap некорректный порт. Исправьте адрес; остальные настройки сохранены."
             if "selected scan project" in text:
@@ -2738,49 +2795,57 @@ class MainWindow(QMainWindow):
             return text
 
         def update_plan():
-            supported = ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is True
-            source_mode.model().item(1).setEnabled(supported)
-            source_mode.model().item(1).setToolTip("Скан только URL из указанного XML" if supported else "Подключённое ядро не объявило эту возможность")
+            capabilities = (self.crawl_descriptor or {}).get("capabilities") or {}
+            source_mode.model().item(1).setEnabled(capabilities.get("sitemap_only_retained") is True)
+            source_mode.model().item(1).setToolTip("Только URL из XML" if capabilities.get("sitemap_only_retained") else "Возможность не объявлена ядром")
             advanced.setEnabled(self.crawl_descriptor is not None)
             retry.setVisible(self.crawl_descriptor is None and bool(self._crawl_descriptor_error))
-            elevated = limit.value() > 5000 or requests.value() > 10000 or duration.value() > 300
-            approval.setVisible(elevated)
-            if not elevated and approval.isChecked():
-                approval.blockSignals(True); approval.setChecked(False); approval.blockSignals(False)
+            limit.setEnabled(limit_enabled.isChecked())
+            limit.setVisible(limit_enabled.isChecked())
             sitemap_only = source_mode.currentData() == "sitemap"
-            sitemap_input.setVisible(sitemap_only); form.labelForField(sitemap_input).setVisible(sitemap_only)
-            scope = f"Только URL из sitemap: {sitemap_input.text().strip() or 'укажите адрес'}" if sitemap_only else f"Спайдер: {target}"
-            message.setText(f"{scope}\nЛимиты: {limit.value()} URL · {requests.value()} HTTP-запросов · {duration.value()} с\n" + ("Без перехода по ссылкам со страниц. " if sitemap_only else "") + "Запуск — отдельной кнопкой ниже.")
+            sitemap_input.setVisible(sitemap_only)
+            form.labelForField(sitemap_input).setVisible(sitemap_only)
+            scope = (f"Только URL из sitemap: {sitemap_input.text().strip() or 'укажите адрес'}\nБез перехода по ссылкам со страниц." if sitemap_only else "Спайдер · по настройкам проекта")
+            population = f"Лимит: {limit.value():,} URL".replace(",", " ") if limit_enabled.isChecked() else "Без лимита URL"
+            message.setText(scope + "\n" + population)
             try:
                 prepare()
-                ready = not elevated or approval.isChecked()
-                feedback.setText("Подтвердите повышенный бюджет" if not ready else "План проверен. Настройки относятся только к выбранному проекту.")
+                feedback.setText("План проверен. Нажмите «Запустить», когда готовы.")
+                feedback.setToolTip("")
+                ready = True
             except (TypeError, ValueError, OSError) as exc:
+                feedback.setText(explain(exc))
+                feedback.setToolTip(str(exc))
                 ready = False
-                feedback.setText(explain(exc)); feedback.setToolTip(str(exc))
             start_button.setEnabled(ready)
 
         def edit_advanced():
             try:
-                editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides={**advanced_overrides, "limits.max_urls": limit.value(), "limits.max_requests": requests.value(), "limits.max_crawl_seconds": duration.value(), "rendering.mode": mode.currentData()})
+                editor = CrawlConfigurationDialog(self.crawl_descriptor, dialog, project_directory=self.project_directory, overrides=values())
                 if editor.exec_() == QDialog.Accepted:
-                    advanced_overrides.clear(); advanced_overrides.update(editor.get_overrides())
-                    limit.setValue(advanced_overrides.get("limits.max_urls", limit.value()))
-                    requests.setValue(advanced_overrides.get("limits.max_requests", requests.value()))
-                    seconds = advanced_overrides.get("limits.max_crawl_seconds", duration.value()); duration.setMaximum(max(duration.maximum(), seconds)); duration.setValue(seconds)
-                    mode.setCurrentIndex(mode.findData(advanced_overrides.get("rendering.mode", mode.currentData())))
+                    selected = editor.get_overrides()
+                    advanced_overrides.clear()
+                    advanced_overrides.update(selected)
+                    cap = selected.get("limits.max_urls", 0)
+                    limit_enabled.setChecked(cap > 0)
+                    if cap > 0:
+                        limit.setValue(cap)
+                    delay = selected.get("speed.min_delay_seconds", .5)
+                    rate.setCurrentText(str(1 / delay) if delay > 0 else rate.currentText())
+                    count = selected.get("speed.concurrency", threads.value())
+                    threads.setMaximum(max(threads.maximum(), count))
+                    threads.setValue(count)
+                    mode.setCurrentIndex(max(0, mode.findData(selected.get("rendering.mode", mode.currentData()))))
                     update_plan()
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, OSError) as exc:
                 feedback.setText(explain(exc))
 
         def accept_plan():
             try:
                 payload = prepare()
-                elevated = payload[0] > 5000 or payload[2] > 10000 or payload[3] > 300
-                if elevated and not approval.isChecked():
-                    raise ValueError("Подтвердите повышенный бюджет")
             except (TypeError, ValueError, OSError) as exc:
-                feedback.setText(explain(exc)); feedback.setToolTip(str(exc))
+                feedback.setText(explain(exc))
+                feedback.setToolTip(str(exc))
                 return
             accepted.append(payload)
             dialog.accept()
@@ -2792,17 +2857,19 @@ class MainWindow(QMainWindow):
                 pass
 
         advanced.clicked.connect(edit_advanced)
-        for signal in (limit.valueChanged, requests.valueChanged, duration.valueChanged, approval.toggled, source_mode.currentIndexChanged, sitemap_input.textChanged, mode.currentIndexChanged):
+        for signal in (limit.valueChanged, limit_enabled.toggled, rate.currentTextChanged, threads.valueChanged, source_mode.currentIndexChanged, sitemap_input.textChanged, mode.currentIndexChanged):
             signal.connect(update_plan)
         self.crawl_descriptor_changed.connect(update_plan)
         dialog.finished.connect(release)
-        buttons.accepted.connect(accept_plan); buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(accept_plan)
+        buttons.rejected.connect(dialog.reject)
         update_plan()
         if self.crawl_descriptor is None:
             self.load_crawl_descriptor()
         dialog.exec_()
-        self._scan_drafts[project_key] = {"source": source_mode.currentData(), "sitemap": sitemap_input.text(), "mode": mode.currentData(), "limit": limit.value(), "requests": requests.value(), "duration": duration.value(), "overrides": dict(advanced_overrides)}
-        release(); dialog.deleteLater()
+        self._scan_drafts[project_key] = {"source": source_mode.currentData(), "sitemap": sitemap_input.text(), "mode": mode.currentData(), "limit": limit.value(), "limit_enabled": limit_enabled.isChecked(), "rps": rate.currentText(), "threads": threads.value(), "overrides": dict(advanced_overrides)}
+        release()
+        dialog.deleteLater()
         if accepted:
             self.launch_scan(*accepted[0])
 
@@ -2815,7 +2882,7 @@ class MainWindow(QMainWindow):
         return self.scan_manager
 
     def launch_scan(
-        self, max_urls, rendering_mode, max_requests=100, max_seconds=60, approve_large_crawl=False, configuration_overrides=None, sitemap_url=None
+        self, max_urls, rendering_mode, max_requests=0, max_seconds=0, approve_large_crawl=False, configuration_overrides=None, sitemap_url=None
     ):
         if not self.project_directory or not self.core_executable:
             return
@@ -2824,6 +2891,9 @@ class MainWindow(QMainWindow):
             return
         if sitemap_url is not None and ((self.crawl_descriptor or {}).get("capabilities") or {}).get("sitemap_only_retained") is not True:
             self.notice.show_error("Подключённое ядро не поддерживает сохранённый sitemap-скан. Выберите совместимый комплект приложения и ядра.")
+            return
+        if max_urls == 0 and (self.crawl_descriptor.get("capabilities") or {}).get("full_site_native_sqlite") is not True:
+            self.notice.show_error("Подключённое ядро не объявило обход без лимита URL")
             return
         manager = self.ensure_scan_manager()
         try:

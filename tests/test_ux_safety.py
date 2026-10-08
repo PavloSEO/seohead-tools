@@ -166,7 +166,8 @@ class UXSafetyTests(unittest.TestCase):
         self.window.toggle_navigation()
         wanted = self.window.navigation.property("compact")
         for width in (1024, 1440):
-            self.window.resize(width, 900); self.app.processEvents()
+            self.window.resize(width, 900)
+            self.app.processEvents()
         self.assertEqual(self.window.navigation.property("compact"), wanted)
 
     def test_plan_descriptor_arrival_and_invalid_fragment_preserve_open_draft(self):
@@ -182,7 +183,7 @@ class UXSafetyTests(unittest.TestCase):
                 try:
                     start = dialog.findChild(QPushButton, "scanStartButton")
                     self.assertFalse(start.isEnabled())
-                    self.window.crawl_descriptor_loaded({**descriptor(), "capabilities": {"sitemap_only_retained": True}})
+                    self.window.crawl_descriptor_loaded({**descriptor(), "capabilities": {"sitemap_only_retained": True, "full_site_native_sqlite": True}})
                     self.assertTrue(start.isEnabled())
                     mode = dialog.findChild(QComboBox, "scanSourceMode")
                     field = dialog.findChild(QLineEdit, "scanSitemapUrl")

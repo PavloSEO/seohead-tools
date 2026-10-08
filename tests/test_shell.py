@@ -76,7 +76,7 @@ class ShellTests(unittest.TestCase):
             QTimer.singleShot(100, close_preview)
             QTest.mouseClick(self.window.new_scan, Qt.LeftButton)
         self.assertEqual(len(seen), 1)
-        self.assertIn("явный план", seen[0])
+        self.assertEqual("Новый скан", seen[0])
 
     def test_real_metadata_clears_demo_rows(self):
         self.window.read_generation = 1

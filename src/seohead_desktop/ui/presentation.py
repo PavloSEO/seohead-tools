@@ -7,9 +7,10 @@ from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 
-from PyQt5.QtCore import QPointF, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter
+from PyQt5.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QPainter, QPalette, QPen
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QVBoxLayout,
     QPushButton,
@@ -25,6 +26,32 @@ from PyQt5.QtWidgets import (
 @lru_cache(maxsize=1)
 def theme_tokens():
     return json.loads((Path(__file__).parents[1] / "theme/tokens.json").read_text())
+
+
+class SwitchCheckBox(QCheckBox):
+    """A rounded indicator; native checkbox input, state and accessibility."""
+
+    def sizeHint(self):
+        return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 44, max(28, self.fontMetrics().height() + 8))
+
+    def hitButton(self, position):
+        return self.rect().contains(position)
+
+    def paintEvent(self, event):
+        colors = theme_tokens()["colors"]
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        track = QRectF(3, (self.height() - 18) / 2, 32, 18)
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(colors["primary"]), 1.5))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(track.adjusted(-2, -2, 2, 2), 11, 11)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(colors["primary"] if self.isChecked() and self.isEnabled() else colors["outline_variant"]))
+        painter.drawRoundedRect(track, 9, 9)
+        painter.setBrush(QColor(colors["on_primary"] if self.isEnabled() else colors["surface_container_high"]))
+        painter.drawEllipse(QRectF(track.left() + (16 if self.isChecked() else 2), track.top() + 2, 14, 14))
+        self.style().drawItemText(painter, self.rect().adjusted(44, 0, 0, 0), Qt.AlignLeft | Qt.AlignVCenter, self.palette(), self.isEnabled(), self.text(), QPalette.WindowText)
 
 
 STATES = {

@@ -1,0 +1,175 @@
+"""Basic scan controls submit only an explicit, capability-backed native plan."""
+
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtTest import QTest
+from PyQt5.QtWidgets import QApplication, QCheckBox, QComboBox, QPushButton, QSpinBox
+
+from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.local_control import ControlError
+from seohead_desktop.ui.panels import component_stylesheet
+from tests.test_crawl_configuration import descriptor
+from tests.test_scan_runner import core_cli, owned_site, create_project, close_window, preserve, wait_for, snapshot
+
+
+class FullScanPlanTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+        cls.app.setStyle("Fusion")
+        tokens = load_theme(cls.app)
+        cls.app.setStyleSheet(cls.app.styleSheet() + component_stylesheet(tokens))
+
+    def setUp(self):
+        scratch = Path(__file__).resolve().parents[1] / ".build"
+        scratch.mkdir(exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(dir=scratch, prefix="full-plan-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        (self.root / "project.json").write_text("{}")
+        self.window = MainWindow(persistent=False, core_executable="/not-dispatched")
+        self.addCleanup(self.window.close)
+        self.window.project_directory = str(self.root)
+        self.window.current_project_uuid = "plan-project"
+        self.window.project_result = {"project": {"site": {"target": "http://fixture.invalid/"}}}
+        self.window.crawl_descriptor = {**descriptor(), "capabilities": {"full_site_native_sqlite": True, "sitemap_only_retained": True}}
+
+    def inspect_dialog(self, inspect):
+        errors = []
+        def run():
+            dialog = self.app.activeModalWidget()
+            try:
+                inspect(dialog)
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                if dialog.isVisible():
+                    dialog.reject()
+        QTimer.singleShot(20, run)
+        self.window.scan_preview()
+        if errors:
+            raise errors[0]
+
+    def test_default_has_no_population_time_or_request_limit_and_speed_is_explicit(self):
+        calls = []
+        self.window.launch_scan = lambda *values: calls.append(values)
+        def inspect(dialog):
+            self.assertFalse(dialog.findChild(QCheckBox, "scanLimitEnabled").isChecked())
+            self.assertIsNone(dialog.findChild(QSpinBox, "scanRequestBudget"))
+            self.assertIsNone(dialog.findChild(QSpinBox, "scanDurationBudget"))
+            self.assertIsNone(dialog.findChild(QCheckBox, "scanLargeApproval"))
+            dialog.findChild(QComboBox, "scanRequestRate").setCurrentText("10")
+            dialog.findChild(QSpinBox, "scanConcurrency").setValue(3)
+            QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
+        self.inspect_dialog(inspect)
+        self.assertEqual(len(calls), 1)
+        plan = calls[0]
+        self.assertEqual(plan[:5], (0, "raw", 0, 0, True))
+        self.assertEqual(plan[5]["limits.max_depth"], -1)
+        self.assertEqual(plan[5]["storage.min_free_bytes"], 12 * 1024**3)
+        self.assertEqual(plan[5]["speed.min_delay_seconds"], .1)
+        self.assertEqual(plan[5]["speed.concurrency"], 3)
+
+    def test_old_core_blocks_full_plan_but_explicit_bounded_plan_is_available(self):
+        self.window.crawl_descriptor["capabilities"].pop("full_site_native_sqlite")
+        calls = []
+        self.window.launch_scan = lambda *values: calls.append(values)
+        def inspect(dialog):
+            start = dialog.findChild(QPushButton, "scanStartButton")
+            self.assertFalse(start.isEnabled())
+            dialog.findChild(QCheckBox, "scanLimitEnabled").setChecked(True)
+            dialog.findChild(QSpinBox, "scanUrlLimit").setValue(2000)
+            self.assertTrue(start.isEnabled())
+            QTest.mouseClick(start, Qt.LeftButton)
+        self.inspect_dialog(inspect)
+        self.assertEqual(calls[0][0], 2000)
+        self.assertNotIn("limits.max_depth", calls[0][5])
+
+    def test_invalid_rate_keeps_draft_open_and_cancellation_does_not_dispatch(self):
+        def inspect(dialog):
+            rate = dialog.findChild(QComboBox, "scanRequestRate")
+            for text in ("0", "nan", "inf", "", "text"):
+                rate.setCurrentText(text)
+                self.assertFalse(dialog.findChild(QPushButton, "scanStartButton").isEnabled())
+                self.assertTrue(dialog.isVisible())
+            rate.setCurrentText("5")
+        self.inspect_dialog(inspect)
+        self.assertEqual(self.window._scan_drafts[self.window.note_project_key()]["rps"], "5")
+        self.assertIsNone(self.window.scan_manager)
+
+    def test_url_switch_preserves_native_keyboard_and_pointer_input(self):
+        def inspect(dialog):
+            toggle = dialog.findChild(QCheckBox, "scanLimitEnabled")
+            limit = dialog.findChild(QSpinBox, "scanUrlLimit")
+            self.assertFalse(limit.isVisible())
+            toggle.setFocus()
+            QTest.keyClick(toggle, Qt.Key_Space)
+            self.assertTrue(toggle.isChecked())
+            self.assertTrue(limit.isVisible())
+            limit.setValue(2000)
+            QTest.mouseClick(toggle, Qt.LeftButton, pos=toggle.rect().center())
+            self.assertFalse(toggle.isChecked())
+            self.assertFalse(limit.isVisible())
+            self.assertEqual(limit.value(), 2000)
+            self.assertEqual(toggle.accessibleName(), "Ограничить число URL")
+        self.inspect_dialog(inspect)
+        self.assertIsNone(self.window.scan_manager)
+
+    def test_direct_agent_and_window_launch_cannot_bypass_missing_full_capability(self):
+        self.window.crawl_descriptor["capabilities"].pop("full_site_native_sqlite")
+        self.assertIsNone(self.window.launch_scan(0, "raw", approve_large_crawl=True))
+        self.assertIsNone(self.window.scan_manager)
+        with self.assertRaises(ControlError) as rejected:
+            self.window.dispatch_control("new_scan", {"project_uuid": "plan-project", "approved": True, "config": {"max_urls": 0, "rendering_mode": "raw", "max_requests": 0, "max_seconds": 0, "approve_large_crawl": True}})
+        self.assertEqual(rejected.exception.code, "capability_unavailable")
+        self.assertIsNone(self.window.scan_manager)
+
+    def test_real_explicit_full_plan_reaches_owned_sqlite_without_hidden_tiny_budgets(self):
+        core = core_cli(self)
+        with owned_site() as (root, server):
+            project = create_project(core, root, server)
+            window = MainWindow(persistent=False, core_executable=core)
+            window.show()
+            try:
+                window.read_project(str(project))
+                wait_for(self, lambda: window.crawl_descriptor and not window.requests, "core settings did not load")
+                self.assertTrue(window.crawl_descriptor.get("capabilities", {}).get("full_site_native_sqlite"))
+                errors = []
+                def launch():
+                    dialog = self.app.activeModalWidget()
+                    try:
+                        self.assertFalse(dialog.findChild(QCheckBox, "scanLimitEnabled").isChecked())
+                        dialog.findChild(QComboBox, "scanRequestRate").setCurrentText("5")
+                        dialog.findChild(QSpinBox, "scanConcurrency").setValue(2)
+                        start = dialog.findChild(QPushButton, "scanStartButton")
+                        self.assertTrue(start.isEnabled())
+                        output = os.environ.get("SEOHEAD_DESKTOP_ACCEPTANCE_DIR")
+                        if output:
+                            Path(output).mkdir(parents=True, exist_ok=True)
+                            dialog.grab().save(str(Path(output) / "full-plan-dialog.png"))
+                        QTest.mouseClick(start, Qt.LeftButton)
+                    except BaseException as exc:
+                        errors.append(exc)
+                        dialog.reject()
+                QTimer.singleShot(120, launch)
+                window.scan_preview()
+                if errors:
+                    raise errors[0]
+                wait_for(self, lambda: window.scan_manager and window.scan_manager.snapshot()[0]["state"] in {"finished", "partial", "failed", "rejected", "status_unavailable"}, "the owned full-plan run did not finish", timeout=45)
+                run = window.scan_manager.snapshot()[0]
+                self.assertEqual(run["state"], "finished", window.scan_manager.detail(run["id"]))
+                stored = snapshot(run["artifact"])
+                config = json.loads(stored["scan"]["config_json"])
+                self.assertEqual(stored["pages"], 7)
+                self.assertEqual([config["limits"][key] for key in ("max_urls", "max_depth", "max_requests", "max_crawl_seconds")], [0, -1, 0, 0])
+                self.assertEqual(config["storage"]["min_free_bytes"], 12 * 1024**3)
+                self.assertEqual(config["speed"]["min_delay_seconds"], .2)
+                self.assertEqual(config["speed"]["concurrency"], 2)
+                preserve(root, "full-plan-native", {"run": run, "stored": stored, "requests": list(server.hits), "claims": "Seven owned loopback pages. No million-page capacity claim."}, window)
+            finally:
+                close_window(self, window)

@@ -9,7 +9,7 @@ import unittest
 
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QSpinBox
+from PyQt5.QtWidgets import QCheckBox, QApplication, QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QSpinBox
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.scan_runner import crawl_arguments
@@ -87,8 +87,8 @@ class SitemapPlanTests(unittest.TestCase):
                         source = dialog.findChild(QComboBox, "scanSourceMode")
                         source.setCurrentIndex(source.findData("sitemap"))
                         dialog.findChild(QLineEdit, "scanSitemapUrl").setText(target + "/sitemap.xml")
-                        for name, value in (("scanUrlLimit", 10), ("scanRequestBudget", 30), ("scanDurationBudget", 30)):
-                            dialog.findChild(QSpinBox, name).setValue(value)
+                        dialog.findChild(QCheckBox, "scanLimitEnabled").setChecked(True)
+                        dialog.findChild(QSpinBox, "scanUrlLimit").setValue(10)
                         labels = "\n".join(label.text() for label in dialog.findChildren(QLabel))
                         self.assertIn("Только URL из sitemap: " + target + "/sitemap.xml", labels)
                         self.assertIn("Без перехода по ссылкам со страниц", labels)

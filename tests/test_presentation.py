@@ -67,7 +67,7 @@ class PresentationTests(unittest.TestCase):
     def test_run_selection_and_journal_remain_bounded(self):
         runs = [{"id": f"run-{index}", "state": "partial", "events": [{"at": "2026-10-07T00:00:00Z", "phase": "collection", "code": "progress"}] * 40} for index in range(60)]
         self.window.present_observed_runs(runs, None)
-        self.assertEqual(self.window.activity_model.rowCount(), 50)
+        self.assertEqual(self.window.activity_model.rowCount(), 60)
         self.assertEqual(self.window.journal_model.rowCount(), 200)
         self.window.activity_table.selectRow(3)
         self.window.present_observed_runs(runs, None)
@@ -191,7 +191,7 @@ class PresentationTests(unittest.TestCase):
         (project / "project.json").write_text("{}")
         self.window.project_directory = str(project)
         self.window.project_result = {"project": {"site": {"target": "https://fixture.test/"}}}
-        self.window.crawl_descriptor = {**descriptor(), "capabilities": {"sitemap_only_retained": True}}
+        self.window.crawl_descriptor = {**descriptor(), "capabilities": {"sitemap_only_retained": True, "full_site_native_sqlite": True}}
         captured = []
         self.window.launch_scan = lambda *args: captured.append(args)
         def enter_preview():
