@@ -54,7 +54,7 @@ def test_urls_file_enters_the_existing_list_collector_in_source_order(tmp_path, 
     captured = {}
 
     def fake(urls, **kwargs):
-        captured["urls"] = urls
+        captured["urls"] = list(urls)
         captured.update(kwargs)
         from seohead.crawl.collect import CrawlResult
 

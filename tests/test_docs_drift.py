@@ -151,7 +151,7 @@ def test_skills_and_docs_reference_only_existing_commands():
     bad: list[str] = []
     for path in PUBLIC_MARKDOWN:
         text = path.read_text(encoding="utf-8")
-        for used in sorted(set(re.findall(r"seohead\s+([a-z0-9][a-z0-9-]+)", text))):
+        for used in sorted(set(re.findall(r"(?<![\w.-])seohead\s+([a-z0-9][a-z0-9-]+)", text))):
             if used not in known:
                 bad.append(f"{path.relative_to(ROOT)}: seohead {used}")
     assert not bad, "references to non-existent commands: " + "; ".join(bad)

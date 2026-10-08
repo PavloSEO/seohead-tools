@@ -153,6 +153,7 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "report" / "audit.json")
     (tmp_path / "crawl.json").write_text(json.dumps({"limits": {"max_urls": 5}}), encoding="utf-8")
     (tmp_path / "donors.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
+    (tmp_path / "input.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
     images_dir = tmp_path / "images"
     images_dir.mkdir()
     shutil.copy(ROOT / "tests" / "doc_fixtures" / "site" / "image.png", images_dir / "image.png")
@@ -553,6 +554,7 @@ def test_documented_command_executes_or_at_least_still_parses(
             ["boilerplate-report"],
             ["semantic-inputs"],
             ["scan-content-search"],
+            ["scan-inspect"],
         )
         and "--scan" in argv
     ):
