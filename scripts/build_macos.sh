@@ -113,6 +113,11 @@ cp "$scratch/core-manifest.json" "$resources/core-manifest.json"
     --agent "$resources/agent/seohead-desktop-agent/seohead-desktop-agent"
 "$python_bin" "$project_dir/scripts/smoke_bundle.py" --bundle "$bundle"
 
+# Seal the final resource layout after Core, agent and manifest are added.
+# Re-sign only the outer bundle; nested runtime inventories must remain intact.
+codesign --force --sign - "$bundle"
+codesign --verify --deep --strict "$bundle"
+
 mkdir -p "$(dirname -- "$output")"
 mv "$bundle" "$output"
 echo "Created $output"
