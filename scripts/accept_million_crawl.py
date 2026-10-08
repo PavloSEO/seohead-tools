@@ -1311,8 +1311,19 @@ def run_loopback(output: Path, *, pages: int = 8) -> dict[str, Any]:
             )
         if title_missing != 1:
             raise AssertionError("owned HTTP fixture lost its known title finding")
+        # Dispatch slots are reserved at least ``min_delay`` apart, but each
+        # request's arrival timestamp also carries connect and scheduling
+        # jitter, so on a loaded host one server-observed pair can dip slightly
+        # under the delay floor. Pacing evidence is the aggregate window plus a
+        # burst floor that a collapsed throttle cannot meet.
         intervals = [after - before for before, after in itertools.pairwise(received)]
-        if effective_request_rate(settings) > 2 or min(intervals) < 0.45:
+        paced_window = received[-1] - received[0]
+        mean_interval = paced_window / len(intervals)
+        if (
+            effective_request_rate(settings) > 2
+            or min(intervals) < 0.2
+            or mean_interval < 0.45
+        ):
             raise AssertionError(
                 "owned HTTP fixture did not preserve the default 2-request/s pacing"
             )
@@ -1327,6 +1338,7 @@ def run_loopback(output: Path, *, pages: int = 8) -> dict[str, Any]:
             "transport": "real guarded http_client",
             "effective_max_requests_per_second": effective_request_rate(settings),
             "minimum_observed_request_interval_seconds": min(intervals),
+            "mean_observed_request_interval_seconds": mean_interval,
             "requests": len(received),
             "known_title_missing_findings": title_missing,
             "conservation": counts,
