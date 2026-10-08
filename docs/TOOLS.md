@@ -276,7 +276,7 @@ because the rules could not be read, so the command never claims crawling is all
 | Command | What it does |
 |---|---|
 | `site-audit` | Runs a bounded live pass: 10 site-level tools once and 3 page-level tools per selected URL (from the sitemap by default; 25 pages by default). Returns one `seohead.site-audit/1` document. It is not a full crawl or an exhaustive run of the catalog; site-level failures remain in `summary.tools_failed`, while page-level failures remain in that page's issues |
-| `report-build` | Document -> file: `xlsx`, `docx`, `csv`, `md`, `json`; optional `--project --view` applies a saved finding view to a bounded report page while preserving source-wide totals |
+| `report-build` | Document -> file: `xlsx`, `docx`, `csv`, `md`, `json`; XLSX splits large Findings/Pages sheets with a hashed index; optional `--project --view` applies a saved finding view to a bounded report page while preserving source-wide totals |
 | `scan-reanalyze` | Reparse retained HTML/DOM and run existing checks offline into a new SQLite artifact, preserving source evidence and provenance |
 | `facts-export` | Zero-network comparison: reads crawl/site audits you already produced for several domains and returns one `facts.v1` document — measured/absent/partial/unavailable/not_requested facts per site, never a score, rank, or ratio |
 

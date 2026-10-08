@@ -408,9 +408,6 @@ class _AuditV2ReportView:
         self.document = _normalize_sf_audit(metadata)
         if "/suppressed_issues" in reader.collections:
             self.document["suppressed_issues"] = _AuditV2Rows(reader, "/suppressed_issues")
-        if not self.document.get("url"):
-            first_page = next(reader.iter_collection("/pages"), {})
-            self.document["url"] = first_page.get("url", "")
         summary = self.document["summary"]
         source_summary = metadata.get("summary") or {}
         totals = source_summary.get("totals") or {}
@@ -420,11 +417,15 @@ class _AuditV2ReportView:
             raise ValueError("audit.v2 page count disagrees with its saved summary")
         if type(totals.get("issues_total")) is int and totals["issues_total"] != issue_count:
             raise ValueError("audit.v2 issue count disagrees with its saved summary")
-        severity_counts = Counter(
-            issue.get("severity")
-            for issue in reader.iter_collection("/issues")
-            if isinstance(issue, dict)
-        )
+        severity_counts = Counter()
+        for pointer in ("/issues", "/pages"):
+            for ordinal, record in enumerate(reader.iter_collection(pointer), 1):
+                if not isinstance(record, dict):
+                    raise ValueError(f"audit.v2 {pointer} record {ordinal} must be an object")
+                if pointer == "/issues":
+                    severity_counts[record.get("severity")] += 1
+                elif ordinal == 1 and not self.document.get("url"):
+                    self.document["url"] = record.get("url", "")
         summary["pages_checked"] = totals.get("urls_crawled", page_count)
         summary["findings_total"] = totals.get("issues_total", issue_count)
         declared_severity = source_summary.get("by_severity") or {}
@@ -454,14 +455,9 @@ class _AuditV2ReportView:
             return (
                 project_finding(_normalize_sf_issue(issue))
                 for issue in self.reader.iter_collection("/issues")
-                if isinstance(issue, dict)
             )
         if name == "pages":
-            return (
-                _normalize_sf_page(page)
-                for page in self.reader.iter_collection("/pages")
-                if isinstance(page, dict)
-            )
+            return (_normalize_sf_page(page) for page in self.reader.iter_collection("/pages"))
         if name == "summary":
             return self.document["summary"]
         return self.document.get(name, default)
@@ -470,8 +466,6 @@ class _AuditV2ReportView:
         from .client_findings import project_finding
 
         for issue in self.reader.iter_collection("/issues"):
-            if not isinstance(issue, dict):
-                continue
             finding = project_finding(_normalize_sf_issue(issue))
             if severity is None or finding.get("severity") == severity:
                 yield finding
@@ -538,12 +532,15 @@ def _build_audit_v2_report(
         if fmt == "csv"
         else [target]
     )
+    if fmt == "xlsx":
+        targets.append(target.with_suffix(target.suffix + ".index.json"))
     scan_source = getattr(source, "scan_path", source)
     from seohead.storage.inputs import protects_scan_input
 
     if protects_scan_input(scan_source, targets):
         return {"ok": False, "error": "report output must not overwrite its source scan"}
     target.parent.mkdir(parents=True, exist_ok=True)
+    workbook_result = {}
     try:
         if fmt == "pdf":
             from .pdf_stream import write_overview
@@ -568,7 +565,7 @@ def _build_audit_v2_report(
         else:
             from . import xlsx
 
-            xlsx.write_stream(view, target)
+            workbook_result = xlsx.write_stream(view, target)
     except ImportError as exc:
         return {
             "ok": False,
@@ -584,8 +581,9 @@ def _build_audit_v2_report(
         "bytes": target.stat().st_size,
         "findings": view.finding_count,
         "pages": view.page_count,
+        **workbook_result,
     }
-    if fmt == "csv":
+    if fmt in {"csv", "xlsx"}:
         result["outputs"] = [str(candidate) for candidate in targets if candidate.exists()]
     return result
 
@@ -718,6 +716,8 @@ def build_report(
         if fmt == "csv"
         else [target]
     )
+    if fmt == "xlsx":
+        targets.append(target.with_suffix(target.suffix + ".index.json"))
     project_snapshot = None
     project_root = None
     if project is not None:
@@ -734,6 +734,7 @@ def build_report(
     if protects_scan_input(data, targets):
         return {"ok": False, "error": "report output must not overwrite its source scan"}
     target.parent.mkdir(parents=True, exist_ok=True)
+    workbook_result = {}
 
     try:
         if fmt == "pdf":
@@ -768,7 +769,7 @@ def build_report(
                 from seohead.reports import xlsx
                 from seohead.reports.client_findings import project_document
 
-                xlsx.write(project_document(rendered), target)
+                workbook_result = xlsx.write(project_document(rendered), target)
             elif fmt == "docx":
                 from seohead.reports import docx
                 from seohead.reports.client_findings import project_document
@@ -802,11 +803,12 @@ def build_report(
         "bytes": target.stat().st_size,
         "findings": len(rendered.get("findings") or []),
         "pages": len(rendered.get("pages") or []),
+        **workbook_result,
     }
     if input_diagnostics:
         result["input_diagnostics"] = input_diagnostics
     if view_result is not None:
         result["finding_view"] = rendered["summary"]["finding_view"]
-    if fmt == "csv":
+    if fmt in {"csv", "xlsx"}:
         result["outputs"] = [str(candidate) for candidate in targets if candidate.exists()]
     return result

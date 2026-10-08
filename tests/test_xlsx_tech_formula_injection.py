@@ -73,3 +73,27 @@ def test_ordinary_tech_name_is_unchanged(tmp_path):
     assert name_cell.data_type == "s"
     assert name_cell.value == "Next.js"
     assert evidence_cell.value == "detected via build id"
+
+
+def test_summary_metadata_formula_cells_are_text(tmp_path):
+    doc = {
+        **BASE_DOCUMENT,
+        "url": "=1+1",
+        "summary": {
+            **BASE_DOCUMENT["summary"],
+            "tools_failed": [{"tool": "TITLE_MISSING", "error": "=2+2"}],
+            "severity_note": "=3+3",
+        },
+    }
+    target = tmp_path / "metadata.xlsx"
+    result = build_report(doc, "xlsx", str(target))
+    assert result["ok"], result
+    assert result["outputs"] == [str(target), str(target.with_suffix(".xlsx.index.json"))]
+    workbook = load_workbook(target)
+    try:
+        payloads = {"'=1+1", "'=2+2", "'=3+3"}
+        cells = [cell for row in workbook["Summary"] for cell in row]
+        assert payloads.issubset({cell.value for cell in cells})
+        assert all(cell.data_type != "f" for cell in cells)
+    finally:
+        workbook.close()
