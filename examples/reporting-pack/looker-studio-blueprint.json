@@ -4,15 +4,19 @@
   "source_contract": "seohead.bi-manifest.v1",
   "source_mode": "one Google Sheet worksheet per BI dataset",
   "global_controls": [
-    {"field": "run_id", "datasets": ["pages", "findings", "metrics", "link_occurrences", "cohorts", "coverage"]},
+    {"field": "run_id", "report_field_id": "seohead_run_id", "type": "Text", "datasets": ["pages", "findings", "metrics", "link_occurrences", "cohorts", "coverage"]},
     {"field": "state", "dataset": "coverage", "purpose": "scope and completeness disclosure"}
   ],
   "pages": [
     {"id": "overview", "title": "Run scope and coverage", "datasets": ["coverage"], "fields": ["dataset", "state", "source_rows", "exported_rows", "unavailable_rows", "reason"]},
-    {"id": "technical", "title": "Technical URL status and directives", "datasets": ["pages", "cohorts"], "fields": ["url", "status_code", "indexability", "value_label", "state", "reason"]},
-    {"id": "links", "title": "Depth and observed inlinks", "datasets": ["pages", "cohorts", "link_occurrences"], "fields": ["crawl_depth", "unique_inlinks", "numerator", "denominator", "extraction_coverage_state"]},
-    {"id": "content", "title": "Content and metadata screening", "datasets": ["pages", "findings"], "fields": ["url", "title", "meta_description", "h1", "word_count", "check_id", "severity"]},
-    {"id": "performance", "title": "Optional Search Console and Analytics evidence", "datasets": ["metrics", "cohorts"], "fields": ["metric_name", "value_number", "period_start", "period_end", "timezone", "search_value", "sessions_value", "value_label", "state"]}
+    {"id": "technical", "title": "Technical URL status and directives", "datasets": ["pages", "cohorts", "coverage"], "fields": ["url", "status_code", "indexability", "value_label", "state", "reason"]},
+    {"id": "links", "title": "Depth and observed inlinks", "datasets": ["pages", "cohorts", "link_occurrences", "coverage"], "fields": ["crawl_depth", "unique_inlinks", "numerator", "denominator", "extraction_coverage_state", "state", "reason"]},
+    {"id": "content", "title": "Content and metadata screening", "datasets": ["pages", "findings", "coverage"], "fields": ["url", "title", "meta_description", "h1", "word_count", "check_id", "severity", "state", "reason"]},
+    {"id": "performance", "title": "Optional Search Console and Analytics evidence", "datasets": ["metrics", "cohorts", "coverage"], "fields": ["provider", "provider_source_id", "metric_name", "value_number", "value_state", "value_reason", "period_start", "period_end", "timezone", "search_value", "sessions_value", "value_label", "state", "reason"]}
+  ],
+  "date_controls": [
+    {"page": "performance", "dataset": "metrics", "field": "period_start", "group": "gsc_observations", "filter": {"provider": "gsc"}},
+    {"page": "performance", "dataset": "metrics", "field": "period_start", "group": "ga4_observations", "filter": {"provider": "ga4"}}
   ],
   "calculated_fields": [
     {"name": "is_measured_zero", "formula": "CASE WHEN value_state = 'measured' AND value_number = 0 THEN 1 ELSE 0 END", "dataset": "metrics"},
