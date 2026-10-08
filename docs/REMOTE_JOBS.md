@@ -56,6 +56,14 @@ to a local browser. A remote disconnect or timeout follows the same teardown
 path and stays an unavailable render, never a successful scan.
 The API status and result preserve complete/partial/failed/skipped coverage;
 missing audit or report artifacts cannot be presented as complete.
+For a requested JS job, the worker also reads the validated retained render
+summary and rendered-body capability. Exhausted render budgets, unprobed
+patterns, missing rendered documents, and missing or invalid render evidence
+produce a partial job with a fixed reason code. They do not change the separate
+raw crawl completeness flag or discard the available reports. Result reads
+apply the same check to older jobs recorded as finished, without rewriting the
+job, scan, report bytes, or resource budgets. Failed and cancelled jobs keep
+their existing terminal meaning; raw-only jobs do not require rendered evidence.
 
 Artifacts live under private, service-owned project and job directories.
 The scan SQLite file and, when the audit is available, JSON and Markdown

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -60,10 +61,14 @@ class FixtureLimits:
 
         config = self._limits.effective_config(submitted)
         # The API deliberately does not accept storage settings.  This
-        # fixture's trusted service configuration removes only the normal
+        # fixture's trusted service configuration removes the normal
         # 1 GiB preflight reserve so the owned tmpfs can reach a real kernel
         # ENOSPC during the worker's unchanged native capture path.
         config["storage"]["min_free_bytes"] = 0
+        # Both known fixture pages require JavaScript. Use the existing full
+        # policy to avoid redundant probes, retaining the same finite budgets.
+        if config["rendering"]["mode"] == "js":
+            config["rendering"]["escalation"]["policy"] = "full"
         validate(config)
         return config
 
@@ -422,13 +427,10 @@ def execute(evidence: Path, metrics: dict[str, Any]) -> None:
         queue = backend(state, build)
         token = secrets.token_urlsafe(32)
         grants = frozenset({"scan:submit", "scan:list", "scan:read", "scan:cancel", "scan:result"})
-        app = create_app(
-            queue,
-            TokenAuthenticator(
-                {TokenAuthenticator.digest(token): Principal("owned-fixture", {PROJECT: grants})}
-            ),
-            target_policy=queue,
+        authenticator = TokenAuthenticator(
+            {TokenAuthenticator.digest(token): Principal("owned-fixture", {PROJECT: grants})}
         )
+        app = create_app(queue, authenticator, target_policy=queue)
         cert, key = _certificate(root)
         proxy = ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -584,6 +586,19 @@ def execute(evidence: Path, metrics: dict[str, Any]) -> None:
                     saved = state / "projects" / PROJECT / recovered / "scan.sqlite"
                     with sqlite3.connect(saved.as_uri() + "?mode=ro", uri=True) as scan:
                         pages = scan.execute("SELECT title,representation FROM pages").fetchall()
+                        effective = json.loads(
+                            scan.execute("SELECT config_json FROM scan").fetchone()[0]
+                        )
+                    if (
+                        effective["rendering"]["escalation"]["policy"] != "full"
+                        or effective["rendering"]["escalation"]["max_render_seconds"] != 60
+                        or effective["limits"]["max_requests"] != 30
+                        or effective["limits"]["max_crawl_seconds"] != 60
+                    ):
+                        raise AssertionError("recovery changed its finite render/request budgets")
+                    metrics["recovery_render_policy"] = "full"
+                    metrics["recovery_render_seconds"] = 60
+                    metrics["recovery_max_requests"] = 30
                     if pages != [("Rendered worker proof", "rendered")] * 2:
                         raise AssertionError(
                             "recovery did not retain actual rendered page evidence"
@@ -592,6 +607,10 @@ def execute(evidence: Path, metrics: dict[str, Any]) -> None:
                     metrics["job_states"] = [
                         queue.get_job(PROJECT, job).state for job in (baseline, failed, recovered)
                     ]
+                    metrics["stage"] = "queue_backup_restore"
+                    metrics["queue_backup_restore"] = verify_queue_restore(
+                        queue, root / "backup", root / "restored", authenticator, token
+                    )
             metrics["ok"] = True
             metrics["stage"] = "complete"
         finally:
@@ -619,6 +638,88 @@ def preserve_state(state: Path, evidence: Path) -> None:
             source.backup(destination)
     if (state / "observed-write-error.json").exists():
         shutil.copy2(state / "observed-write-error.json", evidence / "observed-write-error.json")
+
+
+def verify_queue_restore(queue, backup: Path, restored: Path, authenticator, token: str) -> dict:
+    """Restore this quiescent synthetic queue and verify the real API without a listener."""
+    from fastapi.testclient import TestClient
+
+    from seohead.remote_api.app import create_app
+    from seohead.remote_api.backend import SQLiteJobBackend
+
+    with queue._db() as con:
+        jobs = con.execute("SELECT * FROM jobs ORDER BY created_at,rowid LIMIT 101").fetchall()
+    if len(jobs) > 100 or any(row["state"] in {"running", "cancel_requested"} for row in jobs):
+        raise ValueError("backup fixture requires a bounded quiescent queue")
+    backup.mkdir(mode=0o700, exist_ok=False)
+    preserve_state(queue.root, backup)
+    (backup / "jobs.sqlite").chmod(0o600)
+    shutil.copytree(backup, restored)
+    recovered = SQLiteJobBackend(
+        restored,
+        queue.projects,
+        producer_build=queue.producer_build,
+        max_active_jobs=queue.max_active_jobs,
+        lease_seconds=queue.lease_seconds,
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    artifacts = 0
+    with (
+        TestClient(create_app(queue, authenticator, target_policy=queue)) as original,
+        TestClient(create_app(recovered, authenticator, target_policy=recovered)) as client,
+    ):
+        for row in jobs:
+            route = f"/api/v1/projects/{row['project_id']}/scans"
+            job_route = f"{route}/{row['job_id']}"
+            if client.get(job_route).status_code != 401:
+                raise AssertionError("restored job allowed anonymous access")
+            foreign = f"/api/v1/projects/ungranted/scans/{row['job_id']}"
+            if client.get(foreign, headers=headers).status_code != 404:
+                raise AssertionError("restored job escaped project authorization")
+            before = original.get(job_route, headers=headers)
+            after = client.get(job_route, headers=headers)
+            if (
+                before.status_code != 200
+                or after.status_code != 200
+                or before.json() != after.json()
+            ):
+                raise AssertionError("restored job status changed")
+            result = client.get(f"{job_route}/result", headers=headers)
+            before_result = original.get(f"{job_route}/result", headers=headers)
+            if (result.status_code, result.json()) != (
+                before_result.status_code,
+                before_result.json(),
+            ):
+                raise AssertionError("restored coverage or artifact references changed")
+            for artifact in result.json().get("artifacts", []):
+                path = f"{job_route}/artifacts/{artifact['artifact_id']}"
+                before_file = original.get(path, headers=headers)
+                after_file = client.get(path, headers=headers)
+                if (
+                    client.get(path).status_code != 401
+                    or before_file.status_code != 200
+                    or after_file.status_code != 200
+                    or len(after_file.content) != artifact["size_bytes"]
+                    or hashlib.sha256(before_file.content).digest()
+                    != hashlib.sha256(after_file.content).digest()
+                ):
+                    raise AssertionError("restored authenticated artifact bytes changed")
+                artifacts += 1
+            replay = client.post(
+                route,
+                headers={**headers, "Idempotency-Key": row["idempotency_key"]},
+                json=json.loads(row["request_json"]),
+            )
+            if replay.status_code != 200 or replay.json() != after.json():
+                raise AssertionError("restored submission lost persistent idempotency")
+    return {
+        "jobs": len(jobs),
+        "artifacts": artifacts,
+        "queued_jobs": sum(row["state"] == "queued" for row in jobs),
+        "authenticated_bytes_unchanged": True,
+        "project_authorization": True,
+        "idempotency_preserved": True,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

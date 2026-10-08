@@ -173,6 +173,44 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _render_coverage_reason(scan_path: Path, mode: str) -> str:
+    """Project retained rendering coverage without changing crawl completeness."""
+    if mode == "raw":
+        return ""
+    from seohead.storage import open_scan
+    from seohead.storage.inputs import resolve_audit_source
+    from seohead.storage.render_summary import FIELDS, validate
+
+    source = None
+    try:
+        source, _ = resolve_audit_source(scan_path)
+        header = source.header if hasattr(source, "header") else source
+        summary = header["run"]["render_escalation"]
+        validate({key: summary[key] for key in FIELDS})
+        if summary["mode"] != mode:
+            return "render_evidence_unavailable"
+        if summary["time_budget_exhausted"]:
+            return "render_time_budget_exhausted"
+        if summary["render_budget_exhausted"] or summary["patterns_partially_rendered"]:
+            return "render_url_budget_exhausted"
+        if summary["patterns_unprobed"]:
+            return "render_probe_unavailable"
+        with closing(open_scan(scan_path, require_audit=False)) as con:
+            capabilities = json.loads(
+                con.execute("SELECT capabilities_json FROM scan WHERE singleton=1").fetchone()[0]
+            )
+        if capabilities["rendered_bodies"]["state"] != "complete":
+            return "rendered_evidence_incomplete"
+        return ""
+    except Exception:
+        # Missing or invalid requested measurements cannot become complete.
+        # Reasons are fixed codes; protected pattern URLs stay in the audit.
+        return "render_evidence_unavailable"
+    finally:
+        if hasattr(source, "close"):
+            source.close()
+
+
 class SQLiteJobBackend:
     """SQLite queue and artifact registry implementing ``JobBackend``.
 
@@ -496,6 +534,13 @@ class SQLiteJobBackend:
             if status.state == "cancelled" and evidence is None
             else "failed"
         )
+        render_reason = ""
+        if audit_available and status.state in {"finished", "partial"}:
+            render_reason = _render_coverage_reason(
+                scan_path, json.loads(row["config_json"])["rendering"]["mode"]
+            )
+            if coverage == "complete" and render_reason:
+                coverage = "partial"
         references = [
             ArtifactReference(
                 artifact_id=item["artifact_id"],
@@ -519,7 +564,7 @@ class SQLiteJobBackend:
             audit_reason=(
                 "required report artifact unavailable"
                 if audit_available and not artifacts_complete
-                else ""
+                else render_reason
                 if audit_available
                 else row["audit_reason"] or "audit unavailable"
             ),
@@ -911,6 +956,11 @@ class SQLiteJobBackend:
             else:
                 raise ValueError("collector returned without a retained scan")
             audit_available = bool(outcome.get("audit_available"))
+            render_reason = (
+                _render_coverage_reason(scan_path, request.options.rendering_mode)
+                if audit_available
+                else ""
+            )
             report_ok = audit_available
             if audit_available:
                 from seohead.servers.handlers import report_build
@@ -929,13 +979,15 @@ class SQLiteJobBackend:
                     artifacts[kind] = final
                     if self._project_usage(project_id) > limits.max_disk_bytes:
                         raise WorkerResourceLimit("project disk quota reached")
-            partial = bool(outcome.get("partial")) or not report_ok
+            partial = bool(outcome.get("partial")) or bool(render_reason) or not report_ok
             state = "partial" if partial else "finished"
             reason = (
                 "report_unavailable"
                 if audit_available and not report_ok
                 else "audit_unavailable"
                 if not audit_available
+                else render_reason
+                if render_reason
                 else "crawl_partial"
                 if partial
                 else "finished"
@@ -946,7 +998,9 @@ class SQLiteJobBackend:
                 state=state,
                 reason=reason,
                 audit_available=audit_available,
-                audit_reason="" if audit_available else "audit was unavailable after collection",
+                audit_reason=render_reason
+                if audit_available
+                else "audit was unavailable after collection",
                 artifacts=artifacts,
             )
         except WorkerLeaseLost:
