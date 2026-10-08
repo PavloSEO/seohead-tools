@@ -211,6 +211,39 @@ def _redirect_chain(con: sqlite3.Connection, history: tuple[dict[str, Any], ...]
     return json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
 
 
+def _retained_body_bytes(con: sqlite3.Connection) -> int:
+    """Count once per writer connection, then follow transactional body changes.
+
+    TEMP state preserves the durable scan format and rolls back with its writes.
+    Reopened connections rebuild from retained evidence before enforcing budgets.
+    """
+    if not con.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE name='native_body_store_bytes'"
+    ).fetchone():
+        con.execute("SAVEPOINT native_body_bytes_init")
+        try:
+            con.execute("CREATE TEMP TABLE native_body_store_bytes(value INTEGER NOT NULL)")
+            con.execute(
+                "INSERT INTO native_body_store_bytes SELECT COALESCE(SUM(stored_bytes),0) FROM bodies"
+            )
+            for action, delta in (
+                ("INSERT", "NEW.stored_bytes"),
+                ("DELETE", "-OLD.stored_bytes"),
+                ("UPDATE OF stored_bytes", "NEW.stored_bytes-OLD.stored_bytes"),
+            ):
+                name = action.split()[0].lower()
+                con.execute(
+                    f"CREATE TEMP TRIGGER native_body_bytes_{name} AFTER {action} ON main.bodies "
+                    f"BEGIN UPDATE native_body_store_bytes SET value=value+({delta}); END"
+                )
+        except BaseException:
+            con.execute("ROLLBACK TO native_body_bytes_init")
+            raise
+        finally:
+            con.execute("RELEASE native_body_bytes_init")
+    return con.execute("SELECT value FROM temp.native_body_store_bytes").fetchone()[0]
+
+
 def _reserve_unique_bytes(
     con: sqlite3.Connection, encoded: dict[str, object], policy: dict[str, Any]
 ) -> bool:
@@ -219,10 +252,7 @@ def _reserve_unique_bytes(
         return True
     budget = policy["max_body_store_bytes"]
     stored_bytes = int(encoded["stored_bytes"])
-    if stored_bytes and (
-        con.execute("SELECT COALESCE(SUM(stored_bytes),0) FROM bodies").fetchone()[0] + stored_bytes
-        > budget
-    ):
+    if stored_bytes and (_retained_body_bytes(con) + stored_bytes > budget):
         return False
     con.execute(
         "INSERT INTO bodies(sha256,codec,decoded_bytes,stored_bytes,data) VALUES(?,?,?,?,?)",
