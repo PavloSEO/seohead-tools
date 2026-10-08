@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 import re
 import urllib.error
@@ -457,3 +458,36 @@ def test_atomic_commit_timeout_requires_reconciliation_without_claiming_success(
     )
     assert result["state"] == ("reconciliation_required" if applied else "committed")
     assert sum("copyPaste" in str(request["body"]) for request in remote.requests) == 1
+
+
+@pytest.mark.parametrize("changed", ["manifest", "partition"])
+def test_source_mutation_during_staging_never_publishes_against_the_old_manifest(tmp_path, changed):
+    package = _selected(tmp_path, ["url", "status_code"])
+    mapping = {"pages": {"worksheet_id": 0, "worksheet_title": "pages"}}
+    remote = SheetsDouble(mapping)
+    client = _client(mapping, remote)
+    original = client.begin
+
+    def mutate_after_begin(**kwargs):
+        transaction = original(**kwargs)
+        if changed == "manifest":
+            path = package / "manifest.json"
+            path.write_text(path.read_text() + "\n")
+        else:
+            manifest = json.loads((package / "manifest.json").read_text())
+            path = package / manifest["partitions"][0]["path"]
+            with path.open(newline="") as stream:
+                rows = list(csv.reader(stream))
+            rows[1][1] = "201"
+            with path.open("w", newline="") as stream:
+                csv.writer(stream).writerows(rows)
+        return transaction
+
+    client.begin = mutate_after_begin
+    result = apply_with_client(
+        package, target="synthetic", operation="replace", client=client, apply=True
+    )
+    assert result["state"] == "failed"
+    assert "row_conservation" not in result
+    assert remote.values == {"pages": [["previous value"]]}
+    assert not any("copyPaste" in str(request["body"]) for request in remote.requests)

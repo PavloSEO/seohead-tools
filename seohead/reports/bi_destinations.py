@@ -2136,6 +2136,10 @@ def apply_with_client(
                 _save_state(checkpoint, state)
             if entry["written_rows"] != info["rows"]:
                 raise BIDestinationError(f"destination row conservation failed for {name!r}")
+        if hashlib.sha256((root / "manifest.json").read_bytes()).hexdigest() != manifest_sha256:
+            raise BIDestinationError("BI manifest changed during destination staging")
+        if _verify_partitions(root, manifest) != datasets:
+            raise BIDestinationError("BI package changed during destination staging")
         state["pending"] = {"kind": "commit"}
         state["status"] = "commit_pending"
         _save_state(checkpoint, state)

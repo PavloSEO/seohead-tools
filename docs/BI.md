@@ -123,6 +123,8 @@ worksheet IDs and deletes the temporary sheets. Formatting, data-source referenc
 configuration remain attached to the original IDs. A response timeout at this final request is
 reported as `reconciliation_required`, never as a successful publish. Sheets append is deliberately
 refused because the API has no local idempotency ledger for an exact package replay.
+The manifest and every partition are checked again after staging and before publication. A source
+change aborts the staged replacement instead of publishing changed values under an older hash.
 Two datasets cannot share a worksheet ID or title. Capacity preflight includes existing allocated
 cells, temporary sheets and any required growth of the target grids. Grid growth occurs in the
 same atomic publication batch as the value copy, preserving the existing worksheet IDs.
