@@ -515,7 +515,10 @@ def test_google_sheets_replace_uses_one_atomic_swap_and_preserves_target_sheet_i
     assert result["row_conservation"] == "verified"
     commit = requests[-1]["body"]["requests"]
     assert all(
-        "updateCells" in request or "copyPaste" in request or "deleteSheet" in request
+        "updateCells" in request
+        or "copyPaste" in request
+        or "deleteSheet" in request
+        or "updateSheetProperties" in request
         for request in commit
     )
     assert {
@@ -826,7 +829,9 @@ def _restartable_sheets_fetcher(worksheets):
         if request["method"] == "GET" and "/values/" not in url:
             return {"sheets": [{"properties": value} for value in remote["sheets"].values()]}
         if request["method"] == "GET" and "/values/" in url:
-            return {"values": remote["values"].get(url.split("/values/", 1)[1], [])}
+            return {
+                "values": remote["values"].get(url.split("/values/", 1)[1].split("?", 1)[0], [])
+            }
         if url.endswith("/values:batchUpdate"):
             values = body["data"][0]["values"]
             remote["values"][body["data"][0]["range"]] = values
