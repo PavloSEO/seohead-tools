@@ -687,8 +687,8 @@ DESCRIPTIONS: dict[str, str] = {
     "discovery.external.crawl": (
         "After the internal frontier closes, check each recorded external destination once "
         "— opt-in, bounded by external_checks.*, never recursive. Requires "
-        "discovery.external.store and a site crawl (--url); refused on the native SQLite "
-        "route and in list mode."
+        "discovery.external.store and a site crawl (--url), including native SQLite; "
+        "refused in list mode."
     ),
     "discovery.follow_nofollow": "Follow links marked rel=nofollow instead of skipping them.",
     "discovery.resolve_redirect_destination": (
