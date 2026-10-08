@@ -127,6 +127,33 @@ def test_spooled_resume_refuses_missing_or_shortened_form_evidence(tmp_path):
         _crawl(path, spooled=True)
 
 
+@pytest.mark.parametrize("filename", ["pages.jsonl", "links.jsonl", "forms.jsonl"])
+@pytest.mark.parametrize("tail", [b'{"torn":', b"{}", b"[]\n", b"broken\n", b"\xff\n"])
+def test_spooled_resume_refuses_corrupt_rows_without_changing_evidence(tmp_path, filename, tail):
+    path = tmp_path / "resumed"
+    _crawl(path, spooled=True, interrupt_b_once=True)
+    sidecar = path / filename
+    sidecar.write_bytes(sidecar.read_bytes() + tail)
+    before = {item.name: item.read_bytes() for item in path.iterdir() if item.is_file()}
+
+    with pytest.raises(ValueError, match="checkpoint evidence sidecar"):
+        _crawl(path, spooled=True)
+
+    assert {item.name: item.read_bytes() for item in path.iterdir() if item.is_file()} == before
+
+
+@pytest.mark.parametrize("filename", ["pages.jsonl", "links.jsonl"])
+def test_spooled_resume_does_not_recreate_a_missing_sidecar(tmp_path, filename):
+    path = tmp_path / "resumed"
+    _crawl(path, spooled=True, interrupt_b_once=True)
+    (path / filename).unlink()
+
+    with pytest.raises(ValueError, match="checkpoint evidence sidecar is missing"):
+        _crawl(path, spooled=True)
+
+    assert not (path / filename).exists()
+
+
 def test_spooled_resume_migrates_v4_inline_forms(tmp_path):
     path = tmp_path / "legacy"
     path.mkdir()
@@ -233,3 +260,81 @@ def test_robots_failure_does_not_turn_unread_prior_sidecars_into_a_clean_audit(
     assert (out_dir / result["stale_reports"]["audit.json"]).read_text(encoding="utf-8") == (
         '{"old":"audit"}'
     )
+
+
+def test_public_legacy_resume_preserves_ordered_evidence_findings_and_coverage(
+    tmp_path, monkeypatch
+):
+    pages = {
+        "https://example.test/": Response(
+            '<html><head><title>Root</title></head><body><nav><a href="/a" rel="nofollow">A</a></nav>'
+            '<main><a href="/a">A</a><a href="/old">Old</a><a href="http://localhost/local">Local</a>'
+            '<form action="http://example.test/send"><input type="password"></form></main></body></html>'
+        ),
+        "https://example.test/a": Response('<html><body><a href="/final">Final</a></body></html>'),
+        "https://example.test/old": Response(""),
+        "https://example.test/final": Response(
+            "<html><head><title>Final</title></head><body>Done</body></html>"
+        ),
+    }
+    pages["https://example.test/old"].status_code = 301
+    pages["https://example.test/old"].headers["location"] = "/final"
+    interrupt = True
+
+    def fetch(url):
+        nonlocal interrupt
+        if url == "https://example.test/old" and interrupt:
+            interrupt = False
+            raise KeyboardInterrupt
+        return pages[url]
+
+    original = spider.crawl_site
+    original_audit = handlers._audit_crawl_result
+    evidence = []
+
+    def injected(*args, **kwargs):
+        return original(*args, fetcher=fetch, sleeper=lambda _: None, **kwargs)
+
+    def audited(result, **kwargs):
+        evidence.append(
+            {
+                "pages": [
+                    {key: value for key, value in asdict(page).items() if key != "response_time"}
+                    for page in result.pages
+                ],
+                "links": [asdict(link) for link in result.links],
+                "forms": [asdict(form) for form in result.forms],
+            }
+        )
+        return original_audit(result, **kwargs)
+
+    monkeypatch.setattr(spider, "crawl_site", injected)
+    monkeypatch.setattr(handlers, "_audit_crawl_result", audited)
+    options = {
+        "url": "https://example.test/",
+        "robots": "ignore",
+        "min_delay": 0,
+        "overrides": {"sitemaps.auto_discover": False, "link_position.classify": True},
+    }
+    resumed_dir = tmp_path / "resumed"
+    first = handlers.crawl_site(out_dir=str(resumed_dir), **options)
+    assert first["partial"] and first["finish_reason"] == "interrupted"
+    resumed = handlers.crawl_site(out_dir=str(resumed_dir), **options)
+    full_dir = tmp_path / "full"
+    full = handlers.crawl_site(out_dir=str(full_dir), **options)
+    assert resumed["resumed"] and not full["resumed"]
+    assert resumed["finish_reason"] == full["finish_reason"] == "finished"
+    assert evidence[-2] == evidence[-1]
+    assert len(evidence[-1]["pages"]) == 4
+    assert any(page["redirect_url"] for page in evidence[-1]["pages"])
+    assert evidence[-1]["forms"]
+    assert {link["position"] for link in evidence[-1]["links"]} >= {"nav", "content"}
+    resumed_audit = json.loads((resumed_dir / "audit.json").read_text())
+    full_audit = json.loads((full_dir / "audit.json").read_text())
+    assert resumed_audit["issues"] == full_audit["issues"]
+    assert resumed_audit["summary"] == full_audit["summary"]
+    assert resumed_audit["run"]["checks_skipped"] == full_audit["run"]["checks_skipped"]
+    assert {issue["check"] for issue in full_audit["issues"]} >= {
+        "OUTLINK_TO_LOCALHOST",
+        "FORM_URL_INSECURE",
+    }
