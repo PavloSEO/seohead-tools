@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import random
 import threading
 from collections import OrderedDict
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
-
 
 TOOL_ALLOWLIST = frozenset(
     {
@@ -36,6 +38,7 @@ TOOL_ALLOWLIST = frozenset(
     }
 )
 OPTIONAL_TOOLS = frozenset({"seo_scan_content_search", "seo_scan_content_search_page"})
+_WRITE_TOOLS = frozenset({"seo_project_inbox_submit", "seo_compare_crawls", "seo_verify_fixes"})
 
 _DIRECTORY_TOOLS = frozenset(
     {
@@ -110,20 +113,62 @@ class PersistentMcpGateway(QRunnable):
     most recent request per panel, which prevents refresh bursts from queuing.
     """
 
-    def __init__(self, executable: str):
+    def __init__(
+        self,
+        executable: str,
+        *,
+        startup_timeout: float = 15.0,
+        read_timeout: float = 60.0,
+        tool_timeouts: Mapping[str, float] | None = None,
+    ):
         super().__init__()
+        self.startup_timeout = startup_timeout
+        self.read_timeout = read_timeout
+        # Retained comparisons may traverse large scans and write an immutable report.
+        self.tool_timeouts = {"seo_compare_crawls": 900.0, "seo_verify_fixes": 900.0}
+        self.tool_timeouts.update(tool_timeouts or {})
+        if self.tool_timeouts.keys() - TOOL_ALLOWLIST:
+            raise ValueError("deadline override requires a declared desktop MCP tool")
+        if any(
+            isinstance(value, bool) or not math.isfinite(value) or value <= 0
+            for value in (startup_timeout, read_timeout, *self.tool_timeouts.values())
+        ):
+            raise ValueError("MCP deadlines must be finite positive seconds")
         self.executable = executable
         self.signals = GatewaySignals()
         self._pending: OrderedDict[str, Request] = OrderedDict()
         self._condition = threading.Condition()
         self._stopped = False
         self._scope: Path | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._wakeup: asyncio.Event | None = None
+        self._connection_scope = None
+        self._connection_aborted = False
+        self._active: Request | None = None
+        self._active_cancelled = False
+
+    def _notify(self, *, abort: bool = False) -> None:
+        """Called under the condition; all async state stays on the worker loop."""
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._wakeup.set)
+            if abort and self._connection_scope is not None:
+                self._loop.call_soon_threadsafe(self._connection_scope.cancel)
+
+    def _cancel_active(self) -> None:
+        if self._active is not None:
+            self._active_cancelled = True
+            # Do not interrupt an explicit note/report write when cancelling reads.
+            abort = self._active.tool not in _WRITE_TOOLS
+            self._connection_aborted |= abort
+            self._notify(abort=abort)
 
     def set_project_scope(self, directory: str) -> None:
         root = Path(directory).resolve()
         if not (root / "project.json").is_file():
             raise ValueError("project scope must contain project.json")
         with self._condition:
+            if root != self._scope:
+                self._cancel_active()
             self._scope = root
             self._pending.clear()
 
@@ -135,7 +180,7 @@ class PersistentMcpGateway(QRunnable):
                 raise RuntimeError("MCP gateway is stopped")
             self._pending[request_id] = request
             self._pending.move_to_end(request_id)
-            self._condition.notify()
+            self._notify()
 
     def cancel_generation(self, generation: int) -> None:
         with self._condition:
@@ -144,12 +189,14 @@ class PersistentMcpGateway(QRunnable):
                 for key, request in self._pending.items()
                 if request.generation != generation
             )
+            if self._active is not None and self._active.generation == generation:
+                self._cancel_active()
 
     def stop(self) -> None:
         with self._condition:
             self._stopped = True
             self._pending.clear()
-            self._condition.notify_all()
+            self._notify(abort=True)
 
     def _validate(self, tool: str, arguments: dict[str, Any]) -> None:
         if tool not in TOOL_ALLOWLIST or not isinstance(arguments, dict):
@@ -195,60 +242,119 @@ class PersistentMcpGateway(QRunnable):
                 if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(not isinstance(item, str) or not item for item in ids):
                     raise ValueError("offline verification is bounded to 100 selected finding IDs")
 
-    def _next_request(self) -> Request | None:
-        with self._condition:
-            while not self._stopped and not self._pending:
-                self._condition.wait(timeout=0.25)
-            if self._stopped:
-                return None
-            _key, request = self._pending.popitem(last=False)
-            return request
+    async def _next_request(self) -> Request | None:
+        while True:
+            with self._condition:
+                if self._stopped:
+                    return None
+                if self._pending:
+                    _key, request = self._pending.popitem(last=False)
+                    self._active = request
+                    self._active_cancelled = False
+                    return request
+                self._wakeup.clear()
+            await self._wakeup.wait()
 
-    async def _serve(self) -> None:
+    async def _serve_connection(self) -> str | None:
+        import anyio
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 
-        failures = 0
-        active: Request | None = None
-        while not self._stopped:
-            try:
+        phase, timeout = "startup", self.startup_timeout
+        error = None
+        try:
+            # One scope owns the SDK transport, session and subprocess. Cancelling
+            # it also interrupts SDK cleanup, which reaps its owned child even if
+            # the peer never reads stdin or answers initialize/tools/call.
+            with anyio.CancelScope(deadline=anyio.current_time() + timeout) as scope:
+                with self._condition:
+                    self._connection_scope = scope
+                    self._connection_aborted = False
+                    if self._stopped:
+                        scope.cancel()
                 parameters = StdioServerParameters(command=self.executable, args=["mcp"])
                 async with (
                     stdio_client(parameters) as (reader, writer),
-                    ClientSession(reader, writer) as session,
+                    ClientSession(reader, writer, read_timeout_seconds=timedelta(seconds=timeout)) as session,
                 ):
-                    await session.initialize()
-                    advertised = {tool.name for tool in (await session.list_tools()).tools}
-                    missing = TOOL_ALLOWLIST - advertised
-                    if missing:
-                        raise RuntimeError("bundled core misses desktop tools: " + ", ".join(sorted(missing)))
-                    self.signals.ready.emit(tuple(sorted((TOOL_ALLOWLIST | OPTIONAL_TOOLS) & advertised)))
-                    failures = 0
-                    while True:
-                        request = await asyncio.to_thread(self._next_request)
-                        if request is None:
-                            return
-                        active = request
-                        try:
-                            response = await session.call_tool(request.tool, request.arguments)
-                            self.signals.result.emit(
-                                request.request_id, payload(response), request.generation
+                    try:
+                        await session.initialize()
+                        advertised = {tool.name for tool in (await session.list_tools()).tools}
+                        missing = TOOL_ALLOWLIST - advertised
+                        if missing:
+                            raise RuntimeError("bundled core misses desktop tools: " + ", ".join(sorted(missing)))
+                        with self._condition:
+                            if not self._stopped:
+                                self.signals.ready.emit(tuple(sorted((TOOL_ALLOWLIST | OPTIONAL_TOOLS) & advertised)))
+                        scope.deadline = math.inf
+                        while (request := await self._next_request()) is not None:
+                            phase = request.tool
+                            timeout = self.tool_timeouts.get(request.tool, self.read_timeout)
+                            scope.deadline = anyio.current_time() + timeout
+                            response = await session.call_tool(
+                                request.tool, request.arguments,
+                                read_timeout_seconds=timedelta(seconds=timeout),
                             )
-                        except Exception as exc:
-                            self.signals.failed.emit(request.request_id, str(exc), request.generation)
-                        finally:
-                            active = None
-            except Exception as exc:  # transport/bootstrap errors are retried with bounded backoff
+                            with self._condition:
+                                if not self._stopped and not self._active_cancelled:
+                                    try:
+                                        result = payload(response)
+                                    except (ValueError, TypeError) as exc:
+                                        self.signals.failed.emit(request.request_id, str(exc), request.generation)
+                                    else:
+                                        self.signals.result.emit(request.request_id, result, request.generation)
+                                self._active = None
+                                self._active_cancelled = False
+                            scope.deadline = math.inf
+                    except Exception:
+                        scope.cancel()
+                        raise
+            if scope.cancel_called:
+                error = f"Local MCP {phase} timed out after {timeout:g} seconds"
+        except Exception as exc:  # noqa: BLE001 - reconnect after SDK bootstrap/transport failure
+            while len(getattr(exc, "exceptions", ())) == 1:
+                exc = exc.exceptions[0]
+            error = str(exc)
+        finally:
+            with self._condition:
+                if self._stopped or self._connection_aborted or self._active_cancelled:
+                    error = None
+                if error and self._active is not None:
+                    request = self._active
+                    self.signals.failed.emit(request.request_id, error, request.generation)
+                self._active = None
+                self._active_cancelled = False
+                self._connection_scope = None
+        return error
+
+    async def _serve(self) -> None:
+        with self._condition:
+            self._loop = asyncio.get_running_loop()
+            self._wakeup = asyncio.Event()
+        failures = 0
+        try:
+            while not self._stopped:
+                error = await self._serve_connection()
                 if self._stopped:
                     return
-                if active is not None:
-                    self.signals.failed.emit(active.request_id, str(exc), active.generation)
-                    active = None
-                self.signals.transport_failed.emit(str(exc))
+                if error is None:
+                    failures = 0
+                    continue
+                self.signals.transport_failed.emit(error)
                 delay = min(4.0, 0.25 * (2**failures)) + random.uniform(0.0, 0.1)
                 failures = min(failures + 1, 4)
-                await asyncio.sleep(delay)
-        self.signals.stopped.emit()
+                with self._condition:
+                    if self._stopped:
+                        return
+                    self._wakeup.clear()
+                try:
+                    await asyncio.wait_for(self._wakeup.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    pass
+        finally:
+            with self._condition:
+                self._loop = None
+                self._wakeup = None
 
     def run(self) -> None:
         try:
