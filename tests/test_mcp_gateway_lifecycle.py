@@ -68,6 +68,8 @@ for line in sys.stdin:
         record("call", tool=name)
         if mode == "hang_call" or (mode == "first_call" and first()):
             block(name)
+        if name == "seo_project_inbox_submit":
+            record("note_written", text=request["params"]["arguments"].get("text"))
         if mode == "disconnect" and first():
             os._exit(0)
         if mode == "hold_write" and name == "seo_project_inbox_submit":
@@ -306,6 +308,21 @@ class McpGatewayLifecycleTests(unittest.TestCase):
         self.assertEqual([item[0] for item in self.results], ["latest"])
         self.assertEqual([item[0] for item in self.failures], ["disconnected"])
         self.assertEqual(len(self.events("call")), 2)
+
+    def test_note_accepted_before_disconnect_is_not_replayed_without_acknowledgement(self):
+        self.start("disconnect")
+        (self.root / "project.json").write_text("{}")
+        self.gateway.set_project_scope(str(self.root))
+        self.gateway.submit("unconfirmed-note", "seo_project_inbox_submit", {
+            "directory": str(self.root), "text": "Synthetic note", "kind": "note",
+            "author_role": "specialist", "expected_revision": 0,
+        }, 1)
+        self.submit("latest", 2)
+        self.wait_for(lambda: self.results, "peer did not recover after losing the write acknowledgement")
+        self.assertEqual([item[0] for item in self.results], ["latest"])
+        self.assertEqual([item[0] for item in self.failures], ["unconfirmed-note"])
+        self.assertEqual([item["text"] for item in self.events("note_written")], ["Synthetic note"])
+        self.assertEqual(len(self.events("started")), 2)
 
     def test_stop_during_reconnect_backoff_and_before_start_is_idempotent(self):
         self.start("hang_initialize", startup_timeout=0.2)
