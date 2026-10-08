@@ -258,7 +258,7 @@ WORKFLOWS: tuple[WorkflowRow, ...] = (
             "provider-collect",
         ),
         status="partial",
-        auth="OAuth bearer for both providers",
+        auth="Metrika: OAuth bearer; GA4: OAuth bearer or shared Google service account",
         cost_quota="Free within Metrika and GA4 Data API quotas",
         privacy="restricted — may contain personal identifiers; kept out of reports and commits",
         limitations=(
