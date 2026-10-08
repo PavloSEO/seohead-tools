@@ -1,0 +1,12 @@
+{
+  "schema": "seohead.desktop.demo.v1",
+  "label": "Демо: магазин",
+  "source": "synthetic, no network",
+  "rows": [
+    {"url":"https://shop.example.test/","status":200,"type":"HTML","indexability":"Indexable","title":"Демо-магазин","issues":0},
+    {"url":"https://shop.example.test/catalog/","status":200,"type":"HTML","indexability":"Indexable","title":"Каталог","issues":1},
+    {"url":"https://shop.example.test/catalog/chair/","status":200,"type":"HTML","indexability":"Indexable","title":"Стул — демонстрация","issues":2},
+    {"url":"https://shop.example.test/old-product/","status":301,"type":"HTML","indexability":"Redirect","title":null,"issues":1},
+    {"url":"https://shop.example.test/missing/","status":404,"type":"HTML","indexability":"Non-indexable","title":"Не найдено","issues":1}
+  ]
+}
