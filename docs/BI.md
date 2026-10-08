@@ -160,6 +160,25 @@ A workbook without its completed index after a process crash is incomplete. Caug
 remove newly published output; they never change the source package. Worksheets and spool bytes
 are bounded separately, and no external spreadsheet service is involved.
 
+The ordinary `report-build --format xlsx` consumer also streams retained audit.v2 rows.
+Its Findings and Pages sheets split deterministically after 1,048,575 data rows, with one
+header on each sheet (`Findings`, `Findings 2`, and so on). The adjacent `.xlsx.index.json`
+records the workbook SHA-256 and bytes, exact one-based record ranges, source population,
+saved finding-view selection and coverage worksheet names. Read both artifacts together;
+an absent index or a workbook hash mismatch means publication is incomplete. Table row counts
+describe the exported view, while Summary retains the original run's coverage and totals.
+The capped Suppressed Findings preview declares its omitted count and points to complete
+CSV scope output or source JSON.
+
+This writer allows at most 10,000 worksheets, 32,767 characters per cell after formula
+protection, and 4 GiB of worksheet spool or workbook bytes. It checks free space on the archive
+and spool volumes and fails explicitly instead of clipping cells or sampling rows. Existing
+report/index files survive caught archive or publication failures. Malformed retained finding
+or page records fail before output; they cannot be skipped behind unchanged source counts.
+Use CSV/JSON for cells or populations outside these bounds. The separate audit.v2 PDF
+`overview-v1` policy remains a bounded overview with complete JSON/CSV companions and manifest.
+These limits and boundary tests are not a claim of a million-page end-to-end crawl benchmark.
+
 Finding-group, provider-pair and eligible-inlink lookups use a disposable SQLite index with a
 2 MiB page cache and a 2 GiB main-file ceiling, not URL-sized Python dictionaries. The audit.v2
 page overlay is separately disk bounded. Individual source records and manifest/partition counts

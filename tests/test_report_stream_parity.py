@@ -141,3 +141,27 @@ def test_csv_suppression_export_does_not_retain_rendered_rows():
     assert "4999:" in last[3]
     # Retaining the formatted reasons alone would consume over 10 MB.
     assert peak < 2 * 1024 * 1024
+
+
+@pytest.mark.parametrize("collection", ["issues", "pages"])
+@pytest.mark.parametrize("fmt", ["csv", "xlsx", "json"])
+def test_malformed_retained_rows_fail_before_publishing_incomplete_report(
+    tmp_path, collection, fmt
+):
+    scan = tmp_path / "malformed.sqlite"
+    binding = _scan(scan)
+    header = {
+        "schema_version": "2.0",
+        "run": {},
+        "summary": {},
+        "issues": [],
+        "pages": [],
+        "groups": [],
+    }
+    collections = {"/issues": [], "/pages": []}
+    collections[f"/{collection}"] = [None, {"url": "https://example.test/exact"}]
+    write_audit_v2(scan, header, collections, binding)
+    target = tmp_path / f"invalid.{fmt}"
+    result = build_report(scan, fmt, str(target))
+    assert result == {"ok": False, "error": f"audit.v2 /{collection} record 1 must be an object"}
+    assert not list(tmp_path.glob("invalid.*"))
