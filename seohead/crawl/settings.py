@@ -26,10 +26,9 @@ import os
 import re
 from typing import Any
 
-# The largest crawl this tool will attempt, and the reason for a number rather than
-# "no limit". Both result.pages and result.links are held for the whole run --
-# links.jsonl is a resume aid, not a memory bound, since spider.py appends every edge
-# to the in-memory list as well.
+# Historical estimates for the materialized legacy route. Native SQLite capture
+# streams pages, links and frontier through NativeScan; these object-size figures
+# describe the legacy API, not the capacity of the native route.
 #
 # The 383-byte LinkEdge and 2 400-byte PageRecord figures came from tracemalloc
 # fixtures over 40 000 edges and 8 000 records with distinct URL/text strings;
@@ -71,16 +70,20 @@ from typing import Any
 # above may approach 12,200 bytes/page with rich attribution markup (about
 # 0.31 GiB extra at 50,000 URLs). These estimates exclude other crawl/analyzer
 # allocations and are not a full-run memory guarantee.
-# Stable public admission remains 50,000 until the larger producer/consumer
-# capacity gate passes. Higher requests are refused, never silently clamped.
-MAX_URLS_CEILING = 50_000
-# Preserve the existing direct-storage synthetic profile; live collectors reject it.
-MAX_EXPERIMENTAL_URLS = 1_000_000
+# Explicit native crawl admission; capacity still depends on independent request,
+# time, body, disk and renderer budgets. Admission is not a benchmark result.
+# Higher requests are refused, never silently clamped.
+MAX_URLS_CEILING = 1_000_000
+# Preserve the recorded direct-storage marker and fingerprints of existing scans.
+# Live collectors still reject that marker; stable requests use the shared ceiling.
+MAX_EXPERIMENTAL_URLS = MAX_URLS_CEILING
+# Eager legacy APIs keep PageRecord/LinkEdge objects; they are not the native route.
+MAX_MATERIALIZED_URLS = 50_000
 # Robots, redirects and retries have a separate explicit request budget.
 MAX_REQUESTS_CEILING = 2_000_000
 
 
-def checked_url_budget(max_urls: int) -> int:
+def checked_url_budget(max_urls: int, *, materialized: bool = False) -> int:
     """How many URLs a crawl may fetch -- or a refusal, never a quiet reduction.
 
     ``min(max_urls, MAX_URLS_CEILING)`` was the old answer and it was wrong in the
@@ -94,6 +97,11 @@ def checked_url_budget(max_urls: int) -> int:
         raise ValueError(
             f"max_urls is {budget:,}, above this crawler's ceiling of {MAX_URLS_CEILING:,}; "
             "narrow the scope or split the work into resumable scans"
+        )
+    if materialized and budget > MAX_MATERIALIZED_URLS:
+        raise ValueError(
+            f"materialized legacy collection ceiling is {MAX_MATERIALIZED_URLS:,} URLs; "
+            "use a native SQLite site scan for larger populations"
         )
     return budget
 
@@ -610,9 +618,9 @@ DESCRIPTIONS: dict[str, str] = {
     "storage.body_mode": "SQLite only: captured_entity_bytes retains fetched HTML/DOM; off retains metadata only.",
     "storage.format_version": "Explicit scan storage format: scan.v1 (default) or scan.v2 for optional graph/event extensions.",
     "storage.capacity_profile": (
-        "'stable' (default) admits at most 50,000 URLs. 'experimental_synthetic' permits "
-        "direct NativeScan storage profiles up to 1,000,000 declared URLs; every live crawler "
-        "still refuses above 50,000 and this setting does not certify capacity."
+        "'stable' (default) admits at most 1,000,000 URLs with independent resource budgets. "
+        "'experimental_synthetic' is the compatible direct-storage fixture marker; "
+        "live collectors refuse that marker. Neither setting certifies measured capacity."
     ),
     "storage.max_body_bytes": "SQLite only: maximum decoded bytes retained for one complete body.",
     "storage.max_body_store_bytes": "SQLite only: total unique encoded body bytes retained per scan.",
@@ -711,7 +719,8 @@ DESCRIPTIONS: dict[str, str] = {
     "limits.max_crawl_seconds": "Wall-clock budget for the whole crawl; 0 means no limit.",
     "limits.max_requests": (
         "Total HTTP attempts for the crawl, including bootstrap, redirects and retries; 0 means "
-        "no total-attempt limit."
+        f"no total-attempt limit. Explicit values may be at most {MAX_REQUESTS_CEILING:,}, "
+        "allowing robots, sitemaps, redirects and retries above the URL budget."
     ),
     "external_checks.max_targets": (
         "Distinct external destinations the opt-in check may fetch at most — recorded "
@@ -1133,18 +1142,10 @@ def validate(config: dict[str, Any]) -> None:
     limits = config["limits"]
     if type(limits["max_urls"]) is not int or limits["max_urls"] < 1:
         raise ConfigError("limits.max_urls must be a positive integer")
-    if (
-        limits["max_urls"] > MAX_URLS_CEILING
-        and config["storage"]["capacity_profile"] != "experimental_synthetic"
-    ):
+    if limits["max_urls"] > MAX_URLS_CEILING:
         raise ConfigError(
             f"limits.max_urls is {limits['max_urls']:,}, above this crawler's ceiling of "
             f"{MAX_URLS_CEILING:,}; narrow the scope or split the work into resumable scans."
-        )
-    if limits["max_urls"] > MAX_EXPERIMENTAL_URLS:
-        raise ConfigError(
-            f"limits.max_urls is above the experimental synthetic ceiling of "
-            f"{MAX_EXPERIMENTAL_URLS:,}; no larger artifact is admitted"
         )
     if limits["max_depth"] < 0:
         raise ConfigError("limits.max_depth cannot be negative")

@@ -213,7 +213,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         override preserves whatever ``config`` (or its own defaults) already
         says, exactly like the CLI's flags -- pass one explicitly only to
         change that one setting. ``seo_crawl_describe_settings`` lists the
-        defaults each of them falls back to.
+        defaults each of them falls back to. Explicit ``max_urls`` admits up to
+        1,000,000 URLs; larger values fail before I/O. Request, render, time and
+        disk budgets remain independent: use ``limits.max_requests`` in overrides
+        for explicit overhead headroom, at most 2,000,000 HTTP attempts.
 
         ``http.proxy`` in ``config`` or ``overrides`` selects an explicit HTTP
         forward proxy for the entire native crawl, including sitemap, resource

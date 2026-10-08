@@ -834,7 +834,7 @@ def crawl_site(
         raise ValueError(
             "experimental_synthetic capacity profile is storage-only, not a live crawl"
         )
-    checked_url_budget(settings["limits"]["max_urls"])
+    checked_url_budget(settings["limits"]["max_urls"], materialized=not bool(url))
     # Check selectors refer to the SF finding registry. Validate them at this
     # shared CLI/MCP boundary before the crawl can issue its first request.
     from seohead.sf.config import load_config as load_audit_config
@@ -1023,8 +1023,8 @@ def crawl_site(
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     # The human-readable export: absent whenever the operator turned it off. Only
-    # ``collect_urls`` (the list-mode branch below, which has no resume mechanism of
-    # its own) is allowed to treat this as the whole story.
+    # Both legacy routes retain a private sidecar when the public export is off,
+    # so an unavailable audit still leaves the collected evidence.
     pages_export_path = (
         os.path.join(out_dir, "pages.jsonl")
         if out_dir and settings["output"]["write_pages_jsonl"]
@@ -1165,10 +1165,11 @@ def crawl_site(
         result = collect_urls(
             urls or [],
             max_urls=settings["limits"]["max_urls"],
+            max_requests=settings["limits"]["max_requests"],
             max_seconds=max_seconds,
             min_delay=settings["speed"]["min_delay_seconds"],
             timeout=settings["http"]["timeout_seconds"],
-            out_path=pages_export_path,
+            out_path=pages_resume_path,
             credential_headers=settings["http"]["credential_headers"],
             max_response_bytes=settings["limits"]["max_response_bytes"],
             max_url_length=settings["limits"]["max_url_length"],
@@ -1196,7 +1197,10 @@ def crawl_site(
             ],
         }
 
-    if url and result.spooled_evidence:
+    if not url or result.spooled_evidence:
+        page_count = result.page_count if url else len(result.pages)
+        link_count = result.link_count if url else 0
+        form_count = result.form_count if url else 0
         from seohead.crawl.spider import (
             _read_forms_jsonl,
             _read_links_jsonl,
@@ -1213,15 +1217,15 @@ def crawl_site(
                 "any prior JSONL sidecars were not reconciled"
             )
         elif (
-            result.page_count > MAX_AUDIT_PAGES
-            or result.form_count > MAX_AUDIT_FORMS
-            or result.link_count > max_legacy_audit_links
+            page_count > MAX_AUDIT_PAGES
+            or form_count > MAX_AUDIT_FORMS
+            or link_count > max_legacy_audit_links
         ):
             reason = (
                 "legacy audit materialization limit exceeded "
-                f"(pages={result.page_count}/{MAX_AUDIT_PAGES}, "
-                f"forms={result.form_count}/{MAX_AUDIT_FORMS}, "
-                f"links={result.link_count}/{max_legacy_audit_links}); "
+                f"(pages={page_count}/{MAX_AUDIT_PAGES}, "
+                f"forms={form_count}/{MAX_AUDIT_FORMS}, "
+                f"links={link_count}/{max_legacy_audit_links}); "
                 "JSONL collection evidence is retained"
             )
         else:
@@ -1239,9 +1243,9 @@ def crawl_site(
                     os.rename(previous, retained)
                     stale_reports[name] = str(retained)
             return {
-                "urls_collected": result.page_count,
-                "links_collected": result.link_count,
-                "forms_collected": result.form_count,
+                "urls_collected": page_count,
+                "links_collected": link_count,
+                "forms_collected": form_count,
                 "audit_available": False,
                 "audit_reason": reason,
                 "partial": result.partial,
@@ -1255,15 +1259,16 @@ def crawl_site(
                 "cache_stats": result.cache_stats,
                 "stale_reports": stale_reports,
             }
-        result.pages = _read_pages_jsonl(pages_resume_path)
-        result.links = _read_links_jsonl(links_path)
-        result.forms = _read_forms_jsonl(os.path.join(out_dir, ".forms_resume.jsonl"))
-        if (
-            len(result.pages),
-            len(result.links),
-            len(result.forms),
-        ) != (result.page_count, result.link_count, result.form_count):
-            raise ValueError("legacy evidence sidecar counts changed during audit preparation")
+        if url:
+            result.pages = _read_pages_jsonl(pages_resume_path)
+            result.links = _read_links_jsonl(links_path)
+            result.forms = _read_forms_jsonl(os.path.join(out_dir, ".forms_resume.jsonl"))
+            if (
+                len(result.pages),
+                len(result.links),
+                len(result.forms),
+            ) != (page_count, link_count, form_count):
+                raise ValueError("legacy evidence sidecar counts changed during audit preparation")
 
     response, _audit = _audit_crawl_result(
         result,

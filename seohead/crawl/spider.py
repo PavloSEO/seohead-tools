@@ -849,7 +849,7 @@ def crawl_site(
     if not start or not host or " " in host or "." not in host:
         raise ValueError(f"not a crawlable URL: {start_url!r}")
     rules = scope if isinstance(scope, Scope) else Scope.from_config(scope)
-    limit = checked_url_budget(max_urls)
+    limit = checked_url_budget(max_urls, materialized=not spool_evidence)
     if spool_evidence and not (out_path and links_path and forms_path and state_path):
         raise ValueError("spooled evidence requires page, link, form and state paths")
     depth_limit = max(0, min(int(max_depth), MAX_DEPTH_CEILING))
