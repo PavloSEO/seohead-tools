@@ -1605,6 +1605,113 @@
     }
   },
   "format": "seohead.bi-manifest.v1",
+  "group_members": {
+    "format": "bi-group-members.v1",
+    "groups": {
+      "bytes": 834,
+      "fields": [
+        {
+          "description": "",
+          "name": "run_id",
+          "nullable": false,
+          "type": "string"
+        },
+        {
+          "description": "",
+          "name": "group_id",
+          "nullable": false,
+          "type": "string"
+        },
+        {
+          "description": "",
+          "name": "group_ordinal",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "description": "",
+          "name": "member_count",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "description": "",
+          "name": "declared_count",
+          "nullable": true,
+          "type": "integer"
+        },
+        {
+          "description": "",
+          "name": "metadata_json",
+          "nullable": false,
+          "type": "json"
+        },
+        {
+          "description": "",
+          "name": "members_sha256",
+          "nullable": false,
+          "type": "string"
+        }
+      ],
+      "formula_safe_cells_prefixed": 0,
+      "partition_count": 1,
+      "partitions": [
+        {
+          "bytes": 834,
+          "path": "group-groups-0001.csv",
+          "rows": 3,
+          "sha256": "481f0b3e5a5b43be15649edac31df4bd2bce241c94bd98e4804c5ea17f9ffc44"
+        }
+      ],
+      "row_count": 3
+    },
+    "inline_member_bytes": 65536,
+    "inline_member_limit": 25,
+    "members": {
+      "bytes": 589,
+      "fields": [
+        {
+          "description": "",
+          "name": "run_id",
+          "nullable": false,
+          "type": "string"
+        },
+        {
+          "description": "",
+          "name": "group_id",
+          "nullable": false,
+          "type": "string"
+        },
+        {
+          "description": "",
+          "name": "member_ordinal",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "description": "",
+          "name": "member_json",
+          "nullable": false,
+          "type": "json"
+        }
+      ],
+      "formula_safe_cells_prefixed": 0,
+      "partition_count": 1,
+      "partitions": [
+        {
+          "bytes": 589,
+          "path": "group-members-0001.csv",
+          "rows": 7,
+          "sha256": "16682cb6dcbf680ef354f9552bbec73e250dde4f88df364a667fb06c26097277"
+        }
+      ],
+      "row_count": 7
+    },
+    "publication": "local companion; not included in the six published datasets",
+    "run_id": "audit:73121f1fdbf0e2fed6d03e92",
+    "sha256": "f03e19f6e1912de81629bfff301050fd88c3cf709f0ae1ea3ce151542a107ede",
+    "source_audit_sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce"
+  },
   "input": {
     "bytes": 44292,
     "kind": "sf-audit",
@@ -1806,6 +1913,7 @@
     "projection_index_cache_bytes": 2097152
   },
   "run": {
+    "audit_sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce",
     "check_skips": {
       "AJAX_CRAWLING_SCHEME_META_FRAGMENT": "no <meta name=\"fragment\"> evidence (native crawl only)",
       "AJAX_CRAWLING_SCHEME_URL": "no AJAX-scheme URL evidence (native crawl only)",

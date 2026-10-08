@@ -165,7 +165,18 @@ def test_group_index_uses_disk_bound_and_cleans_up_after_failure(tmp_path):
         pytest.raises(BIExportError, match="disk bound"),
         projection_index(tmp_path, 32 * 1024) as con,
     ):
-        GroupIndex(con, ({"id": str(i), "value": "x" * 8192} for i in range(100)))
+        GroupIndex(
+            con,
+            (
+                {
+                    "id": str(i),
+                    "value": "x" * 8192,
+                    "count": 100,
+                    "urls": [f"https://example.test/{i}/{member}" for member in range(100)],
+                }
+                for i in range(100)
+            ),
+        )
     assert not list(tmp_path.glob(".seohead-bi-index-*"))
 
 
