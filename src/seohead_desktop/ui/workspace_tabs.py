@@ -15,7 +15,17 @@ from uuid import uuid4
 
 from PyQt5.QtCore import QByteArray, Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QHBoxLayout, QMenu, QShortcut, QTabBar, QToolButton, QWidget
+from PyQt5.QtWidgets import (
+    QHBoxLayout,
+    QInputDialog,
+    QLineEdit,
+    QMenu,
+    QShortcut,
+    QSizePolicy,
+    QTabBar,
+    QToolButton,
+    QWidget,
+)
 
 from .icons import material_icon
 
@@ -68,6 +78,8 @@ class WorkspaceContext:
     scan_uuid: str | None = None
     view_id: str = "work"
     state: Mapping[str, object] = field(default_factory=dict, hash=False)
+    display_alias: str | None = None
+    pinned: bool = False
 
     def __post_init__(self):
         for name in ("id", "project_label", "view_id"):
@@ -78,12 +90,28 @@ class WorkspaceContext:
             value = getattr(self, name)
             if value is not None and not isinstance(value, str):
                 raise TypeError(f"Workspace {name} must be a string or None")
+        if self.display_alias is not None and (
+            not isinstance(self.display_alias, str) or not self.display_alias.strip()
+        ):
+            raise ValueError(
+                "Workspace display alias must be a non-empty string or None"
+            )
+        if type(self.pinned) is not bool:
+            raise TypeError("Workspace pinned flag must be a boolean")
         if not isinstance(self.state, Mapping):
             raise TypeError("Workspace state must be a mapping")
         object.__setattr__(self, "state", _freeze(self.state))
 
     def state_dict(self) -> dict[str, object]:
         return _thaw(self.state)
+
+
+class _WorkspaceTabBar(QTabBar):
+    def minimumSizeHint(self):
+        size = super().minimumSizeHint()
+        # Qt's scroll-button minimum can exceed the width of one short tab.
+        size.setWidth(max(0, min(size.width(), self.sizeHint().width())))
+        return size
 
 
 class WorkspaceTabs(QWidget):
@@ -103,6 +131,7 @@ class WorkspaceTabs(QWidget):
         self.max_tabs = max_tabs
         self._contexts = {}
         self._titles = {}
+        self._icons = {}
         self._custom_titles = set()
         self._active_id = None
         self._shortcuts = []
@@ -112,7 +141,7 @@ class WorkspaceTabs(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.tabbar = QTabBar()
+        self.tabbar = _WorkspaceTabBar()
         self.tabbar.setObjectName("workspaceTabBar")
         self.tabbar.setAccessibleName("Проекты, сканы и представления")
         self.tabbar.setUsesScrollButtons(True)
@@ -122,7 +151,9 @@ class WorkspaceTabs(QWidget):
         self.tabbar.setElideMode(Qt.ElideRight)
         self.tabbar.setSelectionBehaviorOnRemove(QTabBar.SelectLeftTab)
         self.tabbar.setDrawBase(False)
-        layout.addWidget(self.tabbar, 1)
+        self.tabbar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.tabbar.setContextMenuPolicy(Qt.CustomContextMenu)
+        layout.addWidget(self.tabbar)
         self.new_button = QToolButton()
         self.new_button.setObjectName("workspaceNewTab")
         self.new_button.setIcon(material_icon("add_circle"))
@@ -130,6 +161,7 @@ class WorkspaceTabs(QWidget):
         self.new_button.setToolTip("Новая рабочая вкладка")
         self.new_button.clicked.connect(self.request_new)
         layout.addWidget(self.new_button)
+        layout.addStretch(1)
         self.overflow_button = QToolButton()
         self.overflow_button.setObjectName("workspaceOverflow")
         self.overflow_button.setIcon(material_icon("more_horiz"))
@@ -143,6 +175,9 @@ class WorkspaceTabs(QWidget):
         self.tabbar.currentChanged.connect(self._sync_selected)
         self.tabbar.tabCloseRequested.connect(self._close_index)
         self.tabbar.tabMoved.connect(self._tab_moved)
+        self.context_menu = QMenu(self.tabbar)
+        self.tabbar.customContextMenuRequested.connect(self._show_context_menu)
+        self.tabbar.tabBarDoubleClicked.connect(self._rename_index)
         self._update_capacity()
         self._rebuild_menu()
 
@@ -167,23 +202,37 @@ class WorkspaceTabs(QWidget):
             -1,
         )
 
-    def add(self, context: WorkspaceContext, title=None, icon=None, select=True):
+    def add(
+        self,
+        context: WorkspaceContext,
+        title=None,
+        icon=None,
+        select=True,
+        *,
+        after_id=None,
+    ):
         if not isinstance(context, WorkspaceContext):
             raise TypeError("add requires a WorkspaceContext")
         if context.id in self._contexts:
             raise ValueError("Workspace context ID already exists")
         if len(self._contexts) >= self.max_tabs:
             raise ValueError(f"At most {self.max_tabs} workspaces may be open")
+        if after_id is not None and after_id not in self._contexts:
+            raise KeyError(after_id)
         label = context.project_label if title is None else self._checked_title(title)
+        anchor = self.current_id if after_id is None else after_id
+        index = self._index(anchor) + 1
+        pinned_count = sum(item.pinned for item in self._contexts.values())
+        index = min(index, pinned_count) if context.pinned else max(index, pinned_count)
         self._contexts[context.id] = context
         self._titles[context.id] = label
+        self._icons[context.id] = icon or material_icon("folder_open")
         if title is not None:
             self._custom_titles.add(context.id)
         blocked = self.tabbar.blockSignals(True)
-        index = self.tabbar.addTab(icon or material_icon("folder_open"), label)
+        index = self.tabbar.insertTab(index, self._icons[context.id], label)
         self.tabbar.setTabData(index, context.id)
-        self.tabbar.setTabToolTip(index, label)
-        self._label_close_button(index, label)
+        self._refresh_tab(context.id)
         if select:
             self.tabbar.setCurrentIndex(index)
         self.tabbar.blockSignals(blocked)
@@ -199,6 +248,7 @@ class WorkspaceTabs(QWidget):
         self.tabbar.removeTab(self._index(id))
         self._contexts.pop(id)
         self._titles.pop(id)
+        self._icons.pop(id)
         self._custom_titles.discard(id)
         self.tabbar.blockSignals(blocked)
         self._update_capacity()
@@ -215,12 +265,17 @@ class WorkspaceTabs(QWidget):
         if "id" in fields:
             raise ValueError("Workspace identity cannot be changed")
         updated = replace(self._contexts[context_id], **fields)
+        was_pinned = self._contexts[context_id].pinned
         self._contexts[context_id] = updated
         if "project_label" in fields and context_id not in self._custom_titles:
             self._titles[context_id] = updated.project_label
-            self.tabbar.setTabText(self._index(context_id), updated.project_label)
-            self.tabbar.setTabToolTip(self._index(context_id), updated.project_label)
-            self._label_close_button(self._index(context_id), updated.project_label)
+        if was_pinned != updated.pinned:
+            pinned_count = sum(item.pinned for item in self._contexts.values())
+            destination = pinned_count - 1 if updated.pinned else pinned_count
+            blocked = self.tabbar.blockSignals(True)
+            self.tabbar.moveTab(self._index(context_id), destination)
+            self.tabbar.blockSignals(blocked)
+        self._refresh_tab(context_id)
         return updated
 
     def update_title(self, id, title, icon=None):
@@ -229,22 +284,46 @@ class WorkspaceTabs(QWidget):
         title = self._checked_title(title)
         self._custom_titles.add(id)
         self._titles[id] = title
-        index = self._index(id)
-        self.tabbar.setTabText(index, title)
-        self.tabbar.setTabToolTip(index, title)
-        self._label_close_button(index, title)
         if icon is not None:
-            self.tabbar.setTabIcon(index, icon)
+            self._icons[id] = icon
+        self._refresh_tab(id)
+
+    def set_alias(self, id, alias: str | None) -> WorkspaceContext:
+        if alias is not None and not isinstance(alias, str):
+            raise TypeError("Workspace display alias must be a string or None")
+        return self.update_context(
+            id, display_alias=alias.strip() or None if alias else None
+        )
+
+    def set_pinned(self, id, pinned: bool) -> WorkspaceContext:
+        return self.update_context(id, pinned=pinned)
 
     def update_state(self, id, state) -> WorkspaceContext:
         return self.update_context(id, state=state)
 
-    def _label_close_button(self, index, title):
+    def _refresh_tab(self, id):
+        context = self._contexts[id]
+        index = self._index(id)
+        title = context.display_alias or self._titles[id]
+        self.tabbar.setTabText(index, title)
+        tooltip = ("Закреплена · " if context.pinned else "") + title
+        if context.display_alias and context.display_alias != self._titles[id]:
+            tooltip += "\n" + self._titles[id]
+        self.tabbar.setTabToolTip(index, tooltip)
+        pin_icon = material_icon("push_pin") if context.pinned else None
+        self.tabbar.setTabIcon(
+            index,
+            pin_icon
+            if pin_icon is not None and not pin_icon.isNull()
+            else self._icons[id],
+        )
         for side in (QTabBar.LeftSide, QTabBar.RightSide):
             button = self.tabbar.tabButton(index, side)
             if button is not None:
                 button.setAccessibleName("Закрыть вкладку " + title)
                 button.setToolTip("Закрыть вкладку " + title)
+                button.setEnabled(not context.pinned)
+                button.setVisible(not context.pinned)
 
     @staticmethod
     def _checked_title(title):
@@ -256,10 +335,30 @@ class WorkspaceTabs(QWidget):
         if len(self._contexts) < self.max_tabs:
             self.newRequested.emit()
 
-    def request_close(self, id=None):
+    def request_close(self, id=None, *, explicit=False):
+        id = self.current_id if id is None else id
+        if id in self._contexts and (explicit or not self._contexts[id].pinned):
+            self.closeRequested.emit(id)
+
+    def request_rename(self, id=None):
+        id = self.current_id if id is None else id
+        if id not in self._contexts:
+            return
+        context = self._contexts[id]
+        title, accepted = QInputDialog.getText(
+            self,
+            "Переименовать вкладку",
+            "Название (пустое — по проекту):",
+            QLineEdit.Normal,
+            context.display_alias or self._titles[id],
+        )
+        if accepted and id in self._contexts:
+            self.set_alias(id, title)
+
+    def toggle_pinned(self, id=None):
         id = self.current_id if id is None else id
         if id in self._contexts:
-            self.closeRequested.emit(id)
+            self.set_pinned(id, not self._contexts[id].pinned)
 
     def request_duplicate(self, id=None):
         id = self.current_id if id is None else id
@@ -290,8 +389,31 @@ class WorkspaceTabs(QWidget):
         if 0 <= index < self.tabbar.count():
             self.request_close(self.tabbar.tabData(index))
 
-    def _tab_moved(self, *_args):
+    def _tab_moved(self, _from, destination):
+        context = self._contexts[self.tabbar.tabData(destination)]
+        pinned_count = sum(item.pinned for item in self._contexts.values())
+        boundary = (
+            min(destination, pinned_count - 1)
+            if context.pinned
+            else max(destination, pinned_count)
+        )
+        if boundary != destination:
+            blocked = self.tabbar.blockSignals(True)
+            self.tabbar.moveTab(destination, boundary)
+            self.tabbar.blockSignals(blocked)
         self._sync_selected()
+
+    def _rename_index(self, index):
+        if 0 <= index < self.tabbar.count():
+            self.request_rename(self.tabbar.tabData(index))
+
+    def _show_context_menu(self, position):
+        index = self.tabbar.tabAt(position)
+        if index < 0:
+            return
+        self.context_menu.clear()
+        self._add_context_actions(self.context_menu, self.tabbar.tabData(index))
+        self.context_menu.popup(self.tabbar.mapToGlobal(position))
 
     def _update_capacity(self):
         available = len(self._contexts) < self.max_tabs
@@ -307,24 +429,45 @@ class WorkspaceTabs(QWidget):
         create = self.menu.addAction(material_icon("add_circle"), "Новая вкладка")
         create.setEnabled(len(self._contexts) < self.max_tabs)
         create.triggered.connect(self.request_new)
-        duplicate = self.menu.addAction(
-            material_icon("content_copy"), "Дублировать текущую вкладку"
-        )
-        duplicate.setEnabled(
-            self.current_id is not None and len(self._contexts) < self.max_tabs
-        )
-        duplicate.triggered.connect(lambda: self.request_duplicate())
-        close = self.menu.addAction(material_icon("close"), "Закрыть текущую вкладку")
-        close.setEnabled(self.current_id is not None)
-        close.triggered.connect(lambda: self.request_close())
+        self._add_context_actions(self.menu, self.current_id)
         self.menu.addSeparator()
         for context in self.contexts():
-            action = self.menu.addAction(self._titles[context.id])
+            action = self.menu.addAction(
+                self.tabbar.tabIcon(self._index(context.id)),
+                context.display_alias or self._titles[context.id],
+            )
+            action.setData(context.id)
             action.setCheckable(True)
             action.setChecked(context.id == self.current_id)
             action.triggered.connect(
-                lambda checked=False, id=context.id: self.select(id)
+                lambda checked=False, id=context.id: (
+                    self.select(id) if id in self._contexts else None
+                )
             )
+
+    def _add_context_actions(self, menu, id):
+        context = self._contexts.get(id)
+        rename = menu.addAction(material_icon("edit_note"), "Переименовать вкладку…")
+        rename.setEnabled(context is not None)
+        rename.triggered.connect(lambda: self.request_rename(id))
+        pin = menu.addAction(
+            "Открепить вкладку" if context and context.pinned else "Закрепить вкладку"
+        )
+        pin.setEnabled(context is not None)
+        pin.triggered.connect(lambda: self.toggle_pinned(id))
+        duplicate = menu.addAction(material_icon("content_copy"), "Дублировать вкладку")
+        duplicate.setEnabled(
+            context is not None and len(self._contexts) < self.max_tabs
+        )
+        duplicate.triggered.connect(lambda: self.request_duplicate(id))
+        close = menu.addAction(
+            material_icon("close"),
+            "Закрыть закреплённую вкладку"
+            if context and context.pinned
+            else "Закрыть вкладку",
+        )
+        close.setEnabled(context is not None)
+        close.triggered.connect(lambda: self.request_close(id, explicit=True))
 
     def install_shortcuts(self, owner):
         """Opt in once per window; never install duplicate bindings in the host."""
