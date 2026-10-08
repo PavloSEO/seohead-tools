@@ -402,7 +402,7 @@ def write(document: Any, path: pathlib.Path) -> dict[str, Any]:
     index_path = path.with_suffix(path.suffix + ".index.json")
     for candidate in (path, index_path):
         if candidate.is_symlink() or (candidate.exists() and not candidate.is_file()):
-            raise OSError("XLSX output and index must be regular files")
+            raise OSError(f"XLSX output and index must be regular files: {candidate}")
 
     # The small metadata sheets retain the established layout. Only findings and
     # pages grow with the crawl; their rows are replayed to measure widths, then
