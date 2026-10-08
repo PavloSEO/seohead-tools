@@ -59,6 +59,7 @@ def _prepare(
     producer_version: str,
     producer_revision: str,
     runtime_versions: dict[str, str],
+    source_audit_sha256: str | None = None,
 ) -> None:
     parent = source.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
     if parent is None or parent["source_kind"] not in {"native", "reanalysis"}:
@@ -145,7 +146,8 @@ def _prepare(
                         "capture_scan_uuid": capture_uuid,
                         "source_evidence_revision": parent["evidence_revision"],
                         "derived_evidence_revision": parent["evidence_revision"] + 1,
-                        "source_audit_sha256": audit["sha256"] if audit else None,
+                        "source_audit_sha256": source_audit_sha256
+                        or (audit["sha256"] if audit else None),
                         "source_writer_version": parent["writer_version"],
                         "source_writer_revision": parent["writer_revision"],
                         "source_runtime_versions_json": parent["runtime_versions_json"],
@@ -207,6 +209,12 @@ def derived_scan(
     writer: NativeScan | None = None
     destination: sqlite3.Connection | None = None
     try:
+        source_audit_sha256 = None
+        if audit_v2_path(source_path).exists():
+            from .audit_v2 import AuditV2Reader
+
+            with AuditV2Reader(source_path) as reader:
+                source_audit_sha256 = reader.sha256
         page_count = source.execute("PRAGMA page_count").fetchone()[0]
         page_size = source.execute("PRAGMA page_size").fetchone()[0]
         required = page_count * page_size * 2 + SNAPSHOT_RESERVE_BYTES
@@ -230,6 +238,7 @@ def derived_scan(
             producer_version=producer_version,
             producer_revision=producer_revision,
             runtime_versions=runtime_versions,
+            source_audit_sha256=source_audit_sha256,
         )
         yield writer, source
         writer._finish_reanalysis()

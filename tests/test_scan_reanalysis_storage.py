@@ -13,6 +13,32 @@ from seohead.storage.reanalysis import derived_scan
 from tests.test_scan_native import _metadata, _record, _runtime
 
 
+def test_derived_scan_retains_exact_streamed_source_audit_digest(tmp_path):
+    from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
+    from tests.test_audit_v2_ledger_groups import _population_scan
+
+    source, _urls = _population_scan(tmp_path / "source.sqlite", 3)
+    companion = audit_v2_path(source)
+    before = [hashlib.sha256(path.read_bytes()).hexdigest() for path in (source, companion)]
+    with AuditV2Reader(source) as reader:
+        digest = reader.sha256
+    versions = {name: "test" for name in ("python", "sqlite", "httpx", "lxml", "beautifulsoup4")}
+    with derived_scan(
+        source,
+        tmp_path / "derived.sqlite",
+        producer_version="test",
+        producer_revision="b" * 40,
+        runtime_versions=versions,
+    ) as (writer, _source):
+        provenance = json.loads(
+            writer.con.execute(
+                "SELECT payload_json FROM context_items WHERE kind='reanalysis_provenance'"
+            ).fetchone()[0]
+        )
+        assert provenance["source_audit_sha256"] == digest
+    assert [hashlib.sha256(path.read_bytes()).hexdigest() for path in (source, companion)] == before
+
+
 def test_derived_native_capture_cannot_claim_legacy_cache_transport(tmp_path):
     import sqlite3
 

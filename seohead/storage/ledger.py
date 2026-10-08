@@ -33,6 +33,7 @@ import re
 import sqlite3
 import tempfile
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from functools import lru_cache
 from importlib.resources import files
@@ -44,7 +45,7 @@ from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
 APPLICATION_ID = 1397051212  # ASCII SEOL; scan artifacts use SEOH (1397051208).
-USER_VERSION = 4
+USER_VERSION = 5
 FORMAT_VERSION = "ledger.v1"
 READ_TIMEOUT_SECONDS = 30
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -154,6 +155,12 @@ def _apply_v4_schema(con: sqlite3.Connection) -> None:
             con.execute(statement)
 
 
+def _apply_v5_schema(con: sqlite3.Connection) -> None:
+    for piece in files(__package__).joinpath("ledger_v5.sql").read_text("utf-8").split(";"):
+        if piece.strip():
+            con.execute(piece.strip())
+
+
 def _ddl_statements() -> list[str]:
     """Schema statements minus PRAGMAs, for transactional migration.
 
@@ -194,6 +201,7 @@ def _expected() -> list[tuple]:
         _apply_v2_schema(con)
         _apply_v3_schema(con)
         _apply_v4_schema(con)
+        _apply_v5_schema(con)
         return _objects(con)
     finally:
         con.close()
@@ -309,6 +317,23 @@ def _validate(con) -> None:
         raise LedgerError("ledger database failed quick_check")
     if con.execute("PRAGMA foreign_key_check").fetchone():
         raise LedgerError("ledger database has inconsistent foreign-key references")
+    for group in con.execute("SELECT * FROM source_group"):
+        digest, count = hashlib.sha256(), 0
+        for member in con.execute(
+            "SELECT ordinal,value_json FROM source_group_member WHERE source_scan_id=? AND group_ref=? ORDER BY ordinal",
+            (group["source_scan_id"], group["group_ref"]),
+        ):
+            if member["ordinal"] != count:
+                raise LedgerError("source group members are incomplete or unordered")
+            encoded = member["value_json"].encode("utf-8")
+            if len(encoded) > MAX_PAYLOAD_BYTES:
+                raise LedgerError("source group member exceeds the ledger payload bound")
+            _loads(member["value_json"], "source group member")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+            count += 1
+        if (count, digest.hexdigest()) != (group["member_count"], group["members_sha256"]):
+            raise LedgerError("source group member count or digest differs")
     rows = con.execute("SELECT * FROM ledger").fetchall()
     if len(rows) != 1:
         raise LedgerError("ledger.v1 requires exactly one header")
@@ -501,11 +526,37 @@ def _migrate_3_to_4(con: sqlite3.Connection) -> None:
     con.execute("PRAGMA user_version=4")
 
 
+def _migrate_4_to_5(con: sqlite3.Connection) -> None:
+    """Retain each ordered source group once; reject inconsistent old copies."""
+    _apply_v5_schema(con)
+    for row in con.execute("SELECT * FROM finding_group ORDER BY source_scan_id,group_ref"):
+        _created, complete = _store_source_group(
+            con,
+            source_scan_id=row["source_scan_id"],
+            group={
+                "group_id": row["group_ref"],
+                "check": row["group_check"],
+                "value": row["group_value"],
+                "count": row["group_count"],
+                "urls": _loads(row["group_urls_json"], "group members"),
+            },
+            refuse_new=False,
+        )
+        if not complete:
+            con.execute(
+                "UPDATE source_scan SET group_memberships_state='partial' WHERE source_scan_id=? AND group_memberships_state='complete'",
+                (row["source_scan_id"],),
+            )
+    con.execute("UPDATE finding_group SET group_urls_json='[]'")
+    con.execute("PRAGMA user_version=5")
+
+
 _MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
     2: _migrate_2_to_3,
     3: _migrate_3_to_4,
+    4: _migrate_4_to_5,
 }
 
 
@@ -605,6 +656,7 @@ def create_ledger(path: str | Path, *, project_dir: str | Path, producer_build: 
         _apply_v2_schema(con)
         _apply_v3_schema(con)
         _apply_v4_schema(con)
+        _apply_v5_schema(con)
         con.execute(f"PRAGMA user_version={USER_VERSION}")
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA foreign_keys=ON")
@@ -998,6 +1050,62 @@ def _insert_projection(
     return True
 
 
+def _store_source_group(con, *, source_scan_id: int, group, refuse_new: bool) -> tuple[bool, bool]:
+    """Store one source group and stream each member once, preserving its ordinal."""
+    ref = group["group_id"]
+    check = str(group.get("check") or "")
+    value = group.get("value") if isinstance(group.get("value"), str) else None
+    count = group.get("count") if type(group.get("count")) is int else None
+    urls = group.get("urls")
+    array = isinstance(urls, Sequence) and not isinstance(urls, (str, bytes))
+    existing = con.execute(
+        "SELECT * FROM source_group WHERE source_scan_id=? AND group_ref=?", (source_scan_id, ref)
+    ).fetchone()
+    if existing is not None and (
+        existing["group_check"],
+        existing["group_value"],
+        existing["group_count"],
+    ) != (check, value, count):
+        raise LedgerError("conflicting group membership under an identical source revision")
+    if existing is None:
+        if refuse_new:
+            raise LedgerError("conflicting evidence under a previously bound source revision")
+        con.execute(
+            "INSERT INTO source_group VALUES(?,?,?,?,?,0,'')",
+            (source_scan_id, ref, check, value, count),
+        )
+    digest, member_count, valid = hashlib.sha256(), 0, array
+    for ordinal, member in enumerate(urls if array else ()):
+        raw = _dump(member)
+        encoded = raw.encode("utf-8")
+        if len(encoded) > MAX_PAYLOAD_BYTES:
+            raise LedgerError("group member exceeds the ledger payload bound")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        valid = valid and isinstance(member, str) and bool(member.strip())
+        if existing is None:
+            con.execute(
+                "INSERT INTO source_group_member VALUES(?,?,?,?)",
+                (source_scan_id, ref, ordinal, raw),
+            )
+        member_count += 1
+    if existing is None:
+        con.execute(
+            "UPDATE source_group SET member_count=?,members_sha256=? WHERE source_scan_id=? AND group_ref=?",
+            (member_count, digest.hexdigest(), source_scan_id, ref),
+        )
+    elif (existing["member_count"], existing["members_sha256"]) != (
+        member_count,
+        digest.hexdigest(),
+    ):
+        raise LedgerError("conflicting group membership under an identical source revision")
+    unique = con.execute(
+        "SELECT COUNT(DISTINCT value_json) FROM source_group_member WHERE source_scan_id=? AND group_ref=?",
+        (source_scan_id, ref),
+    ).fetchone()[0]
+    return existing is None, bool(valid and count == member_count == unique)
+
+
 def _insert_group(
     con, *, finding_id: int, source_scan_id: int, row: dict[str, Any], refuse_new: bool
 ) -> bool:
@@ -1347,7 +1455,6 @@ def _bind_source(
         "analyzer_revision",
         "crawl_partial",
         "corpus_partial",
-        "group_memberships_state",
     ):
         if stored[name] != fields[name]:
             raise LedgerError(
@@ -1389,13 +1496,16 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
     ``ledger`` may be a path (opened write-mode for this call) or an already
     open write connection, which receives the whole ingest in one transaction.
     """
+    with contextlib.ExitStack() as resources:
+        return _ingest_scan(ledger, scan_path, resources)
+
+
+def _ingest_scan(ledger, scan_path, resources: contextlib.ExitStack) -> dict[str, Any]:
     path = Path(scan_path)
     digest = _sha256_file(path)
     scan_con = open_scan(path)
     audit_reader = None
     streamed_issues = None
-    group_store = None
-    group_store_path = None
     group_memberships_state = "complete"
     try:
         scan_row = scan_con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
@@ -1413,17 +1523,13 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             representations = _representation_map(scan_con, document)
             by_url, doc_url = _observation_index(scan_con)
             raw_issues = document.get("issues") if isinstance(document.get("issues"), list) else []
-            groups: dict[str, dict[str, Any]] | None = {
-                group.get("group_id"): group
-                for group in (document.get("groups") or [])
-                if isinstance(group, dict)
-            }
+            groups = document.get("groups") or []
         else:
             from seohead.sf.core.evidence_contract import attach_contract_parts
             from seohead.sf.core.models import _Rows
             from seohead.storage.audit_v2 import AuditV2Reader
 
-            audit_reader = AuditV2Reader(path)
+            audit_reader = resources.enter_context(AuditV2Reader(path))
             document = dict(audit_reader.header)
             if document.get("schema_version") != "2.0":
                 raise LedgerError("audit.v2 header has an unsupported schema version")
@@ -1447,23 +1553,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             raw_issues = None
             groups = None
             if "/groups" in audit_reader.collections:
-                fd, name = tempfile.mkstemp(
-                    prefix=".ledger-groups-", suffix=".sqlite", dir=path.parent
-                )
-                os.close(fd)
-                group_store_path = Path(name)
-                group_store = sqlite3.connect(group_store_path)
-                group_store.execute(
-                    "CREATE TABLE groups (group_ref TEXT PRIMARY KEY, payload_json TEXT NOT NULL)"
-                )
-                for group in audit_reader.iter_collection("/groups"):
-                    if isinstance(group, dict) and isinstance(group.get("group_id"), str):
-                        group_store.execute(
-                            "INSERT INTO groups VALUES(?,?)",
-                            (group["group_id"], _dump(group)),
-                        )
-                group_store.commit()
-                group_memberships_state = "complete"
+                groups = audit_reader.iter_collection("/groups")
             else:
                 group_memberships_state = "unavailable"
     finally:
@@ -1495,6 +1585,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
 
     own = not isinstance(ledger, sqlite3.Connection)
     con = open_ledger(ledger, write=True) if own else ledger
+    group_ids_created = False
     try:
         site = _site_row(con, netloc)
         if site is None:
@@ -1522,6 +1613,25 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
             group_memberships_state=group_memberships_state,
             now=now,
         )
+        con.execute("CREATE TEMP TABLE ingest_group_ids (group_ref TEXT PRIMARY KEY)")
+        group_ids_created = True
+        for group in groups if groups is not None else ():
+            if (
+                not isinstance(group, dict)
+                or not isinstance(group.get("group_id"), str)
+                or not group["group_id"]
+            ):
+                group_memberships_state = "partial"
+                continue
+            try:
+                con.execute("INSERT INTO ingest_group_ids VALUES(?)", (group["group_id"],))
+            except sqlite3.IntegrityError as exc:
+                raise LedgerError("saved audit contains duplicate group identities") from exc
+            _created, complete = _store_source_group(
+                con, source_scan_id=source_scan_id, group=group, refuse_new=not new_source
+            )
+            if not complete:
+                group_memberships_state = "partial"
         # Once a source revision is bound, a replay must reproduce its recorded
         # rows exactly: a new row under a bound revision means the same claimed
         # identity now presents different content, which is refused, not merged.
@@ -1610,18 +1720,13 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                 },
             )
             group_ref = projected_issue.get("group_id")
-            if (
-                isinstance(group_ref, str)
-                and group_ref
-                and (groups is not None or group_store is not None)
-            ):
-                group = groups.get(group_ref) if groups is not None else None
-                if group is None and group_store is not None:
-                    row = group_store.execute(
-                        "SELECT payload_json FROM groups WHERE group_ref=?", (group_ref,)
-                    ).fetchone()
-                    group = _loads(row[0], "audit.v2 group") if row is not None else None
-                if not isinstance(group, dict):
+            if isinstance(group_ref, str) and group_ref and groups is not None:
+                row = con.execute(
+                    "SELECT * FROM source_group WHERE source_scan_id=? AND group_ref=?",
+                    (source_scan_id, group_ref),
+                ).fetchone()
+                group = dict(row) if row is not None else None
+                if group is None:
                     group = {}
                     group_memberships_state = "partial"
                 counts["group_memberships"] += _insert_group(
@@ -1631,14 +1736,10 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                     refuse_new=refuse_new,
                     row={
                         "group_ref": group_ref,
-                        "group_check": str(group.get("check") or check_key),
-                        "group_value": group.get("value")
-                        if isinstance(group.get("value"), str)
-                        else None,
-                        "group_count": group.get("count")
-                        if type(group.get("count")) is int
-                        else None,
-                        "group_urls_json": _dump(group.get("urls") or []),
+                        "group_check": str(group.get("group_check") or check_key),
+                        "group_value": group.get("group_value"),
+                        "group_count": group.get("group_count"),
+                        "group_urls_json": "[]",
                     },
                 )
             elif isinstance(group_ref, str) and group_ref:
@@ -1704,7 +1805,15 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
                         "ingested_at": now,
                     },
                 )
-        changed = new_source or restored or any(counts.values())
+        # Membership completeness is a derived reader result, not source identity.
+        # Persist the final state after every issue reference has been checked,
+        # including a correction to a previously ingested immutable source.
+        scope_changed = con.execute(
+            "UPDATE source_scan SET group_memberships_state=? "
+            "WHERE source_scan_id=? AND group_memberships_state!=?",
+            (group_memberships_state, source_scan_id, group_memberships_state),
+        ).rowcount
+        changed = new_source or restored or bool(scope_changed) or any(counts.values())
         if changed:
             con.execute("UPDATE ledger SET ledger_revision=ledger_revision+1 WHERE singleton=1")
         revision = con.execute("SELECT ledger_revision FROM ledger WHERE singleton=1").fetchone()[0]
@@ -1713,14 +1822,10 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
         con.rollback()
         raise
     finally:
+        if group_ids_created:
+            con.execute("DROP TABLE IF EXISTS temp.ingest_group_ids")
         if own:
             con.close()
-        if audit_reader is not None:
-            audit_reader.close()
-        if group_store is not None:
-            group_store.close()
-        if group_store_path is not None:
-            group_store_path.unlink(missing_ok=True)
     return {
         "ok": True,
         "ledger_revision": int(revision),
@@ -2632,6 +2737,8 @@ def ledger_summary(ledger: str | Path | sqlite3.Connection) -> dict[str, Any]:
             "affected_url",
             "finding_observation",
             "finding_group",
+            "source_group",
+            "source_group_member",
             "observation",
             "decision",
             "verification_artifact",
@@ -2695,6 +2802,73 @@ def _observation_view(row: sqlite3.Row, previous: dict[str, Any] | None) -> dict
         "observed_at_state": row["observed_at_state"],
         "ingested_at": row["ingested_at"],
     }
+
+
+def read_group_members(
+    ledger: str | Path | sqlite3.Connection,
+    *,
+    source_scan_id: int,
+    group_ref: str,
+    offset: int = 0,
+    limit: int = 100,
+    max_bytes: int = 1024 * 1024,
+) -> dict[str, Any]:
+    """Read an explicit bounded page from the complete retained source group."""
+    if (
+        type(source_scan_id) is not int
+        or source_scan_id < 1
+        or not isinstance(group_ref, str)
+        or not group_ref
+    ):
+        raise LedgerError("group members require a positive source_scan_id and group_ref")
+    if (
+        type(offset) is not int
+        or offset < 0
+        or type(limit) is not int
+        or not 1 <= limit <= MAX_CASE_LIMIT
+    ):
+        raise LedgerError("group member offset or limit is invalid")
+    if type(max_bytes) is not int or not 1 <= max_bytes <= MAX_PAYLOAD_BYTES:
+        raise LedgerError("group member max_bytes must be between 1 and 8 MiB")
+    own = not isinstance(ledger, sqlite3.Connection)
+    con = open_ledger(ledger) if own else ledger
+    try:
+        group = con.execute(
+            "SELECT * FROM source_group WHERE source_scan_id=? AND group_ref=?",
+            (source_scan_id, group_ref),
+        ).fetchone()
+        if group is None:
+            raise LedgerError("source group membership is unavailable")
+        rows, used = [], 2
+        for row in con.execute(
+            "SELECT value_json FROM source_group_member WHERE source_scan_id=? AND group_ref=? AND ordinal>=? ORDER BY ordinal LIMIT ?",
+            (source_scan_id, group_ref, offset, limit),
+        ):
+            size = len(row[0].encode("utf-8")) + int(bool(rows))
+            if used + size > max_bytes:
+                if not rows:
+                    raise LedgerError("one group member exceeds the requested page byte bound")
+                break
+            rows.append(_loads(row[0], "group member"))
+            used += size
+        has_more = offset + len(rows) < group["member_count"]
+        return {
+            "source_scan_id": source_scan_id,
+            "group_ref": group_ref,
+            "rows": rows,
+            "total": group["member_count"],
+            "offset": offset,
+            "limit": limit,
+            "returned": len(rows),
+            "has_more": has_more,
+            "next_offset": offset + len(rows) if has_more else None,
+            "bytes": used,
+            "max_bytes": max_bytes,
+            "members_sha256": group["members_sha256"],
+        }
+    finally:
+        if own:
+            con.close()
 
 
 def read_cases(
@@ -2781,20 +2955,37 @@ def read_cases(
                     (finding["finding_id"],),
                 )
             ]
-            memberships = [
-                {
-                    "source_scan_id": row["source_scan_id"],
-                    "group_ref": row["group_ref"],
-                    "group_check": row["group_check"],
-                    "group_value": row["group_value"],
-                    "group_count": row["group_count"],
-                    "group_urls": json.loads(row["group_urls_json"]),
-                }
-                for row in con.execute(
-                    "SELECT * FROM finding_group WHERE finding_id=? ORDER BY source_scan_id",
-                    (finding["finding_id"],),
+            memberships = []
+            for row in con.execute(
+                "SELECT * FROM finding_group WHERE finding_id=? ORDER BY source_scan_id",
+                (finding["finding_id"],),
+            ):
+                group_page = None
+                if con.execute(
+                    "SELECT 1 FROM source_group WHERE source_scan_id=? AND group_ref=?",
+                    (row["source_scan_id"], row["group_ref"]),
+                ).fetchone():
+                    group_page = read_group_members(
+                        con,
+                        source_scan_id=row["source_scan_id"],
+                        group_ref=row["group_ref"],
+                        limit=25,
+                    )
+                memberships.append(
+                    {
+                        "source_scan_id": row["source_scan_id"],
+                        "group_ref": row["group_ref"],
+                        "group_check": row["group_check"],
+                        "group_value": row["group_value"],
+                        "group_count": row["group_count"],
+                        "group_urls": group_page["rows"] if group_page else [],
+                        "group_members_page": {
+                            key: value for key, value in group_page.items() if key != "rows"
+                        }
+                        if group_page
+                        else {"state": "unavailable"},
+                    }
                 )
-            ]
             occurrences = []
             for occurrence in con.execute(
                 "SELECT * FROM occurrence WHERE finding_id=? "

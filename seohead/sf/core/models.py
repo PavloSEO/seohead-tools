@@ -8,7 +8,7 @@ DataFrames the loader hands it.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -174,15 +174,15 @@ class Group:
     group_id: str
     check: str
     value: str | None
-    urls: list[str]
+    urls: Sequence[str]
     count: int
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self, *, streaming: bool = False) -> dict[str, Any]:
         return {
             "group_id": self.group_id,
             "check": self.check,
             "value": self.value,
-            "urls": self.urls,
+            "urls": self.urls if streaming else list(self.urls),
             "count": self.count,
         }
 
@@ -235,7 +235,7 @@ class AuditResult:
         collections: dict[str, Iterable[Any]] = {
             "/issues": _Rows(lambda: (issue.to_json() for issue in self.issues)),
             "/pages": _Rows(lambda: (page.to_json() for page in self.pages)),
-            "/groups": _Rows(lambda: (group.to_json() for group in self.groups)),
+            "/groups": _Rows(lambda: (group.to_json(streaming=True) for group in self.groups)),
         }
         if self.suppressed_issues:
             header["suppressed_issues"] = []
@@ -258,5 +258,7 @@ class AuditResult:
         header, collections = self.audit_v2_parts()
         document = dict(header)
         for pointer, rows in collections.items():
+            if pointer == "/groups":
+                rows = ({**group, "urls": list(group["urls"])} for group in rows)
             _set_collection(document, pointer, rows)
         return document

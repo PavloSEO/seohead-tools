@@ -16,6 +16,21 @@ grain. Unmatched and unkeyable populations remain identifiable. This projection
 does not add metric values or infer causal effects. CSV formula-like cells receive
 an explicit safety prefix recorded in the manifest.
 
+Large finding groups retain their complete ordered membership once in an optional
+manifest.group_members companion (bi-group-members.v1). Its group-metadata and
+member CSV partitions declare exact counts, member order, file hashes, group
+digests, run_id and the source audit digest. The six main datasets keep their
+existing schemas. A group_urls_json cell is either an inline complete array of
+at most 25 members or an explicit versioned reference with group identity, complete
+member count, source audit hash and companion hash. It is never a sampled prefix.
+group_url_count always names the full membership.
+
+The companion remains local when the six main datasets are published. It must be
+retained with the package, and selected finding packages preserve it. A destination
+must identify this local evidence separately from the six published datasets.
+verify_group_member_references validates the full companion and all finding
+references against the package run; missing, changed or foreign companions refuse.
+
 ## Cohorts
 
 `cohorts` is a URL-level, inspectable derived dataset. Each row retains its source

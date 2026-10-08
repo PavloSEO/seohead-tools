@@ -26,11 +26,19 @@ resolution needs exact retained recheck evidence or an eligible later measured o
 | Format | `ledger.v1` |
 | SQLite signature | `SQLite format 3\000` |
 | `application_id` | `1397051212` (`SEOL`; scans use `SEOH`) |
-| `user_version` | `4` |
+| `user_version` | `5` |
 
 A reader must require all three identifiers. `open_ledger` returns a validated
 connection or refuses; it never auto-repairs, never opens a foreign file, and
 never silently migrates.
+
+An explicit write open migrates supported earlier versions transactionally.
+Revision 5 stores each source group and ordered member once in source_group and
+source_group_member; finding rows retain group references. Migration preserves
+case identity and history, refuses conflicting copies, and rolls back on failure.
+Read-only opens of older ledger revisions refuse without changing their bytes.
+Incomplete membership remains partial or unavailable, including on replay of a
+source that an older reader incorrectly labelled complete.
 
 ## Project/site binding
 
@@ -255,6 +263,12 @@ request or mutates the ledger.
   observations and lifecycle decisions. It returns `total`, `limit`, `offset`
   and the ledger revision; reads paginate by finding (default 100, maximum
   1,000) so an observer can request exact cases without hiding the population.
+  Each group includes at most 25 preview URLs plus group_members_page with
+  its source identity, exact total and continuation offset. The preview does not
+  change the retained membership or remediation denominator.
+- read_group_members(ledger, source_scan_id, group_ref, offset=0, limit=100,
+  max_bytes=1048576) returns exact ordered member pages (up to 1,000 rows and
+  8 MiB), including the full-member digest and explicit next_offset.
 - `transition_occurrence(ledger, *, occurrence_key, state, actor, reason,
   expected_revision, observation_id=None, decided_at=None) -> dict` — append
   one revision-safe lifecycle decision.
@@ -272,3 +286,11 @@ request or mutates the ledger.
   additional site identity on a write connection.
 - `canonical_url`, `finding_key`, `occurrence_key` — the canonical
   serialization used for identity, exposed so a recheck reproduces keys.
+
+The same continuation is public through CLI and local MCP:
+
+    seohead remediation-cases --ledger ledger.sqlite --source-scan-id 1 --group-ref GRP-TITLE-0001 --offset 25 --limit 100 --max-bytes 1048576
+
+Supply both group selectors and omit finding selectors (check, url, finding_key).
+Advance by the returned next_offset; has_more=false ends the membership.
+No request fetches a URL or changes the ledger.
