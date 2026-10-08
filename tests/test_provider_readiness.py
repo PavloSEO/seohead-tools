@@ -7,6 +7,8 @@ import io
 import json
 import urllib.error
 
+import pytest
+
 from seohead import cli
 from seohead.data_sources import credentials, providers
 
@@ -20,6 +22,109 @@ def _isolate_credentials(monkeypatch, tmp_path):
         for _path, env_var in provider_sources.values():
             monkeypatch.delenv(env_var, raising=False)
     monkeypatch.delenv("GSC_SERVICE_ACCOUNT_FILE", raising=False)
+
+
+def _service_account(tmp_path):
+    account = tmp_path / "gsc" / "service-account.json"
+    account.parent.mkdir(exist_ok=True)
+    account.write_text(
+        json.dumps(
+            {
+                "type": "service_account",
+                "client_email": "synthetic@example.test",
+                "private_key": "synthetic-private-key-canary",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        ),
+        encoding="utf-8",
+    )
+    account.chmod(0o600)
+    return account
+
+
+@pytest.mark.parametrize("operation", ["landing_pages", "page_views"])
+@pytest.mark.parametrize("credential", ["service_account", "oauth_bearer", "both"])
+def test_ga4_readiness_matches_existing_collection_credentials(
+    monkeypatch, tmp_path, operation, credential
+):
+    from seohead.data_sources import ga4, gsc
+
+    _isolate_credentials(monkeypatch, tmp_path)
+    if credential in {"service_account", "both"}:
+        _service_account(tmp_path)
+    if credential in {"oauth_bearer", "both"}:
+        monkeypatch.setenv("GA4_ACCESS_TOKEN", "synthetic-bearer-canary")
+    token_requests = []
+
+    def service_token(scope):
+        token_requests.append(scope)
+        return "synthetic-service-token-canary"
+
+    monkeypatch.setattr(gsc, "service_account_access_token", service_token)
+    readiness = providers.provider_readiness("ga4", operation)
+    doctor = providers.sources_doctor()["providers"]["ga4"]
+    verification = providers.provider_verify("ga4")
+
+    assert readiness["state"] == doctor["readiness_state"] == "configured_unverified"
+    assert doctor["state"] == verification["state"] == "credential_present"
+    assert readiness["credential_components"] == {
+        "oauth_bearer": credential in {"oauth_bearer", "both"},
+        "service_account": credential in {"service_account", "both"},
+    }
+    assert verification["permission_state"] == "unsupported"
+    assert readiness["permission_state"] == "not_verified"
+    assert readiness["target_access"] == verification["target_access"] == "not_requested"
+    assert readiness["verified"] is verification["verified"] is False
+    assert token_requests == []  # Diagnostics never refresh or mint a token.
+    public = json.dumps([readiness, doctor, verification])
+    assert "canary" not in public and str(tmp_path) not in public
+    assert "durable_oauth" not in readiness["credential_components"]
+
+    request = {"property_id": "123", "start_date": "2026-10-01", "end_date": "2026-10-03"}
+    if operation == "page_views":
+        request["site_origin"] = "https://example.test"
+    body = json.dumps(
+        {
+            "dimensionHeaders": [
+                {"name": name} for name in ["date", "hostName", "pagePathPlusQueryString"]
+            ],
+            "metricHeaders": [{"name": "screenPageViews", "type": "TYPE_INTEGER"}],
+            "rows": [],
+            "rowCount": 0,
+            "metadata": {"timeZone": "UTC"},
+        }
+    )
+    result = providers.provider_collect("ga4", operation, request, transport=lambda *_: body)
+    assert result["evidence"]["status"] == "complete"
+    assert token_requests == ([ga4.READONLY_SCOPE] if credential == "service_account" else [])
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_ga4_missing_and_invalid_service_account_remain_unavailable(
+    monkeypatch, tmp_path, malformed
+):
+    _isolate_credentials(monkeypatch, tmp_path)
+    if malformed:
+        _service_account(tmp_path).write_text('{"private_key":"synthetic-canary"', encoding="utf-8")
+    report = providers.provider_readiness("ga4")
+    assert report["state"] == ("invalid" if malformed else "missing")
+    assert report["credential_components"] == {"oauth_bearer": False, "service_account": False}
+    assert report["verified"] is False
+    assert "synthetic-canary" not in json.dumps(report)
+    if malformed:
+        assert report["credential_sources"]["service_account"]["reason"] == "malformed_json"
+
+
+def test_ga4_does_not_reuse_search_console_bearer_or_grant(monkeypatch, tmp_path):
+    from seohead.data_sources import oauth
+
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic-gsc-bearer")
+    monkeypatch.setattr(oauth, "grant_available", lambda provider: provider == "gsc")
+    assert providers.provider_readiness("gsc")["state"] == "configured_unverified"
+    report = providers.provider_readiness("ga4")
+    assert report["state"] == "missing"
+    assert "durable_oauth" not in report["credential_components"]
 
 
 def test_readiness_lists_operation_routes_and_never_infers_target_access(monkeypatch, tmp_path):
