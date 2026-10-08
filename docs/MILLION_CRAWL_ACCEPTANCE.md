@@ -97,3 +97,42 @@ Keep the original producer revision, all failed receipts and pre/post source
 hashes. A later consumer retry has its own revision and cannot relabel the original
 run as successful. `--skip-consumers` proves only capture/audit, never the full
 workflow. Real-site crawls, paid calls and deployment are outside this gate.
+
+## Recorded runs
+
+Receipts are retained outside the repository; each row below names the measured
+source revision, which need not be the current tip.
+
+### 2026-10-08, macOS arm64, Python 3.13.14 / SQLite 3.53.1
+
+- Guarded loopback at `53bec174`: **passed**. The private target was refused
+  before the exact-host allowance; the real guarded `http_client` made 16
+  requests at an effective 2 requests/s. Minimum observed arrival interval
+  0.438 s, mean 0.505 s — arrival pairs may dip under the delay floor from
+  connect/scheduling jitter on a loaded host, so the gate checks the aggregate
+  window plus a burst floor a collapsed throttle cannot meet.
+- Disposable service profile at `a7dff37a`: **passed** on the owned loopback
+  TLS fixture — unauthorized 401 / authorized 200, artifact backup/restore,
+  expiry, and atomic upgrade/rollback. Not a public-route or DNS proof.
+- Disposable SSH/tmpfs worker recovery: **not run on this host**. The fixture
+  is Linux-only and refused at preflight on macOS; that gate still awaits a
+  reviewed Linux runner.
+- BI delivery (`scripts/accept_bi_delivery.py`) on the loopback scan at
+  `77b65f32`: **passed** — six datasets, unchanged source hashes, offline
+  Sheets/BigQuery plans, `native_looker_template` still `missing`.
+- BI package on the retained 50,000-page scan from the earlier `d91e9a67`
+  sparse capture: all six datasets exported (260,042 findings across 149
+  partitions). The script's fixed `bi_filter` stress parameters
+  (`max_rows_per_file=3`) exceeded the declared partition bound at this scale
+  and refused loudly — the designed bounded-output error, not truncation.
+- 50,000-page dense stage (`catalogue-v1`, 3 links and 1 form per page, 2 KiB
+  bodies, one H1 family, interruption at 25,000 pages) at `a7dff37a` under the
+  declared 1,800-second stage budget: **blocked** on wall time during the
+  audit.v2 write. Collection had conserved 50,000 pages, 150,000 links,
+  50,013 forms and 50,000 bodies; the companion held 760,081 findings when the
+  watchdog terminated the worker. A rerun at `53bec174` with the wall budget
+  explicitly declared at 5,400 seconds (RSS/disk/free unchanged):
+  see that run's manifest for the outcome.
+
+The 100,000 and 1,000,000 stages, the complete-storage matrix and the JS
+cold/warm repeat gates remain **unproven** on this record.
