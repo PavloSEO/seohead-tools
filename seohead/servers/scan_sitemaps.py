@@ -59,6 +59,7 @@ def load_sitemaps(
         declared_count += 1
         if (
             any(root["source"] == "sitemap-only" for root in selected)
+            and settings["limits"]["max_urls"]
             and declared_count > settings["limits"]["max_urls"]
         ):
             raise ScanError("sitemap-only population exceeds the configured URL budget")

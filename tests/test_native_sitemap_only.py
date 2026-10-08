@@ -105,8 +105,9 @@ def _stored_members(scan: Path) -> set[str]:
         }
 
 
+@pytest.mark.parametrize("url_budget", [0, 8])
 def test_sitemap_only_keeps_xml_members_without_spidering_root_or_destinations(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, url_budget
 ):
     monkeypatch.setenv("SEOHEAD_ALLOW_PRIVATE_HOSTS", "sitemap.localhost")
     routes: dict[str, tuple[int, str, bytes, dict[str, str]]] = {}
@@ -130,7 +131,11 @@ def test_sitemap_only_keeps_xml_members_without_spidering_root_or_destinations(
             }
         )
         scan = tmp_path / "only.sqlite"
-        result = _crawl(base, scan, _config(tmp_path / "crawl.json"))
+        config = _config(tmp_path / "crawl.json")
+        document = json.loads(config.read_text())
+        document["limits"]["max_urls"] = url_budget
+        config.write_text(json.dumps(document))
+        result = _crawl(base, scan, config)
 
     assert result["partial"] is False
     assert result["urls_collected"] == 2
