@@ -174,6 +174,8 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     workbook.save(tmp_path / "redirect-map.xlsx")
     (tmp_path / "gsc.csv").write_text(f"url,clicks\n{base_url}/page,10\n", encoding="utf-8")
     (tmp_path / "not-observed.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
+    # docs/URL_LIST_SCANS.md's native list-mode chain reads a plain TXT URL list.
+    (tmp_path / "input.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
     # docs/BI.md's provider-backed cohort example is offline: materialize the
     # two normalized sources it names, using the same loopback URL as its audit.
     from seohead.data_sources.evidence_import import normalize_inline
@@ -267,7 +269,13 @@ def _seed_scan_inputs(tmp_path: Path) -> None:
     scan = import_run(
         source, tmp_path / "scan.sqlite", producer_build="1" * 40, effective_config=original_config
     )
-    for name in ("before.sqlite", "after.sqlite", "native.sqlite", "scans/audit.sqlite"):
+    for name in (
+        "before.sqlite",
+        "after.sqlite",
+        "native.sqlite",
+        "scans/audit.sqlite",
+        "list.seohead",
+    ):
         target = tmp_path / name
         target.parent.mkdir(exist_ok=True)
         shutil.copyfile(scan, target)
@@ -586,7 +594,10 @@ def test_documented_command_executes_or_at_least_still_parses(
         (tmp_path / "review-urls.csv").write_text(
             "url\nhttps://example.test/page\n", encoding="utf-8"
         )
-    elif any(".sqlite" in value for value in argv) and not {"--scan-out", "--resume"} & set(argv):
+    elif any((".sqlite" in value or ".seohead" in value) for value in argv) and not {
+        "--scan-out",
+        "--resume",
+    } & set(argv):
         _seed_scan_inputs(tmp_path)
     if argv[:1] == ["report-build"] and "--project" in argv:
         from seohead.projects.workspace import create_project

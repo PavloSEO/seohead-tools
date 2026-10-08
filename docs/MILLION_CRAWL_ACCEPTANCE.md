@@ -131,8 +131,17 @@ source revision, which need not be the current tip.
   audit.v2 write. Collection had conserved 50,000 pages, 150,000 links,
   50,013 forms and 50,000 bodies; the companion held 760,081 findings when the
   watchdog terminated the worker. A rerun at `53bec174` with the wall budget
-  explicitly declared at 5,400 seconds (RSS/disk/free unchanged):
-  see that run's manifest for the outcome.
+  explicitly declared at 5,400 seconds (RSS/disk/free unchanged): **passed**
+  in 3,640 s wall — interrupted at 24,999 pages and resumed to completion
+  (`finish_reason=finished`, `resumed=true`). Conservation held at 50,000
+  pages, 150,000 links, 50,013 forms, 50,000 responses/documents/bodies,
+  50,000 frontier-done and 50,000 sitemap members; scan and audit.v2 both
+  returned `integrity_check=ok` / `foreign_key_check=ok`; source hashes were
+  unchanged across all consumers. audit.v2 write took 1,807 s alone; peak
+  sampled RSS 1,053 MiB, artifact set 2.25 GB (314.8 MB scan + 1.94 GB
+  audit.v2). All consumer phases returned: audit read, integrity, snapshot,
+  tasks (19 tasks), export, XLSX, report, status, inspect, diagnosis,
+  log-scan, reanalysis (987 s), comparison round-trip and recheck.
 
 The 100,000 and 1,000,000 stages, the complete-storage matrix and the JS
 cold/warm repeat gates remain **unproven** on this record.
