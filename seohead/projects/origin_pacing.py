@@ -44,11 +44,13 @@ class ProjectOriginPacer:
         ):
             raise ValueError("minimum delay must be finite and nonnegative")
         if (
-            not isinstance(max_requests_per_second, (int, float))
+            type(max_requests_per_second) not in (int, float)
             or not math.isfinite(max_requests_per_second)
-            or max_requests_per_second <= 0
+            or max_requests_per_second < 0
         ):
-            raise ValueError("maximum request rate must be finite and positive")
+            raise ValueError(
+                "maximum request rate must be finite and nonnegative; zero disables pacing"
+            )
         self.root = root
         self.origin = _origin(target)
         self.max_requests_per_second = float(max_requests_per_second)
@@ -56,7 +58,9 @@ class ProjectOriginPacer:
         # adaptive backoff. This separate shared lane adds only the aggregate
         # project-host ceiling, so a deliberately slow run cannot reserve a
         # 120-second slot before another run reaches its own local turn.
-        self.interval_seconds = 1.0 / self.max_requests_per_second
+        self.interval_seconds = (
+            1.0 / self.max_requests_per_second if self.max_requests_per_second else 0.0
+        )
         self.path = root / _NAME
 
     def _ensure_private_store(self) -> None:
@@ -92,6 +96,8 @@ class ProjectOriginPacer:
 
     def reserve(self) -> float:
         """Atomically reserve a wall-clock request slot and return its wait time."""
+        if self.interval_seconds == 0:
+            return 0.0
         with closing(self._connect()) as con:
             con.execute("BEGIN IMMEDIATE")
             try:

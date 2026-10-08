@@ -211,7 +211,7 @@ def _validate(document: dict[str, Any], project_uuid: str) -> None:
         if aggregate_rate is not None and (
             not isinstance(aggregate_rate, float)
             or not math.isfinite(aggregate_rate)
-            or aggregate_rate <= 0
+            or aggregate_rate < 0
         ):
             raise ValueError("run observation aggregate request rate is invalid")
         if run["artifact"] is not None and not isinstance(run["artifact"], str):
@@ -361,9 +361,9 @@ def start(
     if aggregate_max_requests_per_second is not None and (
         not isinstance(aggregate_max_requests_per_second, float)
         or not math.isfinite(aggregate_max_requests_per_second)
-        or aggregate_max_requests_per_second <= 0
+        or aggregate_max_requests_per_second < 0
     ):
-        raise ValueError("aggregate maximum request rate must be finite and positive")
+        raise ValueError("aggregate maximum request rate must be finite and nonnegative")
     run_id = _new_run_id(run_id)
     started_at = _now()
     controller_pid = os.getpid()

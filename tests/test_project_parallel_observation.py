@@ -129,6 +129,13 @@ def test_caller_uuid_is_retained_as_the_observer_handshake(tmp_path):
         )
 
 
+def test_explicit_unlimited_project_pacer_does_not_reserve_a_hidden_two_per_second_slot(tmp_path):
+    project = _project(tmp_path)
+    pacer = ProjectOriginPacer(project, TARGET, minimum_delay_seconds=0, max_requests_per_second=0)
+    assert [pacer.reserve() for _ in range(10)] == [0.0] * 10
+    assert not pacer.path.exists()
+
+
 def test_project_origin_pacer_reserves_one_shared_host_schedule(tmp_path):
     project = _project(tmp_path)
     barrier = threading.Barrier(3)
