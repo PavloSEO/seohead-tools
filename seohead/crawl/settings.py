@@ -92,6 +92,10 @@ def checked_url_budget(max_urls: int, *, materialized: bool = False) -> int:
     of it. Both crawl entry points call this, which is also what stops the ceiling
     from being defined twice and drifting apart again (#356).
     """
+    if max_urls == 0:
+        if materialized:
+            raise ValueError("an unlimited URL population requires a native SQLite site scan")
+        return 0
     budget = max(1, int(max_urls))
     if budget > MAX_URLS_CEILING:
         raise ValueError(
@@ -618,7 +622,8 @@ DESCRIPTIONS: dict[str, str] = {
     "storage.body_mode": "SQLite only: captured_entity_bytes retains fetched HTML/DOM; off retains metadata only.",
     "storage.format_version": "Explicit scan storage format: scan.v1 (default) or scan.v2 for optional graph/event extensions.",
     "storage.capacity_profile": (
-        "'stable' (default) admits at most 1,000,000 URLs with independent resource budgets. "
+        "'stable' (default) admits explicit URL limits up to 1,000,000; native SQLite "
+        "max_urls=0 disables the URL limit while retaining independent resource guards. "
         "'experimental_synthetic' is the compatible direct-storage fixture marker; "
         "live collectors refuse that marker. Neither setting certifies measured capacity."
     ),
@@ -709,10 +714,11 @@ DESCRIPTIONS: dict[str, str] = {
         "chain, recording every inspected target without adding it to the page population."
     ),
     "limits.max_urls": (
-        "Maximum number of URLs the crawl will fetch. Values above "
+        "Maximum number of URLs the crawl will fetch; 0 disables the URL limit for "
+        "native SQLite site scans, which collect until their queue is exhausted. Values above "
         f"{MAX_URLS_CEILING:,} are refused rather than clamped; narrow the scope instead."
     ),
-    "limits.max_depth": "Maximum link depth from the start URL.",
+    "limits.max_depth": "Maximum link depth from the start URL; -1 disables the depth limit for native SQLite site scans.",
     "limits.max_query_variants_per_path": "Maximum distinct query strings kept per URL path.",
     "limits.max_response_bytes": "Response bodies larger than this are truncated before parsing.",
     "limits.max_url_length": "URLs longer than this are not fetched.",
@@ -1140,15 +1146,15 @@ def validate(config: dict[str, Any]) -> None:
     _validate_file_type_filters(config["scope"])
 
     limits = config["limits"]
-    if type(limits["max_urls"]) is not int or limits["max_urls"] < 1:
-        raise ConfigError("limits.max_urls must be a positive integer")
+    if type(limits["max_urls"]) is not int or limits["max_urls"] < 0:
+        raise ConfigError("limits.max_urls must be a nonnegative integer")
     if limits["max_urls"] > MAX_URLS_CEILING:
         raise ConfigError(
             f"limits.max_urls is {limits['max_urls']:,}, above this crawler's ceiling of "
             f"{MAX_URLS_CEILING:,}; narrow the scope or split the work into resumable scans."
         )
-    if limits["max_depth"] < 0:
-        raise ConfigError("limits.max_depth cannot be negative")
+    if type(limits["max_depth"]) is not int or limits["max_depth"] < -1:
+        raise ConfigError("limits.max_depth must be an integer of at least -1")
     if type(limits["max_requests"]) is not int or limits["max_requests"] < 0:
         raise ConfigError("limits.max_requests must be a nonnegative integer")
     if limits["max_requests"] > MAX_REQUESTS_CEILING:
@@ -1187,15 +1193,18 @@ def validate(config: dict[str, Any]) -> None:
             "external_checks.max_redirects cannot exceed 10 (the redirect-chain ceiling)"
         )
 
-    # A crawl with no budget at all runs forever on an infinite URL space.
+    # A SQLite site scan may disable population/time limits while retaining its
+    # filesystem reserve and durable checkpoint. Materialized routes refuse an
+    # unlimited URL population at their admission boundary.
     if (
         not limits["max_urls"]
-        and not limits["max_depth"]
+        and limits["max_depth"] in (-1, 0)
         and not limits["max_crawl_seconds"]
         and not limits["max_requests"]
+        and not config["storage"]["min_free_bytes"]
     ):
         raise ConfigError(
-            "a crawl needs at least one budget: max_urls, max_depth, max_crawl_seconds or max_requests"
+            "a crawl needs at least one budget or a positive storage.min_free_bytes reserve"
         )
 
     for rule in config["link_position"]["rules"]:

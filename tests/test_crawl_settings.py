@@ -141,8 +141,8 @@ def test_generic_headers_refuse_credentials_without_echoing_their_values(name):
     [
         ({"robots.policy": "maybe"}, "robots.policy"),
         ({"scope.internal": "everything"}, "scope.internal"),
-        ({"limits.max_urls": 0}, "max_urls"),
-        ({"limits.max_depth": -1}, "max_depth"),
+        ({"limits.max_urls": -1}, "max_urls"),
+        ({"limits.max_depth": -2}, "max_depth"),
         ({"limits.max_query_variants_per_path": -1}, "max_query_variants_per_path"),
         ({"speed.min_delay_seconds": -1}, "min_delay_seconds"),
         ({"speed.concurrency": 0}, "concurrency"),

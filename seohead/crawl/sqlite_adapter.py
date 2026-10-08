@@ -348,7 +348,7 @@ def _redirect_discovery(
     if (
         not settings["discovery"]["redirects"]["crawl"]
         or not record.redirect_url
-        or depth >= settings["limits"]["max_depth"]
+        or (settings["limits"]["max_depth"] >= 0 and depth >= settings["limits"]["max_depth"])
     ):
         return
     target = _strip_fragment(record.redirect_url)
@@ -732,7 +732,7 @@ def crawl_to_scan(
                 )
             if progress is not None:
                 progress(counts["pages"], counts["queued"] + counts["inflight"])
-            if counts["pages"] >= limit:
+            if limit and counts["pages"] >= limit:
                 emit_event("budget", {"kind": "urls", "limit": limit, "used": counts["pages"]})
                 if counts["queued"] or counts["inflight"]:
                     partial, finish_reason = True, "url_limit"
@@ -754,7 +754,7 @@ def crawl_to_scan(
                     partial, finish_reason = True, "duration_limit"
                     scan.interrupt("duration limit reached")
                 break
-            remaining = limit - counts["pages"]
+            remaining = limit - counts["pages"] if limit else throttle.concurrency
             scan.preflight_capture()
             try:
                 leases = scan.claim(min(throttle.concurrency, remaining))

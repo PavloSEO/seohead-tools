@@ -7,6 +7,21 @@ takes `https://example.com` goes to the network; audit mode B over
 
 ## The whole site in one command
 
+For a native link crawl that runs until its queue is empty, disable the URL,
+HTTP-attempt and time limits explicitly. Resource guards and robots/scope rules
+still apply; an interrupted or resource-limited scan remains partial and resumable.
+This mode is available for the durable SQLite site route, not the materialized
+legacy collector. A finite URL limit can be enabled again at any time for a new scan.
+
+```bash
+seohead crawl-site --url https://example.com --scan-out site.sqlite --max-urls 0 \
+  --input '{"overrides":{"limits.max_depth":-1,"limits.max_requests":0,"limits.max_crawl_seconds":0}}'
+```
+
+`limits.max_depth=-1` disables the native depth limit; `0` still means the start
+page only. Higher configurable admission is not evidence of measured large-site
+capacity. Inspect actual retained coverage and completion before using a report.
+
 ```bash
 # bounded sitemap-based live evidence pass + a ready Excel file (not a link-graph crawl)
 seohead site-audit --url https://example.com --limit 50 --report xlsx --out audit.xlsx

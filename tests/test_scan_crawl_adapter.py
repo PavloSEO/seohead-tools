@@ -20,6 +20,68 @@ from seohead.storage import ScanBackpressure, ScanError
 from seohead.storage.native_scan import NativeScan
 
 
+def test_unlimited_site_scan_drains_more_than_default_url_population(tmp_path):
+    total = 241
+    fetched = []
+
+    def fetcher(url):
+        if url.endswith("/robots.txt"):
+            return _Response(200, "User-agent: *\nAllow: /\n")
+        fetched.append(url)
+        index = 0 if url.endswith("/") else int(url.rsplit("/", 1)[1])
+        link = f'<a href="/{index + 1}">next</a>' if index + 1 < total else ""
+        return _Response(200, f"<html><body>{link}</body></html>")
+
+    settings = load(
+        overrides={
+            "limits.max_urls": 0,
+            "limits.max_depth": -1,
+            "limits.max_requests": 0,
+            "limits.max_crawl_seconds": 0,
+            "speed.min_delay_seconds": 0,
+        }
+    )
+    run = crawl_to_scan(
+        "https://example.test/",
+        scan_out=str(tmp_path / "full.sqlite"),
+        settings=settings,
+        producer_version="3.0.0",
+        producer_revision="a" * 40,
+        runtime_versions={
+            key: "test" for key in ("python", "sqlite", "httpx", "lxml", "beautifulsoup4")
+        },
+        fetcher=fetcher,
+        sleeper=lambda _: None,
+    )
+    assert run.pages == total
+    assert len(fetched) == total
+    assert not run.partial
+    with sqlite3.connect(tmp_path / "full.sqlite") as con:
+        assert (
+            con.execute(
+                "SELECT count(*) FROM frontier WHERE state IN ('queued','inflight')"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_unlimited_url_population_refuses_materialized_routes_and_missing_reserve():
+    from seohead.crawl.settings import ConfigError, checked_url_budget
+
+    with pytest.raises(ValueError, match="native SQLite"):
+        checked_url_budget(0, materialized=True)
+    with pytest.raises(ConfigError, match="reserve"):
+        load(
+            overrides={
+                "limits.max_urls": 0,
+                "limits.max_depth": -1,
+                "limits.max_requests": 0,
+                "limits.max_crawl_seconds": 0,
+                "storage.min_free_bytes": 0,
+            }
+        )
+
+
 def _call(tmp_path, **settings):
     return crawl_to_scan(
         "https://example.test/",
