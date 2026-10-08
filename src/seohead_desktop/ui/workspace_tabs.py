@@ -13,8 +13,8 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from uuid import uuid4
 
-from PyQt5.QtCore import QByteArray, Qt, pyqtSignal
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtCore import QByteArray, QPointF, Qt, pyqtSignal
+from PyQt5.QtGui import QKeySequence, QMouseEvent
 from PyQt5.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
@@ -107,11 +107,55 @@ class WorkspaceContext:
 
 
 class _WorkspaceTabBar(QTabBar):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._drag_id = None
+        self._drag_offset = 0
+
     def minimumSizeHint(self):
         size = super().minimumSizeHint()
         # Qt's scroll-button minimum can exceed the width of one short tab.
         size.setWidth(max(0, min(size.width(), self.sizeHint().width())))
         return size
+
+    def mousePressEvent(self, event):
+        index = self.tabAt(event.pos())
+        self._drag_id = (
+            self.tabData(index)
+            if event.button() == Qt.LeftButton and index >= 0
+            else None
+        )
+        if self._drag_id is not None:
+            self._drag_offset = event.x() - self.tabRect(index).center().x()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        contexts = self.parentWidget()._contexts
+        context = contexts.get(self._drag_id)
+        if context is not None and event.buttons() & Qt.LeftButton:
+            group = [
+                index
+                for index in range(self.count())
+                if contexts[self.tabData(index)].pinned == context.pinned
+            ]
+            first = self.tabRect(group[0]).center().x() + self._drag_offset
+            last = self.tabRect(group[-1]).center().x() + self._drag_offset
+            x = max(first, min(event.x(), last))
+            if x != event.x():
+                # Clamping after tabMoved confuses Qt's private dragged-tab index.
+                event = QMouseEvent(
+                    event.type(),
+                    QPointF(x, event.y()),
+                    event.screenPos(),
+                    event.button(),
+                    event.buttons(),
+                    event.modifiers(),
+                )
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self._drag_id = None
 
 
 class WorkspaceTabs(QWidget):
@@ -141,7 +185,7 @@ class WorkspaceTabs(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.tabbar = _WorkspaceTabBar()
+        self.tabbar = _WorkspaceTabBar(self)
         self.tabbar.setObjectName("workspaceTabBar")
         self.tabbar.setAccessibleName("Проекты, сканы и представления")
         self.tabbar.setUsesScrollButtons(True)

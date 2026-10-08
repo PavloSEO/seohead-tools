@@ -4,8 +4,8 @@ import unittest
 from dataclasses import FrozenInstanceError
 from unittest.mock import Mock, patch
 
-from PyQt5.QtCore import QByteArray, Qt
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtCore import QByteArray, QEvent, QPoint, QPointF, Qt
+from PyQt5.QtGui import QIcon, QKeySequence, QMouseEvent
 from PyQt5.QtTest import QSignalSpy, QTest
 from PyQt5.QtWidgets import (
     QApplication,
@@ -189,6 +189,57 @@ class WorkspaceTabsTests(unittest.TestCase):
         )
         self.assertEqual(self.tabs.current_id, "d")
         self.assertEqual(list(selected), [])
+
+    def test_mouse_drag_does_not_shuffle_tabs_across_pin_boundary(self):
+        for id in ("a", "b", "c", "d"):
+            self.add(id)
+        self.tabs.set_pinned("b", True)
+        self.window.show()
+        self.app.processEvents()
+        bar = self.tabs.tabbar
+
+        def drag(source, destination):
+            start, end = bar.tabRect(source).center(), bar.tabRect(destination).center()
+            QTest.mousePress(bar, Qt.LeftButton, pos=start)
+            for step in range(1, 21):
+                point = QPoint(
+                    start.x() + (end.x() - start.x()) * step // 20, start.y()
+                )
+                QApplication.sendEvent(
+                    bar,
+                    QMouseEvent(
+                        QEvent.MouseMove,
+                        QPointF(point),
+                        QPointF(bar.mapToGlobal(point)),
+                        Qt.NoButton,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                    ),
+                )
+                QTest.qWait(5)
+            QTest.mouseRelease(bar, Qt.LeftButton, pos=end)
+            QTest.qWait(150)
+
+        drag(0, 3)
+        self.assertEqual(
+            [item.id for item in self.tabs.contexts()], ["b", "a", "c", "d"]
+        )
+        self.assertEqual(self.tabs.current_id, "b")
+        drag(3, 0)
+        self.assertEqual(
+            [item.id for item in self.tabs.contexts()], ["b", "d", "a", "c"]
+        )
+        self.assertEqual(self.tabs.current_id, "d")
+        self.tabs.set_pinned("a", True)
+        drag(0, 3)
+        self.assertEqual(
+            [item.id for item in self.tabs.contexts()], ["a", "b", "d", "c"]
+        )
+        self.assertEqual(self.tabs.current_id, "b")
+        drag(2, 3)
+        self.assertEqual(
+            [item.id for item in self.tabs.contexts()], ["a", "b", "c", "d"]
+        )
 
     def test_new_tab_after_pinned_starts_unpinned_group_and_restored_pin_joins_prefix(
         self,
