@@ -42,7 +42,8 @@ python3.12 -m venv .venv-desktop
 .venv-desktop/bin/seohead-desktop --project /path/to/existing/project
 ```
 
-Tests: `QT_QPA_PLATFORM=offscreen .venv-desktop/bin/python -m unittest discover -s desktop/tests`.
+Tests (run from `desktop/`, the suite imports its helpers as `tests.*`):
+`cd desktop && QT_QPA_PLATFORM=offscreen ../.venv-desktop/bin/python -m unittest discover -s tests` — 256 tests, 13 skipped.
 Bundle (macOS): `desktop/scripts/build_macos.sh` → `desktop/dist/SEOHEAD Desktop.app` (ignored by git).
 
 `desktop/` is excluded from the core's ruff/pytest/packaging; it has its own toolchain.
