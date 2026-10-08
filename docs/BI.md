@@ -177,6 +177,19 @@ select explicit segments with `cohort_id` in `cohorts`. Predicates never execute
 The selected manifest records source, selected and omitted rows, source coverage and state counts.
 A complete selection is not a claim that the underlying crawl or provider source is complete.
 
+When findings reference a `bi-group-members.v1` companion, destination preflight verifies its
+complete partitions, ordered membership, hashes and source-audit binding, including every typed
+finding reference. A dangling reference or missing/corrupt companion fails before authorization
+or remote writes. Selected findings keep the complete immutable companion, even when the selected
+columns omit `group_urls_json`; filtering never samples group membership. Its bytes and partitions
+count toward the selected output limits, and the completed selected package is verified again.
+
+Sheets and BigQuery publish only the declared main datasets. Plans, previews and publication
+receipts expose `external_companion_refs` with the local manifest reference, companion hash,
+group/member counts, `publication: local_only` and `published: false`. The same disclosure appears
+in a selected package and its XLSX index. Keep the local package for complete group membership;
+published finding references and local row conservation do not mean those members were uploaded.
+
 CSV partitions use the same streamed byte/hash writer as the full package, with explicit row,
 partition-byte, total-byte, cell and free-disk limits. At most 10,000 partitions are published;
 choose a larger partition size if a requested split would exceed that bound. No partial package
