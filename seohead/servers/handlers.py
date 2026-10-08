@@ -746,6 +746,7 @@ def crawl_site(
                     project_root,
                     resume_data["start_url"],
                     minimum_delay_seconds=resume_data["settings"]["speed"]["min_delay_seconds"],
+                    max_requests_per_second=max(2.0, rate) if isfinite(rate) else 2.0,
                 )
                 observed = start(
                     project_root,
@@ -984,6 +985,7 @@ def crawl_site(
                     project_root,
                     url,
                     minimum_delay_seconds=settings["speed"]["min_delay_seconds"],
+                    max_requests_per_second=max(2.0, rate) if isfinite(rate) else 2.0,
                 )
                 observed = start(
                     project_root,
