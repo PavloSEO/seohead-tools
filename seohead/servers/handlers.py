@@ -4776,11 +4776,21 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
 
 
 def project_observe(
-    directory: str, consumer: str | None = None, scan_limit: int = 20
+    directory: str,
+    consumer: str | None = None,
+    scan_limit: int = 20,
+    run_offset: int = 0,
+    run_limit: int = 20,
 ) -> dict[str, Any]:
     from seohead.servers.project_handlers import project_observe as core
 
-    return core(directory, consumer=consumer, scan_limit=scan_limit)
+    return core(
+        directory,
+        consumer=consumer,
+        scan_limit=scan_limit,
+        run_offset=run_offset,
+        run_limit=run_limit,
+    )
 
 
 def project_facts(

@@ -1389,13 +1389,15 @@ explicitly task completion, not a site-health or remediation percentage.
 
 MCP name: `seo_project_observe`
 
-Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary. Workflow/checklist receipt observations are metadata-only, not fresh byte verification. Missing historical receipts remain unverified. Explicit project-status and workflow-status retain byte verification by default.
+Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. It never starts work or consumes inbox entries; a consumer only receives its own unread summary. Workflow/checklist receipt observations are metadata-only, not fresh byte verification. Missing historical receipts remain unverified. Explicit project-status and workflow-status retain byte verification by default. Run pagination applies independently per site: all stored running records plus one terminal page, newest admitted first. run_offset must be nonnegative and run_limit 1..100. Totals cover at most 100 retained records per site, not lifetime history; earlier evictions were not counted. A changed runs revision requires the caller to restart terminal pagination.
 
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
 | `consumer` | `str | None` | `None` |
 | `scan_limit` | `int` | `20` |
+| `run_offset` | `StrictInt` | `0` |
+| `run_limit` | `StrictInt` | `20` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

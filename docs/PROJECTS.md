@@ -184,6 +184,23 @@ or missing output leaves counters unavailable while collection/analysis phases
 remain observable. The observer only reads these
 records and never starts, cancels, resumes, or acknowledges a run.
 
+`project-observe --run-offset 0 --run-limit 20` reads a terminal-run page;
+MCP uses `run_offset` and `run_limit` with the same defaults. Offset is a
+nonnegative integer and limit is 1–100. Each site's `runs` keeps every stored
+`running` record visible alongside that site's selected terminal page, ordered
+by newest admission, not finish time. The top-level `runs` is the primary site's
+view. `active_total` counts stored running states even when their PID is abandoned
+or unknown; observation never rewrites these states. `terminal_total` and
+`pagination` describe terminal rows only. Use `next_offset` to continue, and
+restart pagination when `revision` changes to avoid mixing different snapshots.
+Named flags override explicitly supplied JSON values; absent flags preserve them.
+
+Run history retains at most 100 records per project. Starting a run at capacity
+evicts the oldest terminal record and preserves running records; if all 100 are
+running, admission fails. This policy is unchanged by reading history pages.
+`total` is the current retained count. Earlier evictions were not counted, so
+`retention.evicted_total` is null and the snapshot does not claim lifetime history.
+
 `n` writes one explicit project note and `g` writes one explicit proposed goal.
 They accept ordinary terminal text, including OS dictation committed as text; no
 speech-recognition integration is involved. These are the only writes from the
