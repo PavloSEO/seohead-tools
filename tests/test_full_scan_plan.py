@@ -90,6 +90,18 @@ class FullScanPlanTests(unittest.TestCase):
         self.assertEqual(calls[0][0], 2000)
         self.assertNotIn("limits.max_depth", calls[0][5])
 
+    def test_quick_html_switch_preserves_the_explicit_capture_setting(self):
+        calls = []
+        self.window.launch_scan = lambda *values: calls.append(values)
+        def inspect(dialog):
+            toggle = dialog.findChild(QCheckBox, "scanSaveHtml")
+            self.assertTrue(toggle.isChecked())
+            toggle.setChecked(False)
+            QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
+        self.inspect_dialog(inspect)
+        self.assertEqual(calls[0][5]["storage.body_mode"], "off")
+        self.assertFalse(self.window._scan_drafts[self.window.note_project_key()]["save_html"])
+
     def test_invalid_rate_keeps_draft_open_and_cancellation_does_not_dispatch(self):
         def inspect(dialog):
             rate = dialog.findChild(QComboBox, "scanRequestRate")

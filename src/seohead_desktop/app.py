@@ -2719,6 +2719,12 @@ class MainWindow(QMainWindow):
         limit_row.addWidget(limit_enabled)
         limit_row.addWidget(limit, 1)
         form.addRow("Лимит URL", limit_row)
+        save_html = SwitchCheckBox("Сохранять")
+        save_html.setObjectName("scanSaveHtml")
+        save_html.setAccessibleName("Сохранять HTML страниц для повторного анализа")
+        save_html.setToolTip("Сохраняет код страниц. При выключении повторный анализ и поиск по сохранённому HTML недоступны.")
+        save_html.setChecked(draft.get("save_html", draft.get("overrides", {}).get("storage.body_mode", "captured_entity_bytes") != "off"))
+        form.addRow("HTML страниц", save_html)
         layout.addLayout(form)
         advanced_overrides = dict(draft.get("overrides", {}))
         advanced_overrides.setdefault("limits.max_requests", draft.get("requests", 0))
@@ -2767,6 +2773,7 @@ class MainWindow(QMainWindow):
             return {**defaults, **advanced_overrides,
                     "limits.max_urls": limit.value() if limit_enabled.isChecked() else 0,
                     "rendering.mode": mode.currentData(),
+                    "storage.body_mode": "captured_entity_bytes" if save_html.isChecked() else "off",
                     "speed.min_delay_seconds": 1 / rps, "speed.concurrency": threads.value()}
 
         def prepare():
@@ -2836,6 +2843,7 @@ class MainWindow(QMainWindow):
                     threads.setMaximum(max(threads.maximum(), count))
                     threads.setValue(count)
                     mode.setCurrentIndex(max(0, mode.findData(selected.get("rendering.mode", mode.currentData()))))
+                    save_html.setChecked(selected.get("storage.body_mode", "captured_entity_bytes") != "off")
                     update_plan()
             except (TypeError, ValueError, OSError) as exc:
                 feedback.setText(explain(exc))
@@ -2857,7 +2865,7 @@ class MainWindow(QMainWindow):
                 pass
 
         advanced.clicked.connect(edit_advanced)
-        for signal in (limit.valueChanged, limit_enabled.toggled, rate.currentTextChanged, threads.valueChanged, source_mode.currentIndexChanged, sitemap_input.textChanged, mode.currentIndexChanged):
+        for signal in (limit.valueChanged, limit_enabled.toggled, save_html.toggled, rate.currentTextChanged, threads.valueChanged, source_mode.currentIndexChanged, sitemap_input.textChanged, mode.currentIndexChanged):
             signal.connect(update_plan)
         self.crawl_descriptor_changed.connect(update_plan)
         dialog.finished.connect(release)
@@ -2867,7 +2875,7 @@ class MainWindow(QMainWindow):
         if self.crawl_descriptor is None:
             self.load_crawl_descriptor()
         dialog.exec_()
-        self._scan_drafts[project_key] = {"source": source_mode.currentData(), "sitemap": sitemap_input.text(), "mode": mode.currentData(), "limit": limit.value(), "limit_enabled": limit_enabled.isChecked(), "rps": rate.currentText(), "threads": threads.value(), "overrides": dict(advanced_overrides)}
+        self._scan_drafts[project_key] = {"source": source_mode.currentData(), "sitemap": sitemap_input.text(), "mode": mode.currentData(), "limit": limit.value(), "limit_enabled": limit_enabled.isChecked(), "save_html": save_html.isChecked(), "rps": rate.currentText(), "threads": threads.value(), "overrides": dict(advanced_overrides)}
         release()
         dialog.deleteLater()
         if accepted:
