@@ -26,6 +26,7 @@ def descriptor():
         "limits.max_requests": 20000,
         "limits.max_crawl_seconds": 0,
         "limits.max_depth": 5,
+        "storage.min_free_bytes": 1024**3,
         "speed.concurrency": 1,
         "speed.adaptive": True,
         "speed.min_delay_seconds": 0.5,
