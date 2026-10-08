@@ -90,9 +90,23 @@ The evidence destination must not exist before the run. The fixture:
    hashes, no successful failed-job result after remount recovery, no remaining
    lease recovery, and no automatic replay. A fresh SSH worker then runs a new
    JS job successfully and publishes its terminal status.
+   The two known JavaScript pages use the existing full-render policy, so the
+   worker renders each page directly instead of probing and then fetching it
+   again. The retained configuration must still show a 60-second render/crawl
+   budget and 30-request ceiling, and both pages must have actual rendered
+   evidence. A partial outcome cannot pass this positive recovery gate.
 6. Preserves a SQLite-consistent queue snapshot, synthetic job files, and
    redacted error codes outside the tmpfs before cleanup. SSH/TLS keys, bearer
    credentials and filler bytes are excluded from the evidence artifact.
+7. Copies the quiescent synthetic queue with SQLite's backup API and its complete
+   artifact directories, restores into a new private root, and exercises the
+   actual ASGI app in-process. Job status, coverage, opaque references and
+   authenticated download hashes must match the original; anonymous access
+   and an ungranted project are rejected. Replaying each original submission
+   must return its existing job. The separate portable regression also proves
+   that a queued job survives restoration and runs only once. This proof uses
+   the real queue and saved artifacts, unlike the static TLS fixture above;
+   it starts no additional listener and does not restore a production service.
 
 The JSON has `ok: true` only after all checks pass. Until a reviewed CI run
 produces that evidence, the script and its portable guard tests are a prepared

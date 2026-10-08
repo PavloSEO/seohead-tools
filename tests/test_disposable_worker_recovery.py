@@ -61,14 +61,25 @@ def test_worker_rejects_an_unbound_directory_before_queue_creation(tmp_path):
     assert not (state / "jobs.sqlite").exists()
 
 
-def test_fixture_only_removes_the_normal_storage_reserve_after_submission_validation():
+@pytest.mark.parametrize("mode", ["raw", "js"])
+def test_fixture_preserves_budgets_after_submission_validation(mode):
     from seohead.job_contracts import ScanOptions
 
-    submitted = ScanOptions(max_urls=1, max_requests=20).effective_config()
+    submitted = ScanOptions(
+        max_urls=1, max_requests=30, max_crawl_seconds=60, rendering_mode=mode
+    ).effective_config()
     effective = fixture.FixtureLimits(frozenset({fixture.HOST})).effective_config(submitted)
 
     assert submitted["storage"]["min_free_bytes"] > 0
     assert effective["storage"]["min_free_bytes"] == 0
+    assert effective["limits"] == submitted["limits"]
+    assert effective["speed"] == submitted["speed"]
+    assert effective["rendering"]["browser"] == submitted["rendering"]["browser"]
+    assert (
+        effective["rendering"]["escalation"]["max_render_seconds"]
+        == submitted["rendering"]["escalation"]["max_render_seconds"]
+    )
+    assert effective["rendering"]["escalation"]["policy"] == ("full" if mode == "js" else "sampled")
 
 
 def test_failure_metrics_do_not_expose_exception_arguments(monkeypatch, tmp_path):

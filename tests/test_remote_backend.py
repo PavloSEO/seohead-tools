@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import socket
 import sqlite3
@@ -100,6 +101,152 @@ def test_backend_requires_finite_lease(tmp_path, value):
         _backend(tmp_path, lease_seconds=value)
 
 
+@pytest.mark.parametrize("failure", [None, "deadline", "render"])
+def test_render_coverage_survives_worker_restart_and_authenticated_downloads(
+    monkeypatch, tmp_path, failure
+):
+    from seohead.crawl import render_escalation, sqlite_render
+    from seohead.tools import render
+
+    _network(monkeypatch)
+    clock = [0.0]
+    calls = []
+    escalate = render_escalation.escalate
+
+    def controlled_escalation(*args, **kwargs):
+        return escalate(*args, **kwargs, clock=lambda: clock[0])
+
+    def document(target, *_args, **_kwargs):
+        calls.append(target)
+        if failure == "deadline":
+            clock[0] = 61.0
+        if failure == "render" and len(calls) == 2:
+            return {"ok": False, "error": "synthetic private render error"}
+        renderer = sqlite_render._unknown_renderer(
+            target, ScanSubmission(target_url=SITE).options.effective_config()
+        )
+        renderer.update(engine="playwright-chromium", engine_version="synthetic")
+        return {
+            "ok": True,
+            "url": target,
+            "final_url": target,
+            "renderer": renderer,
+            "html": "<html><head><title>Rendered proof</title></head>"
+            "<body><h1>Rendered proof</h1><main>Rendered useful content.</main></body></html>",
+        }
+
+    monkeypatch.setattr(render_escalation, "escalate", controlled_escalation)
+    monkeypatch.setattr(render, "render_document", document)
+    backend = _backend(tmp_path)
+    api = _api(backend)
+    sent = api.post(
+        SCANS_A,
+        headers=_headers(),
+        json={
+            "target_url": SITE,
+            "options": {
+                "max_urls": 1,
+                "max_requests": 20,
+                "max_crawl_seconds": 60,
+                "rendering_mode": "js",
+            },
+        },
+    )
+    assert sent.status_code == 202, sent.text
+    job_id = sent.json()["job_id"]
+    finished = backend.run_one("render-worker")
+    reason = {
+        None: "",
+        "deadline": "render_time_budget_exhausted",
+        "render": "rendered_evidence_incomplete",
+    }[failure]
+    assert finished.state == ("partial" if failure else "finished")
+    assert finished.finish_reason == (reason or "finished")
+    result = backend.get_result("alpha", job_id)
+    assert result.coverage == ("partial" if failure else "complete")
+    assert result.audit_available
+    assert not result.evidence.source.crawl_partial
+    scan = backend.root / "projects" / "alpha" / job_id / "scan.sqlite"
+    assert scan.with_suffix(".sqlite.audit-v2.sqlite").is_file()
+    with closing(sqlite3.connect(scan)) as con:
+        assert con.execute("SELECT representation FROM pages").fetchone()[0] == (
+            "static" if failure else "rendered"
+        )
+        config = json.loads(con.execute("SELECT config_json FROM scan").fetchone()[0])
+    assert config["rendering"]["escalation"]["max_render_seconds"] == 60
+
+    # Old releases persisted this incomplete render as finished. Correct its
+    # read projection, without rewriting historical job or capture evidence.
+    with backend._db(write=True) as con:
+        con.execute(
+            "UPDATE jobs SET state='finished',finish_reason='finished',audit_reason='' WHERE job_id=?",
+            (job_id,),
+        )
+    before = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in scan.parent.iterdir()
+    }
+    restarted = _backend(tmp_path)
+    api = _api(restarted)
+    response = api.get(f"{SCANS_A}/{job_id}/result", headers=_headers())
+    assert response.status_code == 200
+    saved = response.json()
+    assert saved["job"]["state"] == "finished"
+    assert saved["coverage"] == ("partial" if failure else "complete")
+    assert saved["audit_reason"] == reason
+    assert SITE not in response.text
+    for artifact in saved["artifacts"]:
+        route = f"{SCANS_A}/{job_id}/artifacts/{artifact['artifact_id']}"
+        assert api.get(route).status_code == 401
+        downloaded = api.get(route, headers=_headers())
+        assert downloaded.status_code == 200
+        path = restarted.artifact_path("alpha", job_id, artifact["artifact_id"])
+        assert hashlib.sha256(downloaded.content).hexdigest() == before[path.name]
+    assert before == {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in scan.parent.iterdir()
+    }
+    with restarted._db() as con:
+        assert tuple(
+            con.execute(
+                "SELECT state,finish_reason,audit_reason FROM jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+        ) == ("finished", "finished", "")
+    for state, coverage in (("failed", "failed"), ("cancelled", "partial")):
+        with restarted._db(write=True) as con:
+            con.execute("UPDATE jobs SET state=? WHERE job_id=?", (state, job_id))
+        assert restarted.get_result("alpha", job_id).coverage == coverage
+
+
+@pytest.mark.parametrize(
+    "changes,reason",
+    [
+        ({"mode": "raw"}, "render_evidence_unavailable"),
+        ({"time_budget_exhausted": "false"}, "render_evidence_unavailable"),
+        ({"render_budget_exhausted": True}, "render_url_budget_exhausted"),
+        ({"patterns_partially_rendered": [SITE]}, "render_url_budget_exhausted"),
+        ({"patterns_unprobed": [SITE]}, "render_probe_unavailable"),
+        (None, "render_evidence_unavailable"),
+        ({"patterns_sampled": None}, "render_evidence_unavailable"),
+    ],
+)
+def test_render_coverage_requires_valid_requested_measurements(tmp_path, changes, reason):
+    from dataclasses import asdict
+
+    from seohead.crawl.render_escalation import EscalationResult
+    from seohead.remote_api.backend import _render_coverage_reason
+
+    summary = asdict(EscalationResult(mode="js"))
+    if changes is not None:
+        summary.update(changes)
+    else:
+        summary.pop("time_budget_exhausted")
+    path = tmp_path / "audit.json"
+    path.write_text(json.dumps({"run": {"render_escalation": summary}}))
+    assert _render_coverage_reason(path, "js") == reason
+    assert _render_coverage_reason(path, "raw") == ""
+    path.write_text('{"run":{"render_escalation":null}}')
+    assert _render_coverage_reason(path, "js") == "render_evidence_unavailable"
+
+
 def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tmp_path):
     requests = _network(monkeypatch)
     backend = _backend(tmp_path)
@@ -172,6 +319,47 @@ def test_synthetic_api_queue_worker_result_and_private_artifacts(monkeypatch, tm
     degraded = backend.get_result("alpha", job_id)
     assert degraded is not None and degraded.coverage == "partial"
     assert degraded.audit_reason == "required report artifact unavailable"
+
+
+def test_disposable_queue_restore_preserves_api_bytes_and_runs_a_queued_job_once(
+    monkeypatch, tmp_path
+):
+    from scripts.disposable_worker_recovery import verify_queue_restore
+
+    requests = _network(monkeypatch)
+    backend = _backend(tmp_path)
+    api = _api(backend)
+    body = {"target_url": SITE, "options": {"max_urls": 1, "max_requests": 20}}
+    assert api.post(SCANS_A, headers=_headers(), json=body).status_code == 202
+    assert backend.run_one("before-backup").state == "finished"
+    queued = api.post(SCANS_A, headers=_headers(key="queued-before-backup"), json=body).json()
+    authenticator = TokenAuthenticator(
+        {
+            TokenAuthenticator.digest(TOKEN_A): Principal(
+                "operator-a", {"alpha": frozenset({"scan:submit", "scan:read", "scan:result"})}
+            )
+        }
+    )
+    before_requests = len(requests)
+    restored = tmp_path / "restored"
+    proof = verify_queue_restore(backend, tmp_path / "backup", restored, authenticator, TOKEN_A)
+    assert proof == {
+        "jobs": 2,
+        "artifacts": 3,
+        "queued_jobs": 1,
+        "authenticated_bytes_unchanged": True,
+        "project_authorization": True,
+        "idempotency_preserved": True,
+    }
+    assert len(requests) == before_requests
+    recovered = SQLiteJobBackend(restored, backend.projects, producer_build="a" * 40)
+    completed = recovered.run_one("after-restore")
+    assert completed.job_id == queued["job_id"] and completed.state == "finished"
+    assert recovered.run_one("after-restore-again") is None
+    assert backend.get_job("alpha", queued["job_id"]).state == "queued"
+    replay = _api(recovered).post(SCANS_A, headers=_headers(key="queued-before-backup"), json=body)
+    assert replay.status_code == 200 and replay.json()["job_id"] == queued["job_id"]
+    assert TOKEN_A not in json.dumps(proof) and SITE not in json.dumps(proof)
 
 
 def test_trusted_remote_browser_and_credential_references_are_not_submission_fields(
