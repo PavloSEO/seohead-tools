@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from scripts import profile_scan_capacity as profile
-from seohead.crawl.settings import ConfigError
+from seohead.crawl.settings import MAX_URLS_CEILING, ConfigError
 from seohead.storage.native_scan import NativeScan
 
 
@@ -85,9 +85,9 @@ def test_process_loss_resumes_retained_pages_without_inventing_a_finished_scan(t
     assert result["status"] == ("measured" if result["finished"] else "blocked")
 
 
-def test_current_crawler_ceiling_is_a_named_block_not_a_million_page_claim(tmp_path):
-    args = _args(tmp_path / "refused.sqlite", pages=100_000, body_bytes=0, dom_bytes=0)
-    with pytest.raises(ConfigError, match="50,000"):
+def test_crawler_ceiling_is_a_named_block_before_storage_io(tmp_path):
+    args = _args(tmp_path / "refused.sqlite", pages=MAX_URLS_CEILING + 1, body_bytes=0, dom_bytes=0)
+    with pytest.raises(ConfigError, match="ceiling"):
         profile._config(args)
     assert not args.scan.exists()
 

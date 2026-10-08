@@ -68,9 +68,11 @@ a live provider or demonstrates VPS deployment readiness.
 
 ## Stable admission ceiling
 
-The request schema shares the native crawler's stable maximum of 50,000 URLs.
+The request schema shares the native crawler's maximum of 1,000,000 URLs.
 A trusted project may explicitly permit a higher budget than its operational
 10,000-URL / 20,000-request defaults, but it cannot exceed the stable URL ceiling.
 The separate schema ceiling of 2,000,000 requests remains finite. Requests above
-the public URL ceiling fail validation rather than being clamped. The retained
-one-million candidate is unverified development work, not stable remote capacity.
+the public URL ceiling fail validation rather than being clamped. The [capacity gate](MILLION_CRAWL_ACCEPTANCE.md) measures the full workflow
+separately; schema admission and a small queue/worker roundtrip do not prove
+one-million-page runtime capacity. Real remote jobs keep their configured time,
+disk, rendering and per-origin limits.

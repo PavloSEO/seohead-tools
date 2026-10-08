@@ -67,6 +67,39 @@ def test_existing_receipt_is_never_overwritten(tmp_path):
     assert existing.read_text() == "preserved"
 
 
+@pytest.mark.parametrize("budget", ["rss", "disk", "telemetry"])
+def test_resource_failure_stops_worker_and_keeps_evidence(tmp_path, monkeypatch, budget):
+    checkpoint = tmp_path / "checkpoint"
+
+    def rss(_pid):
+        if checkpoint.exists():
+            if budget == "telemetry":
+                raise OSError("synthetic unavailable telemetry")
+            if budget == "rss":
+                return 2 * 2**20
+        return 1024
+
+    monkeypatch.setattr(watchdog, "_rss_bytes", rss)
+    size = 2 * 2**20 if budget == "disk" else 1
+    result = _run(
+        tmp_path,
+        f"from pathlib import Path; import time; Path('checkpoint').write_bytes(b'x' * {size}); time.sleep(60)",
+        max_rss_mib=1,
+        max_disk_mib=1,
+    )
+    assert result["status"] == "blocked"
+    assert (
+        result["reason"]
+        == {
+            "rss": "rss_budget",
+            "disk": "stage_disk_budget",
+            "telemetry": "resource_telemetry_unavailable",
+        }[budget]
+    )
+    assert checkpoint.stat().st_size == size
+    assert result["returncode"] != 0
+
+
 @pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
 def test_invalid_budgets_fail_before_io(tmp_path, value):
     with pytest.raises(ValueError, match="finite and positive"):

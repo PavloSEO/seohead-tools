@@ -1,7 +1,7 @@
 {
   "schema": "seohead.headless-capabilities.v1",
   "inventory_source": "seohead.crawl.settings.describe_settings",
-  "inventory_sha256": "1e5610677a987881781be4cfb65c32916381816bf05af83d78a48fbe155c5908",
+  "inventory_sha256": "c68592f3feddf0800e5905e6f4f33ae73df7b13a5d063fc7278335adbfb351c9",
   "settings_count": 114,
   "settings": [
     {
@@ -682,7 +682,7 @@
       "type": "int",
       "default": 20000,
       "results_affecting": true,
-      "description": "Total HTTP attempts for the crawl, including bootstrap, redirects and retries; 0 means no total-attempt limit.",
+      "description": "Total HTTP attempts for the crawl, including bootstrap, redirects and retries; 0 means no total-attempt limit. Explicit values may be at most 2,000,000, allowing robots, sitemaps, redirects and retries above the URL budget.",
       "family": "limits",
       "implementation": "seohead/crawl/settings.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
@@ -733,7 +733,7 @@
       "type": "int",
       "default": 200,
       "results_affecting": true,
-      "description": "Maximum number of URLs the crawl will fetch. Values above 50,000 are refused rather than clamped; narrow the scope instead.",
+      "description": "Maximum number of URLs the crawl will fetch. Values above 1,000,000 are refused rather than clamped; narrow the scope instead.",
       "family": "limits",
       "implementation": "seohead/crawl/settings.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
@@ -1960,7 +1960,7 @@
       "type": "str",
       "default": "stable",
       "results_affecting": true,
-      "description": "'stable' (default) admits at most 50,000 URLs. 'experimental_synthetic' permits direct NativeScan storage profiles up to 1,000,000 declared URLs; every live crawler still refuses above 50,000 and this setting does not certify capacity.",
+      "description": "'stable' (default) admits at most 1,000,000 URLs with independent resource budgets. 'experimental_synthetic' is the compatible direct-storage fixture marker; live collectors refuse that marker. Neither setting certifies measured capacity.",
       "family": "storage",
       "implementation": "seohead/storage/native_scan.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
