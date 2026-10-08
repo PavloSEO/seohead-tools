@@ -56,10 +56,10 @@
         <sc-if value="{{is.mode}}" hint-placeholder-val="{{true}}"><div style="display: flex; flex-direction: column; gap: 14px">
           <h2 style="margin: 0; font: 500 20px Roboto, sans-serif">Как вы будете работать?</h2>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
-            <button class="{{mA}}" onClick="{{pickA}}"><span class="ms s32" aria-hidden="true" style="color: #64549B">smart_toy</span><b style="font: 500 15px Roboto, sans-serif">Проекты с агентом</b><span style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Цели, задачи, входящие, сравнение сканов, отчёты исполнителям. Агент работает через MCP.</span></button>
-            <button class="{{mB}}" onClick="{{pickB}}"><span class="ms s32" aria-hidden="true" style="color: #1565C0">travel_explore</span><b style="font: 500 15px Roboto, sans-serif">Быстрый краулер</b><span style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Ввёл адрес — нажал «Старт». Без проектов, как Screaming Frog. Результат можно сохранить в проект.</span></button>
+            <button class="{{mA}}" onClick="{{pickA}}"><span class="ms s32" aria-hidden="true" style="color: #64549B">smart_toy</span><b style="font: 500 15px Roboto, sans-serif">С агентом</b><span style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Всё из простого режима плюс цели, входящие, методы и задачи от ИИ-агента через MCP.</span></button>
+            <button class="{{mB}}" onClick="{{pickB}}"><span class="ms s32" aria-hidden="true" style="color: #1565C0">person</span><b style="font: 500 15px Roboto, sans-serif">Простой</b><span style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Без агента: проекты, сканы, сравнение, перепроверка, отчёты. Плюс быстрый краул без проекта, как Screaming Frog.</span></button>
           </div>
-          <div class="hint" style="margin: 0">Режим меняется в любой момент: переключатель в шапке или меню профиля слева внизу.</div>
+          <div class="hint" style="margin: 0">Отображение меняется в любой момент в меню профиля слева внизу. В простом режиме шаг MCP пропускается.</div>
         </div></sc-if>
         <sc-if value="{{is.cli}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 14px">
           <h2 style="margin: 0; font: 500 20px Roboto, sans-serif">Командная строка</h2>
@@ -72,7 +72,7 @@
           <div class="cl"><button class="{{mcpCls}}" onClick="{{toggleMcp}}" role="switch" aria-label="Включить MCP"><i></i></button><span style="flex: 1">Включить локальный MCP-сервер</span><span class="{{mcpBadge}}">{{mcpState}}</span></div>
           <div class="sec" style="margin: 4px 0 0">Подключить к</div>
           <sc-for list="{{clients}}" as="c" hint-placeholder-count="4"><label class="cl" style="cursor: pointer"><input type="checkbox" checked="{{c.on}}" onChange="{{c.toggle}}" style="width: 18px; height: 18px; margin: 0; accent-color: #1565C0"><span style="flex: 1">{{c.name}}</span><span class="mono" style="color: #6A6D76; font-size: 11px">{{c.where}}</span></label></sc-for>
-          <div class="hint" style="margin: 0">Без сети: stdio. Тот же переключатель — в Настройках и через <span class="mono">seohead mcp enable</span>.</div>
+          <div class="hint" style="margin: 0">Без сети: stdio. Запись в настройки агентов — только после вашего «Разрешить» с показом файлов и строк. Тот же переключатель — в Настройках и <span class="mono">seohead mcp enable</span>.</div>
         </div></sc-if>
         <sc-if value="{{is.look}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 14px">
           <h2 style="margin: 0; font: 500 20px Roboto, sans-serif">Тема и язык</h2>
@@ -98,13 +98,13 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const ids = ['mode', 'cli', 'mcp', 'look'];
-    const steps = [['Режим работы'], ['Командная строка'], ['MCP для агентов'], ['Тема и язык']].map(([label], i) => ({ label, n: i < s.step ? '✓' : String(i + 1), cls: i === s.step ? 'on' : i < s.step ? 'done' : '', pick: () => this.setState({ step: i }) }));
+    const steps = [['Отображение'], ['Командная строка'], ['MCP для агентов'], ['Тема и язык']].map(([label], i) => ({ label, n: i < s.step ? '✓' : String(i + 1), cls: i === s.step ? 'on' : i < s.step ? 'done' : '', pick: () => this.setState({ step: i }) }));
     const is = {}; ids.forEach((id, i) => { is[id] = i === s.step; });
     const clients = [['cc', 'Claude Code', '~/.claude.json'], ['cd', 'Claude Desktop', 'claude_desktop_config.json'], ['cx', 'Codex', '~/.codex/config.toml'], ['cu', 'Cursor', '~/.cursor/mcp.json']].map(([id, name, where]) => ({ name, where, on: !!s.cl[id], toggle: () => this.setState({ cl: { ...s.cl, [id]: !s.cl[id] } }) }));
     const themes = [['light', 'Светлая', '#FDFCFF', '#F4F6FA', '#1565C0', '#EEF0F3', '#E3F0FF'], ['dark', 'Тёмная', '#16181D', '#1E2128', '#9EC4F8', '#2A2E37', '#203A5C'], ['hc', 'Высокий контраст', '#FFFFFF', '#FFFFFF', '#003C8F', '#1B1B1F', '#FFE08A']].map(([id, name, bg, nav, acc, line, sel]) => ({ name, bg, nav, acc, line, sel, cls: 'theme' + (id === s.theme ? ' on' : ''), pick: () => this.setState({ theme: id }) }));
     return {
       steps, is, clients, themes, stepN: s.step + 1, notLast: s.step < 3, last: s.step === 3,
-      finishHref: s.mode === 'a' ? '/Start.dc.html' : '/Crawler.dc.html',
+      finishHref: s.mode === 'a' ? '/Project.dc.html' : '/Simple.dc.html',
       next: () => this.setState({ step: Math.min(3, s.step + 1) }), back: () => this.setState({ step: Math.max(0, s.step - 1) }),
       mA: 'mode' + (s.mode === 'a' ? ' on' : ''), mB: 'mode' + (s.mode === 'b' ? ' on' : ''), pickA: () => this.setState({ mode: 'a' }), pickB: () => this.setState({ mode: 'b' }),
       cliCls: 'swt' + (s.cli ? ' on' : ''), toggleCli: () => this.setState({ cli: !s.cli }),

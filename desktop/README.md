@@ -30,6 +30,9 @@ same CLI/MCP contracts the agents use.
 | `examples/qa-site/` | Local loopback SEO test site with profiles `broken`, `clean`, `fix-delta`, `tracking` — the only site real scans are tested on |
 | `packaging/`, `scripts/build_*.sh/.ps1`, `SEOHEAD Desktop.spec` | PyInstaller bundle that ships app + compatible core + `seohead` CLI together |
 | `docs/` | User guide, workspace/tab contracts, local control, packaging, source install |
+| `ROADMAP.md` | **Owner decisions and order of work — start here** |
+| `docs/spec/` | Russian TZ, requirements check, site design reference, prompts/hand-offs |
+| `design/site-reference/` | Brand reference extracted from seohead.tech (CSS tokens, Badge/Chip) |
 | `design/v2/` | **Target design**: interactive mock-ups (35 boards), design system, readiness report, QA scripts |
 | `design/` (rest) | Earlier design notes and the first Qt skeleton |
 

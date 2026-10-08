@@ -33,7 +33,7 @@
       <span class="ms s18" aria-hidden="true" style="color: #6A6D76">expand_more</span>
     </button>
     <div style="flex: 1"></div>
-    <a class="b st-agent" href="/Modals.dc.html" title="Подключение агента" style="height: 28px; padding: 0 10px; border-radius: 14px; text-decoration: none"><span class="ms" aria-hidden="true">smart_toy</span>Агент · был 3 мин назад</a>
+    <sc-if value="{{agent}}" hint-placeholder-val="{{true}}"><a class="b st-agent" href="/Modals.dc.html" title="Подключение агента" style="height: 28px; padding: 0 10px; border-radius: 14px; text-decoration: none"><span class="ms" aria-hidden="true">smart_toy</span>Агент · был 3 мин назад</a></sc-if><sc-if value="{{simple}}" hint-placeholder-val="{{false}}"><span class="b st-off" style="height: 28px; padding: 0 10px; border-radius: 14px"><span class="ms" aria-hidden="true">person</span>Простой режим</span></sc-if>
     <a class="btn" href="/Palette.dc.html" style="gap: 8px; color: #45464F; width: 220px; justify-content: flex-start"><span class="ms s18" aria-hidden="true">search</span><span style="font-weight: 400">Действия и переходы</span><span class="kbd" style="margin-left: auto">⌘K</span></a>
     <button class="ib" aria-label="Обновить данные проекта"><span class="ms" aria-hidden="true">refresh</span></button>
     <a class="btn pri" href="/ScanDialog.dc.html" style="padding: 0 14px 0 10px"><span class="ms" aria-hidden="true">play_arrow</span>Новый скан</a>
@@ -52,7 +52,7 @@
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"tab":{"editor":"enum","options":["url","work","compare","issues","scans","inbox","reports","none"],"default":"url"},"label":{"editor":"text","default":""},"icon":{"editor":"text","default":"tab"},"$preview":{"width":1440,"height":88}}'>
+<script type="text/x-dc" data-dc-script data-props='{"tab":{"editor":"enum","options":["url","work","compare","issues","scans","inbox","reports","none"],"default":"url"},"label":{"editor":"text","default":""},"simple":{"editor":"boolean","default":false},"icon":{"editor":"text","default":"tab"},"$preview":{"width":1440,"height":88}}'>
 class Component extends DCLogic {
   renderVals() {
     const active = this.props.tab ?? 'url';
@@ -66,8 +66,9 @@ class Component extends DCLogic {
       color: id === active ? '#1565C0' : '#6A6D76',
       cls: 'wtab' + (id === active ? ' on' : '')
     }));
-    if (active === 'none' && this.props.label) tabs.push({ icon: this.props.icon || 'tab', label: this.props.label, href: ({ history: '/Scans.dc.html', inbox: '/Inbox.dc.html', terminal: '/Log.dc.html', find_in_page: '/Search.dc.html', description: '/Handoff.dc.html', menu_book: '/Methods.dc.html' })[this.props.icon] || '/Main.dc.html', on: true, color: '#1565C0', cls: 'wtab on' });
-    return { tabs };
+    if (active === 'none' && this.props.label) tabs.push({ icon: this.props.icon || 'tab', label: this.props.label, href: ({ checklist: '/Simple.dc.html', history: '/Scans.dc.html', inbox: '/Inbox.dc.html', terminal: '/Log.dc.html', find_in_page: '/Search.dc.html', description: '/Handoff.dc.html', menu_book: '/Methods.dc.html' })[this.props.icon] || '/Main.dc.html', on: true, color: '#1565C0', cls: 'wtab on' });
+    const simple = !!this.props.simple;
+    return { tabs: simple ? tabs.filter((t) => !t.label.startsWith('Работа')) : tabs, simple, agent: !simple };
   }
 }
 </script>

@@ -97,7 +97,7 @@ with sync_playwright() as p:
     for i in range(len(names)):
         pg.locator(".dl").nth(i).click(); pg.wait_for_timeout(80)
         if pg.locator(".dialog h2").inner_text().strip(): seen += 1
-    check(f"Модалки: все {len(names)} открываются", seen == len(names) == 20, f"{seen}/{len(names)}")
+    check(f"Модалки: все {len(names)} открываются", seen == len(names) == 21, f"{seen}/{len(names)}")
     pg.close()
 
     pg = open_("Settings.dc.html")

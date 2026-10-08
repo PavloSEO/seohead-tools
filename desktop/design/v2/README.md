@@ -8,12 +8,13 @@ Live, clickable version: the Design canvas (owner's link). Source files here are
 
 | File | Purpose |
 |---|---|
-| `canvas/*.dc.html` | 35 boards: start, projects, inbox, reports to executors, new scan (site / sitemap / URL list / Screaming Frog), scans & live observer, log, URL inspector (A: details below, B: details right), issues, HTML search, compare before/after, methods, compact 800×800, ⌘K, new tab, tab settings, crawler mode, installer & first run, CLI, themes & language, loading states, colours & 17 statuses, component library, icon library, notifications, menus, all 20 modals, settings, motion, do/don't guide |
+| `canvas/*.dc.html` | 38 boards (incl. simple display, `seohead watch`, brand/icon): start, projects, inbox, reports to executors, new scan (site / sitemap / URL list / Screaming Frog), scans & live observer, log, URL inspector (A: details below, B: details right), issues, HTML search, compare before/after, methods, compact 800×800, ⌘K, new tab, tab settings, crawler mode, installer & first run, CLI, themes & language, loading states, colours & 17 statuses, component library, icon library, notifications, menus, all 20 modals, settings, motion, do/don't guide |
 | `canvas/TopBar.dc.html`, `SideNav.dc.html` | Shared shell components used by the screens |
 | `canvas/assets/app.css`, `ext.css` | Every colour, size and state used by the boards — the reference for `theme/tokens.json` + QSS |
 | `canvas/canvas.json` | Board layout of the canvas |
 | `DESIGN-SYSTEM.ru.md` | Design system (Russian): tokens, components → QSS properties, screens → core data, gaps |
 | `READINESS-2026-10-09.ru.md` | How ready the current code is for v2, area by area, with file:line references and order of work |
+| `brand/icon-*.svg` | App icon variants: spider + search (A recommended) |
 | `qa/clickthrough.py`, `qa/scenarios.py` | Playwright checks: every board renders without errors, no dead links, 28 behaviour scenarios pass |
 
 ## Porting rules (canvas → Qt)

@@ -57,6 +57,19 @@
         <div class="note i"><span class="ms" aria-hidden="true" style="color: #1565C0">info</span><div>Токен в окне не показывается. Агенту передаётся только путь к файлу.</div></div>
       </div></sc-if>
 
+      <sc-if value="{{is.mcpwrite}}" hint-placeholder-val="{{false}}"><div class="db">
+        <div>SEOHEAD изменит файлы настроек выбранных агентов. Перед записью — копия каждого файла рядом (<span class="mono">*.seohead-backup</span>); отменить можно в Настройках → MCP-сервер.</div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <label style="display: flex; gap: 10px; align-items: center"><span class="cb on"><span class="ms s16" aria-hidden="true">check</span></span><span style="flex: 1">Claude Code</span><span class="mono" style="color: #6A6D76">~/.claude.json · добавить mcpServers.seohead</span></label>
+          <label style="display: flex; gap: 10px; align-items: center"><span class="cb on"><span class="ms s16" aria-hidden="true">check</span></span><span style="flex: 1">Claude Desktop</span><span class="mono" style="color: #6A6D76">claude_desktop_config.json</span></label>
+          <label style="display: flex; gap: 10px; align-items: center"><span class="cb"></span><span style="flex: 1">Codex</span><span class="mono" style="color: #6A6D76">~/.codex/config.toml</span></label>
+          <label style="display: flex; gap: 10px; align-items: center"><span class="cb"></span><span style="flex: 1">Cursor</span><span class="mono" style="color: #6A6D76">~/.cursor/mcp.json</span></label>
+        </div>
+        <div class="mono" style="background: #F7F8FB; border: 1px solid #EEF0F3; border-radius: 8px; padding: 10px 12px; line-height: 1.7; white-space: pre"><span style="color: #1E6B3A">+ "seohead": { "command": "/usr/local/bin/seohead",</span>
+<span style="color: #1E6B3A">+              "args": ["mcp", "--profile", "full"] }</span></div>
+        <div class="note i"><span class="ms" aria-hidden="true" style="color: #1565C0">info</span><div>Токены и пароли не записываются. Остальные строки файлов не меняются.</div></div>
+      </div></sc-if>
+
       <sc-if value="{{is.newp}}" hint-placeholder-val="{{false}}"><div class="db">
         <div><label class="lbl" for="pn">Название</label><div class="fld"><input id="pn" value="Мебельный магазин"></div></div>
         <div><label class="lbl" for="pd">Основной сайт</label><div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">language</span><input id="pd" value="https://shop.example.test/"></div></div>
@@ -200,6 +213,7 @@ class Component extends DCLogic {
     // id, group, icon, list label, title, sub, width, colors, primary, primaryIcon, primaryCls, secondary, tertiary, hint
     const D = [
       ['agent', 'Проект и агент', 'smart_toy', 'Подключение агента', 'Подключение агента', 'Агент работает через локальный MCP', 600, A, 'Готово', 'check', 'pri', 'Отключить', '', 'Изменения видны без перезапуска'],
+      ['mcpwrite', 'Проект и агент', 'edit_document', 'Разрешить запись MCP', 'Подключить агентов к SEOHEAD?', 'Приложение само пропишет сервер в их настройки', 680, A, 'Разрешить и прописать', 'check', 'pri', 'Только показать команды', '', 'Без вашего «Разрешить» ничего не записывается'],
       ['newp', 'Проект и агент', 'create_new_folder', 'Новый проект', 'Новый проект', 'Папка, сайт и название', 600, P, 'Создать', 'add', 'pri', 'Отмена', '', ''],
       ['reloc', 'Проект и агент', 'drive_file_move', 'Проект перенесён', 'Указать новый путь', 'Проект ищется по UUID, а не по имени папки', 600, W, 'Открыть по новому пути', 'folder_open', 'pri', 'Отмена', 'Убрать из списка', ''],
       ['corrupt', 'Проект и агент', 'report', 'Проект несовместим', 'Проект нельзя открыть', 'Нужна миграция ядром', 600, E, 'Открыть папку', 'folder_open', 'sec', 'Закрыть', '', 'Приложение не меняет проект само'],
