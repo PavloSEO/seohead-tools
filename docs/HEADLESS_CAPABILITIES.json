@@ -1,7 +1,7 @@
 {
   "schema": "seohead.headless-capabilities.v1",
   "inventory_source": "seohead.crawl.settings.describe_settings",
-  "inventory_sha256": "c68592f3feddf0800e5905e6f4f33ae73df7b13a5d063fc7278335adbfb351c9",
+  "inventory_sha256": "7aef0552df38e56ddb0fa18936568b9b4a5c44f0d925f81575d86407879d2e37",
   "settings_count": 114,
   "settings": [
     {
@@ -648,7 +648,7 @@
       "type": "int",
       "default": 5,
       "results_affecting": true,
-      "description": "Maximum link depth from the start URL.",
+      "description": "Maximum link depth from the start URL; -1 disables the depth limit for native SQLite site scans.",
       "family": "limits",
       "implementation": "seohead/crawl/settings.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
@@ -733,7 +733,7 @@
       "type": "int",
       "default": 200,
       "results_affecting": true,
-      "description": "Maximum number of URLs the crawl will fetch. Values above 1,000,000 are refused rather than clamped; narrow the scope instead.",
+      "description": "Maximum number of URLs the crawl will fetch; 0 disables the URL limit for native SQLite site scans, which collect until their queue is exhausted. Values above 1,000,000 are refused rather than clamped; narrow the scope instead.",
       "family": "limits",
       "implementation": "seohead/crawl/settings.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
@@ -1960,7 +1960,7 @@
       "type": "str",
       "default": "stable",
       "results_affecting": true,
-      "description": "'stable' (default) admits at most 1,000,000 URLs with independent resource budgets. 'experimental_synthetic' is the compatible direct-storage fixture marker; live collectors refuse that marker. Neither setting certifies measured capacity.",
+      "description": "'stable' (default) admits explicit URL limits up to 1,000,000; native SQLite max_urls=0 disables the URL limit while retaining independent resource guards. 'experimental_synthetic' is the compatible direct-storage fixture marker; live collectors refuse that marker. Neither setting certifies measured capacity.",
       "family": "storage",
       "implementation": "seohead/storage/native_scan.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",

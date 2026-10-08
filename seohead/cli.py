@@ -1609,7 +1609,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--max-urls",
             type=int,
-            help="URL budget, at most 1,000,000; 0 disables it for native SQLite (default 200)",
+            help="URL cap: 1..1,000,000; 0=full SQLite (default 200)",
         )
         sub.add_argument(
             "--out-dir",
@@ -1618,7 +1618,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--scan-out",
             metavar="FILE",
-            help="native SQLite destination for a site crawl or explicit URL list",
+            help="SQLite output: site crawl or URL list",
         )
         _source_flag(
             sub,
