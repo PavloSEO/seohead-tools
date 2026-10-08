@@ -122,8 +122,9 @@ class WorkMonitorTests(unittest.TestCase):
                 consumed.append(index)
                 yield observed(str(index), events=events)
         self.monitor.set_observation(rows(), {}, None)
-        self.assertEqual(len(consumed), 51)
-        self.assertEqual(len(self.monitor.run_cards), 50)
+        self.assertEqual(len(consumed), 101)
+        self.assertEqual(len(self.monitor.run_cards), 6)
+        self.assertEqual(len(self.monitor.runs), 100)
         self.assertEqual(self.monitor.events_model.rowCount(), 20)
         self.assertEqual(self.monitor.events_model.rows[0]["at"], "60")
         self.assertIn("показаны не все", self.monitor.observation.text())
@@ -133,6 +134,30 @@ class WorkMonitorTests(unittest.TestCase):
         self.monitor.set_observation([row], {}, None)
         self.assertIs(self.monitor.run_cards[row["id"]], card)
         self.assertEqual(row, original)
+
+    def test_overview_caps_widgets_but_keeps_all_supplied_runs_selectable(self):
+        rows = [observed(str(index), state="finished", finished_at="2026-10-07T16:00:00Z") for index in range(50)]
+        rows[-1]["state"] = "running"
+        self.monitor.set_observation({"items": rows, "active_total": 1, "total": 50}, {}, None)
+        self.assertEqual(len(self.monitor.run_cards), 6)
+        self.assertEqual(len(self.monitor.runs), 50)
+        self.assertEqual(next(iter(self.monitor.run_cards)), "49")
+        self.monitor.set_selected_run("30")
+        self.assertEqual(self.monitor.selected_run_id, "30")
+        self.assertTrue(self.monitor.selected.isVisible())
+        self.assertIn("Незавершённых: 1", self.monitor.observation.text())
+
+    def test_unobserved_terminal_owners_cannot_displace_external_active_run(self):
+        owners = [{"id": str(index), "core_run_id": "old-" + str(index), "state": "finished", "kind": "crawl", "owned": True} for index in range(100)]
+        self.monitor.set_observation({"items": [observed("external-active")], "owned": owners}, {}, None)
+        self.assertIn("external-active", self.monitor.runs)
+        self.assertEqual(list(self.monitor.run_cards), ["external-active"])
+
+    def test_single_run_card_has_natural_maximum_width(self):
+        self.monitor.resize(1440, 900)
+        self.monitor.set_observation([observed()], {}, None)
+        self.app.processEvents()
+        self.assertLessEqual(next(iter(self.monitor.run_cards.values())).width(), 380)
 
     def test_native_selection_and_result_intents_do_not_dispatch(self):
         selected, result = QSignalSpy(self.monitor.runSelected), QSignalSpy(self.monitor.showResult)

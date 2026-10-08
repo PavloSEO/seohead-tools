@@ -7,10 +7,12 @@ from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 
-from PyQt5.QtCore import QPointF, Qt
+from PyQt5.QtCore import QPointF, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import (
     QHBoxLayout,
+    QVBoxLayout,
+    QPushButton,
     QLabel,
     QSizePolicy,
     QSplitter,
@@ -238,6 +240,7 @@ class StateBadge(QLabel):
     def __init__(self, text="Не измерено", parent=None):
         super().__init__(parent)
         self.setObjectName("stateBadge")
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.setTextFormat(Qt.PlainText)
         self.set_state(text)
 
@@ -336,3 +339,39 @@ class WorkspaceSplitter(QSplitter):
     def restore_sizes(self):
         if self._default_sizes:
             super().setSizes(self._default_sizes)
+
+
+def content_spacing(width):
+    """Shared spacious page rhythm; table row density remains independent."""
+    layout = theme_tokens()["layout"]
+    wide = width >= 900
+    return (layout["content_margin" if wide else "content_margin_narrow"],
+            layout["section_spacing" if wide else "section_spacing_narrow"])
+
+
+class ProjectEmptyState(QWidget):
+    """A single action for an unbound workspace; no backend or project discovery."""
+    openRequested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from .icons import material_icon
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 24, 0, 0)
+        layout.setSpacing(16)
+        title = QLabel("Откройте проект")
+        title.setObjectName("sectionTitle")
+        title.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        caption = QLabel("Сохранённые сканы, задачи и запуски появятся здесь.")
+        caption.setObjectName("sectionCaption")
+        caption.setWordWrap(True)
+        caption.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        button = self.open_button = QPushButton("Открыть проект…")
+        button.setProperty("role", "primary")
+        button.setIcon(material_icon("folder_open", theme_tokens()["colors"]["on_primary"]))
+        button.setAccessibleName("Открыть существующий локальный проект")
+        button.clicked.connect(self.openRequested)
+        layout.addWidget(title)
+        layout.addWidget(caption)
+        layout.addWidget(button, 0, Qt.AlignLeft)
+        layout.addStretch(1)

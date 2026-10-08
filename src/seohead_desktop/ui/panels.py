@@ -20,30 +20,30 @@ from PyQt5.QtWidgets import (
 
 from .comparison_summary import ComparisonSummary
 from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value, material_icon
-from .presentation import WorkspaceSplitter
+from .presentation import WorkspaceSplitter, content_spacing
 from .tabcatalogue import DETAIL_TABS, MAIN_TABS, PROJECT_TABS, RIGHT_TABS, TAB_BY_ID
 
 
 def component_stylesheet(tokens):
     """Consume the existing canonical theme; no duplicate color constants."""
     return Template("""
-QLabel#panelMessage { background: $surface_container_lowest; color: $on_surface_variant; padding: 24px; border: 1px solid $outline_variant; border-radius: 8px; }
-QWidget#evidencePreview { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: 8px; }
+QLabel#panelMessage { background: transparent; color: $on_surface_variant; padding: 24px; border: none; }
+QWidget#evidencePreview { background: $surface_container_lowest; border: 1px solid $outline_variant; border-radius: ${radius_panel}px; }
 QLabel#snippetTitle { color: $primary; font-size: 18px; }
 QLabel#snippetURL { color: $on_surface_variant; }
 QLabel#componentHeading { font-size: 20px; font-weight: 500; }
 QListWidget#tabNavigation { background: $surface_container_low; border: none; padding: 8px; }
-QListWidget#tabNavigation::item { min-height: 30px; padding: 6px 10px; border-radius: 6px; }
+QListWidget#tabNavigation::item { min-height: 30px; padding: 6px 10px; border-radius: ${radius_control}px; }
 QListWidget#tabNavigation::item:selected { background: $primary_container; color: $on_primary_container; }
 QListWidget#tabNavigation::item:hover { background: $surface_container; }
-QPlainTextEdit#noteDraft { border: 1px solid $outline_variant; border-radius: 6px; }
+QPlainTextEdit#noteDraft { border: 1px solid $outline_variant; border-radius: ${radius_control}px; }
 QPlainTextEdit#noteDraft:focus { border: 2px solid $primary; }
 QComboBox QAbstractItemView { background: $surface_container_lowest; selection-background-color: $primary_container; selection-color: $on_primary_container; }
-QMenu { background: $surface_container_lowest; border: 1px solid $outline_variant; padding: 4px; }
-QMenu::item { padding: 6px 18px; }
+QMenu { background: $surface_container_lowest; border: none; border-radius: ${radius_popup}px; padding: 8px; }
+QMenu::item { padding: 8px 16px; border-radius: ${radius_control}px; }
 QMenu::item:selected { background: $primary_container; color: $on_primary_container; }
 QTabBar QToolButton { border: none; border-radius: 0; padding: 0; width: 22px; }
-""").substitute(tokens["colors"])
+""").substitute({**tokens["colors"], **{key: tokens[key] for key in ("radius_control", "radius_panel", "radius_popup")}})
 
 
 class SourcePanel(TablePanel):
@@ -220,7 +220,8 @@ class ComparePanel(TablePanel):
         header = QWidget()
         header.setObjectName("comparisonHeader")
         header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(0, 2, 0, 12)
+        header_layout.setContentsMargins(0, 0, 0, 16)
+        header_layout.setSpacing(16)
         title = QLabel("Сравнение сканов")
         title.setObjectName("sectionTitle")
         heading_row = QHBoxLayout()
@@ -284,6 +285,7 @@ class ComparePanel(TablePanel):
         self.refresh_button.clicked.disconnect()
         self.refresh_button.clicked.connect(lambda: self.request_page(self.offset))
         self.refresh_button.setEnabled(False)
+        self.source_label.hide()
         self.table.setColumnWidth(0, 280)
         self.table.setColumnWidth(1, 180)
         self.table.setColumnWidth(2, 190)
@@ -293,7 +295,7 @@ class ComparePanel(TablePanel):
     def sync_pair_controls(self, *_args):
         if not hasattr(self, "pair_controls"):
             return
-        compact = self.window().height() < 760 and self.state == "ready"
+        compact = self.state == "ready"
         self.pair_toggle.setVisible(compact)
         if hasattr(self, "comparison_summary"):
             self.comparison_summary.set_compact(compact)
@@ -301,6 +303,8 @@ class ComparePanel(TablePanel):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        margin, spacing = content_spacing(self.width())
+        self.layout().setContentsMargins(margin, spacing, margin, spacing)
         self.sync_pair_controls()
 
     def set_scans(self, items):

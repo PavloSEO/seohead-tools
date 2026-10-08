@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +25,8 @@ from PyQt5.QtWidgets import (
 from .components import PageModel, material_icon
 from .icons import MaterialIconLabel
 from .presentation import (
+    content_spacing,
+    ProjectEmptyState,
     ElidedLabel,
     StateBadge,
     field_text,
@@ -34,7 +37,9 @@ from .presentation import (
 )
 from .workspace import system_reduced_motion
 
-RUN_LIMIT = 50
+RUN_LIMIT = 100
+OVERVIEW_LIMIT = 6
+ACTIVE_STATES = {"queued", "starting", "running", "stop_requested", "awaiting_core_status"}
 EVENT_LIMIT = 20
 
 
@@ -89,6 +94,15 @@ def _rate(run):
     return run_projection(run)["rate"]
 
 
+def bounded_observed_runs(runs):
+    """Prioritize active identities inside a bounded supplied observation."""
+    rows = list(islice(iter(runs or []), RUN_LIMIT + 1))
+    if any(not isinstance(row, Mapping) for row in rows):
+        raise TypeError("Run snapshots must contain mappings")
+    rows.sort(key=lambda row: row.get("state") not in ACTIVE_STATES)
+    return rows[:RUN_LIMIT]
+
+
 def _snapshot(runs):
     """Join only exact supplied IDs; never resolve files or process identities."""
     envelope = _mapping(runs)
@@ -97,12 +111,12 @@ def _snapshot(runs):
     if any(not isinstance(item, Mapping) for item in observed + owned):
         raise TypeError("Run snapshots must contain mappings")
     owners = {}
-    for item in owned[:RUN_LIMIT]:
+    for item in sorted(owned, key=lambda row: row.get("state") not in ACTIVE_STATES)[:RUN_LIMIT]:
         identity = item.get("core_run_id") or item.get("observer_run_id")
         if isinstance(identity, str) and identity:
             owners[identity] = dict(item)
     joined = {}
-    for item in observed[:RUN_LIMIT]:
+    for item in sorted(observed, key=lambda row: row.get("state") not in ACTIVE_STATES):
         identity = item.get("id")
         if not isinstance(identity, str) or not identity or identity in joined:
             continue
@@ -112,9 +126,11 @@ def _snapshot(runs):
         row["events"] = [dict(event) for event in (item.get("events") or [])[-EVENT_LIMIT:] if isinstance(event, Mapping)]
         joined[identity] = row
     queued = [{**item, "id": identity, "_owned": item, "_observed": False, "events": []}
-              for identity, item in owners.items()]
-    rows = (queued + list(joined.values()))[:RUN_LIMIT]
-    truncated = bool(envelope.get("has_more")) or len(observed) > RUN_LIMIT or len(owned) > RUN_LIMIT or len(queued) + len(joined) > RUN_LIMIT
+              for identity, item in owners.items() if item.get("state") in ACTIVE_STATES]
+    merged = queued + list(joined.values())
+    merged.sort(key=lambda row: row.get("state") not in ACTIVE_STATES)
+    rows = merged[:RUN_LIMIT]
+    truncated = bool(envelope.get("has_more") or _mapping(envelope.get("pagination")).get("has_more")) or len(observed) > RUN_LIMIT or len(owned) > RUN_LIMIT or len(queued) + len(joined) > RUN_LIMIT
     return rows, truncated
 
 
@@ -127,8 +143,8 @@ class _RunCard(QPushButton):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         layout = QGridLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(4)
         self.source = StateBadge()
         self.source.setObjectName("workSource")
         self.state = StateBadge()
@@ -169,8 +185,9 @@ class _RunCard(QPushButton):
         self.title.setText(str(collector.get("origin") or "Запуск") + " · " + self.identity[:8])
         self.counts.setText(f"Получено: {_display(_counter(counters.get('fetched')))} · В очереди: {_display(_counter(counters.get('queued')))}")
         phase = state_text(_phase(run)) if _phase(run) else "Этап не сообщён"
-        self.activity.setText(f"{phase} · {_rate(run)}" if run.get("_observed") else "Очередь этого окна · ожидается наблюдение ядра")
-        self.setToolTip(f"{source} · {self.identity}\n{self.activity.text()}")
+        terminal = run.get("state") in {"finished", "partial", "interrupted", "failed", "cancelled_before_start"}
+        self.activity.setText(("Окончен · " + field_text("finished_at", run.get("finished_at")) if run.get("finished_at") else "Текущих измерений нет") if terminal else ("Сейчас: " + _rate(run) if run.get("_observed") else "Очередь этого окна"))
+        self.setToolTip(f"{source} · {self.identity}\n{phase} · {self.activity.text()}")
         self.setAccessibleName(f"{self.title.text()}. {source}. {self.state.text()}. {self.counts.text()}. {self.activity.text()}")
 
     def set_active(self, active):
@@ -182,7 +199,7 @@ class _RunCard(QPushButton):
 
 
 class WorkMonitor(QWidget):
-    """A view of at most 50 runs and the selected run's last 20 events.
+    """Six overview cards over at most 100 runs and twenty selected events.
 
     ``runs`` accepts observer rows, or an envelope with ``items``, ``total``,
     ``has_more`` and optional ``owned`` manager-snapshot rows. Owners must supply
@@ -191,6 +208,8 @@ class WorkMonitor(QWidget):
     No polling, process control, scan-file reads, core dispatch or implied site score.
     """
 
+    allRunsRequested = pyqtSignal()
+    openProjectRequested = pyqtSignal()
     runSelected = pyqtSignal(str)
     showResult = pyqtSignal(str)
 
@@ -207,6 +226,10 @@ class WorkMonitor(QWidget):
         self.reduced_motion = self.system_reduced_motion
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        self.empty_project = ProjectEmptyState()
+        self.empty_project.openRequested.connect(self.openProjectRequested)
+        outer.addWidget(self.empty_project)
+        self.empty_project.hide()
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.NoFrame)
@@ -215,12 +238,12 @@ class WorkMonitor(QWidget):
         self.content = QWidget()
         self.body = QVBoxLayout(self.content)
         self.body.setContentsMargins(0, 0, 4, 0)
-        self.body.setSpacing(12)
+        self.body.setSpacing(24)
         self.scroll.setWidget(self.content)
         self.plan = QWidget()
         self.plan.setObjectName("workPlan")
         plan_layout = QVBoxLayout(self.plan)
-        plan_layout.setContentsMargins(12, 8, 12, 8)
+        plan_layout.setContentsMargins(0, 0, 0, 0)
         self.plan_label = self._label("workStage")
         self.plan_note = self._label("metadata")
         self.plan_progress = QProgressBar()
@@ -229,9 +252,16 @@ class WorkMonitor(QWidget):
         self.plan_progress.setAccessibleName("Выполнение согласованных задач плана")
         for widget in (self.plan_label, self.plan_note, self.plan_progress):
             plan_layout.addWidget(widget)
-        self.body.addWidget(self.plan)
         self.observation = self._label("metadata")
-        self.body.addWidget(self.observation)
+        overview_heading = QHBoxLayout()
+        overview_heading.addWidget(self.observation, 1)
+        self.all_runs_button = QPushButton("Таблица запусков")
+        self.all_runs_button.setProperty("role", "quiet")
+        self.all_runs_button.setIcon(material_icon("table_chart"))
+        self.all_runs_button.clicked.connect(self.allRunsRequested)
+        overview_heading.addWidget(self.all_runs_button)
+        self.body.addWidget(self.plan)
+        self.body.addLayout(overview_heading)
         self.cards_scroll = QScrollArea()
         self.cards_scroll.setWidgetResizable(True)
         self.cards_scroll.setFrameShape(QScrollArea.NoFrame)
@@ -239,7 +269,7 @@ class WorkMonitor(QWidget):
         self.cards_widget = QWidget()
         self.cards = QGridLayout(self.cards_widget)
         self.cards.setContentsMargins(0, 0, 0, 0)
-        self.cards.setSpacing(10)
+        self.cards.setSpacing(16)
         self.cards_scroll.setWidget(self.cards_widget)
         self.cards_scroll.viewport().installEventFilter(self)
         self.body.addWidget(self.cards_scroll)
@@ -248,8 +278,8 @@ class WorkMonitor(QWidget):
         self.selected = QWidget()
         self.selected.setObjectName("workSelected")
         selected_layout = QVBoxLayout(self.selected)
-        selected_layout.setContentsMargins(12, 8, 12, 8)
-        selected_layout.setSpacing(8)
+        selected_layout.setContentsMargins(0, 0, 0, 0)
+        selected_layout.setSpacing(16)
         heading = QHBoxLayout()
         self.selected_title = ElidedLabel()
         self.selected_title.setObjectName("workStage")
@@ -273,6 +303,7 @@ class WorkMonitor(QWidget):
             label = self._label("workMetricLabel")
             label.setText(title)
             value = self._label("workMetricValue")
+            value.setProperty("metric", key)
             self.metric_labels[key], self.metric_values[key] = label, value
             self.metrics_layout.addWidget(label, 0, column)
             self.metrics_layout.addWidget(value, 1, column)
@@ -288,10 +319,30 @@ class WorkMonitor(QWidget):
         self.sample_label = self._label("metadata")
         self.budget_label = self._label("metadata")
         self.queue_label = self._label("metadata")
+        self.metadata_toggle = QToolButton()
+        self.metadata_toggle.setText("Измерение и лимиты")
+        self.metadata_toggle.setProperty("role", "quiet")
+        self.metadata_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.metadata_toggle.setIcon(material_icon("chevron_down"))
+        self.metadata_toggle.setCheckable(True)
+        self.metadata_toggle.setAccessibleName("Раскрыть измерение, лимиты и состав очереди")
+        self.metadata_panel = QWidget()
+        metadata_layout = QVBoxLayout(self.metadata_panel)
+        metadata_layout.setContentsMargins(0, 0, 0, 0)
+        metadata_layout.setSpacing(8)
         for label in (self.sample_label, self.budget_label, self.queue_label):
-            selected_layout.addWidget(label)
+            metadata_layout.addWidget(label)
+        self.metadata_panel.hide()
+        self.metadata_toggle.toggled.connect(self.metadata_panel.setVisible)
+        self.metadata_toggle.toggled.connect(lambda opened: self.metadata_toggle.setIcon(material_icon("chevron_up" if opened else "chevron_down")))
+        selected_layout.addWidget(self.metadata_toggle, 0, Qt.AlignLeft)
+        selected_layout.addWidget(self.metadata_panel)
+        self.events_section = QWidget()
+        events_layout = QVBoxLayout(self.events_section)
+        events_layout.setContentsMargins(0, 0, 0, 0)
+        events_layout.setSpacing(12)
         self.events_caption = self._label("workMetricLabel")
-        selected_layout.addWidget(self.events_caption)
+        events_layout.addWidget(self.events_caption)
         self.events_model = PageModel((("at", "Время"), ("phase", "Этап"), ("code", "Событие")), self)
         self.events = QTableView()
         self.events.setAccessibleName("Последние двадцать событий выбранного запуска")
@@ -303,13 +354,19 @@ class WorkMonitor(QWidget):
         self.events.setWordWrap(False)
         self.events.setShowGrid(False)
         self.events.verticalHeader().hide()
+        self.events.verticalHeader().setDefaultSectionSize(theme_tokens()["table_row_height"])
         self.events.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.events.setMinimumHeight(96)
         self.events.setMaximumHeight(168)
-        selected_layout.addWidget(self.events)
+        events_layout.addWidget(self.events)
         self.body.addWidget(self.selected)
+        self.body.addWidget(self.events_section)
         self.body.addStretch()
         self.set_observation([], {}, None)
+
+    def set_project_available(self, available):
+        self.empty_project.setVisible(not available)
+        self.scroll.setVisible(available)
 
     @staticmethod
     def _label(name):
@@ -325,15 +382,21 @@ class WorkMonitor(QWidget):
         return super().eventFilter(watched, event)
 
     def _arrange_cards(self):
+        _margin, spacing = content_spacing(self.width())
+        self.body.setSpacing(spacing)
         width = self.cards_scroll.viewport().width()
         columns = min(len(self.run_cards) or 1, 4 if width >= 1120 else 3 if width >= 840 else 2 if width >= 540 else 1)
-        for column in range(4):
+        card_width = min(380, max(160, (width - self.cards.spacing() * (columns - 1)) // columns))
+        for column in range(5):
             self.cards.setColumnStretch(column, 0)
+            self.cards.setColumnMinimumWidth(column, 0)
         for index, card in enumerate(self.run_cards.values()):
             self.cards.removeWidget(card)
-            self.cards.addWidget(card, index // columns, index % columns)
+            card.setFixedWidth(card_width)
+            self.cards.addWidget(card, index // columns, index % columns, Qt.AlignLeft | Qt.AlignTop)
         for column in range(columns):
-            self.cards.setColumnStretch(column, 1)
+            self.cards.setColumnMinimumWidth(column, card_width)
+        self.cards.setColumnStretch(columns, 1)
         self._columns = columns
         rows = (len(self.run_cards) + columns - 1) // columns
         height = max((card.sizeHint().height() for card in self.run_cards.values()), default=120)
@@ -348,13 +411,15 @@ class WorkMonitor(QWidget):
     def set_observation(self, runs, progress, observed_at):
         rows, truncated = _snapshot(runs)
         self.runs = {row["id"]: row for row in rows}
-        for identity in set(self.run_cards) - self.runs.keys():
+        overview = rows[:OVERVIEW_LIMIT]
+        visible_ids = {row["id"] for row in overview}
+        for identity in set(self.run_cards) - visible_ids:
             card = self.run_cards.pop(identity)
             self.cards.removeWidget(card)
             card.hide()
             card.deleteLater()
         ordered = {}
-        for row in rows:
+        for row in overview:
             identity = row["id"]
             card = self.run_cards.get(identity)
             if card is None:
@@ -363,10 +428,12 @@ class WorkMonitor(QWidget):
             card.set_run(row)
             ordered[identity] = card
         self.run_cards = ordered
-        self.cards_scroll.setVisible(bool(rows))
+        self.cards_scroll.setVisible(bool(overview))
+        self.all_runs_button.setEnabled(bool(rows))
         self._arrange_cards()
         suffix = " · показаны не все запуски" if truncated else ""
-        self.observation.setText(f"Запуски проекта · {len(rows)} в этой выборке{suffix} · Наблюдение ядра: {field_text('observed_at', observed_at)}")
+        self.observation.setText(f"Карточки: {len(overview)} · В наблюдении: {len(rows)} · Незавершённых: {_display(_counter(_mapping(runs).get('active_total')))}{suffix}")
+        self.observation.setToolTip("Наблюдение ядра: " + field_text("observed_at", observed_at))
         self.empty.setText("В этом наблюдении запусков нет" if not rows else "Выбранный запуск не входит в текущее наблюдение")
         if self.selected_run_id is None and rows:
             self.selected_run_id = rows[0]["id"]
@@ -384,8 +451,8 @@ class WorkMonitor(QWidget):
             self.plan_label.setText("План аудита · выполнение не измерено")
         counts = _mapping(progress.get("counts"))
         self.plan_note.setText(
-            f"Осталось: {_display(_counter(counts.get('remaining')))} · Устарело: {_display(_counter(counts.get('stale')))}"
-            if measured else "Для доли выполнения нужен согласованный план с известным числом задач"
+            f"Задачи проекта · Завершено: {_display(_counter(counts.get('complete')))} · Осталось: {_display(_counter(counts.get('remaining')))} · Устарело: {_display(_counter(counts.get('stale')))}"
+            if counts else "Для доли выполнения нужен согласованный план с известным числом задач"
         )
 
     def _select(self, identity):
@@ -404,16 +471,17 @@ class WorkMonitor(QWidget):
             self.effect.setOpacity(1.0)
             self._detail_signature = None
             self.events_model.replace([])
+            self.events_section.hide()
             self.result_button.setEnabled(False)
             return
         source, _icon = _source(run)
         telemetry, counters = _mapping(run.get("telemetry")), _mapping(run.get("counters"))
         collector, owned = _mapping(run.get("collector")), _mapping(run.get("_owned"))
-        self.selected_title.setText(f"{source} · {collector.get('origin') or 'Запуск'} · {identity[:8]}")
+        self.selected_title.setText(f"{source} · запуск {identity[:8]}")
         self.selected_title.setToolTip(identity)
         self.selected_badge.set_state(run.get("state", "unknown"))
         phase = _phase(run)
-        self.phase_label.setText("Последний этап по журналу: " + state_text(phase) if phase else "Этап ещё не сообщён")
+        self.phase_label.setText("Последний этап: " + state_text(phase) if phase else "Этап ещё не сообщён")
         values = {key: _display(_counter(counters.get(key))) for key in ("fetched", "queued", "inflight", "excluded")}
         measured_rate = telemetry.get("state") == "fresh" and _number(telemetry.get("current_rate_per_second")) is not None
         values["rate"] = _rate(run) if measured_rate else "—"
@@ -451,8 +519,10 @@ class WorkMonitor(QWidget):
         )
         events = run["events"]
         self.events_model.replace([{"at": field_text("at", event.get("at")), "phase": state_text(event.get("phase")), "code": state_text(event.get("code"))} for event in events])
-        self.events_caption.setText(f"Последние события · {len(events)} из не более {EVENT_LIMIT}" if events else "События ещё не получены")
+        self.events_caption.setText(f"События запуска · {len(events)}" if events else "События ещё не получены")
+        self.events_caption.setToolTip(f"Последние {EVENT_LIMIT} событий выбранного запуска из наблюдения ядра")
         self.events.setVisible(bool(events))
+        self.events_section.setVisible(bool(events))
         self.result_button.setEnabled(bool(run.get("_observed") and isinstance(run.get("artifact"), str) and run["artifact"]))
         self.result_button.setAccessibleName("Открыть сохранённый результат запуска " + identity)
 

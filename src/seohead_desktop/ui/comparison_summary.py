@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
 
 from .components import ASSET_ROOT, material_icon
 from .icons import MaterialIconLabel
-from .presentation import StateBadge, readable_record
+from .presentation import StateBadge, readable_record, theme_tokens, content_spacing
 
 STATUSES = (
     ("resolved", "Исправлено", "Подтверждено проверкой", "check_circle", "success"),
@@ -44,7 +44,7 @@ class _MetricCard(QPushButton):
         self.setProperty("state", state)
         self.setProperty("tone", tone)
         self.setCheckable(True)
-        self.setMinimumHeight(82)
+        self.setMinimumHeight(96)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.title, self.note = title, note
@@ -52,7 +52,7 @@ class _MetricCard(QPushButton):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setHorizontalSpacing(6)
         layout.setVerticalSpacing(3)
-        self.symbol = MaterialIconLabel(icon, size=18, parent=self)
+        self.symbol = MaterialIconLabel(icon, size=18, parent=self, color=theme_tokens()["colors"][{"success": "success", "warning": "on_warning_container", "active": "primary"}.get(tone, "on_surface_variant")])
         has_icon = (ASSET_ROOT / f"{icon}.svg").is_file()
         self.symbol.setFixedSize(18, 18)
         self.symbol.setVisible(has_icon)
@@ -110,7 +110,7 @@ class ComparisonSummary(QWidget):
         self.delta = QWidget()
         self.delta.setObjectName("comparisonDelta")
         delta_layout = self.delta_layout = QGridLayout(self.delta)
-        delta_layout.setContentsMargins(12, 8, 12, 8)
+        delta_layout.setContentsMargins(0, 0, 0, 0)
         delta_layout.setHorizontalSpacing(8)
         delta_layout.setVerticalSpacing(4)
         self.whole_scope = QLabel()
@@ -141,7 +141,7 @@ class ComparisonSummary(QWidget):
         layout.addWidget(self.page_scope)
         self.cards = QGridLayout()
         self.cards.setContentsMargins(0, 0, 0, 0)
-        self.cards.setSpacing(8)
+        self.cards.setSpacing(12)
         self.metric_buttons = {}
         for state, title, note, icon, tone in STATUSES:
             button = _MetricCard(state, title, note, icon, tone, self)
@@ -163,7 +163,7 @@ class ComparisonSummary(QWidget):
         self.set_payload({})
 
     def set_compact(self, compact):
-        self.raw_summary.setVisible(not compact)
+        self.raw_summary.hide()
         self.details_toggle.setToolButtonStyle(Qt.ToolButtonIconOnly if compact else Qt.ToolButtonTextBesideIcon)
         self.details_toggle.setToolTip("Как читать сравнение: полная сводка и ограничения")
 
@@ -174,6 +174,8 @@ class ComparisonSummary(QWidget):
 
     def _arrange_cards(self):
         width = self.width()
+        _margin, spacing = content_spacing(width)
+        self.layout().setSpacing(spacing)
         narrow = width < 650
         if narrow != self._narrow:
             self._narrow = narrow
@@ -228,6 +230,7 @@ class ComparisonSummary(QWidget):
         self.whole_scope.setText(f"Все наблюдения · {_number(total)} находок · {source_scope}" if ready else "Все наблюдения · ещё не измерено")
         entered, appeared = _count(delta.get("entered")), _count(delta.get("appeared"))
         new = entered + appeared if entered is not None and appeared is not None else None
+        self.raw_summary.hide()
         self.raw_summary.setText(
             f"Не обнаружены: {_number(_count(delta.get('left')))}   ·   Новые: {_number(new)}   ·   "
             f"В обоих: {_number(_count(delta.get('unchanged')))}   ·   На отсутствующих URL: {_number(_count(delta.get('disappeared')))}"
@@ -270,7 +273,7 @@ class ComparisonSummary(QWidget):
         )
         source = {"До": before, "После": after, "Совместимость": compatibility,
                   "Пакет сравнения": payload.get("package") if ready else None}
-        self.details.setPlainText(explanation + ("Ограничения охвата\n" + "\n\n".join(warnings) + "\n\n" if warnings else "")
+        self.details.setPlainText(self.raw_summary.text() + "\n\n" + explanation + ("Ограничения охвата\n" + "\n\n".join(warnings) + "\n\n" if warnings else "")
                                   + readable_record(source, heading="Источники", max_lines=45))
         self.details_toggle.setChecked(False)
         self._show_details(False)

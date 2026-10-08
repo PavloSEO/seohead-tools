@@ -2,13 +2,13 @@
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
+    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QGridLayout,
     QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QTableView, QToolButton, QVBoxLayout, QWidget,
 )
 
 from ..content_search import SEARCH_PRESETS
 from .components import PageModel, material_icon
-from .presentation import ElidedLabel, StateBadge, value_text, theme_tokens
+from .presentation import ElidedLabel, StateBadge, value_text, theme_tokens, content_spacing, ProjectEmptyState
 
 
 class _SearchModel(PageModel):
@@ -22,6 +22,7 @@ class _SearchModel(PageModel):
 
 
 class ContentSearchPanel(QWidget):
+    openProjectRequested = pyqtSignal()
     searchRequested = pyqtSignal(dict)
     pageRequested = pyqtSignal(int)
     cancelRequested = pyqtSignal()
@@ -32,8 +33,17 @@ class ContentSearchPanel(QWidget):
         self.setObjectName("bodySearchPanel")
         self._available = self._selected = self._busy = False
         self._offset = 0
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 16)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.empty_project = ProjectEmptyState()
+        self.empty_project.openRequested.connect(self.openProjectRequested)
+        outer.addWidget(self.empty_project)
+        self.content = QWidget()
+        outer.addWidget(self.content, 1)
+        layout = QVBoxLayout(self.content)
+        layout.setContentsMargins(32, 24, 32, 24)
+        layout.setSpacing(12)
+        self.empty_project.hide()
         heading = QHBoxLayout()
         title = QLabel("Поиск в сохранённом HTML")
         title.setObjectName("sectionTitle")
@@ -122,7 +132,23 @@ class ContentSearchPanel(QWidget):
         self.coverage = QLabel("Измерений пока нет")
         self.coverage.setObjectName("searchCoverage")
         self.coverage.setWordWrap(True)
-        layout.addWidget(self.coverage)
+        self.coverage.hide()
+        self.coverage_fields = (("present_documents", "Содержат строку"), ("absent_documents", "Без строки"), ("unavailable_documents", "Не проверены"), ("non_html_documents", "Не HTML"))
+        self.coverage_metrics = QWidget()
+        metric_layout = QGridLayout(self.coverage_metrics)
+        metric_layout.setContentsMargins(0, 12, 0, 12)
+        metric_layout.setHorizontalSpacing(24)
+        self.coverage_values = {}
+        for column, (key, title) in enumerate(self.coverage_fields):
+            label = QLabel(title)
+            label.setObjectName("searchMetricLabel")
+            value = QLabel("—")
+            value.setObjectName("searchMetricValue")
+            self.coverage_values[key] = value
+            metric_layout.addWidget(label, 0, column)
+            metric_layout.addWidget(value, 1, column)
+            metric_layout.setColumnStretch(column, 1)
+        layout.addWidget(self.coverage_metrics)
         self.result_context = ElidedLabel()
         self.result_context.setObjectName("metadata")
         layout.addWidget(self.result_context)
@@ -131,6 +157,8 @@ class ContentSearchPanel(QWidget):
         self.message.setWordWrap(True)
         self.message.setTextFormat(Qt.PlainText)
         layout.addWidget(self.message)
+        layout.addStretch(0)
+        self.empty_stretch_index = layout.count() - 1
         self.model = _SearchModel((("url", "URL"), ("presence_label", "Строка в документе"), ("capture_mode", "Источник"), ("reason", "Основание"), ("snippet", "Фрагмент")), self)
         self.table = QTableView()
         self.table.setObjectName("bodySearchResults")
@@ -165,12 +193,17 @@ class ContentSearchPanel(QWidget):
         self.sync_compact()
 
     def sync_compact(self):
-        compact = self.height() < 620
-        self.options.setVisible(compact)
-        self.context.setVisible(not compact)
-        self.help_text.setVisible(not compact)
+        margin, spacing = content_spacing(self.width())
+        self.content.layout().setContentsMargins(margin, spacing, margin, spacing)
+        self.content.layout().setSpacing(12 if self.width() >= 900 else 8)
+        self.empty_project.layout().setContentsMargins(margin, spacing, margin, spacing)
+        self.options.show()
+        self.options.setText("Параметры")
+        self.options.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if self.width() >= 900 else Qt.ToolButtonIconOnly)
+        self.context.hide()
+        self.help_text.hide()
         for widget in (*self.preset_buttons, self.case_sensitive, self.snippets):
-            widget.setVisible(not compact)
+            widget.hide()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -187,7 +220,9 @@ class ContentSearchPanel(QWidget):
             widget.addItem(label, value)
         return widget
 
-    def set_context(self, label, scan_uuid, available):
+    def set_context(self, label, scan_uuid, available, project_open=True):
+        self.empty_project.setVisible(not project_open)
+        self.content.setVisible(project_open)
         self._selected, self._available = bool(scan_uuid), bool(available)
         self.context.setText(f"{label} · скан {scan_uuid}" if scan_uuid else "Выберите сохранённый скан в панели проекта")
         self.update_controls()
@@ -228,8 +263,16 @@ class ContentSearchPanel(QWidget):
                  "presence_label": "Найдена" if row.get("presence") is True else "Не найдена" if row.get("presence") is False else "Не проверено"} for row in payload.get("rows", [])]
         self.model.replace(rows)
         self.table.setVisible(bool(rows))
+        self.content.layout().setStretch(self.empty_stretch_index, 0 if rows else 1)
         self.table.setColumnHidden(4, not any("snippet" in row for row in rows))
         coverage = payload.get("coverage") or {}
+        self.coverage_metrics.setVisible(bool(coverage))
+        for key, title in self.coverage_fields:
+            value = coverage.get(key)
+            text = str(value) if type(value) is int and value >= 0 else "—"
+            self.coverage_values[key].setText(text)
+            self.coverage_values[key].setAccessibleName(title + ": " + text)
+            self.coverage_values[key].setToolTip("Весь сохранённый корпус; не только текущая страница")
         self.coverage.setText("  ·  ".join(f"{title}: {value_text(coverage.get(key))}" for key, title in (("present_documents", "Найдена"), ("absent_documents", "Не найдена"), ("unavailable_documents", "Недоступно"), ("non_html_documents", "Не HTML"))))
         self.coverage.setToolTip("Счётчики всего корпуса выбранного скана, не текущей страницы")
         source = payload.get("source") or {}

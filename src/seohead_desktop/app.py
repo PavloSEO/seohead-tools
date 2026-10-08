@@ -24,7 +24,7 @@ from PyQt5.QtCore import (
     QVariantAnimation,
     pyqtSignal,
 )
-from PyQt5.QtGui import QFontDatabase, QKeySequence, QPainter
+from PyQt5.QtGui import QFontDatabase, QIcon, QKeySequence, QPainter
 from PyQt5.QtSvg import QSvgGenerator
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -64,7 +64,8 @@ from .content_search import ContentSearchController, SEARCH_PRESETS
 from .ui.content_search_panel import ContentSearchPanel
 from .ui.workspace_tabs import WorkspaceContext, WorkspaceTabs
 from .ui.icons import material_icon as icon
-from .ui.work_monitor import WorkMonitor
+from .ui.popup_style import install_popup_style
+from .ui.work_monitor import WorkMonitor, RUN_LIMIT, bounded_observed_runs
 from .ui.help_guide import HelpGuideDialog
 from .crawl_configuration import preview_configuration, validate_overrides
 from .mcp_gateway import PersistentMcpGateway
@@ -81,6 +82,7 @@ from .ui.presentation import (
     StateBadge,
     WorkspaceSplitter,
     field_text,
+    content_spacing,
     readable_record,
     run_projection,
     state_text,
@@ -105,11 +107,15 @@ PAGE_LIMIT = 50
 
 def load_theme(app):
     tokens = theme_tokens()
+    app_icon = ROOT / "assets/app/seohead.svg"
+    if app_icon.is_file():
+        app.setWindowIcon(QIcon(str(app_icon)))
     font = ROOT / "assets/fonts/Roboto.ttf"
     if font.exists():
         QFontDatabase.addApplicationFont(str(font))
     values = {**tokens["colors"], **{key: value for key, value in tokens.items() if isinstance(value, (str, int))}, "icon_root": (ROOT / "assets/icons").as_posix()}
     app.setStyleSheet(Template((ROOT / "theme/theme.qss").read_text()).substitute(values))
+    install_popup_style(app, tokens["radius_popup"])
     return tokens
 
 
@@ -282,6 +288,8 @@ class MainWindow(QMainWindow):
         self.content_search_panel.pageRequested.connect(self.content_search.page)
         self.content_search_panel.cancelRequested.connect(self.content_search.cancel)
         self.content_search_panel.helpRequested.connect(self.show_help)
+        self.content_search_panel.openProjectRequested.connect(self.choose_project)
+        self.update_content_search_context()
         self.content_search.changed.connect(self.load_content_search)
         self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
@@ -463,15 +471,17 @@ class MainWindow(QMainWindow):
 
     def work_page(self):
         page = QWidget()
+        page.setProperty("spaciousPage", True)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
-        title = QLabel("Работа с агентом")
+        title = self.work_heading = QLabel("Работа с агентом")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
         caption = QLabel("Согласованный объём, следующие действия и отдельные запуски проекта")
         caption.setObjectName("sectionCaption")
-        layout.addWidget(caption)
+        caption.hide()
+        title.setToolTip(caption.text())
         self.work_splitter = WorkspaceSplitter(Qt.Vertical)
         self.progress_text = plain("Откройте проект, чтобы увидеть сохранённые задачи и согласованный план.\n\nДемо не содержит измеренного прогресса проекта.")
         self.progress_text.setAccessibleName("Прогресс задач проекта")
@@ -501,10 +511,15 @@ class MainWindow(QMainWindow):
         self.work_views = QTabWidget()
         self.work_monitor = WorkMonitor()
         self.work_monitor.set_reduced_motion(self.reduced_motion)
+        self.work_monitor.openProjectRequested.connect(self.choose_project)
+        self.work_monitor.set_project_available(bool(self.project_directory))
+        self.work_heading.setVisible(bool(self.project_directory))
         self.work_monitor.runSelected.connect(self.select_observed_identity)
         self.work_monitor.showResult.connect(self.open_observed_result)
         self.work_views.addTab(self.work_monitor, icon("dashboard"), "Монитор")
         self.work_views.addTab(self.work_splitter, icon("table_chart"), "Таблица и детали")
+        self.work_monitor.allRunsRequested.connect(lambda: self.work_views.setCurrentIndex(1))
+        self.work_views.tabBar().setVisible(bool(self.project_directory))
         layout.addWidget(self.work_views, 1)
         return page
 
@@ -558,6 +573,7 @@ class MainWindow(QMainWindow):
 
     def url_page(self):
         page = QWidget()
+        page.setProperty("spaciousPage", True)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 12, 16, 12)
         self.horizontal = WorkspaceSplitter(Qt.Horizontal)
@@ -881,7 +897,7 @@ class MainWindow(QMainWindow):
             self.notice.hide()
         self.select_owned_run()
         if not self.requests and self.project_directory:
-            self.statusBar().showMessage("Чтение завершено · локальный проект · выберите URL или запуск для подробностей")
+            self.statusBar().showMessage("Данные проекта обновлены")
 
     def command_failed(self, request_id, text, generation):
         if generation != self.read_generation:
@@ -1018,6 +1034,7 @@ class MainWindow(QMainWindow):
         self.owned_run_detail.setPlainText("Выберите запуск текущего проекта")
         self.owned_run_output.clear()
         self.restore_note_drafts()
+        self.update_work_project_state()
         self.owned_run_picker.blockSignals(True)
         self.owned_run_picker.clear()
         self.owned_run_picker.addItem("Запуски этого окна: нет", None)
@@ -1141,13 +1158,25 @@ class MainWindow(QMainWindow):
             lines.append("Ядро не объявило следующих действий.")
         self.progress_text.setPlainText("\n".join(lines))
 
+    def update_work_project_state(self):
+        available = bool(self.project_directory)
+        self.work_heading.setVisible(available)
+        self.work_views.tabBar().setVisible(available)
+        if not available:
+            self.work_views.setCurrentIndex(0)
+        for monitor in (self.work_monitor, self.monitor.work_monitor if self.monitor else None):
+            if monitor is not None:
+                monitor.set_project_available(available)
+
     def clear_work_monitor(self):
+        self.update_work_project_state()
         for monitor in (self.work_monitor, self.monitor.work_monitor if self.monitor else None):
             if monitor is not None:
                 monitor.set_observation([], {}, None)
                 monitor.set_selected_run(None)
 
     def refresh_work_monitor(self):
+        self.update_work_project_state()
         envelope = {**self._run_envelope, "items": self.observed_runs, "owned": self.owned_runs_for_project()}
         for monitor in (self.work_monitor, self.monitor.work_monitor if self.monitor else None):
             if monitor is not None:
@@ -1197,7 +1226,9 @@ class MainWindow(QMainWindow):
         self.activity_caption.setToolTip("Наблюдение: " + field_text("observed_at", result.get("observed_at")))
 
     def present_observed_runs(self, runs, observed_at):
-        self.observed_runs = list(runs[:50])
+        self.observed_runs = bounded_observed_runs(runs)
+        if len(runs) > RUN_LIMIT:
+            self._run_envelope = {**self._run_envelope, "has_more": True}
         self.observed_at = observed_at
         current = self.activity_table.currentIndex()
         selected = self.selected_observed_run_id or (self.activity_model.rows[current.row()].get("id") if current.isValid() else None)
@@ -1995,9 +2026,9 @@ class MainWindow(QMainWindow):
         if context is None:
             return None
         duplicate = WorkspaceContext(project_uuid=context.project_uuid, project_root=context.project_root,
-            project_label=context.project_label, scan_uuid=context.scan_uuid, view_id=context.view_id, state=context.state_dict())
+            project_label=context.project_label, scan_uuid=context.scan_uuid, view_id=context.view_id, state=context.state_dict(), display_alias=context.display_alias, pinned=False)
         try:
-            return self.workspace_tabs.add(duplicate)
+            return self.workspace_tabs.add(duplicate, after_id=identifier)
         except ValueError as exc:
             self.notice.show_error(str(exc))
             return None
@@ -2173,6 +2204,19 @@ class MainWindow(QMainWindow):
         menu.addAction("Копировать строку (TSV)", self.copy_url_selection)
         menu.exec_(self.table.viewport().mapToGlobal(point))
 
+    def show_startup_workspace(self):
+        """Start the product in an unbound workspace, with no synthetic evidence."""
+        self.clear_workspace_presentation("Откройте локальный проект")
+        self.project_picker.blockSignals(True)
+        self.project_picker.clear()
+        self.project_picker.addItem("Проект не открыт", None)
+        self.project_picker.addItem("Открыть проект…", {"action": "open"})
+        self.project_picker.blockSignals(False)
+        self.source_badge.setText("Локальное рабочее пространство")
+        self.setWindowTitle("SEOHEAD")
+        self.navigation.setCurrentRow(0)
+        self.statusBar().showMessage("Выберите проект для начала работы")
+
     def start_agent_control(self, directory):
         if self.control_server is not None:
             return self.control_endpoint.descriptor_path
@@ -2199,8 +2243,11 @@ class MainWindow(QMainWindow):
     def agent_client_command(self):
         if self.control_endpoint is None:
             return None
-        resources = Path(sys.executable).resolve().parent.parent / "Resources"
-        helper = resources / "agent" / "seohead-desktop-agent" / "seohead-desktop-agent"
+        executable = Path(sys.executable).resolve()
+        name = "seohead-desktop-agent.exe" if sys.platform == "win32" else "seohead-desktop-agent"
+        roots = [executable.parent.parent / "Resources"] if sys.platform == "darwin" else [executable.parent / "resources", executable.parent / "_internal"]
+        candidates = [root / "agent" / "seohead-desktop-agent" / name for root in roots]
+        helper = next((path for path in candidates if path.is_file()), candidates[0])
         if getattr(sys, "frozen", False) and not helper.is_file():
             raise ControlError("helper_unavailable", "В комплекте приложения отсутствует помощник агента")
         prefix = [str(helper)] if getattr(sys, "frozen", False) else [sys.executable, "-m", "seohead_desktop.control_cli"]
@@ -2280,7 +2327,7 @@ class MainWindow(QMainWindow):
                     "observed_at": self.observed_at}
         if operation == "tabs":
             return {"active_tab_id": self._active_workspace_id, "limit": self.workspace_tabs.max_tabs,
-                    "items": [{"id": row.id, "project_uuid": row.project_uuid, "project_root": row.project_root, "project_label": row.project_label, "scan_uuid": row.scan_uuid, "view_id": row.view_id} for row in self.workspace_tabs.contexts()]}
+                    "items": [{"id": row.id, "project_uuid": row.project_uuid, "project_root": row.project_root, "project_label": row.project_label, "display_alias": row.display_alias, "pinned": row.pinned, "scan_uuid": row.scan_uuid, "view_id": row.view_id} for row in self.workspace_tabs.contexts()]}
         if operation == "select_tab":
             self.control_tab(arguments)
             if self._pending_note is not None:
@@ -2395,7 +2442,7 @@ class MainWindow(QMainWindow):
 
     def update_content_search_context(self):
         if hasattr(self, "content_search_panel"):
-            self.content_search_panel.set_context(self.project_picker.currentText(), self.selected_scan_uuid, self.content_search.available)
+            self.content_search_panel.set_context(self.project_picker.currentText(), self.selected_scan_uuid, self.content_search.available, project_open=bool(self.project_directory))
 
     def load_content_search(self, payload):
         self.update_content_search_context()
@@ -2490,6 +2537,13 @@ class MainWindow(QMainWindow):
     def sync_workspace_width(self):
         if not hasattr(self, "panel_actions"):
             return
+        margin, section = content_spacing(self.pages.width())
+        for index in range(self.pages.count()):
+            page = self.pages.widget(index)
+            if page.property("spaciousPage") and page.property("contentMargin") != margin:
+                page.layout().setContentsMargins(margin, section, margin, section)
+                page.layout().setSpacing(section)
+                page.setProperty("contentMargin", margin)
         width = self.width()
         narrow = width <= 960
         if narrow != self._narrow_chrome:
@@ -3011,10 +3065,15 @@ def main():
     window = MainWindow(persistent=not args.no_settings, core_executable=args.core_cli)
     if args.agent_control:
         try:
-            window.start_agent_control(str(args.agent_control.resolve()))
+            descriptor = window.start_agent_control(str(args.agent_control.resolve()))
+            print(str(descriptor), file=sys.stderr, flush=True)
         except (OSError, RuntimeError, ValueError) as exc:
             window.notice.show_error("Подключение агента недоступно: " + str(exc))
-    window.show()
+    if args.capture or args.export_svg:
+        window.show()
+    else:
+        window.show_startup_workspace()
+        window.showMaximized()
     if args.project:
         QTimer.singleShot(0, lambda: window.read_project(str(args.project.resolve())))
     if args.capture or args.export_svg:
