@@ -3147,7 +3147,24 @@ def main():
     if args.project:
         QTimer.singleShot(0, lambda: window.read_project(str(args.project.resolve())))
     if args.capture or args.export_svg:
+        capture_waits = 0
         def capture():
+            nonlocal capture_waits
+            if args.project and (
+                window.project_directory != str(args.project.resolve())
+                or window.project_result is None
+                or window._project_loading
+                or window._workspace_restore is not None
+                or window.requests
+            ):
+                capture_waits += 1
+                if capture_waits < 150:
+                    QTimer.singleShot(100, capture)
+                    return
+                print("capture: project did not finish loading", file=sys.stderr)
+                window.close()
+                app.exit(1)
+                return
             if args.capture:
                 args.capture.parent.mkdir(parents=True, exist_ok=True)
                 window.grab().save(str(args.capture))
