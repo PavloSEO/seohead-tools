@@ -105,7 +105,7 @@ def checked_url_budget(max_urls: int, *, materialized: bool = False) -> int:
     if materialized and budget > MAX_MATERIALIZED_URLS:
         raise ValueError(
             f"materialized legacy collection ceiling is {MAX_MATERIALIZED_URLS:,} URLs; "
-            "use a native SQLite site scan for larger populations"
+            "use a native SQLite scan for an explicit URL list or site crawl for larger populations"
         )
     return budget
 

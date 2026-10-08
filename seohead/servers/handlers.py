@@ -56,6 +56,12 @@ def _warn_ignored_robots(settings: dict[str, Any], url: str | None, urls: list[s
 
     if settings["robots"]["policy"] != "ignore":
         return
+    if not url and (not isinstance(urls, (list, tuple)) or len(urls) > 1000):
+        print(
+            "warning: robots.txt bypass enabled for the explicit URL list (policy: ignore)",
+            file=sys.stderr,
+        )
+        return
     targets = [url] if url else (urls or [])
     hosts = sorted(
         {(urlsplit(normalize_url(target)).hostname or "").lower() for target in targets if target}
@@ -65,6 +71,22 @@ def _warn_ignored_robots(settings: dict[str, Any], url: str | None, urls: list[s
             print(
                 f"warning: robots.txt bypass enabled for {host} (policy: ignore)", file=sys.stderr
             )
+
+
+def _retire_crawl_reports(out_dir):
+    """Keep old reports accessible while withholding their stale clean filenames."""
+    import os
+
+    retained_reports = {}
+    for name in ("audit.json", "tasks.json", "tasks.md"):
+        previous = Path(out_dir) / name
+        if os.path.lexists(previous):
+            retained = previous.with_name(f".{name}.stale-{time.time_ns()}")
+            if os.path.lexists(retained):
+                raise FileExistsError(f"stale report destination already exists: {retained}")
+            os.rename(previous, retained)
+            retained_reports[name] = str(retained)
+    return retained_reports
 
 
 def _default_scan_path(url: str, producer_build: str | None) -> str:
@@ -790,9 +812,9 @@ def crawl_site(
     if urls_file:
         if url or urls:
             raise ValueError("urls_file cannot be combined with url or urls")
-        from seohead.crawl.list_input import read_url_list
+        from seohead.crawl.list_input import iter_url_list
 
-        urls = read_url_list(urls_file)
+        urls = iter_url_list(urls_file)
     if not url and not urls:
         raise ValueError("url, urls, or urls_file required")
 
@@ -834,7 +856,21 @@ def crawl_site(
         raise ValueError(
             "experimental_synthetic capacity profile is storage-only, not a live crawl"
         )
-    checked_url_budget(settings["limits"]["max_urls"], materialized=not bool(url))
+    from seohead.crawl.settings import MAX_MATERIALIZED_URLS
+
+    native_list = not url and (
+        bool(scan_out)
+        or (
+            bool(settings["output"]["dir"])
+            and (
+                settings["limits"]["max_urls"] == 0
+                or settings["limits"]["max_urls"] > MAX_MATERIALIZED_URLS
+            )
+        )
+    )
+    checked_url_budget(
+        settings["limits"]["max_urls"], materialized=not bool(url) and not native_list
+    )
     # Check selectors refer to the SF finding registry. Validate them at this
     # shared CLI/MCP boundary before the crawl can issue its first request.
     from seohead.sf.config import load_config as load_audit_config
@@ -903,6 +939,20 @@ def crawl_site(
         raise ValueError(
             "discovery.external.crawl requires a site crawl (--url): "
             "list mode keeps no external edges to check"
+        )
+    if native_list:
+        if scan_out and legacy_output:
+            raise ValueError("scan_out and a legacy output directory cannot be combined")
+        from seohead.servers.scan_handlers import crawl_list_scan
+
+        directory = settings["output"]["dir"] or None
+        return crawl_list_scan(
+            urls,
+            scan_out=scan_out or str(Path(directory) / ".list.seohead"),
+            settings=settings,
+            producer_build=producer_build,
+            out_dir=directory,
+            proxy_route=proxy_route,
         )
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
@@ -1162,28 +1212,13 @@ def crawl_site(
             # happen to be missing.
             discovery["segments_only"] = settings["scope"]["segments_only"]
     else:
+        from seohead.servers.scan_handlers import _list_collection_options
+
         result = collect_urls(
             urls or [],
-            max_urls=settings["limits"]["max_urls"],
-            max_requests=settings["limits"]["max_requests"],
-            max_seconds=max_seconds,
-            min_delay=settings["speed"]["min_delay_seconds"],
-            timeout=settings["http"]["timeout_seconds"],
+            **_list_collection_options(settings),
             out_path=pages_resume_path,
-            credential_headers=settings["http"]["credential_headers"],
-            max_response_bytes=settings["limits"]["max_response_bytes"],
-            max_url_length=settings["limits"]["max_url_length"],
-            retry_on_timeout=settings["http"]["retry_on_timeout"],
-            user_agent=settings["http"]["user_agent"],
-            stop_after_consecutive_timeouts=settings["speed"]["stop_after_consecutive_timeouts"],
-            max_delay_seconds=settings["speed"]["max_delay_seconds"],
             cache=cache,
-            extra_request_headers=settings["http"]["headers"] or None,
-            adaptive=settings["speed"]["adaptive"],
-            robots_policy=settings["robots"]["policy"],
-            robots_token=settings["robots"]["user_agent_token"],
-            resolve_redirect_destination=settings["discovery"]["resolve_redirect_destination"],
-            resolve_canonical_destination=settings["discovery"]["resolve_canonical_destination"],
             proxy_route=proxy_route,
         )
         discovery = {
@@ -1231,17 +1266,7 @@ def crawl_site(
         else:
             reason = ""
         if reason:
-            stale_reports = {}
-            for name in ("audit.json", "tasks.json", "tasks.md"):
-                previous = Path(out_dir) / name
-                if os.path.lexists(previous):
-                    retained = previous.with_name(f".{name}.stale-{time.time_ns()}")
-                    if os.path.lexists(retained):
-                        raise FileExistsError(
-                            f"stale report destination already exists: {retained}"
-                        )
-                    os.rename(previous, retained)
-                    stale_reports[name] = str(retained)
+            stale_reports = _retire_crawl_reports(out_dir)
             return {
                 "urls_collected": page_count,
                 "links_collected": link_count,
@@ -1466,6 +1491,9 @@ def _audit_crawl_result(
     from contextlib import ExitStack
 
     stored_graph_available = False
+    from seohead.crawl.list_scan import is_list_scan
+
+    stored_list = stored_scan is not None and is_list_scan(stored_scan.con)
     with ExitStack() as evidence_stack:
         if stored_scan is None:
             evidence = build_evidence(result)
@@ -1473,7 +1501,8 @@ def _audit_crawl_result(
             from seohead.crawl.sql_graph import StoredGraph
 
             stored_graph_available = (
-                stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
+                not stored_list
+                and stored_scan.con.execute("SELECT 1 FROM links LIMIT 1").fetchone() is not None
             )
             graph = evidence_stack.enter_context(StoredGraph(stored_scan.con))
 
@@ -1521,6 +1550,15 @@ def _audit_crawl_result(
         available_exports.add("all_hreflang")
     ctx.skip_unsupported(available_exports)
     run_rules(ctx)
+    if stored_list:
+        unavailable_origins = stored_scan.con.execute(
+            "SELECT COUNT(*) FROM context_items WHERE kind='list_robots' AND completeness='unavailable'"
+        ).fetchone()[0]
+        if unavailable_origins:
+            ctx.skip(
+                "BLOCKED_BY_ROBOTS",
+                f"robots policy was unavailable for {unavailable_origins} explicit-list origins",
+            )
     # Same pipeline the Screaming Frog export path runs (seohead/sf/core/audit.py)
     # -- omitting it here left every inlinks-derived check (anchor text, hreflang,
     # link score, discovery path, inlink composition, insecure subresources)
@@ -1737,8 +1775,8 @@ def _audit_crawl_result(
 
     links = getattr(result, "links", None)
     forms = getattr(result, "forms", None)
-    has_link_evidence = stored_scan is not None or links is not None
-    has_form_evidence = stored_scan is not None or forms is not None
+    has_link_evidence = not stored_list and (stored_scan is not None or links is not None)
+    has_form_evidence = not stored_list and (stored_scan is not None or forms is not None)
     with StoredGraph(stored_scan.con) if stored_scan else nullcontext(None) as graph:
         if has_link_evidence:
             for item in (

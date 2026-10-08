@@ -109,6 +109,8 @@ def _prepare(
         reason = "source capture has unfinished frontier work"
         limitations.append(reason)
         for name in ("pages", "links"):
+            if capabilities.get(name, {}).get("state") == "unavailable":
+                continue
             capabilities[name] = {"state": "partial", "reason": reason}
     scan.con.execute("BEGIN IMMEDIATE")
     try:

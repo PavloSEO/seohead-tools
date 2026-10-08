@@ -106,9 +106,13 @@ SQLite mode keeps queue, evidence and runtime in one transactional scan and resu
 an interrupted file under the same build/configuration: `--resume` reads the start
 URL and that configuration back from the artifact, and refuses by name when the
 file was written by another build or for another start URL. Use `--out-dir DIR` for
-the explicit legacy directory route (`pages.jsonl` and `audit.json`); it does not
-silently become a native scan. List inputs and cache `live`/`replay` also require
-that legacy route while native scan support is added deliberately. So does
+the explicit legacy directory route (`pages.jsonl` and `audit.json`). Explicit
+URL lists can instead use `--urls-file input.txt --scan-out list.seohead`, then
+`--resume list.seohead`, preserving exact order and multiple hosts without
+discovery. Large directory lists also retain a `.list.seohead` spool; the
+directory JSON audit bridge remains separately bounded. Native list capture is
+static-only; see [URL_LIST_SCANS.md](URL_LIST_SCANS.md) for input, budget and
+resume boundaries. Cache `live`/`replay` requires the bounded eager legacy route, as does
 `discovery.external.crawl`, the opt-in bounded check of recorded outlink
 destinations: it runs a second phase after the internal frontier closes under
 its own `external_checks.*` target/host/request/depth/redirect budgets, writes

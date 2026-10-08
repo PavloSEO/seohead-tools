@@ -22,6 +22,7 @@ from defusedxml import ElementTree
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _TRAILING_PUNCTUATION = ".,;:!]}"
 _SUPPORTED_SUFFIXES = {".txt", ".csv", ".xlsx", ".xml"}
+_MAX_TEXT_RECORD_CHARS = 8 * 1024 * 1024
 
 
 class UrlListError(ValueError):
@@ -31,7 +32,8 @@ class UrlListError(ValueError):
 def _urls_in(value: Any) -> Iterator[str]:
     if not isinstance(value, str):
         return
-    for raw in _URL.findall(value):
+    for match in _URL.finditer(value):
+        raw = match.group(0)
         candidate = raw.rstrip(_TRAILING_PUNCTUATION)
         parts = urlsplit(candidate)
         if parts.scheme.lower() in {"http", "https"} and parts.hostname:
@@ -39,13 +41,21 @@ def _urls_in(value: Any) -> Iterator[str]:
 
 
 def _text_values(path: Path) -> Iterable[str]:
-    return path.read_text(encoding="utf-8-sig").splitlines()
+    with path.open(encoding="utf-8-sig") as handle:
+        while line := handle.readline(_MAX_TEXT_RECORD_CHARS + 1):
+            if len(line) > _MAX_TEXT_RECORD_CHARS:
+                raise UrlListError(
+                    f"URL-list text record exceeds {_MAX_TEXT_RECORD_CHARS} characters: {path}"
+                )
+            yield line
 
 
 def _csv_values(path: Path) -> Iterator[str]:
-    with path.open(newline="", encoding="utf-8-sig") as handle:
-        for row in csv.reader(handle):
+    try:
+        for row in csv.reader(_text_values(path)):
             yield from row
+    except csv.Error as exc:
+        raise UrlListError(f"could not read CSV {path}: {exc}") from exc
 
 
 def _xlsx_values(path: Path) -> Iterator[Any]:
@@ -65,8 +75,10 @@ def _xlsx_values(path: Path) -> Iterator[Any]:
 
 def _xml_values(path: Path) -> Iterator[str]:
     try:
+        parents = []
         for event, element in ElementTree.iterparse(path, events=("start", "end")):
             if event == "start":
+                parents.append(element)
                 yield from element.attrib.values()
             else:
                 if element.text:
@@ -74,11 +86,14 @@ def _xml_values(path: Path) -> Iterator[str]:
                 if element.tail:
                     yield element.tail
                 element.clear()
+                parents.pop()
+                if parents:
+                    parents[-1].remove(element)
     except (OSError, ElementTree.ParseError) as exc:
         raise UrlListError(f"could not read XML {path}: {exc}") from exc
 
 
-def read_url_list(path: str | Path) -> list[str]:
+def iter_url_list(path: str | Path) -> Iterator[str]:
     """Extract absolute HTTP(S) URLs from TXT, CSV, XLSX, or XML in source order.
 
     The file extension is intentionally the format choice: guessing a CSV as
@@ -104,7 +119,23 @@ def read_url_list(path: str | Path) -> list[str]:
     else:
         values = _xml_values(source)
 
-    urls = [url for value in values for url in _urls_in(value)]
-    if not urls:
-        raise UrlListError(f"URL-list file contains no absolute HTTP(S) URLs: {source}")
-    return urls
+    def iterate():
+        found = False
+        try:
+            for value in values:
+                for url in _urls_in(value):
+                    found = True
+                    yield url
+            if not found:
+                raise UrlListError(f"URL-list file contains no absolute HTTP(S) URLs: {source}")
+        finally:
+            close = getattr(values, "close", None)
+            if close is not None:
+                close()
+
+    return iterate()
+
+
+def read_url_list(path: str | Path) -> list[str]:
+    """Compatibility helper for callers explicitly requesting an in-memory list."""
+    return list(iter_url_list(path))

@@ -118,11 +118,12 @@ def _producer_provenance(producer_build: str | None) -> tuple[str, str, dict[str
 
 def _rebuild_page_result(scan, *, page_view: bool = False) -> Any:
     """Restore run context with either admitted rows or a SQLite page view."""
-    from seohead.crawl.collect import PageRecord
+    from seohead.crawl.collect import CrawlResult, PageRecord
+    from seohead.crawl.list_scan import is_list_scan
     from seohead.crawl.spider import SpiderResult
     from seohead.storage.exports import _page_rows
 
-    result = SpiderResult()
+    result = CrawlResult() if is_list_scan(scan.con) else SpiderResult()
     result.pages = (
         _StoredPages(scan.con)
         if page_view
@@ -317,11 +318,19 @@ def resume_inputs(scan_path: str) -> dict[str, Any]:
             "form; a resume cannot restore them. Continue it with the original --config and "
             "--scan-out instead of --resume"
         )
+    from contextlib import closing
+
+    from seohead.crawl.list_scan import is_list_scan
+    from seohead.storage import open_scan
+
+    with closing(open_scan(scan_path, require_audit=False)) as con:
+        list_mode = is_list_scan(con)
     return {
         "start_url": header["start_url"],
         "settings": settings,
         "writer_revision": header["writer_revision"],
         "config_fingerprint": header["config_fingerprint"],
+        "list_mode": list_mode,
     }
 
 
@@ -350,6 +359,16 @@ def resume_scan(
             f"{revision}; refusing a mixed-build resume. Check out the build that wrote it, or "
             "pass producer_build with that SHA if this source tree is that build"
         )
+    if inputs["list_mode"]:
+        if url is not None:
+            raise ValueError("explicit URL-list resume cannot take a crawl start URL")
+        return crawl_list_scan(
+            None,
+            scan_out=scan_path,
+            settings=inputs["settings"],
+            producer_build=revision,
+            out_dir=inputs["settings"]["output"]["dir"] or None,
+        )
     if url is not None:
         from seohead.recon.net import normalize_url
 
@@ -368,6 +387,117 @@ def resume_scan(
         observation=observation,
         shared_request_gate=shared_request_gate,
     )
+
+
+def _list_collection_options(settings):
+    """One projection of list settings for the eager and disk-backed adapters."""
+    return {
+        "max_urls": settings["limits"]["max_urls"],
+        "max_requests": settings["limits"]["max_requests"],
+        "max_seconds": settings["limits"]["max_crawl_seconds"],
+        "min_delay": settings["speed"]["min_delay_seconds"],
+        "timeout": settings["http"]["timeout_seconds"],
+        "credential_headers": settings["http"]["credential_headers"],
+        "max_response_bytes": settings["limits"]["max_response_bytes"],
+        "max_url_length": settings["limits"]["max_url_length"],
+        "retry_on_timeout": settings["http"]["retry_on_timeout"],
+        "user_agent": settings["http"]["user_agent"],
+        "stop_after_consecutive_timeouts": settings["speed"]["stop_after_consecutive_timeouts"],
+        "max_delay_seconds": settings["speed"]["max_delay_seconds"],
+        "extra_request_headers": settings["http"]["headers"] or None,
+        "adaptive": settings["speed"]["adaptive"],
+        "robots_policy": settings["robots"]["policy"],
+        "robots_token": settings["robots"]["user_agent_token"],
+        "resolve_redirect_destination": settings["discovery"]["resolve_redirect_destination"],
+        "resolve_canonical_destination": settings["discovery"]["resolve_canonical_destination"],
+    }
+
+
+def crawl_list_scan(
+    urls, *, scan_out, settings, producer_build=None, out_dir=None, proxy_route=None
+):
+    """Retain exact explicit-list evidence and use the existing audit representation."""
+    from seohead.crawl.list_scan import ListScan
+    from seohead.servers.handlers import (
+        _audit_crawl_result,
+        _retire_crawl_reports,
+        _rewrite_pages_sidecar,
+    )
+
+    version, revision, runtime = _producer_provenance(producer_build)
+    pages_path = None
+    if out_dir:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        pages_path = str(
+            Path(out_dir)
+            / ("pages.jsonl" if settings["output"]["write_pages_jsonl"] else ".pages_resume.jsonl")
+        )
+    with ListScan(
+        scan_out, urls, settings, version=version, revision=revision, runtime_versions=runtime
+    ) as spool:
+        if pages_path and spool.resumed:
+            _rewrite_pages_sidecar(pages_path, spool.pages)
+        result = spool.collect(
+            **_list_collection_options(settings), out_path=pages_path, proxy_route=proxy_route
+        )
+        discovery = {
+            "mode": "list",
+            "directive_policy": settings["robots"]["policy"],
+            "robots_blocked": len(result.robots_blocked),
+            "canonical_destination_resolution": settings["discovery"][
+                "resolve_canonical_destination"
+            ],
+        }
+        response = {
+            "scan": str(spool.scan.path),
+            "urls_collected": len(result.pages),
+            "partial": result.partial,
+            "finish_reason": result.finish_reason,
+            "stopped_reason": result.stopped_reason,
+            "resumed": result.resumed,
+            "discovery": discovery,
+            "limitations": result.limitations,
+            "out_dir": out_dir,
+            "requests_used": spool.requests_used,
+            "input_coverage": spool.scan.read_context("list_input")["counts"],
+        }
+        if out_dir and len(result.pages) > MAX_AUDIT_PAGES:
+            reason = f"legacy audit materialization limit exceeded (pages={len(result.pages)}/{MAX_AUDIT_PAGES}); native scan and JSONL evidence are retained"
+            spool.scan.note_audit_unavailable(reason)
+            finalized = spool.scan.finish_capture(result.finish_reason)
+            return {
+                **response,
+                "audit_available": False,
+                "audit_reason": reason,
+                "finalized": finalized,
+                "stale_reports": _retire_crawl_reports(out_dir),
+            }
+        extra, audit = _audit_crawl_result(
+            result,
+            settings=settings,
+            url=None,
+            sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
+            discovery=discovery,
+            out_dir=out_dir,
+            pages_resume_path=pages_path,
+            stored_scan=spool.scan,
+            offline=True,
+            streaming=out_dir is None,
+        )
+        if out_dir is None:
+            header, collections = audit
+            spool.scan.save_audit_v2(header, collections)
+        else:
+            spool.scan.save_audit(audit)
+        finalized = spool.scan.finish_capture(result.finish_reason)
+        return {
+            **response,
+            **extra,
+            "scan": str(spool.scan.path),
+            "audit_available": True,
+            "audit_reason": "",
+            "finalized": finalized,
+        }
 
 
 def crawl_site_scan(

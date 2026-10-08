@@ -1618,7 +1618,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--scan-out",
             metavar="FILE",
-            help="native SQLite destination override",
+            help="native SQLite destination for a site crawl or explicit URL list",
         )
         _source_flag(
             sub,

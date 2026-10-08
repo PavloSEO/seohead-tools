@@ -1169,7 +1169,12 @@ class NativeScan:
         if any(
             value["state"]
             not in (
-                {"partial", "complete"}
+                {"partial", "unavailable"}
+                if name == "links"
+                and con.execute(
+                    "SELECT 1 FROM context_items WHERE kind='list_mode' AND item_key='run'"
+                ).fetchone()
+                else {"partial", "complete"}
                 if name in {"pages", "links"}
                 else {"unavailable"}
                 if name == "resume" and scan["source_kind"] == "reanalysis"
@@ -1871,7 +1876,7 @@ class NativeScan:
             self._rollback()
             raise
 
-    def begin_collection(self) -> None:
+    def begin_collection(self, *, links_available: bool = True) -> None:
         """Declare the delivered collector and reset only recoverable interruption state."""
         self._assert_mutable()
         self._begin()
@@ -1904,6 +1909,11 @@ class NativeScan:
                     "reason": "native observation prefix omitted"
                     if partial
                     else "committed native crawl observations",
+                }
+            if not links_available:
+                capabilities["links"] = {
+                    "state": "unavailable",
+                    "reason": "explicit URL-list collection does not retain link observations",
                 }
             capabilities["resume"] = {
                 "state": "complete",
@@ -1998,6 +2008,8 @@ class NativeScan:
                 limitations.append(reason)
         capabilities = json.loads(row[1])
         for kind in ("pages", "links"):
+            if capabilities.get(kind, {}).get("state") == "unavailable":
+                continue
             capabilities[kind] = {"state": "partial", "reason": "; ".join(reasons)}
         self.con.execute(
             "UPDATE scan SET crawl_partial=1, limitations_json=?, capabilities_json=? WHERE singleton=1",
@@ -2460,10 +2472,12 @@ class NativeScan:
                 self._check_capture_disk_space(policy, body_bytes)
                 for event in captures:
                     if event.requested_url != lease.url and event.requested_url not in {
-                        hop.get("url") for hop in record.get("redirect_chain", [])
+                        hop.get("url")
+                        for field in ("redirect_chain", "canonical_chain")
+                        for hop in record.get(field, [])
                     }:
                         raise ScanError(
-                            "response does not belong to the page or its observed redirect diagnostics"
+                            "response does not belong to the page or its observed destination diagnostics"
                         )
                     _response_id, observed_document = store_response(
                         self.con,

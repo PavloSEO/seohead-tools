@@ -65,6 +65,64 @@ def validate_context(
         raise ScanError("native scan context payload is invalid JSON") from exc
     from . import sitemaps
 
+    if item["kind"] == "list_mode":
+        if (
+            item["item_key"] != "run"
+            or payload != {"mode": "list"}
+            or item["completeness"] != "complete"
+            or item["reason"]
+        ):
+            raise ScanError("invalid explicit-list mode context")
+        return
+    if item["kind"] == "list_input":
+        if (
+            item["item_key"] != "run"
+            or item["completeness"] != "complete"
+            or item["reason"]
+            or not isinstance(payload, dict)
+            or set(payload) != {"sha256", "raw_count", "counts"}
+            or type(payload["raw_count"]) is not int
+            or payload["raw_count"] < 0
+            or type(payload["sha256"]) is not str
+            or len(payload["sha256"]) != 64
+            or any(char not in "0123456789abcdef" for char in payload["sha256"])
+            or not isinstance(payload["counts"], dict)
+            or set(payload["counts"]) != {"blank", "url_too_long", "accepted", "duplicate"}
+            or any(type(value) is not int or value < 0 for value in payload["counts"].values())
+            or sum(payload["counts"].values()) != payload["raw_count"]
+        ):
+            raise ScanError("invalid explicit-list input identity")
+        return
+    if item["kind"] == "list_robots":
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"origin", "parsed"}
+            or not isinstance(payload["origin"], list)
+            or len(payload["origin"]) != 2
+            or any(type(part) is not str or not part for part in payload["origin"])
+            or item["item_key"] != json.dumps(payload["origin"], separators=(",", ":"))
+        ):
+            raise ScanError("invalid explicit-list robots origin")
+        validate_context(
+            con,
+            {
+                **item,
+                "kind": "robots_summary",
+                "item_key": "run",
+                "payload_json": json.dumps(
+                    {
+                        "policy": "respect",
+                        "token": "*",
+                        "fetch_state": "fetched",
+                        "final_response_id": None,
+                        "note": "",
+                        "parsed": payload["parsed"],
+                    }
+                ),
+            },
+        )
+        return
+
     if item["kind"] in sitemaps.KINDS:
         sitemaps.validate_context(con, item, payload, sitemap_roots)
         return
@@ -84,11 +142,11 @@ def validate_context(
 
         (validate_check if item["kind"] == "external_check" else validate_summary)(item, payload)
         return
-    if item["kind"] == "render_elapsed":
+    if item["kind"] in {"render_elapsed", "list_elapsed"}:
         if (
             not isinstance(payload, dict)
             or set(payload) != {"schema_version", "seconds", "active"}
-            or payload["schema_version"] != "render_elapsed.v1"
+            or payload["schema_version"] != item["kind"] + ".v1"
             or type(payload["seconds"]) not in {int, float}
             or not math.isfinite(payload["seconds"])
             or payload["seconds"] < 0
@@ -97,7 +155,9 @@ def validate_context(
             or item["completeness"] != "complete"
             or item["reason"]
         ):
-            raise ScanError("native render elapsed context is invalid")
+            raise ScanError(
+                f"native {'render' if item['kind'] == 'render_elapsed' else 'list'} elapsed context is invalid"
+            )
         return
     if item["kind"] == "resource_inventory":
         from .resources import validate_inventory_context
@@ -387,14 +447,16 @@ def put_context(con: Any, item: dict[str, Any], *, sitemap_roots: set[int] | Non
         "SELECT * FROM context_items WHERE kind=? AND item_key=?", (item["kind"], item["item_key"])
     ).fetchone()
     if existing is not None:
-        if item["kind"] == "render_elapsed":
+        if item["kind"] in {"render_elapsed", "list_elapsed"}:
             previous = json.loads(existing["payload_json"])
             current = json.loads(item["payload_json"])
             if current["seconds"] < previous["seconds"]:
-                raise ScanError("render elapsed seconds cannot decrease")
+                raise ScanError(
+                    f"{'render' if item['kind'] == 'render_elapsed' else 'list'} elapsed seconds cannot decrease"
+                )
             con.execute(
-                "UPDATE context_items SET payload_json=? WHERE kind='render_elapsed' AND item_key='run'",
-                (item["payload_json"],),
+                "UPDATE context_items SET payload_json=? WHERE kind=? AND item_key='run'",
+                (item["payload_json"], item["kind"]),
             )
             return
         if dict(existing) != item:

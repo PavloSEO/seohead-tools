@@ -231,8 +231,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         A URL crawl with neither ``scan_out`` nor ``out_dir`` writes a collision-safe
         SQLite scan below the caller's ``scans/`` directory. ``scan_out`` overrides
         that destination; ``out_dir`` selects the explicit legacy directory route.
-        List mode and ``cache.mode`` live/replay require ``out_dir`` during this
-        migration. Native scans retain bounded HTML entities and separate
+        Explicit URL lists can select ``scan_out`` for disk-backed, resumable
+        capture in exact input order without link discovery, including multiple hosts.
+        Large legacy-directory lists use the same native spool, while directory
+        audit materialization remains separately bounded. List capture is static-only;
+        rendering and resource fetching are refused. ``cache.mode`` live/replay
+        requires the bounded eager ``out_dir`` route. Native scans retain bounded HTML entities and separate
         DOM; their policy records disabled, sensitive, no-store and budget omissions.
         In the config file, ``resources.fetch=true`` opts into direct same-origin
         script/stylesheet capture (20,000 HTTP attempts and 5 MiB per response by

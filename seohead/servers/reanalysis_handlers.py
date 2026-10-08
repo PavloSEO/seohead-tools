@@ -14,6 +14,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
     if not isinstance(out, str) or not out:
         raise ValueError("out must name a new derived SQLite scan")
 
+    from seohead.crawl.list_scan import is_list_scan
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.servers.handlers import _audit_crawl_result
     from seohead.servers.scan_handlers import (
@@ -34,6 +35,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
     ) as (scan, source):
         parent = dict(source.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         settings = json.loads(parent["config_json"])
+        list_mode = is_list_scan(source)
         count = source.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
         from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
@@ -48,6 +50,14 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
         start_gate = None
         selected_start_html = None
         for replay in iterate_reparsed_pages(source, settings):
+            if list_mode:
+                from dataclasses import replace
+
+                replay = replace(
+                    replay,
+                    links={key: () for key in replay.links},
+                    forms={key: () for key in replay.forms},
+                )
             replace_reparsed_page(scan, replay)
             if replay.start_page_gate is not None:
                 start_gate = dict(replay.start_page_gate)
@@ -55,7 +65,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
 
         reason = ""
         audit = None
-        if start_gate is None:
+        if start_gate is None and not list_mode:
             reason = "reanalysis unavailable: start-page raw evidence is not_in_corpus"
         else:
             # Reanalysis has already persisted its reparsed rows. Re-open them
@@ -95,7 +105,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
                 "declared": [],
             }
             discovery = {
-                "mode": "spider",
+                "mode": "list" if list_mode else "spider",
                 "directive_policy": settings["robots"]["policy"],
                 "robots_blocked": len(result.robots_blocked),
                 "sitemap_url": sitemap_seed["sitemap_url"],
@@ -108,7 +118,7 @@ def reanalyze_scan(input_path: str, out: str, producer_build: str | None = None)
                 _, audit = _audit_crawl_result(
                     result,
                     settings=settings,
-                    url=parent["start_url"],
+                    url=None if list_mode else parent["start_url"],
                     sitemap_seed=sitemap_seed,
                     discovery=discovery,
                     out_dir=None,

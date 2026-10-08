@@ -1,7 +1,8 @@
 """Bounded fetching of an explicit URL list.
 
-List mode is a strict subset of a crawler: no frontier, no scope model, no
-traps, so its output is deterministic by construction. It is also the slice that
+List mode has no link discovery, site scope model or trap expansion; its
+explicit input order is deterministic. Native storage may retain that input
+and completed pages on disk. It is also the slice that
 does real work on day one — verifying a redirect map after a migration,
 re-checking the URLs a developer says are fixed, auditing a Search Console
 export.
@@ -50,6 +51,10 @@ DEFAULT_TIMEOUT_S = 15.0
 # Matches seohead.tools.redirects's own hop cap; a chain that has not landed by
 # then is a misconfiguration (or a loop), not a slow site.
 MAX_REDIRECT_CHAIN_HOPS = 10
+
+
+class DurationBudgetExhausted(RequestBudgetExhausted):
+    """The cumulative list deadline expired before another HTTP dispatch."""
 
 
 @dataclass
@@ -965,16 +970,22 @@ def _robots_blocks(
         robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
         text = ""
         try:
-            if wait is not None:
-                wait()
-            response = (
-                fetcher(robots_url)
-                if fetcher
-                else client.get(robots_url, headers={"User-Agent": user_agent or UA})
-            )
-            status = getattr(response, "status_code", None)
-            if status is not None and status < 300:
-                text = getattr(response, "text", "") or ""
+            bounded_reader = getattr(robots_cache, "fetch", None)
+            if bounded_reader is not None:
+                text = bounded_reader(
+                    robots_url, client=client, fetcher=fetcher, user_agent=user_agent, wait=wait
+                )
+            else:
+                if wait is not None:
+                    wait()
+                response = (
+                    fetcher(robots_url)
+                    if fetcher
+                    else client.get(robots_url, headers={"User-Agent": user_agent or UA})
+                )
+                status = getattr(response, "status_code", None)
+                if status is not None and status < 300:
+                    text = getattr(response, "text", "") or ""
         except RequestBudgetExhausted:
             raise
         except Exception:
@@ -1058,6 +1069,9 @@ def _resolve_canonical_destination(
     cache: ResponseCache | None,
     sleeper: Callable[[float], None],
     wait: Callable[[], None] | None = None,
+    headers_for_url: Callable[[str], dict[str, str] | None] | None = None,
+    capture_observer: Callable[[Any], None] | None = None,
+    capture_max_bytes: int | None = None,
 ) -> None:
     """Follow canonical declarations as bounded per-row evidence.
 
@@ -1077,13 +1091,18 @@ def _resolve_canonical_destination(
             client=client,
             fetcher=fetcher,
             throttle=throttle,
-            extra_headers=extra_headers,
+            extra_headers=headers_for_url(current) if headers_for_url else extra_headers,
             user_agent=user_agent,
             max_response_bytes=max_response_bytes,
             retry_on_timeout=retry_on_timeout,
             parse_options=parse_options,
             cache=cache,
             wait=wait or ((lambda: sleeper(throttle.delay)) if throttle.delay else None),
+            **(
+                {"capture_observer": capture_observer, "capture_max_bytes": capture_max_bytes}
+                if capture_observer
+                else {}
+            ),
         )
         chain.append(
             {
@@ -1128,8 +1147,12 @@ def collect_urls(
     resolve_redirect_destination: bool = False,
     resolve_canonical_destination: bool = False,
     proxy_route: Any = None,
+    spool: Any = None,
 ) -> CrawlResult:
     """Fetch an explicit list of URLs in the order given.
+
+    ``spool`` is the internal native-list storage adapter. The ordinary Python
+    call still returns in-memory pages; shared CLI/MCP handlers own native scans.
 
     ``out_path`` receives one JSON object per line as each URL completes, so an
     interrupted run still leaves usable evidence behind. ``max_seconds`` is a
@@ -1158,14 +1181,48 @@ def collect_urls(
     redirect option: it follows a page's canonical declaration through a
     bounded chain without adding any target to ``result.pages``.
     """
-    limit = checked_url_budget(max_urls, materialized=True)
+    limit = checked_url_budget(max_urls, materialized=spool is None)
     result = CrawlResult()
     throttle = Throttle(min_delay=min_delay, max_delay=max_delay_seconds, adaptive=adaptive)
-    dispatch_gate = DispatchGate(throttle, sleeper, clock, max_requests=max_requests)
-    started = clock()
+    dispatch_gate = DispatchGate(
+        throttle,
+        sleeper,
+        clock,
+        max_requests=max_requests,
+        requests_used=spool.requests_used if spool else 0,
+        event_callback=spool.dispatched if spool else None,
+    )
+    started = clock() - (spool.elapsed_before if spool else 0)
+    if spool is not None:
+        spool.bind(result, throttle, dispatch_gate)
+        urls = spool.pending()
 
-    seen: set[str] = set()
-    robots_cache: dict[tuple[str, str], Any] = {}
+    def time_exhausted():
+        return bool(
+            max_seconds
+            and (
+                (spool.interrupted_clock if spool else False)
+                or (spool.elapsed() if spool else clock() - started) >= max_seconds
+            )
+        )
+
+    def wait_turn():
+        if time_exhausted():
+            raise DurationBudgetExhausted("cumulative list time budget exhausted")
+        dispatch_gate.wait_turn()
+        if time_exhausted():
+            raise DurationBudgetExhausted("cumulative list time budget exhausted")
+
+    if spool is not None and (
+        (max_requests and dispatch_gate.requests_used >= max_requests) or time_exhausted()
+    ):
+        result.partial = True
+        result.finish_reason = "duration_limit" if time_exhausted() else "request_limit"
+        result.stopped_reason = "the retained list request or time budget is exhausted"
+        return result
+
+    seen = set() if spool is None else None
+    robots_cache = {} if spool is None else spool.robots
 
     def headers_for_url(target: str) -> dict[str, str] | None:
         headers = dict(extra_request_headers or {})
@@ -1180,7 +1237,9 @@ def collect_urls(
         handle = None
         if out_path:
             os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
-            handle = stack.enter_context(open(out_path, "w", encoding="utf-8"))
+            handle = stack.enter_context(
+                open(out_path, "a" if spool and spool.resumed else "w", encoding="utf-8")
+            )
 
         client = None
         if fetcher is None:
@@ -1199,24 +1258,25 @@ def collect_urls(
             stack.callback(client.close)
 
         for raw in urls:
-            if len(result.pages) >= limit:
+            if limit and len(result.pages) >= limit:
                 result.partial = True
                 result.stopped_reason = f"url limit reached ({limit})"
                 result.finish_reason = "url_limit"
                 break
-            if max_seconds and (clock() - started) >= max_seconds:
+            if time_exhausted():
                 result.partial = True
                 result.stopped_reason = f"duration limit reached ({max_seconds:.0f}s)"
                 result.finish_reason = "duration_limit"
                 break
             url = (raw or "").strip()
-            if not url or url in seen:
+            if not url or (seen is not None and url in seen):
                 continue
             if max_url_length and len(url) > max_url_length:
                 # Not fetched at all, per limits.max_url_length: too long even
                 # to be worth a wasted request.
                 continue
-            seen.add(url)
+            if seen is not None:
+                seen.add(url)
 
             record = None
             try:
@@ -1227,7 +1287,7 @@ def collect_urls(
                     fetcher=fetcher,
                     user_agent=user_agent,
                     robots_token=robots_token,
-                    wait=dispatch_gate.wait_turn,
+                    wait=wait_turn,
                 ):
                     result.robots_blocked.append(url)
                     if robots_policy == "respect":
@@ -1246,7 +1306,12 @@ def collect_urls(
                     retry_on_timeout=retry_on_timeout,
                     parse_options=parse_options,
                     cache=cache,
-                    wait=dispatch_gate.wait_turn,
+                    wait=wait_turn,
+                    **(
+                        {"capture_observer": spool.capture, "capture_max_bytes": max_response_bytes}
+                        if spool
+                        else {}
+                    ),
                 )
                 if resolve_redirect_destination and record.redirect_url:
                     _resolve_redirect_destination(
@@ -1260,8 +1325,16 @@ def collect_urls(
                         retry_on_timeout=retry_on_timeout,
                         parse_options=parse_options,
                         cache=cache,
-                        wait=dispatch_gate.wait_turn,
+                        wait=wait_turn,
                         headers_for_url=headers_for_url,
+                        **(
+                            {
+                                "capture_observer": spool.capture,
+                                "capture_max_bytes": max_response_bytes,
+                            }
+                            if spool
+                            else {}
+                        ),
                     )
                 if resolve_canonical_destination and record.canonical:
                     _resolve_canonical_destination(
@@ -1276,15 +1349,32 @@ def collect_urls(
                         parse_options=parse_options,
                         cache=cache,
                         sleeper=sleeper,
-                        wait=dispatch_gate.wait_turn,
+                        wait=wait_turn,
+                        headers_for_url=headers_for_url,
+                        **(
+                            {
+                                "capture_observer": spool.capture,
+                                "capture_max_bytes": max_response_bytes,
+                            }
+                            if spool
+                            else {}
+                        ),
                     )
-            except RequestBudgetExhausted:
+            except RequestBudgetExhausted as exc:
                 if record is not None:
                     result.pages.append(record)
                     _write(handle, record)
                 result.partial = True
-                result.finish_reason = "request_limit"
-                result.stopped_reason = f"total HTTP request budget reached ({max_requests})"
+                result.finish_reason = (
+                    "duration_limit"
+                    if isinstance(exc, DurationBudgetExhausted)
+                    else "request_limit"
+                )
+                result.stopped_reason = (
+                    f"duration limit reached ({max_seconds:.0f}s)"
+                    if isinstance(exc, DurationBudgetExhausted)
+                    else f"total HTTP request budget reached ({max_requests})"
+                )
                 break
             result.pages.append(record)
             _write(handle, record)

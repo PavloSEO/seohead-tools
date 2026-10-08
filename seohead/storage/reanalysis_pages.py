@@ -238,13 +238,18 @@ def iterate_reparsed_pages(
     if scan is None or not isinstance(scan[0], str) or not scan[0]:
         raise ScanError("reanalysis unavailable: source scan has no start URL")
     start_url = scan[0]
+    from seohead.crawl.list_scan import is_list_scan
+
+    list_mode = is_list_scan(source_con)
     host = urlsplit(start_url).hostname or ""
-    if not host:
+    if not host and not list_mode:
         raise ScanError("reanalysis unavailable: source start URL has no host")
     cursor = source_con.execute(
         "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) ORDER BY p.page_ordinal"
     )
     for page in cursor:
+        if list_mode:
+            host = urlsplit(page["url"]).hostname or ""
         record = _record(page)
         static_id = _active_static_document(source_con, page)
         selected_id = page["document_id"]
