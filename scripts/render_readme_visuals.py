@@ -19,6 +19,7 @@ from playwright.sync_api import Browser, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / ".github" / "assets"
+LOGO_SVG = (ROOT / "docs" / "assets" / "logo.svg").read_text(encoding="utf-8")
 
 PRIMARY = "#1565C0"
 ON_PRIMARY = "#FFFFFF"
@@ -107,7 +108,7 @@ def product_counts() -> tuple[int, int, int]:
 
 def social_preview(tool_count: int, check_count: int) -> str:
     body = f"""
-      <div class="brand">&gt;_</div>
+      <div class="brand">{LOGO_SVG}</div>
       <div class="social-copy">
         <div class="eyebrow">Local-first · open source · one toolkit</div>
         <h1>SEOHEAD Tools</h1>
@@ -123,8 +124,8 @@ def social_preview(tool_count: int, check_count: int) -> str:
     css = f"""
       .canvas {{ padding: 62px 74px; border-left: 14px solid {PRIMARY}; }}
       .brand {{ position: absolute; right: 76px; top: 58px; width: 86px; height: 86px;
-                border-radius: 24px; background: {PRIMARY}; color: {ON_PRIMARY}; display: grid;
-                place-items: center; font: 700 33px/1 "SFMono-Regular", Menlo, monospace; }}
+                border-radius: 20px; overflow: hidden; }}
+      .brand svg {{ display: block; width: 100%; height: 100%; }}
       .social-copy {{ max-width: 990px; padding-top: 42px; }}
       .social-copy h1 {{ font-size: 76px; margin-top: 14px; margin-bottom: 8px; }}
       .social-copy .lead {{ font-size: 31px; }}
@@ -236,7 +237,7 @@ def interfaces_visual(core_count: int, sf_count: int) -> str:
         </article>
         <div class="flow-arrow">→</div>
         <article class="core-card">
-          <div class="core-mark mono">&gt;_</div>
+          <div class="core-mark">{LOGO_SVG}</div>
           <h2>SEOHEAD Python core</h2>
           <div class="core-lines">
             <span>Crawl export analysis</span>
@@ -269,8 +270,8 @@ def interfaces_visual(core_count: int, sf_count: int) -> str:
       .flow-arrow {{ color: {PRIMARY}; text-align: center; font-size: 44px; }}
       .core-card {{ min-height: 440px; border: 2px solid {PRIMARY}; border-radius: 24px;
                     background: {PRIMARY_CONTAINER}; padding: 32px; text-align: center; }}
-      .core-mark {{ width: 76px; height: 76px; border-radius: 20px; background: {PRIMARY}; color: white;
-                    display: grid; place-items: center; margin: 0 auto 10px; font-size: 29px; font-weight: 800; }}
+      .core-mark {{ width: 76px; height: 76px; border-radius: 18px; overflow: hidden; margin: 0 auto 10px; }}
+      .core-mark svg {{ display: block; width: 100%; height: 100%; }}
       .core-lines {{ display: grid; gap: 10px; margin-top: 26px; }}
       .core-lines span {{ background: rgba(255,255,255,.72); border-radius: 12px; padding: 14px;
                           color: {ON_PRIMARY_CONTAINER}; font-weight: 700; font-size: 16px; }}

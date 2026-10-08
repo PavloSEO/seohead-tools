@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.svg" alt="SEOHEAD logo: a spider web inside a magnifying glass with a black widow spider" width="96" height="96"></p>
+
 # SEOHEAD Tools
 
 **A headless, local-first SEO crawler and audit toolkit for SEO engineers and the AI agents they work with.**
