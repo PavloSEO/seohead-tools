@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Render the original SEOHEAD SVG into native icon containers with Qt."""
+"""Render the SEOHEAD logo SVGs into native icon containers with Qt.
+
+Sizes up to SMALL_MAX use the simplified mark (app/seohead-small.svg) when it exists:
+the detailed logo turns into noise at favicon sizes.
+"""
 
 from __future__ import annotations
 
@@ -19,11 +23,16 @@ from PyQt5.QtSvg import QSvgRenderer
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "src" / "seohead_desktop" / "assets"
 SIZES = (16, 24, 32, 48, 64, 128, 256, 512, 1024)
+SMALL_MAX = 48
 
 
-def render(source: Path, output: Path) -> list[Path]:
-    renderer = QSvgRenderer(str(source))
-    if not renderer.isValid():
+def source_for(size: int, source: Path, small: Path) -> Path:
+    return small if size <= SMALL_MAX and small.exists() else source
+
+
+def render(source: Path, output: Path, small: Path) -> list[Path]:
+    renderers = {path: QSvgRenderer(str(path)) for path in {source_for(s, source, small) for s in SIZES}}
+    if not all(renderer.isValid() for renderer in renderers.values()):
         raise ValueError("invalid SEOHEAD source SVG")
     output.mkdir(parents=True, exist_ok=True)
     paths = []
@@ -31,7 +40,7 @@ def render(source: Path, output: Path) -> list[Path]:
         canvas = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
         canvas.fill(Qt.transparent)
         painter = QPainter(canvas)
-        renderer.render(painter)
+        renderers[source_for(size, source, small)].render(painter)
         painter.end()
         path = output / f"seohead-{size}.png"
         if not canvas.save(str(path), "PNG"):
@@ -84,13 +93,22 @@ def render(source: Path, output: Path) -> list[Path]:
     return paths
 
 
+def derived_from(path: Path, source: Path, small: Path) -> str:
+    stem = path.stem.rsplit("-", 1)[-1]
+    if stem.isdigit():
+        return f"app/{source_for(int(stem), source, small).name}"
+    # ICO/ICNS mix both sources: small mark for the small frames, full logo above.
+    return "app/seohead.svg + app/seohead-small.svg"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ASSETS / "app")
     args = parser.parse_args()
     app = QGuiApplication.instance() or QGuiApplication([])
     app.setApplicationName("SEOHEAD icon export")
-    paths = render(ASSETS / "app" / "seohead.svg", args.output.resolve())
+    source, small = ASSETS / "app" / "seohead.svg", ASSETS / "app" / "seohead-small.svg"
+    paths = render(source, args.output.resolve(), small)
     if args.output.resolve() == (ASSETS / "app").resolve():
         manifest_path = ASSETS / "asset-manifest.json"
         entries = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -99,7 +117,7 @@ def main() -> int:
         entries.extend(
             {
                 "path": path.relative_to(ASSETS).as_posix(),
-                "derived_from": "app/seohead.svg",
+                "derived_from": derived_from(path, source, small),
                 "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             }

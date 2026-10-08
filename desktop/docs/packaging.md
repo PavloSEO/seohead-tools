@@ -80,8 +80,9 @@ runs PyInstaller, verifies source stability, hashes the complete core/agent
 payloads and runs the same smoke. The default release path uses `--clean` and
 fresh scratch directories. Cache reuse is not a release-test bypass.
 
-The app icon is the original SEOHEAD website favicon SVG, with source commit
-and SHA-256 in `assets/asset-manifest.json`. `scripts/render_app_icon.py` renders
+The app icon is the SEOHEAD logo SVG (`app/seohead.svg`; 16–48 px use the
+simplified `app/seohead-small.svg`), with source and SHA-256 in
+`assets/asset-manifest.json`. `scripts/render_app_icon.py` renders
 each PNG size directly with Qt; the ICO contains 16–256 px frames and `iconutil`
 produces the macOS ICNS through 1024 px. The macOS and Windows freeze commands
 use their native containers. Linux has no executable icon resource: the bundle

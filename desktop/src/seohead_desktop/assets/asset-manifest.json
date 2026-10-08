@@ -291,77 +291,84 @@
   },
   {
     "path": "app/seohead.svg",
-    "repository": "https://github.com/PavloSEO/seohead.tech",
-    "commit": "6df055b501e1fd46fb43ceb1327fba59fbaa8c7b",
-    "source_path": "frontend/public/favicon.svg",
+    "repository": "https://github.com/PavloSEO/seohead-tools",
+    "source_path": "desktop/design/v2/brand/seohead-logo.svg",
     "license": "SEOHEAD brand asset; used with the project owner authorization",
     "transform": "none; original source bytes",
-    "sha256": "802b4dfe5d39add86105e8245cbd09bee0a02c3a72273ca79bb52bd9698f1b19"
+    "sha256": "cff1083bffe17d653a59365c40a67aef1b2276964b3ec236da6632c43273bc72"
+  },
+  {
+    "path": "app/seohead-small.svg",
+    "repository": "https://github.com/PavloSEO/seohead.tech",
+    "source_path": "design/brand/seohead-mark-small.svg",
+    "license": "SEOHEAD brand asset; used with the project owner authorization",
+    "transform": "none; simplified mark for 16-48 px",
+    "sha256": "7f130bb8423c13d3c70ba6bd25550e344e2d1a61df073b4fac467cbb2f7e25b6"
   },
   {
     "path": "app/seohead-16.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "c4648e5b9cad5ed5c8d238cb871ec752955294e6ef4039bfc7c45ed637790a16"
+    "derived_from": "app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "824d550317671ce5a1117b20f3c09adde02da05e8e99ce3db4b061668ae5eec5"
   },
   {
     "path": "app/seohead-24.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "71354fb86f9d8137b6e7bfe416bd2ac433f7032eae0abc7234470b5b6b31b1fb"
+    "derived_from": "app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "f04cce5ead830faa6e337805a9d7431f58563565bc3e175a6a2142d5589f029e"
   },
   {
     "path": "app/seohead-32.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "be1b7ab9b0a7ff880c486aad52019fbc0e146f6c6860a9777e5a295928957110"
+    "derived_from": "app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "f9a5e59a19a13ac5936bcaf0f79550e0774fa665c20301078e064157fc0a2430"
   },
   {
     "path": "app/seohead-48.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "5815f74aed9c0e3b92ff94ffde01c9f5b590d1163d9567919258b2510cf83348"
+    "derived_from": "app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "c386f7e6172611d2f026b6f94579baffe0ab07134e11bcc930d3060e50c0f9f6"
   },
   {
     "path": "app/seohead-64.png",
     "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "fa7995ca7c050879b93a17636a6f1e45ca953ef42bee527ec1f3797a2385438c"
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "16018e9ee0b95aea6a5791271e5cadc3a5dca623f9a5a6d729d89d42edc44a99"
   },
   {
     "path": "app/seohead-128.png",
     "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "cc882b36211495dc39b4627e03d236b46051529dcca37bd3248c522d6848b1fc"
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "22a9184c5e8318d66f2430ab6067cd08be8278ad90715a3cc2d2780e0b521053"
   },
   {
     "path": "app/seohead-256.png",
     "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "4330d5d5dfcb24f142ad68717cd2c8496eeb4a2187e7fa40451edeea56dc0a31"
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "75612700d05bb231ee1fcc394f6ae9c4fdb92855cf4af9b7bb20624bb6db405f"
   },
   {
     "path": "app/seohead-512.png",
     "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "3c2197540a6f675134f44e980dd82eb14a0129f7850ac6cef36868eacd4439b4"
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "aa376cb33df8bdeaf0f5745cb05b10258b2bbc9ffae774df5c264141f4c609aa"
   },
   {
     "path": "app/seohead-1024.png",
     "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "a65e3dce204987c626867cd662376e7b9b1aea8c4a6a7659c0aec507f561ae16"
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "0f02d03a7d5090bbfb91c44f55315ade412977c3c09fe4e34bc786ffa8a4d66e"
   },
   {
     "path": "app/seohead.ico",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "f9e9c8b89131dc4f3ef91a9e19d337ff5656011c3ce921c22cd99c6f9b651daf"
+    "derived_from": "app/seohead.svg + app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "6d601a5de38070aa68c2e87853154657c8484fff18586153467d95f8a6585718"
   },
   {
     "path": "app/seohead.icns",
-    "derived_from": "app/seohead.svg",
-    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
-    "sha256": "c7877b6a7701e4d7e3b5a56dd4d493ae50de1d4d61a2a5f8b196142e984969c8"
+    "derived_from": "app/seohead.svg + app/seohead-small.svg",
+    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
+    "sha256": "a7f9ad0dbc92dd3e386f9bc0c2603cac92df232ebbd1b1efb49cc2c6ca4fbc5c"
   }
 ]
