@@ -669,6 +669,14 @@ def crawl_site_scan(
                 scan.save_audit_v2(header, collections)
             else:  # compatibility for injected audit bridges
                 scan.save_audit(audit)
+        except KeyboardInterrupt:
+            reason = "analysis interrupted; retained capture can be resumed"
+            scan.note_audit_unavailable(reason)
+            scan.interrupt("interrupted")
+            interrupted = replace(run, partial=True, finish_reason="interrupted")
+            return _response(
+                interrupted, audit_available=False, audit_reason=reason, finalized=False
+            )
         except AuditSizeError as exc:
             reason = str(exc)
             scan.note_audit_unavailable(reason)

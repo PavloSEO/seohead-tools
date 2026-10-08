@@ -174,6 +174,26 @@ def test_unexpected_audit_exception_is_named_by_phase_without_losing_native_capt
     assert scan.finished == ["finished"]
 
 
+def test_interrupt_during_analysis_returns_resumable_capture_instead_of_traceback(bridge):
+    scan = bridge(overflow=False, audit_error=KeyboardInterrupt())
+    interruptions = []
+    scan.interrupt = interruptions.append
+    response = scan_handlers.crawl_site_scan(
+        "https://example.test/",
+        scan_out="scan.sqlite",
+        settings={"robots": {"policy": "respect"}},
+        producer_build="a" * 40,
+    )
+    assert response["finish_reason"] == "interrupted"
+    assert response["partial"] is True
+    assert response["audit_available"] is False
+    assert response["finalized"] is False
+    assert response["urls_collected"] == 3
+    assert interruptions == ["interrupted"]
+    assert scan.saved is None
+    assert scan.finished == []
+
+
 def test_ordinary_audit_still_saves_after_preflight(bridge):
     scan = bridge(overflow=False)
 

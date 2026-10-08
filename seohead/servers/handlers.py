@@ -2074,7 +2074,7 @@ def crawl_describe_settings() -> dict[str, Any]:
 
     return {
         "settings": crawl_config.describe_settings(),
-        "capabilities": {"sitemap_only_retained": True},
+        "capabilities": {"sitemap_only_retained": True, "full_site_native_sqlite": True},
     }
 
 
