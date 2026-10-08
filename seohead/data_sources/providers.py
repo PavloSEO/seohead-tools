@@ -59,7 +59,7 @@ _REGISTRY: dict[str, dict[str, Any]] = {
         "privacy_class": "aggregate",
     },
     "ga4": {
-        "credential_components": ["oauth_bearer"],
+        "credential_components": ["oauth_bearer", "service_account"],
         "access": "read_only",
         "operations": ["landing_pages", "page_views"],
         "quota_mode": "GA4 Data API quota",
@@ -194,7 +194,7 @@ def _credential_details(provider: str) -> tuple[dict[str, bool], dict[str, dict[
         state = credentials.source_status(*source)
         details[name] = state
         components[name] = state["state"] == "configured_unverified"
-    if provider == "gsc":
+    if provider in {"gsc", "ga4"}:
         components["service_account"] = credentials.gsc_service_account_available()
         service_status = credentials.gsc_service_account_status()
         service_reference = (
@@ -221,6 +221,7 @@ def _credential_details(provider: str) -> tuple[dict[str, bool], dict[str, dict[
                 else {}
             ),
         }
+    if provider == "gsc":
         from seohead.data_sources.oauth import grant_available
 
         grant = grant_available("gsc")
@@ -242,7 +243,7 @@ def _readiness_state(
 ) -> str:
     if not components:
         return "not_required"
-    ready = any(components.values()) if provider == "gsc" else all(components.values())
+    ready = any(components.values()) if provider in {"gsc", "ga4"} else all(components.values())
     if ready:
         return "configured_unverified"
     if any(item.get("state") == "invalid" for item in details.values()):
@@ -364,7 +365,7 @@ def sources_doctor() -> dict[str, Any]:
     providers = {}
     for name in _REGISTRY:
         components, sources = _credential_details(name)
-        available = any(components.values()) if name == "gsc" else all(components.values())
+        available = any(components.values()) if name in {"gsc", "ga4"} else all(components.values())
         readiness = _readiness_state(name, components, sources)
         providers[name] = {
             "state": (
@@ -385,7 +386,7 @@ def sources_doctor() -> dict[str, Any]:
             "quota_mode": _REGISTRY[name]["quota_mode"],
             "privacy_class": _REGISTRY[name]["privacy_class"],
         }
-        if name == "gsc":
+        if name in {"gsc", "ga4"}:
             providers[name]["service_account_status"] = credentials.gsc_service_account_status()
         if readiness in {"missing", "invalid"}:
             providers[name]["unavailable_reason"] = (
@@ -536,7 +537,7 @@ def provider_verify(
             "credential_sources": sources,
             "note": "this public source has no authenticated-access contract to verify",
         }
-    ready = any(components.values()) if provider == "gsc" else all(components.values())
+    ready = any(components.values()) if provider in {"gsc", "ga4"} else all(components.values())
     if not ready:
         missing = readiness == "missing"
         result = {
@@ -555,7 +556,7 @@ def provider_verify(
             if missing
             else "configured credential source is invalid"
         )
-        if provider == "gsc":
+        if provider in {"gsc", "ga4"}:
             result["service_account_status"] = credentials.gsc_service_account_status()
         return result
     if provider == "gsc":
