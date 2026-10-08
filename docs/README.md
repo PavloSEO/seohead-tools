@@ -29,7 +29,7 @@ for the separately named `sf_*` tools. Exact arguments and side effects live in
 | What do content, forms and templates contain? | [content scenario](scenarios/content.md), [marketing inventory](scenarios/marketing-inventory.md), [saved evidence](scenarios/saved-evidence.md) | `scan-extract`, `duplicate-check`, `boilerplate-report`, `marketing-inventory`, `facts-export` | Retained bodies, occurrences and source locators; missing bodies are not empty content |
 | How did a release change the site? | [comparison scenario](scenarios/comparison.md), [comparison contract](COMPARE.md) | `compare-crawls`, `segment-diff`, `scan-body-diff` | Compatible scope/configuration and explicit URL correspondence; a missing page is not automatically fixed |
 | Which findings were repaired and rechecked? | [remediation ledger](LEDGER.md) | `remediation-*`, `verify-fixes` | Separate finding/occurrence history, exact recheck evidence and denominators; ledger bootstrap currently uses the Python core API |
-| What work can the next agent continue? | [Projects](PROJECTS.md), [terminal observer](TERMINAL.md) | `project-progress`, `project-task-detail`, `project-inbox-*`, `workflow-status` | Task, note, accepted-goal and execution states are separate; reads do not accept or run suggestions |
+| What work can the next agent continue? | [Projects](PROJECTS.md), [workflow runs and inbox](WORKFLOWS.md), [terminal observer](TERMINAL.md) | `project-progress`, `project-task-detail`, `project-inbox-*`, `workflow-status` | Task, note, accepted-goal and execution states are separate; reads do not accept or run suggestions |
 | What does infrastructure or an access log show? | [recon/security skills](SKILLS.md#recon-and-technical-hygiene), [infrastructure scenario](scenarios/infrastructure.md) | `domain-profile`, `cdn-check`, `security-check`, `log-analyze` | Explicit live requests or supplied logs; service-path probes and bot DNS checks are opt-in |
 | How do demand, SERPs and analytics join the audit? | [provider workflow](scenarios/provider-evidence.md), [provider matrix](PROVIDERS.md), [analytics-console skill](../.claude/skills/analytics-console-review/SKILL.md) | `provider-*`, `evidence-join`, `gsc-*`, `topvisor-read`, keyword/SERP tools | Auth, quota, privacy, grain and freshness remain source-specific; a registered connector is not live account access |
 | What can be delivered to developers or reporting systems? | [developer handoff](scenarios/deliverable.md), [BI contract](BI.md), [report fixtures](../examples/reports/README.md) | `sf tasks` / `sf_audit_tasks`, `report-build`, `bi-*`, `publication-cohorts`, `gsc-progress` | Audit rows, task backlog and reviewed engineering criteria are distinct; a local BI package is not a verified copyable Looker report |
@@ -56,6 +56,7 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 | New to the toolkit | [GUIDELINE.md](GUIDELINE.md) — what it is, the first run, reading an audit honestly, the usual mistakes |
 | A native crawl stopped early | [RECOVERY.md](RECOVERY.md) — the two checkpoints, `--resume`, resume vs. intentional fresh start |
 | Wondering what this can do end to end | [scenarios/](scenarios/README.md) — workflows, outputs, costs and limits |
+| Looking for a command by job | [CLI.md](CLI.md) — every registered command grouped by area, with its network/write/paid annotations |
 | Looking for a tool | [TOOLS.md](TOOLS.md) — inventory, network use, side effects and limits |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
@@ -77,6 +78,12 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 
 ### Current
 
+- **[CLI.md](CLI.md)** — every registered command grouped by job (collect, saved scans, page
+  and infrastructure checks, content, compare, reports, projects, monitoring, providers), with
+  the network/write/paid annotations from its MCP definition. `tests/test_docs_drift.py` fails
+  the build when a registered command is missing.
+- **[WORKFLOWS.md](WORKFLOWS.md)** — checkpointed agent workflow runs, the project inbox, and
+  the local monitor records: what each command writes and what it never starts.
 - **[TOOLS.md](TOOLS.md)** — what every tool does, which of them touch the
   network, which have side effects, where the boundaries are. Grouped by layer:
   recon, live tools, bounded site audit, own-crawl, external data sources, SF crawl audit.
