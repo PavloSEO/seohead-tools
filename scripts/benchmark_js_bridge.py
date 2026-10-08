@@ -9,6 +9,7 @@ raise a graceful KeyboardInterrupt after a committed document for recovery.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -32,6 +33,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 PROFILE = ROOT / "examples" / "js-bridge-benchmark.v1.json"
 MIB = 1024 * 1024
+IDENTITY_FIELDS = (
+    "revision",
+    "python",
+    "sqlite",
+    "platform",
+    "machine",
+    "logical_cpus",
+    "physical_memory_bytes",
+    "playwright",
+    "browser_sha256",
+    "profile_sha256",
+    "harness_sha256",
+    "modules",
+)
 
 
 def digest(path: Path) -> str:
@@ -107,12 +122,171 @@ def cases(profile: dict) -> list[dict]:
             "forms": profile["forms_per_page"],
             "repetition": repetition,
             "render_limit": pages,
+            "recovery": mode == "javascript" and pages == 160 and links == 64 and repetition == 1,
         }
         for mode in ("html", "javascript")
         for pages in profile["page_counts"]
         for links in profile["link_densities"]
         for repetition in range(1, 4)
     ]
+
+
+def verify_export(exported: dict, target: Path, config: dict, *, read_csv=True) -> None:
+    """Require a successful consumer and its exact owned-fixture CSV population."""
+    if exported.get("ok") is not True or exported.get("counts", {}).get("pages") != config["pages"]:
+        raise ValueError("page export failed or did not preserve the declared population")
+    path = target / "pages.pages.csv"
+    if not path.is_file():
+        raise ValueError("page CSV is missing")
+    if not read_csv:
+        return
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream, delimiter=";")
+        if reader.fieldnames != ["url", "title", "representation"]:
+            raise ValueError("page CSV fields changed")
+        seen = set()
+        representations = Counter()
+        prefix = f"http://127.0.0.1:{config['origin_port']}/p/"
+        for row in reader:
+            url = row.get("url") or ""
+            if not url.startswith(prefix) or not url[len(prefix) :].isdigit():
+                raise ValueError("page CSV has an unexpected URL")
+            ordinal = int(url[len(prefix) :])
+            if (
+                ordinal in seen
+                or not 0 <= ordinal < config["pages"]
+                or row["title"] != f"Owned page {ordinal}"
+            ):
+                raise ValueError("page CSV duplicated, omitted or changed a fixture page")
+            seen.add(ordinal)
+            representations[row["representation"]] += 1
+    rendered = config["render_limit"] if config["mode"] == "javascript" else 0
+    expected = Counter({"static": config["pages"] - rendered, "rendered": rendered})
+    if len(seen) != config["pages"] or representations != expected:
+        raise ValueError("page CSV population or representation counts changed")
+
+
+def continuation_plan(previous: Path, identity: dict, profile: dict, *, verify_files=False) -> dict:
+    """Reuse only complete, same-source pairs; never restart an interrupted case."""
+    previous = previous.resolve()
+    frozen_path = previous / "frozen-manifest.json"
+    frozen = json.loads(frozen_path.read_text())
+    manifest_path = previous / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"results": []}
+    blockers = []
+    if frozen.get("approved_command") not in {"run", "continue"}:
+        blockers.append("only the full matrix can be continued")
+    if frozen.get("profile") != profile:
+        blockers.append("frozen profile changed")
+    original = frozen["identity"]
+    for key in IDENTITY_FIELDS:
+        if identity.get(key) != original.get(key):
+            blockers.append(f"source/runtime identity changed: {key}")
+    if identity.get("dirty") or original.get("dirty"):
+        blockers.append("source checkout is dirty")
+    if manifest.get("results") and manifest.get("identity") != original:
+        blockers.append("manifest identity differs from the frozen manifest")
+    planned = cases(profile)
+    records = manifest.get("results", [])
+    if len(records) == len(planned):
+        blockers.append("matrix already has every pair; no continuation is pending")
+    if len(records) > len(planned):
+        blockers.append("manifest has more pairs than the frozen matrix")
+    retained = []
+    for ordinal, record in enumerate(records[: len(planned)]):
+        pair = Path(record.get("retained_from", previous / f"pair-{ordinal:02d}")).resolve()
+        try:
+            measured = json.loads((pair / "measurement.json").read_text())
+            saved_record = {key: value for key, value in record.items() if key != "retained_from"}
+            if (
+                measured != saved_record
+                or record.get("status") != "passed"
+                or record.get("worker_exit") != 0
+            ):
+                raise ValueError("missing or failed supervisor receipt")
+            config = json.loads((pair / "configuration.json").read_text())
+            if config != record["configuration"] or any(
+                config.get(key) != value for key, value in planned[ordinal].items()
+            ):
+                raise ValueError("pair configuration differs from the frozen matrix")
+            if config.get("source_revision") != original["revision"]:
+                raise ValueError("pair source differs from the frozen source")
+            worker_result = json.loads((pair / "result.json").read_text())
+            if (
+                worker_result.get("status") != "passed"
+                or worker_result.get("configuration") != config
+            ):
+                raise ValueError("worker receipt is incomplete")
+            if any(
+                worker_result["identity"].get(key) != original.get(key) for key in IDENTITY_FIELDS
+            ):
+                raise ValueError("worker source/runtime differs from the frozen manifest")
+            expected_cases = list(profile["temperature"]) + (
+                ["recovery"] if config["recovery"] else []
+            )
+            if [row.get("case") for row in worker_result["cases"]] != expected_cases:
+                raise ValueError("worker case population is incomplete")
+            for row in worker_result["cases"]:
+                target = pair / row["case"]
+                if (
+                    row.get("status") != "passed"
+                    or json.loads((target / "result.json").read_text()) != row
+                ):
+                    raise ValueError("case receipt is incomplete")
+                if row.get("inspect_ok") is not True or row.get("reanalysis_ok") is not True:
+                    raise ValueError("query or reanalysis consumer failed")
+                verify_export(
+                    row.get("export", {}), target, config, read_csv=verify_files and not blockers
+                )
+                scan = target / "scan.seohead"
+                for path, key in (
+                    (scan, "scan_sha256"),
+                    (scan.with_name(scan.name + ".audit-v2.sqlite"), "audit_sha256"),
+                ):
+                    if not path.is_file() or not row.get(key):
+                        raise ValueError("case artifact or checksum is missing")
+                    if verify_files and not blockers and digest(path) != row[key]:
+                        raise ValueError(
+                            f"retained artifact checksum changed: {row['case']}/{path.name}"
+                        )
+            retained.append({**saved_record, "retained_from": str(pair)})
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            blockers.append(f"pair-{ordinal:02d}: {exc}")
+    for ordinal in range(len(records), len(planned)):
+        if (previous / f"pair-{ordinal:02d}").exists():
+            blockers.append(
+                f"pair-{ordinal:02d}: unfinished pair; retain its evidence and elapsed budgets; "
+                "an interrupted case cannot be restarted by continuation"
+            )
+    origins = {record["configuration"].get("origin_port") for record in retained}
+    port = urlsplit(original.get("fixture_origin", "")).port
+    if not port or origins - {port}:
+        blockers.append("fixture authority changed or is unavailable")
+    roots = list(dict.fromkeys([*frozen.get("retained_output_roots", []), str(previous)]))
+    if any(
+        not any(
+            Path(record["retained_from"]).is_relative_to(Path(root).resolve()) for root in roots
+        )
+        for record in retained
+    ):
+        blockers.append("retained pair is outside the recorded output budget roots")
+    return {
+        "schema": "seohead.js-bridge-continuation.v1",
+        "status": "blocked"
+        if blockers
+        else "ready"
+        if verify_files
+        else "ready_for_artifact_validation",
+        "blockers": blockers,
+        "previous": str(previous),
+        "previous_manifest_sha256": digest(manifest_path) if manifest_path.exists() else None,
+        "previous_frozen_sha256": digest(frozen_path),
+        "artifact_hashes_verified": verify_files and not blockers,
+        "retained_pairs": retained,
+        "pending_pairs": list(range(len(records), len(planned))),
+        "origin_port": port,
+        "retained_output_roots": roots,
+    }
 
 
 class Origin:
@@ -497,6 +671,7 @@ def worker(config: dict, output: Path) -> None:
             audit_digest = digest(companion)
             # Registered shared readers/exporters exercise retained contracts.
             inspected = handlers.scan_inspect(str(scan), limit=2)
+            assert not inspected.get("error") and inspected.get("ok") is not False, inspected
             exported = handlers.scan_export(
                 str(scan),
                 str(target / "pages.csv"),
@@ -504,11 +679,13 @@ def worker(config: dict, output: Path) -> None:
                 records=["pages"],
                 fields={"pages": ["url", "title", "representation"]},
             )
+            verify_export(exported, target, config)
             observe("reanalysis")
             derived = target / "reanalysis.seohead"
             reanalysis = handlers.scan_reanalyze(
                 str(scan), str(derived), producer_build=identity["revision"]
             )
+            assert reanalysis.get("ok") is not False and not reanalysis.get("error"), reanalysis
             repeated = evidence(derived, config, expected)
             assert repeated["ordered_evidence_sha256"] == measured["ordered_evidence_sha256"]
             assert repeated["selected_dom_sha256"] == measured["selected_dom_sha256"]
@@ -614,7 +791,9 @@ def process_sample(root_pid: int, known: set[int]) -> dict:
     }
 
 
-def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> dict:
+def supervise(
+    config: dict, output: Path, suite_root: Path, profile: dict, *, retained_bytes=0
+) -> dict:
     output.mkdir()
     (output / "configuration.json").write_text(json.dumps(config, indent=2) + "\n")
     budgets = profile["budgets"]
@@ -687,7 +866,7 @@ def supervise(config: dict, output: Path, suite_root: Path, profile: dict) -> di
                     failure = "sampled CPU budget exceeded"
                 elif disk_bytes(output / case) > budgets["case_disk_mib"] * MIB:
                     failure = "case retained output budget exceeded"
-                elif disk_bytes(suite_root) > budgets["total_outputs_mib"] * MIB:
+                elif retained_bytes + disk_bytes(suite_root) > budgets["total_outputs_mib"] * MIB:
                     failure = "total retained output budget exceeded"
                 elif shutil.disk_usage(suite_root).free < budgets["minimum_free_disk_mib"] * MIB:
                     failure = "free disk reserve exhausted"
@@ -827,9 +1006,13 @@ def installed_browser() -> Path:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("plan", "run", "page-cap", "smoke", "_worker"))
+    parser.add_argument(
+        "command",
+        choices=("plan", "resume-plan", "continue", "run", "page-cap", "smoke", "_worker"),
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--source-revision")
+    parser.add_argument("--resume-from", type=Path, help="retained matrix; never modified")
     parser.add_argument(
         "--execute", action="store_true", help="explicitly execute the approved serial benchmark"
     )
@@ -839,6 +1022,13 @@ def main(argv=None):
         worker(json.loads((args.out / "configuration.json").read_text()), args.out)
         return 0
     identity = source_identity()
+    if args.command in {"resume-plan", "continue"} and args.resume_from is None:
+        parser.error("continuation requires --resume-from")
+    if args.command == "resume-plan":
+        plan = continuation_plan(args.resume_from, identity, profile)
+        with args.out.open("x") as stream:
+            stream.write(json.dumps(plan, indent=2) + "\n")
+        return 1 if plan["blockers"] else 0
     if args.command == "plan":
         args.out.write_text(
             json.dumps(
@@ -866,12 +1056,26 @@ def main(argv=None):
         parser.error(
             "output must be a new directory; existing benchmark evidence is never replaced"
         )
+    continuation = None
+    retained_bytes = 0
+    if args.command == "continue":
+        continuation = continuation_plan(args.resume_from, identity, profile, verify_files=True)
+        if continuation["blockers"]:
+            parser.error("; ".join(continuation["blockers"]))
+        retained_bytes = sum(
+            disk_bytes(Path(path)) for path in continuation["retained_output_roots"]
+        )
+        if retained_bytes >= profile["budgets"]["total_outputs_mib"] * MIB:
+            parser.error("retained output already exhausts the frozen budget")
     args.out.mkdir(parents=True)
     if shutil.disk_usage(args.out).free < profile["budgets"]["minimum_free_disk_mib"] * MIB:
         parser.error("free disk reserve is below the frozen minimum")
-    with socket.socket() as selection:
-        selection.bind(("127.0.0.1", 0))
-        origin_port = selection.getsockname()[1]
+    if continuation:
+        origin_port = continuation["origin_port"]
+    else:
+        with socket.socket() as selection:
+            selection.bind(("127.0.0.1", 0))
+            origin_port = selection.getsockname()[1]
     identity["fixture_origin"] = f"http://127.0.0.1:{origin_port}"
     (args.out / "frozen-manifest.json").write_text(
         json.dumps(
@@ -880,6 +1084,14 @@ def main(argv=None):
                 "identity": identity,
                 "approved_command": args.command,
                 "declared_at_utc": datetime.now(timezone.utc).isoformat(),
+                **(
+                    {
+                        "continuation": continuation,
+                        "retained_output_roots": continuation["retained_output_roots"],
+                    }
+                    if continuation
+                    else {}
+                ),
             },
             indent=2,
         )
@@ -910,16 +1122,11 @@ def main(argv=None):
                 "temperatures": ["application_cold"],
             }
         ]
-    else:
-        for case in planned:
-            case["recovery"] = (
-                case["mode"] == "javascript"
-                and case["pages"] == 160
-                and case["links"] == 64
-                and case["repetition"] == 1
-            )
-    results = []
+    results = continuation["retained_pairs"][:] if continuation else []
+    completed = len(results)
     for ordinal, case in enumerate(planned):
+        if ordinal < completed:
+            continue
         case["source_revision"] = identity["revision"]
         case["origin_port"] = origin_port
         case["browser_path"] = str(executable)
@@ -935,7 +1142,9 @@ def main(argv=None):
                 "logical_cpus",
             )
         }
-        record = supervise(case, args.out / f"pair-{ordinal:02d}", args.out, profile)
+        record = supervise(
+            case, args.out / f"pair-{ordinal:02d}", args.out, profile, retained_bytes=retained_bytes
+        )
         results.append(record)
         (args.out / "manifest.json").write_text(
             json.dumps(
@@ -954,7 +1163,7 @@ def main(argv=None):
         )
         if record["status"] != "passed":
             return 1
-    if args.command == "run":
+    if args.command in {"run", "continue"}:
         growth = growth_gate(results, profile)
         (args.out / "growth.json").write_text(json.dumps(growth, indent=2) + "\n")
         if growth["status"] != "passed":

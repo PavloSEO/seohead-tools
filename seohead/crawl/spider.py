@@ -26,6 +26,7 @@ from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from itertools import zip_longest
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
@@ -247,21 +248,35 @@ def _continues_failure_streak(record: PageRecord) -> bool:
 _PAGE_RECORD_FIELDS = {f.name for f in dataclasses.fields(PageRecord)}
 
 
-def _jsonl_rows(path: str):
-    """Read complete JSONL objects one at a time, ignoring a torn final line."""
+def _jsonl_rows(path: str, *, checkpoint: bool = False):
+    """Stream objects; checkpoint append requires intact, newline-terminated rows."""
     try:
         with open(path, encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
                     continue
+                if checkpoint and not line.endswith("\n"):
+                    raise ValueError(f"checkpoint evidence sidecar has an unterminated row: {path}")
                 try:
                     raw = json.loads(line)
-                except ValueError:
+                except ValueError as exc:
+                    if checkpoint:
+                        raise ValueError(
+                            f"checkpoint evidence sidecar has invalid JSON: {path}"
+                        ) from exc
                     continue
                 if isinstance(raw, dict):
                     yield raw
+                elif checkpoint:
+                    raise ValueError(f"checkpoint evidence sidecar row is not an object: {path}")
     except FileNotFoundError:
+        if checkpoint:
+            raise ValueError(f"checkpoint evidence sidecar is missing: {path}") from None
         return
+    except UnicodeError as exc:
+        if checkpoint:
+            raise ValueError(f"checkpoint evidence sidecar is not UTF-8: {path}") from exc
+        raise
 
 
 def _read_pages_jsonl(path: str) -> list[PageRecord]:
@@ -986,7 +1001,7 @@ def crawl_site(
         if out_path:
             if loaded_state:
                 if spool_evidence:
-                    page_count = sum(1 for _ in _jsonl_rows(out_path))
+                    page_count = sum(1 for _ in _jsonl_rows(out_path, checkpoint=True))
                 else:
                     result.pages.extend(_read_pages_jsonl(out_path))
             mode = "a" if loaded_state else "w"
@@ -996,7 +1011,7 @@ def crawl_site(
         if links_path:
             if loaded_state:
                 if spool_evidence:
-                    link_count = sum(1 for _ in _jsonl_rows(links_path))
+                    link_count = sum(1 for _ in _jsonl_rows(links_path, checkpoint=True))
                 else:
                     result.links.extend(_read_links_jsonl(links_path))
             mode = "a" if loaded_state else "w"
@@ -1006,14 +1021,19 @@ def crawl_site(
         if spool_evidence and forms_path:
             if loaded_state and not loaded_state.spooled_evidence:
                 if os.path.exists(forms_path):
-                    if list(_jsonl_rows(forms_path)) != loaded_state.forms:
+                    if any(
+                        actual != expected
+                        for actual, expected in zip_longest(
+                            _jsonl_rows(forms_path, checkpoint=True), loaded_state.forms
+                        )
+                    ):
                         raise ValueError("checkpoint inline forms and form sidecar disagree")
                 else:
                     with open(forms_path, "w", encoding="utf-8") as previous:
                         for entry in loaded_state.forms:
                             previous.write(json.dumps(entry, ensure_ascii=False) + "\n")
             if loaded_state:
-                form_count = sum(1 for _ in _jsonl_rows(forms_path))
+                form_count = sum(1 for _ in _jsonl_rows(forms_path, checkpoint=True))
             forms_handle = stack.enter_context(
                 open(forms_path, "a" if loaded_state else "w", encoding="utf-8")
             )

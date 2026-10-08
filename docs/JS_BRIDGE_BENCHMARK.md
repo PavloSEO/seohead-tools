@@ -55,6 +55,37 @@ its remaining 9,985 pages stay explicitly static. It does not prove 10,001 fully
 rendered pages. The two-page smoke validates the harness and recovery mechanism,
 not the benchmark's resource or scale acceptance.
 
+### Continuing a matrix between completed pairs
+
+Keep an interrupted matrix intact. A read-only plan inspects its frozen profile,
+supervisor, worker and per-case receipts without hashing large retained scans or
+starting a browser. Set `SEOHEAD_CHROME` to the same installed executable so the
+plan can compare its checksum without launching Playwright.
+
+```sh
+python scripts/benchmark_js_bridge.py resume-plan --resume-from "$PREVIOUS" --out "$OUT/continuation-plan.json"
+python scripts/benchmark_js_bridge.py continue --resume-from "$PREVIOUS" --out "$OUT/continued" --source-revision "$REV" --execute
+```
+
+Continuation accepts only the exact same clean revision, harness, core-module
+hashes, runtime, browser and profile. Execution verifies saved scan and audit
+checksums and the actual CSV population before reusing a completed pair. New
+pairs use the original loopback authority and are written in the new directory;
+the manifest points back to the original receipts. The retained output from all
+earlier directories still counts against the frozen total disk budget.
+
+An unfinished pair blocks continuation. This includes a recovery scan whose
+render elapsed-time latch was left active: neither the internal render budget
+nor the external phase watchdog may be reset to turn it into a passing resume.
+Keep that partial evidence and failure state. A different source revision needs
+its own acceptance matrix, and cannot inherit earlier measurements as current
+source proof. An already complete matrix is not restarted.
+
+Every new case requires successful inspect, export and reanalysis consumers.
+The CSV must retain exactly the declared unique fixture URLs, titles and
+static/rendered populations; a returned export error or a truncated/duplicated
+CSV is a failed case even if rendering itself completed.
+
 ## Measurements and failure rules
 
 The supervisor records numeric process-tree snapshots from `ps` every 100 ms,
