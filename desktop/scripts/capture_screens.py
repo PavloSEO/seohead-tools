@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | menu | gallery. Synthetic in-memory settings only; no network or scans.
+NAME: settings:<section id> | shell[:<section>] | newscan | menu | gallery. Synthetic in-memory settings only; no network or scans.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
@@ -70,6 +70,19 @@ def build(name, width, height, store, theme="light", lang="ru"):
         if arg and arg != "simple":
             window.navigation.select_section(arg)
         return window
+    if kind == "newscan":
+        from seohead_desktop.app import MainWindow
+        from seohead_desktop.screens.new_scan import NewScanDialog
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        window.prefs.set("view.language", lang)
+        if OPTIONS.get("project"):
+            open_project(window, OPTIONS["project"])
+        dialog = NewScanDialog(window)
+        dialog._owner_window = window  # keep the host alive while the dialog is rendered
+        dialog.resize(width, height)
+        return dialog
     if kind == "menu":
         from seohead_desktop.app import MainWindow
 

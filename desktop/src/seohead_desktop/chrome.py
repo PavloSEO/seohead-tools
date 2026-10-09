@@ -99,6 +99,7 @@ class ChromeMixin:
         layout.addWidget(self.project_button)
         chevron = QLabel()
         chevron.setPixmap(icon("chevron_right", theming.roles()["text_muted"]).pixmap(18, 18))
+        self.project_chevron = chevron
         layout.addWidget(chevron)
         layout.addWidget(self.scan_button)
         self.scan_state_badge = StateBadge("unknown")

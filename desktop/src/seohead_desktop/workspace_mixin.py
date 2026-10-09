@@ -364,6 +364,7 @@ class WorkspaceMixin:
         self.source_badge.setText("Загрузка проекта…" if context.project_root else "Новая вкладка · проект не открыт")
         self.refresh_button.setEnabled(False)
         self.navigation.setCurrentRow(VIEW_IDS.index(context.view_id) if context.view_id in VIEW_IDS else 0)
+        self.leave_start() if context.project_root else self.show_start()
         if context.project_root:
             self.pages.setEnabled(False)
             self.read_project(context.project_root)

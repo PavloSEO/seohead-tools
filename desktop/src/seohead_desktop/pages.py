@@ -520,6 +520,12 @@ class PagesMixin:
         return page
 
     def scan_preview(self):
+        """«Новый скан» (design-v2 dialog): a plan first, a separate confirmed «Запустить»."""
+        from .screens.new_scan import open_new_scan
+
+        return open_new_scan(self)
+
+    def legacy_scan_preview(self):
         if not self.project_directory or self._project_loading:
             self.notice.show_error("Сначала откройте проект и дождитесь его данных")
             return

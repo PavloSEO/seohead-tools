@@ -14,6 +14,8 @@ from .mcp_gateway import PersistentMcpGateway
 
 
 class CommandsMixin:
+    screen_errors = {}  # operation -> last core error text; replaced (never mutated) so screens can show an honest error state
+
     def ensure_mcp_gateway(self):
         if not self.core_executable:
             self.statusBar().showMessage("Укажите --core-cli: CLI ядра SEOHEAD не найден")
@@ -70,6 +72,8 @@ class CommandsMixin:
         if generation != self.read_generation:
             return
         handler = self.complete_command(request_id)
+        if request_id.split(":", 1)[0] in self.screen_errors:
+            self.screen_errors = {k: v for k, v in self.screen_errors.items() if k != request_id.split(":", 1)[0]}
         if handler:
             handler(result)
         if self.notice.context == request_id:
@@ -86,6 +90,8 @@ class CommandsMixin:
         self.select_owned_run()
         if superseded:
             return
+        operation = request_id.split(":", 1)[0]
+        self.screen_errors = {**self.screen_errors, operation: text}
         if request_id == "inbox-submit":
             self._pending_note = None
             self.update_note_controls()
@@ -97,6 +103,11 @@ class CommandsMixin:
             self.finish_workspace_restore()
         elif request_id == "providers":
             self.providers_failed(text)
+            return
+        elif request_id == "scan-policy":
+            callback = getattr(self, "_scan_policy_failed", None)
+            if callback:
+                callback(text)
             return
         elif request_id == "crawl-settings":
             self._crawl_descriptor_error = text
@@ -112,6 +123,9 @@ class CommandsMixin:
             )
         self.statusBar().showMessage(f"{request_id}: {text}")
         self.notice.show_error(f"Не удалось получить данные. {text}", request_id)
+        kind = {"tasks": "tasks", "task-detail": "tasks", "inbox-submit": "inbox", "observer": "observer"}.get(operation)
+        if kind:
+            self.data_changed.emit(kind)
 
     def cancel_requests(self):
         if self._pending_note is not None:

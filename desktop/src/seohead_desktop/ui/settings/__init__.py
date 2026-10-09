@@ -21,5 +21,5 @@ def sections():
 def full_schema():
     from ...settings_store import Setting
 
-    shell = (Setting("shell.display", "agent", str, choices=("agent", "simple")),)
+    shell = (Setting("shell.display", "agent", str, choices=("agent", "simple")), Setting("shell.onboarding_done", False, bool))
     return shell + tuple(setting for module in sections() for setting in module.SCHEMA)

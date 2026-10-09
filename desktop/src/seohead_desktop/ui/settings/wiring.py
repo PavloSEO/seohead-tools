@@ -10,7 +10,9 @@ from __future__ import annotations
 from ...i18n import trf
 
 # view.language is applied to the shell and the settings; the screens follow as they are rebuilt (roadmap step 5).
-APPLIED = {"view.theme", "view.density", "view.reduce_motion", "view.rail_when_narrow", "shell.display", "view.language"}
+APPLIED = {"view.theme", "view.density", "view.reduce_motion", "view.rail_when_narrow", "shell.display", "view.language",
+           "shell.onboarding_done", "general.projects_folder",
+           "scan.rate", "scan.url_limit", "scan.depth", "scan.robots", "scan.save_html"}
 APPLIED_SHORTCUTS = {"palette", "new_scan", "settings", "stop_scan", "find_in_table", "expand_table", "copy_url", "help"}
 
 # key or "prefix." -> (roadmap step, what has to exist first)
@@ -20,6 +22,9 @@ LATER = {
     "view.mono_urls": (5, "таблица URL"),
     "view.status_badges": (5, "таблица URL: плашки статусов"),
     "general.": (5, "экран «Старт · проекты», вкладки и таблицы"),
+    "scan.parallel": (5, "менеджер запусков: число одновременных сканов"),
+    "scan.sf_path": (5, "запуск Screaming Frog из приложения"),
+    "scan.default_profile": (5, "профили скана в ядре (#941)"),
     "scan.": (5, "диалог «Новый скан»"),
     "core.poll": (5, "наблюдение за сканом"),
     "core.": (8, "адаптеры ядра: версия, диагностика, логи"),

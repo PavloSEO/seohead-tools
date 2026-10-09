@@ -306,13 +306,16 @@ class ActiveScanCard(QFrame):
         layout.addWidget(link, 0, Qt.AlignLeft)
         self.hide()
 
-    def show_progress(self, text, done=None, total=None):
-        """total None -> progress is unknown (indeterminate bar); never fake a percentage."""
+    def show_progress(self, text, done=None, total=None, stale=False):
+        """total None -> progress is unknown (indeterminate bar); never fake a percentage. A stale observation never animates."""
         self.text.setText(tr(text))
         self.active = True
         if total:
             self.bar.setRange(0, int(total))
             self.bar.setValue(int(done or 0))
+        elif stale:
+            self.bar.setRange(0, 1)
+            self.bar.setValue(0)
         else:
             self.bar.setRange(0, 0)
         self.setVisible(not self.parentWidget() or not self.parentWidget().property("compact"))

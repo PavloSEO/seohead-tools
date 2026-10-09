@@ -20,14 +20,22 @@ class SpaciousPresentationTests(unittest.TestCase):
     def test_unbound_product_has_one_project_gesture_and_no_synthetic_evidence(self):
         window = MainWindow(persistent=False)
         self.addCleanup(window.close)
+        window.prefs.set("shell.onboarding_done", True)
         window.show_startup_workspace()
         window.resize(1200, 800)
         window.show()
         self.app.processEvents()
+        start = window.extra_screens["start"]
+        self.assertIs(window.pages.currentWidget(), start)  # «Старт · проекты» replaces the empty project page
+        self.assertEqual(start.model.rowCount(), 0)
+        with patch("seohead_desktop.project_io.QFileDialog.getExistingDirectory", return_value="") as chooser:
+            QTest.mouseClick(start.open_button, Qt.LeftButton)
+            chooser.assert_called_once()
         self.assertEqual(window.model.rowCount(), 0)
         self.assertIsNone(window.scan_manager)
         self.assertIsNone(window.mcp_gateway)
-        for row, view in ((0, window.work_monitor), (10, window.content_search_panel)):
+        window.navigation.setCurrentRow(1)  # leaving Start: the section pages keep their own empty-project gesture
+        for row, view in ((10, window.content_search_panel),):  # row 0 is the Work screen now: its empty state is tested in test_screen_work
             window.navigation.setCurrentRow(row)
             self.app.processEvents()
             self.assertTrue(view.empty_project.isVisible())

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QPushButton, QToolButton
 
 from seohead_desktop.app import MainWindow, load_theme
 from tests.test_crawl_configuration import descriptor
@@ -184,18 +184,23 @@ class UXSafetyTests(unittest.TestCase):
                     start = dialog.findChild(QPushButton, "scanStartButton")
                     self.assertFalse(start.isEnabled())
                     self.window.crawl_descriptor_loaded({**descriptor(), "capabilities": {"sitemap_only_retained": True, "full_site_native_sqlite": True}})
+                    approval = dialog.findChild(QCheckBox, "scanLargeApproval")
+                    approval.click()
                     self.assertTrue(start.isEnabled())
-                    mode = dialog.findChild(QComboBox, "scanSourceMode")
+                    dialog.findChild(QToolButton, "scanSource_sitemap").click()
                     field = dialog.findChild(QLineEdit, "scanSitemapUrl")
-                    mode.setCurrentIndex(1)
                     for value in ("https://fixture.test/sitemap.xml#bad", "https://fixture.test:wrong/sitemap.xml", "https://fixture.test/" + "a" * 4096):
                         field.setText(value)
+                        field.textEdited.emit(value)
+                        approval.setChecked(True)
                         self.assertFalse(start.isEnabled())
                         self.assertTrue(dialog.isVisible())
                         self.assertEqual(field.text(), value)
                     field.setText("https://fixture.test/sitemap.xml")
+                    field.textEdited.emit("https://fixture.test/sitemap.xml")
+                    approval.setChecked(True)
                     self.assertTrue(start.isEnabled())
-                    self.assertIn("План проверен", dialog.findChild(QLabel, "scanValidationFeedback").text())
+                    self.assertEqual(dialog.findChild(QLabel, "scanValidationFeedback").text(), "")
                 except Exception as exc:
                     errors.append(exc)
                 finally:

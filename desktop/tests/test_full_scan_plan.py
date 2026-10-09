@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QCheckBox, QComboBox, QPushButton, QSpinBox
+from PyQt5.QtWidgets import QAbstractButton, QApplication, QCheckBox, QLineEdit, QPushButton
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.local_control import ControlError
@@ -23,6 +23,11 @@ from tests.test_scan_runner import (
     snapshot,
     wait_for,
 )
+
+
+def type_into(edit, text):
+    edit.setText(text)
+    edit.textEdited.emit(text)
 
 
 class FullScanPlanTests(unittest.TestCase):
@@ -44,7 +49,7 @@ class FullScanPlanTests(unittest.TestCase):
         self.addCleanup(self.window.close)
         self.window.project_directory = str(self.root)
         self.window.current_project_uuid = "plan-project"
-        self.window.project_result = {"project": {"site": {"target": "http://fixture.invalid/"}}}
+        self.window.project_result = {"project": {"site": {"target": "http://crawl.localhost/", "host": "crawl.localhost"}}}
         self.window.crawl_descriptor = {**descriptor(), "capabilities": {"full_site_native_sqlite": True, "sitemap_only_retained": True}}
 
     def inspect_dialog(self, inspect):
@@ -63,16 +68,17 @@ class FullScanPlanTests(unittest.TestCase):
         if errors:
             raise errors[0]
 
-    def test_default_has_no_population_time_or_request_limit_and_speed_is_explicit(self):
+    def test_full_plan_has_no_population_time_or_request_limit_and_speed_is_explicit(self):
         calls = []
         self.window.launch_scan = lambda *values: calls.append(values)
+        self.window.prefs.set("scan.depth", 0)  # «Глубина обхода: 0 — без ограничения» is the core's -1
         def inspect(dialog):
-            self.assertFalse(dialog.findChild(QCheckBox, "scanLimitEnabled").isChecked())
-            self.assertIsNone(dialog.findChild(QSpinBox, "scanRequestBudget"))
-            self.assertIsNone(dialog.findChild(QSpinBox, "scanDurationBudget"))
-            self.assertIsNone(dialog.findChild(QCheckBox, "scanLargeApproval"))
-            dialog.findChild(QComboBox, "scanRequestRate").setCurrentText("10")
-            dialog.findChild(QSpinBox, "scanConcurrency").setValue(3)
+            self.assertEqual((dialog.draft.value("limits.max_requests"), dialog.draft.value("limits.max_crawl_seconds")), (0, 0))
+            dialog.findChild(QAbstractButton, "scanLimitEnabled").click()
+            self.assertFalse(dialog.findChild(QAbstractButton, "scanLimitEnabled").isChecked())
+            type_into(dialog.findChild(QLineEdit, "scanRequestRate"), "10")
+            type_into(dialog.findChild(QLineEdit, "scanConcurrency"), "3")
+            dialog.findChild(QCheckBox, "scanLargeApproval").click()
             QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
         self.inspect_dialog(inspect)
         self.assertEqual(len(calls), 1)
@@ -89,22 +95,26 @@ class FullScanPlanTests(unittest.TestCase):
         self.window.launch_scan = lambda *values: calls.append(values)
         def inspect(dialog):
             start = dialog.findChild(QPushButton, "scanStartButton")
+            dialog.findChild(QAbstractButton, "scanLimitEnabled").click()
+            dialog.findChild(QCheckBox, "scanLargeApproval").click()
             self.assertFalse(start.isEnabled())
-            dialog.findChild(QCheckBox, "scanLimitEnabled").setChecked(True)
-            dialog.findChild(QSpinBox, "scanUrlLimit").setValue(2000)
+            dialog.findChild(QAbstractButton, "scanLimitEnabled").click()
+            type_into(dialog.findChild(QLineEdit, "scanUrlLimit"), "2000")
+            dialog.findChild(QCheckBox, "scanLargeApproval").setChecked(True)
             self.assertTrue(start.isEnabled())
             QTest.mouseClick(start, Qt.LeftButton)
         self.inspect_dialog(inspect)
         self.assertEqual(calls[0][0], 2000)
-        self.assertNotIn("limits.max_depth", calls[0][5])
+        self.assertEqual(calls[0][5]["limits.max_depth"], 10)  # the setting's depth is explicit, not the core's hidden default
 
     def test_quick_html_switch_preserves_the_explicit_capture_setting(self):
         calls = []
         self.window.launch_scan = lambda *values: calls.append(values)
         def inspect(dialog):
-            toggle = dialog.findChild(QCheckBox, "scanSaveHtml")
+            toggle = dialog.findChild(QAbstractButton, "scanSaveHtml")
             self.assertTrue(toggle.isChecked())
-            toggle.setChecked(False)
+            toggle.click()
+            dialog.findChild(QCheckBox, "scanLargeApproval").click()
             QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
         self.inspect_dialog(inspect)
         self.assertEqual(calls[0][5]["storage.body_mode"], "off")
@@ -112,30 +122,30 @@ class FullScanPlanTests(unittest.TestCase):
 
     def test_invalid_rate_keeps_draft_open_and_cancellation_does_not_dispatch(self):
         def inspect(dialog):
-            rate = dialog.findChild(QComboBox, "scanRequestRate")
+            rate = dialog.findChild(QLineEdit, "scanRequestRate")
+            dialog.findChild(QCheckBox, "scanLargeApproval").click()
             for text in ("0", "nan", "inf", "", "text"):
-                rate.setCurrentText(text)
+                type_into(rate, text)
                 self.assertFalse(dialog.findChild(QPushButton, "scanStartButton").isEnabled())
                 self.assertTrue(dialog.isVisible())
-            rate.setCurrentText("5")
+            type_into(rate, "5")
         self.inspect_dialog(inspect)
         self.assertEqual(self.window._scan_drafts[self.window.note_project_key()]["rps"], "5")
         self.assertIsNone(self.window.scan_manager)
 
     def test_url_switch_preserves_native_keyboard_and_pointer_input(self):
         def inspect(dialog):
-            toggle = dialog.findChild(QCheckBox, "scanLimitEnabled")
-            limit = dialog.findChild(QSpinBox, "scanUrlLimit")
-            self.assertFalse(limit.isVisible())
+            toggle = dialog.findChild(QAbstractButton, "scanLimitEnabled")
+            limit = dialog.findChild(QLineEdit, "scanUrlLimit")
+            self.assertTrue(toggle.isChecked())
             toggle.setFocus()
             QTest.keyClick(toggle, Qt.Key_Space)
-            self.assertTrue(toggle.isChecked())
-            self.assertTrue(limit.isVisible())
-            limit.setValue(2000)
-            QTest.mouseClick(toggle, Qt.LeftButton, pos=toggle.rect().center())
             self.assertFalse(toggle.isChecked())
-            self.assertFalse(limit.isVisible())
-            self.assertEqual(limit.value(), 2000)
+            self.assertFalse(limit.isEnabled())
+            QTest.mouseClick(toggle, Qt.LeftButton, pos=toggle.rect().center())
+            self.assertTrue(toggle.isChecked())
+            self.assertTrue(limit.isEnabled())
+            self.assertEqual(limit.text(), "1500")
             self.assertEqual(toggle.accessibleName(), "Ограничить число URL")
         self.inspect_dialog(inspect)
         self.assertIsNone(self.window.scan_manager)
@@ -158,14 +168,16 @@ class FullScanPlanTests(unittest.TestCase):
             try:
                 window.read_project(str(project))
                 wait_for(self, lambda: window.crawl_descriptor and not window.requests, "core settings did not load")
+                window.prefs.set("scan.depth", 0)
                 self.assertTrue(window.crawl_descriptor.get("capabilities", {}).get("full_site_native_sqlite"))
                 errors = []
                 def launch():
                     dialog = self.app.activeModalWidget()
                     try:
-                        self.assertFalse(dialog.findChild(QCheckBox, "scanLimitEnabled").isChecked())
-                        dialog.findChild(QComboBox, "scanRequestRate").setCurrentText("5")
-                        dialog.findChild(QSpinBox, "scanConcurrency").setValue(2)
+                        dialog.findChild(QAbstractButton, "scanLimitEnabled").click()
+                        type_into(dialog.findChild(QLineEdit, "scanRequestRate"), "5")
+                        type_into(dialog.findChild(QLineEdit, "scanConcurrency"), "2")
+                        dialog.findChild(QCheckBox, "scanLargeApproval").click()
                         start = dialog.findChild(QPushButton, "scanStartButton")
                         self.assertTrue(start.isEnabled())
                         output = os.environ.get("SEOHEAD_DESKTOP_ACCEPTANCE_DIR")

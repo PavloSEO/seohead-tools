@@ -23,6 +23,7 @@ TOOL_ALLOWLIST = frozenset(
         "seo_verify_fixes",
         "seo_project_open",
         "seo_project_observe",
+        "seo_project_policy",
         "seo_project_checklist_page",
         "seo_project_task_detail",
         "seo_project_inbox_submit",
@@ -45,6 +46,7 @@ _DIRECTORY_TOOLS = frozenset(
     {
         "seo_project_open",
         "seo_project_observe",
+        "seo_project_policy",
         "seo_project_checklist_page",
         "seo_project_task_detail",
         "seo_project_inbox_submit",
@@ -211,6 +213,8 @@ class PersistentMcpGateway(QRunnable):
             directory = arguments.get("directory")
             if not isinstance(directory, str) or Path(directory).resolve() != scope:
                 raise ValueError("MCP request is outside the selected local project")
+        if tool == "seo_project_policy" and set(arguments) != {"directory"}:
+            raise ValueError("project policy is read-only in Desktop: only the project directory may be passed")
         if tool in _SCAN_TOOLS:
             scan = arguments.get("input_path")
             if not isinstance(scan, str):

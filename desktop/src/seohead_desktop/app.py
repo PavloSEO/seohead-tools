@@ -203,7 +203,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.navigation = NavPanel()
         self.navigation.setFixedWidth(theme_tokens()["layout"]["navigation_width"])
         self.navigation.profileClicked.connect(self.show_profile_menu)
-        self.navigation.openScanRequested.connect(lambda: self.navigation.select_section("scans"))
+        self.navigation.openScanRequested.connect(lambda: self.open_scan_monitor())
         self.navigation.set_display(self.display == "simple")
         body.addWidget(self.navigation)
         from .ui.components import PanelStack

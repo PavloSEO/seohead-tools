@@ -68,6 +68,22 @@ class ScanControlMixin:
         except (RuntimeError, ValueError) as exc:
             self.statusBar().showMessage(str(exc))
 
+    def request_scan_policy(self, on_result, on_error):
+        """Read the project's policy.crawl_overrides (read-only) for the «Новый скан» dialog; False when it cannot be asked."""
+        if not self.project_directory or not self.core_executable or not getattr(self, "mcp_ready", False):
+            return False
+        self._scan_policy_failed = on_error
+
+        def loaded(result):
+            overrides = ((result or {}).get("policy") or {}).get("crawl_overrides")
+            if isinstance(overrides, dict):
+                on_result(overrides)
+            else:
+                on_error("Ядро не вернуло crawl_overrides")
+
+        self.start_command("scan-policy", "seo_project_policy", {"directory": self.project_directory}, loaded)
+        return True
+
     def owned_runs_for_project(self):
         if self.scan_manager is None or not self.project_directory:
             return []
@@ -134,17 +150,31 @@ class ScanControlMixin:
         self.owned_run_picker.blockSignals(False)
         self.select_owned_run()
         self.refresh_work_monitor()
-        active = [item for item in rows if item.get("state") in {"starting", "running"}]
-        if active:
-            self.navigation.card.show_progress("Скан запущен · число страниц обновляется при наблюдении")
-        else:
-            self.navigation.card.clear()
+        self.update_active_scan_card()
+        self.data_changed.emit("observer")
         if run.get("state") in {"starting", "running"}:
             self.statusBar().showMessage("Локальный native crawl запущен; наблюдение обновляется каждые 0,5 с")
         elif run.get("state") == "awaiting_core_status":
             self.scan_poll_timer.start()
         if self._close_waiting:
             self._finish_owned_shutdown()
+
+    def update_active_scan_card(self):
+        """Navigation card: measured counters of the first active run, an honest label when none are measured."""
+        from .screens.scan_common import active_scan_summary
+
+        summary = active_scan_summary(self)
+        if summary is None:
+            self.navigation.card.clear()
+        else:
+            self.navigation.card.show_progress(summary["text"], summary["done"], summary["total"], stale=summary["stale"])
+
+    def open_scan_monitor(self):
+        """«Открыть наблюдение» of the navigation card: the live monitor of the active run."""
+        self.navigation.select_section("scans")
+        screen = getattr(self, "screens", {}).get("scans")
+        if screen is not None:
+            screen.show_monitor()
 
     def select_owned_run(self):
         value = self.owned_run_picker.currentData()

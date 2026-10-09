@@ -7,7 +7,12 @@ from importlib import import_module
 from .base import SLOTS
 
 # slot -> "module:Class"; modules appear as screens are rebuilt from the canvas
-SCREENS = {}
+SCREENS = {"scans": "scans:ScansScreen", "journal": "journal:JournalScreen", "work": "work:WorkScreen", "tasks": "simple:SimpleScreen",
+           "inbox": "inbox:InboxScreen"}
+# name -> "module:Class"; screens outside the navigation slots (start, first-run wizard), appended after the pages
+EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScreen"}
+# top-bar widgets that a screen with ``chrome_free = True`` hides (SHELL-CANON §7)
+PROJECT_CHROME = ("project_button", "project_chevron", "scan_button", "scan_state_badge", "new_scan", "refresh_button")
 
 
 def install_screens(window):
@@ -24,3 +29,43 @@ def install_screens(window):
         window._legacy_pages[slot] = legacy
         window.pages.insertWidget(index, screen)
         window.screens[slot] = screen
+    window.extra_screens = getattr(window, "extra_screens", {})
+    for name, target in EXTRAS.items():
+        module, _, cls = target.partition(":")
+        screen = getattr(import_module(f"{__name__}.{module}"), cls)(window)
+        window.pages.addWidget(screen)
+        window.extra_screens[name] = screen
+    window.show_screen = lambda name: show_screen(window, name)
+    window.show_start = lambda: show_start(window)
+    window.leave_start = lambda: leave_start(window)
+    window.pages.currentChanged.connect(lambda _index: sync_chrome(window))
+
+
+def show_screen(window, name):
+    """Bring an extra screen to the front (it refreshes itself when shown)."""
+    screen = window.extra_screens[name]
+    screen.refresh()
+    window.pages.setCurrentWidget(screen)
+
+
+def show_start(window):
+    """The first-run wizard until it was passed (or a project was ever opened), then the project list."""
+    first_run = not window.recent_projects and not window.prefs.get("shell.onboarding_done")
+    show_screen(window, "onboarding" if first_run else "start")
+
+
+def leave_start(window):
+    """Back to the page of the selected navigation section once a project is (being) opened."""
+    if any(window.pages.currentWidget() is screen for screen in window.extra_screens.values()):
+        window.navigate(max(0, window.navigation.currentRow()))
+
+
+def sync_chrome(window):
+    """Hide the project / scan switchers while an extra screen without project context is shown."""
+    free = bool(getattr(window.pages.currentWidget(), "chrome_free", False))
+    for name in PROJECT_CHROME:
+        widget = getattr(window, name, None)
+        if widget is not None:
+            widget.setVisible(not free)
+    if not free and hasattr(window, "sync_picker"):
+        window.sync_picker(window.scan_picker, window.scan_button)  # the state badge follows the scan choice

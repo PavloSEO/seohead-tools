@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtCore import (
@@ -82,6 +83,7 @@ class ProjectMixin:
         self.last_observer_signature = None
         self.observed_runs = []
         self.observed_at = None
+        self.navigation.card.clear()
         self._work_progress = {}
         self._run_envelope = {}
         restored_offset = (self._workspace_restore or {}).get("state", {}).get("run_history_offset", 0)
@@ -98,6 +100,11 @@ class ProjectMixin:
         self.journal_caption.setText("События проекта · загрузка")
         self.scan_model.replace([])
         self.task_model.replace([])
+        self.task_total = None
+        self.task_detail_result = None
+        self.task_detail_requested = None
+        self.inbox_unread = None
+        self.screen_errors = {}
         self.inbox_model.replace([])
         self.inbox_detail.setPlainText("Выберите запись текущего проекта")
         self.task_detail.setPlainText("Выберите задачу текущего проекта")
@@ -342,6 +349,7 @@ class ProjectMixin:
         events = [{"run_id": run.get("id"), **event} for run in self.observed_runs for event in (run.get("events") or [])[-20:]][-200:]
         self.journal_model.replace(events)
         self.journal_caption.setText(f"Сохранённых событий в выборке: {len(events)} · последние 20 на запуск, до 200 строк")
+        self.update_active_scan_card()
 
     def show_observed_run(self, current, _previous, sync_controls=True):
         if not current.isValid():
@@ -370,7 +378,7 @@ class ProjectMixin:
         self.sync_work_selection(run.get("id"))
 
     def show_startup_workspace(self):
-        """Start the product in an unbound workspace, with no synthetic evidence."""
+        """Start the product in an unbound workspace (project list or first-run wizard), with no synthetic evidence."""
         self.clear_workspace_presentation("Откройте локальный проект")
         self.project_picker.blockSignals(True)
         self.project_picker.clear()
@@ -381,12 +389,22 @@ class ProjectMixin:
         self.setWindowTitle("SEOHEAD")
         if not self.navigation.setCurrentRow(0):
             self.navigation.select_section("work")
+        self.show_start()
         self.statusBar().showMessage("Выберите проект для начала работы")
 
     def remember_project(self, label, path):
-        self.recent_projects = [{"label": label, "path": path}, *[item for item in self.recent_projects if item["path"] != path]][:20]
+        opened = datetime.now().astimezone().isoformat(timespec="minutes")
+        self.recent_projects = [{"label": label, "path": path, "opened_at": opened}, *[item for item in self.recent_projects if item["path"] != path]][:20]
         if self.settings:
             self.settings.setValue("recent_projects", self.recent_projects)
+        self.data_changed.emit("recents")
+
+    def forget_project(self, path):
+        """Remove a project from the recent list only; its files are never touched."""
+        self.recent_projects = [item for item in self.recent_projects if item["path"] != path]
+        if self.settings:
+            self.settings.setValue("recent_projects", self.recent_projects)
+        self.data_changed.emit("recents")
 
     def fill_project_picker(self, label):
         self.project_picker.blockSignals(True)

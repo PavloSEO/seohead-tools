@@ -32,13 +32,19 @@ from .ui.presentation import (
 
 
 class ScansUrlsMixin:
+    task_total = None  # screens read these; the loaders below fill them (None = not loaded yet)
+    task_detail_result = None
+    task_detail_requested = None
+
     def load_tasks(self, result):
         rows = []
         for item in result.get("items") or []:
-            rows.append({"id": item.get("id"), "title": item.get("title"), "kind": item.get("kind"), "state": item.get("display_state"), "reason": item.get("reason")})
+            rows.append({"id": item.get("id"), "title": item.get("title"), "kind": item.get("kind"), "state": item.get("display_state"), "reason": item.get("reason"),
+                         "priority": item.get("priority"), "execution_kind": item.get("execution_kind"), "blocked_by": item.get("blocked_by") or []})
         self.task_model.replace(rows)
         pagination = result.get("pagination") or {}
         total = pagination.get("total", len(rows))
+        self.task_total = total if type(total) is int else len(rows)
         self.navigation.set_count("work", str(total) if total else None)
         self.task_caption.setText(f"Задачи · {pagination.get('total', len(rows))} всего · показано {len(rows)}")
         self.project_panels.set_page(
@@ -62,6 +68,7 @@ class ScansUrlsMixin:
         if not self.project_directory:
             return
         if isinstance(item_id, str):
+            self.task_detail_requested = item_id
             self.start_command(
                 "task-detail",
                 "seo_project_task_detail",
@@ -70,7 +77,9 @@ class ScansUrlsMixin:
             )
 
     def load_task_detail(self, result):
+        self.task_detail_result = result
         self.task_detail.setPlainText(readable_record(result, heading="Задача · сохранённый контекст"))
+        self.data_changed.emit("tasks")
 
     def load_scans(self, result):
         rows = [

@@ -6,7 +6,14 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QLineEdit, QPushButton
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QLineEdit,
+    QPushButton,
+    QToolButton,
+)
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.presentation import run_projection, theme_tokens, value_text
@@ -197,12 +204,14 @@ class PresentationTests(unittest.TestCase):
         def enter_preview():
             dialog = self.app.activeModalWidget()
             self.assertIsInstance(dialog, QDialog)
-            mode = dialog.findChild(QComboBox, "scanSourceMode")
+            dialog.findChild(QToolButton, "scanSource_sitemap").click()
             url = dialog.findChild(QLineEdit, "scanSitemapUrl")
             start = dialog.findChild(QPushButton, "scanStartButton")
-            mode.setCurrentIndex(1)
+            dialog.findChild(QCheckBox, "scanLargeApproval").click()
             self.assertFalse(start.isEnabled())
             url.setText("https://fixture.test/sitemap.xml")
+            url.textEdited.emit("https://fixture.test/sitemap.xml")
+            dialog.findChild(QCheckBox, "scanLargeApproval").setChecked(True)
             self.assertTrue(start.isEnabled())
             start.click()
         QTimer.singleShot(10, enter_preview)
@@ -211,8 +220,7 @@ class PresentationTests(unittest.TestCase):
         self.window.crawl_descriptor = {**descriptor(), "capabilities": {}}
         def inspect_old_core():
             dialog = self.app.activeModalWidget()
-            mode = dialog.findChild(QComboBox, "scanSourceMode")
-            self.assertFalse(mode.model().item(1).isEnabled())
+            self.assertFalse(dialog.findChild(QToolButton, "scanSource_sitemap").isEnabled())
             dialog.reject()
         QTimer.singleShot(10, inspect_old_core)
         self.window.scan_preview()

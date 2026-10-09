@@ -12,12 +12,11 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
+    QToolButton,
 )
 
 from seohead_desktop.app import MainWindow
@@ -101,14 +100,18 @@ class SitemapPlanTests(unittest.TestCase):
                     try:
                         dialog = self.app.activeModalWidget()
                         self.assertIsInstance(dialog, QDialog)
-                        source = dialog.findChild(QComboBox, "scanSourceMode")
-                        source.setCurrentIndex(source.findData("sitemap"))
-                        dialog.findChild(QLineEdit, "scanSitemapUrl").setText(target + "/sitemap.xml")
-                        dialog.findChild(QCheckBox, "scanLimitEnabled").setChecked(True)
-                        dialog.findChild(QSpinBox, "scanUrlLimit").setValue(10)
+                        dialog.findChild(QToolButton, "scanSource_sitemap").click()
+                        field = dialog.findChild(QLineEdit, "scanSitemapUrl")
+                        field.setText(target + "/sitemap.xml")
+                        field.textEdited.emit(target + "/sitemap.xml")
+                        limit = dialog.findChild(QLineEdit, "scanUrlLimit")
+                        limit.setText("10")
+                        limit.textEdited.emit("10")
                         labels = "\n".join(label.text() for label in dialog.findChildren(QLabel))
-                        self.assertIn("Только URL из sitemap: " + target + "/sitemap.xml", labels)
-                        self.assertIn("Без перехода по ссылкам со страниц", labels)
+                        self.assertIn("По sitemap", labels)
+                        self.assertIn("Только URL из sitemap.xml, без обхода ссылок", labels)
+                        self.assertEqual(dialog.plan_values["address"][1].text(), target + "/sitemap.xml")
+                        dialog.findChild(QCheckBox, "scanLargeApproval").click()
                         start = dialog.findChild(QPushButton, "scanStartButton")
                         self.assertTrue(start.isEnabled())
                         QTest.mouseClick(start, Qt.LeftButton)

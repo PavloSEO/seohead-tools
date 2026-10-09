@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QDialog, QPushButton, QSpinBox
+from PyQt5.QtWidgets import QApplication, QCheckBox, QDialog, QPushButton
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.scan_runner import LocalScanProcess, crawl_arguments
@@ -231,8 +231,8 @@ class LocalScanRunnerTests(unittest.TestCase):
                     try:
                         dialog = self.app.activeModalWidget()
                         self.assertIsInstance(dialog, QDialog)
-                        self.assertIsNone(dialog.findChild(QSpinBox, "scanRequestBudget"))
-                        self.assertIsNone(dialog.findChild(QSpinBox, "scanDurationBudget"))
+                        self.assertEqual((dialog.draft.value("limits.max_requests"), dialog.draft.value("limits.max_crawl_seconds")), (0, 0))
+                        dialog.findChild(QCheckBox, "scanLargeApproval").click()
                         QTest.mouseClick(dialog.findChild(QPushButton, "scanStartButton"), Qt.LeftButton)
                     except BaseException as exc:
                         errors.append(exc)

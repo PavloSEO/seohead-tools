@@ -1,0 +1,11 @@
+/* «Новый скан» and «Настройки скана»: dialog header, side summary, field errors, disk bar */
+QFrame#scanHeader { background: $base; border: 0; border-bottom: 1px solid $divider_inner; }
+QFrame#scanAside { background: $raised; border: 0; border-left: 1px solid $divider_inner; }
+QDialog#newScanDialog, QDialog#scanSettingsDialog { background: $base; }
+QLabel[field_error="true"] { color: $error; background: transparent; }
+QToolButton[card="choice"]:disabled { background: $disabled_bg; border-color: $divider; color: $disabled_fg; }
+QToolButton[card="choice"] QLabel { background: transparent; }
+QFrame[disk_bar="true"] { background: $divider; border: 0; border-radius: 5px; }
+QFrame[disk_fill="true"] { background: $data_progress; border: 0; border-radius: 5px; }
+QFrame[set_row="true"][waiting="true"] QLabel[text_style="control"] { color: $text_2; }
+QPlainTextEdit#scanListText { font-family: "$mono_family"; font-size: ${font_mono}px; }

@@ -35,6 +35,10 @@ SCOPE = [
     PACKAGE / "chrome.py", PACKAGE / "shell_mixin.py", PACKAGE / "shortcuts.py",
     PACKAGE / "ui/shell.py", PACKAGE / "ui/controls.py", PACKAGE / "ui/workspace_tabs.py",
     *sorted((PACKAGE / "ui/settings").glob("*.py")),
+    PACKAGE / "screens/start.py", PACKAGE / "screens/onboarding.py", PACKAGE / "project_create.py",
+    PACKAGE / "screens/work.py", PACKAGE / "screens/simple.py", PACKAGE / "screens/inbox.py",
+    PACKAGE / "screens/scans.py", PACKAGE / "screens/scan_run.py", PACKAGE / "screens/scan_common.py", PACKAGE / "screens/journal.py",
+    PACKAGE / "screens/new_scan.py", PACKAGE / "screens/new_scan_draft.py", PACKAGE / "screens/new_scan_pages.py", PACKAGE / "screens/new_scan_settings.py",
 ]
 CYRILLIC = re.compile("[Ѐ-ӿ]")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")

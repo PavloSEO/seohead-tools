@@ -18,6 +18,8 @@ from .ui.presentation import (
 
 
 class InboxMixin:
+    inbox_unread = None  # int from the core, None when not measured
+
     def load_inbox(self, result):
         self.inbox_revision = result.get("revision")
         rows = list(result.get("entries") or [])
@@ -35,6 +37,10 @@ class InboxMixin:
 
     def load_unread(self, result):
         count = result.get("count")
+        self.inbox_unread = count if type(count) is int else None
+        if self.display == "simple":  # the Simple display shows no agent element, the inbox count included
+            self.source_badge.setText("Локальный проект · сохранённые данные")
+            return
         if type(count) is not int:
             self.source_badge.setText("Локальный проект · непрочитанные не измерены")
             self.navigation.set_count("inbox", None)
@@ -58,7 +64,11 @@ class InboxMixin:
         if key is None or not hasattr(self, "note_input"):
             return
         panel = self.project_panels.panel("inbox")
-        self._note_drafts[key] = {"main": (self.note_input.text(), self.note_kind.currentData()), "project": (panel.note.toPlainText(), panel.kind.currentData())}
+        draft = {"main": (self.note_input.text(), self.note_kind.currentData()), "project": (panel.note.toPlainText(), panel.kind.currentData())}
+        screen = self.note_screen()
+        if screen is not None:
+            draft["screen"] = screen.draft()
+        self._note_drafts[key] = draft
 
     def restore_note_drafts(self):
         draft = self._note_drafts.get(self.note_project_key(), {})
@@ -69,7 +79,14 @@ class InboxMixin:
             (edit.setText if name == "main" else edit.setPlainText)(text)
             edit.blockSignals(False)
             combo.setCurrentIndex(max(0, combo.findData(kind)))
+        screen = self.note_screen()
+        if screen is not None:
+            screen.set_draft(*draft.get("screen", ("", "note", ())))
         self.update_note_controls()
+
+    def note_screen(self):
+        """The design-v2 Inbox screen when installed (it owns the composer the user sees)."""
+        return getattr(self, "screens", {}).get("inbox")
 
     def update_note_controls(self):
         if not hasattr(self, "note_submit"):
@@ -83,8 +100,11 @@ class InboxMixin:
         if hasattr(self, "note_destination"):
             self.note_destination.setText(destination + " · " + reason)
         panel.set_submission_enabled(ready, destination + " · " + reason)
+        screen = self.note_screen()
+        if screen is not None:
+            screen.set_submission_state(ready, self._pending_note is not None, destination + " · " + reason)
 
-    def submit_note(self, supplied_text=None, supplied_kind=None):
+    def submit_note(self, supplied_text=None, supplied_kind=None, source=None, references=()):
         if not self.project_directory or self._project_loading or self._pending_note is not None:
             return
         if type(self.inbox_revision) is not int:
@@ -92,7 +112,7 @@ class InboxMixin:
             return
         if isinstance(supplied_text, bool):
             supplied_text = None
-        source = "project" if supplied_text is not None else "main"
+        source = source or ("project" if supplied_text is not None else "main")
         text = (supplied_text if supplied_text is not None else self.note_input.text()).strip()
         kind = supplied_kind or self.note_kind.currentData()
         if not 0 < len(text) <= 4000:
@@ -104,7 +124,10 @@ class InboxMixin:
         pending = {"key": self.note_project_key(), "source": source, "text": text, "kind": kind}
         self._pending_note = pending
         self.update_note_controls()
-        self.start_command("inbox-submit", "seo_project_inbox_submit", {"directory": self.project_directory, "text": text, "kind": kind, "author_role": "specialist", "expected_revision": self.inbox_revision}, lambda result: self.note_saved(result, pending))
+        arguments = {"directory": self.project_directory, "text": text, "kind": kind, "author_role": "specialist", "expected_revision": self.inbox_revision}
+        if references:
+            arguments["references"] = list(references)
+        self.start_command("inbox-submit", "seo_project_inbox_submit", arguments, lambda result: self.note_saved(result, pending))
         if self._pending_note is pending and "inbox-submit" not in self.requests:
             self._pending_note = None
             self.update_note_controls()
@@ -123,10 +146,15 @@ class InboxMixin:
                 saved[pending["source"]] = ("", pending["kind"])
             return
         panel = self.project_panels.panel("inbox")
-        edit, combo = (panel.note, panel.kind) if pending["source"] == "project" else (self.note_input, self.note_kind)
-        current = edit.toPlainText() if pending["source"] == "project" else edit.text()
-        if current.strip() == pending["text"] and combo.currentData() == pending["kind"]:
-            edit.clear()
+        if pending["source"] == "screen":
+            screen = self.note_screen()
+            if screen is not None and screen.draft()[:2] == (pending["text"], pending["kind"]):
+                screen.clear_draft()
+        else:
+            edit, combo = (panel.note, panel.kind) if pending["source"] == "project" else (self.note_input, self.note_kind)
+            current = edit.toPlainText() if pending["source"] == "project" else edit.text()
+            if current.strip() == pending["text"] and combo.currentData() == pending["kind"]:
+                edit.clear()
         self.stash_note_drafts()
         self.update_note_controls()
         self.statusBar().showMessage("Заметка сохранена в выбранном проекте; остальные черновики сохранены")
