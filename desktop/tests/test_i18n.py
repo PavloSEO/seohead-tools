@@ -273,7 +273,7 @@ class SwitchingTests(unittest.TestCase):
         self.window.prefs.set("view.language", "en")
         menu = self.window.build_profile_menu()
         sub = [a.menu() for a in menu.actions() if a.menu() is not None]
-        self.assertEqual(sorted(m.title() for m in sub), ["Language · English", "Theme · Light"])
+        self.assertEqual(sorted(m.title() for m in sub), ["Language · English", "MCP server · no data", "Theme · Light"])
         theme = next(m for m in sub if m.title().startswith("Theme"))
         self.assertEqual([a.text() for a in theme.actions()], ["Light", "Dark", "High contrast", "Match system"])
         menu.deleteLater()

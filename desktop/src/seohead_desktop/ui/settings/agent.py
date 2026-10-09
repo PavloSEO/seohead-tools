@@ -210,4 +210,6 @@ def build_page(store, context):
         Note("info", "Что это меняет.", "Границы агента.<br>Права работают в ядре, а не в окне: CLI и любой MCP-клиент получают те же ограничения."),
     ]
     right[-1].setContentsMargins(0, 14, 0, 0)
-    return page(two_columns(left, right))
+    from .agent_config_link import attach
+
+    return attach(page(two_columns(left, right)))

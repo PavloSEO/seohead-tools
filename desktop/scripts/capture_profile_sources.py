@@ -18,10 +18,10 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PyQt5.QtCore import QPoint, Qt
+from PyQt5.QtCore import QPoint, Qt, QTimer
 from PyQt5.QtGui import QPainter, QPixmap
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.source_service import load_sources
@@ -70,29 +70,56 @@ def main():
                 wait(app, lambda w=window: w.project_directory and not w._project_loading)
                 window.scan_poll_timer.stop()
                 wait(app, lambda w=window: not w.requests)
-                window.open_settings("sources")
-                page = window.settings_view._pages["sources"][1]
-                wait(app, lambda p=page: not p._busy)
-                assert len(page.snapshot.get("registry", {})) > 0, "No core registry returned"
                 window.resize(width, height)
                 app.processEvents()
                 window.resize(width, height)
-                for name, view, provider in screens:
-                    page.navigate(view, provider)
-                    wait(app, lambda p=page: not p._busy)
-                    QTest.qWait(100)  # settle responsive layout requests before painting
-                    app.processEvents()
-                    window.settings_view._pages["sources"][0].verticalScrollBar().setValue(0)
-                    visible = [label.text() for label in page.findChildren(QLabel) if label.isVisibleTo(page)]
-                    assert not any("демо" in text.lower() for text in visible)
-                    assert window.settings_view._pages["sources"][0].horizontalScrollBar().maximum() == 0, "Source sheet requires horizontal scrolling"
-                    path = args.out / f"{name}-{theme}-{width}x{height}.png"
-                    image = QPixmap(width, height)
-                    window.render(image)
-                    assert image.save(str(path))
-                    captured.append(path.name)
-                page.navigate()
-                QTest.qWait(100)
+                errors = []
+
+                def capture_modal(w=window, t=theme, x=width, y=height, error_bucket=errors):
+                    dialog = app.activeModalWidget()
+                    try:
+                        assert dialog and dialog.isModal(), "Settings did not open modally"
+                        assert not any(c.view_id == "settings" for c in w.workspace_tabs.contexts())
+                        dialog.setAttribute(Qt.WA_DontShowOnScreen, True)
+                        dialog.resize(min(dialog.width(), x), min(dialog.height(), y))
+                        page = dialog._pages["sources"][1]
+                        wait(app, lambda: not page._busy)
+                        assert page.snapshot.get("registry"), "No core registry returned"
+                        for name, view, provider in screens:
+                            dialog.show_section("sources")
+                            page.navigate(view, provider)
+                            wait(app, lambda: not page._busy)
+                            if view == "agent":
+                                dialog.show_section("agent")
+                                agent_page = dialog._pages["agent"][1]
+                                from PyQt5.QtWidgets import QPushButton
+
+                                next(b for b in agent_page.findChildren(QPushButton) if b.text() == "Агент настраивает приложение").click()
+                            QTest.qWait(100)
+                            scroll = dialog._pages[dialog.current_section()][0]
+                            scroll.verticalScrollBar().setValue(0)
+                            assert scroll.horizontalScrollBar().maximum() == 0, "Source sheet requires horizontal scrolling"
+                            image = QPixmap(x, y)
+                            w.render(image)
+                            painter = QPainter(image)
+                            dialog.render(painter, QPoint((x - dialog.width()) // 2, (y - dialog.height()) // 2))
+                            painter.end()
+                            path = args.out / f"{name}-{t}-{x}x{y}.png"
+                            assert image.save(str(path))
+                            captured.append(path.name)
+                        page.doctor()
+                        wait(app, lambda: not page._busy)
+                        assert page._doctor is not None
+                    except Exception as exc:
+                        error_bucket.append(exc)
+                    finally:
+                        if dialog:
+                            dialog.reject()
+
+                QTimer.singleShot(0, capture_modal)
+                window.open_settings("sources")
+                if errors:
+                    raise errors[0]
                 menu = window.build_profile_menu()
                 menu.ensurePolished()
                 menu.resize(menu.sizeHint())
@@ -105,10 +132,6 @@ def main():
                 path = args.out / f"profile-{theme}-{width}x{height}.png"
                 assert image.save(str(path))
                 captured.append(path.name)
-                # Doctor is an offline configuration check, not a live access test.
-                page.doctor()
-                wait(app, lambda p=page: not p._busy)
-                assert page._doctor is not None
                 menu.deleteLater()
                 print(f"captured {theme} {width}x{height}", flush=True)
             finally:

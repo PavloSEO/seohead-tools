@@ -25,7 +25,7 @@ READINESS = {
 
 
 def texts(widget):
-    return [label.text() for label in widget.findChildren(QLabel)]
+    return [label.text() for label in getattr(widget, "_body", widget).findChildren(QLabel)]
 
 
 class SourcesSectionTests(unittest.TestCase):
@@ -53,25 +53,26 @@ class SourcesSectionTests(unittest.TestCase):
         joined = " | ".join(labels)
         for expected in ("Google Search Console", "ключ задан · не проверен", "нужен ключ", "без ключа", "подключено", "newcomer"):
             self.assertIn(expected, joined)
-        self.assertIn("хранится: config:gsc/service-account.json", joined)
+        self.assertIn("OAuth / сервисный аккаунт", joined)
+        self.assertNotIn("config:gsc/service-account.json", joined)
 
     def test_configured_is_never_reported_as_connected(self):
         holder = {}
         page = self.page(lambda callback, on_error: holder.update(cb=callback))
         holder["cb"]({"providers": {"gsc": READINESS["providers"]["gsc"]}})
         joined = " | ".join(texts(page))
-        self.assertNotIn("подключено", joined.replace("подключено и проверено", ""))
+        self.assertNotIn("подключено", joined.replace("подключено из 1", ""))
         self.assertIn("ключ задан · не проверен", joined)
 
     def test_kpis_count_only_what_was_reported_and_spend_is_not_measured(self):
         holder = {}
         page = self.page(lambda callback, on_error: holder.update(cb=callback))
         holder["cb"](READINESS)
-        kpis = {frame.findChildren(QLabel)[0].text(): frame.findChildren(QLabel)[1].text() for frame in page.findChildren(QFrame) if frame.property("kpi")}
-        self.assertEqual(kpis["подключено и проверено из 5"], "1")
-        self.assertEqual(kpis["ключ задан, не проверен"], "1")
+        kpis = {next(label.text() for label in frame.findChildren(QLabel) if label.property("kpi_part") == "label"): next(label.text() for label in frame.findChildren(QLabel) if label.property("kpi_part") == "value") for frame in page._body.findChildren(QFrame) if frame.property("kpi")}
+        self.assertEqual(kpis["подключено из 5"], "1")
+        self.assertEqual(kpis["истёк токен / ошибка"], "0")
         self.assertEqual(kpis["нужен ключ"], "1")
-        self.assertEqual(kpis["платные API · расходы за месяц"], "Нет данных")
+        self.assertEqual(kpis["платные API · за месяц"], "Нет данных")
 
     def test_actions_without_backend_are_disabled_with_the_reason(self):
         holder = {}

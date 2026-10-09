@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtCore import (
     QModelIndex,
+    Qt,
 )
 from PyQt5.QtWidgets import (
     QApplication,
@@ -21,6 +23,7 @@ from .common import (  # noqa: F401
     plain,
     scan_request_key,
 )
+from .i18n import trf
 from .ui.icons import material_icon as icon
 from .ui.presentation import (
     FIELDS,
@@ -94,9 +97,18 @@ class ScansUrlsMixin:
         self.project_panels.panel("compare").set_scans(rows)
         self.scan_picker.blockSignals(True)
         self.scan_picker.clear()
+        chronological = sorted(rows, key=lambda r: str(r.get("created_at") or r.get("finished_at") or ""))
+        positions = {item.get("uuid"): index + 1 for index, item in enumerate(chronological)}
         for item in rows:
             stamp = field_text("finished_at", item.get("finished_at") or item.get("created_at"))
-            self.scan_picker.addItem(f"{stamp} · {state_text(item.get('source_kind'))} · {str(item.get('uuid') or 'ID неизвестен')[:8]}", item)
+            try:
+                stamp = datetime.fromisoformat(str(item.get("finished_at") or item.get("created_at")).replace("Z", "+00:00")).astimezone().strftime("%d.%m.%Y %H:%M")
+            except ValueError:
+                pass
+            scan_id = str(item.get("run_id") or item.get("uuid") or "—")[:8]
+            title = trf("Скан №{number} · {id}", number=positions[item.get("uuid")], id=scan_id) if len(rows) == result.get("total", len(rows)) else trf("Скан · {id}", id=scan_id)
+            self.scan_picker.addItem(title, item)
+            self.scan_picker.setItemData(self.scan_picker.count() - 1, stamp, Qt.ToolTipRole)
         if not rows:
             self.scan_picker.addItem("В проекте нет сохранённых сканов", None)
         self.scan_picker.setEnabled(bool(rows))

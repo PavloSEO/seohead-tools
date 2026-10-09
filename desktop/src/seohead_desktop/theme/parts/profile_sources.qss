@@ -1,5 +1,26 @@
 /* Profile actions have the canonical total height; no legacy vertical padding. */
 QMenu[profile_menu="true"]::item {
     height: ${control_menu_item}px;
-    padding: 0 12px 0 10px;
+    padding: 0 ${sources_kpi_padding_x}px 0 ${sources_popup_padding_x}px;
 }
+QFrame[source_kpi="true"] QLabel[kpi_part="value"] { font-size: ${font_dialog}px; }
+QLabel[source_avatar="true"] { border-radius: ${sources_avatar_radius}px; font-size: ${font_overline}px; font-weight: 700; }
+
+QLabel[source_avatar="true"] { background: $primary; color: $on_primary; }
+QLabel[source_avatar="true"][provider="gsc"] { background: $source_gsc_bg; color: $source_gsc_fg; }
+QLabel[source_avatar="true"][provider="yandex_webmaster"] { background: $source_yandex_webmaster_bg; color: $source_yandex_webmaster_fg; }
+QLabel[source_avatar="true"][provider="bing_webmaster"] { background: $source_bing_webmaster_bg; color: $source_bing_webmaster_fg; }
+QLabel[source_avatar="true"][provider="ga4"] { background: $source_ga4_bg; color: $source_ga4_fg; }
+QLabel[source_avatar="true"][provider="metrika"] { background: $source_metrika_bg; color: $source_metrika_fg; }
+QLabel[source_avatar="true"][provider="pagespeed"] { background: $source_pagespeed_bg; color: $source_pagespeed_fg; }
+QLabel[source_avatar="true"][provider="crux"] { background: $source_crux_bg; color: $source_crux_fg; }
+QLabel[source_avatar="true"][provider="yandex_cloud"] { background: $source_yandex_cloud_bg; color: $source_yandex_cloud_fg; }
+QLabel[source_avatar="true"][provider="arsenkin"] { background: $source_arsenkin_bg; color: $source_arsenkin_fg; }
+QLabel[source_avatar="true"][provider="dataforseo_backlinks"] { background: $source_dataforseo_backlinks_bg; color: $source_dataforseo_backlinks_fg; }
+QLabel[source_avatar="true"][provider="wayback"] { background: $source_wayback_bg; color: $source_wayback_fg; }
+QLabel[source_avatar="true"][provider="indexnow"] { background: $source_indexnow_bg; color: $source_indexnow_fg; }
+QLabel[source_avatar="true"][provider="miratext"] { background: $source_miratext_bg; color: $source_miratext_fg; }
+QLabel[source_avatar="true"][provider="crtsh"] { background: $source_crtsh_bg; color: $source_crtsh_fg; }
+
+QFrame[source_cli="true"] { background: $source_terminal_bg; }
+QFrame[source_cli="true"] QLabel { color: $source_terminal_fg; }

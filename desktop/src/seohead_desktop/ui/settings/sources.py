@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
+from PyQt5 import sip
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ... import i18n, theming
@@ -10,7 +11,7 @@ from ...i18n import Num, joined, trf
 from ...source_service import VERIFY_PROVIDERS
 from ..icons import material_icon
 from .helpers import group_label, page
-from .listing import Columns, action_button, badge, buttons_row, hint, list_item
+from .listing import Columns, action_button, badge, buttons_row, hint, list_item, terminal
 from .source_details import agent_detail, coverage, key_detail, oauth_detail, spend_detail
 from .source_layout import ProviderRow, Summary, source_state
 
@@ -31,11 +32,11 @@ CATALOGUE = {
     "yandex_cloud": ("Ключевые слова и позиции", "Яндекс Cloud / Wordstat", "W", True),
     "arsenkin": ("Ключевые слова и позиции", "Arsenkin", "A", True),
     "dataforseo_backlinks": ("Ключевые слова и позиции", "DataForSEO · ссылки", "D4", True),
-    "miratext": ("Ключевые слова и позиции", "Miratext", "MT", False),
+    "miratext": ("Тексты", "Miratext", "MT", False),
     "wayback": ("Ссылки", "Wayback", "WB", False),
     "crtsh": ("Ссылки", "crt.sh", "CT", False),
 }
-GROUP_ORDER = ("Поиск и индексация", "Аналитика", "Производительность", "Ключевые слова и позиции", "Ссылки", "Прочие")
+GROUP_ORDER = ("Поиск и индексация", "Аналитика", "Производительность", "Ключевые слова и позиции", "Ссылки", "Тексты", "Локальные", "Прочие")
 CREDENTIALS = {
     "api_key": "API-ключ", "api_token": "API-токен", "oauth_bearer": "OAuth", "durable_oauth": "OAuth",
     "service_account": "сервисный аккаунт", "login": "логин", "password": "пароль", "submission_key": "ключ отправки",
@@ -72,17 +73,20 @@ def _kpi(value, label):
 
     frame = QFrame()
     frame.setProperty("kpi", True)
+    frame.setProperty("source_kpi", True)
+    metrics = theming.metrics()["sources"]
+    frame.setFixedHeight(metrics["kpi_height"])
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(14, 12, 14, 12)
-    layout.setSpacing(4)
+    layout.setContentsMargins(metrics["kpi_padding_x"], metrics["kpi_padding_y"], metrics["kpi_padding_x"], metrics["kpi_padding_y"])
+    layout.setSpacing(0)
     caption = QLabel(label)
     caption.setProperty("kpi_part", "label")
     number = QLabel(value)
     number.setProperty("kpi_part", "value")
     caption.setWordWrap(True)
     number.setWordWrap(True)
-    layout.addWidget(caption)
     layout.addWidget(number)
+    layout.addWidget(caption)
     return frame
 
 
@@ -98,6 +102,11 @@ class SourcesPage(QWidget):
         self._busy = False
         self._doctor = None
         self._error = None
+        self._header_toolbar = None
+        self._cli_block = None
+        self._header_timer = QTimer(self)
+        self._header_timer.setSingleShot(True)
+        self._header_timer.timeout.connect(self._bind_header)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._body = None
@@ -111,21 +120,77 @@ class SourcesPage(QWidget):
             self.show_message(None)
 
     def _theme_changed(self, _theme):
-        if self.snapshot:
+        if not sip.isdeleted(self) and self.isVisible() and self.snapshot:
             self.render()
 
+    def _host(self):
+        parent = self.parentWidget()
+        while parent is not None:
+            if hasattr(parent, "section_title") and hasattr(parent, "reset_button"):
+                return parent
+            parent = parent.parentWidget()
+        return None
+
+    def _bind_header(self):
+        if sip.isdeleted(self) or sip.isdeleted(self._layout):
+            return
+        host = self._host()
+        if host is None:
+            return
+        if not self.isVisibleTo(host):
+            if self._header_toolbar is not None:
+                self._header_toolbar.hide()
+            if self._cli_block is not None:
+                self._cli_block.hide()
+            return
+        if self._header_toolbar is not None:
+            for layout in host.findChildren(QHBoxLayout):
+                if layout.indexOf(host.reset_button) >= 0 and layout.indexOf(self._header_toolbar) < 0:
+                    if self._body.layout().indexOf(self._header_toolbar) >= 0:
+                        self._body.layout().removeWidget(self._header_toolbar)
+                    layout.insertWidget(layout.indexOf(host.reset_button), self._header_toolbar, 0, Qt.AlignTop)
+                    break
+            self._header_toolbar.setVisible(self.current_view == "list" and self.isVisibleTo(host))
+        if self._cli_block is not None:
+            for layout in host.findChildren(QVBoxLayout):
+                if layout.indexOf(host.stack) >= 0 and layout.indexOf(self._cli_block) < 0:
+                    self._body.layout().removeWidget(self._cli_block)
+                    layout.insertWidget(layout.indexOf(host.stack) + 1, self._cli_block)
+                    break
+            self._cli_block.setVisible(self.current_view == "list")
+        title = {"list": TITLE, "spend": "Расходы платных API", "agent": "Агент настраивает приложение"}.get(self.current_view)
+        if title is None:
+            title = CATALOGUE.get(self.provider, (None, self.provider))[1]
+        host.section_title.setText(i18n.tr(title))
+        host.footer_hint.setText(i18n.tr("Изменения сохраняются на этом компьютере; помеченные поля пока не применяются"))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.snapshot:
+            self.render()
+        self._bind_header()
+        self._header_timer.start(0)
+
+    def hideEvent(self, event):
+        if self._header_toolbar is not None:
+            self._header_toolbar.hide()
+        if self._cli_block is not None:
+            self._cli_block.hide()
+        super().hideEvent(event)
+
     def _set_body(self, widget):
+        if sip.isdeleted(self) or sip.isdeleted(self._layout):
+            widget.deleteLater()
+            return
         if self._body is not None:
-            self._layout.removeWidget(self._body)
-            self._body.hide()
-            self._body.setParent(None)
-            self._body.deleteLater()
+            if not sip.isdeleted(self._body):
+                self._layout.removeWidget(self._body)
+                self._body.hide()
+                self._body.deleteLater()
         self._body = widget
-        for label in widget.findChildren(QLabel):
-            # Core values are text, never HTML. Formatting belongs to the components.
-            label.setTextFormat(Qt.PlainText)
         i18n.retranslate(widget)
         self._layout.addWidget(widget)
+        self._bind_header()
 
     def show_message(self, text):
         self._set_body(source_state("loading" if text else "empty", text or "Нет данных",
@@ -219,6 +284,8 @@ class SourcesPage(QWidget):
         self.render()
 
     def render(self):
+        if sip.isdeleted(self) or sip.isdeleted(self._layout):
+            return
         if self.current_view != "list":
             self.render_detail()
             return
@@ -232,14 +299,20 @@ class SourcesPage(QWidget):
             return
         entries = {pid: describe(pid, entry) for pid, entry in providers.items()}
         total = len(entries)
-        unverified = sum(1 for kind, *_ in entries.values() if kind == "info")
+        errors = sum(1 for kind, *_ in entries.values() if kind == "err")
         missing = sum(1 for kind, *_ in entries.values() if kind == "warn")
         connected = sum(1 for kind, text, *_ in entries.values() if text == "подключено")
         grouped = {}
         for pid, (kind, text, icon, sub) in entries.items():
             group, name, _mono, paid = CATALOGUE.get(pid, ("Прочие", pid, pid[:2].upper(), False))
             paid = self.snapshot.get("registry", {}).get(pid, {}).get("paid", paid)
-            row = self._row(pid, name, paid, kind, text, icon, sub)
+            components = providers[pid].get("credential_components", {})
+            names = [CREDENTIALS[c] for c, configured in components.items() if c in CREDENTIALS and configured]
+            if not names:
+                names = [CREDENTIALS[c] for c in components if c in CREDENTIALS][:1]
+            access = joined(" / ", list(dict.fromkeys(names)))
+            event = "без ключа" if kind == "ok" and text == "без ключа" else "не задан" if kind == "warn" else text
+            row = self._row(pid, name, paid, kind, text, icon, [access, event])
             grouped.setdefault(group, []).append(row)
         left_groups, right_groups = GROUP_ORDER[:3], GROUP_ORDER[3:]
         columns = []
@@ -257,9 +330,9 @@ class SourcesPage(QWidget):
                 totals[unit] = totals.get(unit, 0) + amount
         spend = joined(" · ", [trf("{value} {unit}", value=Num(amount, 2), unit=unit) for unit, amount in totals.items()]) if totals else "Нет данных"
         measured = all(entry and entry.get("readiness_state") != "unknown" for entry in providers.values())
-        for value, label in ((str(connected) if measured else "Нет данных", trf("подключено и проверено из {total}", total=total)),
-                             (str(unverified) if measured else "Нет данных", "ключ задан, не проверен"),
-                             (str(missing) if measured else "Нет данных", "нужен ключ"), (spend, "платные API · расходы за месяц")):
+        for value, label in ((str(connected) if measured else "Нет данных", trf("подключено из {total}", total=total)),
+                             (str(errors) if measured else "Нет данных", "истёк токен / ошибка"),
+                             (str(missing) if measured else "Нет данных", "нужен ключ"), (spend, "платные API · за месяц")):
             cards.append(_kpi(value, label))
         kpis = Summary(cards)
         head = QWidget()
@@ -267,16 +340,24 @@ class SourcesPage(QWidget):
         head_layout.setContentsMargins(0, 0, 0, 0)
         head_layout.addStretch(1)
         for title, ic, callback in (("Расходы", "payments", lambda: self.navigate("spend")),
-                                    ("Агент настраивает приложение", "smart_toy", lambda: self.navigate("agent")),
                                     ("Проверить все", "stethoscope", self.doctor)):
             button = action_button(title, icon=ic, role="primary" if title == "Проверить все" else None, enabled=self._context.can("sources") and not self._busy)
             if title == "Проверить все":
                 button.setIcon(material_icon(ic, theming.roles()["on_primary"]))
             button.clicked.connect(callback)
             head_layout.addWidget(button)
-        agent_button = head_layout.takeAt(2).widget()
-        body = page(head, buttons_row(agent_button), kpis, Columns(*columns),
-                    hint("«Проверить все» проверяет локальную конфигурацию; доступ к аккаунтам проверяется отдельно."))
+        if self._header_toolbar is not None:
+            self._header_toolbar.deleteLater()
+        self._header_toolbar = head
+        columns_view = Columns(*columns, breakpoint=theming.metrics()["sources"]["compact_breakpoint"])
+        columns_view._grid.setHorizontalSpacing(theming.metrics()["sources"]["columns_gap"])
+        cli_block = terminal("seohead sources status", ["Проверить все = seohead sources doctor",
+                             "Проверяется конфигурация; доступ к аккаунтам проверяется отдельно."])
+        cli_block.setProperty("source_cli", True)
+        if self._cli_block is not None:
+            self._cli_block.deleteLater()
+        self._cli_block = cli_block
+        body = page(head, kpis, columns_view, cli_block)
         if self._busy:
             body.layout().addWidget(hint("Читаю состояние источников у ядра…"))
         if self._doctor is not None:
@@ -294,7 +375,8 @@ class SourcesPage(QWidget):
         title = trf("{name}  ₽ платный", name=name) if paid else name
         button = action_button("Настроить", role="text", size="pill", enabled=self._context.can("sources"))
         button.clicked.connect(lambda: self.navigate("detail", pid))
-        return ProviderRow(title, joined(" · ", sub), badge(kind, text, icon), button)
+        return ProviderRow(title, joined(" · ", [part for part in sub if part]), badge(kind, text, icon), button,
+                           provider=pid, monogram=CATALOGUE.get(pid, (None, None, pid[:2].upper()))[2])
 
     def render_detail(self):
         back = action_button("Все источники", icon="arrow_back", role="text")

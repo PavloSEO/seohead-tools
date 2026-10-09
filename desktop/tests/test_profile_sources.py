@@ -112,7 +112,7 @@ class SourceUiTests(unittest.TestCase):
         sweep_widgets()
 
     def texts(self):
-        return " | ".join(label.text() for label in self.page.findChildren(QLabel))
+        return " | ".join(label.text() for label in self.page._body.findChildren(QLabel))
 
     def test_doctor_shows_each_result_without_claiming_connected(self):
         self.page.doctor()
@@ -183,6 +183,25 @@ class SourceUiTests(unittest.TestCase):
                     self.assertTrue(field.isVisibleTo(page))
         dialog.close()
 
+    def test_late_doctor_result_does_not_change_another_settings_header(self):
+        pending = []
+        def request(**kwargs):
+            if kwargs["operation"] == "snapshot":
+                kwargs["callback"](SNAPSHOT.copy())
+            else:
+                pending.append(kwargs)
+        dialog = SettingsDialog(AppSettings(schema=full_schema()), SettingsContext(actions={"sources": request}), section="sources")
+        dialog.show()
+        self.app.processEvents()
+        page = dialog._pages["sources"][1]
+        page.doctor()
+        dialog.show_section("general")
+        pending.pop()["callback"]({"providers": SNAPSHOT["readiness"]})
+        self.app.processEvents()
+        self.assertEqual(dialog.section_title.text(), "Общие")
+        self.assertFalse(page._header_toolbar.isVisible())
+        dialog.close()
+
     def test_spend_preserves_measured_zero_and_provider_units(self):
         self.page.snapshot["spend"] = {"calls": 2, "since": "2026-10-01", "by_source": {"arsenkin": {"limits": 0}}, "by_operation": {"arsenkin.test": {"limits": 0}}, "uncertain_count": 1}
         self.page.navigate("spend")
@@ -217,6 +236,11 @@ class SourceUiTests(unittest.TestCase):
         self.assertEqual(seen, [True])
         self.assertFalse(service._pending)
 
+    def test_theme_callback_after_layout_disposal_is_ignored(self):
+        self.page._layout.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        self.page._theme_changed("dark")
+
     def test_new_strings_have_dictionary_entries(self):
         package = Path(__file__).resolve().parents[1] / "src/seohead_desktop"
         dictionary = i18n._dictionary()
@@ -240,8 +264,12 @@ class ProfileTests(unittest.TestCase):
             window.set_navigation_compact(rail)
             menu = window.build_profile_menu()
             actions = {a.text(): a for a in menu.actions()}
-            for title in ("Настройки", "Источники данных", "Горячие клавиши", "Справка", "О программе"):
+            for title in ("Настройки", "Справка", "MCP-сервер · нет данных"):
                 self.assertIn(title, actions)
+            for removed in ("Источники данных", "Горячие клавиши", "О программе"):
+                self.assertNotIn(removed, actions)
+            self.assertEqual(menu.width(), 264)
+            self.assertIsNotNone(actions["MCP-сервер · нет данных"].menu())
             menu.popup(window.navigation.profile.mapToGlobal(window.navigation.profile.rect().topRight()))
             self.app.processEvents()
             menu.setActiveAction(actions["Простой"])
@@ -256,6 +284,31 @@ class ProfileTests(unittest.TestCase):
             self.assertTrue(window.navigation.profile.hasFocus())
             self.assertIsNone(self.app.activePopupWidget())
         self.assertEqual(window.navigation.profile.name.text(), "Павел")
+        window.close()
+        window.deleteLater()
+
+    def test_sources_open_in_the_modal_and_header_has_two_actions(self):
+        from PyQt5.QtCore import QTimer
+
+        window = MainWindow(persistent=False)
+        def request(**kwargs):
+            kwargs["callback"](SNAPSHOT.copy())
+        seen = []
+        before = tuple(c.id for c in window.workspace_tabs.contexts())
+
+        def inspect():
+            dialog = self.app.activeModalWidget()
+            source = dialog._pages["sources"][1]
+            seen.append((dialog.isModal(), dialog.current_section(),
+                         [b.text() for b in source._header_toolbar.findChildren(QPushButton)],
+                         source._header_toolbar.parentWidget() is dialog))
+            QTest.keyClick(dialog, Qt.Key_Escape)
+
+        with patch.object(window, "settings_context", return_value=SettingsContext(actions={"sources": request})):
+            QTimer.singleShot(20, inspect)
+            window.open_settings("sources")
+        self.assertEqual(seen, [(True, "sources", ["Расходы", "Проверить все"], True)])
+        self.assertEqual(tuple(c.id for c in window.workspace_tabs.contexts()), before)
         window.close()
         window.deleteLater()
 

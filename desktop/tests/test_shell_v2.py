@@ -118,7 +118,7 @@ class ShellV2Tests(unittest.TestCase):
     def test_profile_menu_contents_and_unavailable_actions(self):
         menu = self.window.build_profile_menu()
         actions = {a.text(): a for a in menu.actions() if a.text()}
-        for title in ("Быстрый краул без проекта", "Настройки", "MCP-сервер", "Командная строка", "Справка"):
+        for title in ("Быстрый краул без проекта", "Настройки", "MCP-сервер · нет данных", "Командная строка", "Справка"):
             self.assertIn(title, actions)
         self.assertFalse(actions["Быстрый краул без проекта"].isEnabled())
         self.assertFalse(actions["Командная строка"].isEnabled())

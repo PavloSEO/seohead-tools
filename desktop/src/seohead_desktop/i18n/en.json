@@ -1330,5 +1330,16 @@
  "Расходы платных API": "Paid API usage",
  "задан · не проверен": "set · not verified",
  "Ключ не нужен": "No key required",
- "Публичный сервис; авторизация не требуется.": "Public service; authentication is not required."
+ "Публичный сервис; авторизация не требуется.": "Public service; authentication is not required.",
+ "Тексты": "Texts",
+ "Локальные": "Local sources",
+ "MCP-сервер · нет данных": "MCP server · no data",
+ "Проверить все = seohead sources doctor": "Check all = seohead sources doctor",
+ "Проверяется конфигурация; доступ к аккаунтам проверяется отдельно.": "Configuration is inspected; account access is verified separately.",
+ "Изменения сохраняются на этом компьютере; помеченные поля пока не применяются": "Changes are saved on this computer; marked fields are not applied yet",
+ "Скан №{number} · {id}": "Scan #{number} · {id}",
+ "Скан · {id}": "Scan · {id}",
+ "подключено из {total}": "connected out of {total}",
+ "истёк токен / ошибка": "expired token / error",
+ "платные API · за месяц": "paid APIs · this month"
 }

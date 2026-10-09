@@ -126,7 +126,7 @@ def substitution(name=None):
         values[f"note_{kind}_bg"], values[f"note_{kind}_border"], values[f"note_{kind}_fg"] = bg, border, fg
     for key, value in t["data"].items():
         values[f"data_{key}"] = value
-    for group in ("font", "radius", "row", "control", "layout"):
+    for group in ("font", "radius", "row", "control", "layout", "sources"):
         for key, value in m[group].items():
             values[f"{group}_{key}"] = value
     values.update(font_family=m["font_family"], mono_family=_mono_family(m["font_mono"]), scroll=m["scrollbar"]["extent"],

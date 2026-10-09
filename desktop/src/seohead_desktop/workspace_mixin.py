@@ -20,7 +20,6 @@ from .common import (  # noqa: F401
 )
 from .ui.icons import material_icon as icon
 from .ui.presentation import (
-    state_text,
     theme_tokens,
 )
 from .ui.workspace import (
@@ -159,10 +158,7 @@ class WorkspaceMixin:
             project_label=self.project_picker.currentText() if self.project_directory else "Новая вкладка",
             scan_uuid=self.selected_scan_uuid, view_id=VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else "work")
         label = self.project_picker.currentText() if self.project_directory else "Новая вкладка"
-        scan = next((item for item in self.scan_model.rows if item.get("uuid") == self.selected_scan_uuid), {})
-        title = label + (" · " + self.selected_scan_uuid[:8] if self.selected_scan_uuid else "")
-        if scan.get("lifecycle"):
-            title += " · " + state_text(scan["lifecycle"])
+        title = label
         self.workspace_tabs.update_title(self._active_workspace_id, title, icon("compare_arrows" if row == 9 else "search" if row == 10 else "folder_open"))
 
     def capture_workspace_context(self):

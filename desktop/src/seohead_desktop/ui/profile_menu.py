@@ -3,7 +3,7 @@
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QActionGroup, QLabel, QMenu, QVBoxLayout, QWidget
 
-from .. import i18n
+from .. import i18n, theming
 from ..i18n import tr, trf
 from .icons import material_icon as icon
 
@@ -25,15 +25,15 @@ def build_profile_menu(window):
     menu.setAccessibleName(tr("Меню профиля"))
     header = QWidget()
     layout = QVBoxLayout(header)
-    layout.setContentsMargins(10, 8, 10, 6)
-    for text, style in (("Павел", "control"), (MODE_NAMES.get(window.display, "С агентом"), "meta"),
-                        ("локально · этот компьютер", "meta")):
+    metrics = theming.metrics()["sources"]
+    layout.setContentsMargins(metrics["popup_padding_x"], metrics["popup_padding_y"], metrics["popup_padding_x"], metrics["popup_padding_y"])
+    layout.setSpacing(theming.metrics()["spacing"][0])
+    for text, style in (("Павел", "control"), (MODE_NAMES.get(window.display, "С агентом"), "meta")):
         label = QLabel(text)
         label.setProperty("text_style", style)
         layout.addWidget(label)
     window._menu_widget(menu, header)
     menu.addSeparator()
-    menu.addSection(tr("Отображение"))
     group = QActionGroup(menu)
     for mode in ("agent", "simple"):
         action = menu.addAction(MODE_NAMES[mode])
@@ -48,22 +48,20 @@ def build_profile_menu(window):
     crawler.setToolTip(trf("ждёт #{issue}", issue=942))
     crawler.triggered.connect(lambda: window.open_crawler())
     menu.addSeparator()
-    status = menu.addAction(tr("MCP · нет данных · ждёт #929"))
-    status.setEnabled(False)
-    for title, symbol, section in (("Настройки", "settings", "general"), ("Источники данных", "dns", "sources"),
-                                   ("Горячие клавиши", "keyboard", "keys"), ("О программе", "info", "about"),
-                                   ("MCP-сервер", "hub", "mcp")):
-        action = menu.addAction(icon(symbol), title)
-        action.triggered.connect(lambda _checked, s=section: window.open_settings(s))
-        if section == "general":
-            action.setShortcut(QKeySequence.Preferences)
+    action = menu.addAction(icon("settings"), "Настройки")
+    action.setShortcut(QKeySequence.Preferences)
+    action.triggered.connect(lambda: window.open_settings())
     window._theme_menu(menu)
     window._language_menu(menu)
+    mcp = menu.addMenu(icon("hub"), tr("MCP-сервер · нет данных"))
+    state = mcp.addAction(trf("ждёт #{issue}", issue=929))
+    state.setEnabled(False)
+    mcp.addAction(icon("settings"), "Настройки", lambda: window.open_settings("mcp"))
     menu.addSeparator()
     cli = menu.addAction(icon("terminal"), "Командная строка")
     cli.setEnabled(False)
     cli.setToolTip("Недоступно в этой сборке")
     menu.addAction(icon("help"), "Справка", window.show_help, "F1")
-    menu.setMinimumWidth(264)
+    menu.setFixedWidth(theming.metrics()["layout"]["profile_popup"])
     i18n.retranslate(menu)
     return menu
