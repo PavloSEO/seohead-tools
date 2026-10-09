@@ -4278,10 +4278,10 @@ def scan_link_inspect(
     )
 
 
-def scan_status(input_path: str) -> dict[str, Any]:
+def scan_status(input_path: str, full_validation: bool = False) -> dict[str, Any]:
     from seohead.servers.history_handlers import scan_status as core
 
-    return core(input_path)
+    return core(input_path, full_validation=full_validation)
 
 
 def scan_rendered_routes(input_path: str) -> dict[str, Any]:

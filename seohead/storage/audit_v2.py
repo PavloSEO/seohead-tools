@@ -18,7 +18,7 @@ from typing import Any
 
 from seohead import filesystem
 
-from . import ScanError, open_scan
+from . import ScanError, open_scan, open_scan_mode
 
 APPLICATION_ID = (ord("A") << 24) | (ord("U") << 16) | (ord("D") << 8) | ord("V")
 USER_VERSION = 3
@@ -176,14 +176,22 @@ def _contains_group_marker(value: Any) -> bool:
     return False
 
 
-def _bind_to_scan(scan_path: Path, binding: Mapping[str, Any]) -> dict[str, Any]:
+def _bind_to_scan(
+    scan_path: Path, binding: Mapping[str, Any], *, light: bool = False
+) -> dict[str, Any]:
     expected_keys = {"scan_uuid", "evidence_revision", "analyzer_version", "analyzer_revision"}
     if not isinstance(binding, Mapping) or set(binding) != expected_keys:
         raise AuditV2Error(
             "audit.v2 binding must name scan UUID, evidence revision and analyzer identity"
         )
     try:
-        with closing(open_scan(scan_path, require_audit=False)) as con:
+        # Only the scan header is compared, so a read-only observer may accept it lightly.
+        opened = (
+            open_scan_mode(scan_path, require_audit=False, light=True)[0]
+            if light
+            else open_scan(scan_path, require_audit=False)
+        )
+        with closing(opened) as con:
             scan = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
     except (TypeError, sqlite3.Error, ScanError) as exc:
         raise AuditV2Error(f"cannot validate audit.v2 scan binding: {exc}") from exc
@@ -383,7 +391,10 @@ def write_audit_v2(
 class AuditV2Reader:
     """Validated, re-iterable access to an audit.v2 companion."""
 
-    def __init__(self, scan_path: str | Path, *, verify_binding: bool = True) -> None:
+    def __init__(
+        self, scan_path: str | Path, *, verify_binding: bool = True, light_binding: bool = False
+    ) -> None:
+        self.light_binding = light_binding
         self.scan_path = Path(scan_path).absolute()
         self.path = audit_v2_path(self.scan_path)
         try:
@@ -535,7 +546,11 @@ class AuditV2Reader:
                 )
         if digest.hexdigest() != row["sha256"]:
             raise AuditV2Error("audit.v2 content hash does not match")
-        if verify_binding and _bind_to_scan(self.scan_path, self.binding) != self.binding:
+        if (
+            verify_binding
+            and _bind_to_scan(self.scan_path, self.binding, light=self.light_binding)
+            != self.binding
+        ):
             raise AuditV2Error("audit.v2 binding disagrees with the native scan")
 
     def count(self, pointer: str) -> int:

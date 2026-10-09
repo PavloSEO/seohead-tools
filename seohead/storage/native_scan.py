@@ -1082,6 +1082,49 @@ class NativeScan:
         return con
 
     @staticmethod
+    def _validate_light(con: sqlite3.Connection) -> None:
+        """Header-level acceptance for a native scan: identity, schema, one header row.
+
+        Skips every O(file) or O(pages) pass (quick_check, scalar storage, foreign keys,
+        corpus and per-page frontier checks, saved-audit hashing). A scan accepted here is
+        reported as ``validation: "light"``; byte-level integrity is not claimed.
+        """
+        if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
+            raise ScanError("foreign application_id")
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+        if version not in {USER_VERSION, 2}:
+            raise ScanError("unsupported scan user_version")
+        if version == 2:
+            from .retry import _v2_tables
+
+            _v2_tables(con)
+        elif _objects(con) != _expected()[0]:
+            raise ScanError("scan.v1 schema differs")
+        if con.execute("SELECT COUNT(*) FROM scan").fetchone()[0] != 1:
+            raise ScanError("native scan requires exactly one header")
+        scan = con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
+        if scan is None or scan["source_kind"] not in {"native", "reanalysis"}:
+            raise ScanError("not a native scan artifact with the declared format version")
+        if scan["format_version"] != ("scan.v2" if version == 2 else FORMAT_VERSION):
+            raise ScanError("scan user_version disagrees with its format_version")
+        if scan["lifecycle"] not in {"running", "interrupted", "finished", "failed"}:
+            raise ScanError("invalid native scan lifecycle")
+        if scan["evidence_version"] != "crawl.v1" or scan["pinned"] not in (0, 1):
+            raise ScanError("native evidence version or pin metadata is unsupported")
+        try:
+            uuid.UUID(scan["scan_uuid"])
+            config = _native_config(json.loads(scan["config_json"]), recorded=True)
+            fingerprint = crawl_config_fingerprint(config)
+            for name in ("capabilities_json", "retention_json", "limitations_json"):
+                json.loads(scan[name])
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ScanError("native scan header metadata is invalid") from exc
+        if scan["config_fingerprint"] != fingerprint:
+            raise ScanError("native scan configuration fingerprint disagrees with effective config")
+        if con.execute("SELECT COUNT(*) FROM resume_state").fetchone()[0] != 1:
+            raise ScanError("native scan requires one resume_state")
+
+    @staticmethod
     def _validate_native(con: sqlite3.Connection) -> None:
         if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise ScanError("foreign application_id")

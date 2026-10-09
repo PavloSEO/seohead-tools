@@ -110,7 +110,9 @@ def test_repeated_target_links_keep_nav_and_heading_context(tmp_path):
     assert result["items"][0]["scan_uuid"] == result["scan_uuid"]
     assert result["items"][0]["placement"]["basis"] == "matched_selector"
     assert result["items"][1]["placement"]["basis"] == "content_root_inference"
-    assert context_for_link(path, rows[1]["link_id"]) == result["items"][1]
+    single = context_for_link(path, rows[1]["link_id"])
+    assert single.pop("validation") in {"light", "full"}
+    assert single == result["items"][1]
     first_page = contexts_for_document(path, rows[0]["source_document_id"], limit=1)
     assert first_page["total"] == 2 and first_page["next_offset"] == 1
     assert contexts_for_document(path, rows[0]["source_document_id"], offset=1, limit=1)[
