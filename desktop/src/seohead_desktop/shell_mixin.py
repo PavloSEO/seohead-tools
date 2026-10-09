@@ -83,35 +83,32 @@ class ShellMixin:
         return tr("Ядро подключено · версия неизвестна" if answered else "Ядро найдено"), joined("\n", [path, tr("Версию ядро пока не сообщает")]) if path else tr("Версию ядро пока не сообщает")
 
     def update_status_tail(self):
-        """Right side (SHELL-CANON §6): project · active scans · display · core · observation age; only what the data supports."""
+        """Right side (SHELL-CANON §6): at most three segments — active scans · display mode · core. The project name lives
+        in the window centre text and the observation age in the core tooltip."""
         try:
-            narrow = bool(self._narrow_chrome)
             opened = bool(self.project_directory)
-            name = self.project_picker.currentText() if opened else ""
-            self.project_label.setText(trf("Проект «{name}»", name=name) if opened and name else "")
-            self.project_label.setVisible(bool(opened and name) and not narrow)
+            self.project_label.setVisible(False)
+            self.observed_label.setVisible(False)
             self.scans_label.setVisible(opened)
             if opened:
                 from .screens.scan_common import build_rows
 
                 self.scans_label.setText(trf("Активных сканов: {n}", n=sum(1 for row in build_rows(self) if row.active)))
             text, tip = self.core_state()
+            observed = ""
+            if opened:
+                stamp = parse_time(self.observed_at) if isinstance(self.observed_at, str) else None
+                if stamp is None:
+                    observed = tr("Наблюдение: нет данных") + " · " + tr("Недоступно в этой версии ядра")
+                else:
+                    seconds = max(0, int((datetime.now(timezone.utc) - stamp).total_seconds()))
+                    ago = trf("{n} с", n=seconds) if seconds < 60 else trf("{n} мин", n=seconds // 60) if seconds < 3600 else trf("{n} ч", n=seconds // 3600)
+                    observed = trf("Наблюдение: {ago} назад", ago=ago)
             key = (self.core_executable, bool(self.mcp_ready or self.project_result is not None))
             if key != getattr(self, "_core_key", None) or "seohead" in text:  # plain texts follow the language by retranslate
                 self._core_key = key
                 self.core_label.setText(text)
-                self.core_label.setToolTip(tip)
-            self.observed_label.setVisible(opened and not narrow)
-            if opened:
-                stamp = parse_time(self.observed_at) if isinstance(self.observed_at, str) else None
-                if stamp is None:
-                    self.observed_label.setText(tr("Наблюдение: нет данных"))
-                    self.observed_label.setToolTip(tr("Недоступно в этой версии ядра"))
-                else:
-                    seconds = max(0, int((datetime.now(timezone.utc) - stamp).total_seconds()))
-                    ago = trf("{n} с", n=seconds) if seconds < 60 else trf("{n} мин", n=seconds // 60) if seconds < 3600 else trf("{n} ч", n=seconds // 3600)
-                    self.observed_label.setText(trf("Наблюдение: {ago} назад", ago=ago))
-                    self.observed_label.setToolTip("")
+            self.core_label.setToolTip(joined("\n", [tip, observed]))
         except RuntimeError:  # the window was deleted while a timer fired
             pass
 

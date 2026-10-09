@@ -242,6 +242,15 @@ class ShellV2Tests(unittest.TestCase):
             self.assertTrue(panels, section)
             self.assertEqual((panels[0].action.text(), panels[0].secondary.text()), ("Открыть проект…", "Создать проект"))
 
+    def test_status_bar_right_side_has_at_most_three_segments(self):
+        self.window.project_directory = "/p"
+        self.window.update_status_tail()
+        right = [w for w in (self.window.project_label, self.window.scans_label, self.window.mode_label, self.window.core_label, self.window.observed_label)
+                 if not w.isHidden()]
+        self.assertLessEqual(len(right), 3)
+        self.assertTrue(self.window.core_label.toolTip().count("Наблюдение") <= 1)
+        self.assertIn("Наблюдение", self.window.core_label.toolTip())
+
     def test_no_demo_wording_in_real_mode_chrome(self):
         texts = [self.window.windowTitle(), self.window.project_button.title.text(), self.window.scan_button.title.text(),
                  self.window.source_badge.text(), self.window.mode_label.text(), self.window.core_label.text()]
