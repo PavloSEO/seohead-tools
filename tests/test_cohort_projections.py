@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from seohead.mcp import handlers
 from seohead.reports.cohorts import CohortProjectionError, gsc_progress, publication_cohorts
-from seohead.servers import handlers
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

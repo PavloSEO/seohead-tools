@@ -412,7 +412,7 @@ def expected_url_count(
 
 
 def _sitemap_url_count(start_url: str) -> int | None:
-    from seohead.tools.sitemap import crawl as crawl_sitemap
+    from seohead.checks.sitemap import crawl as crawl_sitemap
 
     parts = urlsplit(start_url)
     result = crawl_sitemap(f"{parts.scheme}://{parts.netloc}/sitemap.xml")

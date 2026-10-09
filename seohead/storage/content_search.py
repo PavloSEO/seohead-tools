@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from seohead.tools.custom_search import _target_text, _validate_selector_syntax
+from seohead.checks.custom_search import _target_text, _validate_selector_syntax
 
 from . import READ_TIMEOUT_SECONDS, ScanError, open_scan
 from .bodies import read_document

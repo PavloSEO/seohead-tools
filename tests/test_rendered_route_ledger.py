@@ -13,9 +13,9 @@ from tests.test_scan_native import _metadata, _record
 
 
 def _batch(html: str, representation: str = "static"):
+    from seohead.checks.parser import parse_html
     from seohead.crawl.spider import Scope
     from seohead.storage.rendered_routes import observations
-    from seohead.tools.parser import parse_html
 
     settings = load(overrides={"rendering.rendered_links.store": True, "limits.max_urls": 1})
     parsed = parse_html(html, "https://example.test/", {"max_link_observations": 20_000})

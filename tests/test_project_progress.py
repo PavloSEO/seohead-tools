@@ -7,6 +7,8 @@ import json
 import pytest
 
 from seohead import cli
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from seohead.projects.coverage import (
     coverage_status,
     initialize_coverage,
@@ -15,8 +17,6 @@ from seohead.projects.coverage import (
 )
 from seohead.projects.progress import project_progress
 from seohead.projects.workspace import create_project
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
 
 
 def _project(tmp_path):

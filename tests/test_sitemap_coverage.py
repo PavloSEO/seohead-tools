@@ -274,7 +274,7 @@ def test_a_shallow_nested_index_is_unaffected_by_the_depth_guard(monkeypatch, tm
 
 def test_run_sitemap_resolves_relative_index_and_urlset_locations(monkeypatch, tmp_path):
     """#567: live SF sitemap coverage follows the same document-relative locations as crawl."""
-    from seohead.tools.sitemap import parse_sitemap
+    from seohead.checks.sitemap import parse_sitemap
 
     root = "https://example.com/sitemaps/index.xml"
     child = "https://example.com/sitemaps/parts/urls.xml"

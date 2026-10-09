@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.bot import (
+from seohead.crawl import settings
+from seohead.integrations.bot import (
     POLICY_PRESETS,
     AuthorizedJobSubmitter,
     JobOwnershipStore,
     ProjectAuthorizationStore,
     ScanJobSpec,
 )
-from seohead.crawl import settings
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
 
 
 def _spec(project="alpha"):
@@ -201,7 +201,7 @@ def test_exact_dispatch_receipt_survives_restart_without_collapsing_intentional_
 
 @pytest.mark.parametrize("policy", POLICY_PRESETS)
 def test_every_policy_matches_the_shared_queue_config(policy, tmp_path):
-    from seohead.bot import Action, Event, State, WizardSession
+    from seohead.integrations.bot import Action, Event, State, WizardSession
 
     backend = SQLiteJobBackend(
         tmp_path / "jobs", {"alpha": RemoteProjectLimits()}, producer_build="a" * 40

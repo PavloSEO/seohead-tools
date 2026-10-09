@@ -10,7 +10,7 @@ import sqlite3
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage import ScanError
 from seohead.storage.content_search import search_scan
 from seohead.storage.native_scan import NativeScan
@@ -363,7 +363,7 @@ def test_content_search_cli_mcp_package_and_indexed_pagination(tmp_path, capsys)
     assert past_end["next_offset"] == 999
     assert all("snippet" not in record for record in first["records"])
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()
     tool = server._tool_manager.get_tool("seo_scan_content_search_page")

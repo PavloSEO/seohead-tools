@@ -1,6 +1,6 @@
 """Network-independent tests for the Open Graph and Twitter Card checklist."""
 
-from seohead.tools import social_meta as SM
+from seohead.checks import social_meta as SM
 
 OG_FULL = {
     "og:title": "T",

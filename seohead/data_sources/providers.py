@@ -15,9 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.checks.external_join import join_external_data, orphan_urls
 from seohead.data_sources import credentials
 from seohead.data_sources.yandex_webmaster import OPERATIONS as _WEBMASTER_OPERATIONS
-from seohead.tools.external_join import join_external_data, orphan_urls
 
 EVIDENCE_FORMAT = "seohead.provider-evidence.v1"
 _STATES = {"complete", "partial", "failed", "skipped", "no_field_data", "not_configured"}

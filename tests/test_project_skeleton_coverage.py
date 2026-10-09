@@ -1,6 +1,6 @@
 """The shipped example project must answer the coverage question, not defer it.
 
-Epic #648 asks that `project status` on the `examples/` skeleton print a coverage figure
+Epic #648 asks that `project status` on the `docs/examples/` skeleton print a coverage figure
 matching a hand count of the catalogue. Checklist initialization is deliberately separate
 from project creation (docs/PROJECTS.md), so the skeleton was shipped without a checklist
 and reported `not_initialized` -- the one project in this repository a reader can run the
@@ -19,18 +19,18 @@ import json
 import pathlib
 
 from scripts.generate_project_skeleton_coverage import render
+from seohead.mcp.handlers import project_status
 from seohead.projects.catalogue import load_catalogue
-from seohead.servers.handlers import project_status
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SKELETON = ROOT / "examples" / "project-skeleton"
+SKELETON = ROOT / "docs" / "examples" / "project-skeleton"
 COVERAGE = SKELETON / "coverage.json"
 REGENERATE = "python scripts/generate_project_skeleton_coverage.py"
 
 
 def _document() -> dict:
     assert COVERAGE.is_file(), (
-        f"examples/project-skeleton/coverage.json is missing: regenerate it with `{REGENERATE}`"
+        f"docs/examples/project-skeleton/coverage.json is missing: regenerate it with `{REGENERATE}`"
     )
     return json.loads(COVERAGE.read_text(encoding="utf-8"))
 
@@ -47,7 +47,7 @@ def test_the_shipped_skeleton_carries_an_initialized_checklist():
 
 def test_shipped_item_ids_match_the_live_catalogue():
     assert set(_document()["items"]) == set(load_catalogue()), (
-        "examples/project-skeleton/coverage.json has drifted from the packaged catalogue: "
+        "docs/examples/project-skeleton/coverage.json has drifted from the packaged catalogue: "
         f"regenerate it with `{REGENERATE}`"
     )
 
@@ -71,7 +71,7 @@ def test_the_shipped_file_states_no_time_but_the_projects_own_creation_time():
 
 def test_the_shipped_file_matches_a_fresh_generation():
     assert COVERAGE.read_text(encoding="utf-8") == render(), (
-        f"examples/project-skeleton/coverage.json is stale: regenerate it with `{REGENERATE}`"
+        f"docs/examples/project-skeleton/coverage.json is stale: regenerate it with `{REGENERATE}`"
     )
 
 

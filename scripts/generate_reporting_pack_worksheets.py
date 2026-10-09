@@ -5,8 +5,8 @@
     python scripts/generate_reporting_pack_worksheets.py --check   # exit 1 if stale (CI)
 
 Worksheets are produced by seohead.reports.reporting_pack.build_worksheets from
-examples/audit.json and the committed synthetic provider inputs under
-examples/reporting-pack/sources/.  The build is byte-deterministic: unchanged
+docs/examples/audit.json and the committed synthetic provider inputs under
+docs/examples/reporting-pack/sources/.  The build is byte-deterministic: unchanged
 inputs and toolkit source produce identical CSV bytes.
 """
 
@@ -25,9 +25,9 @@ sys.path.insert(0, str(ROOT))
 
 from seohead.reports.reporting_pack import build_worksheets  # noqa: E402
 
-AUDIT = ROOT / "examples" / "audit.json"
-SOURCES = ROOT / "examples" / "reporting-pack" / "sources"
-WORKSHEETS = ROOT / "examples" / "reporting-pack" / "worksheets"
+AUDIT = ROOT / "docs" / "examples" / "audit.json"
+SOURCES = ROOT / "docs" / "examples" / "reporting-pack" / "sources"
+WORKSHEETS = ROOT / "docs" / "examples" / "reporting-pack" / "worksheets"
 SEARCH_METRIC = "clicks"
 
 

@@ -197,7 +197,7 @@ def identity(python: Path, env: dict[str, str], cwd: Path) -> dict[str, str]:
             [
                 str(python),
                 "-c",
-                "import json; from seohead.build_provenance import packaged_provenance; "
+                "import json; from seohead._build.provenance import packaged_provenance; "
                 "p=packaged_provenance(); print(json.dumps({'version': p.version, "
                 "'revision': p.revision}))",
             ],

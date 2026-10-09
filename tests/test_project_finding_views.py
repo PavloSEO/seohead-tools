@@ -426,8 +426,8 @@ def test_csv_xlsx_and_docx_reports_use_saved_projection_and_state(project, tmp_p
 
 def test_cli_and_mcp_expose_the_same_view_contract(monkeypatch, project):
     from seohead import cli
-    from seohead.servers import handlers
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
 
     config = json.dumps(definition())
     args = cli.build_parser().parse_args(
@@ -573,7 +573,7 @@ def test_cli_end_to_end_saves_applies_and_reports_a_view_offline(
 
 
 def test_findings_view_reads_a_synthetic_validated_scan_offline(project):
-    from seohead.servers.handlers import findings_view
+    from seohead.mcp.handlers import findings_view
     from seohead.storage import read_audit
     from tests.test_scan_reanalysis_integration import _source
 

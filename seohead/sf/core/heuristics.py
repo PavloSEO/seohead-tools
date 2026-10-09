@@ -275,7 +275,7 @@ def check_content_duplication(ctx: AuditContext) -> None:
     whichever half is missing, reusing the same ``input.html_store_dir`` HTML
     store ``check_dom`` reads, scoped to the configured content area so a
     shared nav/footer does not make every page look alike, and delegating the
-    actual clustering to :func:`seohead.tools.duplicate.find_duplicates`
+    actual clustering to :func:`seohead.checks.duplicate.find_duplicates`
     (SimHash + LSH), which excludes exact-duplicate pairs from the near-dup
     clusters on its own.
     """
@@ -302,8 +302,8 @@ def check_content_duplication(ctx: AuditContext) -> None:
 
     from bs4 import BeautifulSoup
 
-    from seohead.tools.content_area import extract_area_text, resolve_content_area
-    from seohead.tools.duplicate import find_duplicates
+    from seohead.checks.content_area import extract_area_text, resolve_content_area
+    from seohead.checks.duplicate import find_duplicates
 
     index = _build_html_index(html_dir)
     content_cfg = ctx.config.get("content_area", {})

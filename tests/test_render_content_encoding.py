@@ -26,7 +26,7 @@ import httpx
 import pytest
 from bs4 import BeautifulSoup
 
-from seohead.tools import render
+from seohead.checks import render
 
 # A page with every landmark ``render-check`` compares, and enough words that a
 # compressed transfer is markedly smaller than the document itself.

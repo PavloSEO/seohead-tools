@@ -9,14 +9,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from seohead import filesystem
+from seohead.core import filesystem
 
 
 def test_writer_lock_contends_across_processes_and_releases(tmp_path):
     path = tmp_path / "Работа со сканом.writer.lock"  # noqa: RUF001 - Unicode path fixture.
     fd = filesystem.open_lock(path)
     filesystem.lock_exclusive(fd)
-    child = "from pathlib import Path; from seohead.filesystem import open_lock,lock_exclusive; import sys; fd=open_lock(Path(sys.argv[1])); lock_exclusive(fd)"
+    child = "from pathlib import Path; from seohead.core.filesystem import open_lock,lock_exclusive; import sys; fd=open_lock(Path(sys.argv[1])); lock_exclusive(fd)"
     try:
         busy = subprocess.run(
             [sys.executable, "-c", child, str(path)], capture_output=True, timeout=10

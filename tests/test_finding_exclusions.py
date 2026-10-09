@@ -10,15 +10,15 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+from seohead.checks.finding_exclusions import matching_rule, validate_rules
 from seohead.crawl import settings as crawl_settings
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.sf.config import ConfigError, load_config, validate_config
 from seohead.sf.core.aggregate import aggregate
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import load_exports
 from seohead.sf.reporters.md import write_markdown
 from seohead.sf.tasks import build_tasks, render_tasks_md
-from seohead.tools.finding_exclusions import matching_rule, validate_rules
 
 
 def _context(tmp_path, rows):

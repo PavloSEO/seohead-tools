@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from seohead.crawl import collect, list_scan
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage.audit_v2 import AuditV2Reader
 
 REVISION = "c" * 40
@@ -239,7 +239,7 @@ def test_legacy_directory_resume_restores_the_full_jsonl_prefix(tmp_path, monkey
 
 
 def test_large_directory_list_retires_prior_clean_reports_without_deletion(tmp_path, monkeypatch):
-    from seohead.servers import scan_handlers
+    from seohead.mcp import scan_handlers
 
     monkeypatch.setattr(scan_handlers, "MAX_AUDIT_PAGES", 1)
     install_fetcher(monkeypatch, lambda _: Response())

@@ -1,6 +1,6 @@
 # Schema.org @graph Templates by Page Type
 
-The generator (`seohead/tools/schema_build.py`) builds a connected graph. Principle:
+The generator (`seohead/checks/schema_build.py`) builds a connected graph. Principle:
 **a property is added only when the page provides the corresponding fact**. The examples
 below show what a complete graph looks like and what it supports for each type. The `@id`
 names are fixed: `#organization`, `#website`, `#webpage`, and `#breadcrumb`.

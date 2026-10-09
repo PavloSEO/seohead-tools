@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from seohead import filesystem
+from seohead.core import filesystem
 from seohead.crawl.settings import (
     DEFAULTS,
 )

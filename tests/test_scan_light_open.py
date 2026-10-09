@@ -6,7 +6,7 @@ import sqlite3
 
 import pytest
 
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage import ScanError, import_run, open_scan_mode
 from seohead.storage.native_scan import NativeScan
 from seohead.storage.status import scan_status

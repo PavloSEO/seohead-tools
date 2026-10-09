@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from urllib.parse import urldefrag, urlsplit
 
-from seohead.graph import AnchorGroup, DuplicateLinkGroup, InlinkCompositionRow
+from seohead.core.graph import AnchorGroup, DuplicateLinkGroup, InlinkCompositionRow
 
 from .analysis_paths import PathSession
 from .analysis_score import ScoreView, compute_scores

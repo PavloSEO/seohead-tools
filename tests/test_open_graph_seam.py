@@ -38,11 +38,11 @@ from unittest.mock import patch
 
 import pytest
 
+from seohead.checks.parser import parse_html
 from seohead.crawl import evidence as evidence_module
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.sf.core.audit import run_audit
 from seohead.storage import import_run, open_scan
-from seohead.tools.parser import parse_html
 
 # The commit the fixture run is attributed to; import_run demands a full lowercase SHA
 # and never reads it back as anything but an identifier.

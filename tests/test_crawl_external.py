@@ -505,7 +505,7 @@ def test_external_settings_are_results_affecting():
 def test_handler_threads_external_settings_into_the_spider(monkeypatch, tmp_path):
     import seohead.crawl.spider as spider_mod
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 
@@ -534,7 +534,7 @@ def test_handler_threads_external_settings_into_the_spider(monkeypatch, tmp_path
 
 
 def test_scan_route_refuses_external_crawl(tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     config = tmp_path / "crawl.json"
     config.write_text(json.dumps({"discovery": {"external": {"crawl": True}}}))
@@ -547,7 +547,7 @@ def test_scan_route_refuses_external_crawl(tmp_path):
 
 
 def test_list_mode_refuses_external_crawl(tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     # List mode keeps no link edges, so the phase has no destinations to
     # check — refusing by name beats silently dropping the option.

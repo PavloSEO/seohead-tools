@@ -1,6 +1,6 @@
 import csv
 
-from seohead.tools.marketing_inventory import inventory
+from seohead.checks.marketing_inventory import inventory
 
 HTML = """
 <a class="cta" href="/demo">Demo</a>

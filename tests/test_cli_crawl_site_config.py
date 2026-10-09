@@ -12,7 +12,7 @@ import pytest
 
 from seohead import cli
 from seohead.crawl import settings as crawl_settings
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 # A generous but real ceiling: CI fails if crawl-site --help grows past this,
 # which is the point — a new setting from here on must go through --config

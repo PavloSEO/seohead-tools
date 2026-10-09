@@ -1,6 +1,6 @@
 """Offline tests for the llms.txt scorer."""
 
-from seohead.tools import llms_txt
+from seohead.checks import llms_txt
 
 GOOD = """# Acme Analytics Platform
 
@@ -70,7 +70,7 @@ def test_missing_file_is_a_measured_result_not_a_tool_failure(monkeypatch):
     The repository invariant reserves ``ok=False`` for results that were not measured.
     """
     import seohead.recon.net as net
-    from seohead.tools import llms_txt
+    from seohead.checks import llms_txt
 
     class _Resp:
         status_code = 404
@@ -184,7 +184,7 @@ def test_h1_check_passes_when_the_brand_is_in_the_heading():
 def test_network_failure_still_reports_not_measured(monkeypatch):
     """A network failure stays unmeasured instead of scoring an unreachable site zero."""
     import seohead.recon.net as net
-    from seohead.tools import llms_txt
+    from seohead.checks import llms_txt
 
     class _Client:
         def __enter__(self):

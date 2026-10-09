@@ -2,7 +2,7 @@
 
 import random
 
-from seohead.tools import duplicate as D
+from seohead.checks import duplicate as D
 
 TEXT_A = (
     "Search engine optimization is the process of improving the quality and "

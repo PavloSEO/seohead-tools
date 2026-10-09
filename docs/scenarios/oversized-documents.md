@@ -35,7 +35,7 @@ seohead log-scan --run ./run
 
 **3. Read the distribution before reading any single page.** `audit.json` carries
 `summary.size_stats_bytes` over the HTML documents in the run — this one is from the example
-audit shipped in `examples/`:
+audit shipped in `docs/examples/`:
 
 ```json
 "size_stats_bytes": {

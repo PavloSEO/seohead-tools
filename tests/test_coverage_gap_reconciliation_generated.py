@@ -11,7 +11,7 @@ from scripts.generate_coverage_gap_reconciliation import (
     status,
 )
 from seohead.cli import COMMANDS
-from seohead.servers.handlers import HANDLERS
+from seohead.mcp.handlers import HANDLERS
 from seohead.sf.core.registry import CHECKS
 
 CHECK_ID = re.compile(r"[A-Z][A-Z0-9_]+$")

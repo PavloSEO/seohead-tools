@@ -7,13 +7,13 @@ or merely says the word "lorem" or "ipsum" alone -- must stay silent.
 
 from __future__ import annotations
 
+from seohead.checks.parser import count_lorem_ipsum
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
-from seohead.tools.parser import count_lorem_ipsum
 
 
 def test_full_passage_counts_one_occurrence():

@@ -7,8 +7,13 @@ import inspect
 from pathlib import Path
 
 from seohead import cli
-from seohead.input_contracts import COMMAND_CONTRACTS, SF_CONTRACTS, coverage_gaps, render_markdown
-from seohead.servers import handlers
+from seohead.core.input_contracts import (
+    COMMAND_CONTRACTS,
+    SF_CONTRACTS,
+    coverage_gaps,
+    render_markdown,
+)
+from seohead.mcp import handlers
 from seohead.sf import cli as sf_cli
 
 ROOT = Path(__file__).resolve().parent.parent

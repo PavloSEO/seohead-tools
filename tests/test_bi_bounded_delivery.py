@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from seohead.mcp.bi_handlers import bi_filter
 from seohead.reports import bi, bi_destinations
 from seohead.reports.bi import BIExportError, export_bi
 from seohead.reports.bi_destinations import BIDestinationError, export_bi_xlsx, filter_package
 from seohead.reports.bi_index import GroupIndex, InlinkIndex, projection_index
-from seohead.servers.bi_handlers import bi_filter
 
 
 def package(tmp_path, *, title="=SUM(1,2)"):

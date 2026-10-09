@@ -12,7 +12,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import seohead.crawl.spider as spider
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 class Response:

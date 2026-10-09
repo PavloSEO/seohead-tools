@@ -26,6 +26,8 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from seohead.checks.parser import empty_link_placement, parse_html, uses_ajax_crawling_scheme
+from seohead.checks.robots import is_allowed, match_path, parse_robots
 from seohead.crawl.cache import ResponseCache
 from seohead.crawl.settings import (
     SENSITIVE_HEADER_NAMES,
@@ -41,14 +43,12 @@ from seohead.recon.net import (
     pinned_target,
     validate_url,
 )
-from seohead.tools.parser import empty_link_placement, parse_html, uses_ajax_crawling_scheme
-from seohead.tools.robots import is_allowed, match_path, parse_robots
 
 SCHEMA_VERSION = "crawl.v1"
 
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 DEFAULT_TIMEOUT_S = 15.0
-# Matches seohead.tools.redirects's own hop cap; a chain that has not landed by
+# Matches seohead.checks.redirects's own hop cap; a chain that has not landed by
 # then is a misconfiguration (or a loop), not a slow site.
 MAX_REDIRECT_CHAIN_HOPS = 10
 
@@ -114,7 +114,7 @@ class PageRecord:
     plugin_elements: int = 0
     # The page's own <meta name="fragment"> content attribute, as written (#386):
     # the page-wide opt-in to Google's deprecated AJAX crawling scheme. "" when
-    # the page declares none. seohead.tools.render already read this tag to pick a
+    # the page declares none. seohead.checks.render already read this tag to pick a
     # fetch mode; recording it is what lets the audit report that the site still
     # carries it.
     meta_fragment: str = ""
@@ -1170,7 +1170,7 @@ def collect_urls(
     way a fresh crawl config resolves it: list mode's very reason to exist is
     checking exactly the URLs you handed it, so silently applying the
     site-wide default the moment nobody says otherwise would be its own kind
-    of silent policy change. ``seohead.servers.handlers.crawl_site`` passes
+    of silent policy change. ``seohead.mcp.handlers.crawl_site`` passes
     the configured ``robots.policy`` explicitly, which is what makes the
     policy "whatever the configuration says" rather than hard-coded either
     way — see #21. ``"respect"`` drops a disallowed URL from ``pages``

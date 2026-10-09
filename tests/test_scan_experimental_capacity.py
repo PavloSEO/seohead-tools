@@ -9,7 +9,7 @@ import pytest
 
 from seohead.crawl import settings
 from seohead.crawl.sqlite_adapter import crawl_to_scan
-from seohead.servers.handlers import crawl_site
+from seohead.mcp.handlers import crawl_site
 from seohead.storage import open_scan
 from seohead.storage.history import inspect_scan, snapshot_scan
 from seohead.storage.native_scan import NativeScan, _resume_fingerprint

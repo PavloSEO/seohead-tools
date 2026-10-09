@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_example() -> dict:
-    with open(ROOT / "config.example.json", encoding="utf-8") as handle:
+    with open(ROOT / "docs" / "examples" / "config.example.json", encoding="utf-8") as handle:
         return json.load(handle)
 
 

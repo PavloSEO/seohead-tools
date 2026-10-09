@@ -15,8 +15,8 @@ from collections import OrderedDict, defaultdict
 from collections.abc import Iterable
 from typing import Any
 
-from seohead.canonical_policy import matching_canonical_rule
-from seohead.tools.parser import robots_directives, uses_ajax_crawling_scheme
+from seohead.checks.parser import robots_directives, uses_ajax_crawling_scheme
+from seohead.core.canonical_policy import matching_canonical_rule
 
 from .context import AuditContext
 from .models import Page
@@ -629,7 +629,7 @@ def check_heading_outline(ctx: AuditContext) -> None:
     H2s are all menu labels in the masthead. Both need the stored outline, which
     only a native crawl records.
     """
-    from seohead.tools.link_position import CHROME_POSITIONS
+    from seohead.checks.link_position import CHROME_POSITIONS
 
     if not _has_column(ctx, "heading_outline"):
         for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME", "HEADING_SKIP"):
@@ -1627,7 +1627,7 @@ def check_canonical_homepage_group(ctx: AuditContext) -> None:
         configured_policy.get(key) for key in ("pagination", "filters")
     ):
         try:
-            from seohead.canonical_policy import matching_canonical_rule
+            from seohead.core.canonical_policy import matching_canonical_rule
         except ImportError:
             ctx.skip(
                 "CANONICAL_HOMEPAGE_GROUP",
@@ -2364,7 +2364,7 @@ def check_compression(ctx: AuditContext) -> None:
 # everything after that point is read from <body> instead — a canonical or a
 # robots directive placed there silently stops applying, while the source text
 # still looks fine. Screaming Frog has no notion of this at all: the signal
-# exists only where seohead.tools.parser.parse_html resolved the tree (see its
+# exists only where seohead.checks.parser.parse_html resolved the tree (see its
 # module docstring for what was verified against lxml directly), so — like the
 # static Lighthouse audits just above — these need a native seohead crawl.
 # --------------------------------------------------------------------------
@@ -2629,7 +2629,7 @@ def check_native_page_evidence(ctx: AuditContext) -> None:
     #386), none of which a Screaming Frog export carries by default -- each guards itself
     honestly instead of reading a run that never measured it as clean. Grouped in one
     function because they share nothing but that shape, not because they are related in
-    meaning; see seohead.tools.parser for how each is extracted.
+    meaning; see seohead.checks.parser for how each is extracted.
     """
     t = ctx.thresholds
     alt_max_chars = t.get("alt_max_chars", 100)
@@ -2685,7 +2685,7 @@ def check_ajax_crawling_scheme(ctx: AuditContext) -> None:
     Google's AJAX crawling scheme -- a ``#!`` hash-bang URL, or a page-wide
     ``<meta name="fragment" content="!">``, each promising a rendered snapshot at an
     ``?_escaped_fragment_=`` companion URL -- was deprecated in 2015 and switched off
-    in 2018. ``seohead.tools.render`` already reads both shapes, but only to decide
+    in 2018. ``seohead.checks.render`` already reads both shapes, but only to decide
     how to fetch a page; neither was recorded, so nothing could report that a site
     still carries them.
 

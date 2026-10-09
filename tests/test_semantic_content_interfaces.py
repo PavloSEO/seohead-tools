@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from tests.test_scan_corpus_inputs import _scan
 
 HTML = """<html lang=en><head><title>Industrial pumps</title><meta name=description content=Old></head>
@@ -100,7 +100,7 @@ def test_cli_and_mcp_register_the_shared_content_routes(monkeypatch, capsys):
     )
     assert json.loads(capsys.readouterr().out)["echo"]["scan"] == "saved.sqlite"
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = {tool.name: tool for tool in asyncio.run(build_server().list_tools())}
     assert {"seo_semantic_similarity", "seo_meta_description_drafts"} <= tools.keys()
@@ -170,7 +170,7 @@ def test_cli_runs_supplied_vectors_and_resumes_supplied_drafts(tmp_path, capsys)
 
 
 def test_mcp_runs_the_same_synthetic_semantic_and_draft_cores(tmp_path):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()
     tools = {tool.name: tool for tool in server._tool_manager.list_tools()}

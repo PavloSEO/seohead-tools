@@ -5,8 +5,8 @@ import json
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 
 
 @pytest.mark.parametrize("prefix", [["project-priorities"], ["project", "priorities"]])

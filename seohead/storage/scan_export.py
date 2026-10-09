@@ -972,7 +972,7 @@ def _publish_files(
             os.link(temporary, target, follow_symlinks=False)
             owned[target] = owned[temporary]
             _unlink_owned(temporary, owned)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(next(iter(files.values())).parent)
         published = True

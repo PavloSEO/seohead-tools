@@ -3,10 +3,7 @@
 import httpx
 import pytest
 
-from seohead.crawl.collect import collect_urls, fetch_one
-from seohead.crawl.spider import crawl_site
-from seohead.recon.net import _is_public_address
-from seohead.tools.robots import (
+from seohead.checks.robots import (
     _rules_for,
     crawl_delay,
     is_allowed,
@@ -14,6 +11,9 @@ from seohead.tools.robots import (
     politeness_delay,
     request_rate_delay,
 )
+from seohead.crawl.collect import collect_urls, fetch_one
+from seohead.crawl.spider import crawl_site
+from seohead.recon.net import _is_public_address
 
 
 def test_aggregate_dispatch_gate_paces_robots_redirects_before_the_first_page(monkeypatch):

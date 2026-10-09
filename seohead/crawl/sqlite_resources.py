@@ -6,6 +6,7 @@ import sqlite3
 import time
 from contextlib import nullcontext
 
+from seohead.checks.robots import is_allowed, match_path
 from seohead.crawl.resource_fetch import ResourceFetchResult, ResourceStop, fetch_resource
 from seohead.crawl.spider import _DispatchGate
 from seohead.crawl.sqlite_adapter import _client_context, _storage_failure
@@ -13,7 +14,6 @@ from seohead.crawl.throttle import DispatchGate, Throttle
 from seohead.storage import ScanError
 from seohead.storage.credential_context import credential_verifier
 from seohead.storage.resource_capture import commit_resource, request_count
-from seohead.tools.robots import is_allowed, match_path
 
 
 def capture_resources(

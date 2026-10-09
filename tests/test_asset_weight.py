@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from bs4 import BeautifulSoup
 
-from seohead.tools.asset_weight import (
+from seohead.checks.asset_weight import (
     analyze_page_asset_weight,
     check_cache_lifetime,
     check_compression,

@@ -22,7 +22,7 @@ import threading
 
 import pytest
 
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 ROBOTS = "User-agent: *\nAllow: /\nDisallow: /blocked/\n"
 

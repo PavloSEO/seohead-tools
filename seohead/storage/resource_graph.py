@@ -132,7 +132,7 @@ def extract(
     if not isinstance(html, str):
         return [], 0
     soup = BeautifulSoup(html, features="lxml")
-    from seohead.tools.parser import document_base_url
+    from seohead.checks.parser import document_base_url
 
     base_url = document_base_url(soup, base_url)
     values: list[dict[str, Any]] = []

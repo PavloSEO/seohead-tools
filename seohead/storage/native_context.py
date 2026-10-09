@@ -9,7 +9,7 @@ from . import ScanError, _insert
 
 def _validate_extraction_rule_evidence(con: Any, item: dict[str, Any], payload: Any) -> None:
     """Validate closed rule results and bind their envelope to one document."""
-    from seohead.tools.extraction_rules import validate_result
+    from seohead.checks.extraction_rules import validate_result
 
     try:
         validate_result(payload)

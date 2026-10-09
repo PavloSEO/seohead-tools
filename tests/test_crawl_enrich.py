@@ -4,7 +4,7 @@ import csv
 
 import pytest
 
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def _audit(*, partial=False):

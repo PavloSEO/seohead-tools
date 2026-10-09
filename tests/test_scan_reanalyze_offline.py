@@ -14,8 +14,8 @@ import pytest
 
 from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
 from seohead.crawl.sqlite_adapter import crawl_to_scan
-from seohead.servers.handlers import _audit_crawl_result
-from seohead.servers.scan_handlers import (
+from seohead.mcp.handlers import _audit_crawl_result
+from seohead.mcp.scan_handlers import (
     UNMEASURABLE_OFFLINE_CHECKS,
     _rebuild_page_result,
     reanalyze_scan,

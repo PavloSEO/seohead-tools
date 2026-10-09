@@ -14,8 +14,8 @@ import json
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from seohead.servers.mcp_server import _all_parse_results_failed, build_server
-from seohead.servers.sf_mcp import build_server as build_sf_server
+from seohead.mcp.mcp_server import _all_parse_results_failed, build_server
+from seohead.mcp.sf_mcp import build_server as build_sf_server
 
 
 def _tool(server, name):
@@ -29,7 +29,7 @@ def test_seo_parse_all_urls_failed_sets_iserror(monkeypatch):
             "results": [{"ok": False, "url": "http://127.0.0.1:9/nope", "error": "blocked"}],
         }
 
-    monkeypatch.setattr("seohead.servers.handlers.parse", fake_parse)
+    monkeypatch.setattr("seohead.mcp.handlers.parse", fake_parse)
     tool = _tool(build_server(), "seo_parse")
 
     with pytest.raises(ToolError):
@@ -46,7 +46,7 @@ def test_seo_parse_all_urls_failed_multi_url_sets_iserror(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr("seohead.servers.handlers.parse", fake_parse)
+    monkeypatch.setattr("seohead.mcp.handlers.parse", fake_parse)
     tool = _tool(build_server(), "seo_parse")
 
     with pytest.raises(ToolError):
@@ -59,7 +59,7 @@ def test_seo_parse_success_does_not_set_iserror(monkeypatch):
     def fake_parse(**kwargs):
         return {"count": 1, "results": [{"ok": True, "url": "http://good/", "meta": {}}]}
 
-    monkeypatch.setattr("seohead.servers.handlers.parse", fake_parse)
+    monkeypatch.setattr("seohead.mcp.handlers.parse", fake_parse)
     tool = _tool(build_server(), "seo_parse")
 
     result = asyncio.run(tool.run({"url": "http://good/"}))
@@ -79,7 +79,7 @@ def test_seo_parse_partial_failure_stays_a_normal_result(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr("seohead.servers.handlers.parse", fake_parse)
+    monkeypatch.setattr("seohead.mcp.handlers.parse", fake_parse)
     tool = _tool(build_server(), "seo_parse")
 
     result = asyncio.run(tool.run({"urls": ["http://good/", "http://bad/"]}))

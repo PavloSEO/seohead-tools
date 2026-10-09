@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from seohead.servers import scan_sitemaps
+from seohead.mcp import scan_sitemaps
 from seohead.storage import ScanError
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _metadata

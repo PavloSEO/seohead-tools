@@ -9,7 +9,7 @@ from __future__ import annotations
 import pathlib
 
 from seohead.cli import COMMANDS
-from seohead.servers.tool_reference import load_seo_tools
+from seohead.mcp.tool_reference import load_seo_tools
 from seohead.sf.core.registry import CHECKS
 from seohead.sf.core.sf_coverage_reference import render
 from seohead.sf.core.sf_issue_map import CATEGORIES, STATUSES, coverage_counts, entries

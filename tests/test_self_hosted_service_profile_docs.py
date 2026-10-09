@@ -21,8 +21,12 @@ def test_operator_profile_names_current_service_boundaries_without_claiming_a_li
         assert value in guide
     assert "0.0.0.0" not in guide
     assert "/healthz" in guide
-    app_source = (ROOT / "seohead" / "remote_api" / "app.py").read_text(encoding="utf-8")
-    backend_source = (ROOT / "seohead" / "remote_api" / "backend.py").read_text(encoding="utf-8")
+    app_source = (ROOT / "seohead" / "integrations" / "remote_api" / "app.py").read_text(
+        encoding="utf-8"
+    )
+    backend_source = (ROOT / "seohead" / "integrations" / "remote_api" / "backend.py").read_text(
+        encoding="utf-8"
+    )
     assert '@app.get("/healthz")' not in app_source
     assert "def create_app(" in app_source
     assert "def prune_terminal(" in backend_source

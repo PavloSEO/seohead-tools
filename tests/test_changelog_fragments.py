@@ -218,7 +218,7 @@ def test_the_documented_command_gates_do_not_execute_fragment_fences():
 
 def test_the_examples_gate_never_read_the_changelog():
     """The last member of the doc-gate family, checked rather than assumed: it regenerates
-    ``examples/`` and compares, and names no changelog at all."""
+    ``docs/examples/`` and compares, and names no changelog at all."""
     source = (ROOT / "tests" / "test_examples_gate.py").read_text(encoding="utf-8")
     assert "CHANGELOG" not in source
     assert "changelog.d" not in source

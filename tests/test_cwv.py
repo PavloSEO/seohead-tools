@@ -373,7 +373,7 @@ def test_cli_and_mcp_return_same_field_assessment(monkeypatch, capsys):
     pytest.importorskip("mcp")
     from mcp import types
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()._mcp_server
     request = types.CallToolRequest(
@@ -414,7 +414,7 @@ def test_cli_and_mcp_site_audit_consume_identical_local_evidence(tmp_path, capsy
     pytest.importorskip("mcp")
     from mcp import types
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()._mcp_server
     request = types.CallToolRequest(

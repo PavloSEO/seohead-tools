@@ -3,10 +3,10 @@
 import hashlib
 import json
 
+from seohead.checks.parser import parse_html
 from seohead.crawl.content_evidence import capture
 from seohead.crawl.settings import load
 from seohead.crawl.sqlite_render import _rendered_batch
-from seohead.tools.parser import parse_html
 
 
 def test_content_and_rule_settings_reach_the_saved_context():

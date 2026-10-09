@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
+from seohead.checks.link_context import MAX_ANCHORS, SCHEMA_VERSION, extract_occurrences
 from seohead.crawl.spider import Scope
-from seohead.tools.link_context import MAX_ANCHORS, SCHEMA_VERSION, extract_occurrences
 
 from . import ScanError, open_scan_mode
 from .bodies import read_document

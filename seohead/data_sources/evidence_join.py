@@ -1,6 +1,6 @@
 """Versioned normalized join and compatibility decision for imported evidence.
 
-``seohead.tools.external_join`` already joins a crawl against a URL-keyed CSV
+``seohead.checks.external_join`` already joins a crawl against a URL-keyed CSV
 under ``external_join.v1``: strict keys by default, every relaxation an
 explicit opt-in. That contract stays untouched for its callers. This module is
 the normalized-evidence counterpart for issue #781:
@@ -27,11 +27,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from seohead.checks.external_join import normalize_join_key
 from seohead.data_sources.evidence_import import (
     NORMALIZED_FORMAT,
     EvidenceImportError,
 )
-from seohead.tools.external_join import normalize_join_key
 
 JOIN_FORMAT = "seohead.evidence-join.v1"
 COMPATIBILITY_FORMAT = "seohead.evidence-compatibility.v1"

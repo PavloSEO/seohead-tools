@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 
 
 def test_cli_checklist_commands_accept_json_payloads_and_flag_overrides():

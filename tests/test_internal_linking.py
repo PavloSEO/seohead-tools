@@ -22,6 +22,7 @@ import json
 
 import pytest
 
+from seohead.checks.parser import link_placement, parse_html
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
@@ -32,7 +33,6 @@ from seohead.sf.core.internal_linking import summarize_depth, summarize_position
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
 from seohead.storage import ScanError, import_run, open_scan
-from seohead.tools.parser import link_placement, parse_html
 from tests.test_scan_artifact import BUILD
 from tests.test_scan_artifact import legacy_run as legacy_run
 
@@ -95,7 +95,7 @@ def test_a_heading_link_inside_a_template_is_not_in_the_rendered_document():
 
 
 def test_the_stored_lists_are_capped_and_the_total_still_says_how_many_there_were():
-    from seohead.tools.parser import _MAX_PLACEMENT_ITEMS
+    from seohead.checks.parser import _MAX_PLACEMENT_ITEMS
 
     many = "".join(f'<a href="/n{n}">n{n}</a>' for n in range(_MAX_PLACEMENT_ITEMS + 7))
     placement = _placement(f"<html><body><h2>{many}</h2></body></html>")

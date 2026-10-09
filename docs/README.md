@@ -32,7 +32,7 @@ for the separately named `sf_*` tools. Exact arguments and side effects live in
 | What work can the next agent continue? | [Projects](PROJECTS.md), [workflow runs and inbox](WORKFLOWS.md), [terminal observer](TERMINAL.md) | `project-progress`, `project-task-detail`, `project-inbox-*`, `workflow-status` | Task, note, accepted-goal and execution states are separate; reads do not accept or run suggestions |
 | What does infrastructure or an access log show? | [recon/security skills](SKILLS.md#recon-and-technical-hygiene), [infrastructure scenario](scenarios/infrastructure.md) | `domain-profile`, `cdn-check`, `security-check`, `log-analyze` | Explicit live requests or supplied logs; service-path probes and bot DNS checks are opt-in |
 | How do demand, SERPs and analytics join the audit? | [provider workflow](scenarios/provider-evidence.md), [provider matrix](PROVIDERS.md), [analytics-console skill](../.claude/skills/analytics-console-review/SKILL.md) | `provider-*`, `evidence-join`, `gsc-*`, `topvisor-read`, keyword/SERP tools | Auth, quota, privacy, grain and freshness remain source-specific; a registered connector is not live account access |
-| What can be delivered to developers or reporting systems? | [developer handoff](scenarios/deliverable.md), [BI contract](BI.md), [report fixtures](../examples/reports/README.md) | `sf tasks` / `sf_audit_tasks`, `report-build`, `bi-*`, `publication-cohorts`, `gsc-progress` | Audit rows, task backlog and reviewed engineering criteria are distinct; a local BI package is not a verified copyable Looker report |
+| What can be delivered to developers or reporting systems? | [developer handoff](scenarios/deliverable.md), [BI contract](BI.md), [report fixtures](examples/reports/README.md) | `sf tasks` / `sf_audit_tasks`, `report-build`, `bi-*`, `publication-cohorts`, `gsc-progress` | Audit rows, task backlog and reviewed engineering criteria are distinct; a local BI package is not a verified copyable Looker report |
 | How can repeat runs be operated? | [monitor collection](PROJECTS.md#explicit-monitor-collection), [remote API](REMOTE_API.md), [durable jobs](REMOTE_JOBS.md) | `monitor-*`; authenticated adapter/job interfaces | One-shot monitor claims and explicit workers; scheduling metadata alone starts no daemon |
 
 For completeness, use [TOOLS.md](TOOLS.md) for all registered commands,
@@ -90,13 +90,13 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 - **[TOOL_REFERENCE.md](TOOL_REFERENCE.md)** — every tool's arguments (name,
   type, default), its cost (network/writes/idempotent/spend), and its own
   docstring's behavior and failure-mode notes. Generated from the MCP tool
-  definitions in `seohead/servers/mcp_server.py` and `sf_mcp.py`
+  definitions in `seohead/mcp/mcp_server.py` and `sf_mcp.py`
   (`scripts/generate_tool_reference.py`); `tests/test_docs_drift.py` fails the
   build if it drifts.
 - **[INPUTS.md](INPUTS.md)** — every command's consumed source inputs, including
   retained scan artifacts, audit documents, inline corpora, provider queries,
   and the distinct operational stores. Generated from
-  `seohead/input_contracts.py` (`scripts/generate_input_reference.py`).
+  `seohead/core/input_contracts.py` (`scripts/generate_input_reference.py`).
 - **[CHECKS.md](CHECKS.md)** — the checks the SF crawl audit runs: what each fires
   on, what evidence it needs, and the fix that ships with the finding. Generated
   from `seohead/sf/core/registry.py` (`scripts/generate_checks_reference.py`);
@@ -105,7 +105,7 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
   specialist workflows they actually back, what each needs (auth, quota, privacy),
   what is explicitly unsupported, and the phased first release. Generated from
   `seohead/data_sources/providers.py` and the workflow catalogue in
-  `seohead/provider_matrix.py` (`scripts/generate_provider_matrix.py`);
+  `seohead/core/provider_matrix.py` (`scripts/generate_provider_matrix.py`);
   `tests/test_docs_drift.py` fails the build if it drifts.
 - **[SETUP.md](SETUP.md)** — install from scratch: Python version, dependency
   groups, venv, optional system tools (SF CLI, `whois`), environment variable
@@ -148,7 +148,7 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 ### Repository contracts
 
 - [AGENTS.md](../AGENTS.md) defines invariants and editing rules for coding agents.
-- [PROVENANCE.md](../PROVENANCE.md) defines the clean public-history boundary.
+- [PROVENANCE.md](legal/PROVENANCE.md) defines the clean public-history boundary.
 - [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) records bundled data and
   interoperability references.
 - [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) defines participation standards.

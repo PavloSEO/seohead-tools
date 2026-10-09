@@ -36,7 +36,7 @@ async def _controller_lifecycle(project: Path) -> dict:
     }
     params = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "seohead.servers.mcp_server"],
+        args=["-m", "seohead.mcp.mcp_server"],
         cwd=str(ROOT),
         env=environment,
     )

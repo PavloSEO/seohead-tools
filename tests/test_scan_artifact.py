@@ -15,7 +15,7 @@ BUILD = "25fd2ed032a31d63c5811722619e35c14b631476"
 @pytest.fixture
 def legacy_run(tmp_path, monkeypatch):
     from seohead.crawl import spider
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.sf.core import sitemap_coverage
     from tests.test_crawl_spider import FakeResponse, _fetcher
 

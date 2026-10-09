@@ -16,7 +16,7 @@ regulatory compliance.
 
 Two provenance layers exist and should not be blurred. The embedded manifest
 (`seohead/_build_provenance.json` inside each distribution, validated at build
-and again at runtime by `seohead/build_provenance.py`) is per-file source
+and again at runtime by `seohead/_build/provenance.py`) is per-file source
 provenance. `release-provenance.json` summarizes it for the release and adds the
 tag and artifact digests. Neither is a cryptographic attestation or a
 signature.
@@ -171,5 +171,5 @@ and their docs — linked here rather than duplicated:
 
 Related: [ARCHITECTURE.md](ARCHITECTURE.md) (data flow and invariants),
 [STORAGE.md](STORAGE.md) (artifact contents and retention),
-[SECURITY.md](../SECURITY.md), [PROVENANCE.md](../PROVENANCE.md),
+[SECURITY.md](../SECURITY.md), [PROVENANCE.md](legal/PROVENANCE.md),
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).

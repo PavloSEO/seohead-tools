@@ -16,10 +16,10 @@ from pathlib import Path
 
 from seohead import cli
 from seohead.cli import COMMANDS
-from seohead.servers.handlers import HANDLERS
+from seohead.mcp.handlers import HANDLERS
 
 ROOT = Path(__file__).resolve().parent.parent
-MCP_SOURCE = (ROOT / "seohead" / "servers" / "mcp_server.py").read_text(encoding="utf-8")
+MCP_SOURCE = (ROOT / "seohead" / "mcp" / "mcp_server.py").read_text(encoding="utf-8")
 
 # Crawl-audit tools are registered separately by sf_mcp under the sf_* prefix
 # and therefore do not pass through HANDLERS.

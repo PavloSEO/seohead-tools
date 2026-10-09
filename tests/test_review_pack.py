@@ -20,7 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 import scripts.generate_review_pack as gp
-from seohead import build_provenance
+from seohead._build import provenance as build_provenance
 
 REVISION = "a" * 40
 VERSION = "9.9.9"

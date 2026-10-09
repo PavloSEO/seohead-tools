@@ -10,8 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from seohead.remote_api.app import TokenAuthenticator, create_app
-from seohead.remote_api.contracts import (
+from seohead.integrations.remote_api.app import TokenAuthenticator, create_app
+from seohead.integrations.remote_api.contracts import (
     JobConflict,
     JobNotReady,
     JobProgress,
@@ -22,7 +22,7 @@ from seohead.remote_api.contracts import (
     SubmitOutcome,
     evidence_from_scan,
 )
-from seohead.servers.history_handlers import scan_status
+from seohead.mcp.history_handlers import scan_status
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _metadata, _record, _runtime
 

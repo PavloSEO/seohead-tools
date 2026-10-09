@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 
 from seohead import cli
+from seohead.mcp import handlers
 from seohead.projects import run_observation
 from seohead.projects.observer import observe
 from seohead.projects.workspace import create_project
-from seohead.servers import handlers
 from tests.test_project_observer_sites import _prepare_with_competitors
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -263,7 +263,7 @@ def test_initialized_stdio_mcp_pages_all_fifty_ids_and_rejects_coercion(project)
     async def run():
         parameters = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "seohead.servers.mcp_server"],
+            args=["-m", "seohead.mcp.mcp_server"],
             cwd=str(ROOT),
             env={"PYTHONPATH": str(ROOT), "SEOHEAD_RUN_LOG": "off"},
         )

@@ -6,8 +6,8 @@ import json
 import pathlib
 import re
 
-from seohead.tools import dualcrawl
-from seohead.tools.render import (
+from seohead.checks import dualcrawl
+from seohead.checks.render import (
     _jsonld_types,
     _links,
     _snapshot,
@@ -209,7 +209,7 @@ def test_a_truncated_render_is_reported_unavailable_not_as_a_changed_title():
 def test_the_unavailable_statement_is_neither_a_finding_nor_an_all_clear():
     """Unmeasured must not read as clean either: the all-clear must not appear,
     and no site finding may ride alongside the statement."""
-    from seohead.tools.render import ALL_CLEAR
+    from seohead.checks.render import ALL_CLEAR
 
     out = compare(
         _snap(words=1862, links=82, html_bytes=74000),
@@ -298,14 +298,14 @@ def test_missing_playwright_is_reported_with_the_install_command(monkeypatch):
 
 def test_all_clear_is_a_single_shared_constant():
     """The shared all-clear constant keeps ``js_dependent`` and findings aligned."""
-    from seohead.tools.render import ALL_CLEAR
+    from seohead.checks.render import ALL_CLEAR
 
     assert compare(_snap(), _snap()) == [ALL_CLEAR]
 
 
 def test_lcp_is_collected_by_a_buffered_observer():
     """A buffered pre-navigation observer captures LCP when the entry API is empty."""
-    from seohead.tools.render import _CLS_INIT_JS, _METRICS_JS
+    from seohead.checks.render import _CLS_INIT_JS, _METRICS_JS
 
     assert "largest-contentful-paint" in _CLS_INIT_JS
     assert "buffered: true" in _CLS_INIT_JS
@@ -314,7 +314,7 @@ def test_lcp_is_collected_by_a_buffered_observer():
 
 def test_background_images_js_reads_computed_style_not_html_text():
     """Only getComputedStyle resolves a background declared in an external stylesheet."""
-    from seohead.tools.render import _BACKGROUND_IMAGES_JS
+    from seohead.checks.render import _BACKGROUND_IMAGES_JS
 
     assert "getComputedStyle" in _BACKGROUND_IMAGES_JS
     assert "backgroundImage" in _BACKGROUND_IMAGES_JS
@@ -325,7 +325,7 @@ def test_background_images_js_reads_computed_style_not_html_text():
 
 
 def test_viewport_presets_cover_desktop_and_mobile():
-    from seohead.tools.render import VIEWPORT_PRESETS
+    from seohead.checks.render import VIEWPORT_PRESETS
 
     assert VIEWPORT_PRESETS["desktop"] == {"width": 1366, "height": 768}
     assert VIEWPORT_PRESETS["mobile"] == {"width": 390, "height": 844}
@@ -335,14 +335,14 @@ def test_viewport_presets_cover_desktop_and_mobile():
 
 
 def test_a_hash_bang_url_produces_its_escaped_fragment_url():
-    from seohead.tools.render import legacy_fragment_target
+    from seohead.checks.render import legacy_fragment_target
 
     target = legacy_fragment_target("https://example.com/app#!/product/1", "")
     assert target == "https://example.com/app?_escaped_fragment_=%2Fproduct%2F1"
 
 
 def test_a_page_wide_fragment_meta_tag_is_honoured_even_without_a_hash_bang():
-    from seohead.tools.render import legacy_fragment_target
+    from seohead.checks.render import legacy_fragment_target
 
     html = '<meta name="fragment" content="!">'
     target = legacy_fragment_target("https://example.com/app", html)
@@ -350,13 +350,13 @@ def test_a_page_wide_fragment_meta_tag_is_honoured_even_without_a_hash_bang():
 
 
 def test_a_page_with_neither_signal_has_no_legacy_fragment_target():
-    from seohead.tools.render import legacy_fragment_target
+    from seohead.checks.render import legacy_fragment_target
 
     assert legacy_fragment_target("https://example.com/app", "<html></html>") is None
 
 
 def test_an_existing_query_string_is_preserved_alongside_the_escaped_fragment():
-    from seohead.tools.render import legacy_fragment_target
+    from seohead.checks.render import legacy_fragment_target
 
     target = legacy_fragment_target("https://example.com/app?lang=en#!/x", "")
     assert "lang=en" in target
@@ -385,7 +385,7 @@ class _FakeRoute:
 
 
 def test_a_request_to_a_private_address_is_aborted():
-    from seohead.tools.render import _guard_browser_route
+    from seohead.checks.render import _guard_browser_route
 
     route = _FakeRoute("http://127.0.0.1:9222/internal")
     _guard_browser_route(route)
@@ -394,7 +394,7 @@ def test_a_request_to_a_private_address_is_aborted():
 
 
 def test_fallback_browser_route_fails_closed_without_a_pinned_fulfiller():
-    from seohead.tools.render import _guard_browser_route
+    from seohead.checks.render import _guard_browser_route
 
     route = _FakeRoute("https://example.com/style.css")
     _guard_browser_route(route)
@@ -403,7 +403,7 @@ def test_fallback_browser_route_fails_closed_without_a_pinned_fulfiller():
 
 
 def test_fallback_browser_route_never_continues_a_non_network_scheme():
-    from seohead.tools.render import _guard_browser_route
+    from seohead.checks.render import _guard_browser_route
 
     for scheme_url in ("about:blank", "blob:https://example.com/x", "data:text/plain;base64,aGk="):
         route = _FakeRoute(scheme_url)
@@ -415,7 +415,7 @@ def test_fallback_browser_route_never_continues_a_non_network_scheme():
 def test_root_is_refused_rather_than_unsandboxed(monkeypatch):
     import os
 
-    from seohead.tools.render import _refuse_if_root
+    from seohead.checks.render import _refuse_if_root
 
     monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     try:
@@ -428,7 +428,7 @@ def test_root_is_refused_rather_than_unsandboxed(monkeypatch):
 def test_a_non_root_user_is_not_refused(monkeypatch):
     import os
 
-    from seohead.tools.render import _refuse_if_root
+    from seohead.checks.render import _refuse_if_root
 
     monkeypatch.setattr(os, "geteuid", lambda: 501, raising=False)
     _refuse_if_root()  # must not raise
@@ -448,7 +448,7 @@ class _FakeWebSocketRoute:
 
 
 def test_a_websocket_to_a_private_address_is_closed_not_connected():
-    from seohead.tools.render import _guard_websocket_route
+    from seohead.checks.render import _guard_websocket_route
 
     route = _FakeWebSocketRoute("ws://127.0.0.1:9222/socket")
     _guard_websocket_route(route)
@@ -457,7 +457,7 @@ def test_a_websocket_to_a_private_address_is_closed_not_connected():
 
 
 def test_a_websocket_is_closed_without_a_pinned_transport():
-    from seohead.tools.render import _guard_websocket_route
+    from seohead.checks.render import _guard_websocket_route
 
     route = _FakeWebSocketRoute("wss://example.com/socket")
     _guard_websocket_route(route)
@@ -466,7 +466,7 @@ def test_a_websocket_is_closed_without_a_pinned_transport():
 
 
 def test_a_websocket_with_an_unsupported_scheme_is_closed():
-    from seohead.tools.render import _guard_websocket_route
+    from seohead.checks.render import _guard_websocket_route
 
     route = _FakeWebSocketRoute("file:///etc/passwd")
     _guard_websocket_route(route)

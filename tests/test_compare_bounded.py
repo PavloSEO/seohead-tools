@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from seohead.core.verification import classify, compact_after_source, select_source
 from seohead.sf.core.compare import CompareError, compare
 from seohead.storage.audit_v2 import AuditV2Reader, write_audit_v2
-from seohead.verification import classify, compact_after_source, select_source
 from tests.test_scan_audit_v2 import _scan
 from tests.test_verify_fixes import A, B, _audit, _issue
 
@@ -215,7 +215,7 @@ def test_invalid_after_does_not_clear_a_selected_finding():
 
 
 def test_verification_handler_uses_binding_identity_without_materialization(tmp_path):
-    from seohead.servers.handlers import verify_fixes
+    from seohead.mcp.handlers import verify_fixes
 
     before = _audit(issues=[_issue("a", "TITLE_MISSING", A)])
     after = _audit(generated_at="2026-10-02T00:00:00Z")
@@ -233,7 +233,7 @@ def test_verification_handler_uses_binding_identity_without_materialization(tmp_
 
 
 def test_bound_identity_conflict_is_not_accepted(tmp_path):
-    from seohead.verification import source_identity
+    from seohead.core.verification import source_identity
 
     document = _audit(scan_uuid="different-source")
     with (

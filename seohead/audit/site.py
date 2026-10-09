@@ -355,7 +355,7 @@ def audit_site(
     if tools is None:
         # The analyzer is handed the tools it composes rather than importing the
         # interface layer to fetch them (#221): seohead/audit reaching into
-        # seohead.servers inverted the dependency every other package follows,
+        # seohead.mcp inverted the dependency every other package follows,
         # and the deferred import that made the resulting cycle survive import
         # time is what kept it invisible. Failing by name here beats a
         # TypeError several frames deeper.

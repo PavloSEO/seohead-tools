@@ -16,7 +16,7 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
-from seohead import filesystem
+from seohead.core import filesystem
 
 from . import ScanError, open_scan, open_scan_mode
 

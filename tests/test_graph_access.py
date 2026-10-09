@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from seohead.graph import AnchorGroup, DuplicateLinkGroup, InlinkCompositionRow
+from seohead.core.graph import AnchorGroup, DuplicateLinkGroup, InlinkCompositionRow
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.inlinks import run_inlinks

@@ -181,7 +181,7 @@ def _publish_manifest(project: Path, document: dict[str, Any]) -> None:
     _write_new(staged, json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     try:
         os.link(staged, project / "project.json", follow_symlinks=False)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(project)
     finally:

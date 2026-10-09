@@ -32,9 +32,9 @@ from scripts import profile_scan_graph as fixture
 from seohead import __version__
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
+from seohead.mcp.handlers import _audit_crawl_result
+from seohead.mcp.scan_handlers import _rebuild_page_result
 from seohead.reports import build_report
-from seohead.servers.handlers import _audit_crawl_result
-from seohead.servers.scan_handlers import _rebuild_page_result
 from seohead.sf.core.inlinks import _norm_anchor
 from seohead.sf.core.link_score import (
     DEFAULT_DAMPING,
@@ -80,8 +80,8 @@ def _environment() -> dict[str, object]:
         "seohead/storage/analysis_graph.py",
         "seohead/storage/analysis_score.py",
         "seohead/storage/analysis_paths.py",
-        "seohead/servers/handlers.py",
-        "seohead/servers/scan_handlers.py",
+        "seohead/mcp/handlers.py",
+        "seohead/mcp/scan_handlers.py",
     )
     return {
         "python": sys.version.split()[0],

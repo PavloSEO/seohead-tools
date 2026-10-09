@@ -7,9 +7,9 @@ screenshots of a hosted dashboard and not client data.
 | Asset | Source of facts | Purpose |
 |---|---|---|
 | `social-preview.jpg` | Product registries and public interface counts | Flat MD3 repository cover |
-| `audit-workflow.png` | `examples/audit.json` and `examples/tasks.json` | Screaming Frog exports -> audit -> prioritized backlog |
+| `audit-workflow.png` | `docs/examples/audit.json` and `docs/examples/tasks.json` | Screaming Frog exports -> audit -> prioritized backlog |
 | `cli-mcp.png` | CLI/MCP registration contract | One core exposed through two local interfaces |
-| `report-formats.png` | `examples/reports/full.json` | One audit document rendered in five formats |
+| `report-formats.png` | `docs/examples/reports/full.json` | One audit document rendered in five formats |
 
 The generator uses the project's light MD3 baseline (`#1565C0`, `#FDFCFF`, restrained shapes and
 no gradients) and fails if a required example field is absent.

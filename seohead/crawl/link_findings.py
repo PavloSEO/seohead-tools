@@ -5,7 +5,7 @@ only what a crawl always records (``LinkEdge.destination``, ``.nofollow``, ``For
 two need ``LinkEdge.rel``/``.target``/``.raw_href``, which only exist when the crawl was run
 with ``link_attributes.capture`` on — see that setting's own docstring in
 ``crawl/spider.py`` for why it defaults off. Each such function is a plain filter over the
-edge/form list; the caller (``seohead.servers.handlers``) decides when the data exists to ask.
+edge/form list; the caller (``seohead.mcp.handlers``) decides when the data exists to ask.
 """
 
 from __future__ import annotations

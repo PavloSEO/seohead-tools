@@ -15,7 +15,7 @@ from setuptools import setup  # noqa: E402
 from setuptools.command.build_py import build_py as _build_py  # noqa: E402
 from setuptools.command.sdist import sdist as _sdist  # noqa: E402
 
-from seohead.build_provenance import (  # noqa: E402
+from seohead._build.provenance import (  # noqa: E402
     BuildProvenanceError,
     build_manifest,
     remove_manifest,

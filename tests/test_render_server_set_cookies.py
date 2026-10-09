@@ -31,7 +31,7 @@ import pytest
 
 from seohead import cli
 from seohead.crawl import sqlite_render
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage.corpus import rendered_body_retention
 
 BUILD = "a" * 40

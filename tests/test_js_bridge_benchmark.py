@@ -18,8 +18,8 @@ from scripts.benchmark_js_bridge import (
     verify_export,
 )
 from scripts.generate_headless_capability_matrix import OUT, document, render
+from seohead.checks.parser import parse_html
 from seohead.crawl.settings import describe_settings
-from seohead.tools.parser import parse_html
 
 
 def test_profile_freezes_72_cases_and_crosses_the_rendered_form_boundary():

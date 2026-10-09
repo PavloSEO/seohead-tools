@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from seohead import cli
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from seohead.projects.run_observation import status as run_status
 from seohead.projects.workspace import create_project
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
 
 
 def test_mcp_project_creation_preserves_custom_references(tmp_path):
@@ -51,7 +51,7 @@ def test_project_crawl_defaults_and_explicit_output_precedence(tmp_path, monkeyp
         captured.update(url=url, **kwargs)
         return {"ok": True, "scan": kwargs["scan_out"]}
 
-    monkeypatch.setattr("seohead.servers.scan_handlers.crawl_site_scan", capture)
+    monkeypatch.setattr("seohead.mcp.scan_handlers.crawl_site_scan", capture)
     tool = build_server()._tool_manager.get_tool("seo_crawl_site")
     result = tool.fn(project=str(project), producer_build="a" * 40, approve_large_crawl=True)
     assert Path(result["scan"]).parent == project / "scans"
@@ -81,7 +81,7 @@ def test_project_native_crawl_persists_live_phases_and_final_counters(tmp_path, 
             "finish_reason": "url_limit",
         }
 
-    monkeypatch.setattr("seohead.servers.scan_handlers.crawl_site_scan", capture)
+    monkeypatch.setattr("seohead.mcp.scan_handlers.crawl_site_scan", capture)
     result = handlers.crawl_site(
         project=str(project), producer_build="a" * 40, approve_large_crawl=True
     )
@@ -119,9 +119,9 @@ def test_project_resume_does_not_inject_new_crawl_arguments(tmp_path, monkeypatc
         captured.update(path=path, **kwargs)
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.scan_handlers.resume_scan", resume)
+    monkeypatch.setattr("seohead.mcp.scan_handlers.resume_scan", resume)
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.resume_inputs",
+        "seohead.mcp.scan_handlers.resume_inputs",
         lambda _path: {
             "settings": {"limits": {"max_urls": 50, "max_requests": 150, "max_crawl_seconds": 60}}
         },
@@ -163,7 +163,7 @@ def test_project_preserves_explicit_legacy_output(tmp_path, monkeypatch, from_co
 
     monkeypatch.setattr("seohead.crawl.spider.crawl_site", legacy_crawl)
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan",
+        "seohead.mcp.scan_handlers.crawl_site_scan",
         lambda *args, **kwargs: pytest.fail("explicit legacy output must retain its route"),
     )
     if from_config:

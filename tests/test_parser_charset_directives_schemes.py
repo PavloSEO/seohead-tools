@@ -1,10 +1,10 @@
-"""Regression tests for issues #468, #469, #471 in seohead/tools/parser.py."""
+"""Regression tests for issues #468, #469, #471 in seohead/checks/parser.py."""
 
 from __future__ import annotations
 
 from bs4 import BeautifulSoup
 
-from seohead.tools.parser import document_charset, document_position, parse_html
+from seohead.checks.parser import document_charset, document_position, parse_html
 
 # --- #468: document_charset() false-positives on coincidental "charset" text ---
 

@@ -22,8 +22,8 @@ from typing import Any
 
 from defusedxml import ElementTree as ET
 
+from seohead.checks.sitemap import normalize_url
 from seohead.recon.net import http_client, validate_url
-from seohead.tools.sitemap import normalize_url
 
 from .context import AuditContext
 from .normalize import find_column, normalize_value
@@ -51,7 +51,7 @@ def _normalized_index(urls: list[str]) -> dict[str, str]:
     Comparison has to happen on the normalised key, or a trailing-slash-only difference
     between a sitemap's declared URL and the matching crawled page reads as two distinct
     URLs — 100% desync where the two are actually the same page (#145). This uses
-    ``normalize_url`` from ``seohead.tools.sitemap``, the same canonicalisation
+    ``normalize_url`` from ``seohead.checks.sitemap``, the same canonicalisation
     ``seohead.crawl.reconcile.reconcile_sitemap`` already compares on for the native crawl
     path, rather than adding a third notion of "same URL" to the toolkit. The set-building
     glue around it (this function) is duplicated from ``reconcile._normalized_index`` rather
@@ -162,7 +162,7 @@ def _parse_sitemap_bytes(
     two used to report a deeply-nested index as a fetched, genuinely empty sitemap (#312).
 
     This uses ``defusedxml``'s strict, non-recovering parser rather than the lenient,
-    ``recover=True`` lxml parser ``seohead/tools/sitemap.py`` uses for the same document
+    ``recover=True`` lxml parser ``seohead/checks/sitemap.py`` uses for the same document
     shape: that module reads a sitemap already vetted as this site's own declared list,
     where recovering a mangled entry is a straightforward win; this one runs the DTD/entity
     guard below on bytes that may come from a sitemap-index child on an operator-supplied

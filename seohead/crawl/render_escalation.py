@@ -11,8 +11,8 @@ share an escalated pattern -- inside its own, separate budget.
 
 Both the sampling probe and the full re-fetch are injected callables. That
 is what keeps this module testable without a browser or the network: the
-production caller (``seohead.servers.handlers.crawl_site``) binds them to
-``seohead.tools.render``'s Playwright-backed functions; a test binds them to
+production caller (``seohead.mcp.handlers.crawl_site``) binds them to
+``seohead.checks.render``'s Playwright-backed functions; a test binds them to
 plain functions returning canned data.
 
 Which fuller representation is fetched -- executing JavaScript, or honouring
@@ -127,7 +127,7 @@ def start_page_gate(start_url: str, internal_outlinks: int, start_html: str) -> 
     if internal_outlinks <= 0:
         return GateResult(True, f"the start URL yielded zero internal links: {start_url}")
     if start_html:
-        from seohead.tools.render import detect_empty_shell
+        from seohead.checks.render import detect_empty_shell
 
         shell = detect_empty_shell(start_html)
         if shell:
@@ -517,12 +517,12 @@ def _clears_content_floor(record: Any) -> bool:
     """A non-trivial word count, or at least one of title/h1/canonical present.
 
     The same ``EMPTY_BODY_WORDS``-style reasoning
-    ``seohead.tools.render.detect_empty_shell`` already applies to an empty
+    ``seohead.checks.render.detect_empty_shell`` already applies to an empty
     SPA shell, reused here as the minimum signal that a ``PageRecord`` (raw
     or freshly re-derived from a render) describes a real page rather than a
     blank one -- see ``apply_rendered_evidence``.
     """
-    from seohead.tools.render import EMPTY_BODY_WORDS
+    from seohead.checks.render import EMPTY_BODY_WORDS
 
     return bool(
         record.word_count >= EMPTY_BODY_WORDS or record.title or record.h1 or record.canonical
@@ -582,7 +582,7 @@ def apply_rendered_evidence(
     A render is only rejected as failed when it takes a record that already
     showed a real page -- a non-trivial word count, or at least one of
     title/h1/canonical present, the same ``EMPTY_BODY_WORDS``-style
-    reasoning ``seohead.tools.render.detect_empty_shell`` already applies to
+    reasoning ``seohead.checks.render.detect_empty_shell`` already applies to
     an empty SPA shell -- and produces a body that clears none of those
     signals. That comparison is deliberately one-sided: a raw record that
     was already an empty shell has nothing left to lose, so its rendered

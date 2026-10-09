@@ -12,10 +12,10 @@ import types
 
 import pytest
 
+from seohead.checks import render
+from seohead.checks.render import render_document
 from seohead.crawl import settings as crawl_config
 from seohead.crawl import sqlite_render
-from seohead.tools import render
-from seohead.tools.render import render_document
 
 
 class _ConsoleMsg:
@@ -268,8 +268,8 @@ def test_happy_path_returns_the_rendered_html(fake_stack):
 
 
 def test_crawler_render_document_uses_the_same_pinned_proxy_route(fake_stack, monkeypatch):
+    from seohead.checks import render
     from seohead.recon.net import ProxyRoute
-    from seohead.tools import render
 
     route = ProxyRoute(
         proxy=object(), identity="http://proxy.example.test:3128", authenticated=False

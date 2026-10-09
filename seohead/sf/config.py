@@ -226,7 +226,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
     in the number (issue #211) and the report still validates against
     nothing.
     """
-    from seohead.canonical_policy import validate_canonical_policy
+    from seohead.core.canonical_policy import validate_canonical_policy
     from seohead.sf.core.registry import CHECKS
 
     errors: list[str] = []
@@ -253,7 +253,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
                 f"checks[{check_id!r}].enabled is {check_cfg['enabled']!r}; must be true or false"
             )
 
-    from seohead.tools.finding_exclusions import validate_rules
+    from seohead.checks.finding_exclusions import validate_rules
 
     try:
         validate_rules(cfg.get("finding_exclusions", []), known_checks=CHECKS)

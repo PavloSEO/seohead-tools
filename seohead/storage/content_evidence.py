@@ -118,9 +118,9 @@ def capture_document(
             "content_tokens": None,
         }
 
-    from seohead.tools.boilerplate_report import NO_BOILERPLATE_REGIONS, boilerplate_hash
-    from seohead.tools.duplicate import simhash
-    from seohead.tools.markdown_extract import extract_markdown
+    from seohead.checks.boilerplate_report import NO_BOILERPLATE_REGIONS, boilerplate_hash
+    from seohead.checks.duplicate import simhash
+    from seohead.checks.markdown_extract import extract_markdown
 
     extracted = extract_markdown(html, content_area)
     content = str(extracted["content_markdown"])

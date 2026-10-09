@@ -2,7 +2,7 @@
 
 import pytest
 
-from seohead.tools.external_join import (
+from seohead.checks.external_join import (
     ExternalJoinError,
     join_external_data,
     load_csv_rows,

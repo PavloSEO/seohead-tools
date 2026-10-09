@@ -564,7 +564,7 @@ def test_site_audit_document_is_refused(tmp_path):
 
 
 def test_scan_export_handler_end_to_end(artifact, tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     out = tmp_path / "e.json"
     result = handlers.scan_export(

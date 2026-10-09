@@ -63,7 +63,7 @@ def test_full_audit_skill_and_scenario_are_retrievable_from_the_cli():
 def test_full_audit_skill_and_scenario_are_retrievable_from_mcp():
     pytest.importorskip("mcp")
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server(profile="full")
     prompt = asyncio.run(server.call_tool("seo_skill_show", {"name": PROMPT_ROUTE}))[1]

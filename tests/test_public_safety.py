@@ -8,9 +8,9 @@ from typing import ClassVar
 import pytest
 from PIL import Image
 
+from seohead.checks import optimizer
 from seohead.recon import net
 from seohead.sf.core.auth_proxy import AuthProxy
-from seohead.tools import optimizer
 
 
 def _image(

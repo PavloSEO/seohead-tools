@@ -3,7 +3,7 @@
 parametrized runner there only checks that the documented invocation still *parses* as CLI
 flags, not that its ``--input`` JSON actually matches the handler it is dispatched to.
 
-``--input`` is free-form JSON mapped straight onto handler kwargs (``seohead/cli.py``,
+``--input`` is free-form JSON mapped straight onto handler kwargs (``seohead/cli/__init__.py``,
 ``_build_kwargs``), so a JSON object with the wrong keys parses fine and only fails once the
 handler itself is called with it -- a ``TypeError`` a live-only command would otherwise only
 surface when someone actually ran it against the network (issue #323).
@@ -22,7 +22,7 @@ import pytest
 
 from scripts.doc_commands import extract_commands, to_argv
 from seohead.cli import _build_kwargs, build_parser
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 ROOT = Path(__file__).resolve().parent.parent
 

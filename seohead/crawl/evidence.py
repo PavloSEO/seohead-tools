@@ -17,7 +17,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
-from seohead.tools.parser import robots_directives
+from seohead.checks.parser import robots_directives
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from seohead.crawl.collect import CrawlResult
@@ -81,7 +81,7 @@ def _same_page(url: str, canonical: str) -> bool:
     parallel implementation only because ``seohead.crawl`` must not import
     ``seohead.sf`` (interface-layer/core-layer split enforced elsewhere in
     this codebase). If the two ever need a third home, the fold belongs in
-    a module neither package owns (e.g. ``seohead.tools``), not in either
+    a module neither package owns (e.g. ``seohead.checks``), not in either
     one importing the other.
     """
     a_scheme, a_netloc, a_path, a_query, a_fragment = urllib.parse.urlsplit(url)

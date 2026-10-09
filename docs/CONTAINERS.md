@@ -33,7 +33,7 @@ customer exports, or a public target in the command history.
 
 ```bash
 ssh audit-host 'mkdir -p /srv/seohead/workspace/{exports,runs,logs}'
-scp -r ./examples/exports audit-host:/srv/seohead/workspace/exports/synthetic
+scp -r ./docs/examples/exports audit-host:/srv/seohead/workspace/exports/synthetic
 ssh audit-host 'cd /srv/seohead && docker compose run --rm seohead \
   sf run --exports-dir /data/exports/synthetic --out /data/runs/synthetic-001 --tasks \
   > /data/logs/synthetic-001.stdout 2> /data/logs/synthetic-001.stderr'

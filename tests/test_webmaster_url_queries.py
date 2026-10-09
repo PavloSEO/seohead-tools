@@ -5,7 +5,7 @@ import urllib.error
 
 from seohead import cli
 from seohead.data_sources import yandex_webmaster as wm
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_url_query_route_uses_post_filters_and_keeps_rows_separate():
@@ -146,7 +146,7 @@ def test_mcp_date_options_forward_to_the_same_handler(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(handlers, "webmaster_url_queries", fake)
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tool = build_server()._tool_manager.get_tool("seo_webmaster_url_queries")
     assert asyncio.run(

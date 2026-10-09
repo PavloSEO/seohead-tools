@@ -10,7 +10,7 @@ import pytest
 from seohead import cli
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.sqlite_adapter import ScanRun
-from seohead.servers import handlers, scan_handlers
+from seohead.mcp import handlers, scan_handlers
 from seohead.storage import MAX_JSON_BYTES, open_scan
 from seohead.storage.native_audit import AuditSizeError
 from seohead.storage.native_scan import NativeScan
@@ -125,7 +125,7 @@ def bridge(monkeypatch):
                 raise audit_error
             return ({}, {"schema_version": "2.0", "pages": []})
 
-        monkeypatch.setattr("seohead.servers.handlers._audit_crawl_result", run_audit)
+        monkeypatch.setattr("seohead.mcp.handlers._audit_crawl_result", run_audit)
         return scan
 
     return configure

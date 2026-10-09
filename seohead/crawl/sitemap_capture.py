@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from seohead.tools.sitemap import crawl
+from seohead.checks.sitemap import crawl
 
 MEMBER_CHUNK_SIZE = 256
 

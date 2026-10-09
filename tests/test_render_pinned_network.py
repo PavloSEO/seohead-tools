@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from seohead.tools import render
+from seohead.checks import render
 
 
 class _Request:

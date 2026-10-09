@@ -3,7 +3,7 @@
 Google's AJAX crawling scheme -- a ``#!`` hash-bang URL, or a page-wide
 ``<meta name="fragment" content="!">`` promising a rendered snapshot at an
 ``?_escaped_fragment_=`` companion URL -- was deprecated in 2015 and switched off in
-2018. ``seohead.tools.render`` already read both shapes to pick a fetch mode; neither
+2018. ``seohead.checks.render`` already read both shapes to pick a fetch mode; neither
 was ever recorded, so the audit could not report that a site still carries them.
 
 The evidence has to be real rather than inferred, which is what the parser tests below
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from bs4 import BeautifulSoup
 
+from seohead.checks.parser import meta_fragment_content, parse_html, uses_ajax_crawling_scheme
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
@@ -23,7 +24,6 @@ from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.registry import CHECKS
 from seohead.sf.core.rules import run_rules
-from seohead.tools.parser import meta_fragment_content, parse_html, uses_ajax_crawling_scheme
 
 # ── the URL predicate ───────────────────────────────────────────────────────
 

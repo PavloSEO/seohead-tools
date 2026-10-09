@@ -348,7 +348,7 @@ def write_overview(reader: Any, view: Any, target: Path, *, lang: str = "en") ->
             os.link(bundle / "report.pdf", target)
             linked = True
             (bundle / "report.pdf").unlink()
-            from seohead.filesystem import fsync_directory
+            from seohead.core.filesystem import fsync_directory
 
             fsync_directory(bundle)
             fsync_directory(target.parent)

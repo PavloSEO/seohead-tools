@@ -13,7 +13,7 @@ defects lived in a handoff.
 
 So these tests crawl a whole fixture site over loopback and assert four properties of the run
 as a whole: conservation, population, determinism and representation. The rules are the same
-ones `seohead.tools.logscan` applies to a real run after the fact — written once, used from
+ones `seohead.checks.logscan` applies to a real run after the fact — written once, used from
 both ends.
 """
 
@@ -25,8 +25,8 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from seohead.servers import handlers
-from seohead.tools import logscan
+from seohead.checks import logscan
+from seohead.mcp import handlers
 from tests.chains.chain_site import PHOTO_BYTES, run_chain_site
 
 

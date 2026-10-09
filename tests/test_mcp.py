@@ -18,7 +18,7 @@ pytest.importorskip("mcp")
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from seohead.servers.mcp_server import build_server
+from seohead.mcp.mcp_server import build_server
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
@@ -29,7 +29,7 @@ def test_all_mcp_tools_have_structured_schemas_and_safety_annotations():
     tools = {tool.name: tool for tool in build_server()._tool_manager.list_tools()}
 
     from seohead.cli import COMMANDS
-    from seohead.servers.tool_reference import load_sf_tools
+    from seohead.mcp.tool_reference import load_sf_tools
 
     assert len(tools) == len(COMMANDS) + len(load_sf_tools())
     assert all(tool.fn_metadata.output_schema for tool in tools.values())
@@ -82,7 +82,7 @@ def test_report_build_accepts_an_audit_document_or_json_path(monkeypatch):
         received.append(kwargs["audit"])
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.handlers.report_build", fake_report_build)
+    monkeypatch.setattr("seohead.mcp.handlers.report_build", fake_report_build)
     tool = next(
         tool
         for tool in build_server()._tool_manager.list_tools()
@@ -96,7 +96,7 @@ def test_report_build_accepts_an_audit_document_or_json_path(monkeypatch):
 
 async def _call_over_stdio(tool: str, arguments: dict) -> object:
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "seohead.servers.mcp_server"], cwd=ROOT
+        command=sys.executable, args=["-m", "seohead.mcp.mcp_server"], cwd=ROOT
     )
     async with (
         stdio_client(params) as (read, write),
@@ -129,7 +129,7 @@ def _payload(r):
 
 async def _drive(exports_dir: str, out_dir: str) -> dict:
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "seohead.servers.mcp_server"], cwd=ROOT
+        command=sys.executable, args=["-m", "seohead.mcp.mcp_server"], cwd=ROOT
     )
     async with (
         stdio_client(params) as (read, write),
@@ -209,7 +209,7 @@ def test_crawl_site_omitted_overrides_forward_none(monkeypatch):
         received.append(kwargs)
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.handlers.crawl_site", fake_crawl_site)
+    monkeypatch.setattr("seohead.mcp.handlers.crawl_site", fake_crawl_site)
     tool = next(
         tool for tool in build_server()._tool_manager.list_tools() if tool.name == "seo_crawl_site"
     )
@@ -230,7 +230,7 @@ def test_crawl_site_explicit_override_changes_only_that_setting(monkeypatch):
         received.append(kwargs)
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.handlers.crawl_site", fake_crawl_site)
+    monkeypatch.setattr("seohead.mcp.handlers.crawl_site", fake_crawl_site)
     tool = next(
         tool for tool in build_server()._tool_manager.list_tools() if tool.name == "seo_crawl_site"
     )
@@ -246,7 +246,7 @@ def test_crawl_site_explicit_override_changes_only_that_setting(monkeypatch):
 def test_compare_crawls_mcp_forwards_declared_correspondence(monkeypatch):
     received = []
     monkeypatch.setattr(
-        "seohead.servers.handlers.compare_crawls",
+        "seohead.mcp.handlers.compare_crawls",
         lambda **kwargs: received.append(kwargs) or {"ok": True},
     )
     tool = build_server()._tool_manager.get_tool("seo_compare_crawls")
@@ -292,7 +292,7 @@ def test_crawl_site_forwards_the_rendering_browser_overrides(monkeypatch):
         received.append(kwargs)
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.handlers.crawl_site", fake_crawl_site)
+    monkeypatch.setattr("seohead.mcp.handlers.crawl_site", fake_crawl_site)
     tool = next(
         tool for tool in build_server()._tool_manager.list_tools() if tool.name == "seo_crawl_site"
     )
@@ -333,7 +333,7 @@ def test_render_check_mcp_forwards_explicit_identity(monkeypatch):
     """#670: the local MCP surface cannot strand the mobile identity in the CLI."""
     received = []
     monkeypatch.setattr(
-        "seohead.servers.handlers.render_check",
+        "seohead.mcp.handlers.render_check",
         lambda **kwargs: received.append(kwargs) or {"ok": True},
     )
     tool = build_server()._tool_manager.get_tool("seo_render_check")

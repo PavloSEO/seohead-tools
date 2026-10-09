@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001 -- Intentional Cyrillic fixtures verify Russian SEO extraction.
 """Network-independent tests for page fact extraction."""
 
-from seohead.tools import page_facts
+from seohead.checks import page_facts
 
 # This fixture intentionally remains in Russian to verify extraction from a
 # localized product page, including visible text, breadcrumbs, and RUB prices.

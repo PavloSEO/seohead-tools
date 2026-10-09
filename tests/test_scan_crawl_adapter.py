@@ -1017,7 +1017,7 @@ def test_dispatch_gate_spaces_requests_across_multiple_claim_batches(tmp_path):
     ],
 )
 def test_partial_observation_reason_reaches_the_caller(tmp_path, tag, count, reason):
-    from seohead.servers.scan_handlers import _response
+    from seohead.mcp.scan_handlers import _response
 
     element = (
         "<form method='post' action='/submit'></form>"

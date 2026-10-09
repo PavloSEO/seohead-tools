@@ -139,7 +139,7 @@ def test_shipped_ecommerce_template_is_reusable(tmp_path):
     from seohead.projects.workspace import create_project
 
     template = json.loads(
-        (Path(__file__).parents[1] / "examples/ecommerce-checklist.json").read_text()
+        (Path(__file__).parents[1] / "docs/examples/ecommerce-checklist.json").read_text()
     )
     for name in ("first", "second"):
         root = tmp_path / name

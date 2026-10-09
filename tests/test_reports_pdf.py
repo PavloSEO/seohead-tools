@@ -232,11 +232,11 @@ def test_cli_report_build_exposes_pdf_and_language_arguments():
 
 
 def test_mcp_report_build_exposes_pdf_language_argument(monkeypatch):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     received = []
     monkeypatch.setattr(
-        "seohead.servers.handlers.report_build",
+        "seohead.mcp.handlers.report_build",
         lambda **kwargs: received.append(kwargs) or {"ok": True},
     )
     tool = next(

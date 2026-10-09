@@ -343,8 +343,8 @@ def test_json_ld_is_counted_by_tag_not_by_substring():
     One real block on a Next.js page was counted twice, which across a crawl
     reported "found 408, parsed 200" for a site whose structured data is fine.
     """
+    from seohead.checks.parser import parse_html
     from seohead.crawl.collect import _jsonld_counts
-    from seohead.tools.parser import parse_html
 
     html = (
         '<html><head><script id="s" type="application/ld+json">{"@type":"Thing"}</script>'
@@ -355,8 +355,8 @@ def test_json_ld_is_counted_by_tag_not_by_substring():
 
 
 def test_json_ld_array_block_is_one_parsed_block():
+    from seohead.checks.parser import parse_html
     from seohead.crawl.collect import _jsonld_counts
-    from seohead.tools.parser import parse_html
 
     html = (
         '<html><head><script type="application/ld+json">'
@@ -367,8 +367,8 @@ def test_json_ld_array_block_is_one_parsed_block():
 
 
 def test_a_malformed_block_is_found_but_not_parsed():
+    from seohead.checks.parser import parse_html
     from seohead.crawl.collect import _jsonld_counts
-    from seohead.tools.parser import parse_html
 
     html = '<html><head><script type="application/ld+json">{ /* comment */ }</script></head></html>'
     assert _jsonld_counts(html, parse_html(html, "https://example.com/")) == (1, 0)

@@ -689,7 +689,7 @@ def create_ledger(path: str | Path, *, project_dir: str | Path, producer_build: 
         with temporary.open("r+b") as stream:
             os.fsync(stream.fileno())
         os.link(temporary, out)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(out.parent)
         return out

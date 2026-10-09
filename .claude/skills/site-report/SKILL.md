@@ -168,7 +168,7 @@ generating additional output formats is free of extra site load. No paid API is
 touched by either command.
 
 ## Templates
-[`examples/reports/`](../../../examples/reports/README.md) contains `minimal.json`,
+[`docs/examples/reports/`](../../../docs/examples/reports/README.md) contains `minimal.json`,
 `full.json`, and a field-by-field explanation of the contract. It also shows what
 to populate when the document is assembled by custom code rather than by the
 audit.

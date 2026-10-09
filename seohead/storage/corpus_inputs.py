@@ -141,9 +141,9 @@ def scan_corpus(scan: str, *, kind: str) -> dict[str, Any]:
         if lane["state"] != "complete":
             partial_reasons.append(f"HTML body lane is {lane['state']}: {lane['reason']}")
 
-        from seohead.tools.boilerplate_report import boilerplate_hash
-        from seohead.tools.markdown_extract import extract_markdown
-        from seohead.tools.text_normalize import normalization_policy, normalize_document
+        from seohead.checks.boilerplate_report import boilerplate_hash
+        from seohead.checks.markdown_extract import extract_markdown
+        from seohead.checks.text_normalize import normalization_policy, normalize_document
 
         items: list[dict[str, Any]] = []
         input_bytes = 0

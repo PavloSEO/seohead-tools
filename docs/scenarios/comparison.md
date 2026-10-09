@@ -39,7 +39,7 @@ titles or page text:
 
 ```bash
 seohead compare-crawls --before ./old-audit.json --after ./new-audit.json \
-  --correspondence ./examples/url-correspondence.json
+  --correspondence ./docs/examples/url-correspondence.json
 ```
 
 The optional JSON document has exactly `schema_version: "url-correspondence.v1"`, an

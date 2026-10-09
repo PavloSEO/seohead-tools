@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-import seohead.tools.sitemap as sitemap_tool
+import seohead.checks.sitemap as sitemap_tool
 from seohead.crawl.collect import CrawlResult, PageRecord
 from seohead.crawl.spider import LinkEdge, SpiderResult
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 DECLARED = [f"https://example.com/p{i}" for i in range(1, 9)] + [
     "https://example.com/p9",
@@ -116,7 +116,7 @@ def test_handler_warns_for_each_list_host_when_robots_are_ignored(monkeypatch, c
 
 def test_handler_warns_for_a_resumed_scan_when_robots_are_ignored(monkeypatch, capsys):
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan", lambda *_args, **_kwargs: {"resumed": True}
+        "seohead.mcp.scan_handlers.crawl_site_scan", lambda *_args, **_kwargs: {"resumed": True}
     )
 
     handlers.crawl_site(url="https://resume.example.test/", robots="ignore", scan_out="scan.sqlite")
@@ -138,8 +138,8 @@ def test_render_escalation_threads_the_shared_gate_to_browser_entry_points(monke
         seen.append(request_gate)
         return {"ok": True, "html": "<html><body>rendered</body></html>"}
 
-    monkeypatch.setattr("seohead.tools.render.render_check", probe)
-    monkeypatch.setattr("seohead.tools.render.render_document", render)
+    monkeypatch.setattr("seohead.checks.render.render_check", probe)
+    monkeypatch.setattr("seohead.checks.render.render_document", render)
     result = SpiderResult(pages=[PageRecord(url="https://example.com/", content_type="text/html")])
     config = {
         "mode": "js",
@@ -271,7 +271,7 @@ def test_auto_discovery_seeds_from_every_declared_sitemap(monkeypatch, tmp_path)
     first, and seed the crawl from their de-duplicated URL union."""
     import json
 
-    import seohead.tools.robots as robots_tool
+    import seohead.checks.robots as robots_tool
 
     first = "https://example.com/sitemap-pages.xml"
     second = "https://example.com/sitemap-products.xml"
@@ -322,8 +322,8 @@ def test_direct_audit_fetches_every_auto_discovered_root_not_just_the_first(monk
     """#311: auto-discovery keeps every ``Sitemap:`` directive for crawl seeding, and the
     live protocol audit (SITEMAP_URL_DUPLICATED, SITEMAP_FETCH_INCOMPLETE, ...) must reach
     every one of them too, not only the first root handed to it."""
+    import seohead.checks.robots as robots_tool
     import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.robots as robots_tool
 
     base = "https://example.com"
     first = f"{base}/pages.xml"

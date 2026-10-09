@@ -28,7 +28,7 @@ than a command total or an unsupported percentage of "SEO tasks automated":
 | Repeatability | [storage](STORAGE.md), [comparison](COMPARE.md) | Evidence reuse, provenance, compatible deltas and explicit partial/incompatible states |
 | Engineering handoff | [developer deliverable](scenarios/deliverable.md) | Inspectable tasks, full affected population, evidence, proposed changes and reviewed acceptance criteria |
 | Work and repair tracking | [projects](PROJECTS.md), [ledger](LEDGER.md) | Scoped task progress separately from finding resolution, review gates and evidence-bound rechecks |
-| Reporting and integrations | [reports](../examples/reports/README.md), [providers](PROVIDERS.md), [BI](BI.md) | Requested output actually produced, provider grain/availability preserved, destination validated if used |
+| Reporting and integrations | [reports](examples/reports/README.md), [providers](PROVIDERS.md), [BI](BI.md) | Requested output actually produced, provider grain/availability preserved, destination validated if used |
 | Operations and capacity | [platforms](PLATFORMS.md), [capacity profile](SCAN_CAPACITY_PROFILE.md) | Complete retained runtime evidence for the actual build, workload and environment |
 
 The native SQLite crawler admits explicit configurations up to 1,000,000 URLs. This is an

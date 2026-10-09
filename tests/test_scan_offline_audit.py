@@ -7,7 +7,7 @@ import socket
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.settings import load
 from seohead.crawl.spider import SpiderResult
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def _result() -> SpiderResult:
@@ -32,9 +32,9 @@ def _result() -> SpiderResult:
 
 
 def _call(monkeypatch, *, captured_render_summary=None):
+    import seohead.checks.render as render
     import seohead.recon.net as net
     import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.render as render
 
     def fail(*_args, **_kwargs):
         raise AssertionError("network forbidden")

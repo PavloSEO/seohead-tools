@@ -9,13 +9,13 @@ from __future__ import annotations
 import pytest
 from bs4 import BeautifulSoup
 
+from seohead.checks.parser import unsupported_plugin_count
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
-from seohead.tools.parser import unsupported_plugin_count
 
 
 def test_embed_element_counts_as_a_plugin():

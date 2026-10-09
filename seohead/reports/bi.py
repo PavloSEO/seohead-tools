@@ -26,9 +26,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from seohead.checks.external_join import normalize_join_key
 from seohead.storage import open_scan
 from seohead.storage.inputs import is_sqlite_input
-from seohead.tools.external_join import normalize_join_key
 
 MANIFEST_FORMAT = "seohead.bi-manifest.v1"
 BI_SCHEMA_VERSION = "seohead.bi.v1"
@@ -3654,7 +3654,7 @@ def _write_package(
                 "ignore_query": False,
                 "ignore_scheme": False,
                 "casefold_path": False,
-                "source": "seohead.tools.external_join.normalize_join_key",
+                "source": "seohead.checks.external_join.normalize_join_key",
             },
             "provider_sources": provider_manifest,
             "metrics_dimension_columns": dimension_fields,

@@ -18,10 +18,10 @@ import httpx
 import pytest
 
 from seohead import cli
+from seohead.checks import render as render_module
+from seohead.checks.render import render_check
+from seohead.mcp import handlers
 from seohead.recon.net import UA
-from seohead.servers import handlers
-from seohead.tools import render as render_module
-from seohead.tools.render import render_check
 
 
 class _FakeResponse:

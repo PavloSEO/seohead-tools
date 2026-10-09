@@ -1,6 +1,6 @@
 # Command inputs
 
-This reference is generated from `seohead.input_contracts`. Each row inventories consumed
+This reference is generated from `seohead.core.input_contracts`. Each row inventories consumed
 source inputs rather than inferring them from a command's output. Forms on one row can be
 required together; the notes name those relationships.
 

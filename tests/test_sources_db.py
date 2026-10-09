@@ -14,7 +14,7 @@ import pytest
 
 from seohead.cli import main as cli_main
 from seohead.data_sources import ga4, metrika, sources_db, yandex_webmaster
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def _gsc_rows(resource, start, end):

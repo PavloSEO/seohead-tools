@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from seohead.tools.custom_extract import run_extraction, run_extractor
+from seohead.checks.custom_extract import run_extraction, run_extractor
 
 
 def _doc(url, html, ok=True, rendered=False):

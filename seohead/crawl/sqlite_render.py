@@ -52,7 +52,7 @@ def _unknown_renderer(target_url: str, settings: dict[str, Any]) -> dict[str, An
     record would carry.
     """
     browser = settings["rendering"]["browser"]
-    from seohead.tools.render import VIEWPORT_PRESETS, resolve_viewport
+    from seohead.checks.render import VIEWPORT_PRESETS, resolve_viewport
 
     try:
         viewport = resolve_viewport(browser)
@@ -259,11 +259,11 @@ def _legacy_fetch(
     proxy_route=None,
 ) -> dict[str, Any]:
     """Fetch an opted-in escaped fragment and retain its actual response."""
+    from seohead.checks import render as render_tool
     from seohead.crawl.capture import now_utc
     from seohead.crawl.collect import fetch_one
     from seohead.crawl.settings import resolve_credential_headers
     from seohead.recon.net import http_client
-    from seohead.tools import render as render_tool
 
     escaped = render_tool.legacy_fragment_target(target_url, raw_html)
     if not escaped:
@@ -371,7 +371,7 @@ def run_render_escalation(
     if mode == "raw" or not result.pages:
         return render_escalation.EscalationResult(mode=mode)
 
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
 
     render_started = time.monotonic()
     elapsed_before = (

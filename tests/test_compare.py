@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from seohead.servers.handlers import compare_crawls
+from seohead.mcp.handlers import compare_crawls
 from seohead.sf.core.compare import CompareError, compare, preflight
 
 

@@ -167,7 +167,7 @@ separate class (they need the full page set, which mode B already has).
 | 6.4 | Canonical -> homepage (stamp) | Distinct sections canonicalize to homepage | medium | **DONE** — `CANONICAL_HOMEPAGE_GROUP` | `check_canonical_homepage_group` |
 | 6.5 | Canonical header vs tag | `<link rel=canonical>` disagrees with the HTTP `Link: rel=canonical` | medium | B+ (SF catches HTTP canonical when configured) / A | id `CANONICAL_HEADER_MISMATCH` |
 | 6.6 | Canonical contains a fragment | `<link rel=canonical>` points at a `#fragment`, which the server never sees | low | **DONE** (issue #30) — `CANONICAL_FRAGMENT` | `check_canonical_extra` |
-| 6.7 | Canonical outside `<head>` | The tag is placed in `<body>` and is silently ignored | medium | **DONE** (issue #123) — `CANONICAL_OUTSIDE_HEAD`, from a native crawl's own parse tree (`seohead.tools.parser.parse_html`'s `document_position`); the eleven catalogued "outside head"/document-skeleton entries all closed together, see `check_element_position`/`check_document_skeleton` | `rules.py` |
+| 6.7 | Canonical outside `<head>` | The tag is placed in `<body>` and is silently ignored | medium | **DONE** (issue #123) — `CANONICAL_OUTSIDE_HEAD`, from a native crawl's own parse tree (`seohead.checks.parser.parse_html`'s `document_position`); the eleven catalogued "outside head"/document-skeleton entries all closed together, see `check_element_position`/`check_document_skeleton` | `rules.py` |
 | 6.8 | Invalid attribute in canonical annotation | Malformed `rel=canonical` markup (e.g. `rel="canonical "`, missing `href`) | low | **A only** — same reason as 6.7 (issue #30) | new live check |
 
 ---
@@ -189,7 +189,7 @@ measured relation and target defect actionable in the report.
 | 7.8 | hreflang -> redirect/4xx | The target is broken or redirecting | **high** | **DONE** — `HREFLANG_BROKEN_TARGET` | `inlinks.py` |
 | 7.9 | Duplicate lang per target | One URL listed with different `lang`s from different sources | medium | B (graph) — still open (distinct from 7.10: this is one *target* with conflicting incoming langs, not one *source* repeating a lang) | `HREFLANG_MULTI_LANG` |
 | 7.10 | Duplicate lang per source | One page declares the same hreflang value more than once | medium | **DONE** (issue #30) — `HREFLANG_MULTIPLE_ENTRIES` | `inlinks.py` |
-| 7.11 | Malformed language/region code | hreflang value fails ISO 639-1/3166-1 (e.g. `en-UK`) | medium | **DONE** (issue #30) — `HREFLANG_INVALID_CODE`, reusing `seohead/tools/hreflang.py`'s `code_error` | `inlinks.py` |
+| 7.11 | Malformed language/region code | hreflang value fails ISO 639-1/3166-1 (e.g. `en-UK`) | medium | **DONE** (issue #30) — `HREFLANG_INVALID_CODE`, reusing `seohead/checks/hreflang.py`'s `code_error` | `inlinks.py` |
 | 7.12 | Outside `<head>` | The `<link rel=alternate hreflang>` tag is placed in `<body>` | medium | **DONE** — `HREFLANG_OUTSIDE_HEAD` uses retained native element-position evidence and offline reanalysis; ordinary SF exports without that evidence stay skipped | `check_element_position` |
 
 **Context.** The live `seo_hreflang_check` (x-default, self-reference,

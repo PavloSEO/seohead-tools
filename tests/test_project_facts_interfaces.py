@@ -5,8 +5,8 @@ import json
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 
 
 @pytest.mark.parametrize("prefix", [["project-facts"], ["project", "facts"]])
@@ -61,6 +61,6 @@ def test_the_handler_injects_the_shared_single_page_tools(monkeypatch):
         captured.update(directory=directory, tools=tools)
         return {"ok": True}
 
-    monkeypatch.setattr("seohead.servers.project_handlers.project_facts", fake)
+    monkeypatch.setattr("seohead.mcp.project_handlers.project_facts", fake)
     handlers.project_facts(directory="project", detect=True)
     assert captured["tools"] is handlers.HANDLERS

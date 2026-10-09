@@ -4,7 +4,7 @@
 
 **A headless, local-first SEO crawler and audit toolkit for SEO engineers and the AI agents they work with.**
 
-[Website](https://seohead.tech/seotools) · [Documentation](docs/README.md) · [CLI overview](docs/CLI.md) · [Examples](examples/README.md) · [Scope and trade-offs](docs/COMPARISON.md)
+[Website](https://seohead.tech/seotools) · [Documentation](docs/README.md) · [CLI overview](docs/CLI.md) · [Examples](docs/examples/README.md) · [Scope and trade-offs](docs/COMPARISON.md)
 
 [![CI](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1565C0)
@@ -93,7 +93,7 @@ invents findings.
 
 ```bash
 # Offline: no SF installation, licence or request to the site is needed.
-seohead sf run --exports-dir examples/exports --out ./report --tasks
+seohead sf run --exports-dir docs/examples/exports --out ./report --tasks
 ```
 
 You get `audit.json`, `audit.md` and a prioritized `tasks.md`/`tasks.json` backlog with
@@ -139,7 +139,7 @@ Each area links to the page that documents its method, inputs and limits. The
 | **AI search (GEO/AEO)** | AI-crawler access in robots.txt, `/llms.txt` scoring, content citability | [AI visibility](docs/scenarios/ai-visibility.md) |
 | **Infrastructure and security** | Domain/DNS/hosting profile, CDN and cache behaviour, tech stack, security headers, CT-log subdomains, Wayback history, access-log analysis, regional structure, known-donor backlinks | [infrastructure scenario](docs/scenarios/infrastructure.md), [skills](docs/SKILLS.md#recon-and-technical-hygiene) |
 | **Compare and verify** | Before/after crawl diffs, declared URL migrations, segment diffs, bounded fix verification and a remediation ledger with recheck evidence | [COMPARE](docs/COMPARE.md), [LEDGER](docs/LEDGER.md), [comparison scenario](docs/scenarios/comparison.md) |
-| **Reports and BI** | XLSX/DOCX/CSV/Markdown/JSON/PDF reports, prioritized task backlog, saved finding views, multi-site facts tables, typed BI packages with Sheets/BigQuery plans | [BI](docs/BI.md), [report fixtures](examples/reports/README.md), [deliverable scenario](docs/scenarios/deliverable.md) |
+| **Reports and BI** | XLSX/DOCX/CSV/Markdown/JSON/PDF reports, prioritized task backlog, saved finding views, multi-site facts tables, typed BI packages with Sheets/BigQuery plans | [BI](docs/BI.md), [report fixtures](docs/examples/reports/README.md), [deliverable scenario](docs/scenarios/deliverable.md) |
 | **Projects and agents** | Project workspace, checklist coverage, priorities, crawl policy, observer, inbox, checkpointed workflow runs, one-shot monitoring | [PROJECTS](docs/PROJECTS.md), [WORKFLOWS](docs/WORKFLOWS.md), [TERMINAL](docs/TERMINAL.md) |
 | **Search and analytics providers** | Search Console, GA4, Yandex Metrika and Webmaster, CrUX, IndexNow, Wordstat/Arsenkin, DataForSEO, Topvisor, Miratext; local history, joins and spend journal | [PROVIDERS](docs/PROVIDERS.md), [provider workflow](docs/scenarios/provider-evidence.md), [GOTCHAS](docs/GOTCHAS.md) |
 | **Method skills** | Packaged playbooks and end-to-end scenarios an agent can load (`skill-show`, `scenario-show`) | [SKILLS](docs/SKILLS.md), [scenarios](docs/scenarios/README.md) |
@@ -289,7 +289,7 @@ python -m pip install -e ".[dev,mcp,cluster,reports]"
 ruff check .
 ruff format --check .
 pytest -q
-seohead sf run --exports-dir examples/exports --out /tmp/seohead-report --tasks
+seohead sf run --exports-dir docs/examples/exports --out /tmp/seohead-report --tasks
 python -m build
 ```
 
@@ -303,5 +303,5 @@ changes. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
 
 The Python implementation and documentation are released under the [MIT License](LICENSE). The
 bundled Schema.org vocabulary keeps its original CC BY-SA terms. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [PROVENANCE.md](PROVENANCE.md),
-[TRADEMARKS.md](TRADEMARKS.md) and [CITATION.cff](CITATION.cff).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [PROVENANCE.md](docs/legal/PROVENANCE.md),
+[TRADEMARKS.md](docs/legal/TRADEMARKS.md) and [CITATION.cff](CITATION.cff).

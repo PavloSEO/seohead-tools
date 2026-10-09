@@ -8,10 +8,11 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from seohead.bot import JobOwnershipStore, ProjectAuthorizationStore
-from seohead.bot.contract import State
-from seohead.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
-from seohead.bot.telegram_adapter import (
+from seohead.core.job_contracts import OpenedArtifact
+from seohead.integrations.bot import JobOwnershipStore, ProjectAuthorizationStore
+from seohead.integrations.bot.contract import State
+from seohead.integrations.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
+from seohead.integrations.bot.telegram_adapter import (
     TelegramAuthorizedSessions,
     TelegramBotClient,
     TelegramBotConfig,
@@ -23,9 +24,8 @@ from seohead.bot.telegram_adapter import (
     telegram_destination,
     telegram_subject,
 )
-from seohead.bot.wizard import Action, Event, WizardSession
-from seohead.job_contracts import OpenedArtifact
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.integrations.bot.wizard import Action, Event, WizardSession
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
 
 
 class _Submitter:

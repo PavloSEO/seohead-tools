@@ -20,7 +20,7 @@ from seohead.sf.config import load_config
 from seohead.sf.core.audit import run_audit
 from seohead.sf.core.registry import CHECK_REQUIRES, CHECKS, missing_requirements
 
-EXPORTS = Path("examples/exports")
+EXPORTS = Path("docs/examples/exports")
 
 
 def _audit(tmp_path: Path, drop: list[str] | None = None, disable: list[str] | None = None) -> dict:

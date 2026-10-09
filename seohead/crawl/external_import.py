@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
-from seohead.tools.sitemap import normalize_url
+from seohead.checks.sitemap import normalize_url
 
 MANIFEST_VERSION = "third_party_crawl_manifest.v1"
 SCHEMA_VERSION = "third_party_crawl.v1"

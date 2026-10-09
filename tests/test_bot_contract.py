@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from seohead.bot.contract import (
+from seohead.integrations.bot.contract import (
     COLLECTING_STATES,
     CONTRACT_VERSION,
     FIELD_STATES,
@@ -18,7 +18,7 @@ from seohead.bot.contract import (
 
 
 def test_contract_version_is_namespaced_and_stable():
-    assert CONTRACT_VERSION == "seohead.bot.conversation/1"
+    assert CONTRACT_VERSION == "seohead.integrations.bot.conversation/1"
 
 
 def test_describe_contract_is_json_serializable_and_complete():
