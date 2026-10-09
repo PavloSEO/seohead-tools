@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from ... import theming
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import group_label, page, segmented_row, switch_row
+from .helpers import group_label, keyed, page, segmented_row, switch_row
 from .listing import (
     Columns,
     Mono,
@@ -81,7 +81,7 @@ def _custom_path_row(store):
     field.setCursorPosition(0)
     field.setProperty("mono", True)
     field.setPlaceholderText("/путь/к/.venv/bin/seohead")
-    row = SettingRow("Путь к своему ядру", "Используется вместо найденного при следующем запуске приложения", field)
+    row = keyed(SettingRow("Путь к своему ядру", "Используется вместо найденного при следующем запуске приложения", field), "core.custom_path")
     field.editingFinished.connect(lambda: row.set_error(store.set("core.custom_path", field.text().strip())))
     row.setVisible(store.get("core.custom"))
     store.changed.connect(lambda key: _toggle(row, store) if key.startswith("core.custom") else None)

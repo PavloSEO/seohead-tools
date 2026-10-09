@@ -1,0 +1,67 @@
+"""Which stored settings already change application behaviour, and when the others will.
+
+Every key of the settings schema must be classified here (tests enforce it). A row whose key is
+not applied yet shows the badge «Заработает позже»; the same table is documented in
+desktop/docs/spec/settings-wiring.ru.md (regenerate with scripts/gen_settings_wiring.py).
+"""
+
+from __future__ import annotations
+
+APPLIED = {"view.theme", "view.density", "view.reduce_motion", "view.rail_when_narrow", "shell.display"}
+APPLIED_SHORTCUTS = {"palette", "new_scan", "settings", "stop_scan", "find_in_table", "expand_table", "copy_url", "help"}
+
+# key or "prefix." -> (roadmap step, what has to exist first)
+LATER = {
+    "view.language": (4, "словарь переводов и переключение на лету"),
+    "view.zoom": (5, "масштаб при перестройке экранов"),
+    "view.details_position": (5, "карточка URL: детали снизу или справа"),
+    "view.mono_urls": (5, "таблица URL"),
+    "view.status_badges": (5, "таблица URL: плашки статусов"),
+    "general.": (5, "экран «Старт · проекты», вкладки и таблицы"),
+    "scan.": (5, "диалог «Новый скан»"),
+    "core.poll": (5, "наблюдение за сканом"),
+    "core.": (8, "адаптеры ядра: версия, диагностика, логи"),
+    "mcp.": (7, "состояние MCP и запись конфигов агентов"),
+    "agent.": (7, "подключение агента и журнал его действий"),
+    "notify.": (7, "уведомления о сканах и агенте"),
+    "data.": (8, "хранилище, журнал и экспорт настроек"),
+    "updates.": (9, "после первого релиза"),
+    "sources.": (7, "OAuth, ключи и расходы источников данных"),
+}
+LATER_SHORTCUTS = (5, "действие ещё не имеет экрана")
+
+
+def status(key):
+    """(None, "") when the key is applied, else (step, reason)."""
+    if key in APPLIED:
+        return None, ""
+    if key.startswith("keys."):
+        return (None, "") if key[5:] in APPLIED_SHORTCUTS else LATER_SHORTCUTS
+    if key in LATER:
+        return LATER[key]
+    for prefix in sorted((k for k in LATER if k.endswith(".")), key=len, reverse=True):
+        if key.startswith(prefix):
+            return LATER[prefix]
+    raise KeyError(f"setting {key!r} is not classified in ui/settings/wiring.py")
+
+
+def apply(page):
+    """Badge every row of a section page whose setting is stored but not applied yet."""
+    from ..controls import SettingRow
+
+    for row in page.findChildren(SettingRow):
+        key = row.property("setting_key")
+        if key:
+            step, reason = status(key)
+            if step is not None:
+                row.mark_later(f"Настройка сохраняется, но пока ничего не меняет: {reason} (шаг {step})")
+
+
+def all_keys(schema):
+    return [setting.key for setting in schema]
+
+
+def table(schema):
+    """Rows (key, step|None, reason) for the documentation."""
+    return [(key, *status(key)) for key in all_keys(schema)]
+

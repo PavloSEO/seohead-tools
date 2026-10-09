@@ -153,6 +153,7 @@ class ShortcutRow(SettingRow):
         for widget in (self.reset_button, self.replace_button, self.capture):
             layout.addWidget(widget)
         super().__init__(action.title, "", control)
+        self.setProperty("setting_key", shortcuts.key(action.id))
         self.layout().setContentsMargins(0, 6, 0, 6)
         self._pending = None            # (portable, replaceable) of a recorded chord waiting for 'Заменить'
         if action.fixed:

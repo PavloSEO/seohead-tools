@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch, polish
 from ..icons import material_icon
-from .helpers import page, switch_row, two_columns
+from .helpers import keyed, page, switch_row, two_columns
 
 ID, ICON, TITLE = "notify", "notifications", "Уведомления"
 HINT = "Тосты в окне, системные уведомления и звук"
@@ -94,7 +94,7 @@ def _event_row(store, event_id, title, description):
         cell_layout.setContentsMargins(0, 0, 0, 0)
         cell_layout.addWidget(switch, 0, Qt.AlignCenter)
         cells.append(cell)
-    row = SettingRow(title, description, _columns(cells))
+    row = keyed(SettingRow(title, description, _columns(cells)), "notify." + event_id)
     row.layout().setContentsMargins(0, 7, 0, 7)
     row.layout().setHorizontalSpacing(0)
     return row
@@ -114,7 +114,7 @@ def _quiet_period_row(store):
         layout.addWidget(field)
         if index == 0:
             layout.addWidget(QLabel("—"))
-    row = SettingRow("С … до", "", box)
+    row = keyed(SettingRow("С … до", "", box), "notify.quiet_from")
 
     def commit(key):
         error = store.set(key, fields[key].text())

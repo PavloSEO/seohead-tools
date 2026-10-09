@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QWidget
 
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch
-from .helpers import group_label, page, segmented_row, switch_row
+from .helpers import group_label, keyed, page, segmented_row, switch_row
 from .listing import Columns, action_button, badge, hint, list_item, mono_html, no_data, terminal
 
 ID, ICON, TITLE = "mcp", "hub", "MCP-сервер"
@@ -54,7 +54,7 @@ def _server_row(store, context, status):
     layout.addWidget(state)
     layout.addWidget(switch)
     tools = status.get("tools") if status else None
-    return SettingRow("Локальный MCP-сервер", "stdio · без сети" + (f" · {tools} инструментов" if tools else ""), box)
+    return keyed(SettingRow("Локальный MCP-сервер", "stdio · без сети" + (f" · {tools} инструментов" if tools else ""), box), "mcp.enabled")
 
 
 def _console(status):

@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QLineEdit, QVBoxLayout, QWidget
 
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import group_label, page, segmented_row, switch_row
+from .helpers import group_label, keyed, page, segmented_row, switch_row
 from .listing import Columns, action_button, badge, buttons_row, list_item
 
 ID, ICON, TITLE = "scan", "manage_search", "Сканы по умолчанию"
@@ -56,7 +56,7 @@ def _number_row(store, key, title, description, fmt, precheck=None):
     """Field that stores only valid input; otherwise keeps the text and shows the error under the description."""
     field = QLineEdit(fmt(store.get(key)))
     field.setFixedWidth(96)
-    row = SettingRow(title, description, field)
+    row = keyed(SettingRow(title, description, field), key)
 
     def commit():
         text = field.text()
@@ -78,7 +78,7 @@ def _sf_path_row(store):
     field.setFixedWidth(320)
     field.setCursorPosition(0)
     field.setProperty("mono", True)
-    row = SettingRow("Путь к CLI", base, field)
+    row = keyed(SettingRow("Путь к CLI", base, field), "scan.sf_path")
 
     def refresh():
         path = os.path.expanduser(store.get("scan.sf_path"))

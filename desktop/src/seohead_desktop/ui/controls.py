@@ -114,7 +114,16 @@ class SettingRow(QFrame):
         self.title = QLabel(title)
         self.title.setProperty("text_style", "control")
         self.title.setWordWrap(True)
-        text.addWidget(self.title)
+        title_line = QHBoxLayout()
+        title_line.setContentsMargins(0, 0, 0, 0)
+        title_line.setSpacing(8)
+        title_line.addWidget(self.title, 0)
+        self.later_badge = QLabel("Заработает позже")
+        self.later_badge.setProperty("later", True)
+        self.later_badge.hide()
+        title_line.addWidget(self.later_badge, 0)
+        title_line.addStretch(1)
+        text.addLayout(title_line)
         self.description = QLabel(description)
         self.description.setProperty("text_style", "meta")
         self.description.setWordWrap(True)
@@ -139,6 +148,11 @@ class SettingRow(QFrame):
             grid.addWidget(control, 0, 1, Qt.AlignRight | Qt.AlignVCenter)
             if not control.accessibleName():
                 control.setAccessibleName(title)
+
+    def mark_later(self, reason):
+        """The value is stored but changes nothing yet; say so instead of implying it works."""
+        self.later_badge.setToolTip(reason)
+        self.later_badge.show()
 
     def set_error(self, message):
         self._error.setText(message or "")

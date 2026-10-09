@@ -14,16 +14,21 @@ def group_label(text):
     return label
 
 
+def keyed(row, key):
+    row.setProperty("setting_key", key)
+    return row
+
+
 def switch_row(store, key, title, description=""):
     switch = Switch(title, bool(store.get(key)))
     switch.toggled.connect(lambda checked: store.set(key, checked))
-    return SettingRow(title, description, switch)
+    return keyed(SettingRow(title, description, switch), key)
 
 
 def segmented_row(store, key, title, description, options):
     seg = Segmented(options, store.get(key), accessible_name=title)
     seg.changed.connect(lambda value: store.set(key, value))
-    return SettingRow(title, description, seg)
+    return keyed(SettingRow(title, description, seg), key)
 
 
 def choice_row(store, key, title, description, options, width=220):
@@ -33,14 +38,14 @@ def choice_row(store, key, title, description, options, width=220):
         box.addItem(label, value)
     box.setCurrentIndex(max(0, box.findData(store.get(key))))
     box.currentIndexChanged.connect(lambda _i: store.set(key, box.currentData()))
-    return SettingRow(title, description, box)
+    return keyed(SettingRow(title, description, box), key)
 
 
 def number_row(store, key, title, description, width=96):
     """Text field; invalid input keeps the field, shows the Russian error under the description, stores nothing."""
     field = QLineEdit(str(store.get(key)))
     field.setFixedWidth(width)
-    row = SettingRow(title, description, field)
+    row = keyed(SettingRow(title, description, field), key)
 
     def commit():
         error = store.set(key, field.text())
@@ -54,7 +59,7 @@ def number_row(store, key, title, description, width=96):
 def text_row(store, key, title, description, width=260):
     field = QLineEdit(str(store.get(key)))
     field.setFixedWidth(width)
-    row = SettingRow(title, description, field)
+    row = keyed(SettingRow(title, description, field), key)
     field.editingFinished.connect(lambda: row.set_error(store.set(key, field.text())))
     return row
 

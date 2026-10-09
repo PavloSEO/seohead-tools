@@ -69,6 +69,7 @@ QLabel[badge="info"] { background: $badge_info_bg; color: $badge_info_fg; }
 QLabel[badge="warn"] { background: $badge_warn_bg; color: $badge_warn_fg; }
 QLabel[badge="err"] { background: $badge_err_bg; color: $badge_err_fg; }
 QLabel[badge="mut"] { background: $badge_mut_bg; color: $badge_mut_fg; }
+QLabel[later="true"] { border: 1px solid $badge_border; min-height: ${control_badge}px; max-height: ${control_badge}px; padding: 0 8px; border-radius: ${radius_badge}px; font-size: ${font_meta}px; font-weight: 500; background: $badge_mut_bg; color: $badge_mut_fg; }
 QLabel[badge="goal"] { background: $badge_goal_bg; color: $badge_goal_fg; }
 
 /* filter chip */

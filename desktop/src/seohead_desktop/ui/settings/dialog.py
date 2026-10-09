@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
 from ... import theming
 from ..controls import SettingRow
 from ..icons import material_icon
-from . import sections
+from . import sections, wiring
 from .context import SettingsContext
 
 
@@ -100,7 +100,7 @@ class SettingsDialog(QDialog):
         footer.setObjectName("dialogFooter")
         footer_layout = QHBoxLayout(footer)
         footer_layout.setContentsMargins(24, 12, 24, 12)
-        self.footer_hint = QLabel("Настройки этого компьютера применяются сразу")
+        self.footer_hint = QLabel("Изменения сохраняются на этом компьютере")
         self.footer_hint.setProperty("text_style", "meta")
         footer_layout.addWidget(self.footer_hint, 1)
         done = QPushButton("Готово")
@@ -115,6 +115,7 @@ class SettingsDialog(QDialog):
 
     def _build(self, module):
         page = module.build_page(self.store, self.context)
+        wiring.apply(page)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)

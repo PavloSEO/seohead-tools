@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBo
 from ... import theming
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import page, segmented_row, switch_row, two_columns
+from .helpers import keyed, page, segmented_row, switch_row, two_columns
 
 ID, ICON, TITLE = "view", "palette", "Вид"
 HINT = "Тема, язык, плотность и раскладка"
@@ -100,7 +100,7 @@ def _preview(store):
 
 
 def build_page(store, context):
-    themes = SettingRow("Тема", "Системный «высокий контраст» включает контрастную тему сама", _theme_picker(store))
+    themes = keyed(SettingRow("Тема", "Системный «высокий контраст» включает контрастную тему сама", _theme_picker(store)), "view.theme")
     left = [
         segmented_row(store, "view.language", "Язык интерфейса", "Меню, подписи и подсказки. Перезапуск не нужен",
                       [("ru", "Русский"), ("en", "English")]),
@@ -108,7 +108,7 @@ def build_page(store, context):
                       [("compact", "Плотно"), ("standard", "Стандарт"), ("comfortable", "Просторно")]),
         segmented_row(store, "view.details_position", "Детали URL", "Панель выбранного адреса",
                       [("bottom", "Снизу"), ("right", "Справа")]),
-        SettingRow("Масштаб интерфейса", "80–150 %", _zoom_control(store)),
+        keyed(SettingRow("Масштаб интерфейса", "80–150 %", _zoom_control(store)), "view.zoom"),
     ]
     right = [
         switch_row(store, "view.reduce_motion", "Уменьшить движение", "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе"),
