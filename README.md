@@ -145,6 +145,9 @@ way round.
 - **Project work** — goal, tasks, inbox and run history in a *With agent* display, or the same
   projects, scans and reports without AI features in a *Simple* display.
 - **URLs, issues, link graph, compare** — browse retained evidence, rechecks and before/after scans.
+- **Tools** — a built-in toolbox: every core tool with a ready-made form, plus a one-click image
+  pipeline — compress, convert to WebP/AVIF, generate 301 redirects and hand the task to your
+  developer or agent.
 - **Methods and reports** — the core's method skills and report builders behind ready-made screens.
 - **MCP switch** — one shared state with the CLI (`seohead mcp status`); the app registers the
   server in Claude Code, Claude Desktop, Codex or Cursor only after a permission dialog that lists
@@ -166,6 +169,10 @@ way round.
 <tr>
 <td><img src="docs/assets/screenshots/desktop-link-graph.png" alt="Internal link graph coloured by section with graph filters" width="100%"><br><sub><b>Link graph</b> — internal links by section, orphans and paths</sub></td>
 <td><img src="docs/assets/screenshots/desktop-set-sources.png" alt="Data source settings: Search Console, Analytics, Yandex, Topvisor, DataForSEO and more" width="100%"><br><sub><b>Data sources</b> — connected services and their status</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/desktop-tools.png" alt="Tools catalogue: every core tool grouped by job, with recommendations from the latest scan" width="100%"><br><sub><b>Tools</b> — every core tool with a ready-made form</sub></td>
+<td><img src="docs/assets/screenshots/desktop-tool-images.png" alt="Image pipeline: pick heavy images from a scan, compress, convert to WebP or AVIF, then redirects and tasks" width="100%"><br><sub><b>Image pipeline</b> — find, compress, WebP/AVIF, 301s, task</sub></td>
 </tr>
 <tr>
 <td colspan="2"><img src="docs/assets/screenshots/desktop-proj-sources.png" alt="Project data sources: linking Search Console, GA4 and other properties to a project" width="100%"><br><sub><b>Project sources</b> — properties linked to one project, mirrored by <code>seohead</code> CLI commands</sub></td>
