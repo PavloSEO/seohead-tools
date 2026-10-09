@@ -2791,15 +2791,18 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `limit` | `int` | `200` |
 | `count_timeout_seconds` | `float` | `1.0` |
 | `max_bytes` | `int` | `1048576` |
+| `preset` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 **Behavior and failure modes**
 
-Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
-non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
-sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+Read-only. Filters are {column, op, value} objects combined with AND; preset names a
+ready-made filter set (for example status_4xx, title_missing, title_over_60, noindex_meta)
+that is combined with them. Sorting by a non-indexed column needs a filter that leaves at
+most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
+with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
+requested columns.
 
 ### `scan-link-inspect`
 
