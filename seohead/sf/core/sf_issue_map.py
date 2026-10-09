@@ -333,12 +333,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _t("H1 Only in Rendered HTML", "render-check"),
         _t("H1 Updated by JavaScript", "render-check"),
         _t("Canonical Only in Rendered HTML", "render-check"),
-        _t(
-            "Pages With JavaScript Errors",
-            "crawl-site",
-            note="browser console errors are captured per URL when "
-            "rendering.artifacts.console_errors is on",
-        ),
+        _c("Pages With JavaScript Errors", "JS_CONSOLE_ERRORS"),
     ],
     "Links": [
         _c("Outlinks To Localhost", "OUTLINK_TO_LOCALHOST"),

@@ -15,8 +15,8 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
+| check | 127 | a registry check finds it |
+| tool | 32 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
@@ -238,7 +238,7 @@ having, because the alternative is an absence nobody has noticed.
 | H1 Only in Rendered HTML | tool | `render-check` |  |
 | H1 Updated by JavaScript | tool | `render-check` |  |
 | Canonical Only in Rendered HTML | tool | `render-check` |  |
-| Pages With JavaScript Errors | tool | `crawl-site` | browser console errors are captured per URL when rendering.artifacts.console_errors is on |
+| Pages With JavaScript Errors | check | `JS_CONSOLE_ERRORS` |  |
 
 ## Links
 

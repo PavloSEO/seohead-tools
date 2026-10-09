@@ -1870,6 +1870,31 @@ def _audit_crawl_result(
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
 
+    # Pages With JavaScript Errors (#1015): read from the retained render console sidecars,
+    # never re-rendered here. Unreadable evidence is a stated skip, not a clean page.
+    if stored_scan is not None and not stored_list and hasattr(stored_scan, "path"):
+        from seohead.storage import browser_artifacts
+
+        console = browser_artifacts.console_error_pages(stored_scan.con, stored_scan.path)
+        # A skip is retracted by any sibling add(), so an unreadable record only becomes
+        # the stated reason when no readable page produced a finding.
+        if console["unreadable"] and not console["pages"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                f"{console['unreadable']} retained browser console record(s) could not be read",
+            )
+        elif not console["captured"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                "no browser console was retained; enable rendering.artifacts.console_errors",
+            )
+        for item in console["pages"]:
+            ctx.add(
+                "JS_CONSOLE_ERRORS",
+                target_url=item["target_url"],
+                details={"error_count": item["error_count"], "errors": item["errors"]},
+            )
+
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
     # (issue #827). The evaluation is read-only and offline -- nothing is
