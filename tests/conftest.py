@@ -46,9 +46,6 @@ def issues_of(result, check):
 
 @pytest.fixture(autouse=True)
 def isolated_user_configuration(tmp_path, monkeypatch):
-    """Never inspect a developer's agent files or MCP state during offline tests."""
+    """Isolate shared MCP state; client tests additionally provide a temporary HOME."""
     home = tmp_path / "isolated-home"
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("CODEX_HOME", str(home / ".codex"))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("SEOHEAD_CONFIG_DIR", str(home / ".config/seohead"))
