@@ -28,6 +28,8 @@ classifiers = [
 # Core dependencies install in one step. Extras contain only genuinely heavy or
 # optional capabilities.
 dependencies = [
+    # Preserve foreign TOML configuration comments and keys during MCP registration.
+    "tomlkit>=0.13,<1",
     "pandas>=2.0,<4",
     "openpyxl>=3.1,<4",
     "lxml>=4.9,<7",

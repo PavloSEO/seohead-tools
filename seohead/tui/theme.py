@@ -19,7 +19,7 @@ STATUS_KINDS = ("ok", "warn", "info", "off")
 _STATUS_STYLE = {
     "ok": "bold green",
     "warn": "bold yellow",
-    "info": "bold cyan",
+    "info": "bold #1565C0",
     "off": "dim",
 }
 
@@ -47,7 +47,7 @@ class Palette:
     color: bool
     #: Style names consumed by the renderer; kept symbolic so a future theme
     #: change touches this file only.
-    accent: str = "bold #67e8f9"
+    accent: str = "bold #1565C0"
     title: str = "bold #f1f5f9"
     body: str = ""
     muted: str = "#94a3b8"
