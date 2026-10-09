@@ -5022,6 +5022,12 @@ def skill_show(name: str) -> dict[str, Any]:
     return playbook_show(name, "skill")
 
 
+def scenario_list() -> dict[str, Any]:
+    from seohead.projects.runtime import playbook_list
+
+    return playbook_list("scenario")
+
+
 def scenario_show(name: str) -> dict[str, Any]:
     from seohead.projects.runtime import playbook_show
 
@@ -6129,6 +6135,7 @@ _RAW_HANDLERS = {
     "project_start": project_start,
     "skill_list": skill_list,
     "skill_show": skill_show,
+    "scenario_list": scenario_list,
     "scenario_show": scenario_show,
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,

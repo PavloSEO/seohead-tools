@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 171 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2108,6 +2108,16 @@ Return a packaged skill's exact text and definition identity.
 | Argument | Type | Default |
 |---|---|---|
 | `name` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scenario-list`
+
+MCP name: `seo_scenario_list`
+
+List the packaged workflow scenarios with their ordered steps, without running them.
+
+Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

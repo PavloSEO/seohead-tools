@@ -709,6 +709,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("skill-list", "skill_list", _form("no_input")),
     _command("skill-show", "skill_show", _form("selector", "name")),
+    _command("scenario-list", "scenario_list", _form("no_input")),
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
     _command(

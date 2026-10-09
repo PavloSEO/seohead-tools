@@ -2338,6 +2338,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.skill_show(name))
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scenario_list() -> dict[str, Any]:
+        """List the packaged workflow scenarios with their ordered steps, without running them."""
+        return _checked(handlers.scenario_list())
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scenario_show(name: str) -> dict[str, Any]:
         """Return a packaged workflow scenario's text without running its commands."""
         return _checked(handlers.scenario_show(name))
