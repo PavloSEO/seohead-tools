@@ -526,6 +526,12 @@ class PagesMixin:
 
         return open_new_scan(self)
 
+    def quick_scan(self):
+        """«Быстрый запуск» (design QuickScan): the one-line launcher; it starts nothing until the user presses «Запустить»."""
+        from .screens.quick_scan import open_quick_scan
+
+        return open_quick_scan(self)
+
     def legacy_scan_preview(self):
         if not self.project_directory or self._project_loading:
             self.notice.show_error("Сначала откройте проект и дождитесь его данных")

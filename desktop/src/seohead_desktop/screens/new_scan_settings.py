@@ -25,8 +25,9 @@ from .. import i18n
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel
 from ..ui.icons import material_icon as icon
+from ..ui.kit import waiting_badge
 from ..ui.presentation import ElidedLabel
-from .new_scan_draft import grouped
+from .new_scan_draft import ISSUE_PROFILES, grouped
 from .new_scan_pages import PAGES
 
 
@@ -40,7 +41,7 @@ class ScanSettingsDialog(QDialog):
         self.setObjectName("scanSettingsDialog")
         self.setModal(True)
         size = host.size()
-        self.resize(min(1180, max(720, size.width() - 40)), min(780, max(600, size.height() - 40)))
+        self.resize(min(1380, max(720, size.width() - 40)), min(840, max(600, size.height() - 40)))
         self.setMinimumSize(640, 520)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -76,16 +77,32 @@ class ScanSettingsDialog(QDialog):
     def _header(self):
         bar = QFrame()
         bar.setObjectName("scanHeader")
+        bar.setFixedHeight(56)
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(20, 10, 12, 10)
+        layout.setContentsMargins(20, 0, 12, 0)
         layout.setSpacing(12)
         layout.addWidget(MaterialIconLabel("manage_search", 24, color="role:primary"))
         title = QLabel(tr("Настройки скана"))
         title.setProperty("text_style", "dialog")
         layout.addWidget(title)
-        meta = QLabel(trf("{host} · новый скан", host=self.draft.host or tr("Нет данных")))
+        meta = ElidedLabel(trf("{host} · новый скан", host=self.draft.host or tr("Нет данных")))
         meta.setProperty("text_style", "meta")
         layout.addWidget(meta, 1)
+        self.profile_button = QPushButton()
+        self.profile_button.setObjectName("scanSettingsProfile")
+        self.profile_button.setIcon(icon("expand_more"))
+        self.profile_button.setLayoutDirection(Qt.RightToLeft)
+        self.profile_button.setMinimumWidth(230)
+        self.profile_button.setToolTip(tr("Все профили…"))
+        self.profile_button.clicked.connect(lambda: self.show_page("profiles"))
+        layout.addWidget(self.profile_button)
+        save = QPushButton(tr("Сохранить как профиль"))
+        save.setObjectName("scanSettingsSaveProfile")
+        save.setIcon(icon("bookmark_add"))
+        save.setEnabled(False)
+        save.setToolTip(f"{tr('Недоступно в этой версии ядра')}: {tr('ядро не хранит именованные профили скана')}")
+        layout.addWidget(save)
+        layout.addWidget(waiting_badge(ISSUE_PROFILES))
         close = QToolButton()
         close.setProperty("role", "icon")
         close.setIcon(icon("close"))
@@ -125,7 +142,7 @@ class ScanSettingsDialog(QDialog):
     def _aside(self):
         aside = QFrame()
         aside.setObjectName("scanAside")
-        aside.setFixedWidth(280)
+        aside.setFixedWidth(300)
         layout = QVBoxLayout(aside)
         layout.setContentsMargins(18, 18, 18, 14)
         layout.setSpacing(12)
@@ -168,7 +185,8 @@ class ScanSettingsDialog(QDialog):
         bar = QFrame()
         bar.setObjectName("dialogFooter")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(20, 10, 20, 10)
+        bar.setFixedHeight(60)
+        layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(8)
         reset = QPushButton(tr("Сбросить"))
         reset.setObjectName("scanSettingsReset")
@@ -199,6 +217,8 @@ class ScanSettingsDialog(QDialog):
         if hasattr(self, "aside"):
             self.aside.setVisible(self.width() >= 1000)
             wide = self.width() >= 900
+            for _scroll, page in self.pages.values():
+                page.responsive(self.width() >= 1100)
             self.nav_frame.setFixedWidth(232 if wide else 60)
             for page_id, title, _glyph, _build in PAGES:
                 button = self.nav[page_id]
@@ -224,6 +244,8 @@ class ScanSettingsDialog(QDialog):
         problems = draft.problems()
         for _scroll, page in self.pages.values():
             page.sync(problems)
+        chain = tr("профиль проекта") if draft.project_layer else tr("настройки приложения")
+        self.profile_button.setText(trf("Профиль: {name}", name=chain))
         self.apply.setEnabled(not any(k in problems for k in problems if k not in ("source", "list", "sitemap")))
         rate = draft.rps()
         limit = trf("лимит {n} URL", n=grouped(draft.url_limit)) if draft.limit_enabled else tr("без лимита URL")
@@ -247,6 +269,6 @@ class ScanSettingsDialog(QDialog):
         self.changed_label.setText(trf("Изменено полей: {n}", n=len(edited)))
         self.changed_label.setToolTip(", ".join(edited))
         command = draft.command_text()
-        self.command.setText(command or tr("Команда появится, когда поля заполнены верно"))
+        self.command.setText(command.split(" --input")[0] + " …" if command else tr("Команда появится, когда поля заполнены верно"))
         if command:
             self.command.setToolTip(command)

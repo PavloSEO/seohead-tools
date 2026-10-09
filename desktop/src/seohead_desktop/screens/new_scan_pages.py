@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLayout,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QTableView,
@@ -29,7 +30,7 @@ from PyQt5.QtWidgets import (
 
 from ..i18n import tr, trf
 from ..ui.controls import Note, Segmented, SettingRow, Switch, polish
-from ..ui.icons import MaterialIconLabel
+from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import style_table, waiting_badge
 from ..ui.presentation import ElidedLabel
 from .new_scan_draft import (
@@ -124,16 +125,34 @@ def flow(*widgets, spacing=8):
 class ChoiceCard(QToolButton):
     """Choice card (design «Что сканировать»): icon, name, one line of text; a card button has no layout of its own."""
 
-    def __init__(self, key, glyph, name, text, object_name="", tag=""):
+    def __init__(self, key, glyph, name, text, object_name="", tag="", compact=False):
         super().__init__()
         self.key = key
+        self.compact = compact
         self.setObjectName(object_name)
         self.setCheckable(True)
         self.setAutoExclusive(True)
         self.setProperty("card", "choice")
         self.setAccessibleName(tr(name))
-        self.setMinimumHeight(86)
+        self.setMinimumHeight(40 if compact else 86)
         self.setCursor(Qt.PointingHandCursor)
+        if compact:
+            # one 40 px row: icon and name; the sentence moves into the tooltip (design ScanDialog «.src»)
+            self.setProperty("compact", True)
+            self.setToolTip(tr(text))
+            row_layout = QHBoxLayout(self)
+            row_layout.setContentsMargins(10, 0, 10, 0)
+            row_layout.setSpacing(8)
+            if glyph:
+                row_layout.addWidget(MaterialIconLabel(glyph, 18, color="role:primary"))
+            title = QLabel(tr(name))
+            title.setProperty("text_style", "control")
+            row_layout.addWidget(title, 1)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.setFixedHeight(40)
+            for child in self.findChildren(QWidget):
+                child.setAttribute(Qt.WA_TransparentForMouseEvents)
+            return
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(4)
@@ -160,24 +179,151 @@ class ChoiceCard(QToolButton):
 
     def sizeHint(self):
         hint = self.layout().sizeHint()
+        if self.compact:
+            return QSize(max(hint.width(), 96), 40)
         return QSize(max(hint.width(), 120), max(hint.height(), 86))
 
     def minimumSizeHint(self):
         return QSize(96, self.sizeHint().height())
 
     def hasHeightForWidth(self):
-        return self.layout().hasHeightForWidth()
+        return not self.compact and self.layout().hasHeightForWidth()
 
     def heightForWidth(self, width):
-        return max(self.layout().heightForWidth(width), 86)
+        return 40 if self.compact else max(self.layout().heightForWidth(width), 86)
 
 
+
+
+class HelpIcon(MaterialIconLabel):
+    """The «?» of the dense layout: the explanation lives in the tooltip, not in a line of text (design `.q`)."""
+
+    def __init__(self, text, parent=None):
+        super().__init__("help", 16, parent, color="role:text_muted")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setCursor(Qt.WhatsThisCursor)
+        self.setToolTip(text)
+        self.setAccessibleName(tr("Подсказка"))
+
+
+class Stepper(QFrame):
+    """[−] value [+] in one 32 px field (design `.stp`); ``edit`` is the real line edit bound to the draft."""
+
+    def __init__(self, edit, on_minus, on_plus, parent=None):
+        super().__init__(parent)
+        self.setProperty("stepper", True)
+        self.edit = edit
+        edit.setAlignment(Qt.AlignCenter)
+        edit.setFixedWidth(16777215)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.minus, self.plus = QToolButton(), QToolButton()
+        for button, glyph, name, step in ((self.minus, "remove", "Меньше", on_minus), (self.plus, "add", "Больше", on_plus)):
+            button.setProperty("stepper_button", True)
+            button.setIcon(material_icon(glyph))
+            button.setAccessibleName(tr(name))
+            button.setToolTip(tr(name))
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(lambda _c=False, f=step: f())
+        layout.addWidget(self.minus)
+        layout.addWidget(edit, 1)
+        layout.addWidget(self.plus)
+        self.setFixedHeight(32)
+        self.setMinimumWidth(110)
+
+    def set_invalid(self, invalid):
+        self.setProperty("invalid", bool(invalid))
+        polish(self)
+
+    def set_enabled_value(self, enabled):
+        self.edit.setEnabled(enabled)
+        self.minus.setEnabled(enabled)
+        self.plus.setEnabled(enabled)
+        self.setProperty("off", not enabled)
+        polish(self)
+
+
+class FormRow(QWidget):
+    """One dense form row: caption column (132) and the control (design `.fr`); an error line appears under the control."""
+
+    LABEL = 132
+
+    def __init__(self, title, control, help_text="", label_widget=None, hint="", field=None, label_width=None, parent=None):
+        super().__init__(parent)
+        self.control = control
+        self.edit = field or control
+        self.hint_text = hint
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(2)
+        head = QWidget()
+        head_layout = QHBoxLayout(head)
+        head_layout.setContentsMargins(0, 0, 0, 0)
+        head_layout.setSpacing(4)
+        if label_widget is not None:
+            head_layout.addWidget(label_widget)
+        self.caption = QLabel(title)
+        self.caption.setProperty("text_style", "control")
+        head_layout.addWidget(self.caption)
+        self.help = HelpIcon(help_text) if help_text else None
+        if self.help is not None:
+            head_layout.addWidget(self.help)
+        head_layout.addStretch(1)
+        self.label_width = label_width or self.LABEL
+        head.setFixedWidth(self.label_width)
+        head.setMinimumHeight(32)
+        self.head = head
+        grid.addWidget(head, 0, 0)
+        grid.addWidget(control, 0, 1)
+        grid.setColumnStretch(1, 1)
+        self.note = QLabel(hint)
+        self.note.setProperty("text_style", "meta")
+        self.note.setWordWrap(True)
+        self.note.setVisible(bool(hint))
+        grid.addWidget(self.note, 1, 1)
+        self.setMinimumHeight(32)
+
+    def set_error(self, message):
+        target = self.control if isinstance(self.control, Stepper) else self.edit
+        if isinstance(self.control, Stepper):
+            self.control.set_invalid(bool(message))
+        self.edit.setProperty("invalid", bool(message))
+        polish(self.edit)
+        self.note.setProperty("field_error", bool(message))
+        polish(self.note)
+        self.note.setText(message or self.hint_text)
+        self.note.setVisible(bool(message or self.hint_text))
+        target.setToolTip(message or "")
+
+    def set_narrow(self, narrow):
+        """In a narrow dialog the caption goes above the control instead of beside it."""
+        grid = self.layout()
+        grid.removeWidget(self.head)
+        grid.removeWidget(self.control)
+        grid.removeWidget(self.note)
+        if narrow:
+            self.head.setMinimumWidth(0)
+            self.head.setMaximumWidth(16777215)
+            self.head.setMinimumHeight(20)
+            grid.addWidget(self.head, 0, 0)
+            grid.addWidget(self.control, 1, 0)
+            grid.addWidget(self.note, 2, 0)
+        else:
+            self.head.setFixedWidth(self.label_width)
+            self.head.setMinimumHeight(32)
+            grid.addWidget(self.head, 0, 0)
+            grid.addWidget(self.control, 0, 1)
+            grid.addWidget(self.note, 1, 1)
+        grid.setColumnStretch(0, 1 if narrow else 0)
+        grid.setColumnStretch(1, 0 if narrow else 1)
 
 
 class FieldBox(QWidget):
     """Caption, one input and a line under it that is a hint, or the error in red when the value is not accepted."""
 
-    def __init__(self, title, edit, hint="", field=None, parent=None):
+    def __init__(self, title, edit, hint="", field=None, parent=None, trailing=None):
         super().__init__(parent)
         self.edit = field or edit
         self.hint_text = hint
@@ -186,7 +332,14 @@ class FieldBox(QWidget):
         layout.setSpacing(4)
         self.caption = QLabel(title)
         self.caption.setProperty("text_style", "control")
-        layout.addWidget(self.caption)
+        if trailing is None:
+            layout.addWidget(self.caption)
+        else:  # a switch at the right end of the caption line
+            head = QHBoxLayout()
+            head.setContentsMargins(0, 0, 0, 0)
+            head.addWidget(self.caption, 1)
+            head.addWidget(trailing)
+            layout.addLayout(head)
         layout.addWidget(edit)
         self.note = QLabel(hint)
         self.note.setProperty("text_style", "meta")
@@ -227,6 +380,7 @@ class Page(QWidget):
     def __init__(self, title, hint, parent=None):
         super().__init__(parent)
         self.binders = []
+        self.layouts = []
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
         self.layout_.setSpacing(0)
@@ -257,6 +411,11 @@ class Page(QWidget):
     def bind(self, fn):
         self.binders.append(fn)
 
+    def responsive(self, wide):
+        """Hook for pages that lay their blocks out in columns when the window is wide."""
+        for fn in getattr(self, "layouts", ()):
+            fn(wide)
+
     def sync(self, problems):
         for fn in self.binders:
             fn(problems)
@@ -272,26 +431,45 @@ def holder(*widgets, spacing=8):
     return box
 
 
+def dense_text():
+    """A disabled multi-line sample field of the sheet (kept short so two columns stay level)."""
+    edit = QPlainTextEdit()
+    edit.setMaximumHeight(72)
+    return edit
+
+
+def dense(item):
+    """Settings rows of the scan window are 48 px, not 60 (design `.sc .set-row{padding:10px 0}`)."""
+    item.layout().setContentsMargins(0, 8, 0, 8)
+    item.title.setWordWrap(False)
+    return item
+
+
 def row(page, title, description, control, key_tip=""):
-    item = SettingRow(tr(title), tr(description), control)
+    item = dense(SettingRow(tr(title), tr(description), control))
     if key_tip:
         item.title.setToolTip(key_tip)
     page.add(item)
     return item
 
 
-def waiting_row(page, title, description, issue, reason, preview=None):
+def waiting_row(page, title, description, issue, reason, preview=None, into=None):
     """A field of the sheet that has no core setting: visible, disabled, with the reason and the neutral unavailable badge."""
     if preview is not None:
         preview.setEnabled(False)
-    item = SettingRow(tr(title), trf("{text} · {reason}", text=tr(description), reason=tr(reason)) if description else tr(reason), preview)
+    item = dense(SettingRow(tr(title), trf("{text} · {reason}", text=tr(description), reason=tr(reason)) if description else tr(reason), preview))
     item.later_badge.setText(tr("Недоступно в этой версии ядра"))
     item.later_badge.setProperty("waiting_issue", issue)
     item.later_badge.setMinimumWidth(1)
     item.later_badge.setToolTip(tr("Появится") + ": " + tr(description or title))
     item.later_badge.show()
     item.setProperty("waiting", True)
-    page.add(item)
+    if into is None:
+        page.add(item)
+    else:
+        if preview is not None:  # a narrow column: the disabled control goes under the text, not beside it
+            item.layout().addWidget(preview, 1, 0)
+        into.addWidget(item)
     return item
 
 
@@ -406,12 +584,7 @@ def speed_page(draft, host):
     limit_switch.setObjectName("scanLimitEnabledSettings")
     limit_edit, sync_limit = number_edit(draft, "limit", tr("Лимит URL"), 0, "scanUrlLimitSettings")
     limit_switch.toggled.connect(draft.set_limit_enabled)
-    limit_box = FieldBox(tr("Лимит URL"), holder_edit := QWidget())
-    # the limit field keeps its switch beside it
-    inner = QHBoxLayout(holder_edit)
-    inner.setContentsMargins(0, 0, 0, 0)
-    inner.addWidget(limit_switch)
-    inner.addWidget(limit_edit, 1)
+    limit_box = FieldBox(tr("Лимит URL"), limit_edit, tr("Верхняя граница числа URL"), trailing=limit_switch)
     boxes["limit"] = limit_box
     specs = (("depth", "Глубина", "от стартовой страницы; −1 — без ограничения"), ("requests", "Лимит запросов", "с ресурсами и редиректами; 0 — без лимита"),
              ("minutes", "Время скана, мин", "0 — без лимита"))
@@ -420,10 +593,15 @@ def speed_page(draft, host):
         boxes[key] = FieldBox(tr(title), edit_, tr(hint))
         boxes[key].sync = sync_
         page.bind(lambda _p, s=sync_: s())
-    for index, key in enumerate(("limit", "depth", "requests", "minutes")):
-        grid.addWidget(boxes[key], index // 2, index % 2)
-    grid.setColumnStretch(0, 1)
-    grid.setColumnStretch(1, 1)
+    def arrange(wide):
+        columns = 4 if wide else 2
+        for index, key in enumerate(("limit", "depth", "requests", "minutes")):
+            grid.addWidget(boxes[key], index // columns, index % columns)
+        for column in range(4):
+            grid.setColumnStretch(column, 1 if column < columns else 0)
+
+    page.layouts.append(arrange)
+    arrange(True)
 
     def sync_bounds(problems):
         sync_limit()
@@ -487,19 +665,28 @@ def scope_page(draft, host):
     segmented_row(page, draft, "scope.internal", "Какие хосты считать внутренними", "Только основной хост или весь домен со всеми поддоменами",
                   [("host", tr("Только хост")), ("registrable_domain", tr("Домен и поддомены"))], key_tip="scope.internal")
     waiting_row(page, "Основной хост и www", "Режим «хост + www»", ISSUE_SETTINGS, "в ядре только «хост» или «весь домен»", Segmented([("a", tr("Нет")), ("b", "www"), ("c", tr("Все"))], "a", tr("Поддомены")))
-    page.caption(tr("Правила regex"))
+    columns = QGridLayout()
+    columns.setHorizontalSpacing(20)
+    columns.setVerticalSpacing(0)
+    left, right = QVBoxLayout(), QVBoxLayout()
+    left.setSpacing(6)
+    right.setSpacing(0)
+    rules_caption = QLabel(tr("Правила regex"))
+    rules_caption.setProperty("text_style", "overline")
+    rules_caption.setContentsMargins(0, 14, 0, 0)
+    left.addWidget(rules_caption)
     model = RuleModel(draft)
     table = QTableView()
     table.setObjectName("scanRulesTable")
     table.setAccessibleName(tr("Правила области"))
     table.setModel(model)
     style_table(table)
-    table.setMinimumHeight(110)
-    table.setMaximumHeight(150)
-    page.add(table)
+    table.setMinimumHeight(84)
+    table.setMaximumHeight(120)
+    left.addWidget(table)
     empty = QLabel(tr("Правил нет: сканируется весь хост"))
     empty.setProperty("text_style", "meta")
-    page.add(empty)
+    left.addWidget(empty)
     page.bind(lambda _p: empty.setVisible(not model.rules()))
     entry = QLineEdit()
     entry.setPlaceholderText(tr("Регулярное выражение, например /(cart|checkout)/"))
@@ -511,10 +698,9 @@ def scope_page(draft, host):
     problem = QLabel()
     problem.setProperty("field_error", True)
     problem.setProperty("text_style", "meta")
-    controls = holder(entry, include, exclude, remove)
-    controls.layout().setStretch(0, 1)
-    page.add(controls)
-    page.add(problem)
+    left.addWidget(entry)
+    left.addWidget(holder(include, exclude, remove, None))
+    left.addWidget(problem)
 
     def add(kind):
         text = entry.text().strip()
@@ -552,8 +738,29 @@ def scope_page(draft, host):
     page.bind(lambda _p: model.reload())
     note = QLabel(tr("Ядро хранит два списка и не учитывает порядок правил."))
     note.setProperty("text_style", "meta")
-    page.add(note)
-    waiting_row(page, "Проверка правил", "Какие из URL войдут в область", ISSUE_OTHER, "ядро не отвечает без запуска скана", QLineEdit())
+    left.addWidget(note)
+    right_caption = QLabel(tr("Проверка правил"))
+    right_caption.setProperty("text_style", "overline")
+    right_caption.setContentsMargins(0, 14, 0, 0)
+    right.addWidget(right_caption)
+    waiting_row(page, "Какие из URL войдут", "", ISSUE_OTHER, "ядро не отвечает без запуска скана", dense_text(), into=right)
+    right.addStretch(1)
+    left_box, right_box = QWidget(), QWidget()
+    left_box.setLayout(left)
+    right_box.setLayout(right)
+    for box in (left_box, right_box):
+        box.layout().setContentsMargins(0, 0, 0, 0)
+    page.add(columns_holder := QWidget())
+    columns_holder.setLayout(columns)
+
+    def arrange_columns(wide):
+        columns.addWidget(left_box, 0, 0)
+        columns.addWidget(right_box, 0, 1) if wide else columns.addWidget(right_box, 1, 0)
+        columns.setColumnStretch(0, 1)
+        columns.setColumnStretch(1, 1 if wide else 0)
+
+    page.layouts.append(arrange_columns)
+    arrange_columns(True)
     waiting_row(page, "GET-параметры", "Оставлять / удалять отмеченные / игнорировать все", ISSUE_SETTINGS, "в ядре нет нормализации параметров",
                 Segmented([("k", tr("Оставлять")), ("s", tr("Удалять отмеченные")), ("i", tr("Игнорировать все"))], "k", tr("GET-параметры")))
     page.caption(tr("Не обходить файлы типов"))
@@ -628,11 +835,35 @@ def request_page(draft, host):
     reason = "заголовки, cookies, авторизация и прокси задаются отдельным доверенным способом"
     waiting_row(page, "Свой User-Agent", "", ISSUE_SETTINGS, "ядро принимает строку, но в приложении она не подключена", QLineEdit())
     page.caption(tr("Заголовки, доступ, прокси"))
-    waiting_row(page, "Заголовки запроса", "Имя и значение", ISSUE_SETTINGS, reason, QLineEdit())
-    waiting_row(page, "Cookies", "name=value; …", ISSUE_SETTINGS, "ядро принимает их только через переменные окружения для хоста", QLineEdit())
-    waiting_row(page, "HTTP-авторизация", "Basic / Digest", ISSUE_SETTINGS, "в ядре нет логина и пароля, только готовый заголовок из окружения", Switch(tr("HTTP-авторизация")))
+    columns = QGridLayout()
+    columns.setHorizontalSpacing(20)
+    columns.setVerticalSpacing(0)
+    left, right = QVBoxLayout(), QVBoxLayout()
+    for side in (left, right):
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(0)
+    waiting_row(page, "Заголовки запроса", "Имя и значение", ISSUE_SETTINGS, reason, QLineEdit(), into=left)
+    waiting_row(page, "Cookies", "name=value; …", ISSUE_SETTINGS, "ядро принимает их только через переменные окружения для хоста", QLineEdit(), into=left)
+    waiting_row(page, "HTTP-авторизация", "Basic / Digest", ISSUE_SETTINGS, "в ядре нет логина и пароля, только готовый заголовок из окружения", Switch(tr("HTTP-авторизация")), into=right)
     waiting_row(page, "Прокси", "Нет / системный / свой", ISSUE_SETTINGS, "адрес прокси задаётся отдельным доверенным способом",
-                Segmented([("n", tr("Нет")), ("s", tr("Системный")), ("o", tr("Свой"))], "n", tr("Прокси")))
+                Segmented([("n", tr("Нет")), ("s", tr("Системный")), ("o", tr("Свой"))], "n", tr("Прокси")), into=right)
+    left.addStretch(1)
+    right.addStretch(1)
+    left_box, right_box = QWidget(), QWidget()
+    left_box.setLayout(left)
+    right_box.setLayout(right)
+    holder_box = QWidget()
+    holder_box.setLayout(columns)
+    page.add(holder_box)
+
+    def arrange(wide):
+        columns.addWidget(left_box, 0, 0)
+        columns.addWidget(right_box, 0, 1) if wide else columns.addWidget(right_box, 1, 0)
+        columns.setColumnStretch(0, 1)
+        columns.setColumnStretch(1, 1 if wide else 0)
+
+    page.layouts.append(arrange)
+    arrange(True)
     return page
 
 
@@ -686,10 +917,35 @@ def render_page(draft, host):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+class ExtractModel(QAbstractTableModel):
+    """The empty column set of the extractor table (design ScExtract): the core cannot be given such rules yet."""
+
+    HEADERS = ("Имя столбца", "Тип", "Выражение", "Вернуть", "Проверка на образце")
+
+    def rowCount(self, parent=None):
+        return 0
+
+    def columnCount(self, parent=None):
+        return 0 if parent is not None and parent.isValid() else len(self.HEADERS)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return tr(self.HEADERS[section])
+
+
 def extract_page(draft, host):
     page = Page(tr("Извлечение"), tr("Свои поля из HTML: столбцы появятся в таблице скана и экспорте"))
     page.add(Note("info", tr("Экстракторы пока не подключены"),
                   tr("Ядро принимает только data-only правила evidence.extraction_rules; XPath, Regex и проверка на образце в crawl-site недоступны. Редактор не подключён, в команду ничего не уходит.")))
+    table = QTableView()
+    table.setObjectName("scanExtractTable")
+    table.setAccessibleName(tr("Экстракторы"))
+    table.setModel(ExtractModel())
+    style_table(table)
+    table.setEnabled(False)
+    table.setMinimumHeight(120)
+    table.setMaximumHeight(150)
+    page.add(table)
     waiting_row(page, "Список экстракторов", "Имя столбца, тип CSS/XPath/Regex, выражение", ISSUE_EXTRACT, "правила не редактируются в приложении", QPushButton(tr("Экстрактор")))
     waiting_row(page, "Проверка на образце", "Один запрос к образцу с текущими настройками", ISSUE_EXTRACT, "ядро не проверяет правила без запуска скана", QLineEdit())
     return page

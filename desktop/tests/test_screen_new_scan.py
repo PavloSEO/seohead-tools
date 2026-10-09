@@ -513,15 +513,18 @@ class DialogTests(DialogCase):
     def test_unmeasurable_numbers_are_waiting_and_none_is_invented(self):
         dialog = self.open()
         rows = {k: label.text() for k, (_name, label) in dialog.plan_values.items()}
-        self.assertEqual(rows["estimate"], "оценка недоступна в этой версии ядра")
-        self.assertEqual(rows["speed"], "до 2 запросов/с на хост · потоков 1")
+        # what the core cannot measure before a run is the neutral «unavailable» badge, not a number
+        for key in ("duration", "disk"):
+            badge = dialog.plan_values[key][1]
+            self.assertEqual(badge.property("waiting_issue"), 931)
+            self.assertTrue(badge.text().startswith("Недоступно"), badge.text())
+            self.assertNotRegex(badge.text(), r"\d")
+        self.assertEqual(rows["speed"], "2 запр/с · 1 пот.")
         self.assertEqual(rows["urls"], "1 500")
         self.assertEqual(rows["requests"], "без лимита")
         self.assertEqual(rows["paid"], "нет")
-        self.assertEqual(rows["profile"], "не прочитан")
+        self.assertEqual(rows["impact"], "только чтение")
         texts = " ".join(label.text() for label in dialog.findChildren(QPushButton))
-        self.assertNotIn("МБ", rows["estimate"])
-        self.assertNotIn("мин", rows["estimate"])
         self.assertIn("Сохранить как профиль", texts)
         profile = dialog.findChild(QPushButton, "scanSaveProfile")
         self.assertFalse(profile.isEnabled())
@@ -598,18 +601,19 @@ class DialogTests(DialogCase):
         self.window.request_scan_policy = lambda ok, bad: asked.append((ok, bad)) or True
         dialog = self.open()
         self.assertEqual(dialog.draft.policy_state, "loading")
-        self.assertIn("загружается", dialog.plan_values["profile"][1].text())
+        self.assertIn("загружается", dialog.profile_line.toolTip())
         asked[0][0]({"limits.max_urls": 50, "speed.concurrency": 2})
         self.assertEqual(dialog.findChild(QLineEdit, "scanUrlLimit").text(), "50")
         self.assertEqual(dialog.findChild(QLineEdit, "scanConcurrency").text(), "2")
-        self.assertEqual(dialog.plan_values["profile"][1].text(), "2 парам.")
-        self.assertIn("профиль проекта", dialog.profile_line.text())
+        self.assertEqual(dialog.profile_line.toolTip().splitlines()[-1], "Профиль проекта: 2 парам.")
+        self.assertEqual(dialog.profile_line.text(), "Профиль проекта")
+        self.assertIn("профиль проекта", dialog.profile_line.toolTip())
 
     def test_profile_that_cannot_be_read_is_not_pretended(self):
         self.window.request_scan_policy = lambda ok, bad: False
         dialog = self.open()
         self.assertEqual(dialog.draft.policy_state, "unavailable")
-        self.assertEqual(dialog.plan_values["profile"][1].text(), "не прочитан")
+        self.assertEqual(dialog.profile_line.toolTip().splitlines()[-1], "Профиль проекта не прочитан")
 
     def test_policy_request_is_read_only_and_goes_through_the_adapter(self):
         sent = []
@@ -781,7 +785,7 @@ class SettingsTests(DialogCase):
         self.assertEqual(settings.changed_label.text(), "Изменено полей: 0")
         type_into(settings.findChild(QLineEdit, "scanConcurrency"), "3")
         self.assertEqual(settings.changed_label.text(), "Изменено полей: 1")
-        self.assertIn("не подключены (недоступно в этой версии ядра)", [label.text() for label in settings.findChildren(QLabel)])
+        self.assertIn("недоступно в этой версии ядра", [label.text() for label in settings.findChildren(QLabel)])
 
     def test_english_pages_have_no_russian_left(self):
         i18n.set_language("en")
@@ -847,7 +851,7 @@ class RealCoreTests(unittest.TestCase):
                 wait_for(self, lambda: dialog.draft is not None and dialog.draft.policy_state == "ready", "the project policy never arrived")
                 self.assertEqual(dialog.findChild(QLineEdit, "scanUrlLimit").text(), "50")
                 self.assertEqual(dialog.findChild(QLineEdit, "scanConcurrency").text(), "2")
-                self.assertEqual(dialog.plan_values["profile"][1].text(), "2 парам.")
+                self.assertEqual(dialog.profile_line.toolTip().splitlines()[-1], "Профиль проекта: 2 парам.")
                 self.assertEqual(dialog.draft.policy_paths, {"limits.max_urls", "speed.concurrency"})
                 self.assertFalse(dialog.findChild(QCheckBox, "scanLargeApproval").isChecked())
                 dialog.close()
@@ -866,7 +870,7 @@ class RealCoreTests(unittest.TestCase):
                 dialog = NewScanDialog(window)
                 dialog.show()
                 wait_for(self, lambda: dialog.draft is not None and dialog.draft.policy_state == "ready", "the project policy never arrived")
-                self.assertEqual(dialog.plan_values["profile"][1].text(), "не задан")
+                self.assertEqual(dialog.profile_line.toolTip().splitlines()[-1], "Профиль проекта не задан")
                 self.assertEqual(dialog.draft.problems(), {})
                 self.assertGreaterEqual(len(dialog.draft.core), 70)
                 self.assertEqual(launched, [])

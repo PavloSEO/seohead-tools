@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -31,12 +32,13 @@ from PyQt5.QtWidgets import (
 
 from .. import i18n, theming
 from ..i18n import tr, trf
-from ..ui.controls import Note, Segmented, Switch, polish
+from ..ui.controls import Note, Segmented, Switch
 from ..ui.icons import MaterialIconLabel
 from ..ui.icons import material_icon as icon
 from ..ui.kit import StatePanel, waiting_badge
 from ..ui.presentation import ElidedLabel
 from .new_scan_draft import (
+    ISSUE_ESTIMATE,
     ISSUE_PROFILES,
     ISSUE_URL_QUERY,
     LIST_FILE_CAP,
@@ -45,7 +47,7 @@ from .new_scan_draft import (
     grouped,
     list_from_file_text,
 )
-from .new_scan_pages import ChoiceCard, FieldBox, flow, number_edit
+from .new_scan_pages import ChoiceCard, FormRow, HelpIcon, Stepper, flow, number_edit
 
 SOURCE_CARDS = (
     ("site", "travel_explore", "Сайт целиком", "Обход по ссылкам со стартового URL проекта"),
@@ -60,6 +62,8 @@ FIELD_TITLES = {
     "max_delay": "Максимальная пауза", "timeouts": "Тайм-ауты подряд", "script_timeout": "Время JavaScript",
     "body_mb": "Максимум на один ответ", "free_gb": "Свободное место", "viewport": "Окно просмотра", "list": "Список URL",
 }
+# plan rows the core cannot measure before a run: the value is the neutral «unavailable» badge, never a number
+UNMEASURED = {"duration": "Оценка длительности скана до запуска", "disk": "Оценка занятого места до запуска"}
 ROBOTS_NAMES = {"respect": "соблюдать", "report_only": "только отчёт", "ignore": "игнорировать"}
 
 
@@ -94,7 +98,7 @@ def summary_rows(draft):
         ("robots.txt", tr(ROBOTS_NAMES.get(v.get("robots.policy"), "")) or None),
         ("JS", tr("всегда") if v.get("rendering.mode") == "js" else tr("выкл")),
         ("Тело", tr("не хранится") if v.get("storage.body_mode") == "off" else tr("сохраняется")),
-        ("Экстракторов", tr("не подключены (недоступно в этой версии ядра)")),
+        ("Экстракторов", tr("недоступно в этой версии ядра")),
     ]
     agent = v.get("http.user_agent")
     if agent:
@@ -121,8 +125,9 @@ class NewScanDialog(QDialog):
         self.setModal(True)
         self.setObjectName("newScanDialog")
         area = parent.size() if parent is not None else host.size()
-        self.resize(min(1000, max(720, area.width() - 40)), min(820, max(640, area.height() - 40)))
+        self.resize(min(960, max(720, area.width() - 40)), min(680, max(600, area.height() - 40)))
         self.setMinimumSize(640, 560)
+        self.quick_requested = False
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -154,19 +159,25 @@ class NewScanDialog(QDialog):
     def _header(self):
         bar = QFrame()
         bar.setObjectName("scanHeader")
+        bar.setFixedHeight(48)
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(24, 10, 12, 10)
-        layout.setSpacing(12)
-        layout.addWidget(MaterialIconLabel("play_circle", 24, color="role:primary"))
-        texts = QVBoxLayout()
-        texts.setSpacing(0)
+        layout.setContentsMargins(20, 0, 8, 0)
+        layout.setSpacing(10)
+        layout.addWidget(MaterialIconLabel("play_circle", 20, color="role:primary"))
         title = QLabel(tr("Новый скан"))
-        title.setProperty("text_style", "dialog")
-        self.subtitle = QLabel()
+        title.setProperty("text_style", "section")
+        self.subtitle = ElidedLabel()
         self.subtitle.setProperty("text_style", "meta")
-        texts.addWidget(title)
-        texts.addWidget(self.subtitle)
-        layout.addLayout(texts, 1)
+        layout.addWidget(title)
+        layout.addWidget(self.subtitle, 1)
+        quick = QPushButton(tr("Быстрый запуск"))
+        quick.setObjectName("scanQuickLaunch")
+        quick.setProperty("role", "text")
+        quick.setProperty("size", "sm")
+        quick.setIcon(icon("bolt"))
+        quick.setToolTip(tr("Запуск одной строкой в шапке"))
+        quick.clicked.connect(self._quick_launch)
+        layout.addWidget(quick)
         close = QToolButton()
         close.setProperty("role", "icon")
         close.setIcon(icon("close"))
@@ -176,15 +187,28 @@ class NewScanDialog(QDialog):
         close.clicked.connect(self.reject)
         layout.addWidget(close)
         label = ((getattr(self.host, "project_result", None) or {}).get("project") or {}).get("site") or {}
-        self.subtitle.setText(" · ".join(part for part in (label.get("label"), label.get("host"), tr("основной сайт")) if part))
+        self.subtitle.setText(" · ".join(part for part in (label.get("label"), label.get("host")) if part))
         return bar
+
+    def _quick_launch(self):
+        """Close this window and show the one-line launcher instead (the draft is kept per project)."""
+        self.quick_requested = True
+        self.reject()
 
     def _footer(self):
         bar = QFrame()
         bar.setObjectName("dialogFooter")
+        bar.setFixedHeight(56)
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(24, 12, 24, 12)
+        layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(8)
+        profile = QPushButton(tr("Сохранить как профиль"))
+        profile.setObjectName("scanSaveProfile")
+        profile.setIcon(icon("bookmark_add"))
+        profile.setEnabled(False)
+        profile.setToolTip(f"{tr('Недоступно в этой версии ядра')}: {tr('ядро не хранит именованные профили скана')}")
+        layout.addWidget(profile)
+        layout.addWidget(waiting_badge(ISSUE_PROFILES))
         self.problem_icon = MaterialIconLabel("error", 18, color="role:error")
         self.problem = ElidedLabel()
         self.problem.setObjectName("scanValidationFeedback")
@@ -192,14 +216,6 @@ class NewScanDialog(QDialog):
         self.problem.setProperty("text_style", "meta")
         layout.addWidget(self.problem_icon)
         layout.addWidget(self.problem, 1)
-        profile = QPushButton(tr("Сохранить как профиль"))
-        profile.setObjectName("scanSaveProfile")
-        profile.setProperty("role", "text")
-        profile.setIcon(icon("bookmark_add"))
-        profile.setEnabled(False)
-        profile.setToolTip(f"{tr('Недоступно в этой версии ядра')}: {tr('ядро не хранит именованные профили скана')}")
-        layout.addWidget(profile)
-        layout.addWidget(waiting_badge(ISSUE_PROFILES))
         cancel = QPushButton(tr("Отмена"))
         cancel.setProperty("role", "text")
         cancel.setProperty("size", "lg")
@@ -261,12 +277,22 @@ class NewScanDialog(QDialog):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         left = QWidget()
         column = QVBoxLayout(left)
-        column.setContentsMargins(24, 18, 24, 18)
-        column.setSpacing(18)
+        column.setContentsMargins(20, 14, 20, 14)
+        column.setSpacing(12)
         column.addWidget(self._sources())
         column.addWidget(self._source_blocks())
+        rule = QFrame()
+        rule.setFixedHeight(1)
+        rule.setProperty("rule", True)
+        column.addWidget(rule)
         column.addWidget(self._options())
         column.addStretch(1)
+        self.settings_link = QPushButton()
+        self.settings_link.setObjectName("scanOpenSettings")
+        self.settings_link.setProperty("role", "text")
+        self.settings_link.setIcon(icon("tune"))
+        self.settings_link.clicked.connect(lambda: self._open_settings("speed"))
+        column.addWidget(self.settings_link, 0, Qt.AlignLeft)
         scroll.setWidget(left)
         layout.addWidget(scroll, 1)
         layout.addWidget(self._aside())
@@ -279,15 +305,12 @@ class NewScanDialog(QDialog):
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        caption = QLabel(tr("ЧТО СКАНИРОВАТЬ"))
-        caption.setProperty("text_style", "overline")
-        layout.addWidget(caption)
+        layout.setSpacing(6)
         self.cards = {}
         self.card_grid = QGridLayout()
-        self.card_grid.setSpacing(10)
+        self.card_grid.setSpacing(8)
         for key, glyph, name, text in SOURCE_CARDS:
-            card = ChoiceCard(key, glyph, name, text, "scanSource_" + key)
+            card = ChoiceCard(key, glyph, name, text, "scanSource_" + key, compact=True)
             if key == "sf":
                 card.setEnabled(False)
                 card.setToolTip(tr("Недоступно в этой сборке"))
@@ -295,6 +318,10 @@ class NewScanDialog(QDialog):
             self.cards[key] = card
         layout.addLayout(self.card_grid)
         self._layout_cards(4)
+        self.source_text = ElidedLabel()
+        self.source_text.setObjectName("scanSourceText")
+        self.source_text.setProperty("text_style", "meta")
+        layout.addWidget(self.source_text)
         return box
 
     def _layout_cards(self, columns):
@@ -305,14 +332,16 @@ class NewScanDialog(QDialog):
         self._card_columns = columns
 
     def _layout_options(self, columns):
-        for index, item in enumerate(self.option_items):
-            self.option_grid.addWidget(item, index // columns, index % columns, 1, 1)
+        normal = [item for item in self.option_items if item is not self.option_wide]
+        for index, item in enumerate(normal):
+            self.option_grid.addWidget(item, index // columns, index % columns)
+        self.option_grid.addWidget(self.option_wide, -(-len(normal) // columns), 0, 1, columns)
         self._option_columns = columns
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if getattr(self, "cards", None):
-            columns = 4 if self.width() >= 940 else 2
+            columns = 4 if self.width() >= 900 else 2
             if columns != self._card_columns:
                 self._layout_cards(columns)
         if getattr(self, "option_items", None):
@@ -326,48 +355,48 @@ class NewScanDialog(QDialog):
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
         # site
-        self.site_block = QWidget()
-        site = QVBoxLayout(self.site_block)
-        site.setContentsMargins(0, 0, 0, 0)
         start = QLineEdit(draft.target)
         start.setObjectName("scanStartUrl")
         start.setReadOnly(True)
         start.setAccessibleName(tr("Стартовый URL"))
+        start.setProperty("mono", True)
         badge = QLabel(tr("Сайт проекта"))
         badge.setProperty("badge", "ok")
-        site.addWidget(FieldBox(tr("Стартовый URL"), hbox(start, badge, stretch=(start,)), tr("Адрес берётся из проекта")))
+        self.site_block = FormRow(tr("Стартовый URL"), hbox(start, badge, stretch=(start,)), tr("Адрес берётся из проекта"), field=start)
         layout.addWidget(self.site_block)
         # sitemap
         self.sitemap_edit = QLineEdit(draft.sitemap_url)
         self.sitemap_edit.setObjectName("scanSitemapUrl")
         self.sitemap_edit.setAccessibleName(tr("Адрес sitemap"))
         self.sitemap_edit.setPlaceholderText("https://example.test/sitemap.xml")
+        self.sitemap_edit.setProperty("mono", True)
         self.sitemap_edit.textEdited.connect(self._sitemap_typed)
-        self.sitemap_box = FieldBox(tr("Адрес sitemap"), self.sitemap_edit,
-                                    f"{tr('Состав sitemap покажет скан')} · {tr('предпросмотр без запуска')}: {tr('Недоступно в этой версии ядра')}")
+        self.sitemap_box = FormRow(tr("Адрес sitemap"), hbox(self.sitemap_edit, waiting_badge(ISSUE_ESTIMATE, "Число URL в sitemap до запуска скана"), stretch=(self.sitemap_edit,)),
+                                   f"{tr('Состав sitemap покажет скан')} · {tr('предпросмотр без запуска')}: {tr('Недоступно в этой версии ядра')}", field=self.sitemap_edit)
         layout.addWidget(self.sitemap_box)
         # list
         self.list_block = QWidget()
         listing = QVBoxLayout(self.list_block)
         listing.setContentsMargins(0, 0, 0, 0)
         listing.setSpacing(6)
-        title = QLabel(tr("Список URL · по одному в строке"))
+        title = ElidedLabel(tr("Список URL · по одному в строке"))
         title.setProperty("text_style", "control")
         from_file = QPushButton(tr("Из файла .txt / .csv"))
         from_file.setObjectName("scanListFile")
+        from_file.setProperty("size", "sm")
         from_file.setIcon(icon("upload_file"))
         from_file.clicked.connect(self._list_from_file)
         paste = QPushButton(tr("Вставить"))
         paste.setObjectName("scanListPaste")
+        paste.setProperty("size", "sm")
         paste.setIcon(icon("content_paste"))
         paste.clicked.connect(self._list_paste)
-        listing.addWidget(title)
-        listing.addWidget(flow(from_file, paste))
+        listing.addWidget(hbox(title, from_file, paste, stretch=(title,)))
         self.list_edit = QPlainTextEdit(draft.list_text)
         self.list_edit.setObjectName("scanListText")
         self.list_edit.setAccessibleName(tr("Список URL"))
-        self.list_edit.setMinimumHeight(110)
-        self.list_edit.setMaximumHeight(150)
+        self.list_edit.setMinimumHeight(76)
+        self.list_edit.setMaximumHeight(96)
         self.list_edit.textChanged.connect(self._list_typed)
         listing.addWidget(self.list_edit)
         self.counter_labels = {}
@@ -383,10 +412,12 @@ class NewScanDialog(QDialog):
         approx.setToolTip(f"{tr('Предпросмотр списка ядро не умеет')} · {tr('Недоступно в этой версии ядра')}")
         four = QPushButton(tr("Взять 4xx из скана"))
         four.setProperty("role", "text")
+        four.setProperty("size", "sm")
         four.setEnabled(False)
         four.setToolTip(tr('Недоступно в этой версии ядра'))
         listing.addWidget(flow(*parts, approx, four, waiting_badge(ISSUE_URL_QUERY)))
-        self.list_note = Note("warn", tr("Запуск списка URL из приложения недоступен в этой версии ядра."), tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить."))
+        self.list_note = Note("warn", tr("Запуск списка URL из приложения недоступен в этой версии ядра."))
+        self.list_note.setToolTip(tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить."))
         listing.addWidget(self.list_note)
         layout.addWidget(self.list_block)
         # Screaming Frog
@@ -399,114 +430,59 @@ class NewScanDialog(QDialog):
         box = QWidget()
         grid = QGridLayout(box)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(16)
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(10)
+        grid.setAlignment(Qt.AlignTop)
         # mode
-        self.mode = Segmented([("raw", tr("Исходный HTML")), ("js", tr("С рендерингом JS"))], draft.value("rendering.mode", "raw"), tr("Режим загрузки"))
+        self.mode = Segmented([("raw", tr("Исходный HTML")), ("js", tr("С JS"))], draft.value("rendering.mode", "raw"), tr("Режим загрузки"))
         self.mode.setObjectName("scanRenderingMode")
+        self.mode.setProperty("dense", True)
         self.mode.changed.connect(lambda value: draft.set_value("rendering.mode", value))
-        self.mode_hint = QLabel()
-        self.mode_hint.setProperty("text_style", "meta")
-        self.mode_hint.setWordWrap(True)
-        mode_box = QWidget()
-        mode_layout = QVBoxLayout(mode_box)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        caption = QLabel(tr("Режим"))
-        caption.setProperty("text_style", "control")
-        for widget in (caption, self.mode, self.mode_hint):
-            mode_layout.addWidget(widget)
-        self.option_items = [mode_box]
+        self.mode_row = FormRow(tr("Режим"), self.mode, " ")
         # profile
-        profile_box = QWidget()
-        profile_layout = QVBoxLayout(profile_box)
-        profile_layout.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        caption = QLabel(tr("Профиль настроек"))
-        caption.setProperty("text_style", "control")
-        row.addWidget(caption, 1)
-        all_profiles = QPushButton(tr("Все профили…"))
-        all_profiles.setObjectName("scanAllProfiles")
-        all_profiles.setProperty("role", "text")
-        all_profiles.clicked.connect(lambda: self._open_settings("profiles"))
-        row.addWidget(all_profiles)
-        profile_layout.addLayout(row)
         self.profile_line = QLineEdit()
         self.profile_line.setReadOnly(True)
         self.profile_line.setAccessibleName(tr("Профиль настроек"))
-        profile_layout.addWidget(self.profile_line)
-        self.profile_hint = QLabel()
-        self.profile_hint.setProperty("text_style", "meta")
-        self.profile_hint.setWordWrap(True)
-        profile_layout.addWidget(self.profile_hint)
-        self.option_items.append(profile_box)
+        all_profiles = QToolButton()
+        all_profiles.setObjectName("scanAllProfiles")
+        all_profiles.setProperty("role", "icon")
+        all_profiles.setIcon(icon("tune"))
+        all_profiles.setAccessibleName(tr("Все профили…"))
+        all_profiles.setToolTip(tr("Все профили…"))
+        all_profiles.clicked.connect(lambda: self._open_settings("profiles"))
+        self.profile_row = FormRow(tr("Профиль"), hbox(self.profile_line, all_profiles, spacing=4, stretch=(self.profile_line,)), " ", field=self.profile_line)
         # speed
         self.rps_edit, self._sync_rps = number_edit(draft, "rps", tr("Запросов в секунду"), 0, "scanRequestRate")
-        minus, plus = QToolButton(), QToolButton()
-        for button, glyph, name, step in ((minus, "remove", "Меньше", -1), (plus, "add", "Больше", 1)):
-            button.setProperty("role", "icon")
-            button.setIcon(icon(glyph))
-            button.setAccessibleName(tr(name))
-            button.setToolTip(tr(name))
-            button.clicked.connect(lambda _c, s=step: self._step_rps(s))
-        self.rps_box = FieldBox(tr("Запросов/с"), hbox(self.rps_edit, minus, plus, spacing=4, stretch=(self.rps_edit,)), tr("Бережно для боевого сайта: не больше 2"), self.rps_edit)
+        self.rps_box = FormRow(tr("Запросов/с"), Stepper(self.rps_edit, lambda: self._step_rps(-1), lambda: self._step_rps(1)),
+                               tr("Бережно для боевого сайта: не больше 2"), field=self.rps_edit)
         self.threads_edit, self._sync_threads = number_edit(draft, "threads", tr("Потоки"), 0, "scanConcurrency")
-        self.threads_box = FieldBox(tr("Потоки"), self.threads_edit)
-        self.threads_box.setFixedWidth(96)
-        self.option_items.append(hbox(self.rps_box, self.threads_box, spacing=10, stretch=(self.rps_box,)))
+        self.threads_box = FormRow(tr("Потоки"), Stepper(self.threads_edit, lambda: self._step_threads(-1), lambda: self._step_threads(1)),
+                                   tr("Параллельных соединений в общем пуле скана"), field=self.threads_edit)
         # limits
-        limits = QVBoxLayout()
-        limits.setSpacing(10)
-        caption = QLabel(tr("Ограничения"))
-        caption.setProperty("text_style", "control")
-        limits.addWidget(caption)
         self.limit_switch = Switch(tr("Ограничить число URL"), draft.limit_enabled)
         self.limit_switch.setObjectName("scanLimitEnabled")
         self.limit_switch.toggled.connect(draft.set_limit_enabled)
-        self.limit_edit, self._sync_limit = number_edit(draft, "limit", tr("Лимит URL"), 110, "scanUrlLimit")
-        limits.addWidget(hbox(self.limit_switch, QLabel(tr("Лимит URL")), None, self.limit_edit, spacing=10))
-        self.limit_error = QLabel()
-        self.limit_error.setProperty("field_error", True)
-        self.limit_error.setProperty("text_style", "meta")
-        self.limit_error.setWordWrap(True)
-        limits.addWidget(self.limit_error)
+        self.limit_edit, self._sync_limit = number_edit(draft, "limit", tr("Лимит URL"), 0, "scanUrlLimit")
+        self.limit_stepper = Stepper(self.limit_edit, lambda: self._step_limit(-500), lambda: self._step_limit(500))
+        self.limit_row = FormRow(tr("Лимит URL"), self.limit_stepper, "", label_widget=self.limit_switch, field=self.limit_edit)
         self.html_switch = Switch(tr("Сохранять HTML страниц"), draft.value("storage.body_mode") != "off")
         self.html_switch.setObjectName("scanSaveHtml")
         self.html_switch.setEnabled(draft.has("storage.body_mode"))
         self.html_switch.toggled.connect(lambda state: draft.set_value("storage.body_mode", "captured_entity_bytes" if state else "off"))
-        hint = QLabel(tr("для поиска и сравнений"))
-        hint.setProperty("text_style", "meta")
-        limits.addWidget(hbox(self.html_switch, QLabel(tr("Сохранять HTML страниц")), None, hint, spacing=10))
-        limit_box = QWidget()
-        limit_box.setLayout(limits)
-        limits.setContentsMargins(0, 0, 0, 0)
-        self.option_items.append(limit_box)
+        self.html_state = QLabel()
+        self.html_state.setProperty("text_style", "meta")
+        self.html_state.setToolTip(tr("Нужно для поиска в HTML и сравнений"))
+        self.html_row = FormRow(tr("Сохранять HTML"), self.html_state, label_widget=self.html_switch, label_width=152)
         # why
         why = QLineEdit()
         why.setEnabled(False)
         why.setAccessibleName(tr("Зачем этот скан"))
         why.setPlaceholderText(tr("Связь запуска с задачей проекта"))
-        why_box = QVBoxLayout()
-        head = QHBoxLayout()
-        caption = QLabel(tr("Зачем этот скан"))
-        caption.setProperty("text_style", "control")
-        head.addWidget(caption)
-        head.addWidget(waiting_badge(922))
-        head.addStretch(1)
-        why_box.addLayout(head)
-        why_box.addWidget(why)
-        reason = QLabel(tr("В записи запуска ядра нет поля цели или задачи"))
-        reason.setProperty("text_style", "meta")
-        why_box.addWidget(reason)
-        why_wrap = QWidget()
-        why_wrap.setLayout(why_box)
-        why_box.setContentsMargins(0, 0, 0, 0)
-        grid.addWidget(why_wrap, 4, 0, 1, 2)
-        self.settings_link = QPushButton()
-        self.settings_link.setObjectName("scanOpenSettings")
-        self.settings_link.setProperty("role", "text")
-        self.settings_link.setIcon(icon("tune"))
-        self.settings_link.clicked.connect(lambda: self._open_settings("speed"))
-        grid.addWidget(self.settings_link, 5, 0, 1, 2, Qt.AlignLeft)
+        self.why_row = FormRow(tr("Зачем этот скан"), hbox(why, waiting_badge(922, "Связь запуска с задачей проекта"), stretch=(why,)),
+                               tr("В записи запуска ядра нет поля цели или задачи"), field=why)
+        self.option_wide = self.why_row
+        self.option_items = [self.mode_row, self.profile_row, self.rps_box, self.threads_box, self.limit_row, self.html_row, self.why_row]
+        self.rows = self.option_items
         self.option_grid = grid
         self._layout_options(2)
         for column in (0, 1):
@@ -516,47 +492,54 @@ class NewScanDialog(QDialog):
     def _aside(self):
         aside = QFrame()
         aside.setObjectName("scanAside")
-        aside.setFixedWidth(280)
+        aside.setFixedWidth(300)
         layout = QVBoxLayout(aside)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(12)
-        caption = QLabel(tr("ЧТО ПРОИЗОЙДЁТ"))
-        caption.setProperty("text_style", "overline")
-        layout.addWidget(caption)
-        self.plan_grid = QGridLayout()
-        self.plan_grid.setHorizontalSpacing(12)
-        self.plan_grid.setVerticalSpacing(5)
-        self.plan_grid.setColumnStretch(1, 1)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+        head = QHBoxLayout()
+        head.setSpacing(4)
+        caption = QLabel(tr("Что произойдёт"))
+        caption.setProperty("text_style", "control")
+        head.addWidget(caption)
+        head.addWidget(HelpIcon(tr("Запуск получит ID и появится в «Сканах» и у наблюдателя. Запуск начнётся только после «Запустить»; повторное нажатие не создаёт дубль.")))
+        head.addStretch(1)
+        layout.addLayout(head)
         self.plan_values = {}
-        for index, key in enumerate(("source", "address", "speed", "urls", "requests", "time", "mode", "html", "estimate", "paid", "impact", "profile")):
+        for key in ("source", "address", "mode", "urls", "requests", "speed", "duration", "disk", "paid", "impact"):
+            row = QFrame()
+            row.setProperty("kv_row", True)
+            row.setFixedHeight(28)
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(12)
             name = QLabel()
             name.setProperty("text_style", "meta")
-            name.setMinimumWidth(118)
-            name.setWordWrap(True)  # long captions wrap by word instead of being cut
-            value = QLabel()
+            line.addWidget(name)
+            if key in UNMEASURED:
+                value = waiting_badge(ISSUE_ESTIMATE, UNMEASURED[key])
+                value.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+                line.addStretch(1)
+                line.addWidget(value)
+            else:
+                value = ElidedLabel()
+                value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                line.addWidget(value, 1)
             value.setObjectName("plan_" + key)
-            value.setWordWrap(True)
-            value.setAlignment(Qt.AlignRight | Qt.AlignTop)
-            name.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            self.plan_grid.addWidget(name, index, 0)
-            self.plan_grid.addWidget(value, index, 1)
+            layout.addWidget(row)
             self.plan_values[key] = (name, value)
-        layout.addLayout(self.plan_grid)
-        info = Note("info", tr("Запуск получит ID."), tr("Он появится в «Сканах» и у наблюдателя; запуск начнётся только после «Запустить»."))
-        layout.addWidget(info)
         layout.addStretch(1)
         self.confirm = QCheckBox()
         self.confirm.setObjectName("scanLargeApproval")
         self.confirm.setAccessibleName(tr("Я проверил объём и разрешаю обращаться к сайту"))
         self.confirm.toggled.connect(self._confirm_toggled)
-        consent = QLabel(tr("Я проверил объём и разрешаю обращаться к сайту"))
+        consent = QLabel(tr("Объём проверен, обращаться к сайту можно"))
         consent.setWordWrap(True)
         consent.setBuddy(self.confirm)
         consent.mousePressEvent = lambda _event: self.confirm.toggle()
         row = QHBoxLayout()
-        row.setSpacing(10)
-        row.addWidget(self.confirm, 0, Qt.AlignTop)
+        row.setSpacing(8)
+        row.addWidget(self.confirm, 0, Qt.AlignVCenter)
         row.addWidget(consent, 1)
         layout.addLayout(row)
         return aside
@@ -606,6 +589,13 @@ class NewScanDialog(QDialog):
     def _step_rps(self, step):
         rate = self.draft.rps() or 1
         self.draft.set_text("rps", f"{max(1, round(rate) + step)}")
+
+    def _step_threads(self, step):
+        current = self.draft.value("speed.concurrency") or 1
+        self.draft.set_text("threads", f"{max(1, current + step)}")
+
+    def _step_limit(self, step):
+        self.draft.set_text("limit", f"{max(500, self.draft.url_limit + step)}")
 
     def _confirm_toggled(self, state):
         self.draft.confirmed = bool(state)
@@ -686,7 +676,8 @@ class NewScanDialog(QDialog):
             card.setChecked(key == source)
         declared = draft.capabilities.get("sitemap_only_retained") is True
         self.cards["sitemap"].setEnabled(declared)
-        self.cards["sitemap"].setToolTip("" if declared else tr("Возможность не объявлена ядром"))
+        self.cards["sitemap"].setToolTip(tr(SOURCE_CARDS[1][3]) if declared else tr("Возможность не объявлена ядром"))
+        self.source_text.setText(tr(next(text for key, _g, _n, text in SOURCE_CARDS if key == source)))
         self.site_block.setVisible(source == "site")
         self.sitemap_box.setVisible(source == "sitemap")
         self.list_block.setVisible(source == "list")
@@ -710,25 +701,27 @@ class NewScanDialog(QDialog):
             sync()
         self.rps_box.set_error(problems.get("rps", ""))
         self.threads_box.set_error(problems.get("threads", ""))
-        self.limit_edit.setProperty("invalid", "limit" in problems)
-        polish(self.limit_edit)
-        self.limit_error.setText(problems.get("limit", ""))
-        self.limit_error.setVisible("limit" in problems)
-        self.limit_edit.setEnabled(draft.limit_enabled)
-        for switch, state in ((self.limit_switch, draft.limit_enabled), (self.html_switch, draft.value("storage.body_mode") != "off")):
+        self.limit_row.set_error(problems.get("limit", ""))
+        self.limit_stepper.set_enabled_value(draft.limit_enabled)
+        saving = draft.value("storage.body_mode") != "off"
+        self.html_state.setText(tr("для поиска и сравнений") if saving else tr("только метаданные"))
+        for switch, state in ((self.limit_switch, draft.limit_enabled), (self.html_switch, saving)):
             if switch.isChecked() != state:
                 switch.blockSignals(True)
                 switch.setChecked(state)
                 switch.blockSignals(False)
         self.mode.setValue(draft.value("rendering.mode", "raw"))
-        self.mode_hint.setText(tr("Выполняет JavaScript страницы; нужен браузер на этом компьютере")
-                               if draft.value("rendering.mode") == "js" else tr("Быстрее; страницы разбираются без JavaScript"))
+        self.mode_row.help.setToolTip(tr("Медленнее примерно в 3 раза; страницы разбираются после выполнения JavaScript в браузере на этом компьютере")
+                                      if draft.value("rendering.mode") == "js" else tr("Быстро; страницы разбираются без JavaScript"))
         names = {"core": tr("ядро"), "app": tr("настройки приложения"), "project": tr("профиль проекта")}
         state = draft.policy_state
-        self.profile_line.setText(trf("Умолчания: {chain}", chain=" → ".join(names[k] for k in ("core", "app") + (("project",) if draft.project_layer else ()))))
-        self.profile_hint.setText({"ready": trf("Профиль проекта: {n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("Профиль проекта не задан"),
-                                   "loading": tr("Профиль проекта загружается…"), "unavailable": tr("Профиль проекта не прочитан"),
-                                   "unknown": tr("Профиль проекта не прочитан")}[state])
+        chain = trf("Умолчания: {chain}", chain=" → ".join(names[k] for k in ("core", "app") + (("project",) if draft.project_layer else ())))
+        self.profile_line.setText(tr("Профиль проекта") if draft.project_layer else tr("Умолчания"))
+        hint = {"ready": trf("Профиль проекта: {n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("Профиль проекта не задан"),
+                "loading": tr("Профиль проекта загружается…"), "unavailable": tr("Профиль проекта не прочитан"),
+                "unknown": tr("Профиль проекта не прочитан")}[state]
+        self.profile_line.setToolTip(f"{chain}\n{hint}")
+        self.profile_row.help.setToolTip(f"{chain}\n{hint}")
         self.settings_link.setText(trf("Настройки скана… · доступно {n} из {total} параметров ядра", n=len(draft.core), total=len(draft.rows)))
         self._plan_block(draft)
         if draft.confirmed and self._confirmed_signature != draft.signature():
@@ -742,32 +735,29 @@ class NewScanDialog(QDialog):
 
     def _plan_block(self, draft):
         v = draft.values
-        seconds = v.get("limits.max_crawl_seconds") or 0
         requests = v.get("limits.max_requests") or 0
         report = draft.list_report()
         address = {"site": draft.target, "sitemap": draft.sitemap_url.strip() or tr("не указан"),
                    "list": trf("Адресов: {n} (оценка приложения)", n=grouped(report.usable)), "sf": ""}[draft.source]
-        rps = trf("до {n} запросов/с на хост · потоков {t}", n=rps_label(draft), t=v.get("speed.concurrency", "—")) if draft.rps() else tr("Нет данных")
+        rps = trf("{n} запр/с · {t} пот.", n=rps_label(draft), t=v.get("speed.concurrency", "—")) if draft.rps() else tr("Нет данных")
         rows = {
             "source": ("Источник", tr(SOURCE_NAMES[draft.source])),
-            "address": ("Адрес", address),
-            "speed": ("Скорость", rps),
+            "address": ("Старт", address),
+            "mode": ("Режим", tr("с рендерингом JS") if v.get("rendering.mode") == "js" else tr("исходный HTML")),
             "urls": ("Лимит URL", grouped(draft.url_limit) if draft.limit_enabled else tr("без лимита")),
-            "requests": ("Лимит запросов", grouped(requests) if requests else tr("без лимита")),
-            "time": ("Лимит времени", trf("{n} мин", n=grouped(seconds // 60 if seconds % 60 == 0 else round(seconds / 60, 1))) if seconds else tr("без лимита")),
-            "mode": ("Загрузка", tr("С рендерингом JS") if v.get("rendering.mode") == "js" else tr("Исходный HTML")),
-            "html": ("HTML страниц", tr("не сохраняется") if v.get("storage.body_mode") == "off" else tr("сохраняется")),
-            "estimate": ("Длительность и диск", tr("оценка недоступна в этой версии ядра")),
+            "requests": ("Запросов к сайту, до", grouped(requests) if requests else tr("без лимита")),
+            "speed": ("Скорость", rps),
+            "duration": ("Длительность", ""),
+            "disk": ("Диск, до", ""),
             "paid": ("Платные провайдеры", tr("нет")),
-            "impact": ("Влияние на сайт", tr("только чтение: GET-запросы")),
-            "profile": ("Профиль проекта", {"ready": trf("{n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("не задан"),
-                                            "loading": tr("загружается…")}.get(draft.policy_state, tr("не прочитан"))),
+            "impact": ("Влияние на сайт", tr("только чтение")),
         }
         for key, (caption, value) in rows.items():
             name, label = self.plan_values[key]
             name.setText(tr(caption))
-            label.setText(str(value))
-            label.setToolTip(str(value))
+            if key not in UNMEASURED:
+                label.setText(str(value))
+                label.setToolTip(str(value) + ("\n" + tr("GET-запросы, без изменений на сайте") if key == "impact" else ""))
 
     def _footer_state(self, draft, problems):
         titles = {key: tr(FIELD_TITLES[key]) for key in FIELD_TITLES}
@@ -790,8 +780,12 @@ def open_new_scan(host):
         return None
     dialog = NewScanDialog(host)
     dialog.exec_()
-    plan = dialog.plan
+    plan, quick = dialog.plan, dialog.quick_requested
     dialog.deleteLater()
     if plan:
         return host.launch_scan(*plan)
+    if quick:
+        from .quick_scan import open_quick_scan
+
+        open_quick_scan(host)
     return None
