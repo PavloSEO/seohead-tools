@@ -257,9 +257,9 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 `seohead mcp` starts the local stdio server. It defaults to the shared profile;
 `--profile full|audit|infra|quick-check|router` can further restrict a process.
 `seohead mcp status --json` reports enabled state, profile, actual registry count,
-last actor/time (`by_label`: "CLI · 07.10 18:05", "SEOHEAD Desktop · сегодня 14:20",
-or "по умолчанию" before any switch), every profile as `profiles` (`id`, Russian
-`label`, tool count taken from the registry), and whether each supported client
+last actor/time (`by_label`: a Russian caption with the actor and the local day and
+time of the last switch, or the Russian for "default" before any switch), every
+profile as `profiles` (`id`, Russian `label`, tool count taken from the registry), and whether each supported client
 has a SEOHEAD entry. It never
 reports foreign keys, tokens, connection activity, or configuration contents.
 

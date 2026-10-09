@@ -183,7 +183,7 @@ def _entry(command: str | None = None) -> dict:
 
 
 def changed_label(by: str | None, changed_at: str | None, *, now: datetime | None = None) -> str:
-    """Who switched MCP last, e.g. "CLI · сегодня 14:20"; "по умолчанию" before any switch."""
+    """Who switched MCP last and when (Russian caption); the default caption before any switch."""
     if not by or not changed_at:
         return "по умолчанию"
     try:
