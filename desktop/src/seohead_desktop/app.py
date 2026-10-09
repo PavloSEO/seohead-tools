@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from . import theming
+from . import i18n, theming
 from .agent import AgentMixin
 from .chrome import ChromeMixin
 from .commands import CommandsMixin
@@ -97,6 +97,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.persistent = persistent
         self.settings = QSettings("SEOHEAD", "DesktopPreparation") if persistent else None
         self.prefs = AppSettings(self.settings, full_schema())
+        i18n.set_language(self.prefs.get("view.language"))
         self.display = self.prefs.get("shell.display")
         self.settings_view = None
         self._settings_return_id = None
@@ -299,6 +300,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         if self.settings:
             QTimer.singleShot(0, self.restore_workspace_layout)
         QTimer.singleShot(0, lambda: keep_on_screen(self))
+        self.apply_language()
 
 
 def main():

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
+from ...i18n import trf
 from ..controls import Segmented, SettingRow, Switch
 
 
-def group_label(text):
-    label = QLabel(text.upper())
+def group_label(text, **values):
+    """Overline group title; a template with values is passed already upper-case."""
+    label = QLabel(trf(text, **values) if values else text.upper())
     label.setProperty("text_style", "overline")
     label.setContentsMargins(0, 16, 0, 0)
     return label

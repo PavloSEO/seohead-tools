@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import theming
+from ...i18n import joined
 from ..controls import KeyValue, polish
 from ..icons import MaterialIconLabel, material_icon
 
@@ -108,8 +109,8 @@ def list_item(icon, title, sub="", *trailing, icon_color=None, title_mono=False,
         head.setProperty("text_style", "mono")
     text.addWidget(head)
     if sub or sub_mono:
-        parts = ([mono_html(sub_mono)] if sub_mono else []) + ([escape(sub)] if sub else [])
-        line = QLabel(" · ".join(parts))
+        parts = ([mono_html(sub_mono)] if sub_mono else []) + ([escape(sub, quote=False)] if sub else [])
+        line = QLabel(joined(" · ", parts))
         line.setTextFormat(Qt.RichText)
         line.setProperty("text_style", "meta")
         line.setWordWrap(True)
@@ -148,7 +149,7 @@ def terminal(command, lines):
     frame.setProperty("terminal", True)
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(14, 10, 14, 10)
-    body = QLabel("<br>".join([f"~ $ {escape(command)}", *map(escape, lines)]))
+    body = QLabel(joined("<br>", [f"~ $ {escape(command)}", *(escape(line, quote=False) for line in lines)]))
     body.setTextFormat(Qt.RichText)
     body.setWordWrap(True)
     body.setTextInteractionFlags(Qt.TextSelectableByMouse)

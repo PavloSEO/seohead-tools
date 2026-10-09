@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PyQt5.QtWidgets import QHBoxLayout, QWidget
 
+from ...i18n import joined, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch
 from .helpers import group_label, keyed, page, segmented_row, switch_row
@@ -54,18 +55,20 @@ def _server_row(store, context, status):
     layout.addWidget(state)
     layout.addWidget(switch)
     tools = status.get("tools") if status else None
-    return keyed(SettingRow("Локальный MCP-сервер", "stdio · без сети" + (f" · {tools} инструментов" if tools else ""), box), "mcp.enabled")
+    return keyed(SettingRow("Локальный MCP-сервер", joined(" · ", ["stdio · без сети", *([trf("{n} инструментов", n=tools)] if tools else [])]), box), "mcp.enabled")
 
 
 def _console(status):
     if status is None:
         return terminal("seohead mcp status", ["Нет данных"])
     enabled = status.get("enabled")
-    head = "● " + {True: "включён", False: "выключен"}.get(enabled, "нет данных")
-    lines = [head + (f" · профиль {status['profile']} · кем: {status['by']}" if status.get("profile") and status.get("by") else "")]
+    head = trf("● {state}", state={True: "включён", False: "выключен"}.get(enabled, "нет данных"))
+    if status.get("profile") and status.get("by"):
+        head = joined(" · ", [head, trf("профиль {profile}", profile=status["profile"]), trf("кем: {by}", by=status["by"])])
+    lines = [head]
     registered = [name for cid, name, _path in CLIENTS if (status.get("clients") or {}).get(cid, {}).get("registered")]
     if registered:
-        lines.append("клиенты: " + ", ".join(registered))
+        lines.append(trf("клиенты: {names}", names=", ".join(registered)))
     return terminal("seohead mcp status", lines)
 
 
@@ -79,7 +82,7 @@ def _client_row(client, status, context):
     elif info.get("registered"):
         state = badge("ok", "прописано", "check_circle")
         button = action_button("Изменить…", role="text", size="pill", enabled=False)
-        sub = f"был {info['last_seen']}" if info.get("last_seen") else ""
+        sub = trf("был {when}", when=info["last_seen"]) if info.get("last_seen") else ""
     else:
         state = badge("mut", "не прописано", "remove")
         button = action_button("Прописать…", role="tonal", size="pill", enabled=False)
@@ -105,7 +108,8 @@ def build_page(store, context):
                       [(p, p) for p in PROFILES]),
         switch_row(store, "mcp.journal", "Писать журнал вызовов", "Каждый вызов инструмента — в журнал агента"),
         _console(status),
-        hint(f"Одно состояние для приложения и CLI: {mono_html('seohead mcp disable')} выключит переключатель здесь.", rich=True),
+        hint(trf("Одно состояние для приложения и CLI: {command} выключит переключатель здесь.", command=mono_html("seohead mcp disable")),
+             rich=True),
         Note("info", "Что это меняет.", "Что видят агенты. Выключение отключает инструменты у всех клиентов сразу; конфиги клиентов не трогаются."),
     ]
     right = [
@@ -113,6 +117,6 @@ def build_page(store, context):
         *(_client_row(client, status, context) for client in CLIENTS),
         group_label("Бэкапы конфигов"),
         *_backups(context),
-        hint(f"Перед каждой пропиской конфиг клиента копируется в {mono_html('~/Work/backups/mcp/')}", rich=True),
+        hint(trf("Перед каждой пропиской конфиг клиента копируется в {path}", path=mono_html("~/Work/backups/mcp/")), rich=True),
     ]
     return page(Columns(left, right))

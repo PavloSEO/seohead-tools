@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .. import theming
+from ..i18n import joined, tr
 from .icons import MaterialIconLabel, material_icon
 from .workspace import VIEW_IDS
 
@@ -79,7 +80,7 @@ class PickerButton(QPushButton):
         self.title.setText(title)
         self.subtitle.setText(subtitle)
         self.subtitle.setVisible(bool(subtitle))
-        self.setToolTip(f"{title}\n{subtitle}".strip())
+        self.setToolTip(joined("\n", [title, subtitle]) if subtitle else title)
 
     def set_compact(self, compact):
         self.subtitle.setVisible(not compact and bool(self.subtitle.text()))
@@ -188,16 +189,16 @@ class NavList(QListWidget):
             if not ready or (simple and not in_simple):
                 continue
             if group in GROUP_TITLES and group != last_group:
-                header = QListWidgetItem(GROUP_TITLES[group])
+                header = QListWidgetItem(tr(GROUP_TITLES[group]))
                 header.setData(ROLE_HEADER, True)
                 header.setFlags(Qt.NoItemFlags)
                 self.addItem(header)
             last_group = group
-            item = QListWidgetItem(label)
+            item = QListWidgetItem(tr(label))
             item.setData(ROLE_ID, section_id)
             item.setIcon(material_icon(icon_name))
-            item.setData(Qt.AccessibleTextRole, label)
-            item.setToolTip(label)
+            item.setData(Qt.AccessibleTextRole, tr(label))
+            item.setToolTip(tr(label))
             self.addItem(item)
             self._items[section_id] = item
         self.blockSignals(False)
@@ -307,7 +308,7 @@ class ActiveScanCard(QFrame):
 
     def show_progress(self, text, done=None, total=None):
         """total None -> progress is unknown (indeterminate bar); never fake a percentage."""
-        self.text.setText(text)
+        self.text.setText(tr(text))
         self.active = True
         if total:
             self.bar.setRange(0, int(total))
@@ -369,7 +370,7 @@ class NavPanel(QFrame):
         current = self.list.current_section()
         self.simple = bool(simple)
         self.list.rebuild(self.simple, current)
-        self.profile.set_mode_line("Простой режим" if self.simple else "С агентом")
+        self.profile.set_mode_line(tr("Простой режим" if self.simple else "С агентом"))
         if current in self.list._items:
             self.currentRowChanged.emit(self.currentRow())
 

@@ -9,6 +9,7 @@ from PyQt5.QtCore import QObject, QRunnable, Qt, pyqtSignal
 from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ... import theming
+from ...i18n import Num, tr, trf
 from ..controls import KeyValue, polish
 from ..icons import material_icon
 
@@ -74,7 +75,7 @@ def key_values(rows, mono_rows=()):
 
     def set_value(key, text):
         label = by_key[key]
-        label.setText("Нет данных" if text is None else str(text))
+        label.setText(tr("Нет данных") if text is None else str(text))
         label.setProperty("na", text is None)
         polish(label)
 
@@ -86,8 +87,8 @@ def format_size(size):
     for unit, step in (("ГБ", 1 << 30), ("МБ", 1 << 20), ("КБ", 1 << 10)):
         if size >= step:
             value = size / step
-            return (f"{value:.0f}" if value >= 10 else f"{value:.1f}".replace(".", ",")) + " " + unit
-    return f"{size} Б"
+            return trf("{value} {unit}", value=Num(value, 0 if value >= 10 else 1), unit=unit)
+    return trf("{size} Б", size=size)
 
 
 def directory_size(path):

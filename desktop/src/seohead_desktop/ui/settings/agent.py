@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import theming
+from ...i18n import tr, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch
 from ..icons import material_icon
@@ -110,12 +111,13 @@ def _projects_block(store, context):
     box.hint = hint
     box.rows = []
     if projects is None:
-        hint.setText("Агент видит только отмеченные · нет данных")
+        hint.setText(tr("Агент видит только отмеченные · нет данных"))
         layout.addWidget(_no_data("Список проектов недоступен в этой сборке"))
         return box
 
     def update_count(*_args):
-        hint.setText(f"Агент видит только отмеченные · {sum(r.checkbox.isChecked() for r in box.rows)} из {len(box.rows)}")
+        hint.setText(trf("Агент видит только отмеченные · {n} из {total}", n=sum(r.checkbox.isChecked() for r in box.rows),
+                         total=len(box.rows)))
 
     for project in projects:
         row = ProjectRow(store, project)
@@ -168,7 +170,7 @@ def _log_block(context):
     layout = QVBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(0)
-    layout.addWidget(group_label(f"Журнал действий · последние {LOG_LIMIT}"))
+    layout.addWidget(group_label("ЖУРНАЛ ДЕЙСТВИЙ · ПОСЛЕДНИЕ {n}", n=LOG_LIMIT))
     if entries is None:
         layout.addWidget(_no_data("Нет данных"))
     elif not entries:

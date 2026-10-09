@@ -10,6 +10,7 @@ from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from ... import theming
+from ...i18n import joined, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
 from .helpers import group_label, keyed, page, segmented_row, switch_row
@@ -54,8 +55,9 @@ def _installation(context):
     compatible = info.get("compatible")
     compat = None if compatible is None else _compat_widget(compatible, info.get("required"))
     cli = shutil.which("seohead")
-    process = " · ".join(p for p in (f"PID {info['pid']}" if info.get("pid") else "", f"{info['memory_mb']} МБ" if info.get("memory_mb") else "",
-                                      f"работает {info['uptime']}" if info.get("uptime") else "") if p) or None
+    process = joined(" · ", [p for p in (f"PID {info['pid']}" if info.get("pid") else "",
+                                         trf("{n} МБ", n=info["memory_mb"]) if info.get("memory_mb") else "",
+                                         trf("работает {uptime}", uptime=info["uptime"]) if info.get("uptime") else "") if p]) or None
     return key_values([
         ("Версия ядра", version),
         ("Совместимость", compat),
@@ -71,7 +73,7 @@ def _compat_widget(compatible, required):
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(badge("ok", "совместимо", "check_circle") if compatible else badge("err", "несовместимо", "cancel"))
     if required:
-        layout.addWidget(QLabel(f"нужно ≥ {required}"))
+        layout.addWidget(QLabel(trf("нужно ≥ {required}", required=required)))
     return box
 
 
@@ -106,7 +108,8 @@ def _diagnostics(context):
         return widgets
     items = result.get("items", [])
     counts = {status: sum(1 for i in items if i.get("status") == status) for status in STATUS}
-    summary = hint(f"{result.get('when', '')} · {counts['ok']} ок · {counts['warn']} внимание · {counts['err']} ошибка".strip(" ·"))
+    parts = [result.get("when", ""), trf("{n} ок", n=counts["ok"]), trf("{n} внимание", n=counts["warn"]), trf("{n} ошибка", n=counts["err"])]
+    summary = hint(joined(" · ", [part for part in parts if part]))
     widgets.append(_header_row(summary, run))
     for item in items:
         kind, text, icon, color = STATUS.get(item.get("status"), STATUS["warn"])

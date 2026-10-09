@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import theming
+from ...i18n import trf
 from ..icons import material_icon
 from .actions import Columns, action_button, button_row, format_size, key_values, meta_label
 from .helpers import group_label, page
@@ -54,7 +55,8 @@ def _system_rows():
     if screen is not None:
         ratio = screen.devicePixelRatio()
         size = screen.size()
-        screen_text = f"{round(size.width() * ratio)} × {round(size.height() * ratio)} · масштаб {ratio:g}×"
+        screen_text = trf("{width} × {height} · масштаб {ratio}×", width=round(size.width() * ratio),
+                          height=round(size.height() * ratio), ratio=f"{ratio:g}")
     try:
         memory = format_size(os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"))
     except (AttributeError, ValueError, OSError):
@@ -96,7 +98,7 @@ def _header(version):
     text.setSpacing(2)
     title = QLabel("SEOHEAD Desktop")
     title.setProperty("brand", "title")
-    sub = meta_label(f"{version} · открытый исходный код · © 2026 Павел Борушко")
+    sub = meta_label(trf("{version} · открытый исходный код · © 2026 Павел Борушко", version=version))
     sub.setContentsMargins(0, 0, 0, 0)
     text.addWidget(title)
     text.addWidget(sub)
@@ -121,7 +123,7 @@ def build_page(store, context):
     system = _system_rows()
 
     def copy_info():
-        lines = [f"{k}: {'Нет данных' if v is None else v}" for k, v in versions + system]
+        lines = [trf("{key}: {value}", key=k, value="Нет данных" if v is None else v) for k, v in versions + system]
         QApplication.clipboard().setText("\n".join(lines))
 
     copy = QPushButton("Скопировать сведения")

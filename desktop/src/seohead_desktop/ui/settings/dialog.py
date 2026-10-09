@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ... import theming
+from ... import i18n, theming
 from ..controls import SettingRow
 from ..icons import material_icon
 from . import sections, wiring
@@ -111,6 +111,7 @@ class SettingsDialog(QDialog):
         footer_layout.addWidget(done)
         right.addWidget(footer)
         root.addLayout(right, 1)
+        i18n.retranslate(self)
         self.show_section(section)
 
     def _build(self, module):
@@ -126,6 +127,7 @@ class SettingsDialog(QDialog):
         holder_layout.addStretch(1)
         scroll.setWidget(holder)
         self.stack.addWidget(scroll)
+        i18n.retranslate(scroll)
         self._pages[module.ID] = (scroll, page)
         return scroll
 
@@ -138,8 +140,8 @@ class SettingsDialog(QDialog):
             self._build(module)
         self._nav[module.ID].setChecked(True)
         self.stack.setCurrentWidget(self._pages[module.ID][0])
-        self.section_title.setText(module.TITLE)
-        self.section_hint.setText(module.HINT)
+        self.section_title.setText(i18n.tr(module.TITLE))
+        self.section_hint.setText(i18n.tr(module.HINT))
 
     def reset_section(self):
         section_id = self.current_section()
@@ -158,7 +160,7 @@ class SettingsDialog(QDialog):
             if module.ID not in self._pages:
                 self._build(module)
             rows = [r.title.text().lower() for r in self._pages[module.ID][1].findChildren(SettingRow)]
-            hit = not needle or needle in module.TITLE.lower() or any(needle in r for r in rows)
+            hit = not needle or needle in i18n.tr(module.TITLE).lower() or any(needle in r for r in rows)
             self._nav[module.ID].setVisible(hit)
             if hit and first is None:
                 first = module.ID

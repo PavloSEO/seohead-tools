@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 
+from .i18n import tr, trf
 from .settings_store import Setting
 
 GROUPS = ("Навигация", "Сканы", "Таблицы", "Справка")
@@ -116,7 +117,7 @@ def set_binding(store, action_id, portable, replace=False):
     other = conflict(store, action_id, normal)
     if other is not None:
         if not replace or other.fixed:
-            return other, f"{display(normal)} уже занято: «{other.title}»"
+            return other, trf("{keys} уже занято: «{title}»", keys=display(normal), title=other.title)
         store.set(key(other.id), "")
     store.set(key(action_id), normal)
     return None, ""
@@ -155,21 +156,22 @@ def import_bindings(store, data):
     """Apply an exported mapping atomically. Return '' on success or the Russian reason (nothing changed)."""
     incoming = data.get("bindings") if isinstance(data, dict) else None
     if not isinstance(incoming, dict):
-        return "Файл не похож на экспорт сочетаний"
+        return tr("Файл не похож на экспорт сочетаний")
     merged = {a.id: store.get(key(a.id)) for a in ACTIONS if not a.fixed}
     for action_id, text in incoming.items():
         if action_id not in merged:
             continue
         normal, error = normalise(text) if isinstance(text, str) else (None, INVALID)
         if normal is None:
-            return f"«{BY_ID[action_id].title}»: {error}"
+            return trf("«{title}»: {error}", title=BY_ID[action_id].title, error=error)
         merged[action_id] = normal
     taken = {}
     fixed = {seq: a for a in ACTIONS for seq in a.fixed}
     for action_id, sequence in merged.items():
         other = fixed.get(sequence) or (BY_ID[taken[sequence]] if sequence in taken else None)
         if sequence and other is not None:
-            return f"{display(sequence)} занято дважды: «{BY_ID[action_id].title}» и «{other.title}»"
+            return trf("{keys} занято дважды: «{first}» и «{second}»", keys=display(sequence), first=BY_ID[action_id].title,
+                       second=other.title)
         taken[sequence] = action_id
     for action_id, sequence in merged.items():
         store.set(key(action_id), sequence)

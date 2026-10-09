@@ -7,6 +7,7 @@ import re
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidget
 
+from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch, polish
 from ..icons import material_icon
@@ -87,7 +88,7 @@ def _event_row(store, event_id, title, description):
     cells = []
     for channel, _label in CHANNELS:
         key = event_key(event_id, channel)
-        switch = Switch(f"{title} — {CHANNEL_NAMES[channel]}", bool(store.get(key)))
+        switch = Switch(trf("{title} — {channel}", title=title, channel=CHANNEL_NAMES[channel]), bool(store.get(key)))
         switch.toggled.connect(lambda checked, k=key: store.set(k, checked))
         cell = QWidget()
         cell_layout = QHBoxLayout(cell)

@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import (
     QWidgetAction,
 )
 
-from . import shortcuts, theming
+from . import i18n, shortcuts, theming
 from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
@@ -25,6 +25,8 @@ from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
 from .ui.workspace import SETTINGS_VIEW
 from .ui.workspace_tabs import WorkspaceContext
+
+tr, trf = i18n.tr, i18n.trf
 
 UNAVAILABLE = "Недоступно в этой сборке"
 
@@ -42,13 +44,13 @@ class ShellMixin:
         self.core_label = QLabel()
         for widget in (self.source_badge, self.mode_label, self.core_label):
             bar.addPermanentWidget(widget)
-        self.core_label.setText("Ядро найдено" if self.core_executable else "Ядро не найдено")
-        self.core_label.setToolTip(self.core_executable or "Команда seohead не найдена в PATH")
+        self.core_label.setText(tr("Ядро найдено" if self.core_executable else "Ядро не найдено"))
+        self.core_label.setToolTip(self.core_executable or tr("Команда seohead не найдена в PATH"))
         self.update_display_widgets()
 
     def update_display_widgets(self):
         simple = self.display == "simple"
-        self.mode_label.setText("Простой режим · агент и MCP выключены" if simple else "С агентом")
+        self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
 
@@ -109,6 +111,7 @@ class ShellMixin:
         cli.setToolTip(UNAVAILABLE)
         menu.addAction(icon("help"), "Справка", self.show_help, "F1")
         menu.setMinimumWidth(264)
+        i18n.retranslate(menu)
         return menu
 
     def show_display_menu(self):
@@ -125,6 +128,7 @@ class ShellMixin:
         crawler = menu.addAction(icon("travel_explore"), "Быстрый краул без проекта")
         crawler.setEnabled(self.can_open_crawler())
         crawler.setToolTip(UNAVAILABLE)
+        i18n.retranslate(menu)
         menu.exec_(self.simple_pill.mapToGlobal(QPoint(0, self.simple_pill.height() + 4)))
 
     def can_open_crawler(self):
@@ -139,7 +143,7 @@ class ShellMixin:
     def _theme_menu(self, menu):
         names = {"light": "Светлая", "dark": "Тёмная", "hc": "Высокий контраст", "system": "Как в системе"}
         current = self.prefs.get("view.theme")
-        sub = menu.addMenu(icon("palette"), "Тема · " + names[current])
+        sub = menu.addMenu(icon("palette"), trf("Тема · {name}", name=names[current]))
         group = QActionGroup(sub)
         for value, title in names.items():
             action = sub.addAction(title)
@@ -151,7 +155,7 @@ class ShellMixin:
     def _language_menu(self, menu):
         names = {"ru": "Русский", "en": "English"}
         current = self.prefs.get("view.language")
-        sub = menu.addMenu(icon("translate"), "Язык · " + names[current])
+        sub = menu.addMenu(icon("translate"), trf("Язык · {name}", name=names[current]))
         group = QActionGroup(sub)
         for value, title in names.items():
             action = sub.addAction(title)
@@ -165,7 +169,7 @@ class ShellMixin:
         """Settings → Источники данных: the core's provider-readiness (local, no network), delivered on the UI thread."""
         self._provider_handlers = (callback, on_error)
         if not self.core_executable:
-            on_error("CLI ядра seohead не найден")
+            on_error(tr("CLI ядра seohead не найден"))
             return
         self.start_command("providers", "seo_provider_readiness", {}, self._providers_loaded)
 
@@ -224,7 +228,8 @@ class ShellMixin:
         shortcut.setShortcut(QKeySequence.Preferences)
         shortcut.triggered.connect(lambda: self.open_settings())
         self.addAction(shortcut)
-        for key in ("view.theme", "view.density", "view.reduce_motion"):
+        i18n.signals.changed.connect(self.apply_language)
+        for key in ("view.language", "view.theme", "view.density", "view.reduce_motion"):
             self.apply_preference(key)
 
     def apply_shortcuts(self):
@@ -256,12 +261,24 @@ class ShellMixin:
             self.apply_shortcuts()
             return
         value = self.prefs.get(key)
-        if key == "view.theme":
+        if key == "view.language":
+            i18n.set_language(value)
+        elif key == "view.theme":
             self.apply_theme(value)
         elif key == "view.density":
             self.set_density(value)
         elif key == "view.reduce_motion":
             self.set_reduced_motion(bool(value) or self.system_reduced_motion)
+
+    def apply_language(self, _language=None):
+        """The shell, the settings and every open child window follow the language; selection and data stay as they are."""
+        try:
+            i18n.retranslate(self)
+            for combo, button in ((self.project_picker, self.project_button), (self.scan_picker, self.scan_button)):
+                self.sync_picker(combo, button)
+            self.update_display_widgets()
+        except RuntimeError:  # the window was deleted while a test or shutdown was running
+            pass
 
     def apply_theme(self, choice):
         name = choice

@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .. import theming
+from ..i18n import tr, trf
 from .icons import MaterialIconLabel
 
 
@@ -155,7 +156,7 @@ class SettingRow(QFrame):
         self.later_badge.show()
 
     def set_error(self, message):
-        self._error.setText(message or "")
+        self._error.setText(tr(message) if message else "")
         self._error_box.setVisible(bool(message))
         if self.control is not None:
             self.control.setProperty("invalid", bool(message))
@@ -174,7 +175,7 @@ class Note(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
         layout.addWidget(MaterialIconLabel(self.ICONS[kind], 20, color=theming.roles()["text_2"]), 0, Qt.AlignTop)
-        body = QLabel(f"<b>{title}</b> {text}" if text else f"<b>{title}</b>")
+        body = QLabel(trf("<b>{title}</b> {text}", title=title, text=text) if text else trf("<b>{title}</b>", title=title))
         body.setTextFormat(Qt.RichText)
         body.setWordWrap(True)
         layout.addWidget(body, 1)
@@ -197,7 +198,7 @@ class KeyValue(QWidget):
             k = QLabel(key)
             k.setProperty("text_style", "meta")
             k.setProperty("kv", "key")
-            v = QLabel("Нет данных" if value is None else str(value))
+            v = QLabel(tr("Нет данных") if value is None else str(value))
             v.setProperty("kv", "value")
             v.setProperty("na", value is None)
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)

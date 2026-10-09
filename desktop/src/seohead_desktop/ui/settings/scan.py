@@ -7,6 +7,8 @@ import os
 
 from PyQt5.QtWidgets import QLineEdit, QVBoxLayout, QWidget
 
+from ... import i18n
+from ...i18n import joined, tr, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
 from .helpers import group_label, keyed, page, segmented_row, switch_row
@@ -82,7 +84,7 @@ def _sf_path_row(store):
 
     def refresh():
         path = os.path.expanduser(store.get("scan.sf_path"))
-        row.description.setText(base if path and os.path.exists(path) else base + " · не найден по этому пути")
+        row.description.setText(tr(base) if path and os.path.exists(path) else trf("{base} · не найден по этому пути", base=base))
 
     def commit():
         row.set_error(store.set("scan.sf_path", field.text().strip()))
@@ -101,7 +103,8 @@ def _license_row(context):
     else:
         valid = bool(info.get("valid"))
         control = badge("ok" if valid else "err", "действует" if valid else "не действует", "verified" if valid else "cancel")
-        description = " · ".join(p for p in (f"Проверено {info['checked']}" if info.get("checked") else "", f"до {info['until']}" if info.get("until") else "") if p) or "Нет данных"
+        description = joined(" · ", [p for p in (trf("Проверено {when}", when=info["checked"]) if info.get("checked") else "",
+                                            trf("до {when}", when=info["until"]) if info.get("until") else "") if p]) or tr("Нет данных")
     return SettingRow("Лицензия", description, control)
 
 
@@ -127,6 +130,7 @@ def _profiles(store):
                 trailing = action_button("Сделать по умолчанию", role="text", size="pill")
                 trailing.clicked.connect(lambda _c, pid=profile_id: store.set("scan.default_profile", pid))
             layout.addWidget(list_item("tune", name, summary, trailing))
+        i18n.retranslate(box)
 
     store.changed.connect(refresh)
     box.destroyed.connect(lambda: _disconnect(store, refresh))

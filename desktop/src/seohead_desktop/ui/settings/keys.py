@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import shortcuts, theming
+from ...i18n import tr, trf
 from ..controls import SettingRow, polish
 from ..icons import MaterialIconLabel, material_icon
 from .helpers import group_label, two_columns
@@ -71,7 +72,7 @@ class KeyCapture(QFrame):
             old = self._caps.takeAt(0).widget()
             old.hide()
             old.deleteLater()
-        texts = shortcuts.parts(portable) or ["Не задано"]
+        texts = shortcuts.parts(portable) or [tr("Не задано")]
         for text in texts:
             cap = QLabel(text)
             if portable:
@@ -80,7 +81,7 @@ class KeyCapture(QFrame):
                 cap.setProperty("na", True)
             self._caps.addWidget(cap)
             cap.setVisible(not self._recording)
-        self.setAccessibleName(f"{self._title}: {shortcuts.display(portable) or 'не задано'}")
+        self.setAccessibleName(trf("{title}: {keys}", title=self._title, keys=shortcuts.display(portable) or "не задано"))
 
     def is_recording(self):
         return self._recording
@@ -142,7 +143,7 @@ class ShortcutRow(SettingRow):
         self.reset_button.setProperty("role", "icon")
         self.reset_button.setIcon(material_icon("restart_alt"))
         self.reset_button.setToolTip("Сбросить сочетание")
-        self.reset_button.setAccessibleName(f"Сбросить сочетание: {action.title}")
+        self.reset_button.setAccessibleName(trf("Сбросить сочетание: {title}", title=action.title))
         self.replace_button = QPushButton("Заменить")
         self.replace_button.setProperty("role", "text")
         self.replace_button.setProperty("size", "pill")
@@ -194,7 +195,7 @@ class ShortcutRow(SettingRow):
             self.set_error(error)
         elif other is not None:
             self._pending = (normal, not other.fixed)
-            self.set_error(f"{shortcuts.display(normal)} уже занято: «{other.title}»")
+            self.set_error(trf("{keys} уже занято: «{title}»", keys=shortcuts.display(normal), title=other.title))
         else:
             self.store.set(shortcuts.key(self.action.id), normal)
         self.refresh()
@@ -267,22 +268,22 @@ class KeysPage(QWidget):
                 row.refresh()
 
     def export_file(self):
-        path, _filter = QFileDialog.getSaveFileName(self, "Экспорт сочетаний", "seohead-shortcuts.json", "JSON (*.json)")
+        path, _filter = QFileDialog.getSaveFileName(self, tr("Экспорт сочетаний"), "seohead-shortcuts.json", "JSON (*.json)")
         if path:
             try:
                 Path(path).write_text(json.dumps(shortcuts.export_bindings(self.store), ensure_ascii=False, indent=2), encoding="utf-8")
-                self._say("Сочетания сохранены в файл")
+                self._say(tr("Сочетания сохранены в файл"))
             except OSError as exc:
-                self._say(f"Не удалось записать файл: {exc.strerror or exc}")
+                self._say(trf("Не удалось записать файл: {reason}", reason=exc.strerror or exc))
 
     def import_file(self):
-        path, _filter = QFileDialog.getOpenFileName(self, "Импорт сочетаний", "", "JSON (*.json)")
+        path, _filter = QFileDialog.getOpenFileName(self, tr("Импорт сочетаний"), "", "JSON (*.json)")
         if path:
             try:
                 error = shortcuts.import_bindings(self.store, json.loads(Path(path).read_text(encoding="utf-8")))
             except (OSError, ValueError) as exc:
-                error = f"Не удалось прочитать файл: {getattr(exc, 'strerror', None) or exc}"
-            self._say(f"Не импортировано. {error}" if error else "Сочетания загружены из файла")
+                error = trf("Не удалось прочитать файл: {reason}", reason=getattr(exc, "strerror", None) or exc)
+            self._say(trf("Не импортировано. {error}", error=error) if error else tr("Сочетания загружены из файла"))
 
 
 def build_page(store, context):

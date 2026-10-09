@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from ... import i18n
+from ...i18n import joined, trf
 from .helpers import group_label, page
 from .listing import Columns, action_button, badge, hint, list_item, no_data
 
@@ -48,10 +50,10 @@ def describe(provider_id, entry):
         label = CREDENTIALS.get(component)
         if label and label not in kinds:
             kinds.append(label)
-    sub = [" / ".join(kinds)] if kinds else []
+    sub = [joined(" / ", kinds)] if kinds else []
     refs = [src.get("source_reference") for src in (entry.get("credential_sources") or {}).values() if src.get("source_reference")]
     if refs:
-        sub.append("хранится: " + ", ".join(dict.fromkeys(refs)))
+        sub.append(trf("хранится: {refs}", refs=", ".join(dict.fromkeys(refs))))
     if state in VERIFIED or entry.get("verified") is True:
         return "ok", "подключено", "check_circle", sub
     if state == "configured_unverified":
@@ -100,13 +102,14 @@ class SourcesPage(QWidget):
             self._layout.removeWidget(self._body)
             self._body.deleteLater()
         self._body = widget
+        i18n.retranslate(widget)
         self._layout.addWidget(widget)
 
     def show_message(self, text):
         self._set_body(hint(text) if text else no_data())
 
     def show_error(self, reason):
-        self._set_body(hint(f"Ядро не вернуло состояние источников: {reason}"))
+        self._set_body(hint(trf("Ядро не вернуло состояние источников: {reason}", reason=reason)))
 
     def show_providers(self, readiness):
         providers = (readiness or {}).get("providers") if isinstance(readiness, dict) else None
@@ -136,7 +139,7 @@ class SourcesPage(QWidget):
         kpis = QWidget()
         kpi_layout = QHBoxLayout(kpis)
         kpi_layout.setContentsMargins(0, 8, 0, 8)
-        for value, label in ((str(connected), f"подключено и проверено из {total}"), (str(unverified), "ключ задан, не проверен"),
+        for value, label in ((str(connected), trf("подключено и проверено из {total}", total=total)), (str(unverified), "ключ задан, не проверен"),
                              (str(missing), "нужен ключ"), ("Нет данных", "платные API · расходы за месяц")):
             kpi_layout.addWidget(_kpi(value, label))
         head = QWidget()
@@ -152,8 +155,8 @@ class SourcesPage(QWidget):
 
     @staticmethod
     def _row(name, paid, kind, text, icon, sub):
-        title = name + ("  ₽ платный" if paid else "")
-        return list_item("dns", title, " · ".join(sub), badge(kind, text, icon), action_button("Настроить", role="text", size="pill", enabled=False))
+        title = trf("{name}  ₽ платный", name=name) if paid else name
+        return list_item("dns", title, joined(" · ", sub), badge(kind, text, icon), action_button("Настроить", role="text", size="pill", enabled=False))
 
 
 def build_page(store, context):

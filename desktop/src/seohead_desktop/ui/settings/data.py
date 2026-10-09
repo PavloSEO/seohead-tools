@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note
 from .actions import (
@@ -61,7 +62,8 @@ def build_page(store, context):
             action_button("Экспорт настроек…", context, "export_settings", icon="file_download"),
             action_button("Импорт…", context, "import_settings", icon="file_upload"),
         ),
-        meta_label(f"Файл {mono('.json')} без ключей и токенов — они остаются в {mono('Work/config')}", rich=True),
+        meta_label(trf("Файл {file} без ключей и токенов — они остаются в {folder}", file=mono(".json"), folder=mono("Work/config")),
+                   rich=True),
     ]
 
     holder = page(Columns(left, right))
@@ -71,9 +73,9 @@ def build_page(store, context):
         def show(result):
             for key, path in sinks.items():
                 size = result.get(key)
-                values.set_value(key, path if size is None else f"{path} · {format_size(size)}")
+                values.set_value(key, path if size is None else trf("{path} · {size}", path=path, size=format_size(size)))
             disk = result.get("disk")
-            values.set_value("Свободно", None if disk is None else f"{format_size(disk[0])} из {format_size(disk[1])}")
+            values.set_value("Свободно", None if disk is None else trf("{free} из {total}", free=format_size(disk[0]), total=format_size(disk[1])))
 
         measure(holder, sinks, disk_path, show)
     return holder

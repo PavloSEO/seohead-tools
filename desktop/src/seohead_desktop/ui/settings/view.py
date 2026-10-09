@@ -6,6 +6,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ... import theming
+from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
 from .helpers import keyed, page, segmented_row, switch_row, two_columns
@@ -41,7 +42,7 @@ def _theme_picker(store):
         button.setCheckable(True)
         button.setText(label)
         button.setFixedSize(116, 76)
-        button.setAccessibleName("Тема: " + label)
+        button.setAccessibleName(trf("Тема: {name}", name=label))
         button.setChecked(store.get("view.theme") == value)
         group.addButton(button)
         button.clicked.connect(lambda _c, v=value: store.set("view.theme", v))
@@ -92,7 +93,8 @@ def _preview(store):
         row.setFixedHeight(height + 8)
         badge = "200" if not store.get("view.status_badges") else "<b>200</b>"
         family = theming.substitution()["mono_family"] if store.get("view.mono_urls") else "Roboto"
-        row.setText(f"&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://lengidroprom.ru/catalog/nasosy-cdm/</span> &nbsp; индексируется · 1,2 с")
+        row.setText(trf("&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://lengidroprom.ru/catalog/nasosy-cdm/</span>"
+                        " &nbsp; индексируется · 1,2 с", badge=badge, family=family))
 
     store.changed.connect(refresh)
     refresh()
