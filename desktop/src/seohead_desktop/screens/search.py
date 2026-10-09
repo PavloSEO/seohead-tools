@@ -55,6 +55,8 @@ from .search_results import (
     ResultModel,
     find_ranges,
     reason_text,
+    rows_caption,
+    summary_caption,
 )
 
 SEARCH_ISSUE = 939
@@ -152,7 +154,7 @@ class SearchScreen(Screen):
         self.elapsed = None
         self._started = None
         # matched rows before each core page, learnt while paging forward (the core cannot filter its result)
-        self._before, self._search_id, self._direction = {0: 0}, None, 1
+        self._before, self._search_id, self._direction, self._partial = {0: 0}, None, 1, False
         self.scope, self.mode, self.representation = Choice(SCOPES, self), Choice(MODES, self), Choice(REPRESENTATIONS, self)
         # older callers (action finder, workspace tabs) address this page as ``host.content_search_panel``
         host.content_search_panel = self
@@ -682,12 +684,13 @@ class SearchScreen(Screen):
             self.model.set_rows(rows)
         matching = coverage.get("filter_matching_documents")
         contains = payload.get("mode", "contains") == "contains"
-        self.count.setText(trf("{what}: {n}", what=tr("Страниц с найденной строкой" if contains else "Страниц без строки"), n=number(matching) if isinstance(matching, int) else tr("Нет данных")))
         selected, measured = coverage.get("documents_selected"), coverage.get("documents_measured")
+        self.count.setText(summary_caption(contains, matching, measured))
         done = f"{round(100 * measured / selected)}%" if isinstance(selected, int) and selected > 0 and isinstance(measured, int) else tr("Нет данных")
         took = f" · {trf('за {time}', time=duration(self.elapsed))}" if self.elapsed is not None else ""
         self.coverage.setText(trf("просмотрено {done}", done=done) + took)
         partial = payload.get("operation_status") in ("partial", "incomplete") or bool(coverage.get("unavailable_documents")) or coverage.get("state") not in (None, "complete")
+        self._partial = partial
         self.banner_holder.setVisible(partial)
         skipped = (coverage.get("unavailable_documents") or 0) + (coverage.get("non_html_documents") or 0)
         self.note_text.setText(trf("<b>Поиск идёт по сохранённому HTML этого скана.</b> Страницы без сохранённого HTML ({n}) не просматривались и в «нет совпадений» не входят.", n=number(skipped)))
@@ -705,12 +708,12 @@ class SearchScreen(Screen):
         if filtered and isinstance(matching, int):
             # rows of the list = pages where the condition holds; the same quantity as the number above the list
             first = (before or 0) + 1
-            what = "Строки {a}–{b} из {n} найденных" if payload.get("mode", "contains") == "contains" else "Строки {a}–{b} из {n} без строки"
-            text = trf(what, a=number(first), b=number(first + shown - 1), n=number(matching)) if shown and before is not None else tr("Нет подходящих строк на этой странице")
+            kind = "found" if payload.get("mode", "contains") == "contains" else "without"
+            text = rows_caption(first, first + shown - 1, matching, kind, self._partial) if shown and before is not None else tr("Нет подходящих строк на этой странице")
             more = before is not None and (before + shown) < matching
             earlier = bool(before)
         else:
-            text = trf("Строки {a}–{b} из {n} документов", a=number(offset + 1), b=number(offset + loaded), n=number(total)) if loaded and isinstance(total, int) else tr("Нет строк на этой странице")
+            text = rows_caption(offset + 1, offset + loaded, total, "checked", self._partial) if loaded and isinstance(total, int) else tr("Нет строк на этой странице")
             more, earlier = bool(payload.get("has_more")), offset > 0
         if busy:
             text = tr("Чтение страницы результата…")

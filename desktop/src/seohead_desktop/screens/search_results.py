@@ -23,7 +23,8 @@ from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from .. import theming
-from ..i18n import tr
+from ..i18n import tr, trf
+from .scan_common import number
 
 ROW_ROLE = Qt.UserRole + 50
 ROW_HEIGHT = 56
@@ -34,6 +35,39 @@ MODES = (("Содержит строку", "contains"), ("Не содержит 
 REASONS = (("non_html", "Документ не является HTML"), ("body_absent", "Тело страницы не сохранено"),
            ("decode_fidelity", "Кодировка не позволяет подтвердить отсутствие строки"), ("body_integrity", "Сохранённое тело повреждено"))
 PRESENCE = {True: ("ok", "Найдена"), False: ("mut", "Не найдена"), None: ("warn", "Не проверено")}
+
+
+# (list kind, one row, count ends in 1 but not 11) -> caption of the list footer; literal strings so the dictionary can find them
+ROWS = {
+    ("found", False, False): "Строки {a}–{b} из {n} найденных", ("found", False, True): "Строки {a}–{b} из {n} найденной",
+    ("found", True, False): "Строка {a} из {n} найденных", ("found", True, True): "Строка {a} из {n} найденной",
+    ("checked", False, False): "Строки {a}–{b} из {n} проверенных", ("checked", False, True): "Строки {a}–{b} из {n} проверенной",
+    ("checked", True, False): "Строка {a} из {n} проверенных", ("checked", True, True): "Строка {a} из {n} проверенной",
+    ("without", False, False): "Строки {a}–{b} из {n} без строки", ("without", False, True): "Строки {a}–{b} из {n} без строки",
+    ("without", True, False): "Строка {a} из {n} без строки", ("without", True, True): "Строка {a} из {n} без строки",
+}
+SUMMARY = {
+    (True, False): "Найдено на {n} страницах · проверено {m}", (True, True): "Найдено на {n} странице · проверено {m}",
+    (False, False): "Без строки на {n} страницах · проверено {m}", (False, True): "Без строки на {n} странице · проверено {m}",
+}
+
+
+def ends_in_one(number):
+    """Russian singular agreement: 1, 21, 101 but not 11."""
+    return number % 10 == 1 and number % 100 != 11
+
+
+def rows_caption(first, last, total, kind, partial=False):
+    """«Строки 1–100 из 1 326 найденных», «Строка 1 из 1 найденной»; a partial scan adds its note."""
+    text = trf(ROWS[(kind, first == last, ends_in_one(total))], a=number(first), b=number(last), n=number(total))
+    return text + (" · " + tr("просмотрены не все страницы") if partial else "")
+
+
+def summary_caption(contains, matching, measured):
+    """«Найдено на 1 326 страницах · проверено 1 330»; the counts are the core's, absent ones read «Нет данных»."""
+    if not isinstance(matching, int) or not isinstance(measured, int):
+        return trf("{what}: {n}", what=tr("Найдено на страницах" if contains else "Без строки на страницах"), n=tr("Нет данных"))
+    return trf(SUMMARY[(contains, ends_in_one(matching))], n=number(matching), m=number(measured))
 
 
 class Choice(QObject):
