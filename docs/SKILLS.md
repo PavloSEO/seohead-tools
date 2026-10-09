@@ -126,6 +126,21 @@ Then by the layer of the task.
 |---|---|---|
 | **analytics-console-review** | A user-authorized signed-in console or aggregate export is available, but no provider API is configured | Host browser or user export; optional `sources-doctor`, `metrika-report`, and page/SF checks |
 
+## Packaged general skills
+
+`seohead skill-list` also returns these seven `general/` SEO and content methods, packaged in
+`seohead/skills/`. They are guidance for writing and content work, not audit routes.
+
+| Skill | When |
+|---|---|
+| **article-writer** | A bilingual RU+EN expert article in JSON for a blog |
+| **seo-audit-page** | A complete on-page and technical audit of one page or a site |
+| **seo-content** | SEO articles, GEO-oriented copy, and E-E-A-T review before publication |
+| **seo-markup** | Schema.org JSON-LD and meta tags (title, description, Open Graph, Twitter Cards) |
+| **seo-optimize** | Refreshing outdated content and improving internal linking |
+| **seo-research** | Keywords, competitors, SERP analysis, and content gaps |
+| **service-landing-copy** | Structured copy for a `/services/<name>` landing page |
+
 ## Tools without a skill of their own
 
 116 of the 161 commands are not named in any skill body.
