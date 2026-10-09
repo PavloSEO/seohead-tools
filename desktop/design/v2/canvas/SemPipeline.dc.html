@@ -77,7 +77,7 @@
             <sc-for list="{{cur.est}}" as="e" hint-placeholder-count="2"><div class="est"><div>{{e.t}}</div><div class="r">{{e.n}}</div><div class="r">{{e.c}}</div></div></sc-for>
             <div class="est t"><div>Итого, оценка</div><div></div><div class="r">≈ {{cur.total}} ₽</div></div>
             <div class="{{limCls}}" style="margin-top: 6px"><span class="ms s16" aria-hidden="true">{{limIcon}}</span><div>{{limText}}</div></div>
-            <label class="chk" style="margin-top: 6px"><input type="checkbox" checked="{{conf}}" onChange="{{tgConf}}">Подтверждаю платный запуск на ≈ {{cur.total}} ₽ · снимок semantics.db будет сохранён</label>
+            <label class="chk" style="margin-top: 6px"><input type="checkbox" checked="{{conf}}" onChange="{{tgConf}}"><span>Подтверждаю платный запуск на ≈ {{cur.total}} ₽ · снимок semantics.db будет сохранён</span></label>
           </div>
         </sc-if>
         <sc-if value="{{cur.free}}" hint-placeholder-val="{{false}}"><div class="note s"><span class="ms s16" aria-hidden="true">check_circle</span><div>Стадия бесплатная — работает локально по данным ядра и скана №3 r-0143.</div></div></sc-if>
