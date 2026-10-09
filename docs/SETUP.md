@@ -49,21 +49,21 @@ works, and the affected tool answers `{"ok": false, "error": ...,
 
 | Group | Installs | What stops working without it |
 |---|---|---|
-| base (always) | `httpx`, `beautifulsoup4`, `lxml`, `defusedxml`, `pandas`, `h2`, `pydantic`, `jsonschema`, `openpyxl`, `Pillow` | nothing, this is the minimum |
+| base (always) | `httpx`, `beautifulsoup4`, `lxml`, `defusedxml`, `pandas`, `h2`, `pydantic`, `jsonschema`, `openpyxl`, `Pillow`, `tomlkit`, `charset-normalizer`, `typing_extensions` (Python < 3.12) | nothing, this is the minimum |
 | `reports` | `python-docx` (+ openpyxl already in base) | `docx` output of `report-build` (xlsx/csv/md/json stay) |
 | `pdf` | `pypdf` | Validate generated PDF signature, pages, extracted text, source counts and declared size limits |
 | `render` | `playwright` | `render-check`, `regions-check --render` |
 | `sitemap` | `advertools`, `python-dateutil` | deep parsing of very large sitemaps |
 | `mcp` | `mcp` | the MCP server (the CLI stays) |
 | `cluster` | `scikit-learn`, `numpy`, `snowballstemmer` | `keywords-cluster` |
-| `dev` | `pytest`, `pytest-cov`, `ruff`, `respx` | the test suite |
+| `dev` | `pytest`, `pytest-cov`, `ruff`, `respx`, `build`, `cryptography`, `mypy`, `PyYAML`, `twine` | the test suite |
 
 ## First run
 
 ```bash
 seohead --version                     # seohead 3.0.0
 seohead --help                        # the command list
-pytest -q                             # over 1500 offline tests; runtime depends on extras
+pytest -q                             # over 7000 offline tests; runtime depends on extras
 seohead sf run --exports-dir docs/examples/exports --out /tmp/report --tasks
 ```
 
@@ -362,7 +362,7 @@ keepalive reuse are disabled on this route to avoid mixing hostnames on one IP.
 The same policy is reachable with `--set http.proxy=env:SEOHEAD_CRAWL_PROXY` or the MCP
 `seo_crawl_site` overrides.
 
-`crawl-site --help` only shows the handful of settings used directly on the command line
+`crawl-site --help` shows, among others, the settings used directly on the command line
 (`--url`, `--max-urls`, `--out-dir`, `--scan-out`, `--config`, `--robots`, `--sitemap`); everything else — the
 settings above and every one the crawler build-out has added since — lives in the config file. Run
 `seohead crawl-site --config-help` for the full list: every key's path, type, default, and
