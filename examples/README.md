@@ -32,3 +32,9 @@ item, every one of them `not_run` with no execution record, so `project status` 
 reports coverage counts rather than an uninitialized state. Regenerate that file with
 `python scripts/generate_project_skeleton_coverage.py` when the catalogue changes. See
 [the projects guide](../docs/PROJECTS.md) for the commands that read and extend it.
+
+## Shop test site
+
+`shop-site/` is a loopback furniture shop in three versions with planted, evolving defects and
+a generated `ground_truth.json`, for building a realistic three-scan project with the native
+crawler. See [shop-site/README.md](shop-site/README.md).
