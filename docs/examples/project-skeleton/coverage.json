@@ -10781,6 +10781,50 @@
       ],
       "records": []
     },
+    "skill:general/semantic-core": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "manual",
+        "id": "skill:general/semantic-core",
+        "kind": "skill",
+        "operation": null,
+        "order": 245,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "f38ef5f72741ca43184c12a59909cf1689732d148a67b8df6fd7172617a8c691",
+        "title": "semantic-core"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "manual",
+            "id": "skill:general/semantic-core",
+            "kind": "skill",
+            "operation": null,
+            "order": 245,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "f38ef5f72741ca43184c12a59909cf1689732d148a67b8df6fd7172617a8c691",
+            "title": "semantic-core"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
     "skill:general/seo-audit-page": {
       "definition": {
         "dependencies": [],
@@ -10789,7 +10833,7 @@
         "id": "skill:general/seo-audit-page",
         "kind": "skill",
         "operation": null,
-        "order": 245,
+        "order": 246,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10809,7 +10853,7 @@
             "id": "skill:general/seo-audit-page",
             "kind": "skill",
             "operation": null,
-            "order": 245,
+            "order": 246,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10833,7 +10877,7 @@
         "id": "skill:general/seo-content",
         "kind": "skill",
         "operation": null,
-        "order": 246,
+        "order": 247,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10853,7 +10897,7 @@
             "id": "skill:general/seo-content",
             "kind": "skill",
             "operation": null,
-            "order": 246,
+            "order": 247,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10877,7 +10921,7 @@
         "id": "skill:general/seo-markup",
         "kind": "skill",
         "operation": null,
-        "order": 247,
+        "order": 248,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10897,7 +10941,7 @@
             "id": "skill:general/seo-markup",
             "kind": "skill",
             "operation": null,
-            "order": 247,
+            "order": 248,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10921,7 +10965,7 @@
         "id": "skill:general/seo-optimize",
         "kind": "skill",
         "operation": null,
-        "order": 248,
+        "order": 249,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10941,7 +10985,7 @@
             "id": "skill:general/seo-optimize",
             "kind": "skill",
             "operation": null,
-            "order": 248,
+            "order": 249,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -10965,7 +11009,7 @@
         "id": "skill:general/seo-research",
         "kind": "skill",
         "operation": null,
-        "order": 249,
+        "order": 250,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -10985,7 +11029,7 @@
             "id": "skill:general/seo-research",
             "kind": "skill",
             "operation": null,
-            "order": 249,
+            "order": 250,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11009,7 +11053,7 @@
         "id": "skill:general/service-landing-copy",
         "kind": "skill",
         "operation": null,
-        "order": 250,
+        "order": 251,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11029,7 +11073,7 @@
             "id": "skill:general/service-landing-copy",
             "kind": "skill",
             "operation": null,
-            "order": 250,
+            "order": 251,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11053,7 +11097,7 @@
         "id": "skill:workflow/analytics-console-review",
         "kind": "skill",
         "operation": null,
-        "order": 251,
+        "order": 252,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11073,7 +11117,7 @@
             "id": "skill:workflow/analytics-console-review",
             "kind": "skill",
             "operation": null,
-            "order": 251,
+            "order": 252,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11097,7 +11141,7 @@
         "id": "skill:workflow/audit-roadmap",
         "kind": "skill",
         "operation": null,
-        "order": 252,
+        "order": 253,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11117,7 +11161,7 @@
             "id": "skill:workflow/audit-roadmap",
             "kind": "skill",
             "operation": null,
-            "order": 252,
+            "order": 253,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11141,7 +11185,7 @@
         "id": "skill:workflow/backlinks-check",
         "kind": "skill",
         "operation": null,
-        "order": 253,
+        "order": 254,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11161,7 +11205,7 @@
             "id": "skill:workflow/backlinks-check",
             "kind": "skill",
             "operation": null,
-            "order": 253,
+            "order": 254,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11185,7 +11229,7 @@
         "id": "skill:workflow/control",
         "kind": "skill",
         "operation": null,
-        "order": 254,
+        "order": 255,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11205,7 +11249,7 @@
             "id": "skill:workflow/control",
             "kind": "skill",
             "operation": null,
-            "order": 254,
+            "order": 255,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11229,7 +11273,7 @@
         "id": "skill:workflow/duplicate-audit",
         "kind": "skill",
         "operation": null,
-        "order": 255,
+        "order": 256,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11249,7 +11293,7 @@
             "id": "skill:workflow/duplicate-audit",
             "kind": "skill",
             "operation": null,
-            "order": 255,
+            "order": 256,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11273,7 +11317,7 @@
         "id": "skill:workflow/full-audit-v1",
         "kind": "skill",
         "operation": null,
-        "order": 256,
+        "order": 257,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11293,7 +11337,7 @@
             "id": "skill:workflow/full-audit-v1",
             "kind": "skill",
             "operation": null,
-            "order": 256,
+            "order": 257,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11317,7 +11361,7 @@
         "id": "skill:workflow/geo-aeo-audit",
         "kind": "skill",
         "operation": null,
-        "order": 257,
+        "order": 258,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11337,7 +11381,7 @@
             "id": "skill:workflow/geo-aeo-audit",
             "kind": "skill",
             "operation": null,
-            "order": 257,
+            "order": 258,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11361,7 +11405,7 @@
         "id": "skill:workflow/heading-outline",
         "kind": "skill",
         "operation": null,
-        "order": 258,
+        "order": 259,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11381,7 +11425,7 @@
             "id": "skill:workflow/heading-outline",
             "kind": "skill",
             "operation": null,
-            "order": 258,
+            "order": 259,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11405,7 +11449,7 @@
         "id": "skill:workflow/internal-linking",
         "kind": "skill",
         "operation": null,
-        "order": 259,
+        "order": 260,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11425,7 +11469,7 @@
             "id": "skill:workflow/internal-linking",
             "kind": "skill",
             "operation": null,
-            "order": 259,
+            "order": 260,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11449,7 +11493,7 @@
         "id": "skill:workflow/js-render-check",
         "kind": "skill",
         "operation": null,
-        "order": 260,
+        "order": 261,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11469,7 +11513,7 @@
             "id": "skill:workflow/js-render-check",
             "kind": "skill",
             "operation": null,
-            "order": 260,
+            "order": 261,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11493,7 +11537,7 @@
         "id": "skill:workflow/regional-audit",
         "kind": "skill",
         "operation": null,
-        "order": 261,
+        "order": 262,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11513,7 +11557,7 @@
             "id": "skill:workflow/regional-audit",
             "kind": "skill",
             "operation": null,
-            "order": 261,
+            "order": 262,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11537,7 +11581,7 @@
         "id": "skill:workflow/robots-audit",
         "kind": "skill",
         "operation": null,
-        "order": 262,
+        "order": 263,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11557,7 +11601,7 @@
             "id": "skill:workflow/robots-audit",
             "kind": "skill",
             "operation": null,
-            "order": 262,
+            "order": 263,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11581,7 +11625,7 @@
         "id": "skill:workflow/schema-graph",
         "kind": "skill",
         "operation": null,
-        "order": 263,
+        "order": 264,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11601,7 +11645,7 @@
             "id": "skill:workflow/schema-graph",
             "kind": "skill",
             "operation": null,
-            "order": 263,
+            "order": 264,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11625,7 +11669,7 @@
         "id": "skill:workflow/security-audit",
         "kind": "skill",
         "operation": null,
-        "order": 264,
+        "order": 265,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11645,7 +11689,7 @@
             "id": "skill:workflow/security-audit",
             "kind": "skill",
             "operation": null,
-            "order": 264,
+            "order": 265,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11669,7 +11713,7 @@
         "id": "skill:workflow/seo-deep-audit",
         "kind": "skill",
         "operation": null,
-        "order": 265,
+        "order": 266,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11689,7 +11733,7 @@
             "id": "skill:workflow/seo-deep-audit",
             "kind": "skill",
             "operation": null,
-            "order": 265,
+            "order": 266,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11713,7 +11757,7 @@
         "id": "skill:workflow/seo-recon",
         "kind": "skill",
         "operation": null,
-        "order": 266,
+        "order": 267,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11733,7 +11777,7 @@
             "id": "skill:workflow/seo-recon",
             "kind": "skill",
             "operation": null,
-            "order": 266,
+            "order": 267,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11757,7 +11801,7 @@
         "id": "skill:workflow/sf-analyzer",
         "kind": "skill",
         "operation": null,
-        "order": 267,
+        "order": 268,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11777,7 +11821,7 @@
             "id": "skill:workflow/sf-analyzer",
             "kind": "skill",
             "operation": null,
-            "order": 267,
+            "order": 268,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11801,7 +11845,7 @@
         "id": "skill:workflow/sf-boundaries",
         "kind": "skill",
         "operation": null,
-        "order": 268,
+        "order": 269,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11821,7 +11865,7 @@
             "id": "skill:workflow/sf-boundaries",
             "kind": "skill",
             "operation": null,
-            "order": 268,
+            "order": 269,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11845,7 +11889,7 @@
         "id": "skill:workflow/sf-config",
         "kind": "skill",
         "operation": null,
-        "order": 269,
+        "order": 270,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11865,7 +11909,7 @@
             "id": "skill:workflow/sf-config",
             "kind": "skill",
             "operation": null,
-            "order": 269,
+            "order": 270,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11889,7 +11933,7 @@
         "id": "skill:workflow/sf-report",
         "kind": "skill",
         "operation": null,
-        "order": 270,
+        "order": 271,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11909,7 +11953,7 @@
             "id": "skill:workflow/sf-report",
             "kind": "skill",
             "operation": null,
-            "order": 270,
+            "order": 271,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11933,7 +11977,7 @@
         "id": "skill:workflow/sf-tasks",
         "kind": "skill",
         "operation": null,
-        "order": 271,
+        "order": 272,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11953,7 +11997,7 @@
             "id": "skill:workflow/sf-tasks",
             "kind": "skill",
             "operation": null,
-            "order": 271,
+            "order": 272,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -11977,7 +12021,7 @@
         "id": "skill:workflow/silo-audit",
         "kind": "skill",
         "operation": null,
-        "order": 272,
+        "order": 273,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -11997,7 +12041,7 @@
             "id": "skill:workflow/silo-audit",
             "kind": "skill",
             "operation": null,
-            "order": 272,
+            "order": 273,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -12021,7 +12065,7 @@
         "id": "skill:workflow/site-report",
         "kind": "skill",
         "operation": null,
-        "order": 273,
+        "order": 274,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -12041,7 +12085,7 @@
             "id": "skill:workflow/site-report",
             "kind": "skill",
             "operation": null,
-            "order": 273,
+            "order": 274,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -12065,7 +12109,7 @@
         "id": "skill:workflow/tech-audit",
         "kind": "skill",
         "operation": null,
-        "order": 274,
+        "order": 275,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -12085,7 +12129,7 @@
             "id": "skill:workflow/tech-audit",
             "kind": "skill",
             "operation": null,
-            "order": 274,
+            "order": 275,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {
@@ -12109,7 +12153,7 @@
         "id": "skill:workflow/traffic-report",
         "kind": "skill",
         "operation": null,
-        "order": 275,
+        "order": 276,
         "priority": "P1",
         "priority_origin": "default",
         "scope": {
@@ -12129,7 +12173,7 @@
             "id": "skill:workflow/traffic-report",
             "kind": "skill",
             "operation": null,
-            "order": 275,
+            "order": 276,
             "priority": "P1",
             "priority_origin": "default",
             "scope": {

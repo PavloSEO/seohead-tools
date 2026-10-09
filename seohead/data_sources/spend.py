@@ -19,8 +19,27 @@ import json
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+
+_CONTEXT: ContextVar[dict | None] = ContextVar("seohead_spend_context", default=None)
+
+
+@contextmanager
+def context(**tags: Any) -> Iterator[None]:
+    """Attach ``tags`` to the ``extra`` of every entry recorded inside the block.
+
+    A pipeline such as ``seohead semantics`` uses this to attribute provider charges to its
+    project and stage without each provider client knowing about the caller.
+    """
+    token = _CONTEXT.set({**(_CONTEXT.get() or {}), **tags})
+    try:
+        yield
+    finally:
+        _CONTEXT.reset(token)
 
 
 def log_path() -> Path:
@@ -56,6 +75,9 @@ def record(
     }
     if task_id is not None:
         entry["task_id"] = task_id
+    tags = _CONTEXT.get()
+    if tags:
+        extra = {**tags, **(extra or {})}
     if extra:
         entry["extra"] = extra
 
