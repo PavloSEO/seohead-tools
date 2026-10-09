@@ -183,7 +183,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `project-view-list` | List saved declarative finding views and the current project view-config revision. | offline, read-only |
 | `project-view-show` | Read one saved finding view with its stable identity, schema version and revision. | offline, read-only |
 | `project-view-save` | Create or revise a bounded declarative finding view using an expected config revision. | writes |
-| `project-inbox-submit` | Persist a specialist note or proposed goal without starting any work. | writes |
+| `project-inbox-submit` | Persist a specialist note, proposed goal or question without starting any work. | writes |
 | `project-inbox-list` | List a bounded project inbox page without consuming any entries. | offline, read-only |
 | `project-inbox-read` | Record an agent's explicit inspection; acknowledgment remains separate. | writes |
 | `project-inbox-acknowledge` | Explicitly acknowledge entries. | writes |

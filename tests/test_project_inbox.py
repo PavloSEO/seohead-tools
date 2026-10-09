@@ -469,3 +469,14 @@ def test_task_note_namespace_does_not_admit_arbitrary_paths_or_other_namespace_u
     with pytest.raises(ValueError, match="invalid project reference"):
         submit(root, text="Rejected reference", references=[reference])
     assert _files(root) == before
+
+
+def test_question_entry_is_stored_without_goal_state(tmp_path):
+    # Issue #979: Desktop needs a "question" entry type; it carries no goal lifecycle.
+    root = _project(tmp_path)
+    question = submit(root, text="Why is the sitemap gap open?", kind="question")["entry"]
+    assert question["kind"] == "question" and question["goal_state"] is None
+    with pytest.raises(ValueError, match="proposed goal"):
+        set_goal_state(root, entry_id=question["id"], state="accepted")
+    with pytest.raises(ValueError, match="kind must be"):
+        submit(root, text="Unknown kind", kind="ticket")

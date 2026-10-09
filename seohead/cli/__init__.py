@@ -2146,9 +2146,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd.startswith("project-inbox-"):
         _source_flag(sub, "--directory", help="validated local project workspace")
     if cmd == "project-inbox-submit":
-        _source_flag(sub, "--text", help="specialist note or proposed goal text")
+        _source_flag(sub, "--text", help="specialist note, proposed goal or question text")
         sub.add_argument(
-            "--kind", choices=("note", "proposed_goal"), help="entry kind (default: note)"
+            "--kind",
+            choices=("note", "proposed_goal", "question"),
+            help="entry kind (default: note)",
         )
         sub.add_argument(
             "--references", help="comma-separated goal/task/scan/finding/section references"
