@@ -1067,6 +1067,8 @@ def check_url_and_perf(ctx: AuditContext) -> None:
             and not _body_unavailable(rec)
         ):
             ctx.add("URL_HAS_PARAMS", target_url=url)
+        if urllib.parse.urlsplit(url).query:
+            ctx.add("URL_HAS_PARAMETERS", target_url=url)
         if NON_ASCII.search(path):
             ctx.add("URL_NON_ASCII", target_url=url)
         if path != path.lower():  # True iff the path has an uppercase letter

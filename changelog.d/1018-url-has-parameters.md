@@ -1,0 +1,1 @@
+- Add the `URL_HAS_PARAMETERS` notice to the crawl audit: an internal HTML page whose URL carries query parameters is reported regardless of canonical state. `URL_HAS_PARAMS` keeps its narrower no-canonical meaning (#1018).

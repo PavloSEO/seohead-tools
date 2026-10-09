@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**183 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -115,6 +115,7 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `URL_TOO_LONG` | notice | SF-derived | URL exceeds the configured length threshold | Shorten the URL while preserving a stable, descriptive path. |
 | `URL_HAS_PARAMS` | notice | SF-derived | Parameterized URL has no canonical | Point the canonical to the preferred parameter-free URL when the parameters do not create unique indexable content. |
+| `URL_HAS_PARAMETERS` | notice | SF-derived | Internal URL contains query parameters | Review whether the parameters create unique indexable content; keep internal links and sitemaps on the parameter-free URL where they do not. |
 | `URL_NON_ASCII` | notice | SF-derived | URL contains non-ASCII characters | Consider a consistent ASCII transliteration for human-readable URLs where appropriate. |
 | `URL_UPPERCASE` | notice | SF-derived | URL path contains uppercase characters | Normalize the path to lowercase and add a 301 redirect from the uppercase variant. |
 | `DEEP_CRAWL_DEPTH` | warning | SF-derived | Page has excessive crawl depth | Use relevant internal links to make the page reachable in fewer clicks from the home page or an authoritative hub. |
