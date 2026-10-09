@@ -195,7 +195,7 @@
           "bytes": 21954,
           "path": "cohorts-0001.csv",
           "rows": 30,
-          "sha256": "cadff9c2d3400d75e99e99af3f82e8ae7704df58247aed79b04518bbf620259e"
+          "sha256": "cb28190f39209ae5180a7fb6ef19467bbb3c6b42bb4a687b45d10ece7bbf2ff0"
         }
       ],
       "primary_key": [
@@ -281,7 +281,7 @@
           "bytes": 38723,
           "path": "coverage-0001.csv",
           "rows": 181,
-          "sha256": "7d65b842180a25c22906187cdeb05a5f82031ba4f00571015307073ca13c0d13"
+          "sha256": "5720a2f82a3479f1f32e329a9be95aaadb5313cf91c8a3f0cf3546c967c635b0"
         }
       ],
       "primary_key": [
@@ -297,7 +297,7 @@
       "state": "available"
     },
     "findings": {
-      "bytes": 29350,
+      "bytes": 29360,
       "coverage": {
         "source_rows": 25
       },
@@ -554,10 +554,10 @@
       "partition_count": 1,
       "partitions": [
         {
-          "bytes": 29350,
+          "bytes": 29360,
           "path": "findings-0001.csv",
           "rows": 25,
-          "sha256": "61b17353f18b80fbdd3c65c04d800fa7889bcdb84b2afe49219d4aca97a5d82f"
+          "sha256": "1d81f27a56069d990b0ef21c981a7d966bf8393d2ac145a3806fb1feb0c3e027"
         }
       ],
       "primary_key": [
@@ -1147,7 +1147,7 @@
           "bytes": 40469,
           "path": "metrics-0001.csv",
           "rows": 16,
-          "sha256": "e775ea9f82e4c7544493994ea42f6d48ccee2e5ede8323813bdc281a94c1da4e"
+          "sha256": "0ce2e8dd3efb0c5810d157158dec0837e13e1e45effdd1a1e8bdc14f749b896b"
         }
       ],
       "primary_key": [
@@ -1590,7 +1590,7 @@
           "bytes": 12289,
           "path": "pages-0001.csv",
           "rows": 6,
-          "sha256": "4279732eb6274f5c2d77664a6d52d1cc312cde129fcc22ca492cd7620f99b7e6"
+          "sha256": "c54fe17315d53243ff7cab4ac48420241c5a29c3c44cf5fd8d79089a4c5e0e5f"
         }
       ],
       "primary_key": [
@@ -1660,7 +1660,7 @@
           "bytes": 834,
           "path": "group-groups-0001.csv",
           "rows": 3,
-          "sha256": "481f0b3e5a5b43be15649edac31df4bd2bce241c94bd98e4804c5ea17f9ffc44"
+          "sha256": "0fb97b40f446e52d378ceaeb7f7869c051ce467ff9ea2b5493282983988b72a1"
         }
       ],
       "row_count": 3
@@ -1702,22 +1702,22 @@
           "bytes": 589,
           "path": "group-members-0001.csv",
           "rows": 7,
-          "sha256": "16682cb6dcbf680ef354f9552bbec73e250dde4f88df364a667fb06c26097277"
+          "sha256": "973500c8a0d455eec7b54ddc9f320a67694dd94f6bd497236e4eab2bb601d5e7"
         }
       ],
       "row_count": 7
     },
     "publication": "local companion; not included in the six published datasets",
-    "run_id": "audit:73121f1fdbf0e2fed6d03e92",
-    "sha256": "f03e19f6e1912de81629bfff301050fd88c3cf709f0ae1ea3ce151542a107ede",
-    "source_audit_sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce"
+    "run_id": "audit:768af4af695129b27c554783",
+    "sha256": "6c0c24175b6ff5783ae5bbd960efa23f894d1716c990aa43b9f27243b6145761",
+    "source_audit_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8"
   },
   "input": {
-    "bytes": 44292,
+    "bytes": 44302,
     "kind": "sf-audit",
     "name": "audit.json",
     "schema": "2.0",
-    "sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce"
+    "sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8"
   },
   "metrics_dimension_columns": {},
   "provider_sources": [
@@ -1913,7 +1913,7 @@
     "projection_index_cache_bytes": 2097152
   },
   "run": {
-    "audit_sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce",
+    "audit_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8",
     "check_skips": {
       "AJAX_CRAWLING_SCHEME_META_FRAGMENT": "no <meta name=\"fragment\"> evidence (native crawl only)",
       "AJAX_CRAWLING_SCHEME_URL": "no AJAX-scheme URL evidence (native crawl only)",
@@ -2019,14 +2019,14 @@
     "crawl_reason": "audit source does not establish a completed native crawl",
     "crawl_settings": null,
     "crawl_state": "unknown",
-    "finished_at": "2026-10-04T17:17:04Z",
+    "finished_at": "2026-10-09T18:17:15Z",
     "input_mode": "parse-exports",
-    "run_id": "audit:73121f1fdbf0e2fed6d03e92",
-    "source_bytes": 44292,
+    "run_id": "audit:768af4af695129b27c554783",
+    "source_bytes": 44302,
     "source_kind": "sf-audit",
     "source_name": "audit.json",
     "source_schema": "2.0",
-    "source_sha256": "73121f1fdbf0e2fed6d03e921a98c61cadaee9bb627d0b4b5a397629c3000bce",
+    "source_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8",
     "started_at": null,
     "summary": {
       "by_check": {

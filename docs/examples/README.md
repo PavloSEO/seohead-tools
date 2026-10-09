@@ -8,7 +8,7 @@ an oversized page, and thin content.
 Reproduce the report:
 
 ```bash
-seohead sf run --exports-dir docs/examples/exports --out examples
+seohead sf run --exports-dir docs/examples/exports --out docs/examples --tasks
 ```
 
 What this example demonstrates:
