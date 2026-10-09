@@ -5,10 +5,8 @@ from __future__ import annotations
 import sys
 
 from PyQt5.QtCore import QEvent, Qt
-from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -18,7 +16,6 @@ from PyQt5.QtWidgets import (
 )
 
 from . import theming
-from .common import ROOT
 from .i18n import tr
 from .ui.icons import material_icon as icon
 from .ui.presentation import StateBadge
@@ -45,7 +42,10 @@ def icon_button(icon_name, accessible_name, tooltip=None):
 
 class ChromeMixin:
     def topbar(self):
-        """One 52 px row: navigation toggle, brand, project and scan pickers, agent state, ⌘K, refresh, new scan."""
+        """One 52 px row (SHELL-CANON §2): navigation toggle, project and scan pickers, agent state, ⌘K, refresh, new scan.
+
+        The brand lives in the window title, Dock, About, Start and onboarding, not in this row.
+        """
         top = QWidget()
         top.setObjectName("topbar")
         top.setFixedHeight(theming.metrics()["layout"]["topbar"])
@@ -55,18 +55,6 @@ class ChromeMixin:
         self.nav_toggle = icon_button("side_navigation", "Свернуть или развернуть навигацию")
         self.nav_toggle.clicked.connect(self.toggle_navigation)
         layout.addWidget(self.nav_toggle)
-        mark = QLabel()
-        mark.setPixmap(QIcon(str(ROOT / "assets/app/seohead-small.svg")).pixmap(24, 24))
-        mark.setAccessibleName("SEOHEAD")
-        layout.addWidget(mark)
-        self.brand = QLabel("SEOHEAD")
-        self.brand.setProperty("brand", "word")
-        layout.addWidget(self.brand)
-        layout.addSpacing(4)
-        divider = QFrame()
-        divider.setProperty("divider", "v")
-        divider.setFixedHeight(24)
-        layout.addWidget(divider)
 
         # The combo boxes hold the project/scan choices (and signals the rest of the app uses);
         # the picker buttons show them and open a menu. The combos themselves are never shown.

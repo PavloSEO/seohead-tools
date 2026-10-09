@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QCoreApplication, QEvent
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QLabel
 
 from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
@@ -77,6 +77,15 @@ class ShellV2Tests(unittest.TestCase):
         self.window.set_navigation_compact(False)
         self.assertEqual(self.window.navigation.width(), layout["navigation"])
         self.assertTrue(self.window.navigation.profile._texts.isVisibleTo(self.window.navigation))
+
+    def test_top_bar_starts_with_the_panel_button_and_carries_no_brand(self):
+        top = self.window.findChild(type(self.window.centralWidget()), "topbar")
+        first = top.layout().itemAt(0).widget()
+        self.assertIs(first, self.window.nav_toggle)
+        texts = [label.text() for label in top.findChildren(QLabel)]
+        self.assertNotIn("SEOHEAD", texts)
+        self.assertFalse(hasattr(self.window, "brand"))
+        self.assertEqual(self.window.windowTitle(), "SEOHEAD")  # the brand stays in the window title
 
     def test_top_bar_height_and_labels(self):
         top = self.window.findChild(type(self.window.centralWidget()), "topbar")
