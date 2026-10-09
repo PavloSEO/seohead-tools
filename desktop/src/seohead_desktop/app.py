@@ -11,7 +11,6 @@ from pathlib import Path
 from PyQt5.QtCore import (
     QEasingCurve,
     QSettings,
-    QSize,
     Qt,
     QThreadPool,
     QTimer,
@@ -24,7 +23,6 @@ from PyQt5.QtWidgets import (
     QActionGroup,
     QApplication,
     QHBoxLayout,
-    QListWidget,
     QMainWindow,
     QShortcut,
     QVBoxLayout,
@@ -50,14 +48,17 @@ from .pages import PagesMixin
 from .project_io import ProjectMixin
 from .scan_control import ScanControlMixin
 from .scans_urls import ScansUrlsMixin
+from .settings_store import AppSettings
+from .shell_mixin import ShellMixin
 from .ui.content_search_panel import ContentSearchPanel
-from .ui.icons import material_icon as icon
 from .ui.panels import component_stylesheet
 from .ui.popup_style import install_popup_style
 from .ui.presentation import (
     InlineNotice,
     theme_tokens,
 )
+from .ui.settings import full_schema
+from .ui.shell import NavPanel
 from .ui.workspace import (
     LAYOUTS,
     keep_on_screen,
@@ -78,23 +79,25 @@ def load_theme(app, theme=None):
         app.setWindowIcon(QIcon(str(app_icon)))
     for font in sorted((ROOT / "assets/fonts").glob("*.ttf")):
         QFontDatabase.addApplicationFont(str(font))
-    app.setStyleSheet(theming.stylesheet())
+    app.setStyleSheet(theming.stylesheet() + component_stylesheet(tokens))
     install_popup_style(app, tokens["radius_popup"])
     return tokens
 
 
-class MainWindow(ChromeMixin, PagesMixin, CommandsMixin, ProjectMixin, ScansUrlsMixin, InboxMixin, WorkspaceMixin, AgentMixin, ViewStateMixin, ScanControlMixin, QMainWindow):
+class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixin, ScansUrlsMixin, InboxMixin, WorkspaceMixin, AgentMixin, ViewStateMixin, ScanControlMixin, QMainWindow):
     """Desktop presentation adapter. All scanning remains owned by core CLI."""
 
     crawl_descriptor_changed = pyqtSignal()
 
     def __init__(self, *, persistent=True, core_executable=None):
         super().__init__()
-        self.setWindowTitle("SEOHEAD · Демо")
+        self.setWindowTitle("SEOHEAD")
         self.resize(1440, 900)
-        self.setMinimumSize(800, 720)
+        self.setMinimumSize(theming.metrics()["layout"]["min_width"], theming.metrics()["layout"]["min_height"])
         self.persistent = persistent
         self.settings = QSettings("SEOHEAD", "DesktopPreparation") if persistent else None
+        self.prefs = AppSettings(self.settings, full_schema())
+        self.display = self.prefs.get("shell.display")
         self.core_executable = core_executable or shutil.which("seohead")
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(4)
@@ -180,10 +183,8 @@ class MainWindow(ChromeMixin, PagesMixin, CommandsMixin, ProjectMixin, ScansUrls
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
         self.workspace_tabs = WorkspaceTabs(max_tabs=12)
+        shell.addWidget(self.topbar())
         shell.addWidget(self.workspace_tabs)
-        self.add_workspace_toolbar("projectControls", self.topbar())
-        self.addToolBarBreak(Qt.TopToolBarArea)
-        self.add_workspace_toolbar("scanContext", self.contextbar())
         workspace.installEventFilter(self)
         self.notice = InlineNotice()
         shell.addWidget(self.notice)
@@ -191,20 +192,11 @@ class MainWindow(ChromeMixin, PagesMixin, CommandsMixin, ProjectMixin, ScansUrls
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
-        self.navigation = QListWidget()
-        self.navigation.setObjectName("navigation")
+        self.navigation = NavPanel()
         self.navigation.setFixedWidth(theme_tokens()["layout"]["navigation_width"])
-        self.navigation.setAccessibleName("Разделы проекта")
-        self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.navigation.setUniformItemSizes(True)
-        self.navigation_labels = ["Работа", "URL", "Аудит", "Проект", "Задачи", "Сканы", "Входящие", "Отчёты", "Журнал", "Сравнение", "Поиск HTML"]
-        self.navigation.addItems(self.navigation_labels)
-        self.navigation.setIconSize(QSize(20, 20))
-        for index, name in enumerate(("dashboard", "table_chart", "fact_check", "folder_open", "checklist", "manage_search", "notes", "description", "history", "compare_arrows", "search")):
-            item = self.navigation.item(index)
-            item.setIcon(icon(name))
-            item.setData(Qt.AccessibleTextRole, self.navigation_labels[index])
-            item.setToolTip(self.navigation_labels[index])
+        self.navigation.profileClicked.connect(self.show_profile_menu)
+        self.navigation.openScanRequested.connect(lambda: self.navigation.select_section("scans"))
+        self.navigation.set_display(self.display == "simple")
         body.addWidget(self.navigation)
         from .ui.components import PanelStack
         self.pages = PanelStack()
@@ -234,8 +226,9 @@ class MainWindow(ChromeMixin, PagesMixin, CommandsMixin, ProjectMixin, ScansUrls
         self.content_search.changed.connect(self.load_content_search)
         self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
-        self.statusBar().showMessage("Демо · сеть и сканирование не запускаются")
+        self.build_status_bar()
 
+        self.connect_preferences()
         file_menu = self.menuBar().addMenu("Проект")
         file_menu.addAction("Открыть проект…", self.choose_project, QKeySequence.Open)
         agent_menu = self.menuBar().addMenu("Агент")
@@ -316,8 +309,7 @@ def main():
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
-    tokens = load_theme(app)
-    app.setStyleSheet(app.styleSheet() + component_stylesheet(tokens))
+    load_theme(app)
     window = MainWindow(persistent=not args.no_settings, core_executable=args.core_cli)
     if args.agent_control:
         try:

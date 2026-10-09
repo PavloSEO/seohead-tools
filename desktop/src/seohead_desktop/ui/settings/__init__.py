@@ -19,4 +19,7 @@ def sections():
 
 
 def full_schema():
-    return tuple(setting for module in sections() for setting in module.SCHEMA)
+    from ...settings_store import Setting
+
+    shell = (Setting("shell.display", "agent", str, choices=("agent", "simple")),)
+    return shell + tuple(setting for module in sections() for setting in module.SCHEMA)

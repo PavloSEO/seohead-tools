@@ -14,6 +14,8 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop import theming
@@ -24,12 +26,20 @@ from seohead_desktop.ui.settings.context import SettingsContext
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 
 
-def build(name, width, height, store):
+def build(name, width, height, store, theme="light"):
     kind, _, arg = name.partition(":")
     if kind == "settings":
         dialog = SettingsDialog(store, SettingsContext(), section=arg or "general")
         dialog.resize(width, height)
         return dialog
+    if kind == "shell":
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        if arg == "simple":
+            window.set_display("simple", remember=False)
+        return window
     if kind == "gallery":
         from seohead_desktop.ui.theme_gallery import build_board
         return build_board(width, height)
@@ -51,11 +61,23 @@ def main(argv=None):
     for name in args.names:
         for size in args.sizes.split(","):
             width, height = (int(v) for v in size.split("x"))
-            widget = build(name, width, height, store)
-            widget.show()
-            app.processEvents()
+            widget = build(name, width, height, store, args.theme)
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}.png"
-            widget.grab().save(str(path))
+            if name.startswith("shell"):
+                # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
+                widget.setAttribute(Qt.WA_DontShowOnScreen, True)
+                widget.resize(width, height)
+                widget.show()
+                app.processEvents()
+                widget.resize(width, height)
+                app.processEvents()
+                image = QPixmap(width, height)
+                widget.render(image)
+                image.save(str(path))
+            else:
+                widget.show()
+                app.processEvents()
+                widget.grab().save(str(path))
             print(path)
             widget.close()
     return 0

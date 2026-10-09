@@ -37,7 +37,10 @@ class Switch(QAbstractButton):
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setFixedSize(36, 20)
-        theming.signals.changed.connect(lambda _name: self.update())
+        theming.signals.changed.connect(self._theme_changed)
+
+    def _theme_changed(self, _name):
+        self.update()
 
     def sizeHint(self):
         return QSize(36, 20)

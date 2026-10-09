@@ -72,8 +72,13 @@ with sync_playwright() as p:
             loc = page.locator(CLICKABLE).nth(i)
             try:
                 if not loc.is_visible(): continue
+                if loc.evaluate("e => !!e.closest('[inert]')"): continue  # modal backdrop: not interactive by design
                 before = len(errs)
-                loc.click(timeout=800, no_wait_after=True)
+                try:
+                    loc.click(timeout=800, no_wait_after=True)
+                except Exception:  # a popover opened by an earlier click may cover it: reset the board, retry once
+                    page.goto(BASE + name); page.wait_for_timeout(600)
+                    loc.click(timeout=800, no_wait_after=True)
                 page.wait_for_timeout(60)
                 if page.url != BASE + name:
                     page.goto(BASE + name); page.wait_for_timeout(600)

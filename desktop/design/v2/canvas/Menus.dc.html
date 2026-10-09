@@ -120,12 +120,12 @@ class Component extends DCLogic {
     const s = this.state;
     const S = '—', H = (t) => ['#', t];
     const M = {
-      app: ['SEOHEAD', 34, [['info', 'О программе SEOHEAD', ''], S, ['settings', 'Настройки…', '⌘,', '/Settings.dc.html'], ['smart_toy', 'Подключение агента…', ''], S, ['logout', 'Завершить SEOHEAD', '⌘Q']]],
+      app: ['SEOHEAD', 34, [['info', 'О программе SEOHEAD', '', '/SetAbout.dc.html'], S, ['settings', 'Настройки…', '⌘,', '/Settings.dc.html'], ['smart_toy', 'Подключение агента…', '', '/SetAgent.dc.html'], S, ['logout', 'Завершить SEOHEAD', '⌘Q']]],
       file: ['Проект', 112, [['add', 'Новый проект…', '⌘⇧N'], ['folder_open', 'Открыть папку проекта…', '⌘O', '/Start.dc.html'], ['history', 'Недавние', '', '', 'recent'], S, ['open_in_new', 'Открыть в новом окне', ''], ['tab', 'Новая вкладка', '⌘T', '/NewTab.dc.html'], S, ['close', 'Закрыть вкладку', '⌘W']]],
       edit: ['Правка', 180, [['undo', 'Отменить', '⌘Z'], S, ['content_copy', 'Копировать', '⌘C'], ['table_rows', 'Копировать как TSV', '⌘⇧C'], ['select_all', 'Выделить видимые строки', '⌘A'], S, ['search', 'Найти в таблице', '⌘F']]],
       view: ['Вид', 246, [H('Панели'), ['side_navigation', 'Навигация', '⌘0'], ['right_panel_open', 'Сводка справа', '⌥⌘S'], ['bottom_panel_open', 'Детали', '⌥⌘D'], ['fullscreen', 'Развернуть таблицу', '⌥⌘↵'], S, ['density_medium', 'Плотность таблиц', '', '', 'density'], ['dashboard', 'Раскладка', '', '', 'layout'], ['tune', 'Вкладки и панели…', '', '/TabSettings.dc.html'], S, ['restart_alt', 'Сбросить вид', '']]],
       scan: ['Скан', 296, [['play_arrow', 'Новый скан…', '⌘N', '/ScanDialog.dc.html'], ['format_list_bulleted', 'Скан по списку URL…', '', '/ScanList.dc.html'], S, ['stop_circle', 'Запросить остановку', '⌘.'], ['resume', 'Продолжить запуск', ''], S, ['compare_arrows', 'Сравнить запуски…', '', '/Compare.dc.html'], ['download', 'Экспорт…', '⌘E']]],
-      agent: ['Агент', 350, [['smart_toy', 'Подключение агента…', ''], ['inbox', 'Входящие', '⌘2', '/Inbox.dc.html'], ['edit_note', 'Новая заметка агенту', '⌘⇧N', '/Inbox.dc.html'], S, ['terminal', 'Журнал действий', '', '/Log.dc.html']]],
+      agent: ['Агент', 350, [['smart_toy', 'Подключение агента…', '', '/SetAgent.dc.html'], ['inbox', 'Входящие', '⌘2', '/Inbox.dc.html'], ['edit_note', 'Новая заметка агенту', '⌘⇧N', '/Inbox.dc.html'], S, ['terminal', 'Журнал действий', '', '/Log.dc.html']]],
       win: ['Окно', 410, [['minimize', 'Свернуть', '⌘M'], ['open_in_full', 'Масштаб', ''], S, ['sensors', 'Наблюдение в отдельном окне', '']]],
       help: ['Справка', 466, [['search', 'Поиск по справке', ''], ['keyboard', 'Горячие клавиши', '⌘/'], ['menu_book', 'Руководство', ''], S, ['stethoscope', 'Диагностика ядра…', ''], ['bug_report', 'Сообщить о проблеме…', '']]]
     };

@@ -490,7 +490,7 @@ class WorkspaceTabsTests(unittest.TestCase):
                 (
                     button
                     for button in bar.findChildren(QToolButton)
-                    if button.isVisible()
+                    if button.isVisible() and not button.property("tab_close")
                 ),
                 key=lambda button: button.x(),
             )

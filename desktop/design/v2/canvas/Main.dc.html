@@ -90,7 +90,8 @@
       <section aria-label="Детали выбранного URL" style="height: 318px; flex-shrink: 0; display: flex; flex-direction: column">
         <div class="tabbar">
           <sc-for list="{{tabs}}" as="t" hint-placeholder-count="9">
-            <button class="{{t.cls}}" onClick="{{t.pick}}">{{t.label}}<span class="n">{{t.n}}</span></button>
+            <sc-if value="{{t.href}}" hint-placeholder-val="{{false}}"><a class="{{t.cls}}" href="{{t.href}}">{{t.label}}<span class="n">{{t.n}}</span></a></sc-if>
+            <sc-if value="{{t.local}}" hint-placeholder-val="{{true}}"><button class="{{t.cls}}" onClick="{{t.pick}}">{{t.label}}<span class="n">{{t.n}}</span></button></sc-if>
           </sc-for>
           <div style="flex: 1"></div>
           <button class="ib" aria-label="Предыдущий URL в истории" onClick="{{back}}"><span class="ms" aria-hidden="true">arrow_back</span></button>
@@ -328,8 +329,8 @@ class Component extends DCLogic {
     const cur = { ...c, titleV: c.title ? 'v' : 'v na' };
     const groups = [['all','Все URL','1 314'],['int','Внутренние','1 190'],['ext','Внешние','58'],['resp','Ответы','187'],['titles','Title','96'],['canon','Canonical','41'],['dir','Директивы','23'],['links','Ссылки','64'],['sm','Sitemap','Нет данных']]
       .map(([id, label, n]) => ({ label, n, cls: 'grp' + (id === s.grp ? ' on' : ''), pick: () => this.setState({ grp: id }) }));
-    const tabDefs = [['info','Сведения',''],['in','Входящие', String(c.inl)],['out','Исходящие',''],['hdr','HTTP-заголовки',''],['html','HTML',''],['dom','Rendered DOM',''],['serp','Сниппет',''],['schema','Schema',''],['checks','Проверки', String(c.iss)]];
-    const tabs = tabDefs.map(([id, label, n]) => ({ label, n, cls: 'tab' + (id === s.tab ? ' on' : ''), pick: () => this.setState({ tab: id }) }));
+    const tabDefs = [['info','Обзор',''],['in','Ссылки', String(c.inl), 'UrlLinks'],['hdr','Заголовки','', 'UrlHeaders'],['html','HTML','', 'UrlHtml'],['res','Ресурсы','', 'UrlResources'],['redir','Редиректы','', 'UrlRedirects'],['hist','История','', 'UrlHistory'],['schema','Schema','', 'UrlSchema'],['serp','Сниппет',''],['checks','Проверки', String(c.iss)]];
+    const tabs = tabDefs.map(([id, label, n, board]) => ({ label, n, href: board ? '/' + board + '.dc.html' : '', local: !board, cls: 'tab' + (id === s.tab ? ' on' : ''), pick: () => this.setState({ tab: id }) }));
     const t = s.tab;
     const tabName = (tabDefs.find((x) => x[0] === t) || [0, ''])[1];
     const links = [

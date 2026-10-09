@@ -8,6 +8,7 @@ from PyQt5.QtGui import QColor, QIcon, QIconEngine, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QLabel
 
+from .. import theming
 from .presentation import theme_tokens
 
 ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "icons"
@@ -63,8 +64,21 @@ class _SvgEngine(QIconEngine):
         return image
 
 
-@lru_cache(maxsize=128)
+def resolve_color(color):
+    """Hex colour, or "role:<name>" resolved against the active theme (so icons follow theme changes)."""
+    if color is None:
+        return theme_tokens()["colors"]["on_surface_variant"]
+    if isinstance(color, str) and color.startswith("role:"):
+        return theming.roles()[color[5:]]
+    return color
+
+
 def material_icon(name, color=None):
+    return _material_icon(name, resolve_color(color), theming.active_theme())
+
+
+@lru_cache(maxsize=256)
+def _material_icon(name, color, _theme):
     if (
         not isinstance(name, str)
         or not name
@@ -74,7 +88,7 @@ def material_icon(name, color=None):
     path = ASSET_ROOT / (name + ".svg")
     if not path.is_file():
         return QIcon()
-    ink = QColor(color or theme_tokens()["colors"]["on_surface_variant"])
+    ink = QColor(color)
     if not ink.isValid():
         raise ValueError("Material icon color must be a valid Qt color")
     return QIcon(_SvgEngine(path.read_bytes(), ink.name()))

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from uuid import uuid4
 
-from PyQt5.QtCore import QByteArray, QPointF, Qt, pyqtSignal
+from PyQt5.QtCore import QByteArray, QPointF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence, QMouseEvent
 from PyQt5.QtWidgets import (
     QHBoxLayout,
@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .. import theming
 from .icons import material_icon
 
 MAX_WORKSPACE_TABS = 12
@@ -157,6 +158,30 @@ class _WorkspaceTabBar(QTabBar):
         self._drag_id = None
 
 
+class _CloseButton(QToolButton):
+    """Tab close glyph drawn from the active theme (the style's default glyph ignores QSS colours)."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self._owner = owner
+        self.setProperty("tab_close", True)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setIcon(material_icon("close", "role:text_muted"))
+        self.setIconSize(QSize(16, 16))
+        self.clicked.connect(self._close)
+        theming.signals.changed.connect(self._theme_changed)
+
+    def _theme_changed(self, _name):
+        self.setIcon(material_icon("close", "role:text_muted"))
+
+    def _close(self):
+        bar = self._owner.tabbar
+        for index in range(bar.count()):
+            if bar.tabButton(index, QTabBar.RightSide) is self:
+                bar.tabCloseRequested.emit(index)
+                return
+
+
 class WorkspaceTabs(QWidget):
     """A native strip; selected emits only when the active context ID changes."""
 
@@ -179,12 +204,17 @@ class WorkspaceTabs(QWidget):
         self._active_id = None
         self._shortcuts = []
         self._shortcut_owner = None
-        self.setObjectName("workspaceTabs")
+        self.setObjectName("tabstrip")
+        self.setFixedHeight(36)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAccessibleName("Рабочие вкладки SEOHEAD")
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 2, 8, 0)
         layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignBottom)
         self.tabbar = _WorkspaceTabBar(self)
+        self.tabbar.setProperty("tabs", "workspace")
+        self.tabbar.setFixedHeight(34)
         self.tabbar.setObjectName("workspaceTabBar")
         self.tabbar.setAccessibleName("Проекты, сканы и представления")
         self.tabbar.setUsesScrollButtons(True)
@@ -199,7 +229,9 @@ class WorkspaceTabs(QWidget):
         layout.addWidget(self.tabbar)
         self.new_button = QToolButton()
         self.new_button.setObjectName("workspaceNewTab")
-        self.new_button.setIcon(material_icon("add_circle"))
+        self.new_button.setIcon(material_icon("add"))
+        self.new_button.setFixedSize(28, 28)
+        self.new_button.setContentsMargins(0, 0, 0, 0)
         self.new_button.setAccessibleName("Новая рабочая вкладка")
         self.new_button.setToolTip("Новая рабочая вкладка")
         self.new_button.clicked.connect(self.request_new)
@@ -207,7 +239,8 @@ class WorkspaceTabs(QWidget):
         layout.addStretch(1)
         self.overflow_button = QToolButton()
         self.overflow_button.setObjectName("workspaceOverflow")
-        self.overflow_button.setIcon(material_icon("more_horiz"))
+        self.overflow_button.setIcon(material_icon("tune"))
+        self.overflow_button.setFixedSize(28, 28)
         self.overflow_button.setAccessibleName("Все рабочие вкладки и действия")
         self.overflow_button.setToolTip("Все рабочие вкладки и действия")
         self.overflow_button.setPopupMode(QToolButton.InstantPopup)
@@ -360,6 +393,8 @@ class WorkspaceTabs(QWidget):
             if pin_icon is not None and not pin_icon.isNull()
             else self._icons[id],
         )
+        if self.tabbar.tabsClosable() and not isinstance(self.tabbar.tabButton(index, QTabBar.RightSide), _CloseButton):
+            self.tabbar.setTabButton(index, QTabBar.RightSide, _CloseButton(self))
         for side in (QTabBar.LeftSide, QTabBar.RightSide):
             button = self.tabbar.tabButton(index, side)
             if button is not None:

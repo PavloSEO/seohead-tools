@@ -115,7 +115,7 @@
           </div></sc-if>
         </div>
       </div>
-      <div style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 24px; border-top: 1px solid #EEF0F3"><span class="hint" style="margin: 0; flex: 1">Изменения применяются сразу</span><a class="btn lg pri" href="/Main.dc.html">Готово</a></div>
+      <div style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 24px; border-top: 1px solid #EEF0F3"><span class="hint" style="margin: 0; flex: 1">Изменения применяются сразу</span><a class="btn" href="{{detail}}"><span class="ms s18" aria-hidden="true">open_in_full</span>Раздел «{{detailLabel}}» целиком</a><a class="btn lg pri" href="/Main.dc.html">Готово</a></div>
     </div>
   </div>
 </div>
@@ -138,7 +138,9 @@ class Component extends DCLogic {
     const notifs = [['Скан завершён или остановлен', 'С итогом и ссылкой на результат', 1, 1], ['Ошибка ядра или скана', 'Остаётся до закрытия', 1, 1], ['Агент предложил задачи или цель', 'Ссылка во «Входящие»', 1, 0], ['Наблюдение устарело', 'Только плашкой в окне', 0, 0], ['Экспорт и отчёт готовы', 'С кнопкой «Открыть папку»', 1, 0]].map(([t, d, a, b]) => ({ t, d, a: 'swt' + (a ? ' on' : ''), b: 'swt' + (b ? ' on' : '') }));
     const keys = [['Действия и переходы', ['⌘', 'K']], ['Новый скан', ['⌘', 'N']], ['Новая вкладка', ['⌘', 'T']], ['Закрыть вкладку', ['⌘', 'W']], ['Разделы 1–9', ['⌘', '1…9']], ['Развернуть таблицу', ['⌥', '⌘', '↵']], ['Копировать как TSV', ['⌘', '⇧', 'C']], ['Найти в таблице', ['⌘', 'F']], ['Назад / вперёд по URL', ['⌘', '[ ]']], ['Справка', ['F1']]].map(([t, k]) => ({ t, k }));
     const themes = [['light', 'Светлая', '#FDFCFF', '#F4F6FA', '#1565C0', '#EEF0F3'], ['dark', 'Тёмная', '#16181D', '#1E2128', '#9EC4F8', '#2A2E37'], ['hc', 'Контраст', '#FFFFFF', '#FFFFFF', '#003C8F', '#1B1B1F']].map(([id, name, bg, nav, acc, line]) => ({ name, bg, nav, acc, line, on: id === s.theme, border: id === s.theme ? '2px solid #1565C0' : '1px solid #DDE1E7', pick: () => this.setState({ theme: id }) }));
-    return { secs, is, dens, sw, notifs, keys, themes,
+    const boards = { gen: 'SetGeneral', view: 'SetView', scan: 'SetScan', core: 'SetCore', mcp: 'SetMcp', agent: 'SetAgent', notif: 'SetNotify', keys: 'SetKeys', data: 'SetData', upd: 'SetUpdates', about: 'SetAbout' };
+    const cur = defs.find(([id]) => id === s.sec);
+    return { secs, is, dens, sw, notifs, keys, themes, detail: '/' + boards[s.sec] + '.dc.html', detailLabel: cur[2],
       langRu: s.lang === 'ru' ? 'on' : '', langEn: s.lang === 'en' ? 'on' : '', pickRu: () => this.setState({ lang: 'ru' }), pickEn: () => this.setState({ lang: 'en' }),
       mcpBadge: 'b ' + (s.mcp ? 'st-done' : 'st-off'), mcpIcon: s.mcp ? 'check_circle' : 'pause_circle', mcpState: s.mcp ? 'включён' : 'выключен',
       cliColor: s.mcp ? '#7ED69A' : '#F2C26B', cliState: s.mcp ? 'включён' : 'выключен' };

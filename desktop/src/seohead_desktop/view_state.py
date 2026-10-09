@@ -48,14 +48,7 @@ class ViewStateMixin:
             self._navigation_animation.start()
         else:
             self.navigation.setFixedWidth(width)
-        self.navigation.setProperty("compact", compact)
-        for index, title in enumerate(self.navigation_labels):
-            item = self.navigation.item(index)
-            item.setText("" if compact else title)
-            item.setToolTip(title)
-            item.setTextAlignment(Qt.AlignCenter if compact else Qt.AlignLeft | Qt.AlignVCenter)
-        self.navigation.style().unpolish(self.navigation)
-        self.navigation.style().polish(self.navigation)
+        self.navigation.set_rail(compact)
 
     def toggle_navigation(self):
         self.set_panel_visible("Навигация", True)
@@ -92,11 +85,12 @@ class ViewStateMixin:
         narrow = width <= 960
         if narrow != self._narrow_chrome:
             self._narrow_chrome = narrow
-            for button in (self.refresh_button, self.action_finder_button, self.compare_shortcut_button):
-                button.setToolButtonStyle(Qt.ToolButtonIconOnly if narrow else Qt.ToolButtonTextBesideIcon)
-            self.scan_context_label.setText("Скан" if narrow else "Сохранённый скан")
-            self.scan_picker.setMinimumContentsLength(10 if narrow else 22)
-            self.project_picker.setMinimumContentsLength(12 if narrow else 16)
+            self.action_finder_button.setText("" if narrow else "Действия и переходы")
+            self.finder_hint.setVisible(not narrow)
+            self.action_finder_button.setFixedWidth(40 if narrow else 220)
+            for picker in (self.project_button, self.scan_button):
+                picker.set_compact(narrow)
+                picker.setMinimumWidth(120 if narrow else 250 if picker is self.scan_button else 180)
             self.source_badge.setVisible(not narrow)
             self.cancel_button.setText("" if narrow else "Остановить " + self.selected_managed_run_id[:8] if self.selected_managed_run_id else "Отменить чтение")
         compact = self.centralWidget().width() < theme_tokens()["layout"]["compact_breakpoint"]
@@ -108,6 +102,10 @@ class ViewStateMixin:
             self.audit_workspace.right.setVisible(not compact and not self._focus_mode)
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.EnabledChange:
+            for combo, button in ((self.project_picker, self.project_button), (self.scan_picker, self.scan_button)):
+                if watched is combo:
+                    self.sync_picker(combo, button)
         if hasattr(self, "table") and watched is self.table.viewport() and event.type() == QEvent.Resize:
             self.fit_url_columns()
         if watched is self.centralWidget() and event.type() == QEvent.Resize:
