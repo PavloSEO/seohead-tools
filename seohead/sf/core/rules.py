@@ -13,6 +13,7 @@ import re
 import urllib.parse
 from collections import OrderedDict, defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from seohead.checks.parser import robots_directives, uses_ajax_crawling_scheme
@@ -93,6 +94,31 @@ def _slash_key(url: str) -> tuple[str, str, str, str] | None:
     if not parts.path or parts.path == "/":
         return None
     return (parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query)
+
+
+@dataclass(frozen=True)
+class ProbedTarget:
+    """A canonical target no crawled page answered, as its stored target probe reports it."""
+
+    url: str
+    status_code: int
+    redirect_url: str
+    indexability: str | None = None
+    indexability_status: str | None = None
+
+
+def _probed_targets(ctx: AuditContext, key: str) -> list[ProbedTarget]:
+    """Stored probe of an uncaptured target (#987); empty when none answered with a status."""
+    payload = getattr(ctx, "target_probes", {}).get(key)
+    if not payload or type(payload.get("status_code")) is not int:
+        return []
+    return [
+        ProbedTarget(
+            url=payload["url"],
+            status_code=payload["status_code"],
+            redirect_url=payload.get("redirect_url") or "",
+        )
+    ]
 
 
 def _rec(page: Page) -> dict[str, Any]:
@@ -1447,7 +1473,9 @@ def check_canonical_to_redirect(ctx: AuditContext) -> None:
         # /x (301) and /x/ (200) has two, and the canonical points at whichever one answers.
         # Reading a single record made this fire on 78 live pages whose canonical is a 200
         # (issue #95). The claim is only true when nothing under the key answered 2xx.
-        targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+        targets = ctx.pages_by_norm.get(norm_url(canonical)) or _probed_targets(
+            ctx, norm_url(canonical)
+        )
         if not targets:
             continue  # external / not crawled — cannot classify
         if any(t.status_code is not None and 200 <= int(t.status_code) < 300 for t in targets):
@@ -1458,10 +1486,11 @@ def check_canonical_to_redirect(ctx: AuditContext) -> None:
         # so any target that answers with a redirect is enough to report one, exactly the mirror
         # of the "any 2xx clears it" guard above.
         redirecting = [
-            (t, ctx.redirect_map.get(t.url) or t.url)
+            (t, ctx.redirect_map.get(t.url) or getattr(t, "redirect_url", "") or t.url)
             for t in targets
             if (t.status_code is not None and 300 <= int(t.status_code) <= 399)
             or ctx.redirect_map.get(t.url)
+            or getattr(t, "redirect_url", "")
         ]
         if not redirecting:
             continue  # every target under the key is a plain non-2xx, non-redirect response
@@ -1505,7 +1534,9 @@ def check_canonical_target_error(ctx: AuditContext) -> None:
         canonical = _rec(page).get("canonical")
         if not canonical or norm_url(canonical) == norm_url(page.url):
             continue
-        targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+        targets = ctx.pages_by_norm.get(norm_url(canonical)) or _probed_targets(
+            ctx, norm_url(canonical)
+        )
         if not targets:
             unavailable_count += 1
             continue

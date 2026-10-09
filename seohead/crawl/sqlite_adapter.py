@@ -1106,6 +1106,15 @@ def crawl_to_scan(
                 wait=dispatch_gate.wait_turn,
                 clock=clock,
             )
+            from seohead.storage.target_probes import capture as capture_target_probes
+
+            capture_target_probes(
+                scan,
+                settings,
+                client=client,
+                fetcher=fetcher,
+                wait=dispatch_gate.wait_turn,
+            )
         scan.record_events(adapter_events)
         scan.record_request_count(dispatch_gate.requests_used)
         if start_page_gate is None:
