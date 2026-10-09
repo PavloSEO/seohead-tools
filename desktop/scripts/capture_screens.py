@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell | gallery. Synthetic in-memory settings only; no core, network or scans.
+NAME: settings:<section id> | shell[:<section>] | menu | gallery. Synthetic in-memory settings only; no network or scans.
+Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
+--display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
 
 from __future__ import annotations
@@ -25,6 +27,27 @@ from seohead_desktop.ui.settings import full_schema
 from seohead_desktop.ui.settings.context import SettingsContext
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 
+OPTIONS = {}
+
+
+def open_project(window, directory, timeout=60):
+    """Read an existing project through the core and wait (event loop running) until the window is idle."""
+    import time
+
+    from PyQt5.QtWidgets import QApplication
+
+    window.core_executable = OPTIONS.get("core") or window.core_executable
+    window.read_project(str(Path(directory).resolve()))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        if window.project_result is not None and not window._project_loading and not window.requests and window._workspace_restore is None:
+            break
+        time.sleep(0.05)
+    for _ in range(40):  # let queued follow-up reads (scans, tasks, observer) land
+        QApplication.processEvents()
+        time.sleep(0.05)
+
 
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
@@ -39,9 +62,13 @@ def build(name, width, height, store, theme="light", lang="ru"):
         window = MainWindow(persistent=False)
         window.prefs.set("view.theme", theme)
         window.prefs.set("view.language", lang)
-        if arg == "simple":
+        if arg == "simple" or OPTIONS.get("display") == "simple":
             window.set_display("simple", remember=False)
         window.show_startup_workspace()
+        if OPTIONS.get("project"):
+            open_project(window, OPTIONS["project"])
+        if arg and arg != "simple":
+            window.navigation.select_section(arg)
         return window
     if kind == "menu":
         from seohead_desktop.app import MainWindow
@@ -63,7 +90,13 @@ def main(argv=None):
     parser.add_argument("--theme", default="light", choices=theming.THEMES)
     parser.add_argument("--lang", default="ru", choices=i18n.LANGUAGES)
     parser.add_argument("--sizes", default="1440x900,800x800")
+    parser.add_argument("--project", type=Path, help="existing project directory to open through the core (read-only)")
+    parser.add_argument("--core", help="seohead CLI executable (default: .venv-desktop/bin/seohead next to the repo)")
+    parser.add_argument("--display", choices=("agent", "simple"), default="agent")
     args = parser.parse_args(argv)
+    default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
+    OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
+    os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
     load_theme(app, args.theme)
