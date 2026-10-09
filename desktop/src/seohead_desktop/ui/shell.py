@@ -25,22 +25,24 @@ from .. import theming
 from .icons import MaterialIconLabel, material_icon
 from .workspace import VIEW_IDS
 
-# id, icon, label, group, shown in the "Simple" display, page is implemented
+# SHELL-CANON §3: one list, the Simple display only hides the agent items.
+# id, icon, label, group, shown in the Simple display, the page exists
 SECTIONS = (
-    ("work", "checklist", "Работа", "top", False),
-    ("tasks", "checklist", "Задачи", "top", True),
-    ("inbox", "inbox", "Входящие", "top", False),
-    ("scans", "history", "Сканы", "data", True),
-    ("url", "table_view", "URL", "data", True),
-    ("issues", "rule", "Проблемы", "data", True),
-    ("compare", "compare_arrows", "Сравнение", "data", True),
-    ("search", "find_in_page", "Поиск в HTML", "data", True),
-    ("reports", "description", "Отчёты и задачи", "result", True),
-    ("log", "terminal", "Журнал", "result", True),
+    ("work", "checklist", "Работа", "top", True, True),
+    ("inbox", "inbox", "Входящие", "top", False, True),
+    ("scans", "history", "Сканы", "data", True, True),
+    ("url", "table_view", "URL", "data", True, True),
+    ("issues", "rule", "Проблемы", "data", True, True),
+    ("compare", "compare_arrows", "Сравнение", "data", True, True),
+    ("search", "find_in_page", "Поиск в HTML", "data", True, True),
+    ("methods", "menu_book", "Методы", "result", False, False),
+    ("reports", "description", "Отчёты и задачи", "result", True, True),
+    ("log", "terminal", "Журнал", "result", True, True),
 )
 # Navigation section -> view id used by workspace contexts and the page stack.
-VIEW_OF = {"work": "work", "tasks": "tasks", "inbox": "inbox", "scans": "scans", "url": "url", "issues": "audit",
+VIEW_OF = {"work": "work", "inbox": "inbox", "scans": "scans", "url": "url", "issues": "audit",
            "compare": "compare", "search": "content_search", "reports": "reports", "log": "journal"}
+SIMPLE_VIEW_OF = {**VIEW_OF, "work": "tasks"}  # «Работа» opens the simple task list in the Simple display
 GROUP_TITLES = {"data": "Данные", "result": "Результат"}
 ROLE_ID, ROLE_COUNT, ROLE_DOT, ROLE_HEADER = (Qt.UserRole + i for i in range(4))
 
@@ -182,10 +184,8 @@ class NavList(QListWidget):
         self.clear()
         self._items = {}
         last_group = None
-        for section_id, icon_name, label, group, in_simple in SECTIONS:
-            if simple and not in_simple:
-                continue
-            if not simple and section_id == "tasks":
+        for section_id, icon_name, label, group, in_simple, ready in SECTIONS:
+            if not ready or (simple and not in_simple):
                 continue
             if group in GROUP_TITLES and group != last_group:
                 header = QListWidgetItem(GROUP_TITLES[group])
@@ -353,13 +353,16 @@ class NavPanel(QFrame):
             self.sectionChanged.emit(current.data(ROLE_ID))
             self.currentRowChanged.emit(self.currentRow())
 
+    def views(self):
+        return SIMPLE_VIEW_OF if self.simple else VIEW_OF
+
     def currentRow(self):
-        view = VIEW_OF.get(self.current_section())
+        view = self.views().get(self.current_section())
         return VIEW_IDS.index(view) if view else -1
 
     def setCurrentRow(self, row):
         view = VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else None
-        section = next((s for s, v in VIEW_OF.items() if v == view and self.has_section(s)), None)
+        section = next((s for s, v in self.views().items() if v == view and self.has_section(s)), None)
         return self.select_section(section) if section else False
 
     def set_display(self, simple):
@@ -367,6 +370,8 @@ class NavPanel(QFrame):
         self.simple = bool(simple)
         self.list.rebuild(self.simple, current)
         self.profile.set_mode_line("Простой режим" if self.simple else "С агентом")
+        if current in self.list._items:
+            self.currentRowChanged.emit(self.currentRow())
 
     def set_rail(self, rail):
         self.setProperty("compact", bool(rail))

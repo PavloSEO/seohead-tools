@@ -34,6 +34,7 @@ LAYOUTS = {
 }
 LAYOUT_SCHEMA = 2
 PANEL_IDS = {"navigation": "Навигация", "overview": "Сводка", "inspector": "Инспектор URL"}
+SETTINGS_VIEW = "settings"  # auxiliary workspace tab; not a page of the stack
 VIEW_IDS = ("work", "url", "audit", "project", "tasks", "scans", "inbox", "reports", "journal", "compare", "content_search")
 
 

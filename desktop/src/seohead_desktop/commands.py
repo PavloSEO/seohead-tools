@@ -95,6 +95,9 @@ class CommandsMixin:
                 self.mcp_gateway.set_project_scope(self.project_directory)
             self.update_note_controls()
             self.finish_workspace_restore()
+        elif request_id == "providers":
+            self.providers_failed(text)
+            return
         elif request_id == "crawl-settings":
             self._crawl_descriptor_error = text
             self.crawl_descriptor_changed.emit()

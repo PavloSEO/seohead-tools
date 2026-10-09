@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from importlib import import_module
 
-SECTION_IDS = ("general", "view", "scan", "core", "mcp", "agent", "notify", "keys", "data", "updates", "about")
+SECTION_IDS = ("general", "view", "scan", "core", "mcp", "sources", "agent", "notify", "keys", "data", "updates", "about")
 
 
 def sections():

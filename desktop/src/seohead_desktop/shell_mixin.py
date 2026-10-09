@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QPoint, Qt
 from PyQt5.QtGui import QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QAction,
@@ -23,6 +23,8 @@ from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
+from .ui.workspace import SETTINGS_VIEW
+from .ui.workspace_tabs import WorkspaceContext
 
 UNAVAILABLE = "Недоступно в этой сборке"
 
@@ -46,7 +48,7 @@ class ShellMixin:
 
     def update_display_widgets(self):
         simple = self.display == "simple"
-        self.mode_label.setText("Простой режим" if simple else "С агентом")
+        self.mode_label.setText("Простой режим · агент и MCP выключены" if simple else "С агентом")
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
 
@@ -109,6 +111,22 @@ class ShellMixin:
         menu.setMinimumWidth(264)
         return menu
 
+    def show_display_menu(self):
+        """Chip «Простой режим ▾» (SHELL-CANON §2b): display switch and crawler entry."""
+        menu = QMenu(self)
+        group = QActionGroup(menu)
+        for mode, title in (("agent", "С агентом"), ("simple", "Простой режим")):
+            action = menu.addAction(title)
+            action.setCheckable(True)
+            action.setChecked(mode == self.display)
+            group.addAction(action)
+            action.triggered.connect(lambda _c, m=mode: self.set_display(m))
+        menu.addSeparator()
+        crawler = menu.addAction(icon("travel_explore"), "Быстрый краул без проекта")
+        crawler.setEnabled(self.can_open_crawler())
+        crawler.setToolTip(UNAVAILABLE)
+        menu.exec_(self.simple_pill.mapToGlobal(QPoint(0, self.simple_pill.height() + 4)))
+
     def can_open_crawler(self):
         return hasattr(self, "open_crawler")
 
@@ -143,10 +161,62 @@ class ShellMixin:
             action.triggered.connect(lambda _c, v=value: self.prefs.set("view.language", v))
 
     # Settings
+    def request_providers(self, callback, on_error):
+        """Settings → Источники данных: the core's provider-readiness (local, no network), delivered on the UI thread."""
+        self._provider_handlers = (callback, on_error)
+        if not self.core_executable:
+            on_error("CLI ядра seohead не найден")
+            return
+        self.start_command("providers", "seo_provider_readiness", {}, self._providers_loaded)
+
+    def _providers_loaded(self, result):
+        self._deliver_providers(0, result)
+
+    def providers_failed(self, text):
+        self._deliver_providers(1, text)
+
+    def _deliver_providers(self, index, value):
+        handlers = getattr(self, "_provider_handlers", None)
+        if handlers:
+            try:
+                handlers[index](value)
+            except RuntimeError:
+                pass  # the settings dialog was closed before the answer arrived
+
+    def settings_context(self):
+        return SettingsContext(core_executable=self.core_executable, project_directory=self.project_directory,
+                               actions={"providers": self.request_providers})
+
     def open_settings(self, section="general"):
-        context = SettingsContext(core_executable=self.core_executable, project_directory=self.project_directory)
-        dialog = SettingsDialog(self.prefs, context, self, section)
-        dialog.exec_()
+        """Settings open as a workspace tab (SHELL-CANON §4); a modal window only when the tab strip is full."""
+        existing = next((c for c in self.workspace_tabs.contexts() if c.view_id == SETTINGS_VIEW), None)
+        if existing is None:
+            existing_id = self.workspace_tabs.add(WorkspaceContext(view_id=SETTINGS_VIEW, project_label="Настройки"),
+                                                  title="Настройки", icon=icon("settings"), select=False,
+                                                  after_id=self._active_workspace_id) if len(self.workspace_tabs.contexts()) < self.workspace_tabs.max_tabs else None
+            if existing_id is None:
+                SettingsDialog(self.prefs, self.settings_context(), self, section).exec_()
+                return
+        else:
+            existing_id = existing.id
+        self.ensure_settings_view().show_section(section)
+        self.workspace_tabs.select(existing_id)
+
+    def ensure_settings_view(self):
+        """Embedded (non-window) SettingsDialog placed beside the page stack."""
+        if self.settings_view is None:
+            view = SettingsDialog(self.prefs, self.settings_context(), self)
+            view.setWindowFlags(Qt.Widget)
+            view.accepted.connect(self.close_settings_tab)
+            view.hide()
+            self.body_layout.addWidget(view, 1)
+            self.settings_view = view
+        return self.settings_view
+
+    def close_settings_tab(self):
+        for context in self.workspace_tabs.contexts():
+            if context.view_id == SETTINGS_VIEW:
+                self.close_workspace_tab(context.id)
 
     def connect_preferences(self):
         self.prefs.changed.connect(self.apply_preference)

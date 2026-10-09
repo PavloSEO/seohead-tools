@@ -39,8 +39,7 @@ class ScansUrlsMixin:
         self.task_model.replace(rows)
         pagination = result.get("pagination") or {}
         total = pagination.get("total", len(rows))
-        for section in ("work", "tasks"):
-            self.navigation.set_count(section, str(total) if total else None)
+        self.navigation.set_count("work", str(total) if total else None)
         self.task_caption.setText(f"Задачи · {pagination.get('total', len(rows))} всего · показано {len(rows)}")
         self.project_panels.set_page(
             "tasks",

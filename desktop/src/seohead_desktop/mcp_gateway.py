@@ -35,6 +35,7 @@ TOOL_ALLOWLIST = frozenset(
         "seo_scan_link_inspect",
         "seo_scan_navigation",
         "seo_scan_status",
+        "seo_provider_readiness",
     }
 )
 OPTIONAL_TOOLS = frozenset({"seo_scan_content_search", "seo_scan_content_search_page"})
@@ -51,7 +52,7 @@ _DIRECTORY_TOOLS = frozenset(
         "seo_project_scans",
     }
 )
-_GLOBAL_READ_TOOLS = frozenset({"seo_crawl_describe_settings"})
+_GLOBAL_READ_TOOLS = frozenset({"seo_crawl_describe_settings", "seo_provider_readiness"})
 _SCAN_TOOLS = frozenset(
     {
         "seo_scan_inspect",
