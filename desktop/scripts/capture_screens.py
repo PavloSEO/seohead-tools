@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan | menu | gallery. In-memory settings; scans only through --project.
+NAME: settings:<section id> | projsources[:state] | shell[:<section>] | newscan | menu | gallery. In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
@@ -65,11 +65,14 @@ def render_modal(dialog, width, height, theme, lang):
     window.resize(width, height)
     window.show()
     QApplication.processEvents()
+    window.resize(width, height)  # the offscreen screen is 800x600 and clamps the first resize
+    QApplication.processEvents()
     image = QPixmap(width, height)
     window.render(image)
     size = dialog.size().boundedTo(image.size() * 0.92)
     dialog.setAttribute(Qt.WA_DontShowOnScreen, True)
-    dialog.resize(min(size.width(), 920), min(size.height(), 640))
+    cap = getattr(dialog, "capture_max", (920, 640))
+    dialog.resize(min(size.width(), cap[0]), min(size.height(), cap[1]))
     dialog.show()
     QApplication.processEvents()
     painter = QPainter(image)
@@ -79,6 +82,48 @@ def render_modal(dialog, width, height, theme, lang):
     painter.end()
     window.close()
     return image
+
+
+def projsources_dialog(state, theme, lang):
+    """«Настройки проекта» over a QA-project window; the readiness answers are the saved real core answer (tests/core_fixtures).
+
+    States: ready (as the core answered) | connected (verified access, as provider-verify would report) | key (nothing
+    configured) | error (unreadable keys) | failed (the request failed) | partial (empty list) | loading | noproject.
+    """
+    import copy
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from seohead_desktop.app import MainWindow
+    from seohead_desktop.screens.project_sources_page import ProjectSettingsDialog
+    from tests._screens_core import fixture, open_qa
+
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    if state != "noproject":
+        open_qa(window)
+    data = copy.deepcopy(fixture("provider_readiness.json"))
+    for provider in data["providers"].values():
+        if state == "connected" and provider["readiness_state"] == "configured_unverified":
+            provider["readiness_state"] = "verified"
+        elif state == "key" and provider["readiness_state"] != "not_required":
+            provider["readiness_state"] = "missing"
+        elif state == "error" and provider["readiness_state"] == "configured_unverified":
+            provider["readiness_state"] = "invalid"
+    if state == "partial":
+        data["providers"] = {}
+
+    def request(callback, on_error):
+        if state == "failed":
+            on_error("CLI ядра seohead не найден")
+        elif state != "loading":
+            callback(data)
+
+    window.request_providers = request
+    dialog = ProjectSettingsDialog(window, window)
+    dialog._owner_window = window
+    dialog.capture_max = (960, 820)
+    return dialog
 
 
 def build(name, width, height, store, theme="light", lang="ru"):
@@ -115,6 +160,8 @@ def build(name, width, height, store, theme="light", lang="ru"):
         dialog._owner_window = window  # keep the host alive while the dialog is rendered
         dialog.resize(width, height)
         return dialog
+    if kind == "projsources":
+        return projsources_dialog(arg or "ready", theme, lang)
     if kind == "menu":
         from seohead_desktop.app import MainWindow
 
@@ -153,7 +200,7 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith("settings"):
+            if name.startswith(("settings", "projsources")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif name.startswith("shell"):

@@ -1,0 +1,314 @@
+"""«Источники данных проекта» (sheet ProjSources) and its host dialog «Настройки проекта».
+
+The page shows, per service of the sheet, the access the core reports (provider-readiness, local, no network).
+Choosing a resource, the sync time, "link" / "unlink" and «Сохранить связи» need the project↔resource storage the core
+does not have yet: they are shown as the neutral «Недоступно в этой версии ядра» state. Nothing is written or faked.
+The ProjSettings container with its other tabs (Основное / Расписание / Экспорт) is not built, so the dialog hosts this one page.
+"""
+
+from __future__ import annotations
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .. import i18n, theming
+from ..i18n import joined, tr, trf
+from ..ui.brand_logos import BrandTile
+from ..ui.controls import Note
+from ..ui.icons import material_icon
+from ..ui.kit import UNAVAILABLE, PageHeader, StatePanel, waiting_badge
+from ..ui.presentation import ElidedLabel
+from ..ui.settings.listing import badge, terminal
+from .project_sources import GAP, GAP_HINT, access_count, build_rows
+from .work import project_names
+
+RESOURCE_W, SYNC_W, ACTIONS_W, GAP_W = 112, 84, 104, 12
+NARROW = 760  # below this the sync column goes away
+
+
+def unavailable_text(hint=GAP_HINT):
+    return f"{tr(UNAVAILABLE)}\n{tr('Появится')}: {tr(hint)}"
+
+
+def icon_button(name, tip, enabled=True, callback=None):
+    button = QToolButton()
+    button.setProperty("role", "icon")
+    button.setIcon(material_icon(name, "role:text_2"))
+    button.setToolTip(tip)
+    button.setAccessibleName(tip)
+    button.setEnabled(enabled)
+    if callback is not None:
+        button.clicked.connect(callback)
+    return button
+
+
+def clear_background(root):
+    """Row cells are transparent so the row's own background (head band, hover) shows through; badges keep theirs."""
+    for widget in root.findChildren(QWidget):
+        if widget.property("badge") is None and not isinstance(widget, QToolButton):
+            widget.setProperty("rowbg", "clear")
+
+
+def cell(widget, width=None):
+    if width is not None:
+        widget.setFixedWidth(width)
+    return widget
+
+
+class SourceRowWidget(QFrame):
+    """One service: mark, name + access, resource, status, sync, actions. 50 px, eight of them at most."""
+
+    def __init__(self, row, open_access):
+        super().__init__()
+        self.row = row
+        self.setProperty("source_row", "item")
+        self.setProperty("service", row.key)
+        self.setFixedHeight(50)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 8, 0)
+        layout.setSpacing(GAP_W)
+        self.tile = BrandTile(row.key)
+        layout.addWidget(self.tile)
+        names = QVBoxLayout()
+        names.setSpacing(1)
+        names.setContentsMargins(0, 0, 0, 0)
+        self.name = QLabel(tr(row.service))
+        self.name.setProperty("text_style", "control")
+        self.access = ElidedLabel(row.access)
+        self.access.setProperty("text_style", "meta")
+        self.access.setVisible(bool(row.access))
+        names.addStretch(1)
+        names.addWidget(self.name)
+        names.addWidget(self.access)
+        names.addStretch(1)
+        layout.addLayout(names, 1)
+        self.resource = cell(QLabel(tr("Нет данных")), RESOURCE_W)
+        self.resource.setProperty("na", True)
+        self.resource.setToolTip(f"{trf('Связь проекта: {kind}', kind=row.resource_kind)}\n{unavailable_text()}")
+        layout.addWidget(self.resource)
+        if row.state is None:
+            self.status = waiting_badge(GAP, "Состояние доступа этого сервиса ядро пока не сообщает")
+            self.status.setFixedWidth(self.status.minimumSizeHint().width())  # the short pill, not a bar across the column
+        else:
+            self.status = badge(row.kind, tr(row.text), row.icon)
+        self.status_holder = QWidget()
+        holder = QHBoxLayout(self.status_holder)
+        holder.setContentsMargins(0, 0, 0, 0)
+        holder.addWidget(self.status)
+        holder.addStretch(1)
+        layout.addWidget(self.status_holder)
+        self.sync = cell(QLabel("—"), SYNC_W)
+        self.sync.setProperty("text_style", "meta")
+        self.sync.setToolTip(f"{tr('Нет данных')}\n{unavailable_text()}")
+        layout.addWidget(self.sync)
+        actions = QHBoxLayout()
+        actions.setSpacing(2)
+        self.configure = icon_button("tune", tr("Настроить доступ") if row.has_access_settings else tr("Настройки доступа этого сервиса в приложении пока нет"),
+                                     row.has_access_settings, open_access)
+        self.sync_now = icon_button("sync", f"{tr('Синхронизировать сейчас')} · {tr(UNAVAILABLE)}", False)
+        self.unlink = icon_button("link_off", f"{tr('Отвязать')} · {tr(UNAVAILABLE)}", False)
+        for button in (self.configure, self.sync_now, self.unlink):
+            actions.addWidget(button)
+        self.actions = cell(QWidget(), ACTIONS_W)
+        self.actions.setLayout(actions)
+        actions.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.actions)
+        clear_background(self)
+
+
+class HeadRow(QFrame):
+    def __init__(self, status_width):
+        super().__init__()
+        self.setProperty("source_row", "head")
+        self.setFixedHeight(30)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 8, 0)
+        layout.setSpacing(GAP_W)
+
+        def caption(text, width=None):
+            label = QLabel(tr(text).upper())
+            label.setProperty("text_style", "overline")
+            return cell(label, width)
+
+        layout.addSpacing(40 + GAP_W)
+        layout.addWidget(caption("Сервис · доступ"), 1)
+        resource = QWidget()
+        resource_layout = QHBoxLayout(resource)
+        resource_layout.setContentsMargins(0, 0, 0, 0)
+        resource_layout.setSpacing(2)
+        resource_layout.addWidget(caption("Ресурс"))
+        self.help = icon_button("help", unavailable_text(), True)
+        self.help.setProperty("size", "dense")
+        self.help.setFocusPolicy(Qt.NoFocus)
+        resource_layout.addWidget(self.help)
+        resource_layout.addStretch(1)
+        layout.addWidget(cell(resource, RESOURCE_W))
+        layout.addWidget(caption("Статус", status_width))
+        self.sync = caption("Синхр.", SYNC_W)
+        layout.addWidget(self.sync)
+        layout.addWidget(caption("Действия", ACTIONS_W))
+        clear_background(self)
+
+
+class ProjectSourcesPage(QWidget):
+    """States: none | loading | error | partial | ready. ``host`` supplies the project, the readiness request and the settings."""
+
+    def __init__(self, host):
+        super().__init__()
+        self.host = host
+        self.state = None
+        self.rows = []
+        self._token = 0
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.stack = QStackedWidget()
+        outer.addWidget(self.stack)
+        self.reload()
+
+    # data
+    def reload(self):
+        if not self.host.project_directory:
+            return self._show_state("none", StatePanel("empty", "Проект не открыт", "Источники привязываются к открытому проекту.",
+                                                       action=("Открыть проект…", self.host.choose_project)))
+        self._token += 1
+        token = self._token
+        self._show_state("loading", StatePanel("loading", "Читаем доступы у ядра…", "Проверка сети не выполняется: ядро сообщает только, задан ли ключ"))
+        self.host.request_providers(lambda result: self._loaded(token, result), lambda text: self._failed(token, text))
+
+    def _loaded(self, token, result):
+        if token != self._token:
+            return
+        providers = result.get("providers") if isinstance(result, dict) else None
+        if not isinstance(providers, dict) or not providers:
+            self._show_state("partial", StatePanel("partial", "Ядро не вернуло список сервисов", "Обновите ядро или проверьте его командой seohead provider-readiness",
+                                                   action=("Повторить", self.reload)))
+            return
+        self.rows = build_rows(providers)
+        self._show_state("ready", self._content())
+
+    def _failed(self, token, text):
+        if token == self._token:
+            self._show_state("error", StatePanel("error", "Не удалось получить доступы", str(text or ""), action=("Повторить", self.reload)))
+
+    def _show_state(self, state, widget):
+        self.state = state
+        while self.stack.count():
+            old = self.stack.widget(0)
+            self.stack.removeWidget(old)
+            old.deleteLater()
+        self.stack.addWidget(widget)
+        i18n.retranslate(widget)
+
+    # actions
+    def open_access(self):
+        """Application-level access settings (Settings → Источники данных); the readiness is read again after they close."""
+        self.host.open_settings("sources")
+        self.reload()
+
+    # content
+    def _content(self):
+        label, host_name = project_names(self.host)
+        meta = joined(" · ", [part for part in (label, host_name) if part] + [trf("доступ задан у {n} из {total} сервисов", n=access_count(self.rows), total=len(self.rows))])
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.header = PageHeader("Источники данных проекта", meta)
+        access = QPushButton(tr("Доступы приложения"))
+        access.setIcon(material_icon("key", theming.roles()["text"]))
+        access.clicked.connect(self.open_access)
+        self.access_button = self.header.add_action(access)
+        save = QPushButton(tr("Сохранить связи"))
+        save.setProperty("role", "primary")
+        save.setIcon(material_icon("save", "#FFFFFF"))
+        save.setEnabled(False)
+        save.setToolTip(unavailable_text())
+        self.save_button = self.header.add_action(save)
+        layout.addWidget(self.header)
+        note_text = "Ядро пока не хранит связи проекта с ресурсами. Ниже — доступы, которые оно видит; выбор ресурса, синхронизация и «Сохранить связи» появятся позже."
+        self.note = Note("info", tr("Ресурсы проекта пока не привязываются."), tr(note_text), action=waiting_badge(GAP, GAP_HINT))
+        layout.addWidget(self.note)
+        self.row_widgets = [SourceRowWidget(row, self.open_access) for row in self.rows]
+        # the status column is as wide as the widest badge (a «not available» pill shrinks to its short form)
+        status_width = max((w.status.minimumSizeHint() if w.row.state is None else w.status.sizeHint()).width() for w in self.row_widgets) + 4
+        self.head = HeadRow(status_width)
+        layout.addWidget(self.head)
+        for widget in self.row_widgets:
+            widget.status_holder.setFixedWidth(status_width)
+            layout.addWidget(widget)
+        layout.addStretch(1)
+        layout.addWidget(terminal(f"seohead provider-readiness   # {tr('то же из терминала · сеть не проверяется')}", []))
+        self._body = body
+        self._fit()
+        return body
+
+    def _fit(self):
+        narrow = self.width() < NARROW
+        if hasattr(self, "head"):
+            for widget in (self.head.sync, *(row.sync for row in self.row_widgets)):
+                widget.setVisible(not narrow)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+
+class ProjectSettingsDialog(QDialog):
+    """«Настройки проекта»: the connections page until the full project settings container exists."""
+
+    def __init__(self, host, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("Настройки проекта"))
+        self.setModal(True)
+        self.resize(940, 800)
+        self.setMinimumSize(700, 480)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        head = QHBoxLayout()
+        head.setContentsMargins(24, 12, 24, 0)
+        title = QLabel(tr("Настройки проекта"))
+        title.setProperty("text_style", "dialog")
+        head.addWidget(title)
+        head.addStretch(1)
+        root.addLayout(head)
+        self.page = ProjectSourcesPage(host)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        holder = QWidget()
+        holder_layout = QVBoxLayout(holder)
+        holder_layout.setContentsMargins(24, 4, 24, 16)
+        holder_layout.addWidget(self.page)
+        scroll.setWidget(holder)
+        root.addWidget(scroll, 1)
+        footer = QFrame()
+        footer.setObjectName("dialogFooter")
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(24, 12, 24, 12)
+        hint = QLabel(tr("Ключи и токены задаются в настройках приложения · здесь их значения не показываются"))
+        hint.setProperty("text_style", "meta")
+        footer_layout.addWidget(hint, 1)
+        close = QPushButton(tr("Закрыть"))
+        close.setProperty("size", "lg")
+        close.setDefault(True)
+        close.clicked.connect(self.accept)
+        footer_layout.addWidget(close)
+        root.addWidget(footer)
+        i18n.retranslate(self)
+
+
+def open_project_settings(window):
+    """Open «Настройки проекта» over the main window (menu of the project picker)."""
+    ProjectSettingsDialog(window, window).exec_()
