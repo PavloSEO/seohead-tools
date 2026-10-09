@@ -27,6 +27,11 @@ Roboto is copyright 2011 The Roboto Project Authors and is licensed under SIL
 Open Font License 1.1. The exact `OFL.txt` is copied as
 `licenses/Roboto-OFL-1.1.txt`.
 
+Roboto Mono (`RobotoMono.ttf`, variable weight, Regular/Medium used) is copyright 2015 The Roboto
+Mono Project Authors and is licensed under SIL Open Font License 1.1; source
+`github.com/google/fonts/ofl/robotomono` (SHA-256 `a66a80e79d17e4c7cabd162e2916578a4cc08fd19eef6e2a643305eae9c567b2`).
+Its `OFL-RobotoMono.txt` is copied as `licenses/RobotoMono-OFL-1.1.txt`.
+
 The bundled Material Symbols SVG files come from Google Material Design Icons
 under Apache License 2.0. The exact source URLs and SHA-256 hashes are retained
 in `src/seohead_desktop/assets/asset-manifest.json`; the upstream Apache 2.0

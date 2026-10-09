@@ -102,6 +102,7 @@ cp "$project_dir/THIRD_PARTY_NOTICES.md" "$resources/licenses/THIRD_PARTY_NOTICE
 cp "$core_source/LICENSE" "$resources/licenses/SEOHEAD-Tools-MIT.txt"
 cp "$core_source/THIRD_PARTY_NOTICES.md" "$resources/licenses/SEOHEAD-Tools-THIRD_PARTY_NOTICES.md"
 cp "$project_dir/src/seohead_desktop/assets/fonts/OFL.txt" "$resources/licenses/Roboto-OFL-1.1.txt"
+cp "$project_dir/src/seohead_desktop/assets/fonts/OFL-RobotoMono.txt" "$resources/licenses/RobotoMono-OFL-1.1.txt"
 cp "$project_dir/src/seohead_desktop/assets/icons/LICENSE.txt" "$resources/licenses/Material-Design-Icons-Apache-2.0.txt"
 cp "$project_dir/src/seohead_desktop/assets/asset-manifest.json" "$resources/licenses/desktop-assets-manifest.json"
 "$python_bin" "$project_dir/scripts/copy_runtime_notices.py" --output "$resources/licenses"
