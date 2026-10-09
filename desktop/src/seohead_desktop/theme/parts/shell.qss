@@ -16,7 +16,7 @@ QToolButton[chrome="icon"] { width: ${control_icon}px; height: ${control_icon}px
 QLabel[brand="word"] { font-size: 15px; font-weight: 700; letter-spacing: 0.6px; background: transparent; }
 QFrame[divider="v"] { background: $divider; border: 0; max-width: 1px; min-width: 1px; }
 QPushButton[search_field="true"] { text-align: left; font-weight: 400; color: $text_2; padding: 0 10px; }
-QLabel[status_pill="true"] { height: 28px; padding: 0 10px; border-radius: ${radius_chip}px; font-size: ${font_meta}px; font-weight: 500; }
+QLabel[status_pill] { border: 1px solid $badge_border; min-height: 26px; max-height: 26px; padding: 0 10px; border-radius: ${radius_chip}px; font-size: ${font_meta}px; font-weight: 500; }
 QLabel[status_pill="agent"] { background: $badge_ok_bg; color: $badge_ok_fg; }
 QLabel[status_pill="simple"] { background: $badge_mut_bg; color: $badge_mut_fg; }
 QPushButton[picker="true"] QWidget, QPushButton[profile="true"] QWidget { background: transparent; }

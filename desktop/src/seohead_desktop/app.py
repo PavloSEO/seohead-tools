@@ -234,7 +234,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         agent_menu = self.menuBar().addMenu("Агент")
         agent_menu.addAction("Подключить агента…", self.show_agent_connection)
         help_menu = self.menuBar().addMenu("Справка")
-        help_menu.addAction("Как работать с SEOHEAD…", self.show_help, "F1")
+        self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
         view_menu = self.menuBar().addMenu("Вид")
         self.panel_actions = {}
         for name, widget in [("Навигация", self.navigation), ("Сводка", self.overview), ("Инспектор URL", self.inspector)]:
@@ -245,7 +245,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
             self.panel_actions[name] = action
         self.panel_actions["Инспектор URL"].toggled.connect(self.inspector_toggle.setChecked)
         view_menu.addSeparator()
-        view_menu.addAction("Развернуть таблицу / вернуть панели", self.toggle_focus_mode, "Ctrl+Shift+F")
+        self.expand_action = view_menu.addAction("Развернуть таблицу / вернуть панели", self.toggle_focus_mode)
         view_menu.addAction("Восстановить панели", self.restore_panels)
         density_menu = view_menu.addMenu("Плотность таблиц")
         density_group = QActionGroup(self)
@@ -262,7 +262,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         layout_menu.addAction("Сохранить расположение", self.save_workspace_layout)
         layout_menu.addAction("Восстановить сохранённое", self.restore_workspace_layout)
         view_menu.addAction("Монитор в отдельном окне", self.open_monitor_window)
-        self.action_finder_action = view_menu.addAction("Найти действие…", self.show_action_finder, "Ctrl+K")
+        self.action_finder_action = view_menu.addAction("Найти действие…", self.show_action_finder)
         self.action_finder_action.setShortcutContext(Qt.ApplicationShortcut)
         motion_action = view_menu.addAction("Уменьшить движение")
         motion_action.setCheckable(True)
@@ -277,6 +277,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.copy_shortcut = QShortcut(QKeySequence.Copy, self.table)
         self.copy_shortcut.setContext(Qt.WidgetShortcut)
         self.copy_shortcut.activated.connect(self.copy_url_selection)
+        self.apply_shortcuts()
         if self.settings:
             for key, widget in [("geometry", self), ("horizontal", self.horizontal), ("vertical", self.vertical)]:
                 value = self.settings.value(key)

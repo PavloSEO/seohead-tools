@@ -110,12 +110,6 @@ QPushButton#comparisonMetric:hover:enabled { background: $surface; border-color:
 QPushButton#comparisonMetric:disabled { background: transparent; border-color: transparent; }
 QLabel#comparisonValue[role="comparisonMetricValue"] { font-size: 32px; font-weight: 600; color: $on_surface; }
 
-QWidget#workspaceTabs { background: $surface_container_low; border-bottom: 1px solid $surface_container; }
-QTabBar#workspaceTabBar::tab { padding: 8px 12px; margin: 4px 2px 0 2px; border: 1px solid transparent; border-bottom: none; border-top-left-radius: 8px; border-top-right-radius: 8px; min-width: 120px; max-width: 260px; background: transparent; }
-QTabBar#workspaceTabBar::tab:selected { background: $surface_container_lowest; border-color: $outline_variant; color: $primary; }
-QTabBar#workspaceTabBar::tab:hover:!selected { background: $surface_container; }
-QTabBar#workspaceTabBar::close-button { image: url("$icon_root/close.svg"); width: 16px; height: 16px; border-radius: 4px; }
-QTabBar#workspaceTabBar::close-button:hover { background: $primary_container; }
 QLabel#searchCoverage { background: transparent; border: none; padding: 0; font-weight: 500; }
 
 QWidget#workMonitor { background: transparent; }
@@ -136,8 +130,6 @@ QLabel#searchNotice { background: transparent; color: $on_surface_variant; paddi
 QLabel#workMetricValue[metric="rate"] { font-size: 24px; }
 QLabel#searchMetricValue { font-size: 28px; font-weight: 600; }
 QLabel#searchMetricLabel { font-size: 12px; color: $on_surface_variant; }
-QTabBar#workspaceTabBar::scroller { width: 56px; }
-QTabBar#workspaceTabBar QToolButton { width: 24px; min-width: 0; padding: 0; margin: 0; border: none; border-radius: 4px; }
 
 QMenu { background: $surface_container_lowest; border: none; border-radius: ${radius_popup}px; padding: 8px; }
 QMenu::item { padding: 8px 16px; border-radius: 6px; }

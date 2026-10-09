@@ -38,6 +38,9 @@ class ScansUrlsMixin:
             rows.append({"id": item.get("id"), "title": item.get("title"), "kind": item.get("kind"), "state": item.get("display_state"), "reason": item.get("reason")})
         self.task_model.replace(rows)
         pagination = result.get("pagination") or {}
+        total = pagination.get("total", len(rows))
+        for section in ("work", "tasks"):
+            self.navigation.set_count(section, str(total) if total else None)
         self.task_caption.setText(f"Задачи · {pagination.get('total', len(rows))} всего · показано {len(rows)}")
         self.project_panels.set_page(
             "tasks",
@@ -79,6 +82,7 @@ class ScansUrlsMixin:
         selection = self.scan_table.selectionModel()
         selection.blockSignals(True)
         self.scan_model.replace(rows)
+        self.navigation.set_count("scans", str(result.get("total", len(rows))) if rows else None)
         self.project_panels.panel("compare").set_scans(rows)
         self.scan_picker.blockSignals(True)
         self.scan_picker.clear()

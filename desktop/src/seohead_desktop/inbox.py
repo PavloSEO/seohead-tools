@@ -37,7 +37,9 @@ class InboxMixin:
         count = result.get("count")
         if type(count) is not int:
             self.source_badge.setText("Локальный проект · непрочитанные не измерены")
+            self.navigation.set_count("inbox", None)
             return
+        self.navigation.set_count("inbox", count or None, dot=True)
         label = "сообщений" if count != 1 else "сообщение"
         self.source_badge.setText(f"Локальный проект · {count} непрочит. {label}")
 

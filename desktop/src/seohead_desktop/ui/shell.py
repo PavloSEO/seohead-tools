@@ -298,6 +298,7 @@ class ActiveScanCard(QFrame):
         self.bar = QProgressBar()
         self.bar.setTextVisible(False)
         layout.addWidget(self.bar)
+        self.active = False
         link = QPushButton("Открыть наблюдение")
         link.setProperty("role", "text")
         link.clicked.connect(self.openRequested)
@@ -307,12 +308,17 @@ class ActiveScanCard(QFrame):
     def show_progress(self, text, done=None, total=None):
         """total None -> progress is unknown (indeterminate bar); never fake a percentage."""
         self.text.setText(text)
+        self.active = True
         if total:
             self.bar.setRange(0, int(total))
             self.bar.setValue(int(done or 0))
         else:
             self.bar.setRange(0, 0)
-        self.show()
+        self.setVisible(not self.parentWidget() or not self.parentWidget().property("compact"))
+
+    def clear(self):
+        self.active = False
+        self.hide()
 
 
 class NavPanel(QFrame):
@@ -360,14 +366,14 @@ class NavPanel(QFrame):
         current = self.list.current_section()
         self.simple = bool(simple)
         self.list.rebuild(self.simple, current)
-        self.profile.set_mode_line("Простой режим · MCP выкл." if self.simple else "С агентом")
+        self.profile.set_mode_line("Простой режим" if self.simple else "С агентом")
 
     def set_rail(self, rail):
         self.setProperty("compact", bool(rail))
         self.list.set_rail(rail)
         self.layout().setContentsMargins(4 if rail else 8, 10, 4 if rail else 8, 8)
         self.profile.set_rail(rail)
-        self.card.setVisible(self.card.isVisible() and not rail)
+        self.card.setVisible(self.card.active and not rail)
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -377,6 +383,11 @@ class NavPanel(QFrame):
 
     def select_section(self, section_id, emit=True):
         return self.list.set_current(section_id, emit)
+
+    def select_nth(self, number):
+        """Select the n-th (1-based) visible section row."""
+        ids = [i for i in (self.list.item(r).data(ROLE_ID) for r in range(self.list.count())) if i]
+        return self.select_section(ids[number - 1]) if 0 < number <= len(ids) else False
 
     def has_section(self, section_id):
         return section_id in self.list._items

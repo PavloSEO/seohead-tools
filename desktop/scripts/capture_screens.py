@@ -39,7 +39,14 @@ def build(name, width, height, store, theme="light"):
         window.prefs.set("view.theme", theme)
         if arg == "simple":
             window.set_display("simple", remember=False)
+        window.show_startup_workspace()
         return window
+    if kind == "menu":
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        return window.build_profile_menu()
     if kind == "gallery":
         from seohead_desktop.ui.theme_gallery import build_board
         return build_board(width, height)

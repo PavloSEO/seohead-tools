@@ -135,6 +135,9 @@ QTabBar[tabs="workspace"] { background: $raised; }
 QTabBar[tabs="workspace"]::tab { height: 34px; padding: 0 8px 0 12px; margin: 0; border: 1px solid transparent; border-bottom: 0; border-top-left-radius: 8px; border-top-right-radius: 8px; background: transparent; color: $text_2; font-size: ${font_meta}px; font-weight: 500; max-width: 220px; }
 QTabBar[tabs="workspace"]::tab:hover { background: $nav_hover; color: $text; }
 QTabBar[tabs="workspace"]::tab:selected { background: $base; border-color: $divider; color: $text; }
+QTabBar[tabs="workspace"]::scroller { width: 56px; }
+QTabBar[tabs="workspace"] QToolButton { width: 24px; min-width: 0; padding: 0; margin: 0; border: 0; border-radius: 4px; }
+QTabBar[tabs="workspace"] QToolButton[tab_close="true"] { width: 20px; height: 20px; }
 QTabBar QToolButton { border: 0; width: 22px; }
 QTabWidget::pane { border: 0; background: $base; }
 

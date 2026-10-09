@@ -379,7 +379,8 @@ class ProjectMixin:
         self.project_picker.blockSignals(False)
         self.source_badge.setText("Локальное рабочее пространство")
         self.setWindowTitle("SEOHEAD")
-        self.navigation.setCurrentRow(0)
+        if not self.navigation.setCurrentRow(0):
+            self.navigation.select_section("tasks")
         self.statusBar().showMessage("Выберите проект для начала работы")
 
     def remember_project(self, label, path):

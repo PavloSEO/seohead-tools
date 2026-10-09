@@ -10,13 +10,14 @@ from PyQt5.QtWidgets import (
     QApplication,
     QLabel,
     QMenu,
+    QShortcut,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
     QWidgetAction,
 )
 
-from . import theming
+from . import shortcuts, theming
 from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
@@ -62,6 +63,10 @@ class ShellMixin:
 
     # Profile menu (bottom-left)
     def show_profile_menu(self):
+        menu = self.build_profile_menu()
+        menu.exec_(self.navigation.profile.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
+
+    def build_profile_menu(self):
         button = self.navigation.profile
         menu = QMenu(self)
         header = QWidget()
@@ -102,7 +107,7 @@ class ShellMixin:
         cli.setToolTip(UNAVAILABLE)
         menu.addAction(icon("help"), "Справка", self.show_help, "F1")
         menu.setMinimumWidth(264)
-        menu.exec_(button.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
+        return menu
 
     def can_open_crawler(self):
         return hasattr(self, "open_crawler")
@@ -152,7 +157,34 @@ class ShellMixin:
         for key in ("view.theme", "view.density", "view.reduce_motion"):
             self.apply_preference(key)
 
+    def apply_shortcuts(self):
+        """Attach the user's bindings (settings → Горячие клавиши) to the existing actions and a few QShortcuts."""
+        seqs = shortcuts.sequences(self.prefs)
+        none = QKeySequence()
+        self.action_finder_action.setShortcut(seqs.get("palette", none))
+        self.help_action.setShortcut(seqs.get("help", none))
+        self.expand_action.setShortcut(seqs.get("expand_table", none))
+        self.find_shortcut.setKey(seqs.get("find_in_table", none))
+        handlers = {"new_scan": self.scan_preview, "settings": self.open_settings, "stop_scan": self.cancel_active_work,
+                    "copy_url": self.copy_url_selection}
+        for old in getattr(self, "_bound_shortcuts", ()):
+            old.setEnabled(False)
+            old.deleteLater()
+        self._bound_shortcuts = []
+        for action_id, handler in handlers.items():
+            if action_id in seqs:
+                shortcut = QShortcut(seqs[action_id], self)
+                shortcut.activated.connect(lambda h=handler: h())
+                self._bound_shortcuts.append(shortcut)
+        for number in range(1, 10):  # fixed: Ctrl+1…9 select the n-th visible section
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{number}"), self)
+            shortcut.activated.connect(lambda n=number: self.navigation.select_nth(n))
+            self._bound_shortcuts.append(shortcut)
+
     def apply_preference(self, key):
+        if key.startswith("keys."):
+            self.apply_shortcuts()
+            return
         value = self.prefs.get(key)
         if key == "view.theme":
             self.apply_theme(value)

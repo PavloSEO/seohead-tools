@@ -134,6 +134,11 @@ class ScanControlMixin:
         self.owned_run_picker.blockSignals(False)
         self.select_owned_run()
         self.refresh_work_monitor()
+        active = [item for item in rows if item.get("state") in {"starting", "running"}]
+        if active:
+            self.navigation.card.show_progress("Скан запущен · число страниц обновляется при наблюдении")
+        else:
+            self.navigation.card.clear()
         if run.get("state") in {"starting", "running"}:
             self.statusBar().showMessage("Локальный native crawl запущен; наблюдение обновляется каждые 0,5 с")
         elif run.get("state") == "awaiting_core_status":
