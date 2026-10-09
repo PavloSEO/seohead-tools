@@ -45,7 +45,7 @@ class ShellV2Tests(unittest.TestCase):
 
     def test_agent_display_sections_follow_the_canvas(self):
         nav = self.window.navigation
-        self.assertEqual(section_ids(nav), ["work", "inbox", "scans", "url", "issues", "compare", "search", "reports", "log"])
+        self.assertEqual(section_ids(nav), ["work", "inbox", "crawler", "scans", "url", "issues", "compare", "graph", "search", "methods", "reports", "log"])
         self.assertEqual(headers(nav), ["Данные", "Результат"])
 
     def test_simple_display_has_no_agent_sections_and_is_remembered(self):
@@ -54,6 +54,8 @@ class ShellV2Tests(unittest.TestCase):
         ids = section_ids(nav)
         self.assertEqual(ids[0], "work")  # SHELL-CANON §3: same labels, the agent items are only hidden
         self.assertNotIn("inbox", ids)
+        self.assertNotIn("methods", ids)  # SideNav sheet: only the agent items are hidden
+        self.assertEqual(ids, ["work", "crawler", "scans", "url", "issues", "compare", "graph", "search", "reports", "log"])
         self.window.navigation.select_section("work")
         self.assertEqual(self.window.pages.currentIndex(), 4)  # «Работа» is the simple task list in Simple
         self.assertTrue(self.window.simple_pill.isVisibleTo(self.window))
@@ -156,6 +158,61 @@ class ShellV2Tests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(self.window.navigation.property("compact"))
 
+    def test_new_sections_open_the_placeholder_without_numbers(self):
+        from seohead_desktop.ui.kit import StatePanel
+
+        for section in ("crawler", "methods", "graph"):
+            self.assertTrue(self.window.navigation.select_section(section))
+            page = self.window.pages.currentWidget()
+            self.assertIn(page, self.window.placeholder_pages.values())
+            panel = page.findChild(StatePanel)
+            self.assertEqual(panel.title.text(), "Раздел готовится")
+            self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+
+    def test_items_that_need_a_project_are_locked_until_one_is_open(self):
+        from seohead_desktop.ui.shell import ROLE_LOCKED
+
+        items = self.window.navigation.list._items
+        locked = {name for name, item in items.items() if item.data(ROLE_LOCKED)}
+        self.assertEqual(locked, {"work", "inbox", "issues", "compare", "search", "methods", "reports"})
+        self.assertIn("Нужен проект", items["work"].toolTip())
+        clicked = []
+        self.window.navigation.lockedClicked.connect(clicked.append)
+        self.window.navigation.list.lockedClicked.emit("work")
+        self.assertEqual(clicked, ["work"])
+        self.window.project_directory = "/p"
+        self.window.sync_navigation_state()
+        self.assertFalse([name for name, item in items.items() if item.data(ROLE_LOCKED)])
+
+    def test_counters_exist_only_with_data(self):
+        items = self.window.navigation.list._items
+        self.window.project_directory = "/p"
+        self.window.selected_scan_path = "/p/s.sqlite"
+        self.window.scan_model.replace([{"path": "/p/s.sqlite", "evidence": {"frontier": {"counts": {"done": 1314}},
+                                                                             "findings": {"state": "available", "truncated": False, "total": 3,
+                                                                                          "items": [{"check": "A"}, {"check": "B"}, {"check": "A"}]}}}])
+        self.window.sync_navigation_state()
+        self.assertEqual((items["url"].data(ROLE_COUNT), items["issues"].data(ROLE_COUNT)), ("1\u202f314", 2))
+        self.window.scan_model.replace([{"path": "/p/s.sqlite", "evidence": {"findings": {"state": "available", "truncated": True, "total": 4272, "items": [{"check": "A"}]}}}])
+        self.window.sync_navigation_state()
+        self.assertEqual((items["url"].data(ROLE_COUNT), items["issues"].data(ROLE_COUNT)), ("", ""))  # unknown is not «0»
+
+    def test_active_scan_card_only_with_an_active_run(self):
+        from tests._scan_fixtures import live_run
+
+        card = self.window.navigation.card
+        self.window.project_directory = "/p"
+        self.window.update_active_scan_card()
+        self.assertFalse(card.active)
+        self.window.observed_runs = [live_run()]
+        self.window.update_active_scan_card()
+        self.assertTrue(card.active)
+        self.assertRegex(card.text.text(), r"URL")
+        self.window.observed_runs = []
+        self.window.update_active_scan_card()
+        self.assertFalse(card.active)
+        self.assertTrue(card.isHidden())
+
     def test_core_status_is_never_not_found_while_the_core_answered(self):
         self.window.core_executable = None
         self.window.project_result = {"path": "/p"}
@@ -222,7 +279,7 @@ class ShellV2Tests(unittest.TestCase):
 
     def test_ctrl_digit_selects_the_nth_visible_section(self):
         self.assertTrue(self.window.navigation.select_nth(3))
-        self.assertEqual(self.window.navigation.current_section(), "scans")
+        self.assertEqual(self.window.navigation.current_section(), "crawler")  # numbering follows the visible order
         self.assertFalse(self.window.navigation.select_nth(99))
 
     def test_counts_and_unread_dot_are_only_shown_when_measured(self):

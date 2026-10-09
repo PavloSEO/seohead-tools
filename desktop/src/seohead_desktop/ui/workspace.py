@@ -36,7 +36,7 @@ LAYOUT_SCHEMA = 2
 PANEL_IDS = {"navigation": "Навигация", "overview": "Сводка", "inspector": "Инспектор URL"}
 # "audit" was the id of the page now called «Проблемы»; saved tabs, prefs and agent calls may still carry it.
 VIEW_ALIASES = {"audit": "issues"}
-VIEW_IDS = ("work", "url", "issues", "project", "tasks", "scans", "inbox", "reports", "journal", "compare", "content_search")
+VIEW_IDS = ("work", "url", "issues", "project", "tasks", "scans", "inbox", "reports", "journal", "compare", "content_search", "crawler", "methods", "graph")
 
 
 def system_reduced_motion(path=None):

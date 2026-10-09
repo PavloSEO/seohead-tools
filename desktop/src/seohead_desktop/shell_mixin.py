@@ -36,6 +36,46 @@ UNAVAILABLE = "Недоступно в этой сборке"
 
 
 class ShellMixin:
+    placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
+
+    def build_placeholder_pages(self):
+        """Crawler, Methods and Link graph have no screen yet: an honest placeholder, no numbers, no invented data."""
+        from .ui.kit import StatePanel
+        from .ui.workspace import VIEW_IDS
+
+        self.placeholder_pages = {}
+        for view in ("crawler", "methods", "graph"):
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+            self.pages.addWidget(page)
+            self.placeholder_pages[VIEW_IDS.index(view)] = page
+
+    def sync_navigation_state(self):
+        """Locked items without a project and the counters at the right of the items; no data means no number."""
+        try:
+            opened = bool(self.project_directory)
+            self.navigation.set_project_open(opened)
+            url_total = issues = None
+            scan = next((row for row in self.scan_model.rows if row.get("path") == self.selected_scan_path), None) if opened and self.selected_scan_path else None
+            if scan:
+                from .screens.scan_common import number
+
+                url_screen = getattr(self, "screens", {}).get("url")
+                total = getattr(url_screen, "total", None)
+                if type(total) is not int:
+                    total = ((scan.get("evidence") or {}).get("frontier") or {}).get("counts", {}).get("done")
+                url_total = number(total) if type(total) is int and total > 0 else None
+                findings = (scan.get("evidence") or {}).get("findings") or {}
+                if findings.get("state") == "available" and findings.get("truncated") is False:  # the sample is complete: its checks are all of them
+                    checks = {item.get("check") for item in findings.get("items") or [] if isinstance(item, dict) and item.get("check")}
+                    issues = len(checks) or None
+            self.navigation.set_count("url", url_total)
+            self.navigation.set_count("issues", issues)
+        except RuntimeError:  # the window was deleted while a timer fired
+            pass
+
     def build_status_bar(self):
         """26 px bar: transient messages on the left, source / display mode / core on the right."""
         bar = self.statusBar()
@@ -57,6 +97,7 @@ class ShellMixin:
         self._status_timer = QTimer(self)  # keeps «N с назад» honest between observations
         self._status_timer.setInterval(5000)
         self._status_timer.timeout.connect(self.update_status_tail)
+        self._status_timer.timeout.connect(self.sync_navigation_state)
         self._status_timer.start()
         self.update_display_widgets()
 

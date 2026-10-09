@@ -5,7 +5,7 @@ from __future__ import annotations
 import getpass
 
 from PyQt5.QtCore import QRect, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QIcon, QPainter
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter
 from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -32,21 +32,26 @@ from .workspace import VIEW_IDS
 SECTIONS = (
     ("work", "checklist", "Работа", "top", True, True),
     ("inbox", "inbox", "Входящие", "top", False, True),
+    ("crawler", "travel_explore", "Краулер", "top", True, True),
     ("scans", "history", "Сканы", "data", True, True),
     ("url", "table_view", "URL", "data", True, True),
     ("issues", "rule", "Проблемы", "data", True, True),
     ("compare", "compare_arrows", "Сравнение", "data", True, True),
+    ("graph", "hub", "Граф ссылок", "data", True, True),
     ("search", "find_in_page", "Поиск в HTML", "data", True, True),
-    ("methods", "menu_book", "Методы", "result", False, False),
+    ("methods", "menu_book", "Методы", "result", False, True),
     ("reports", "description", "Отчёты и задачи", "result", True, True),
     ("log", "terminal", "Журнал", "result", True, True),
 )
 # Navigation section -> view id used by workspace contexts and the page stack.
 VIEW_OF = {"work": "work", "inbox": "inbox", "scans": "scans", "url": "url", "issues": "issues",
-           "compare": "compare", "search": "content_search", "reports": "reports", "log": "journal"}
+           "compare": "compare", "search": "content_search", "reports": "reports", "log": "journal",
+           "crawler": "crawler", "methods": "methods", "graph": "graph"}
+# SideNav sheet: without a project these items are shown dimmed with «нужен проект»; the rest stay active.
+NEEDS_PROJECT = frozenset({"work", "inbox", "issues", "compare", "search", "methods", "reports"})
 SIMPLE_VIEW_OF = {**VIEW_OF, "work": "tasks"}  # «Работа» opens the simple task list in the Simple display
 GROUP_TITLES = {"data": "Данные", "result": "Результат"}
-ROLE_ID, ROLE_COUNT, ROLE_DOT, ROLE_HEADER = (Qt.UserRole + i for i in range(4))
+ROLE_ID, ROLE_COUNT, ROLE_DOT, ROLE_HEADER, ROLE_LOCKED = (Qt.UserRole + i for i in range(5))
 
 
 def elide_words(metrics, text, width):
@@ -173,8 +178,11 @@ class _NavDelegate(QStyledItemDelegate):
                 painter.drawText(rect.adjusted(12, 6, 0, 0), Qt.AlignLeft | Qt.AlignTop, index.data(Qt.DisplayRole).upper())
             painter.restore()
             return
-        selected = bool(option.state & QStyle.State_Selected)
-        hovered = bool(option.state & QStyle.State_MouseOver)
+        locked = bool(index.data(ROLE_LOCKED))
+        if locked:
+            painter.setOpacity(0.5)
+        selected = bool(option.state & QStyle.State_Selected) and not locked
+        hovered = bool(option.state & QStyle.State_MouseOver) and not locked
         ink = QColor(r["on_selected"] if selected else r["text_2"])
         font = QFont(painter.font())
         font.setWeight(QFont.Medium)
@@ -198,8 +206,20 @@ class _NavDelegate(QStyledItemDelegate):
             painter.setFont(font)
             painter.setPen(ink)
             count = index.data(ROLE_COUNT)
-            painter.drawText(body.adjusted(44, 0, -48 if count else -8, 0), Qt.AlignLeft | Qt.AlignVCenter, index.data(Qt.DisplayRole))
-            if count:
+            hint = tr("нужен проект") if locked else ""
+            if hint:
+                small = QFont(font)
+                small.setPixelSize(10)
+                painter.setFont(small)
+                hint_width = QFontMetrics(small).horizontalAdvance(hint) + 12
+                painter.setFont(font)
+            painter.drawText(body.adjusted(44, 0, -(hint_width + 4) if hint else -48 if count else -8, 0), Qt.AlignLeft | Qt.AlignVCenter,
+                             QFontMetrics(font).elidedText(index.data(Qt.DisplayRole), Qt.ElideRight, body.width() - 44 - ((hint_width + 4) if hint else 48 if count else 8)))
+            if hint:
+                painter.setFont(small)
+                painter.setPen(QColor(r["text_3"]))
+                painter.drawText(body.adjusted(0, 0, -12, 0), Qt.AlignRight | Qt.AlignVCenter, hint)
+            elif count:
                 font.setPixelSize(11)
                 painter.setFont(font)
                 if index.data(ROLE_DOT):
@@ -222,6 +242,8 @@ class _NavDelegate(QStyledItemDelegate):
 class NavList(QListWidget):
     """Sections with group headers; rows keep native keyboard navigation and accessibility."""
 
+    lockedClicked = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("navView")
@@ -235,6 +257,23 @@ class NavList(QListWidget):
         self.setSelectionMode(QListWidget.SingleSelection)
         self.setFocusPolicy(Qt.StrongFocus)
         self._items = {}
+        self.project_open = True
+
+    def mousePressEvent(self, event):
+        item = self.itemAt(event.pos())
+        if item is not None and item.data(ROLE_LOCKED):  # dimmed «нужен проект»: a click leads to the project start, not to a page
+            self.lockedClicked.emit(item.data(ROLE_ID))
+            return
+        super().mousePressEvent(event)
+
+    def set_project_open(self, opened):
+        self.project_open = bool(opened)
+        for section_id, item in self._items.items():
+            locked = section_id in NEEDS_PROJECT and not self.project_open
+            item.setData(ROLE_LOCKED, locked)
+            label = next(row[2] for row in SECTIONS if row[0] == section_id)
+            item.setToolTip(tr("Нужен проект · «Сохранить как проект»") if locked else tr(label))
+        self.viewport().update()
 
     def rebuild(self, simple, current):
         """Rows for the active display; selection is restored by section id."""
@@ -259,6 +298,7 @@ class NavList(QListWidget):
             self.addItem(item)
             self._items[section_id] = item
         self.blockSignals(False)
+        self.set_project_open(self.project_open)
         if current in self._items:
             self.set_current(current, emit=False)
 
@@ -389,6 +429,7 @@ class NavPanel(QFrame):
     currentRowChanged = pyqtSignal(int)  # index into VIEW_IDS (page/workspace identity), kept for existing callers
     profileClicked = pyqtSignal()
     openScanRequested = pyqtSignal()
+    lockedClicked = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -399,6 +440,7 @@ class NavPanel(QFrame):
         layout.setSpacing(8)
         self.list = NavList()
         self.list.currentItemChanged.connect(self._item_changed)
+        self.list.lockedClicked.connect(self.lockedClicked)
         layout.addWidget(self.list, 1)
         self.card = ActiveScanCard()
         self.card.openRequested.connect(self.openScanRequested)
@@ -460,3 +502,6 @@ class NavPanel(QFrame):
 
     def set_count(self, section_id, count, dot=False):
         self.list.set_count(section_id, count, dot)
+
+    def set_project_open(self, opened):
+        self.list.set_project_open(opened)
