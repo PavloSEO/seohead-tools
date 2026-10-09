@@ -40,15 +40,63 @@ def scan_link_inspect(
     max_edges: int = 200_000,
     max_depth: int = 20,
     timeout_seconds: float = 15.0,
+    url: str | None = None,
+    direction: str = "out",
+    link_type: str = "all",
+    follow: str = "all",
+    status_class: str = "all",
+    contains: str | None = None,
+    sort: str = "order",
 ) -> dict[str, Any]:
     """One bounded saved-scan link query, shared by the CLI and local MCP."""
-    if not isinstance(view, str) or view not in {"path", "inlinks", "context"}:
-        return {"ok": False, "view": "invalid", "error": "view must be path, inlinks, or context"}
+    if not isinstance(view, str) or view not in {"path", "inlinks", "context", "links"}:
+        return {
+            "ok": False,
+            "view": "invalid",
+            "error": "view must be path, inlinks, context, or links",
+        }
     try:
         path = _path(input_path, "scan")
+        links_only = (url, direction, link_type, follow, status_class, contains, sort) != (
+            None,
+            "out",
+            "all",
+            "all",
+            "all",
+            None,
+            "order",
+        )
+        if links_only and view != "links":
+            raise ValueError("url, direction and link filters belong to view=links")
         if type(max_bytes) is not int or not 4096 <= max_bytes <= 8 * 1024 * 1024:
             raise ValueError("max_bytes must be 4096..8388608")
-        if view == "path":
+        if view == "links":
+            if not url:
+                raise ValueError("links view requires a url")
+            if any(value is not None for value in (seed, target, cursor, link_id, document_id)) or (
+                max_nodes,
+                max_edges,
+                max_depth,
+                max_body_bytes,
+            ) != (10_000, 200_000, 20, 5 * 1024 * 1024):
+                raise ValueError("links view does not accept seed, target, cursor, IDs or budgets")
+            from seohead.storage.url_links import url_links
+
+            result = url_links(
+                path,
+                url,
+                direction=direction,
+                representation=representation,
+                link_type=link_type,
+                follow=follow,
+                status_class=status_class,
+                contains=contains,
+                sort=sort,
+                offset=offset,
+                limit=limit,
+                timeout_seconds=timeout_seconds,
+            )
+        elif view == "path":
             if not seed or not target:
                 raise ValueError("path view requires seed and target URLs")
             if (
@@ -137,7 +185,10 @@ def scan_link_inspect(
             }
         return answer
     except (ValueError, OSError, sqlite3.Error, TypeError) as exc:
-        return {"ok": False, "view": view, "error": str(exc)}
+        failure = {"ok": False, "view": view, "error": str(exc)}
+        if getattr(exc, "reason_code", None):
+            failure["reason_code"] = exc.reason_code
+        return failure
 
 
 def _path(value: str, label: str) -> str:

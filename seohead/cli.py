@@ -1131,6 +1131,13 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "max_edges",
             "max_depth",
             "timeout_seconds",
+            "url",
+            "direction",
+            "link_type",
+            "follow",
+            "status_class",
+            "contains",
+            "sort",
         ):
             value = getattr(args, name, None)
             if value is not None:
@@ -2054,7 +2061,18 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--form-limit", type=int)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
     if cmd == "scan-link-inspect":
-        sub.add_argument("--view", choices=("path", "inlinks", "context"))
+        sub.add_argument("--view", choices=("path", "inlinks", "context", "links"))
+        sub.add_argument("--url", help="URL whose links to page (view=links)")
+        sub.add_argument("--direction", choices=("out", "in"))
+        sub.add_argument("--link-type", dest="link_type", choices=("all", "internal", "external"))
+        sub.add_argument("--follow", choices=("all", "follow", "nofollow"))
+        sub.add_argument(
+            "--status-class",
+            dest="status_class",
+            choices=("all", "2xx", "3xx", "4xx", "5xx", "broken", "error", "unscanned"),
+        )
+        sub.add_argument("--contains", help="substring of the other URL or the anchor")
+        sub.add_argument("--sort", choices=("order", "url", "status"))
         sub.add_argument("--seed")
         sub.add_argument("--target")
         sub.add_argument(
