@@ -118,10 +118,12 @@ Frog; it adds no request of its own.
   check by name and a native `crawl-site` run never raises it either. Step 6's manual join
   covers the same four mistakes, but it is not the registry check and does not distinguish them
   from each other in one output.
-- **The protocol limits.** Neither the 50,000-URL ceiling nor the 50 MB file-size ceiling is
-  asserted, so a sitemap that exceeds either is not reported as invalid here.
-- **Which sitemap a URL came from.** URLs appearing in more than one child sitemap are counted,
-  not named individually.
+- **The protocol limits in the manual join.** Step 6 does not assert the 50,000-URL and 50 MB
+  limits. A native crawl asserts them only for a sitemap it fetched live; an offline reanalysis
+  skips them by name.
+- **Which sitemap a URL came from in the manual join.** The finding names the sitemaps for each
+  duplicated URL (`details.sitemaps`), and the summary counts them (`urls_in_multiple_sitemaps`).
+  Step 6 does not produce that naming.
 - **Whether `lastmod` is true.** The date is read as declared. A generator that stamps today on
   every entry produces a valid sitemap that means nothing, and nothing here detects that.
 - **Whether Google fetched it.** Submission, fetch status and the errors Search Console counts
