@@ -429,9 +429,10 @@ CATEGORIES: dict[str, list[Entry]] = {
         _o("Minimize Main-Thread Work", "needs a CPU profile"),
         _p(
             "Optimize DOM Size",
-            "needs HTML stored to disk (input.html_store_dir) to measure; a Screaming Frog "
-            "export configured to store HTML supplies it, but a native `crawl-site` run never "
-            "writes one, so that run always skips both by name instead",
+            "a native `crawl-site` run that keeps a scan store measures it from the body it "
+            "retained there, and skips a page with the real reason when that body was not kept; "
+            "the legacy native route and a Screaming Frog export measure it only from HTML stored "
+            "to disk (input.html_store_dir)",
             "DOM_TOO_MANY_NODES",
             "DOM_TOO_DEEP",
         ),
