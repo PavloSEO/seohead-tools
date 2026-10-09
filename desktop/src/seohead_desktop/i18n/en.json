@@ -1534,5 +1534,6 @@
  "У статьи нет дат": "Article has no dates",
  "В статье мало источников": "Article has few citations",
  "Слишком глубокий DOM": "DOM too deep",
- "Слишком много узлов DOM": "Too many DOM nodes"
+ "Слишком много узлов DOM": "Too many DOM nodes",
+ "ответ цели не сохранён в скане": "target response not stored in the scan"
 }
