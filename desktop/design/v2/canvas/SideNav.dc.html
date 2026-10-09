@@ -24,7 +24,7 @@
   </sc-for>
   <div class="navdiv"></div>
   <div class="navsec">Результат</div>
-  <sc-for list="{{res}}" as="n" hint-placeholder-count="3">
+  <sc-for list="{{res}}" as="n" hint-placeholder-count="4">
     <a class="{{n.cls}}" href="{{n.href}}" title="{{n.title}}" aria-disabled="{{n.dis}}" style="{{n.st}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}" style="{{n.cst}}">{{n.cnt}}</span></a>
   </sc-for>
   <div style="flex: 1"></div>
@@ -56,7 +56,7 @@
   </sc-if>
 </nav>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","graph","search","methods","reports","log","crawler","none"],"default":"url"},"h":{"editor":"int","default":786},"mode":{"editor":"enum","options":["","agent","simple","crawler"],"default":""},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","graph","search","methods","tools","reports","log","crawler","none"],"default":"url"},"h":{"editor":"int","default":786},"mode":{"editor":"enum","options":["","agent","simple","crawler"],"default":""},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { menu: false }; }
   renderVals() {
@@ -89,6 +89,7 @@ class Component extends DCLogic {
       ]),
       res: mk([
         ...(sm ? [] : [['methods', 'menu_book', 'Методы', '/Methods.dc.html']]),
+        ['tools', 'construction', 'Инструменты', '/Tools.dc.html'],
         ['reports', 'description', 'Отчёты и задачи', '/Handoff.dc.html'],
         ['log', 'terminal', 'Журнал', '/Log.dc.html']
       ])
