@@ -36,7 +36,7 @@ from seohead.tui import keys, localization, scan_now, theme
 from seohead.tui.labels import label as human_label
 from seohead.tui.labels import title as human_title
 from seohead.tui.labels import value_lines
-from seohead.tui.localization import ui
+from seohead.tui.localization import number, ui
 from seohead.tui.state import WATCH_SECTIONS, ShellState
 
 #: Below this size the palette cannot keep a usable list plus footer, so the
@@ -469,11 +469,11 @@ def _watch_lines(
         counts = run.get("counters") or {"fetched": frontier.get("done"), **frontier}
         fetched, queued, inflight = (counts.get(key) for key in ("fetched", "queued", "inflight"))
         telemetry = run.get("telemetry", {})
-        semantics = telemetry.get("queue_semantics", "separate" if frontier else ui("unknown"))
+        semantics = telemetry.get("queue_semantics", "separate" if frontier else "unknown")
         population = [fetched, queued] + ([inflight] if semantics == "separate" else [])
         total = (
             sum(population)
-            if semantics != ui("unknown") and all(isinstance(v, int) for v in population)
+            if semantics != "unknown" and all(isinstance(v, int) for v in population)
             else None
         )
         amount = str(fetched) if fetched is not None else ui("unknown")
@@ -502,11 +502,12 @@ def _watch_lines(
                 Text(f"{source} · {state_label} · {freshness}"),
                 Text(f"{collected} · {speed_text}"),
                 Text(
-                    "Queue "
+                    ui("Queue")
+                    + " "
                     + (str(queued) if queued is not None else ui("unknown"))
-                    + " · In flight "
+                    + f" · {ui('In flight')} "
                     + (str(inflight) if inflight is not None else ui("unknown"))
-                    + " · Excluded "
+                    + f" · {ui('Excluded')} "
                     + (
                         str(counts["excluded"])
                         if counts.get("excluded") is not None
@@ -1025,7 +1026,7 @@ def _meter(label: str, done: int | None, total: int | None, palette: theme.Palet
         return text
     fraction = min(1.0, max(0.0, done / total))
     filled = round(20 * fraction)
-    text.append(f"{done:,} / {total:,}  {fraction:.0%}\n")
+    text.append(f"{number(done)} / {number(total)}  {fraction:.0%}\n")
     text.append("█" * filled, style=palette.accent if palette.color else "")
     text.append("░" * (20 - filled), style=palette.muted if palette.color else "")
     return text
@@ -1088,7 +1089,11 @@ def _watch_dashboard(
             last_phase = (
                 recent_run["events"][-1]["phase"] if recent_run["events"] else "unknown phase"
             )
-            run_hint = f"{human_label(recent_run['kind'])} · {human_label(recent_run['state'])} · {human_label(last_phase)}"
+            parts = [human_label(recent_run["kind"]), human_label(recent_run["state"])]
+            # A finished run's last phase repeats its state ("Finished · Finalizing").
+            if recent_run["state"] == "running":
+                parts.append(human_label(last_phase))
+            run_hint = " · ".join(parts)
             sample_state = recent_run.get("telemetry", {}).get("state")
             if sample_state:
                 run_hint = (
@@ -1114,14 +1119,14 @@ def _watch_dashboard(
                 run_hint = f"{marker} observed active · {run_hint}"
         header.add_row(
             Text(
-                f"{human_label('inbox')} {snapshot['inbox']['pagination']['total']}  ·  "
-                f"{ui('COMPETITORS')} {len(snapshot['preparation']['competitors'])}  ·  0 {human_label('inbox')}",
+                f"{ui('Notes')} {snapshot['inbox']['pagination']['total']}  ·  "
+                f"{ui('Competitors')} {len(snapshot['preparation']['competitors'])}",
                 style=muted,
             ),
             Text(run_hint, style=accent),
         )
     if snapshot and state.watch_section == "overview":
-        header.add_row(Text(ui(ui("Scan now")) + ": " + scan_now.summary(snapshot), style=accent))
+        header.add_row(Text(ui("Scan now") + ": " + scan_now.summary(snapshot), style=accent))
         root["header"].size = 4
     root["header"].update(header)
     sidebar = width >= 130 and height >= 26
@@ -1259,11 +1264,11 @@ def _watch_dashboard(
                 Panel(Text(f"{value}\n{label}", style=accent), border_style=border)
                 for value, label in [
                     (
-                        str(retained_pages) if retained_pages is not None else "—",
+                        number(retained_pages) if retained_pages is not None else "—",
                         ui("Pages retained"),
                     ),
-                    (str(findings) if findings is not None else "—", ui("Findings")),
-                    (str(snapshot["scans"]["total"]), ui("Saved scans")),
+                    (number(findings) if findings is not None else "—", ui("Findings")),
+                    (number(snapshot["scans"]["total"]), ui("Saved scans")),
                 ]
             ]
         )
@@ -1283,22 +1288,32 @@ def _watch_dashboard(
             else None
         )
         sitemap = evidence.get("sitemaps", {}).get("fetch_summaries", {})
+        scan_labels = [
+            human_label(value)
+            for value in (
+                scan_state.lower(),
+                latest.get("source_kind"),
+                latest.get("finish_reason"),
+            )
+        ]
         crawl_lines = [
-            Text(
-                f"{human_label(scan_state.lower())}  ·  {human_label(latest.get('source_kind'))}  ·  {human_label(latest.get('finish_reason'))}",
-                style=accent,
-            ),
+            Text("  ·  ".join(dict.fromkeys(scan_labels)), style=accent),
             _meter(
-                ui("Discovered URL coverage · scope can grow"),
+                # A finished scan's scope no longer grows.
+                ui("Discovered URL coverage")
+                if scan_state == "FINISHED"
+                else ui("Discovered URL coverage · scope can grow"),
                 counts.get("done"),
                 discovered,
                 palette,
             ),
             Text(
-                f"Queue {counts.get('queued', ui('unknown'))}  ·  In flight {counts.get('inflight', ui('unknown'))}  ·  Excluded {counts.get('excluded', ui('unknown'))}"
+                f"{ui('Queue')} {counts.get('queued', ui('unknown'))}  ·  {ui('In flight')} {counts.get('inflight', ui('unknown'))}  ·  {ui('Excluded')} {counts.get('excluded', ui('unknown'))}"
             ),
             Text(
-                "Sitemap: " + (" · ".join(value_lines(sitemap)) if sitemap else ui("Not measured")),
+                ui("Sitemap")
+                + ": "
+                + (" · ".join(value_lines(sitemap)) if sitemap else ui("Not measured")),
                 style="#fbbf24" if palette.color and not sitemap else "",
             ),
         ]
@@ -1379,7 +1394,7 @@ def _watch_dashboard(
             )
             findings_lines.append(
                 Text(
-                    f"{ui(name):9} {str(value) if value is not None else '—':>5}  "
+                    f"{ui(name):9} {number(value) if value is not None else '—':>6}  "
                     + "━" * round(15 * (value or 0) / peak),
                     style=color,
                 )
@@ -1421,7 +1436,10 @@ def _watch_dashboard(
                     Text(ui("PROJECT LOG"), style=accent),
                 ]
             )
-            log_lines = snapshot["log"]["text"].splitlines()[-max(3, height - 35) :]
+            # The log's own "# Project log" heading repeats the section title above it.
+            log_lines = [
+                line for line in snapshot["log"]["text"].splitlines() if line != "# Project log"
+            ][-max(3, height - 35) :]
             findings_lines.extend(
                 Text(line, no_wrap=True, overflow="ellipsis") for line in log_lines
             )

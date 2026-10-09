@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seohead.core.filesystem import fsync_directory, lock_exclusive, open_lock, unlock
-from seohead.mcp.mcp_profiles import PROFILES, profile_tools
+from seohead.mcp.mcp_profiles import PROFILE_LABELS, PROFILES, profile_tools
 
 SERVER = "seohead"
 CLIENTS = ("claude-code", "claude-desktop", "codex", "cursor")
@@ -182,17 +182,39 @@ def _entry(command: str | None = None) -> dict:
     return {"command": command, "args": ["mcp"]}
 
 
+def changed_label(by: str | None, changed_at: str | None, *, now: datetime | None = None) -> str:
+    """Who switched MCP last, e.g. "CLI · сегодня 14:20"; "по умолчанию" before any switch."""
+    if not by or not changed_at:
+        return "по умолчанию"
+    try:
+        moment = datetime.fromisoformat(changed_at).astimezone()
+    except ValueError:
+        return by
+    today = (now or datetime.now().astimezone()).date()
+    day = "сегодня" if moment.date() == today else moment.strftime("%d.%m")
+    return f"{by} · {day} {moment:%H:%M}"
+
+
 def status(*, inspect_clients: bool = True) -> dict:
     from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools
 
     state = read_state()
     names = {t.name for t in [*load_seo_tools(), *load_sf_tools()]}
-    allowed = profile_tools(state["profile"])
+
+    def count(profile: str) -> int:
+        allowed = profile_tools(profile)
+        return len(names if allowed is None else names & allowed)
+
     result = {k: state.get(k) for k in ("enabled", "profile", "by", "changed_at")}
     result.update(
         ok=True,
         file=str(state_path()),
-        tools=len(names if allowed is None else names & allowed),
+        tools=count(state["profile"]),
+        by_label=changed_label(state.get("by"), state.get("changed_at")),
+        profiles=[
+            {"id": name, "label": PROFILE_LABELS[name], "tools": count(name)}
+            for name in PROFILE_LABELS
+        ],
         clients={},
     )
     if inspect_clients:
@@ -302,6 +324,7 @@ def _install(client, path, *, dry_run, command, expected_sha256, backup_path):
         json.dumps(
             {
                 "client": client,
+                "reason": "install",
                 "sha256": before,
                 "installed_sha256": _digest(after),
                 "existed": existed,
@@ -314,6 +337,35 @@ def _install(client, path, *, dry_run, command, expected_sha256, backup_path):
     _atomic(path, after)
     _parse(client, _read(path))
     return result
+
+
+def backups(client: str | None = None) -> dict:
+    """Adjacent configuration backups made before SEOHEAD registration, newest first."""
+    if client is not None and client not in CLIENTS:
+        raise ValueError("unsupported MCP client")
+    items = []
+    for name in [client] if client else CLIENTS:
+        path = client_path(name)
+        for backup in path.parent.glob(path.name + ".seohead-*.bak"):
+            stamp = backup.name[len(path.name) + len(".seohead-") :].split("-", 1)[0]
+            try:
+                created = datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(tzinfo=timezone.utc)
+                receipt = json.loads(_read(backup.with_suffix(backup.suffix + ".json")))
+                digest = _digest(_read(backup))
+            except (OSError, ValueError):
+                continue  # Not ours or unreadable: never list foreign or damaged files.
+            items.append(
+                {
+                    "client": name,
+                    "path": str(backup),
+                    "created_at": created.isoformat(),
+                    "reason": receipt.get("reason", "install"),
+                    "sha256": digest,
+                    "verified": receipt.get("sha256") == digest,
+                }
+            )
+    items.sort(key=lambda item: item["created_at"], reverse=True)
+    return {"ok": True, "backups": items}
 
 
 def uninstall(client: str, *, yes: bool = False) -> dict:

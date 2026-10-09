@@ -177,3 +177,39 @@ def test_restoring_an_initially_missing_config_restores_absence(client):
     assert path.exists()
     control.uninstall(client, yes=True)
     assert not path.exists()
+
+
+def test_status_lists_profiles_with_registry_counts_and_actor_label():
+    status = control.status()
+    profiles = {item["id"]: item for item in status["profiles"]}
+    assert set(profiles) == {"full", "audit", "quick-check", "infra", "router"}
+    assert profiles["full"]["tools"] == status["tools"]
+    assert profiles["audit"]["label"] == "Аудит"
+    from seohead.mcp.mcp_profiles import profile_tools
+    from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools
+
+    names = {t.name for t in [*load_seo_tools(), *load_sf_tools()]}
+    for name in ("audit", "quick-check", "router"):
+        assert profiles[name]["tools"] == len(names & profile_tools(name)) < len(names)
+    assert status["by_label"] == "по умолчанию"
+    control.set_state(True, profile="audit", actor="SEOHEAD Desktop")
+    status = control.status()
+    assert status["tools"] == profiles["audit"]["tools"]
+    assert status["by_label"].startswith("SEOHEAD Desktop · сегодня ")
+    assert control.changed_label("CLI", "2026-10-07T15:05:00+00:00").startswith("CLI · 07.10 ")
+
+
+def test_backups_list_client_path_time_reason_and_hash(capsys):
+    assert control.backups()["backups"] == []
+    control.client_path("cursor").parent.mkdir(parents=True)
+    control.client_path("cursor").write_text("{}")
+    control.install("cursor", yes=True, command="/opt/seohead")
+    control.install("codex", yes=True, command="/opt/seohead")
+    items = control.backups("cursor")["backups"]
+    assert len(items) == 1
+    item = items[0]
+    assert item["client"] == "cursor" and item["reason"] == "install" and item["verified"]
+    assert Path(item["path"]).is_file() and item["created_at"].endswith("+00:00")
+    assert len(control.backups()["backups"]) == 2
+    assert cli.main(["mcp", "backups", "--client", "cursor", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["backups"][0]["sha256"] == item["sha256"]

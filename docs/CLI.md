@@ -257,7 +257,10 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 `seohead mcp` starts the local stdio server. It defaults to the shared profile;
 `--profile full|audit|infra|quick-check|router` can further restrict a process.
 `seohead mcp status --json` reports enabled state, profile, actual registry count,
-last actor/time, and whether each supported client has a SEOHEAD entry. It never
+last actor/time (`by_label`: "CLI · 07.10 18:05", "SEOHEAD Desktop · сегодня 14:20",
+or "по умолчанию" before any switch), every profile as `profiles` (`id`, Russian
+`label`, tool count taken from the registry), and whether each supported client
+has a SEOHEAD entry. It never
 reports foreign keys, tokens, connection activity, or configuration contents.
 
 ```bash
@@ -267,6 +270,7 @@ seohead mcp enable --profile router --json
 seohead mcp install --client codex --dry-run --json
 seohead mcp install --client codex --yes --json
 seohead mcp uninstall --client codex --yes --json
+seohead mcp backups --json
 ```
 
 State is in `$SEOHEAD_CONFIG_DIR/mcp.json` when explicitly configured, otherwise
@@ -300,6 +304,10 @@ Uninstall verifies the latest backup/receipt and the installed SEOHEAD entry.
 When the whole configuration is unchanged it restores original bytes; otherwise
 it restores only SEOHEAD's entry and preserves subsequent foreign changes.
 Backups remain available. Installation does not enable MCP implicitly.
+`seohead mcp backups [--client NAME] [--json]` lists SEOHEAD's adjacent backups,
+newest first: client, path, UTC time, reason (`install`), the backup's current
+SHA-256 and whether it still matches its receipt. Files without a SEOHEAD receipt
+are not listed. Call journaling is not implemented yet (#977).
 
 ## Localized terminal observer
 
@@ -308,7 +316,8 @@ Backups remain available. Installation does not enable MCP implicitly.
 report directory containing `project/project.json` is accepted as a project entry.
 The current-scan block uses retained counters; a missing denominator, queue or
 error measurement is shown as unavailable. Discovery progress is not whole-site
-completion. Status colours follow SEOHEAD brand roles. Evidence text is preserved.
+completion. A run is shown by a short id (`r-` plus four hex digits) and its mode;
+the full hash stays in JSON. Russian output groups thousands with a space (`1 330`). Status colours follow SEOHEAD brand roles. Evidence text is preserved.
 `--scan` selects a run id or saved scan UUID present in the bounded observation;
 a missing id is an error, never a silent substitution. The compact mode shows one
 status line for tmux; when piped it emits one snapshot and exits. It does not start

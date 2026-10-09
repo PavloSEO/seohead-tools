@@ -2741,7 +2741,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-progress", action="store_true", help="disable optional MCP progress notifications"
     )
     mcp.add_argument(
-        "action", nargs="?", choices=("status", "enable", "disable", "install", "uninstall")
+        "action",
+        nargs="?",
+        choices=("status", "enable", "disable", "install", "uninstall", "backups"),
     )
     mcp.add_argument(
         "--json", action="store_true", help="return only SEOHEAD state or its registration plan"
@@ -2809,6 +2811,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 if args.action == "status":
                     result = mcp_control.status()
+                elif args.action == "backups":
+                    result = mcp_control.backups(args.client)
                 elif args.action in {"enable", "disable"}:
                     mcp_control.set_state(
                         args.action == "enable", profile=args.profile, actor=args.actor
@@ -2836,13 +2840,19 @@ def main(argv: list[str] | None = None) -> int:
                 }
             if args.json or args.action in {"install", "uninstall"} or not result["ok"]:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif args.action == "backups":
+                for item in result["backups"]:
+                    print(
+                        f"{item['client']} | {item['created_at']} | {item['reason']} | "
+                        f"{item['sha256'][:12]}{'' if item['verified'] else ' (hash mismatch)'} | {item['path']}"
+                    )
+                if not result["backups"]:
+                    print("No SEOHEAD configuration backups")
             else:
                 print(
                     f"MCP: {'enabled' if result['enabled'] else 'disabled'} | profile {result['profile']} | {result['tools']} tools"
                 )
-                print(
-                    f"Changed by: {result['by'] or 'default'} | {result['changed_at'] or 'not changed'}"
-                )
+                print(f"Changed by: {result['by_label']}")
                 print(
                     "Clients: "
                     + ", ".join(c for c, info in result["clients"].items() if info["registered"])

@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from seohead.tui.labels import label
-from seohead.tui.localization import ui
+from seohead.tui.localization import number, ui
 
 
 def project_directory(directory: str) -> str:
@@ -61,14 +61,14 @@ def summary(snapshot: dict | None) -> str:
         else None
     )
     progress = (
-        f"{fetched} / {total} · {fetched / total:.0%}"
+        f"{number(fetched)} / {number(total)} · {fetched / total:.0%}"
         if total
-        else str(fetched)
-        if fetched is not None
+        else number(fetched)
+        if type(fetched) is int
         else ui("Not measured")
     )
-    identity = run.get("id") or run.get("uuid") or saved.get("uuid") or "—"
     unknown = ui("unknown")
+    mode = (run.get("collector") or {}).get("mode") or saved.get("mode")
     state = label(run.get("state") or saved.get("lifecycle"))
     freshness = label(run.get("telemetry", {}).get("state"))
     errors = counts.get("errors")
@@ -76,7 +76,23 @@ def summary(snapshot: dict | None) -> str:
         errors = run.get("errors")
     if not isinstance(errors, (int, float)):
         errors = unknown
-    return f"{identity} · {state} · {progress} · {ui('Queue')} {queued if queued is not None else unknown} · {ui('Excluded')} {counts.get('excluded', unknown)} · {ui('Errors')} {errors} · {freshness}"
+    parts = [
+        run_label(run.get("id") or run.get("uuid") or saved.get("uuid")),
+        label(mode) if mode else None,
+        state,
+        progress,
+        f"{ui('Queue')} {queued if queued is not None else unknown}",
+        f"{ui('Excluded')} {counts.get('excluded', unknown)}",
+        f"{ui('Errors')} {errors}",
+        freshness if freshness != state else None,
+    ]
+    return " · ".join(part for part in parts if part)
+
+
+def run_label(identity: object) -> str:
+    """Short run id for people (``r-ad99``); the full hash stays in JSON output."""
+    digits = "".join(c for c in str(identity or "").lower() if c in "0123456789abcdef")
+    return f"r-{digits[:4]}" if digits else "—"
 
 
 def panel(snapshot: dict | None, palette, *, compact: bool = False):

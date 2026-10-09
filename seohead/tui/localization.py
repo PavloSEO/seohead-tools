@@ -95,6 +95,10 @@ RU = {
     "Goal": "Цель",
     "Scan now": "Скан сейчас",
     "Queue": "Очередь",
+    "Notes": "Заметки",
+    "Competitors": "Конкуренты",
+    "Discovered URL coverage": "Обработано найденных URL",
+    "Sitemap": "Карта сайта",
     "Errors": "Ошибки",
     "Excluded": "Исключено",
     "No scan recorded": "Сканов нет",
@@ -121,6 +125,11 @@ def resolve_language(value: str | None) -> str:
         or "en"
     )
     return "ru" if local.lower().startswith(("ru", "be")) else "en"
+
+
+def number(value: int) -> str:
+    """Group thousands: ``1,330`` in English, ``1 330`` in Russian."""
+    return f"{value:,}".replace(",", " ") if LANGUAGE == "ru" else f"{value:,}"
 
 
 def ui(value: str) -> str:

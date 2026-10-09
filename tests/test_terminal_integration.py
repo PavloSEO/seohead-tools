@@ -1,5 +1,7 @@
 """Locale, explicit scan selection and unknown-progress observer contracts."""
 
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import copy
@@ -72,3 +74,26 @@ def test_compact_uses_real_counts_and_does_not_invent_unknowns(monkeypatch):
     assert "Ошибки нет данных" in rendered and "User title" in rendered
     snapshot["runs"]["items"][0]["telemetry"]["queue_semantics"] = "unknown"
     assert "40%" not in scan_now.summary(snapshot)
+
+
+def test_russian_numbers_run_label_and_finished_scan(monkeypatch):
+    localization.LANGUAGE = "ru"
+    assert localization.number(1330) == "1 330"
+    assert scan_now.run_label("ad994e4a90084c7eae15a8ab564b55f9") == "r-ad99"
+    snapshot = {
+        "runs": {
+            "items": [
+                {
+                    "id": "0143aa",
+                    "state": "running",
+                    "collector": {"mode": "list"},
+                    "counters": {"fetched": 1330, "queued": 3670, "inflight": 0},
+                    "telemetry": {"queue_semantics": "separate", "state": "fresh"},
+                }
+            ]
+        },
+        "scans": {"items": []},
+    }
+    line = scan_now.summary(snapshot)
+    assert line.startswith("r-0143 · Список URL · В работе · 1 330 / 5 000 · 27%")
+    assert "0143aa" not in line and "Queue" not in line
