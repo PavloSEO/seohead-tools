@@ -3,7 +3,7 @@
 This runbook installs SEOHEAD as a versioned command for an SSH operator. Each crawl is a
 foreground CLI process that reads a local configuration and writes scan/report files. It does not
 install a daemon, open a port, or expose the local stdio MCP server over the network. The remote
-HTTP API is a separate optional package and contract; see issue #784 when that API is needed.
+HTTP API is a separate optional package; see REMOTE_API.md and REMOTE_JOBS.md (not part of this runbook).
 
 The target covered here is **Ubuntu Server 24.04 LTS with Python 3.12**. The lifecycle smoke in
 `.github/workflows/ci.yml` uses a fresh `ubuntu-24.04` runner, a localhost-only synthetic HTTP/JS
@@ -82,7 +82,7 @@ REVISION=0123456789abcdef0123456789abcdef01234567
 SEOHEAD_ROOT="$HOME/.local/share/seohead"
 RELEASE="$SEOHEAD_ROOT/releases/$REVISION"
 mkdir -m 700 "$RELEASE"
-git clone --no-checkout https://github.com/PavloSEO/seotools.git "$RELEASE/source"
+git clone --no-checkout https://github.com/PavloSEO/seohead-tools.git "$RELEASE/source"
 git -C "$RELEASE/source" checkout --detach "$REVISION"
 test "$(git -C "$RELEASE/source" rev-parse HEAD)" = "$REVISION"
 test -z "$(git -C "$RELEASE/source" status --porcelain)"
@@ -238,7 +238,7 @@ The documented execution model is an SSH operator starting the CLI. The command 
 foreground and writes JSON to stdout plus progress/errors to stderr. If the SSH session must be
 closed while a long run continues, use a terminal multiplexer already approved for that host and
 reattach before reading its output. A resident HTTP service, remote MCP endpoint, and public listener
-are outside this runbook; the separately designed remote scan API is tracked in #784.
+are outside this runbook; the optional remote scan API is documented in REMOTE_API.md.
 
 ## Measured resource profile
 

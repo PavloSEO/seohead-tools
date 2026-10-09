@@ -30,15 +30,15 @@ listener. Keep the state root outside an application release directory.
 
 ## Preflight explicit service configuration
 
-`create_app` requires all three current code contracts:
+`create_app` requires a durable backend and a token authenticator at construction. A target policy is required for submissions:
 
 - `SQLiteJobBackend` (or another durable, project-isolated `JobBackend`);
 - `TokenAuthenticator` with a project-scoped `Principal` grant map; and
-- a `RemoteTargetPolicy` that authorizes each submitted target before queueing.
+- a `RemoteTargetPolicy` that authorizes each submitted target before queueing. Without one the app still starts, but every submit returns 503 `target_policy_unavailable` and enqueues nothing, so the bootstrap must always inject a policy.
 
 The repository intentionally has no environment-to-service factory. A local
 operator bootstrap must construct these objects from reviewed trusted settings;
-an absent backend, authenticator, or target policy refuses admission. Do not
+an absent backend or authenticator fails at construction; an absent target policy makes every submit return 503 and enqueue nothing. Do not
 invent environment variable names and assume the library reads them.
 
 Store references to secret files outside the checkout, for example:
