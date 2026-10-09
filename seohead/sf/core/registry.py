@@ -703,6 +703,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Canonical target has no hyperlink pointing to it anywhere in the crawl",
         "fix": "Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional.",
     },
+    "HREFLANG_UNLINKED_TARGET": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Hreflang alternate target has no hyperlink pointing to it anywhere in the crawl",
+        "fix": "Add an ordinary internal link to the hreflang alternate, or confirm relying on the hreflang annotation alone for discovery is intentional.",
+    },
     "HREFLANG_BROKEN_TARGET": {
         "severity": "warning",
         "source": "inlinks:All Hreflang",

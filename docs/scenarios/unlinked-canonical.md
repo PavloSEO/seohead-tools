@@ -12,6 +12,7 @@ you chose is reachable by declaration alone.
 ## Covers
 
 - **Canonicals** — Unlinked · Canonicalised
+- **Hreflang** — Unlinked Hreflang URLs
 
 ## The chain
 
@@ -55,8 +56,13 @@ seohead log-scan --run ./run
 
 "Nothing links here" is a claim about the entire site, and it is unprovable when the crawl
 stopped early — the missing link may be in the part nobody fetched. `UNLINKED_CANONICAL` is one
-of four findings withheld and re-declared as a named skip on a partial crawl, alongside
-`ORPHAN_PAGE`, `SITEMAP_ORPHAN` and `UNLINKED_PAGINATION_SERIES`.
+of five findings withheld and re-declared as a named skip on a partial crawl, alongside
+`ORPHAN_PAGE`, `SITEMAP_ORPHAN`, `UNLINKED_PAGINATION_SERIES` and `HREFLANG_UNLINKED_TARGET`.
+
+The hreflang twin reads the same way: `HREFLANG_UNLINKED_TARGET` fires for each hreflang alternate
+that no ordinary hyperlink reaches, with a self-reference never counted. An alternate reached only
+through `<link rel="alternate" hreflang>` is discoverable by annotation alone, the same gap as a
+canonical target nobody links to.
 
 **5. Compare with the sitemap answer rather than repeating it.**
 
