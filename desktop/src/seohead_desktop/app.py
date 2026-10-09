@@ -7,6 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from PyQt5 import sip
 from PyQt5.QtCore import (
     QEasingCurve,
     QSettings,
@@ -321,6 +322,7 @@ def main():
     parser.add_argument("--no-settings", action="store_true")
     parser.add_argument("--agent-control", type=Path, help="Existing owned runtime directory for explicit local agent control")
     args = parser.parse_args()
+    sip.setdestroyonexit(False)  # Python must not tear Qt objects down at exit (SIGSEGV in dealloc_QApplication)
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv[:1])
@@ -375,7 +377,10 @@ def main():
             window.close()
             app.quit()
         QTimer.singleShot(500, capture)
-    return app.exec_()
+    code = app.exec_()
+    if window.settings:
+        window.settings.sync()  # objects are not destroyed on exit, so write preferences explicitly
+    return code
 
 
 if __name__ == "__main__":

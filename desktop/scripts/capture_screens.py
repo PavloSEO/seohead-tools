@@ -16,6 +16,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from PyQt5 import sip
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QApplication
@@ -142,6 +143,7 @@ def main(argv=None):
     default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
     OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
     os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
+    sip.setdestroyonexit(False)
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
     load_theme(app, args.theme)
@@ -173,8 +175,12 @@ def main(argv=None):
                 widget.grab().save(str(path))
             print(path)
             widget.close()
+    app.quit()
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)  # no interpreter finalisation: Qt objects must not be torn down by Python
