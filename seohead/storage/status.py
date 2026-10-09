@@ -5,14 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from . import open_scan
+from . import open_scan_mode
 
 
-def scan_status(input_path: str) -> dict[str, Any]:
-    """Summarize one scan snapshot without fetching, retrying, or changing its bytes."""
+def scan_status(input_path: str, *, full_validation: bool = False) -> dict[str, Any]:
+    """Summarize one scan snapshot without fetching, retrying, or changing its bytes.
+
+    By default the scan is accepted by a light header/schema check and the response says
+    ``validation: "light"``; ``full_validation=True`` runs the complete artifact validation
+    (``"full"``). Counters come from SQL either way.
+    """
     if not isinstance(input_path, str) or not input_path:
         raise ValueError("input_path is required")
-    con = open_scan(Path(input_path), require_audit=False)
+    con, validation = open_scan_mode(
+        Path(input_path), require_audit=False, light=not full_validation
+    )
     try:
         scan = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
         source = {
@@ -35,20 +42,15 @@ def scan_status(input_path: str) -> dict[str, Any]:
             crawl_partial=bool(scan["crawl_partial"]), corpus_partial=bool(scan["corpus_partial"])
         )
         outcomes = {"2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, "other": 0, "no_response": 0}
-        for row in con.execute("SELECT status_code FROM pages"):
-            code = row[0]
+        for code, count in con.execute(
+            "SELECT status_code,COUNT(*) FROM pages GROUP BY status_code"
+        ):
             if code is None:
-                outcomes["no_response"] += 1
-            elif 200 <= code < 300:
-                outcomes["2xx"] += 1
-            elif 300 <= code < 400:
-                outcomes["3xx"] += 1
-            elif 400 <= code < 500:
-                outcomes["4xx"] += 1
-            elif 500 <= code < 600:
-                outcomes["5xx"] += 1
+                outcomes["no_response"] += count
+            elif 200 <= code < 600:
+                outcomes[f"{code // 100}xx"] += count
             else:
-                outcomes["other"] += 1
+                outcomes["other"] += count
         if scan["source_kind"] == "legacy_import":
             frontier = {
                 "state": "unavailable",
@@ -65,6 +67,7 @@ def scan_status(input_path: str) -> dict[str, Any]:
             "source": source,
             "frontier": frontier,
             "committed_page_outcomes": outcomes,
+            "validation": validation,
         }
     finally:
         con.close()

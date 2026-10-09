@@ -8,6 +8,7 @@ import math
 import os
 import re
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Iterator
@@ -867,14 +868,68 @@ def _read_deadline_seconds(path: Path) -> float:
     return max(READ_TIMEOUT_SECONDS, size / READ_TIMEOUT_BYTES_PER_SECOND)
 
 
+_FULL_VALIDATED_LIMIT = 64
+_FULL_VALIDATED: dict[tuple, None] = {}
+_FULL_VALIDATED_LOCK = threading.Lock()
+
+
+def _file_state(path: Path) -> tuple[int, int, int, int] | None:
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+
+
+def _validated_key(path: Path, con) -> tuple:
+    """Identify validated bytes: file and WAL identity/size/mtime plus the scan header."""
+    resolved = path.resolve()
+    header = con.execute("SELECT * FROM scan WHERE singleton=1").fetchone()
+    digest = hashlib.sha256(repr(tuple(header)).encode("utf-8")).hexdigest()
+    return (
+        str(resolved),
+        _file_state(resolved),
+        _file_state(resolved.with_name(resolved.name + "-wal")),
+        digest,
+    )
+
+
+def _remember_validated(key: tuple) -> None:
+    with _FULL_VALIDATED_LOCK:
+        _FULL_VALIDATED.pop(key, None)
+        _FULL_VALIDATED[key] = None
+        while len(_FULL_VALIDATED) > _FULL_VALIDATED_LIMIT:
+            _FULL_VALIDATED.pop(next(iter(_FULL_VALIDATED)))
+
+
 def open_scan(
     path: str | Path, *, require_audit: bool = True, query_timeout_seconds: float | None = None
 ):
-    """Return a validated read-only connection; the caller must close it.
+    """Return a fully validated read-only connection; the caller must close it.
 
     Optional query budgets activate only after full artifact validation. They
     measure each SQLite execute/fetch operation, excluding caller processing
     between streamed rows; validation keeps its existing artifact-size budget.
+    """
+    return open_scan_mode(
+        path, require_audit=require_audit, query_timeout_seconds=query_timeout_seconds
+    )[0]
+
+
+def open_scan_mode(
+    path: str | Path,
+    *,
+    require_audit: bool = True,
+    query_timeout_seconds: float | None = None,
+    light: bool = False,
+):
+    """Open a scan and say how it was accepted: ``(connection, "light" | "full")``.
+
+    ``light=True`` (native scans, no audit required) checks identity, schema, version and
+    the header row only -- no O(file) or O(pages) pass. If the same bytes (path, size,
+    mtime, WAL state, header hash) were already fully validated in this process, that
+    result is reused and reported as ``"full"``. Anything else that cannot be accepted
+    lightly raises the same ``ScanError`` as before; it is never silently passed.
     """
     _runtime()
     con = None
@@ -893,6 +948,7 @@ def open_scan(
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA cache_size=-8192")
         con.execute("PRAGMA temp_store=FILE")
+        before = _file_state(Path(path).resolve())
         deadline = time.monotonic() + _read_deadline_seconds(Path(path))
         con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
         con.execute("BEGIN")
@@ -902,7 +958,17 @@ def open_scan(
             raise ScanError(f"unsupported scan user_version {version}; no automatic migration")
         if app_id != APPLICATION_ID:
             raise ScanError(f"foreign application_id {app_id}; expected {APPLICATION_ID} (SEOH)")
-        if version == 2:
+        mode = "full"
+        header = con.execute("SELECT source_kind FROM scan WHERE singleton=1").fetchone()
+        if light and not require_audit and header and header[0] in {"native", "reanalysis"}:
+            from .native_scan import NativeScan
+
+            if _validated_key(Path(path), con) in _FULL_VALIDATED:
+                pass
+            else:
+                NativeScan._validate_light(con)
+                mode = "light"
+        elif version == 2:
             from .native_scan import NativeScan
 
             NativeScan._validate_native(con)
@@ -919,9 +985,11 @@ def open_scan(
                     pass
         else:
             _validate(con, require_audit=require_audit)
+        if mode == "full" and before == _file_state(Path(path).resolve()):
+            _remember_validated(_validated_key(Path(path), con))
         if query_timeout_seconds is not None:
             con.set_query_budget(query_timeout_seconds)
-        return con
+        return con, mode
     except (OSError, sqlite3.Error, ValueError) as exc:
         if con is not None:
             con.close()
@@ -935,6 +1003,22 @@ def read_audit(path: str | Path) -> dict[str, Any]:
     if audit_v2_path(path).exists():
         with AuditV2Reader(path) as audit:
             return audit.materialize_legacy(max_bytes=MAX_JSON_BYTES)
+    # Learn cheaply that a native scan carries no audit, instead of validating the whole
+    # artifact first only to refuse it with the same message.
+    probe, mode = open_scan_mode(path, require_audit=False, light=True)
+    try:
+        if (
+            mode == "light"
+            and probe.execute("SELECT 1 FROM audit WHERE singleton=1").fetchone() is None
+        ):
+            v2 = probe.execute("PRAGMA user_version").fetchone()[0] == 2
+            raise ScanError(
+                "scan.v2 has no current audit"
+                if v2
+                else "native scan has no current audit; collection evidence is available separately"
+            )
+    finally:
+        probe.close()
     con = open_scan(path)
     try:
         return _loads(

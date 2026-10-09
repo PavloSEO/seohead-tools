@@ -2981,9 +2981,15 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_scan_status(input_path: str) -> dict[str, Any]:
-        """Summarize frontier work and committed page outcomes from one saved scan offline."""
-        return _checked(handlers.scan_status(input_path=input_path))
+    def seo_scan_status(input_path: str, full_validation: bool = False) -> dict[str, Any]:
+        """Summarize frontier work and committed page outcomes from one saved scan offline.
+
+        The scan is accepted by a light header/schema check (`validation: "light"`);
+        full_validation=true runs the complete artifact validation (`validation: "full"`).
+        """
+        return _checked(
+            handlers.scan_status(input_path=input_path, full_validation=full_validation)
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_rendered_routes(input_path: str) -> dict[str, Any]:

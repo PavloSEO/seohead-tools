@@ -2824,8 +2824,14 @@ Summarize frontier work and committed page outcomes from one saved scan offline.
 | Argument | Type | Default |
 |---|---|---|
 | `input_path` | `str` | `required` |
+| `full_validation` | `bool` | `False` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+The scan is accepted by a light header/schema check (`validation: "light"`);
+full_validation=true runs the complete artifact validation (`validation: "full"`).
 
 ### `scan-rendered-routes`
 

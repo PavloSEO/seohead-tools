@@ -16,7 +16,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from seohead.crawl.spider import Scope, _canonical_key
 
-from . import ScanError, open_scan
+from . import ScanError, open_scan_mode
 
 _REPRESENTATIONS = {"all", "static", "rendered", "legacy_fragment", "legacy_unknown"}
 _CURSOR_CHARS = re.compile(r"[A-Za-z0-9_-]{1,2048}\Z")
@@ -182,7 +182,7 @@ def shortest_observed_path(
             "invalid path budget; nodes 1..100000, edges 1..2000000, depth 0..100, timeout 0..30s"
         )
     deadline = time.monotonic() + timeout_seconds
-    con = open_scan(scan_path, require_audit=False)
+    con, validation = open_scan_mode(scan_path, require_audit=False, light=True)
     try:
         header = _header(con, representation)
         scope = Scope.from_config(header.pop("config").get("scope"))
@@ -200,6 +200,7 @@ def shortest_observed_path(
             "visited_nodes": 0,
             "examined_edges": 0,
             "hops": [],
+            "validation": validation,
         }
         if not _source_ids(con, seed_key):
             result["state"] = "seed_unobserved"
@@ -368,7 +369,7 @@ def reverse_inlinks(
         raise ScanError(
             "invalid inlink page; limit 1..500, max_bytes 4096..8388608, timeout 0..30s"
         )
-    con = open_scan(scan_path, require_audit=False)
+    con, validation = open_scan_mode(scan_path, require_audit=False, light=True)
     try:
         header = _header(con, representation)
         header.pop("config")
@@ -444,6 +445,7 @@ def reverse_inlinks(
             "returned": len(items),
             "has_more": has_more,
             "next_cursor": next_cursor,
+            "validation": validation,
         }
     finally:
         con.close()

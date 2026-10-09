@@ -104,7 +104,7 @@ def _read_retained_findings(row: dict[str, Any]) -> dict[str, Any]:
     from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
     if audit_v2_path(row["path"]).exists():
-        with AuditV2Reader(row["path"]) as reader:
+        with AuditV2Reader(row["path"], light_binding=True) as reader:
             size = reader.con.execute(
                 "SELECT COALESCE(SUM(length(CAST(value_json AS BLOB))),0) FROM items WHERE pointer='/issues'"
             ).fetchone()[0]
@@ -167,7 +167,7 @@ def _retained_findings(row: dict[str, Any]) -> dict[str, Any]:
 
 def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
     """Read collector evidence even while an audit is not yet available."""
-    from seohead.storage import open_scan
+    from seohead.storage import open_scan_mode
     from seohead.storage.status import scan_status
 
     path = row["path"]
@@ -213,7 +213,7 @@ def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
         }
     try:
         status = scan_status(path)
-        with closing(open_scan(path, require_audit=False)) as con:
+        with closing(open_scan_mode(path, require_audit=False, light=True)[0]) as con:
             sitemap_rows = con.execute(
                 "SELECT completeness,COUNT(*) FROM context_items "
                 "WHERE kind='sitemap_fetch_summary' GROUP BY completeness"
@@ -223,6 +223,7 @@ def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
 
     evidence = {
         "state": "available",
+        "validation": status["validation"],
         "frontier": status["frontier"],
         "committed_page_outcomes": status["committed_page_outcomes"],
         "sitemaps": {"fetch_summaries": {key: value for key, value in sitemap_rows}},
@@ -231,7 +232,7 @@ def _read_scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
         from seohead.storage.audit_v2 import AuditV2Reader, audit_v2_path
 
         if audit_v2_path(path).exists():
-            with AuditV2Reader(path) as reader:
+            with AuditV2Reader(path, light_binding=True) as reader:
                 total = reader.count("/issues")
                 severity = {
                     key: count
