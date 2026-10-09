@@ -1017,3 +1017,19 @@ def test_without_declared_segments_no_segments_summary_is_reported(monkeypatch, 
     out = handlers.crawl_site(url="https://example.com/", out_dir=str(tmp_path))
 
     assert out["segments"] == {}
+
+
+def test_crawl_site_result_reports_the_rate_and_warns_above_two(monkeypatch, tmp_path):
+    monkeypatch.setattr(spider_mod, "crawl_site", lambda *a, **k: SpiderResult())
+
+    fast = handlers.crawl_site(
+        url="https://example.com/",
+        out_dir=str(tmp_path),
+        overrides={"speed.min_delay_seconds": 0.25},
+    )
+    assert fast["effective_max_requests_per_second"] == pytest.approx(4.0)
+    assert fast["warnings"] and "above 2 req/s" in fast["warnings"][0]
+
+    polite = handlers.crawl_site(url="https://example.com/", out_dir=str(tmp_path))
+    assert polite["effective_max_requests_per_second"] == pytest.approx(2.0)
+    assert polite["warnings"] == []
