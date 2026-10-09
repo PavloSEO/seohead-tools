@@ -9,7 +9,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QLineEdit, QPushButton
 
 from seohead_desktop.app import MainWindow, load_theme
-from seohead_desktop.ui.presentation import run_projection, value_text
+from seohead_desktop.ui.presentation import run_projection, theme_tokens, value_text
 from tests.test_crawl_configuration import descriptor
 
 
@@ -121,7 +121,7 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(self.window.navigation.width(), 64)
         self.window.set_reduced_motion(True)
         self.window.toggle_navigation()
-        self.assertEqual(self.window.navigation.width(), 176)
+        self.assertEqual(self.window.navigation.width(), theme_tokens()["layout"]["navigation_width"])
         self.window.restore_panels()
         self.app.processEvents()
         handle = self.window.horizontal.handle(1)

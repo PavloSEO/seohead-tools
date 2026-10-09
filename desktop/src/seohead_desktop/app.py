@@ -7,7 +7,6 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from string import Template
 
 from PyQt5.QtCore import (
     QEasingCurve,
@@ -32,6 +31,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from . import theming
 from .agent import AgentMixin
 from .chrome import ChromeMixin
 from .commands import CommandsMixin
@@ -68,16 +68,17 @@ from .view_state import ViewStateMixin
 from .workspace_mixin import WorkspaceMixin
 
 
-def load_theme(app):
+def load_theme(app, theme=None):
+    """Apply fonts, icon and the generated QSS of one design-v2 theme (default: the active one)."""
+    if theme:
+        theming.set_active_theme(theme)
     tokens = theme_tokens()
     app_icon = ROOT / "assets/app/seohead.svg"
     if app_icon.is_file():
         app.setWindowIcon(QIcon(str(app_icon)))
-    font = ROOT / "assets/fonts/Roboto.ttf"
-    if font.exists():
+    for font in sorted((ROOT / "assets/fonts").glob("*.ttf")):
         QFontDatabase.addApplicationFont(str(font))
-    values = {**tokens["colors"], **{key: value for key, value in tokens.items() if isinstance(value, (str, int))}, "icon_root": (ROOT / "assets/icons").as_posix()}
-    app.setStyleSheet(Template((ROOT / "theme/theme.qss").read_text()).substitute(values))
+    app.setStyleSheet(theming.stylesheet())
     install_popup_style(app, tokens["radius_popup"])
     return tokens
 

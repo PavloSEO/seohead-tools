@@ -1,11 +1,8 @@
 """Small, bounded display helpers; all values remain owned by the core."""
 
-import json
 from collections.abc import Mapping
 from datetime import datetime
-from functools import lru_cache
 from itertools import islice
-from pathlib import Path
 
 from PyQt5.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPalette, QPen
@@ -22,10 +19,12 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .. import theming
 
-@lru_cache(maxsize=1)
+
 def theme_tokens():
-    return json.loads((Path(__file__).parents[1] / "theme/tokens.json").read_text())
+    """Pre-v2 token shape filled from the active v2 theme (see seohead_desktop.theming)."""
+    return theming.legacy_tokens(theming.active_theme())
 
 
 class SwitchCheckBox(QCheckBox):
