@@ -2820,6 +2820,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_structured_blocks(
+        input_path: str, url: str, representation: str = "static"
+    ) -> dict[str, Any]:
+        """Describe one retained page's JSON-LD blocks: line, state, graph findings and source JSON, offline."""
+        return _checked(
+            handlers.scan_structured_blocks(
+                input_path=input_path, url=url, representation=representation
+            )
+        )
+
     @mcp.tool(annotations=rewrite_files, structured_output=True)
     def seo_marketing_inventory(
         documents: list[dict[str, Any]],

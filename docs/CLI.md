@@ -65,6 +65,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-content-search-page` | Read up to 100 indexed derived content-search records without rereading the scan. | offline, read-only |
 | `scan-extract` | Run bounded data-only extraction rules on retained complete bodies, without network or writes. | offline, read-only |
 | `scan-fragment-links` | Evaluate every retained fragment anchor offline and page the results. | offline, read-only |
+| `scan-structured-blocks` | Describe one retained URL's JSON-LD blocks offline: line, state, graph findings and source JSON. | offline, read-only |
 | `scan-body-diff` | Compare compatible retained bodies offline; a change is not an SEO verdict. | offline, read-only |
 | `scan-reanalyze` | Reparse retained HTML/DOM and rerun existing checks without network. | writes |
 | `scan-export` | Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML. | writes |

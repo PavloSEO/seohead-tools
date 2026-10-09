@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 170 callable tools,
+The current registry has 162 commands and 171 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -48,7 +48,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` ·
 `remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
 `robots-check` · `scan-body-diff` · `scan-content-search` · `scan-content-search-page` · `scan-evidence` ·
-`scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
+`scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` · `scan-structured-blocks` ·
 `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
 `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
 `scan-url-query` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
@@ -407,6 +407,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-content-search` | Searches all retained complete textual documents offline for a literal string, including HEAD, raw HTML, body text, or CSS-selected markup. Static/rendered coverage is explicit: unavailable bodies stay unknown, never absent. GTM/GA4/analytics tags are useful audit inputs; a tag's presence does not prove it fired. | writes a new indexed local result package |
 | `scan-content-search-page` | Reads at most 100 rows of that derived package using validated offsets and integrity checks, with unchanged global coverage counters. This operation never reopens or fetches the site. | — |
 | `marketing-inventory` | Correlates CTA and form/iframe fields per supplied DOM occurrence. It never fetches, submits forms, or inspects iframe contents; an explicit new output directory writes local JSON and formula-safe CSV. | optional local artifact write |
+| `scan-structured-blocks` | Describes every live JSON-LD block of one retained complete body for an exact logical URL: source line, state (`valid` / `errors` / `warnings` / `parse_error`), types, flattened properties, bounded source JSON, and bundled Schema.org graph findings. Reads only the stored body; never fetches or mutates the artifact. | — |
 | `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
 | `scan-requeue` | Requeues a restricted saved URL/page selection only after creating a mandatory verified backup. | writes artifact and backup |
 | `scan-import-urls` | Imports an explicit local URL list into a saved scan only after creating a mandatory verified backup. | writes artifact and backup |
@@ -764,7 +765,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (161 + 5 + 4):
+`seo_semantics_*` tools (162 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio
