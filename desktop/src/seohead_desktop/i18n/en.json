@@ -1536,5 +1536,6 @@
  "Слишком глубокий DOM": "DOM too deep",
  "Слишком много узлов DOM": "Too many DOM nodes",
  "ответ цели не сохранён в скане": "target response not stored in the scan",
- "Отбор страниц по коду ответа прямо в поиске": "Filtering pages by response code inside the search"
+ "Отбор страниц по коду ответа прямо в поиске": "Filtering pages by response code inside the search",
+ "Проверьте запрос, область поиска и селектор: результат поиска не получен.": "Check the query, the search area and the selector: no search result was obtained."
 }
