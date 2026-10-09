@@ -625,8 +625,8 @@ def test_remediation_report_writes_deterministic_review_files_without_mutating_l
 
 
 def test_retained_verification_artifact_records_pending_case_outcome_atomically(tmp_path):
-    from seohead.servers.handlers import _load_audit
-    from seohead.verification import source_identity
+    from seohead.core.verification import source_identity
+    from seohead.mcp.handlers import _load_audit
 
     ledger = _ledger(tmp_path)
     scan = _scan(
@@ -700,8 +700,8 @@ def test_retained_verification_artifact_records_pending_case_outcome_atomically(
 
 def test_verification_refuses_same_uuid_when_audit_or_policy_differs(tmp_path):
     """Scan UUID is provenance, never authority to close an older ledger case."""
-    from seohead.servers.handlers import _load_audit
-    from seohead.verification import source_identity
+    from seohead.core.verification import source_identity
+    from seohead.mcp.handlers import _load_audit
 
     ledger = _ledger(tmp_path)
     scan = _scan(
@@ -1218,7 +1218,7 @@ def test_audit_v2_ingest_streams_large_issue_population_without_legacy_materiali
             },
         )
         scan.finish_without_audit("synthetic after audit.v2")
-    from seohead.servers.handlers import remediation_recheck
+    from seohead.mcp.handlers import remediation_recheck
 
     rechecked = remediation_recheck(
         ledger=str(ledger),

@@ -154,7 +154,7 @@ _STAT_KEYS = ("hits", "revalidations", "stores", "bypassed", "invalidated")
 def resolve_dir() -> Path | None:
     """Where cache entries live, or ``None`` when disabled by environment.
 
-    Mirrors ``seohead.runlog.log_path``: a well-known default, overridable with
+    Mirrors ``seohead.core.runlog.log_path``: a well-known default, overridable with
     ``SEOHEAD_HTTP_CACHE_DIR``, set to ``off``/``0``/``none``/``false`` to disable outright.
     """
     override = os.environ.get("SEOHEAD_HTTP_CACHE_DIR")

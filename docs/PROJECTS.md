@@ -323,12 +323,12 @@ seohead project checklist-init --directory ./example-project \
   --input '{"plan":{"reviewer":"Lead auditor","population":{"kind":"complete_set","size":null,"urls":["https://example.test/"],"name":null,"source":"Agreed sitemap export","reason":null,"templates":null}}}'
 ```
 
-[`examples/project-skeleton`](../examples/project-skeleton) is shipped with that
+[`docs/examples/project-skeleton`](examples/project-skeleton) is shipped with that
 step already applied, so its committed `coverage.json` carries one definition per
 catalogue item and its status reports counts instead of `not_initialized`:
 
 ```bash
-seohead project status --directory examples/project-skeleton
+seohead project status --directory docs/examples/project-skeleton
 ```
 
 Every shipped item is `not_run` and carries no execution record: the example states
@@ -410,7 +410,7 @@ original JSON audit remains unchanged, and `--out` still controls the destinatio
 
 ### Definitions, evidence, and reusable templates
 
-The [synthetic ecommerce template](../examples/ecommerce-checklist.json) is a
+The [synthetic ecommerce template](examples/ecommerce-checklist.json) is a
 reusable data-only input for the `template` argument of checklist initialization.
 Pass its parsed object through CLI `--input` or the MCP `template` argument; a JSON
 filename is not an inline JSON argument. Replace its synthetic site and sample

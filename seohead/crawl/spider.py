@@ -31,6 +31,8 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
 
+from seohead.checks.robots import is_allowed, match_path, parse_robots, politeness_delay
+from seohead.core.models import ParsedRobots
 from seohead.crawl import state as crawl_state
 from seohead.crawl.cache import ResponseCache
 from seohead.crawl.collect import (
@@ -47,9 +49,7 @@ from seohead.crawl.settings import (
     resolve_credential_headers,
 )
 from seohead.crawl.throttle import MAX_DELAY_S, DispatchGate, Throttle
-from seohead.models import ParsedRobots
 from seohead.recon.net import UA, http_client, normalize_url, registrable_domain
-from seohead.tools.robots import is_allowed, match_path, parse_robots, politeness_delay
 
 _MEDIA_TYPE_TOKEN = re.compile(r"[a-z0-9!#$%&'+\-.^_`|~]+\Z")
 _MEDIA_TYPE_FILTER_REASONS = frozenset(
@@ -310,7 +310,7 @@ def _write_decision(handle, entry: dict[str, Any]) -> None:
     """
     if handle is None:
         return
-    from seohead import runlog
+    from seohead.core import runlog
 
     handle.write(json.dumps(runlog.safe_arguments(entry), ensure_ascii=False) + "\n")
     handle.flush()

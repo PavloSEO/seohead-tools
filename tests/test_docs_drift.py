@@ -9,10 +9,10 @@ import tokenize
 
 from scripts.build_changelog import fragment_paths
 from seohead.cli import COMMANDS, DOCUMENTED_CLI_ENTRYPOINTS, URL_COMMANDS
-from seohead.provider_matrix import render as render_provider_matrix
-from seohead.servers.handlers import HANDLERS
-from seohead.servers.tool_reference import load_seo_tools, load_sf_tools
-from seohead.servers.tool_reference import render as render_tool_reference
+from seohead.core.provider_matrix import render as render_provider_matrix
+from seohead.mcp.handlers import HANDLERS
+from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools
+from seohead.mcp.tool_reference import render as render_tool_reference
 from seohead.sf.core.checks_reference import render as render_checks_reference
 from seohead.sf.core.registry import CHECKS
 
@@ -27,7 +27,12 @@ SKILL_SUPPORTING_MARKDOWN = sorted(
 PACKAGED_SKILLS = sorted((ROOT / "seohead" / "skills").glob("*/SKILL.md"))
 # Every level: docs/scenarios/ is part of the public contract too, so the English-only
 # gate and the count checks apply to it like anything else under docs/.
-DOCS = sorted((ROOT / "docs").glob("**/*.md"))
+# docs/examples/ holds generated sample output and fixtures, not prose documentation.
+DOCS = sorted(
+    path
+    for path in (ROOT / "docs").glob("**/*.md")
+    if path.relative_to(ROOT / "docs").parts[0] != "examples"
+)
 # One file per change, folded into CHANGELOG.md at release time (#638). A fragment is a
 # changelog entry that has not been assembled yet, so every gate below that reads the changelog
 # has to read these too -- otherwise moving entries out of CHANGELOG.md would quietly move them
@@ -40,10 +45,10 @@ PUBLIC_MARKDOWN = [
     *CHANGELOG_FRAGMENTS,
     ROOT / "CODE_OF_CONDUCT.md",
     ROOT / "CONTRIBUTING.md",
-    ROOT / "PROVENANCE.md",
+    ROOT / "docs" / "legal" / "PROVENANCE.md",
     ROOT / "SECURITY.md",
     ROOT / "THIRD_PARTY_NOTICES.md",
-    ROOT / "TRADEMARKS.md",
+    ROOT / "docs" / "legal" / "TRADEMARKS.md",
     *TECHNICAL_SKILLS,
     *SKILL_SUPPORTING_MARKDOWN,
     *PACKAGED_SKILLS,
@@ -75,7 +80,7 @@ def _records_a_moment_in_time(path: pathlib.Path) -> bool:
 
 
 def _sf_tool_names() -> set[str]:
-    source = (ROOT / "seohead" / "servers" / "sf_mcp.py").read_text(encoding="utf-8")
+    source = (ROOT / "seohead" / "mcp" / "sf_mcp.py").read_text(encoding="utf-8")
     return set(re.findall(r"def (sf_[a-z0-9_]+)\(", source))
 
 
@@ -194,7 +199,7 @@ def test_skills_map_command_coverage_is_current():
 
 
 def test_documented_product_counts_match_the_registries():
-    provenance = (ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
+    provenance = (ROOT / "docs" / "legal" / "PROVENANCE.md").read_text(encoding="utf-8")
     assert len(COMMANDS) == len(HANDLERS)
     assert len(_sf_tool_names()) == 5
     assert CHECKS

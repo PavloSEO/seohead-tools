@@ -8,8 +8,8 @@ import pytest
 
 pytest.importorskip("playwright.sync_api")
 
+from seohead.checks.render import render_document
 from seohead.crawl import settings
-from seohead.tools.render import render_document
 
 
 def test_real_browser_records_spa_and_script_navigation(monkeypatch):
@@ -125,8 +125,8 @@ def navigation_origin(monkeypatch):
 
 
 def test_real_browser_distinguishes_http_history_fragment_script(navigation_origin):
-    from seohead.servers.handlers import HANDLERS
-    from seohead.tools.navigation import validate_navigation
+    from seohead.checks.navigation import validate_navigation
+    from seohead.mcp.handlers import HANDLERS
 
     result = HANDLERS["render_check"](url=navigation_origin + "/redirect")
     assert result["ok"], result
@@ -148,7 +148,7 @@ def test_real_browser_distinguishes_http_history_fragment_script(navigation_orig
 
 
 def test_real_browser_scripted_anchor_does_not_claim_human_click(navigation_origin):
-    from seohead.tools.render import render_check
+    from seohead.checks.render import render_check
 
     result = render_check(navigation_origin + "/anchor", settle_ms=200)
     assert result["ok"], result
@@ -157,7 +157,7 @@ def test_real_browser_scripted_anchor_does_not_claim_human_click(navigation_orig
 
 
 def test_real_browser_loop_preserves_explicit_omissions(navigation_origin):
-    from seohead.tools.render import render_check
+    from seohead.checks.render import render_check
 
     result = render_check(navigation_origin + "/loop", settle_ms=200)
     assert result["ok"], result
@@ -169,7 +169,7 @@ def test_real_browser_loop_preserves_explicit_omissions(navigation_origin):
 
 
 def test_real_browser_blocked_navigation_keeps_partial_evidence(navigation_origin):
-    from seohead.tools.render import render_check
+    from seohead.checks.render import render_check
 
     result = render_check(navigation_origin + "/blocked", settle_ms=200)
     assert not result["ok"], result
@@ -183,8 +183,8 @@ def test_real_navigation_survives_offline_report_export_and_reanalysis(
     import hashlib
     import json
 
-    from seohead.servers.navigation_handlers import scan_navigation
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.navigation_handlers import scan_navigation
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
     from seohead.storage.native_scan import NativeScan
     from tests.test_native_capture import _claim, _event
     from tests.test_native_render_atomic import _rendered_record
@@ -224,7 +224,7 @@ def test_real_navigation_survives_offline_report_export_and_reanalysis(
     def no_network(*args, **kwargs):
         raise AssertionError("offline reanalysis must not navigate or fetch")
 
-    monkeypatch.setattr("seohead.tools.render.render_document", no_network)
+    monkeypatch.setattr("seohead.checks.render.render_document", no_network)
     monkeypatch.setattr("seohead.recon.net.http_client", no_network)
     derived = tmp_path / "reanalysis.seohead"
     result = reanalyze_scan(str(path), str(derived), producer_build="b" * 40)
@@ -244,7 +244,7 @@ def test_real_remote_navigation_keeps_pinned_policy_without_local_fallback(
 
     import playwright
 
-    from seohead.tools.render import RenderCancelled
+    from seohead.checks.render import RenderCancelled
 
     chrome = os.environ.get("SEOHEAD_CHROME")
     if chrome is None:
@@ -327,7 +327,7 @@ def test_real_remote_navigation_keeps_pinned_policy_without_local_fallback(
 def test_public_native_js_crawl_reaches_browser_and_retains_real_forms(
     navigation_origin, tmp_path, monkeypatch
 ):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.sf.core.models import AuditResult
     from seohead.storage import open_scan
     from seohead.storage.audit_v2 import AuditV2Reader

@@ -763,9 +763,9 @@ def test_the_crawl_passes_its_own_user_agent_to_the_rendered_fetch(monkeypatch, 
     would be the shape this repository keeps finding (#128, #154, #165): a correct
     module nothing is wired to. This asserts the wiring, not the renderer.
     """
+    from seohead.checks import render as render_tool
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers import handlers
-    from seohead.tools import render as render_tool
+    from seohead.mcp import handlers
 
     seen: dict = {}
 
@@ -798,9 +798,9 @@ def test_a_probe_that_reached_no_verdict_leaves_its_pattern_unprobed(monkeypatch
     that was probed and genuinely needs no rendering. It routes through #626's
     unprobed channel instead of acquiring a verdict it does not have.
     """
+    from seohead.checks import render as render_tool
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers import handlers
-    from seohead.tools import render as render_tool
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(
         render_tool,
@@ -829,9 +829,9 @@ def test_a_probe_that_reached_no_verdict_leaves_its_pattern_unprobed(monkeypatch
 def test_a_probe_that_reached_a_negative_verdict_still_counts_as_probed(monkeypatch):
     """The other direction: a run that reached its milestone and found no
     JavaScript dependence has measured the pattern, and must keep saying so."""
+    from seohead.checks import render as render_tool
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers import handlers
-    from seohead.tools import render as render_tool
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(
         render_tool,
@@ -1094,9 +1094,9 @@ def test_the_probe_uses_the_same_engine_viewport_and_emulation_as_the_render(
     """A pattern must not be escalated by a browser configured differently
     from the one that produces its evidence: #744's engine, viewport pair and
     emulation flags all reach the probe the handler binds."""
+    from seohead.checks import render as render_tool
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers import handlers
-    from seohead.tools import render as render_tool
+    from seohead.mcp import handlers
 
     probed_with: dict = {}
 

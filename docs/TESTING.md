@@ -81,7 +81,7 @@ Grouped by area (file names under `tests/`):
   `test_docs_commands_execute.py` goes one step further: it extracts every
   `seohead ...` invocation actually shown in README/docs/skills/examples
   (`scripts/doc_commands.py`) and runs each one for real against a loopback
-  fixture site and copies of `examples/` — a renamed or removed flag fails
+  fixture site and copies of `docs/examples/` — a renamed or removed flag fails
   here even if no other test happens to exercise it. The handful that need
   real infrastructure (RDAP/DNS, a licensed SF binary, a paid provider
   credential, the never-returning `mcp` server) are at least parsed against
@@ -94,8 +94,8 @@ Grouped by area (file names under `tests/`):
 From `.github/workflows/ci.yml` (all run on every push/PR to `main`):
 
 1. **Layer boundary**: a grep that fails if `seohead/sf|tools|recon|data_sources`
-   imports `seohead.servers` or `seohead.cli`.
-2. **Audit on examples**: `seohead sf run --exports-dir examples/exports`
+   imports `seohead.mcp` or `seohead.cli`.
+2. **Audit on examples**: `seohead sf run --exports-dir docs/examples/exports`
    must produce issues — the sample crawl must keep finding its planted
    problems.
 3. **Faces come up**: `seohead --version`, `sf-analyzer --version`, and the
@@ -136,7 +136,7 @@ before extending that area.
 3. **DataForSEO sandbox integration test** (marked network, skipped by
    default): one real sandbox call per tool to verify shapes against the
    fake-based tests once an account exists.
-4. **`report-build` over `examples/reports/full.json` in every format**:
+4. **`report-build` over `docs/examples/reports/full.json` in every format**:
    the generators compute nothing, and a test should pin that property
    (same numbers in xlsx/docx/csv as in the source JSON).
 5. **Spend-journal ordering**: an explicit test that `spend.record()` is called before response

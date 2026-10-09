@@ -8,6 +8,7 @@ from multiprocessing import get_context
 
 import pytest
 
+from seohead.mcp.mcp_server import build_server
 from seohead.projects.coverage import coverage_status, initialize_coverage, update_item
 from seohead.projects.inbox import (
     acknowledge,
@@ -21,7 +22,6 @@ from seohead.projects.inbox import (
 )
 from seohead.projects.observer import finding_detail, findings_page, observe
 from seohead.projects.workspace import create_project
-from seohead.servers.mcp_server import build_server
 from tests.test_scan_history import _finished
 
 
@@ -61,7 +61,7 @@ def _bound_mcp_crawl(directory: str, consumer: str, allowlist: str, queue) -> No
     """Spawn target: a fresh MCP host binds crawl's project workspace too."""
     os.environ["SEOHEAD_MCP_CONSUMER_ID"] = consumer
     os.environ["SEOHEAD_MCP_PROJECT_ALLOWLIST"] = allowlist
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     handlers.crawl_site = _synthetic_crawl
     server = build_server()
@@ -265,7 +265,7 @@ def test_project_bound_crawl_gets_host_notice_without_auto_acknowledgment(tmp_pa
 
     monkeypatch.setenv("SEOHEAD_MCP_CONSUMER_ID", "agent/crawl")
     monkeypatch.setenv("SEOHEAD_MCP_PROJECT_ALLOWLIST", str(first))
-    monkeypatch.setattr("seohead.servers.handlers.crawl_site", _synthetic_crawl)
+    monkeypatch.setattr("seohead.mcp.handlers.crawl_site", _synthetic_crawl)
     crawl = build_server()._tool_manager.get_tool("seo_crawl_site")
 
     bound = crawl.fn(project=str(first))

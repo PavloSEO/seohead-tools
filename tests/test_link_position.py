@@ -2,9 +2,9 @@
 
 from bs4 import BeautifulSoup
 
-from seohead.tools import link_position
-from seohead.tools.content_area import find_content_root
-from seohead.tools.parser import parse_html
+from seohead.checks import link_position
+from seohead.checks.content_area import find_content_root
+from seohead.checks.parser import parse_html
 
 _HTML = """<html><body>
 <nav><a href="/nav1">Nav</a></nav>

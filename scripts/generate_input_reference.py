@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from seohead.input_contracts import render_markdown  # noqa: E402
+from seohead.core.input_contracts import render_markdown  # noqa: E402
 
 TARGET = ROOT / "docs" / "INPUTS.md"
 

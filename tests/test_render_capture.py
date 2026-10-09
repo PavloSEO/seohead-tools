@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from seohead.checks.render import _bounded_dom_script, _safe_policy_facts
 from seohead.crawl.render_escalation import escalate
-from seohead.tools.render import _bounded_dom_script, _safe_policy_facts
 
 
 @dataclass

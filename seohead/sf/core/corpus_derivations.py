@@ -15,9 +15,9 @@ from collections import Counter
 from typing import Any
 from urllib.parse import urlsplit
 
+from seohead.checks.hreflang import code_error
+from seohead.checks.parser import robots_directives
 from seohead.sf.core.normalize import norm_url
-from seohead.tools.hreflang import code_error
-from seohead.tools.parser import robots_directives
 
 
 def _page_rows(con: Any):

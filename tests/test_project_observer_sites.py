@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from seohead.mcp.mcp_server import build_server
 from seohead.projects.observer import observe
 from seohead.projects.runtime import prepare_project
 from seohead.projects.workspace import create_project
-from seohead.servers.mcp_server import build_server
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_history import _finished
 from tests.test_scan_native import _metadata, _record, _runtime

@@ -49,7 +49,7 @@ class FixtureLimits:
     """Keep the physical-full-disk test outside the public submission contract."""
 
     def __init__(self, allowed_private_hosts: frozenset[str]) -> None:
-        from seohead.remote_api.backend import RemoteProjectLimits
+        from seohead.integrations.remote_api.backend import RemoteProjectLimits
 
         self._limits = RemoteProjectLimits(allowed_private_hosts=allowed_private_hosts)
 
@@ -105,8 +105,8 @@ def fixture_dns(address: str) -> Iterator[None]:
 
 
 def backend(state: Path, build: str, *, observe_errors: bool = False):
-    import seohead.remote_api.backend as implementation
-    from seohead.remote_api.backend import SQLiteJobBackend
+    import seohead.integrations.remote_api.backend as implementation
+    from seohead.integrations.remote_api.backend import SQLiteJobBackend
 
     if not Path(implementation.__file__).resolve().is_relative_to(ROOT):
         raise RuntimeError("worker imported a different checkout")
@@ -115,7 +115,7 @@ def backend(state: Path, build: str, *, observe_errors: bool = False):
         raise ValueError("worker root is not bound to this disposable build")
 
     def native(*args, **kwargs):
-        from seohead.servers.scan_handlers import crawl_site_scan
+        from seohead.mcp.scan_handlers import crawl_site_scan
 
         try:
             return crawl_site_scan(*args, **kwargs)
@@ -381,8 +381,8 @@ def execute(evidence: Path, metrics: dict[str, Any]) -> None:
     require_linux()
     if os.geteuid() == 0:
         raise RuntimeError("run the fixture as the non-root CI user with passwordless sudo")
-    from seohead.job_contracts import Principal
-    from seohead.remote_api.app import TokenAuthenticator, create_app
+    from seohead.core.job_contracts import Principal
+    from seohead.integrations.remote_api.app import TokenAuthenticator, create_app
 
     build = validate_revision(run(["git", "rev-parse", "HEAD"], cwd=ROOT))
     if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT):
@@ -644,8 +644,8 @@ def verify_queue_restore(queue, backup: Path, restored: Path, authenticator, tok
     """Restore this quiescent synthetic queue and verify the real API without a listener."""
     from fastapi.testclient import TestClient
 
-    from seohead.remote_api.app import create_app
-    from seohead.remote_api.backend import SQLiteJobBackend
+    from seohead.integrations.remote_api.app import create_app
+    from seohead.integrations.remote_api.backend import SQLiteJobBackend
 
     with queue._db() as con:
         jobs = con.execute("SELECT * FROM jobs ORDER BY created_at,rowid LIMIT 101").fetchall()

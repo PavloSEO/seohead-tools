@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from seohead.checks import robots
 from seohead.crawl.spider import crawl_site
-from seohead.tools import robots
 
 
 class Response:

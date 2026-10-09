@@ -18,11 +18,11 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
+from seohead.checks.parser import robots_directives
+from seohead.checks.sitemap import normalize_url
 from seohead.recon.net import normalize_url as normalize_start_url
 from seohead.storage import ScanError, open_scan
 from seohead.storage.analysis_graph import selected_links_cte
-from seohead.tools.parser import robots_directives
-from seohead.tools.sitemap import normalize_url
 
 _BUCKETS = (
     "in_sitemap_and_linked",

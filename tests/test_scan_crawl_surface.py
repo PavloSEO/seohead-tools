@@ -5,7 +5,7 @@ import io
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_cli_maps_scan_file_and_producer_build(monkeypatch, tmp_path, capsys):
@@ -39,7 +39,7 @@ def test_cli_maps_scan_file_and_producer_build(monkeypatch, tmp_path, capsys):
 
 
 def test_mcp_maps_the_same_scan_arguments(monkeypatch, tmp_path):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     captured = {}
 

@@ -18,9 +18,9 @@ from seohead.data_sources.evidence_import import normalize_inline
 from seohead.data_sources.evidence_join import evidence_compatibility, join_evidence
 from seohead.data_sources.evidence_join_store import open_store
 from seohead.data_sources.evidence_join_store import write as write_join_store
+from seohead.mcp import handlers
 from seohead.reports import bi as bi_report
 from seohead.reports.bi import BIExportError, export_bi
-from seohead.servers import handlers
 from seohead.storage import open_scan, read_audit
 
 
@@ -472,7 +472,7 @@ def test_cli_reaches_durable_join_store_for_a_large_scan_path(tmp_path, monkeypa
 
 def test_mcp_reaches_durable_join_store_for_a_large_scan_path(tmp_path, monkeypatch):
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     scan_path = _crawl_with_audit(tmp_path, monkeypatch)
     monkeypatch.setattr(handlers, "LARGE_EVIDENCE_JOIN_SCAN_PAGES", 1)
@@ -649,7 +649,7 @@ def test_cli_and_mcp_share_the_same_offline_package_writer(tmp_path, capsys):
 
     tool = next(
         item
-        for item in __import__("seohead.servers.mcp_server", fromlist=["build_server"])
+        for item in __import__("seohead.mcp.mcp_server", fromlist=["build_server"])
         .build_server()
         ._tool_manager.list_tools()
         if item.name == "seo_bi_export"
@@ -925,7 +925,7 @@ def test_bi_export_cli_reaches_the_split_xlsx_consumer(tmp_path, capsys):
             [
                 "bi-export",
                 "--audit",
-                "examples/audit.json",
+                "docs/examples/audit.json",
                 "--out-dir",
                 str(package),
                 "--xlsx-out",

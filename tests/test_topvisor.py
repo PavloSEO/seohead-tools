@@ -5,7 +5,7 @@ import urllib.error
 import pytest
 
 from seohead.data_sources import topvisor
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def _credentials(monkeypatch, token="test-secret", user_id="123"):

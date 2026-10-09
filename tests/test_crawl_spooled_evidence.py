@@ -9,7 +9,7 @@ import pytest
 
 import seohead.crawl.spider as spider
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 class Response:
@@ -202,7 +202,7 @@ def test_spooled_resume_migrates_v4_inline_forms(tmp_path):
 def test_large_legacy_crawl_retains_evidence_with_named_unavailable_audit(
     tmp_path, monkeypatch, capsys
 ):
-    from seohead.servers import scan_handlers
+    from seohead.mcp import scan_handlers
 
     monkeypatch.setattr(scan_handlers, "MAX_AUDIT_PAGES", 2)
     original = spider.crawl_site

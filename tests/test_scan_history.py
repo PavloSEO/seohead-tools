@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from seohead import __version__, filesystem
+from seohead import __version__
+from seohead.core import filesystem
 from seohead.crawl.capture import CaptureEvent
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.settings import fingerprint, load
@@ -85,8 +86,8 @@ def _event(url: str, body: bytes) -> CaptureEvent:
 
 def _save_audit(scan: NativeScan) -> None:
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
-    from seohead.servers.handlers import _audit_crawl_result
-    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.mcp.handlers import _audit_crawl_result
+    from seohead.mcp.scan_handlers import _rebuild_page_result
 
     settings = _metadata()["config"]
     result = _rebuild_page_result(scan)

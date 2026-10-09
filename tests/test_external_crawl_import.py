@@ -240,7 +240,7 @@ def test_input_files_remain_byte_identical_after_import():
 
 def test_handler_cli_and_mcp_contract_share_the_same_core(tmp_path, capsys):
     from seohead import cli
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     manifest = FIXTURES / "full" / "manifest.json"
     direct = handlers.crawl_import(str(manifest))
@@ -283,7 +283,7 @@ def test_mcp_tool_uses_the_shared_handler_and_declares_read_only():
     pytest.importorskip("mcp")
     import asyncio
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tool = next(
         item

@@ -338,7 +338,7 @@ def test_default_user_agent_falls_back_to_the_toolkits_identifiable_default(monk
 
 def test_handler_threads_every_newly_wired_setting_into_the_spider(monkeypatch, tmp_path):
     import seohead.crawl.spider as spider_mod
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 
@@ -382,7 +382,7 @@ def test_handler_threads_every_newly_wired_setting_into_the_spider(monkeypatch, 
 
 def test_handler_threads_every_newly_wired_setting_into_collect_urls(monkeypatch, tmp_path):
     import seohead.crawl.collect as collect_mod
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 
@@ -420,10 +420,10 @@ def test_handler_threads_every_newly_wired_setting_into_collect_urls(monkeypatch
 def test_sitemaps_auto_discover_configured_seeds_without_an_explicit_sitemap_arg(
     tmp_path, monkeypatch
 ):
+    import seohead.checks.robots as robots_tool
+    import seohead.checks.sitemap as sitemap_tool
     import seohead.crawl.spider as spider_mod
-    import seohead.tools.robots as robots_tool
-    import seohead.tools.sitemap as sitemap_tool
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(
         robots_tool,
@@ -455,7 +455,7 @@ def test_sitemaps_auto_discover_configured_seeds_without_an_explicit_sitemap_arg
 
 
 def test_default_sitemaps_auto_discover_does_not_seed(monkeypatch, tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr("seohead.crawl.spider.crawl_site", lambda *a, **kw: SpiderResult())
     out = handlers.crawl_site(url="https://example.com/", out_dir=str(tmp_path / "legacy"))
@@ -679,7 +679,7 @@ def test_handler_threads_the_remaining_settings_into_the_spider(monkeypatch, tmp
     discovery.redirects.crawl, link_attributes.capture, http.headers and speed.adaptive
     (#91, #125)."""
     import seohead.crawl.spider as spider_mod
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 
@@ -719,7 +719,7 @@ def test_handler_threads_the_remaining_settings_into_the_spider(monkeypatch, tmp
 
 def test_handler_threads_headers_and_adaptive_into_collect_urls(monkeypatch, tmp_path):
     import seohead.crawl.collect as collect_mod
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 
@@ -752,7 +752,7 @@ def test_resolve_redirect_destination_reaches_the_list_mode_collector(monkeypatc
 
     import seohead.crawl.collect as collect_mod
     from seohead.crawl.collect import CrawlResult
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     captured: dict = {}
 

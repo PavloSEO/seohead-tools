@@ -1,6 +1,6 @@
 # Durable jobs for the optional remote scan API
 
-`seohead.remote_api.backend.SQLiteJobBackend` is the optional, self-hosted
+`seohead.integrations.remote_api.backend.SQLiteJobBackend` is the optional, self-hosted
 queue and artifact backend for the `/api/v1` contract. Constructing it creates
 a private state directory and SQLite database. It does not start a listener or
 worker. A service operator must explicitly create the ASGI app and run worker
@@ -101,7 +101,7 @@ opens a public listener nor contacts a customer site. Deployment, TLS,
 service supervision, hard CPU/RAM containment and backup/restore are separate
 from this backend and must be demonstrated in the self-hosted service profile.
 
-`seohead.bot.AuthorizedJobSubmitter` is a generic consumer for a conversation
+`seohead.integrations.bot.AuthorizedJobSubmitter` is a generic consumer for a conversation
 or notification adapter. It maps one authorized actor and an explicit project
 set to this same backend, and exposes only submit, status and cancel. It has no
 messaging SDK, account identity, delivery credentials or crawler code.

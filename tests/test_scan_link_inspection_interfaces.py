@@ -8,8 +8,8 @@ import json
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from tests.test_scan_link_context import _link_rows
 from tests.test_scan_link_context import _scan as context_scan
 from tests.test_scan_link_queries import ROOT, TARGET, A, _edge

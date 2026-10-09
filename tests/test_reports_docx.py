@@ -1,6 +1,6 @@
 """Issue #363: the client DOCX must not assert current ranking loss.
 
-The ``seohead.site-audit/1`` contract (examples/reports/README.md) carries no
+The ``seohead.site-audit/1`` contract (docs/examples/reports/README.md) carries no
 ranking measurement anywhere — severity is assigned by the aggregator rules,
 not by any tool that measured search performance. The DOCX writer used to
 print a categorical "these issues are preventing the site from ranking
@@ -17,7 +17,7 @@ from docx import Document
 
 from seohead.reports import build_report
 
-FIXTURE = Path(__file__).parent.parent / "examples" / "reports" / "full.json"
+FIXTURE = Path(__file__).parent.parent / "docs" / "examples" / "reports" / "full.json"
 
 
 def _docx_text(tmp_path) -> str:

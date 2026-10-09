@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from seohead import filesystem
+from seohead.core import filesystem
 
 from . import READ_TIMEOUT_SECONDS, ScanError, _dump, _insert, open_scan
 from .native_scan import (

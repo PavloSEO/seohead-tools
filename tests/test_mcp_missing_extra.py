@@ -50,17 +50,17 @@ def test_cli_mcp_leaves_the_real_server_untouched_when_the_sdk_is_installed(monk
     must stay silent -- no diagnostic, normal server construction, exit code 0."""
     pytest.importorskip("mcp")
     started = []
-    monkeypatch.setattr("seohead.servers.mcp_server.main", lambda: started.append(True) or 0)
+    monkeypatch.setattr("seohead.mcp.mcp_server.main", lambda: started.append(True) or 0)
     assert cli.main(["mcp"]) == 0
     assert started == [True]
 
 
 def test_the_module_s_own_main_gives_the_same_diagnostic(capsys):
-    """The module docstring advertises `python -m seohead.servers.mcp_server` as
+    """The module docstring advertises `python -m seohead.mcp.mcp_server` as
     equivalent to `seohead mcp` (its `if __name__ == "__main__"` block just calls this
     same `main()`), so both entry points must agree instead of one crashing while the
     other explains itself -- this is the single place that diagnostic is produced."""
-    from seohead.servers.mcp_server import main as mcp_main
+    from seohead.mcp.mcp_server import main as mcp_main
 
     with patch("builtins.__import__", side_effect=_block_mcp_imports):
         assert mcp_main() == 1

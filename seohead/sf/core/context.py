@@ -19,7 +19,7 @@ from typing import Any
 
 import pandas as pd
 
-from seohead.graph import GraphAccess
+from seohead.core.graph import GraphAccess
 
 from .loader import LoadedExports
 from .models import Group, Issue, Page, SkippedCheck

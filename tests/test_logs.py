@@ -5,7 +5,7 @@ from __future__ import annotations
 import socket
 from datetime import timezone
 
-from seohead.tools.logs import (
+from seohead.checks.logs import (
     GOOGLE,
     _findings,
     _section,
@@ -169,7 +169,7 @@ def test_top_paths_keep_incrementing_after_the_path_cap_fills(tmp_path, monkeypa
     still increment -- only a brand-new path is refused. The bug capped every increment
     on the cap, so a path counted before the cap filled silently stopped growing while
     the family total it should sum to kept climbing, making top_paths_by_family false."""
-    from seohead.tools import logs
+    from seohead.checks import logs
 
     monkeypatch.setattr(logs, "MAX_TRACKED_PATHS", 2)
     lines = "\n".join(
@@ -200,7 +200,7 @@ def _row(ip: str, n: int) -> str:
 def test_unique_ips_stays_exact_at_the_cap(tmp_path, monkeypatch):
     """#330 boundary control: exactly MAX_TRACKED_IPS distinct addresses is still a fully
     tracked, exact count -- it must not be flagged as truncated."""
-    from seohead.tools import logs
+    from seohead.checks import logs
 
     monkeypatch.setattr(logs, "MAX_TRACKED_IPS", 3)
     lines = "".join(_row(f"192.0.2.{i}", i) for i in range(3))
@@ -214,7 +214,7 @@ def test_unique_ips_stays_exact_at_the_cap(tmp_path, monkeypatch):
 def test_unique_ips_is_flagged_as_a_lower_bound_past_the_cap(tmp_path, monkeypatch):
     """#330: a bot with one more distinct address than the memory cap allows must report
     a visible truncation signal, not the same bare number as an exact count would use."""
-    from seohead.tools import logs
+    from seohead.checks import logs
 
     monkeypatch.setattr(logs, "MAX_TRACKED_IPS", 3)
     lines = "".join(_row(f"192.0.2.{i}", i) for i in range(4))
@@ -228,7 +228,7 @@ def test_unique_ips_is_flagged_as_a_lower_bound_past_the_cap(tmp_path, monkeypat
 def test_unique_ips_keeps_counting_repeats_after_the_ip_cap_fills(tmp_path, monkeypatch):
     """A repeat of an already-tracked address must not be mistaken for a new one once the
     cap is full -- only a brand-new address should ever be refused."""
-    from seohead.tools import logs
+    from seohead.checks import logs
 
     monkeypatch.setattr(logs, "MAX_TRACKED_IPS", 2)
     lines = "".join(
@@ -254,7 +254,7 @@ def test_max_lines_does_not_consume_the_rest_of_the_file():
     import builtins
     from unittest.mock import patch
 
-    from seohead.tools import logs
+    from seohead.checks import logs
 
     line = '192.0.2.1 - - [18/Mar/2024:00:00:01 +0000] "GET / HTTP/1.1" 200 1 "-" "Googlebot/2.1"\n'
 

@@ -61,7 +61,7 @@ def capture(
         *structured_evidence.context_items(structured, language),
     ]
     if rules_to_apply:
-        from seohead.tools.extraction_rules import evaluate
+        from seohead.checks.extraction_rules import evaluate
 
         rules = evaluate(
             html=html, parsed=parsed, rules=rules_to_apply, representation=representation

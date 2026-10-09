@@ -11,7 +11,7 @@ import pytest
 import seohead.crawl.spider as spider_mod
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.spider import LinkEdge, SpiderResult
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_out_dir_derives_a_state_path_and_a_config_fingerprint(tmp_path, monkeypatch):
@@ -38,7 +38,7 @@ def test_no_out_dir_routes_to_the_native_writer(monkeypatch, tmp_path):
         return SpiderResult()
 
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan",
+        "seohead.mcp.scan_handlers.crawl_site_scan",
         lambda url, **kwargs: captured.update(url=url, **kwargs) or {"scan": kwargs["scan_out"]},
     )
     monkeypatch.chdir(tmp_path)
@@ -278,7 +278,7 @@ def test_js_mode_escalates_only_the_pattern_that_needs_it(tmp_path, monkeypatch)
 
     monkeypatch.setattr(spider_mod, "crawl_site", fake_spider)
 
-    import seohead.tools.render as render_mod
+    import seohead.checks.render as render_mod
 
     def fake_render_check(url, **kwargs):
         return {"ok": True, "js_dependent": "/app/" in url, "empty_shell": None}
@@ -512,7 +512,7 @@ def test_pages_jsonl_is_rewritten_to_match_audit_json_after_render_escalation(
 
     monkeypatch.setattr(spider_mod, "crawl_site", fake_spider)
 
-    import seohead.tools.render as render_mod
+    import seohead.checks.render as render_mod
 
     monkeypatch.setattr(
         render_mod,

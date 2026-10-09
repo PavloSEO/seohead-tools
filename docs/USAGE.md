@@ -3,7 +3,7 @@
 Install first ([SETUP.md](SETUP.md)); below, `seohead` means the venv's
 `seohead` (`.venv/bin/seohead` with the venv not activated). Everything that
 takes `https://example.com` goes to the network; audit mode B over
-`examples/exports` is fully offline.
+`docs/examples/exports` is fully offline.
 
 ## The whole site in one command
 
@@ -158,7 +158,7 @@ seohead report-build --audit scan.sqlite --format md --out report.md
 seohead compare-crawls --before before.sqlite --after after.sqlite
 # Optional declared release mapping; never inferred from titles or page text.
 seohead compare-crawls --before before.sqlite --after after.sqlite \
-  --correspondence ./examples/url-correspondence.json
+  --correspondence ./docs/examples/url-correspondence.json
 seohead sf tasks --json scan.sqlite --out tasks
 
 # retained native evidence only: create a new derived artifact without network replay
@@ -271,7 +271,7 @@ retained body rows, and evidence revision do not.
 ## Screaming Frog crawl audit
 
 ```bash
-seohead sf run --exports-dir examples/exports --out report --tasks   # mode B: ready exports
+seohead sf run --exports-dir docs/examples/exports --out report --tasks   # mode B: ready exports
 seohead sf run --crawl https://example.com --out report --tasks         # mode A: SF CLI crawls (license)
 seohead sf tasks --json report/audit.json                            # backlog from an existing audit.json
 seohead sf doctor                                                    # environment diagnostics
@@ -315,7 +315,7 @@ Prefer an SF-owned `--auth-config` profile where possible. A literal `--auth USE
 be exposed by shell history or process inspection, so use it only in an isolated transient
 session and never paste it into logs or issue reports.
 
-A worked example lives in [`examples/`](../examples/README.md): a synthetic
+A worked example lives in [`docs/examples/`](examples/README.md): a synthetic
 crawl with deliberate problems, its `audit.json` and the derived tasks.
 
 ## Recon: what is this domain made of

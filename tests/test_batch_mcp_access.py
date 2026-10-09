@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from seohead.servers.mcp_profiles import configure_profile
-from seohead.servers.mcp_progress import MIN_INTERVAL_SECONDS, ProgressReporter, wrap_long_tools
+from seohead.mcp.mcp_profiles import configure_profile
+from seohead.mcp.mcp_progress import MIN_INTERVAL_SECONDS, ProgressReporter, wrap_long_tools
 
 
 def _server():

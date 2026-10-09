@@ -156,7 +156,7 @@ def test_mcp_serializes_a_malformed_provider_result(monkeypatch):
     pytest.importorskip("mcp")
     from mcp import types
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     monkeypatch.setenv("GSC_ACCESS_TOKEN", "synthetic")
     monkeypatch.setattr(gsc, "_default_fetcher", lambda _url: lambda _payload, _token: "{")

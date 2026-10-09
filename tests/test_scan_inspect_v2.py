@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from seohead.servers.handlers import scan_inspect
+from seohead.mcp.handlers import scan_inspect
 from seohead.storage import ScanError
 from seohead.storage.native_scan import NativeScan
 from tests.test_scan_native import _metadata, _record, _runtime

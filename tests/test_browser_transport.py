@@ -8,10 +8,10 @@ import sys
 import pytest
 
 from seohead import cli
+from seohead.checks import browser_transport, render
 from seohead.crawl import settings
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
-from seohead.tools import browser_transport, render
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from tests.test_render_check_identity import (
     _deliver_route_during_navigation,
     _install_stack,

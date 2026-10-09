@@ -65,7 +65,7 @@ def neutralize_formula(value: Any) -> Any:
     """Defuse CSV/XLSX formula injection (CWE-1236) in one cell value.
 
     A finding's text or a page's title/H1/canonical is copied verbatim from a
-    crawled site (see :func:`seohead.tools.parser.document_title`) into the
+    crawled site (see :func:`seohead.checks.parser.document_title`) into the
     XLSX and CSV reports, so the audited site — not this tool's operator —
     controls the string. Excel and Google Sheets evaluate any cell starting
     with `=`, `+`, `-`, or `@` as a formula, which turns a page title into a
@@ -523,7 +523,7 @@ def _build_audit_v2_report(
         return {"ok": False, "error": str(exc)}
     name = view.get("domain") or "site"
     if fmt == "pdf":
-        from seohead.tools.downloader import safe_segment
+        from seohead.checks.downloader import safe_segment
 
         name = safe_segment(name)
     target = pathlib.Path(path or f"audit-{name}.{fmt}")
@@ -705,7 +705,7 @@ def build_report(
 
     default_name = f"audit-{rendered.get('domain', 'site')}.{fmt}"
     if fmt == "pdf" and path is None:
-        from seohead.tools.downloader import safe_segment
+        from seohead.checks.downloader import safe_segment
 
         default_name = f"audit-{safe_segment(rendered.get('domain', 'site'))}.pdf"
     target = pathlib.Path(path or default_name)

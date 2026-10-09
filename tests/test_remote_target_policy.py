@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 
+from seohead.checks import render
 from seohead.crawl import settings
 from seohead.recon import net
 from seohead.recon.remote_policy import (
@@ -15,7 +16,6 @@ from seohead.recon.remote_policy import (
     RemoteTargetError,
     current_remote_policy,
 )
-from seohead.tools import render
 
 
 def _dns(monkeypatch, answers):
@@ -450,7 +450,7 @@ def test_checked_job_revalidates_at_dispatch(monkeypatch):
 
 
 def test_legacy_crawl_handler_uses_bound_policy_without_a_socket(monkeypatch, tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     _dns(monkeypatch, {"public.example.test": "93.184.216.34"})
     dispatched = _transport(monkeypatch)

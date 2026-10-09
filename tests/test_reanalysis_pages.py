@@ -214,7 +214,7 @@ def test_reanalysis_uses_only_retained_documents_and_preserves_raw_rendered_unio
 
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     monkeypatch.setattr(httpx.Client, "send", forbidden)
-    import seohead.tools.render as render
+    import seohead.checks.render as render
 
     monkeypatch.setattr(render, "render_document", forbidden)
     with _reader(path) as con:

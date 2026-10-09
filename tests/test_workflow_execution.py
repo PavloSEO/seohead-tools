@@ -358,7 +358,7 @@ def test_stale_checklist_dependency_requires_checklist_reconciliation(tmp_path):
 
 def test_two_agent_cli_and_mcp_handoff_persists_goal_prompt_versions_and_evidence(tmp_path):
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     project = tmp_path / "project"
     create_project(project, "https://example.test/")

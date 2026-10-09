@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from seohead import runlog
-from seohead.servers import handlers
+from seohead.core import runlog
+from seohead.mcp import handlers
 from seohead.storage import open_scan
 
 BUILD = "a" * 40
@@ -45,7 +45,7 @@ def test_url_without_storage_flags_routes_to_a_generated_native_scan(tmp_path, m
     captured = {}
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan",
+        "seohead.mcp.scan_handlers.crawl_site_scan",
         lambda url, **kwargs: captured.update(url=url, **kwargs) or {"scan": kwargs["scan_out"]},
     )
     monkeypatch.setattr(

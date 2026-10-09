@@ -58,7 +58,7 @@ Implementation notes:
   Hreflang report the existing `HREFLANG_BROKEN_TARGET` check already
   consumes — no new export requirement. The ISO 639-1/3166-1 language-code
   validator is **not reimplemented**: it imports `code_error` from
-  `seohead/tools/hreflang.py`, the module already shipped for the live,
+  `seohead/checks/hreflang.py`, the module already shipped for the live,
   single-URL `seo_hreflang_check` tool. That tool validates one page's own
   markup by live fetch; the registry checks now validate the same properties
   (code validity, self-reference, x-default, duplicate entries) across a
@@ -68,7 +68,7 @@ Implementation notes:
   `check_directives_extra` (`rules.py`), reading the same `meta_robots`/
   `x_robots` tokens as `NOARCHIVE`/`NOSNIPPET`/`NOIMAGEINDEX` already do —
   `unavailable_after`'s value survives `robots_directives()`'s tokenizer
-  intact (it is in `_VALUED_DIRECTIVES` in `seohead/tools/parser.py`), so the
+  intact (it is in `_VALUED_DIRECTIVES` in `seohead/checks/parser.py`), so the
   deindex date is captured in the issue's `details`, not just the directive's
   presence.
 - `CANONICAL_FRAGMENT` slots into `check_canonical_extra`, checking the

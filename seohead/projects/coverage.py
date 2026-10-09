@@ -710,7 +710,7 @@ def _transaction(directory: str | Path, expected_revision: int | None):
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(stage_name, root / "coverage.json")
-            from seohead.filesystem import fsync_directory
+            from seohead.core.filesystem import fsync_directory
 
             fsync_directory(root)
         finally:

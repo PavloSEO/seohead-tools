@@ -4,7 +4,7 @@ The bundled 172 KB vocabulary keeps validation fully offline. Fixtures use
 ``check_schema(html=...)`` directly, so these tests never make HTTP requests.
 """
 
-from seohead.tools import schema_org as schema
+from seohead.checks import schema_org as schema
 
 # ── JSON-LD block parsing ───────────────────────────────────────────────────
 

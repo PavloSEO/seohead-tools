@@ -12,10 +12,10 @@ from typing import ClassVar
 
 import pytest
 
+from seohead.mcp import monitor_handlers
 from seohead.projects.monitoring import collect_once, configure, local_deliver, schedule
 from seohead.projects.runtime import read_document, write_document
 from seohead.projects.workspace import create_project
-from seohead.servers import monitor_handlers
 
 
 class _Page(BaseHTTPRequestHandler):

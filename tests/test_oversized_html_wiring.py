@@ -5,7 +5,7 @@ PR #407 recorded ``PageRecord.body_unavailable`` but stopped there -- nothing
 downstream read it yet, so ``TITLE_MISSING``/``DESC_MISSING``/``H1_MISSING``/
 ``CANONICAL_MISSING`` still fired against a page nobody actually parsed. This
 exercises the exact chain a native crawl uses in production (see
-``seohead.servers.handlers.crawl_site``): collect -> ``build_evidence`` ->
+``seohead.mcp.handlers.crawl_site``): collect -> ``build_evidence`` ->
 ``AuditContext`` -> ``run_rules``. It mirrors the issue's own offline
 reproducer, updated to assert the fixed behaviour instead of the bug.
 """

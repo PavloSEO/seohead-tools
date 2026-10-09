@@ -122,7 +122,7 @@ def test_sidecar_paths_reach_the_spider_whenever_out_dir_is_set(tmp_path, monkey
     import json
 
     import seohead.crawl.spider as spider_mod
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     assert set(_SIDECAR_KWARGS) == SIDECAR, (
         "a SIDECAR field has no entry in _SIDECAR_KWARGS above -- name the keyword "

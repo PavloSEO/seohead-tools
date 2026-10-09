@@ -17,8 +17,8 @@ import pytest
 from seohead import cli
 from seohead.crawl.settings import fingerprint
 from seohead.crawl.settings import load as load_config
-from seohead.servers import handlers
-from seohead.servers.scan_handlers import resume_inputs, resume_scan
+from seohead.mcp import handlers
+from seohead.mcp.scan_handlers import resume_inputs, resume_scan
 from seohead.storage.native_scan import NativeScan
 
 BUILD = "a" * 40
@@ -76,7 +76,7 @@ def _finished(path, **metadata):
 
 def _never_crawls(monkeypatch):
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan",
+        "seohead.mcp.scan_handlers.crawl_site_scan",
         lambda *args, **kwargs: pytest.fail("a refused resume must not start a crawl"),
     )
 
@@ -199,7 +199,7 @@ def test_resume_accepts_the_same_scan_out_path_it_was_given(tmp_path, monkeypatc
     scan = _interrupted(tmp_path / "scan.sqlite")
     seen = {}
     monkeypatch.setattr(
-        "seohead.servers.scan_handlers.crawl_site_scan",
+        "seohead.mcp.scan_handlers.crawl_site_scan",
         lambda url, **kwargs: seen.update(url=url, **kwargs) or {"ok": True},
     )
 

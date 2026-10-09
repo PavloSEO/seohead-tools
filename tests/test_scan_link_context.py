@@ -7,14 +7,14 @@ import json
 
 import pytest
 
+from seohead.checks.link_context import extract_occurrences
+from seohead.checks.parser import parse_html
 from seohead.crawl.settings import load
 from seohead.crawl.spider import Scope
 from seohead.crawl.sqlite_adapter import _document_batch
 from seohead.storage import ScanError, open_scan
 from seohead.storage.link_context import context_for_link, contexts_for_document
 from seohead.storage.native_scan import NativeScan
-from seohead.tools.link_context import extract_occurrences
-from seohead.tools.parser import parse_html
 from tests.test_native_capture import _event, _renderer
 from tests.test_scan_native import _metadata, _record, _runtime
 

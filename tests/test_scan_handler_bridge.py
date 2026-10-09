@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from seohead.crawl.sqlite_adapter import ScanRun
-from seohead.servers import scan_handlers
+from seohead.mcp import scan_handlers
 from tests.test_scan_artifact_office import frozen_office_clock as frozen_office_clock
 
 
@@ -116,7 +116,7 @@ def test_stored_graph_size_does_not_block_page_audit(bridge, monkeypatch, stored
         captured["kwargs"] = kwargs
         return {"ignored": True}, {"schema_version": "2.0", "pages": []}
 
-    monkeypatch.setattr("seohead.servers.handlers._audit_crawl_result", audit_bridge)
+    monkeypatch.setattr("seohead.mcp.handlers._audit_crawl_result", audit_bridge)
     response = scan_handlers.crawl_site_scan(
         "https://example.test/",
         scan_out="scan.sqlite",
@@ -188,7 +188,7 @@ def test_large_js_render_uses_a_cursor_backed_page_view(bridge, monkeypatch):
 
     monkeypatch.setattr("seohead.crawl.sqlite_render.run_render_escalation", render)
     monkeypatch.setattr(
-        "seohead.servers.handlers._audit_crawl_result",
+        "seohead.mcp.handlers._audit_crawl_result",
         lambda *_args, **_kwargs: ({}, {"schema_version": "2.0", "pages": []}),
     )
 
@@ -296,7 +296,7 @@ def test_invalid_native_mode_does_not_start_sitemap_requests(tmp_path, monkeypat
     from seohead.crawl.settings import load
 
     monkeypatch.setattr(
-        "seohead.servers.scan_sitemaps.load_sitemaps",
+        "seohead.mcp.scan_sitemaps.load_sitemaps",
         lambda *args, **kwargs: pytest.fail("invalid mode fetched a sitemap"),
     )
     with pytest.raises(ValueError, match=r"cache\.mode=off"):
@@ -317,6 +317,7 @@ def test_real_handler_adapter_native_audit_and_all_report_formats(
     """The handler uses injected transport, but every storage and audit layer is real."""
     import httpx
 
+    from seohead.checks import sitemap as sitemap_tool
     from seohead.crawl import sqlite_adapter
     from seohead.crawl.collect import fetch_one as real_fetch_one
     from seohead.crawl.settings import load
@@ -324,7 +325,6 @@ def test_real_handler_adapter_native_audit_and_all_report_formats(
     from seohead.reports import build_report
     from seohead.sf.core import sitemap_coverage
     from seohead.storage import open_scan, read_audit
-    from seohead.tools import sitemap as sitemap_tool
 
     sitemap_url = "https://example.test/sitemap.xml"
     documents = {

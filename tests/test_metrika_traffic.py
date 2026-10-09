@@ -17,8 +17,8 @@ import pytest
 from seohead import cli
 from seohead.data_sources import metrika_traffic as core
 from seohead.data_sources.metrika import MetrikaError
+from seohead.mcp import handlers
 from seohead.reports import chromium_pdf, svg_charts, traffic_dashboard
-from seohead.servers import handlers
 
 COUNTER = "100000000"
 CURRENT = ("2026-09-01", "2026-09-30")
@@ -908,7 +908,7 @@ def test_cli_renders_a_document_from_flags(tmp_path, no_browser, document, capsy
 
 def test_mcp_tool_declares_its_side_effects():
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = {tool.name: tool for tool in build_server()._tool_manager.list_tools()}
     hints = tools["seo_metrika_traffic_pdf"].annotations

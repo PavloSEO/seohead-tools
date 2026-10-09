@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from seohead.tools import sitemap
+from seohead.checks import sitemap
 
 
 def _crawl(monkeypatch, responses: dict[str, httpx.Response]) -> dict:

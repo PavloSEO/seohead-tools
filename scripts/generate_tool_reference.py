@@ -4,7 +4,7 @@
     python scripts/generate_tool_reference.py            # regenerate docs/TOOL_REFERENCE.md
     python scripts/generate_tool_reference.py --check     # exit 1 if it is stale (CI)
 
-The rendering logic lives in seohead.servers.tool_reference so the same code path that
+The rendering logic lives in seohead.mcp.tool_reference so the same code path that
 produces the committed file is what tests/test_docs_drift.py compares it against.
 """
 
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # install elsewhere on the machine could otherwise shadow this checkout's package.
 sys.path.insert(0, str(ROOT))
 
-from seohead.servers.tool_reference import render  # noqa: E402
+from seohead.mcp.tool_reference import render  # noqa: E402
 
 TARGET = ROOT / "docs" / "TOOL_REFERENCE.md"
 

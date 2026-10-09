@@ -164,7 +164,7 @@ both the CLI and the embedded package provenance from outside the source checkou
 ```bash
 "$HOME/.local/bin/seohead" --version
 "$SEOHEAD_ROOT/current/venv/bin/python" -c \
-  'from seohead.build_provenance import packaged_provenance; p=packaged_provenance(); print(p.version, p.revision)'
+  'from seohead._build.provenance import packaged_provenance; p=packaged_provenance(); print(p.version, p.revision)'
 ```
 
 The provenance call validates the package source hashes and installed wheel metadata, then prints
@@ -212,7 +212,7 @@ ln -s "$OLD_RELEASE" "$SEOHEAD_ROOT/.current-rollback"
 mv -Tf "$SEOHEAD_ROOT/.current-rollback" "$SEOHEAD_ROOT/current"
 "$HOME/.local/bin/seohead" --version
 "$SEOHEAD_ROOT/current/venv/bin/python" -c \
-  'from seohead.build_provenance import packaged_provenance; p=packaged_provenance(); print(p.version, p.revision)'
+  'from seohead._build.provenance import packaged_provenance; p=packaged_provenance(); print(p.version, p.revision)'
 ```
 
 Keep project data outside release directories, so an application rollback does not roll data back

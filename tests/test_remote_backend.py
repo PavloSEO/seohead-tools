@@ -14,10 +14,15 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from seohead.integrations.remote_api.app import TokenAuthenticator, create_app
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.integrations.remote_api.contracts import (
+    JobConflict,
+    JobNotReady,
+    Principal,
+    ScanSubmission,
+)
 from seohead.recon import net
-from seohead.remote_api.app import TokenAuthenticator, create_app
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
-from seohead.remote_api.contracts import JobConflict, JobNotReady, Principal, ScanSubmission
 
 TOKEN_A = "synthetic-remote-token-alpha-strong-1"
 TOKEN_B = "synthetic-remote-token-beta-strong-2"
@@ -105,8 +110,8 @@ def test_backend_requires_finite_lease(tmp_path, value):
 def test_render_coverage_survives_worker_restart_and_authenticated_downloads(
     monkeypatch, tmp_path, failure
 ):
+    from seohead.checks import render
     from seohead.crawl import render_escalation, sqlite_render
-    from seohead.tools import render
 
     _network(monkeypatch)
     clock = [0.0]
@@ -232,7 +237,7 @@ def test_render_coverage_requires_valid_requested_measurements(tmp_path, changes
     from dataclasses import asdict
 
     from seohead.crawl.render_escalation import EscalationResult
-    from seohead.remote_api.backend import _render_coverage_reason
+    from seohead.integrations.remote_api.backend import _render_coverage_reason
 
     summary = asdict(EscalationResult(mode="js"))
     if changes is not None:

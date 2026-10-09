@@ -16,7 +16,7 @@
 **1. Audit an existing Screaming Frog export set without making requests.**
 
 ```bash
-seohead sf run --exports-dir examples/exports --out report --tasks
+seohead sf run --exports-dir docs/examples/exports --out report --tasks
 ```
 
 The same audit core is used by the `sf_audit_run` MCP tool and by native crawl audits. The graph reads only `Internal:All` canonical and status evidence; this check adds no destination fetch.

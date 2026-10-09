@@ -102,7 +102,7 @@ def test_cli_config_file_applies_file_filters_to_the_real_shared_crawl(
 
 def test_mcp_crawl_site_config_file_uses_the_same_filters(monkeypatch, tmp_path):
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     config = _config(tmp_path / "crawl.json", exclude_extensions=["pdf"])
     calls = _stub_spider_transport(monkeypatch)

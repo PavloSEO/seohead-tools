@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from seohead.data_sources import dataforseo
-from seohead.servers.handlers import handler_failed
+from seohead.mcp.handlers import handler_failed
 
 
 @pytest.mark.parametrize(

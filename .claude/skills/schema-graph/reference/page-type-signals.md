@@ -1,6 +1,6 @@
 # How the Classifier Determines Page Type
 
-`seohead/tools/page_type.py` collects weighted signals and selects the type with the
+`seohead/checks/page_type.py` collects weighted signals and selects the type with the
 highest score. This is not a neural network; it is a transparent feature table, and every
 score is visible in `signals[]`.
 

@@ -178,7 +178,7 @@ def _is_html(content_type: str) -> bool:
 
 def _extract(html: str, final_url: str) -> _DocEvidence:
     """One parse pass: fragment anchors, element ids and ``<a name>`` targets."""
-    from seohead.tools.parser import document_base_url, is_inert_template_content
+    from seohead.checks.parser import document_base_url, is_inert_template_content
 
     evidence = _DocEvidence()
     evidence.base_url = document_base_url(html, final_url)

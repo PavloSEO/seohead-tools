@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 
-from seohead.tools.meta_description_drafts import (
+from seohead.checks.meta_description_drafts import (
     DraftCheckpoint,
     StaticDraftExecutor,
     SuppliedDraftExecutor,

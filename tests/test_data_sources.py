@@ -121,7 +121,7 @@ def test_dataforseo_ready_never_exposes_the_secret_values(monkeypatch, tmp_path)
 )
 def test_sources_doctor_uses_shared_dataforseo_readiness(monkeypatch, tmp_path, ready, components):
     """The public doctor must use the two-component readiness decision, not login alone."""
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(credentials, "available", lambda *_args: False)
@@ -188,7 +188,7 @@ def _write_service_account(tmp_path, raw_text=None):
 def test_sources_doctor_gsc_ready_with_any_working_credential(monkeypatch, tmp_path, component):
     """The legacy ``sources`` block follows provider components, not the bearer file alone."""
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -210,7 +210,7 @@ def test_sources_doctor_gsc_ready_with_any_working_credential(monkeypatch, tmp_p
 
 def test_sources_doctor_gsc_not_ready_without_any_credential(monkeypatch, tmp_path):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -241,7 +241,7 @@ def test_sources_doctor_gsc_service_account_malformed_document(
 ):
     """A broken service-account file is not ready; the doctor reports a safe status enum."""
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -269,7 +269,7 @@ def test_sources_doctor_gsc_service_account_malformed_document(
 )
 def test_sources_doctor_gsc_service_account_unsupported_shape(monkeypatch, tmp_path, document):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -288,7 +288,7 @@ def test_sources_doctor_gsc_service_account_missing_required_field(
     monkeypatch, tmp_path, missing_field
 ):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -307,7 +307,7 @@ def test_sources_doctor_gsc_service_account_missing_required_field(
 def test_sources_doctor_gsc_service_account_over_size_limit(monkeypatch, tmp_path):
     """A file past the bound is never parsed, never "ready" — but it is not malformed JSON."""
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -328,7 +328,7 @@ def test_sources_doctor_gsc_service_account_over_size_limit(monkeypatch, tmp_pat
 def test_sources_doctor_gsc_service_account_owner_unreadable(monkeypatch, tmp_path):
     """A private file the owner cannot read is unreadable, not malformed JSON."""
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -345,7 +345,7 @@ def test_sources_doctor_gsc_service_account_owner_unreadable(monkeypatch, tmp_pa
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits do not apply on Windows")
 def test_sources_doctor_gsc_service_account_group_readable_is_unsafe(monkeypatch, tmp_path):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -362,7 +362,7 @@ def test_sources_doctor_gsc_service_account_group_readable_is_unsafe(monkeypatch
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks are not portable on Windows")
 def test_sources_doctor_gsc_service_account_symlink_is_unsafe(monkeypatch, tmp_path):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -379,7 +379,7 @@ def test_sources_doctor_gsc_service_account_symlink_is_unsafe(monkeypatch, tmp_p
 
 def test_sources_doctor_gsc_service_account_status_honors_env_override(monkeypatch, tmp_path):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path / "other-config")
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "other-config")
@@ -395,7 +395,7 @@ def test_sources_doctor_gsc_service_account_status_honors_env_override(monkeypat
 
 def test_sources_doctor_gsc_never_exposes_service_account_contents(monkeypatch, tmp_path):
     from seohead.data_sources import oauth
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setattr(credentials, "CONFIG_ROOT", tmp_path)
     monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path)
@@ -787,7 +787,7 @@ def test_metrika_public_report_paths_never_send_a_zero_based_offset(monkeypatch,
     each of these calls failed with ``must be greater than or equal to 1``.
     """
     from seohead.data_sources import metrika, providers
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setenv("YANDEX_METRIKA_TOKEN", "synthetic")
     monkeypatch.setattr(metrika, "PAGE_PAUSE", 0)
@@ -1193,7 +1193,7 @@ def test_metrika_split_reapplies_sort_and_limit_to_merged_rows(monkeypatch, jour
 
 def test_metrika_report_handler_reports_the_sampling_used(monkeypatch):
     from seohead.data_sources import metrika
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     class _Client:
         def report(self, params, **_kwargs):
@@ -1746,7 +1746,7 @@ def test_metrika_split_reports_actual_sampling_not_requested_accuracy(monkeypatc
 def test_metrika_split_unsampled_body_after_sampled_request_is_honest(monkeypatch, journal):
     """A slice asked at ``accuracy=0.1`` that answers unsampled is reported unsampled."""
     from seohead.data_sources import metrika
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     def fake(url):
         query = _metrika_query(url)
@@ -2135,7 +2135,7 @@ def test_metrika_split_malformed_row_marks_incomplete_not_complete(monkeypatch, 
 def test_metrika_split_unknown_slice_sampling_stays_unknown(monkeypatch, journal):
     """A slice without sampling fields leaves the whole-period state unreported."""
     from seohead.data_sources import metrika
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     def fake(url):
         query = _metrika_query(url)
@@ -2694,7 +2694,7 @@ def test_yandex_cloud_search_batch_reports_a_rejected_submission_as_an_error_not
 
 def test_serp_fetch_never_calls_a_rejected_query_billed(monkeypatch, journal):
     """serp_fetch's note must not claim a rejected query's operation is in the spend journal."""
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     def fake_urlopen(request, timeout=None, context=None):
         raise _make_http_error(400, '{"message": "invalid query"}')
@@ -2750,7 +2750,7 @@ def test_yandex_cloud_search_batch_dedupes_exact_duplicate_queries_before_billin
 
 def test_serp_fetch_reconciles_requested_and_returned_for_duplicate_queries(monkeypatch, journal):
     """requested/returned must reconcile exactly, including when the input repeats a query."""
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     def fake_urlopen(request, timeout=None, context=None):
         if request.get_method() == "GET":
@@ -3227,14 +3227,14 @@ def test_gsc_search_analytics_rejects_invalid_or_reversed_dates_without_calling_
 
 
 def test_gsc_query_handler_rejects_an_unknown_mode():
-    from seohead.servers.handlers import gsc_query
+    from seohead.mcp.handlers import gsc_query
 
     with pytest.raises(ValueError):
         gsc_query(site_url="sc-domain:example.com", mode="bogus")
 
 
 def test_gsc_query_handler_requires_inspection_url_for_inspect_mode():
-    from seohead.servers.handlers import gsc_query
+    from seohead.mcp.handlers import gsc_query
 
     with pytest.raises(ValueError):
         gsc_query(site_url="sc-domain:example.com", mode="inspect_url")

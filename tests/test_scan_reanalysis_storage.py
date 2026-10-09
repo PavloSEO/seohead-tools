@@ -42,7 +42,7 @@ def test_derived_scan_retains_exact_streamed_source_audit_digest(tmp_path):
 def test_derived_native_capture_cannot_claim_legacy_cache_transport(tmp_path):
     import sqlite3
 
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
     from tests.test_scan_reanalysis_integration import _source
 
     source, derived = tmp_path / "source.sqlite", tmp_path / "derived.sqlite"

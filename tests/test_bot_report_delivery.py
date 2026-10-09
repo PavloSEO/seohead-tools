@@ -9,8 +9,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-import seohead.bot.report_delivery as report_delivery_module
-from seohead.bot import (
+import seohead.integrations.bot.report_delivery as report_delivery_module
+from seohead.integrations.bot import (
     AuthorizedReportDelivery,
     DeliveryAmbiguous,
     DeliveryReceipts,
@@ -19,15 +19,15 @@ from seohead.bot import (
     ProjectAuthorizationStore,
     ReportProfile,
 )
-from seohead.bot.telegram_adapter import (
+from seohead.integrations.bot.telegram_adapter import (
     TelegramBotClient,
     TelegramBotConfig,
     TelegramChatAuthorizationStore,
     TelegramDocumentTransport,
 )
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.integrations.remote_api.contracts import ScanSubmission
 from seohead.recon import net
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
-from seohead.remote_api.contracts import ScanSubmission
 
 
 class _Body(httpx.SyncByteStream):

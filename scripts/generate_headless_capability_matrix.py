@@ -25,7 +25,7 @@ FAMILIES = {
         [746, 743],
     ),
     "discovery.external.crawl": (
-        "seohead/servers/handlers.py",
+        "seohead/mcp/handlers.py",
         "tests/test_crawl_external.py",
         [746, 743],
     ),
@@ -77,7 +77,7 @@ WORKFLOWS = (
     ),
     (
         "offline_reanalysis",
-        "seohead/servers/reanalysis_handlers.py",
+        "seohead/mcp/reanalysis_handlers.py",
         "scan-reanalyze",
         "seo_scan_reanalyze",
         "tests/test_scan_reanalysis_integration.py",
@@ -93,7 +93,7 @@ WORKFLOWS = (
     ),
     (
         "declarative_extraction",
-        "seohead/tools/extraction_rules.py",
+        "seohead/checks/extraction_rules.py",
         "scan-extract",
         "seo_scan_extract",
         "tests/test_custom_extract.py",

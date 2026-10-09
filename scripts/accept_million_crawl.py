@@ -365,13 +365,13 @@ def _loaded_code() -> dict[str, dict[str, str]]:
     modules = (
         "seohead.crawl.settings",
         "seohead.crawl.collect",
-        "seohead.tools.parser",
-        "seohead.tools.sitemap",
+        "seohead.checks.parser",
+        "seohead.checks.sitemap",
         "seohead.storage.audit_v2",
         "seohead.sf.tasks",
         "seohead.storage.scan_export",
         "seohead.sf.core.inlinks",
-        "seohead.servers.scan_handlers",
+        "seohead.mcp.scan_handlers",
         "seohead.crawl.sqlite_adapter",
         "seohead.storage.native_scan",
     )
@@ -391,7 +391,7 @@ def _loaded_callable_code() -> dict[str, dict[str, str]]:
     import marshal
 
     from seohead.crawl import sqlite_adapter
-    from seohead.servers import handlers, scan_handlers
+    from seohead.mcp import handlers, scan_handlers
     from seohead.sf.core import inlinks
 
     callables = {
@@ -462,9 +462,9 @@ def _discovery_path_trace() -> Iterator[list[dict[str, int]]]:
 @contextmanager
 def _synthetic_transport(origin: SyntheticOrigin) -> Iterator[None]:
     """Inject one transport beneath real fetch and sitemap code for this run only."""
+    from seohead.checks import sitemap
     from seohead.crawl import collect, sqlite_adapter
     from seohead.sf.core import sitemap_coverage
-    from seohead.tools import sitemap
 
     @contextmanager
     def client_context(_settings: dict[str, Any], _fetcher: Any, _proxy_route: Any = None):
@@ -599,8 +599,8 @@ def _recheck_consumers(scan: Path, output: Path, revision: str, pages: int) -> d
     """Prove refusal for reused evidence and resolution from a fresh one-page capture."""
     from datetime import datetime, timezone
 
-    from seohead.servers import handlers
-    from seohead.servers.scan_handlers import crawl_site_scan
+    from seohead.mcp import handlers
+    from seohead.mcp.scan_handlers import crawl_site_scan
     from seohead.storage.audit_v2 import AuditV2Reader
 
     with AuditV2Reader(scan) as reader:
@@ -758,7 +758,7 @@ def _group_evidence(reader) -> dict[str, Any]:
 def _consumers(
     scan: Path, output: Path, revision: str, *, comparison_compression: str = "none"
 ) -> dict[str, Any]:
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.sf.tasks import build_tasks_from_audit_v2
     from seohead.storage.audit_v2 import AuditV2Reader
     from seohead.storage.history import snapshot_scan
@@ -1019,10 +1019,10 @@ def run_stage(
     h1_families: int = 101,
 ) -> dict[str, Any]:
     """Run one measured stage; exceptions intentionally make its status failed."""
-    from seohead.servers.scan_handlers import crawl_site_scan
+    from seohead.checks import sitemap
+    from seohead.mcp.scan_handlers import crawl_site_scan
     from seohead.storage import open_scan
     from seohead.storage.native_scan import NativeScan
-    from seohead.tools import sitemap
 
     if pages > sitemap.MAX_URLS:
         raise RuntimeError(
@@ -1235,8 +1235,8 @@ def run_loopback(output: Path, *, pages: int = 8) -> dict[str, Any]:
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     from seohead.crawl.settings import effective_request_rate, load
+    from seohead.mcp.scan_handlers import crawl_site_scan
     from seohead.recon.net import validate_url
-    from seohead.servers.scan_handlers import crawl_site_scan
 
     if not 2 <= pages <= 100:
         raise ValueError("loopback acceptance is a separate 2..100-page transport smoke")

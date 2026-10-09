@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from seohead.cli import COMMANDS  # noqa: E402
-from seohead.servers.tool_reference import load_seo_tools, load_sf_tools  # noqa: E402
+from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools  # noqa: E402
 from seohead.sf.core.registry import CHECKS  # noqa: E402
 
 _INVENTORY_START = "<!-- generated-command-inventory:start -->"
@@ -137,7 +137,7 @@ def _skills_content() -> str:
 
 
 def _provenance_content() -> str:
-    path = ROOT / "PROVENANCE.md"
+    path = ROOT / "docs" / "legal" / "PROVENANCE.md"
     text = path.read_text(encoding="utf-8")
     text = _replace(
         text,
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     for path, content in (
         (ROOT / "docs" / "TOOLS.md", _tools_content()),
         (ROOT / "docs" / "SKILLS.md", _skills_content()),
-        (ROOT / "PROVENANCE.md", _provenance_content()),
+        (ROOT / "docs" / "legal" / "PROVENANCE.md", _provenance_content()),
     ):
         if _write(path, content, check=check):
             changed.append(path)

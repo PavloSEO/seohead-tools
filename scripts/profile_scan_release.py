@@ -68,8 +68,8 @@ def _source_manifest() -> dict[str, Any]:
                         "seohead/storage/corpus.py",
                         "seohead/storage/scan_v1.sql",
                         "seohead/storage/analysis_graph.py",
-                        "seohead/servers/handlers.py",
-                        "seohead/servers/scan_handlers.py",
+                        "seohead/mcp/handlers.py",
+                        "seohead/mcp/scan_handlers.py",
                     )
                 )
             )

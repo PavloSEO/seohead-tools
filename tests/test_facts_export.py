@@ -340,7 +340,7 @@ def test_export_contains_no_percentage_or_ratio_keys():
 
 
 def test_handler_wraps_a_value_error_as_ok_false():
-    from seohead.servers.handlers import facts_export
+    from seohead.mcp.handlers import facts_export
 
     result = facts_export(sites=[{"label": "a-example.com"}, {"label": "a-example.com"}])
     assert result["ok"] is False
@@ -348,14 +348,14 @@ def test_handler_wraps_a_value_error_as_ok_false():
 
 
 def test_handler_requires_sites():
-    from seohead.servers.handlers import facts_export
+    from seohead.mcp.handlers import facts_export
 
     with pytest.raises(ValueError):
         facts_export(sites=None)
 
 
 def test_handler_returns_ok_true_document():
-    from seohead.servers.handlers import facts_export
+    from seohead.mcp.handlers import facts_export
 
     result = facts_export(sites=[{"label": "a-example.com", "site_audit": SITE_DOCUMENT_A}])
     assert result["ok"] is True

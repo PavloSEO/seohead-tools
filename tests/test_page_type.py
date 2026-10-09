@@ -1,9 +1,9 @@
 # ruff: noqa: RUF001 -- Intentional Cyrillic fixtures cover Russian SEO regressions.
 """Network-independent tests for page type classification."""
 
-from seohead.tools import page_type
-from seohead.tools.page_facts import extract
-from seohead.tools.page_type import classify
+from seohead.checks import page_type
+from seohead.checks.page_facts import extract
+from seohead.checks.page_type import classify
 
 
 def _classify(url: str, html: str) -> dict:

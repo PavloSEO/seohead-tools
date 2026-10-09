@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage import ScanError, open_scan
 
 BUILD = "a" * 40
@@ -279,7 +279,7 @@ def test_cli_and_mcp_normalize_default_sitemap_only_to_resume_safe_none(monkeypa
 
     assert cli.main(["crawl-site", "--resume", "scan.sqlite", "--quiet"]) == 0
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tool = build_server()._tool_manager.get_tool("seo_crawl_site")
     tool.fn(resume="scan.sqlite", sitemap_only=False)

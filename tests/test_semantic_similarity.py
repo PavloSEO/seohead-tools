@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from seohead.tools import semantic_similarity
-from seohead.tools.semantic_similarity import (
+from seohead.checks import semantic_similarity
+from seohead.checks.semantic_similarity import (
     EmbeddingCache,
     LocalEmbeddingAdapter,
     ProviderEmbeddingAdapter,

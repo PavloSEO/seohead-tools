@@ -64,11 +64,11 @@ works, and the affected tool answers `{"ok": false, "error": ...,
 seohead --version                     # seohead 3.0.0
 seohead --help                        # the command list
 pytest -q                             # over 1500 offline tests; runtime depends on extras
-seohead sf run --exports-dir examples/exports --out /tmp/report --tasks
+seohead sf run --exports-dir docs/examples/exports --out /tmp/report --tasks
 ```
 
 The last command runs a real audit (mode B) over the synthetic crawl in
-`examples/exports/` and writes `/tmp/report/audit.json` + `audit.md` +
+`docs/examples/exports/` and writes `/tmp/report/audit.json` + `audit.md` +
 `tasks.json` + `tasks.md`. If that works, the toolkit works.
 
 ## Crawling without a Screaming Frog licence

@@ -1,11 +1,11 @@
-"""The committed examples/ audit must match what the documented command produces.
+"""The committed docs/examples/ audit must match what the documented command produces.
 
-Nothing else kept examples/audit.json, audit.md, tasks.json and tasks.md in sync with the
+Nothing else kept docs/examples/audit.json, audit.md, tasks.json and tasks.md in sync with the
 audit contract (#488): every other doc gate in this repository derives its expectation from
 the code, but the shipped example was hand-committed and drifted silently, going out with the
 three summary fields that qualify a health score missing.
 
-This gate regenerates the example from examples/exports with the exact command README.md
+This gate regenerates the example from docs/examples/exports with the exact command README.md
 documents and fails if the committed copy differs in anything but generated_at.
 The command uses a fixed relative source path; its output directory is not report evidence.
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 from seohead.sf.cli import main as sf_main
 
 ROOT = Path(__file__).resolve().parent.parent
-EXAMPLES = ROOT / "examples"
+EXAMPLES = ROOT / "docs" / "examples"
 
 # Normalize only generated-at metadata lines, never dates embedded in URLs or findings.
 _TIMESTAMP_RE = re.compile(
@@ -34,7 +34,7 @@ def _run_fresh(out_dir: Path) -> None:
         [
             "run",
             "--exports-dir",
-            "examples/exports",
+            "docs/examples/exports",
             "--out",
             str(out_dir),
             "--tasks",
@@ -73,16 +73,16 @@ def test_examples_match_a_fresh_run(tmp_path, monkeypatch):
         committed = json.loads((EXAMPLES / name).read_text(encoding="utf-8"))
         fresh = json.loads((out_dir / name).read_text(encoding="utf-8"))
         assert _normalize_json(committed) == _normalize_json(fresh), (
-            f"examples/{name} is stale: regenerate it with "
-            "`seohead sf run --exports-dir examples/exports --out examples --tasks`"
+            f"docs/examples/{name} is stale: regenerate it with "
+            "`seohead sf run --exports-dir docs/examples/exports --out examples --tasks`"
         )
 
     for name in ("audit.md", "tasks.md"):
         committed = _normalize_text((EXAMPLES / name).read_text(encoding="utf-8"))
         fresh = _normalize_text((out_dir / name).read_text(encoding="utf-8"))
         assert committed == fresh, (
-            f"examples/{name} is stale: regenerate it with "
-            "`seohead sf run --exports-dir examples/exports --out examples --tasks`"
+            f"docs/examples/{name} is stale: regenerate it with "
+            "`seohead sf run --exports-dir docs/examples/exports --out examples --tasks`"
         )
 
 

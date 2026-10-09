@@ -9,8 +9,8 @@ native crawler's own robots fetch.
 
 from __future__ import annotations
 
+from seohead.mcp import handlers
 from seohead.recon import net
-from seohead.servers import handlers
 
 
 class _Response:

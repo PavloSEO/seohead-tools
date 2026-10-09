@@ -78,7 +78,7 @@ def write_document(
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(staged, root / name)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(root)
     finally:

@@ -361,7 +361,7 @@ def test_v2_crawl_reopens_with_closed_resource_graph_coverage_and_css_children(t
 def test_v2_requeue_then_resume_replaces_active_graph_and_reanalysis_stays_offline(
     tmp_path, monkeypatch
 ):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
 
     path, backup, derived = (
         tmp_path / "v2.sqlite",

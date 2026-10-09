@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from seohead.servers.history_handlers import scan_prune
+from seohead.mcp.history_handlers import scan_prune
 from seohead.storage import ScanError, open_scan
 from seohead.storage.history import prune_apply, prune_preview, snapshot_scan
 from tests.test_scan_history import _finished

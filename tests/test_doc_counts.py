@@ -22,7 +22,7 @@ import sys
 import pytest
 
 from seohead.cli import COMMANDS
-from seohead.servers.handlers import HANDLERS
+from seohead.mcp.handlers import HANDLERS
 from seohead.sf.core.registry import CHECKS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -37,7 +37,7 @@ DOCS = sorted(
 
 
 def _mcp_tool_names() -> set[str]:
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     return {tool.name for tool in asyncio.run(build_server().list_tools())}
 

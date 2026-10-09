@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 
 from seohead.data_sources import evidence_import, evidence_join
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 MAPPING = evidence_import.MAPPING_FORMAT
 

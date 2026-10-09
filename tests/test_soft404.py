@@ -2,9 +2,9 @@
 
 from urllib.parse import urlsplit
 
+from seohead.checks import soft404 as S
 from seohead.recon import net as recon_net
 from seohead.recon.net import BlockedRedirectError
-from seohead.tools import soft404 as S
 
 
 def test_probe_urls_deterministic_per_origin():

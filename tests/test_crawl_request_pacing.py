@@ -98,7 +98,7 @@ def test_sqlite_redirect_resolution_claims_a_turn_for_every_hop(tmp_path):
 def test_one_gate_covers_seed_discovery_spider_and_post_audit_sitemap_rechecks(
     monkeypatch, tmp_path
 ):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.sf.core import sitemap_coverage as coverage
     from tests.test_sitemap_coverage import _mini_ctx
 
@@ -129,8 +129,8 @@ def test_one_gate_covers_seed_discovery_spider_and_post_audit_sitemap_rechecks(
         calls.append((now[0], "seed sitemap"))
         return {"urls": [{"loc": "https://example.test/"}]}
 
-    monkeypatch.setattr("seohead.tools.robots.check_robots", seed_robots)
-    monkeypatch.setattr("seohead.tools.sitemap.crawl", seed_sitemap)
+    monkeypatch.setattr("seohead.checks.robots.check_robots", seed_robots)
+    monkeypatch.setattr("seohead.checks.sitemap.crawl", seed_sitemap)
     seeded = handlers._seed_urls_from_sitemap(
         "https://example.test/",
         None,

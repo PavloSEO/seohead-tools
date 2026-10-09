@@ -8,7 +8,7 @@ from seohead.crawl import link_findings
 from seohead.crawl.collect import CrawlResult, PageRecord
 from seohead.crawl.settings import load
 from seohead.crawl.spider import FormEdge, LinkEdge, SpiderResult
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 _LINK_FORM_CHECKS = {
     "OUTLINK_TO_LOCALHOST",

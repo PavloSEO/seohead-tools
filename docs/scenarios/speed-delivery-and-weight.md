@@ -62,7 +62,7 @@ be mostly markup. DOM depth and node count have their own thresholds (32 levels,
 one prerequisite worth stating in advance:
 
 ```bash
-seohead sf run --exports-dir examples/exports --out report --tasks
+seohead sf run --exports-dir docs/examples/exports --out report --tasks
 ```
 
 The DOM checks read stored HTML. Without `input.html_store_dir` — a Screaming Frog crawl run with

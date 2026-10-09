@@ -9,13 +9,13 @@ import pytest
 
 from scripts.accept_million_crawl import SyntheticOrigin, _synthetic_transport
 from seohead import cli
+from seohead.core.job_contracts import MAX_REMOTE_CRAWL_SECONDS, ScanOptions
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.settings import DEFAULTS, MAX_URLS_CEILING, checked_url_budget, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
-from seohead.job_contracts import MAX_REMOTE_CRAWL_SECONDS, ScanOptions
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from tests.test_crawl_list_mode import FakeResponse
 from tests.test_remote_backend import SCANS_A, SITE, _api, _headers, _network
 
@@ -26,7 +26,7 @@ from tests.test_remote_backend import SCANS_A, SITE, _api, _headers, _network
 def test_explicit_native_ceiling_reaches_shared_handler_unchanged(
     tmp_path, monkeypatch, capsys, pages, interface, seconds
 ):
-    from seohead.servers import scan_handlers
+    from seohead.mcp import scan_handlers
 
     accepted = []
 
@@ -186,7 +186,7 @@ def test_remote_long_duration_requires_project_authorization_and_reaches_worker(
     assert ordinary.list_jobs("alpha", 0, 10) == [] and requests == []
 
     accepted = []
-    from seohead.servers.scan_handlers import crawl_site_scan
+    from seohead.mcp.scan_handlers import crawl_site_scan
 
     def runner(*args, **kwargs):
         accepted.append(kwargs["settings"])
@@ -273,7 +273,7 @@ def test_list_robots_uses_the_same_request_budget():
 
 def test_list_audit_refusal_keeps_private_evidence_when_public_export_is_off(tmp_path, monkeypatch):
     from seohead.crawl import collect
-    from seohead.servers import scan_handlers
+    from seohead.mcp import scan_handlers
 
     original = collect.collect_urls
     monkeypatch.setattr(scan_handlers, "MAX_AUDIT_PAGES", 1)

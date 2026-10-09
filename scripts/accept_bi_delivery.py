@@ -20,8 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # The entry point must select this checkout before importing the editable package.
 sys.path.insert(0, str(ROOT))
 
+from seohead.mcp.bi_handlers import bi_filter  # noqa: E402
 from seohead.reports import bi, bi_destinations  # noqa: E402
-from seohead.servers.bi_handlers import bi_filter  # noqa: E402
 from seohead.storage.audit_v2 import audit_v2_path  # noqa: E402
 
 
@@ -121,7 +121,7 @@ def main() -> None:
     if before != after:
         raise RuntimeError("retained source bytes changed during read-only delivery")
     aliases = json.loads(
-        (ROOT / "examples/reporting-pack/linking-api-source-aliases.json").read_text()
+        (ROOT / "docs/examples/reporting-pack/linking-api-source-aliases.json").read_text()
     )
     owner_review = {
         "format": "seohead.looker-owner-review.v1",
@@ -135,7 +135,7 @@ def main() -> None:
         "worksheets": sheets["worksheets"],
         "required_cells": sheets["required_cells"],
         "source_aliases": aliases,
-        "blueprint": "examples/reporting-pack/looker-studio-blueprint.json",
+        "blueprint": "docs/examples/reporting-pack/looker-studio-blueprint.json",
         "requested_actions": [
             "Create one new private synthetic Sheet and six named worksheets; import every local partition in order.",
             "Create the original five-page native Looker report and six Sheets sources with the declared aliases.",

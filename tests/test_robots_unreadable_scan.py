@@ -13,13 +13,13 @@ from contextlib import contextmanager
 
 import pytest
 
+from seohead.checks.robots import parse_robots
 from seohead.crawl import sqlite_adapter
 from seohead.crawl.collect import fetch_one as real_fetch_one
 from seohead.crawl.settings import load
 from seohead.crawl.spider import _fetch_robots
-from seohead.servers import scan_handlers
+from seohead.mcp import scan_handlers
 from seohead.storage import open_scan
-from seohead.tools.robots import parse_robots
 
 PARSED_KEYS = set(parse_robots(""))
 

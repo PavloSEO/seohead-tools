@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from seohead.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
+from seohead.integrations.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
 
 
 def _canonical(value: Any) -> str:

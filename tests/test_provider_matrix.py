@@ -6,8 +6,7 @@ import inspect
 import json
 
 from seohead.cli import COMMANDS
-from seohead.data_sources.providers import provider_registry
-from seohead.provider_matrix import (
+from seohead.core.provider_matrix import (
     PROVIDER_REF_KINDS,
     SUPPORT_STATES,
     UNSUPPORTED_WORK,
@@ -15,6 +14,7 @@ from seohead.provider_matrix import (
     ProviderRef,
     render,
 )
+from seohead.data_sources.providers import provider_registry
 
 
 def _row(workflow: str):
@@ -129,8 +129,8 @@ def test_keywords_cluster_is_local_text_clustering_not_serp(monkeypatch):
     There is no provider transport on this path: the handler signature takes only
     params, and the clusterer takes a single params dict — no fetcher or URL.
     """
-    from seohead.servers import handlers
-    from seohead.tools import clusterer
+    from seohead.checks import clusterer
+    from seohead.mcp import handlers
 
     params = inspect.signature(clusterer.run_clusterer).parameters
     assert list(params) == ["params"]
@@ -161,7 +161,7 @@ def test_google_keywords_and_serp_use_the_dedicated_integration(monkeypatch):
     """google-keywords/google-serp dispatch to seohead.data_sources.dataforseo
     directly; they never pass through the provider registry."""
     from seohead.data_sources import dataforseo
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     calls = []
 
@@ -255,7 +255,7 @@ def test_yandex_demand_and_serp_use_the_dedicated_module(monkeypatch):
     import pytest
 
     from seohead.data_sources import providers, yandex_cloud
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     calls = []
 
@@ -314,7 +314,7 @@ def test_keywords_exact_uses_the_dedicated_arsenkin_client(monkeypatch):
     import pytest
 
     from seohead.data_sources import arsenkin, providers
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     calls = []
 
@@ -358,7 +358,7 @@ def test_indexnow_submit_uses_the_dedicated_write_path(monkeypatch):
     import pytest
 
     from seohead.data_sources import indexnow, providers
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     calls = []
 

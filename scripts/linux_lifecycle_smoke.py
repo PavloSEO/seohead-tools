@@ -197,7 +197,10 @@ def identity(python: Path, env: dict[str, str], cwd: Path) -> dict[str, str]:
             [
                 str(python),
                 "-c",
-                "import json; from seohead.build_provenance import packaged_provenance; "
+                # The rollback target may predate the seohead._build package (#982).
+                "import json\ntry:\n    from seohead._build.provenance import packaged_provenance\n"
+                "except ModuleNotFoundError:\n"
+                "    from seohead.build_provenance import packaged_provenance\n"
                 "p=packaged_provenance(); print(json.dumps({'version': p.version, "
                 "'revision': p.revision}))",
             ],

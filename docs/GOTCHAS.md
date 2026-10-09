@@ -112,9 +112,9 @@ input. Sources are the current code contracts, provider documentation, and
 - **Changed `sf/core/registry.py` -> regenerate
   `.claude/skills/sf-analyzer/reference/checks.md`.**
 - **Refactoring rule: after every step, `pytest -q` green and an identical
-  `audit.json` on `examples/exports`** (diff by `summary.by_check`).
+  `audit.json` on `docs/examples/exports`** (diff by `summary.by_check`).
 - **Never commit** `*.seospider`/`*.dbseospider`, `report/`, root-level
-  `audit.json`/`audit.md` (sample outputs live in `examples/` only). All of
+  `audit.json`/`audit.md` (sample outputs live in `docs/examples/` only). All of
   these are gitignored — `git status` after an audit run should stay clean.
 - **Thresholds/severity live in `config.json`**, never in code. A hardcoded
   number in a check is a bug even when the value is right.

@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api")
 
-from seohead.tools.render import MOBILE_USER_AGENT, render_check
+from seohead.checks.render import MOBILE_USER_AGENT, render_check
 
 
 @pytest.fixture

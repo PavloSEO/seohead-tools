@@ -17,7 +17,7 @@ from collections import Counter
 
 import pytest
 
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage import open_scan, read_audit
 from seohead.storage.native_scan import NativeScan
 from tests.chains import chain_site

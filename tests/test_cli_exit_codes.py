@@ -13,7 +13,7 @@ import json
 
 from seohead import cli
 from seohead.audit.site import SCHEMA
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_ok_false_handler_result_exits_nonzero(monkeypatch, capsys):

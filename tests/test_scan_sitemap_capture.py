@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
+from seohead.checks import sitemap
 from seohead.crawl.sitemap_capture import SourceRoot, capture_declared_roots
 from seohead.crawl.throttle import DispatchGate, Throttle
-from seohead.tools import sitemap
 
 
 class _Response:

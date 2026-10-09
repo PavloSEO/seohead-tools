@@ -10,9 +10,9 @@ Screaming Frog export was supplied.
 
 from __future__ import annotations
 
+from seohead.checks.parser import parse_html
 from seohead.crawl.collect import collect_urls as _collect_urls
 from seohead.crawl.evidence import build_evidence
-from seohead.tools.parser import parse_html
 
 
 def collect_urls(urls, **kw):

@@ -269,13 +269,13 @@ def aggregate(
     size_stats: dict[str, Any],
     sitemap_summary: dict[str, Any],
 ) -> AuditResult:
-    from seohead.sf.core.registry import CHECKS
-    from seohead.tools.finding_exclusions import (
+    from seohead.checks.finding_exclusions import (
         annotate_suppressed_finding,
         compile_rules,
         matching_rule,
         validate_rules,
     )
+    from seohead.sf.core.registry import CHECKS
 
     disk_issues = isinstance(ctx.issues, _DiskIssues)
     # A native retained scan writes findings to SQLite while checks run.  Keep
@@ -503,7 +503,7 @@ def aggregate(
     # An empty SPA shell or a start page with zero internal links fetches
     # fine and produces a clean-looking, one-page audit -- the false-green
     # #18's gate exists to catch. The collector (seohead.crawl, via
-    # seohead.servers.handlers) decides this and passes it through ``run``,
+    # seohead.mcp.handlers) decides this and passes it through ``run``,
     # the same channel crawl_partial already uses, so seohead.sf never has
     # to import the collector to honour its verdict.
     requires_rendering = bool(run.get("requires_rendering"))

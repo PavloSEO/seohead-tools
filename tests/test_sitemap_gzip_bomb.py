@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from seohead.tools import sitemap as S
+from seohead.checks import sitemap as S
 
 
 def _bomb(decompressed_size: int) -> bytes:

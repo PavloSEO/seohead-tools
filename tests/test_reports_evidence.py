@@ -427,7 +427,7 @@ def test_csv_writes_scope_evidence_without_polluting_tracker_findings(tmp_path):
     doc["pages"] = []
     doc["run"]["checks_disabled"] = [{"id": "BROKEN_PAGE_4XX", "reason": "disabled in config"}]
     doc["run"]["checks_skipped"] = [{"id": "SF_LOG_ANALYZE", "reason": "log file unavailable"}]
-    from seohead.servers.handlers import report_build
+    from seohead.mcp.handlers import report_build
 
     result = report_build(audit=doc, fmt="csv", out=str(target))
     assert result["ok"], result

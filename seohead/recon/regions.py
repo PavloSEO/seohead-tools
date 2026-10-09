@@ -26,8 +26,8 @@ from collections import Counter
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+from seohead.checks.parser import document_base_url
 from seohead.recon.net import http_client, normalize_url, registrable_domain
-from seohead.tools.parser import document_base_url
 
 # ── Regional dictionary ──────────────────────────────────────────────────────
 # Keys are URL tokens observed in practice; values are human-readable city names.
@@ -407,7 +407,7 @@ def _phones(html: str) -> list[str]:
 
 def _fetch(client, url: str) -> dict[str, Any]:
     """Fetch one regional URL and collect status, redirects, page facts, and phones."""
-    from seohead.tools.page_facts import extract
+    from seohead.checks.page_facts import extract
 
     out: dict[str, Any] = {"url": url}
     try:
@@ -444,7 +444,7 @@ def _meta_robots(html: str) -> str:
 
 def _findings(main: dict[str, Any], pages: list[dict[str, Any]], schemes: Counter) -> list[str]:
     """Build findings from measured facts without inferring operator intent."""
-    from seohead.tools.duplicate import simhash, similarity
+    from seohead.checks.duplicate import simhash, similarity
 
     out: list[str] = []
     live = [p for p in pages if p.get("ok") and p.get("status") == 200]
@@ -608,7 +608,7 @@ def analyze_regions(
         switcher_html = main.get("html", "")
         render_note = None
         if render:
-            from seohead.tools.render import rendered_html
+            from seohead.checks.render import rendered_html
 
             shot = rendered_html(start, timeout=max(timeout, 30.0))
             if shot.get("ok"):

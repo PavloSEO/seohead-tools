@@ -22,7 +22,7 @@ Run:
 ruff check .
 ruff format --check .
 pytest -q
-seohead sf run --exports-dir examples/exports --out /tmp/seohead-report --tasks
+seohead sf run --exports-dir docs/examples/exports --out /tmp/seohead-report --tasks
 ```
 
 ## Changelog fragments

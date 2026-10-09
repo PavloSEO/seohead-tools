@@ -357,7 +357,7 @@ def test_handler_wires_a_native_audit_document_end_to_end():
     """The interface layer (handlers.segment_diff) is the one place the crawl's
     Scope and the pure analyzer meet -- built from an audit.json's own recorded
     run.crawl_config, not re-declared by the caller."""
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     audit = {
         "run": {
@@ -389,7 +389,7 @@ def test_handler_wires_a_native_audit_document_end_to_end():
 
 
 def test_handler_refuses_an_audit_with_no_segments_configured():
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     audit = {"run": {"crawl_config": {}}, "pages": [{"url": "https://x.tld/a"}]}
     with pytest.raises(sd.SegmentDiffError, match="no segments declared"):

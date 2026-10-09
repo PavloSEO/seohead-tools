@@ -36,10 +36,10 @@ def _implementation() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
     names = [
         "storage/content_evidence.py",
-        "tools/content_area.py",
-        "tools/markdown_extract.py",
-        "tools/duplicate.py",
-        "tools/boilerplate_report.py",
+        "checks/content_area.py",
+        "checks/markdown_extract.py",
+        "checks/duplicate.py",
+        "checks/boilerplate_report.py",
     ]
     digest = hashlib.sha256()
     for name in names:
@@ -118,9 +118,9 @@ def capture_document(
             "content_tokens": None,
         }
 
-    from seohead.tools.boilerplate_report import NO_BOILERPLATE_REGIONS, boilerplate_hash
-    from seohead.tools.duplicate import simhash
-    from seohead.tools.markdown_extract import extract_markdown
+    from seohead.checks.boilerplate_report import NO_BOILERPLATE_REGIONS, boilerplate_hash
+    from seohead.checks.duplicate import simhash
+    from seohead.checks.markdown_extract import extract_markdown
 
     extracted = extract_markdown(html, content_area)
     content = str(extracted["content_markdown"])

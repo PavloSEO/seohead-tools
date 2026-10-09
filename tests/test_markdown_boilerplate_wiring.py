@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.tools import parser
+from seohead.checks import parser
+from seohead.mcp import handlers
 
 NAV_HTML = (
     "<html><body>"
@@ -124,7 +124,7 @@ def test_template_content_is_absent_from_markdown_and_url_citability(monkeypatch
 
     assert "Published guide" in markdown["content_markdown"]
     assert "Unreleased draft" not in markdown["content_markdown"]
-    from seohead.tools import citability as cit_core
+    from seohead.checks import citability as cit_core
 
     assert citability["score"] == cit_core.score_citability(markdown["content_markdown"])["score"]
 
@@ -203,7 +203,7 @@ def test_boilerplate_handoff_accepts_raw_html_from_two_templates():
     assert out["ok"] is True
     # Two distinct templates must never collapse into one group.
     hashes = set()
-    from seohead.tools import boilerplate_report as bp_core
+    from seohead.checks import boilerplate_report as bp_core
 
     for page in pages:
         hashes.add(bp_core.boilerplate_hash(page["html"]))
@@ -215,7 +215,7 @@ def test_boilerplate_handoff_accepts_raw_html_from_two_templates():
 def test_boilerplate_handoff_accepts_precomputed_hash_key():
     """A hash computed upstream with the documented ``hash`` key must group
     identically to handing over the raw html it was computed from."""
-    from seohead.tools import boilerplate_report as bp_core
+    from seohead.checks import boilerplate_report as bp_core
 
     hash_a = bp_core.boilerplate_hash(_TEMPLATE_A)
     hash_b = bp_core.boilerplate_hash(_TEMPLATE_B)
@@ -260,8 +260,8 @@ def test_boilerplate_handoff_rejects_the_misleading_boilerplate_hash_key():
 def test_full_markdown_is_not_the_boilerplate_report_handoff():
     """full_markdown has already lost the tag structure the hasher needs --
     feeding it in place of html must not reproduce the raw-html grouping."""
-    from seohead.tools import boilerplate_report as bp_core
-    from seohead.tools import markdown_extract as md_core
+    from seohead.checks import boilerplate_report as bp_core
+    from seohead.checks import markdown_extract as md_core
 
     full_markdown_a = md_core.extract_markdown(_TEMPLATE_A)["full_markdown"]
     full_markdown_b = md_core.extract_markdown(_TEMPLATE_B)["full_markdown"]
@@ -283,8 +283,8 @@ def test_citability_check_url_scores_content_area_not_whole_document(monkeypatch
     (headings/paragraphs), which the flat whole-document text field cannot
     carry at all, must reach it."""
     _mock_fetch(monkeypatch, NAV_HTML)
-    from seohead.tools import citability as cit_core
-    from seohead.tools import markdown_extract as md_core
+    from seohead.checks import citability as cit_core
+    from seohead.checks import markdown_extract as md_core
 
     out = handlers.citability_check(url="https://example.com/")
     assert out["ok"] is True
@@ -309,8 +309,8 @@ def test_citability_check_url_keeps_structure_for_nested_article_markup(monkeypa
         "</body></html>"
     )
     _mock_fetch(monkeypatch, wrapped_html)
-    from seohead.tools import citability as cit_core
-    from seohead.tools import markdown_extract as md_core
+    from seohead.checks import citability as cit_core
+    from seohead.checks import markdown_extract as md_core
 
     out = handlers.citability_check(url="https://example.com/")
     assert out["ok"] is True
@@ -328,7 +328,7 @@ def test_citability_check_text_argument_is_untouched():
     caller supplied exactly what should be scored."""
     text = "A plain excerpt with no structure at all, forty-some words long here."
     out = handlers.citability_check(text=text)
-    from seohead.tools import citability as cit_core
+    from seohead.checks import citability as cit_core
 
     assert out == cit_core.score_citability(text)
 
@@ -372,7 +372,7 @@ def test_cli_boilerplate_report_input_maps_to_handler(monkeypatch, capsys):
 def test_mcp_duplicate_check_exposes_only_indexable():
     import asyncio
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     by_name = {t.name: t for t in tools}
@@ -397,7 +397,7 @@ _WITHOUT_FOOTER = (
 
 def test_boilerplate_report_separates_the_two_templates_from_raw_html():
     """The positive control: given what the hasher is built for, it answers."""
-    from seohead.tools.boilerplate_report import boilerplate_consistency_report
+    from seohead.checks.boilerplate_report import boilerplate_consistency_report
 
     report = boilerplate_consistency_report(
         [{"url": "/a", "html": _WITH_FOOTER}, {"url": "/b", "html": _WITHOUT_FOOTER}]
@@ -415,8 +415,8 @@ def test_the_same_pages_as_markdown_collapse_into_one_false_group():
     Pinned here so nobody re-documents the handoff as workable on the grounds
     that it "runs without error".
     """
-    from seohead.tools.boilerplate_report import boilerplate_consistency_report
-    from seohead.tools.markdown_extract import extract_markdown
+    from seohead.checks.boilerplate_report import boilerplate_consistency_report
+    from seohead.checks.markdown_extract import extract_markdown
 
     as_markdown = [
         {"url": "/a", "html": extract_markdown(_WITH_FOOTER)["full_markdown"]},
@@ -430,7 +430,7 @@ def test_the_module_docstring_does_not_promise_the_markdown_handoff():
     """The claim lived in prose for long enough to be acted on twice. A reader
     reaches for the module docstring before the MCP description, so it is pinned
     too rather than left to be corrected again later."""
-    from seohead.tools import markdown_extract as module
+    from seohead.checks import markdown_extract as module
 
     doc = module.__doc__ or ""
     assert "full_markdown" in doc, "the docstring should still describe both renderings"

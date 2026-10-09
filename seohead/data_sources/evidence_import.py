@@ -41,8 +41,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from seohead.checks.external_join import normalize_join_key
 from seohead.data_sources.providers import EVIDENCE_FORMAT
-from seohead.tools.external_join import normalize_join_key
 
 MAPPING_FORMAT = "seohead.evidence-mapping.v1"
 NORMALIZED_FORMAT = "seohead.normalized-evidence.v1"

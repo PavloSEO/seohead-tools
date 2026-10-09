@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import httpx
 
-from seohead.tools import sitemap
-from seohead.tools.robots import parse_robots
+from seohead.checks import sitemap
+from seohead.checks.robots import parse_robots
 from tests.doc_fixtures.site_server import SITE_DIR, run_fixture_site
 
 

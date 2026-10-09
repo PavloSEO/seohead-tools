@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.bot import (
+from seohead.crawl import settings as crawl_settings
+from seohead.integrations.bot import (
     POLICY_PRESETS,
     Action,
     Event,
@@ -17,7 +18,6 @@ from seohead.bot import (
     State,
     WizardSession,
 )
-from seohead.crawl import settings as crawl_settings
 
 
 class RecordingSubmitter:

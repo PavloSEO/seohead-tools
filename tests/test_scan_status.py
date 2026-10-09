@@ -124,7 +124,7 @@ def test_cli_and_mcp_return_the_same_status_summary(tmp_path, capsys):
 
     assert cli.main(["scan-status", "--input", str(path)]) == 0
     command_result = json.loads(capsys.readouterr().out)
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tool = build_server()._tool_manager.get_tool("seo_scan_status")
     assert tool.fn(input_path=str(path)) == command_result

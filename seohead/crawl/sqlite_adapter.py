@@ -23,6 +23,8 @@ from threading import Lock
 from typing import Any, cast
 from urllib.parse import urlsplit
 
+from seohead.checks.robots import is_allowed, match_path, politeness_delay
+from seohead.core.models import ParsedRobots
 from seohead.crawl.collect import _resolve_redirect_destination, fetch_one
 from seohead.crawl.settings import (
     checked_url_budget,
@@ -38,12 +40,10 @@ from seohead.crawl.spider import (
     _strip_fragment,
 )
 from seohead.crawl.throttle import RequestBudgetExhausted, Throttle
-from seohead.models import ParsedRobots
 from seohead.recon.net import UA, http_client, normalize_url
 from seohead.storage import MAX_RECORD_BYTES, ScanBackpressure, ScanError
 from seohead.storage.corpus import html_body_retention
 from seohead.storage.native_scan import NativeScan
-from seohead.tools.robots import is_allowed, match_path, politeness_delay
 
 MAX_LINK_OBSERVATIONS = 20_000
 MAX_FORM_OBSERVATIONS = 2_000

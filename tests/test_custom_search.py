@@ -3,7 +3,7 @@
 
 import pytest
 
-from seohead.tools.custom_search import run_filter, run_search
+from seohead.checks.custom_search import run_filter, run_search
 
 
 def _doc(url, html=None, ok=True, text=None, rendered=False):

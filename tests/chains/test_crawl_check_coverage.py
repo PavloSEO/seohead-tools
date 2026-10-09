@@ -2,7 +2,7 @@
 
 ``run_inlinks`` was wired only into the Screaming Frog export pipeline
 (``seohead/sf/core/audit.py``), never into the native crawl path
-(``seohead/servers/handlers.py:crawl_site``). Its eighteen checks therefore
+(``seohead/mcp/handlers.py:crawl_site``). Its eighteen checks therefore
 neither fired nor appeared in ``run.checks_skipped`` on a crawl: they were
 silently absorbed into ``checks_silent``, which the coverage arithmetic reads
 as "ran clean" -- so a run that never even looked at hreflang, anchor text, or
@@ -32,7 +32,7 @@ from unittest.mock import patch
 import pytest
 
 from seohead.crawl import link_findings
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.sf.core import eeat as eeat_module
 from seohead.sf.core import heuristics as heuristics_module
 from seohead.sf.core import inlinks as inlinks_module

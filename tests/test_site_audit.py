@@ -15,8 +15,8 @@ from seohead.audit.site import (
     audit_site,
     classify,
 )
+from seohead.mcp import handlers
 from seohead.reports import FORMATS, build_report
-from seohead.servers import handlers
 
 # ── finding severity ─────────────────────────────────────────────────────────
 

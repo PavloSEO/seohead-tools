@@ -9,9 +9,9 @@ import pytest
 
 from seohead import cli
 from seohead.crawl.settings import fingerprint, load
-from seohead.servers import handlers
-from seohead.servers.history_handlers import _detail_headers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.history_handlers import _detail_headers
+from seohead.mcp.mcp_server import build_server
 from seohead.storage.native_scan import NativeScan
 from tests.test_native_capture import _event
 from tests.test_scan_native import _metadata, _record, _runtime

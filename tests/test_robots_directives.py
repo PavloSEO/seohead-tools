@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import csv
 
+from seohead.checks.parser import parse_html, robots_directives
 from seohead.crawl.collect import PageRecord
 from seohead.crawl.evidence import _indexability
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import load_exports
 from seohead.sf.core.rules import check_canonical_directives
-from seohead.tools.parser import parse_html, robots_directives
 
 
 # --- directive parsing ------------------------------------------------------

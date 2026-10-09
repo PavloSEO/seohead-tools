@@ -3,12 +3,12 @@
 The guided-scan roadmap (epic #751) adds a conversational way to configure,
 confirm and follow a scan without a terminal. This document is the contract
 that every delivery surface binds to. The code that executes it lives in
-`seohead/bot/`:
+`seohead/integrations/bot/`:
 
-- `seohead/bot/contract.py` — the versioned state machine as data
-  (`CONTRACT_VERSION = "seohead.bot.conversation/1"`, states, actions,
+- `seohead/integrations/bot/contract.py` — the versioned state machine as data
+  (`CONTRACT_VERSION = "seohead.integrations.bot.conversation/1"`, states, actions,
   transitions, editable fields).
-- `seohead/bot/wizard.py` — `WizardSession`, the driver: turns events into
+- `seohead/integrations/bot/wizard.py` — `WizardSession`, the driver: turns events into
   `Reply` objects (text + button tokens), resolves the effective crawl
   configuration through `seohead.crawl.settings`, and hands confirmed jobs
   to a `JobSubmitter` protocol.
@@ -120,7 +120,7 @@ submit.
 
 ## Optional configured HTTP handoff
 
-`seohead.bot.service_delivery` is a narrow adapter for a service-owned upload
+`seohead.integrations.bot.service_delivery` is a narrow adapter for a service-owned upload
 endpoint. It does not start a listener or discover recipients. An operator
 constructs `UploadEndpoint` with an absolute HTTPS URL and a
 `CredentialReference("env:NAME")`, then supplies `AuthorizedHTTPUpload.send`
@@ -139,7 +139,7 @@ delivery state before it tells this core that the receipt succeeded.
 
 ## Optional Telegram Bot API wire adapter
 
-`seohead.bot.telegram_adapter` supplies Bot API wire code without enabling a
+`seohead.integrations.bot.telegram_adapter` supplies Bot API wire code without enabling a
 listener, polling loop, or account. `TelegramBotConfig` accepts only an HTTPS
 origin and an `env:NAME` token reference. `TelegramChatAuthorizationStore`
 is an explicit private actor/chat allowlist. `TelegramGuidedAdapter` accepts
