@@ -32,7 +32,7 @@ class SpaciousPresentationTests(unittest.TestCase):
             self.app.processEvents()
             self.assertTrue(view.empty_project.isVisible())
             self.assertLessEqual(view.empty_project.open_button.height(), 48)
-            with patch("seohead_desktop.app.QFileDialog.getExistingDirectory", return_value="") as chooser:
+            with patch("seohead_desktop.project_io.QFileDialog.getExistingDirectory", return_value="") as chooser:
                 QTest.mouseClick(view.empty_project.open_button, Qt.LeftButton)
                 chooser.assert_called_once()
         self.assertIsNone(window.mcp_gateway)

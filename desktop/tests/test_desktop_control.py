@@ -24,6 +24,7 @@ from unittest.mock import patch
 from PyQt5.QtWidgets import QApplication
 
 import seohead_desktop.app as app_module
+import seohead_desktop.commands as commands_module
 from seohead_desktop.app import MainWindow
 from seohead_desktop.scan_runner import crawl_arguments
 from tests.test_scan_runner import (
@@ -150,14 +151,14 @@ class DesktopControlIntegrationTests(unittest.TestCase):
         }
         window = external = None
         log = None
-        gateway_type = app_module.PersistentMcpGateway
+        gateway_type = commands_module.PersistentMcpGateway
         with (
             owned_site() as (root, site),
             tempfile.TemporaryDirectory(
                 prefix="ctl-", dir=os.environ.get("SEOHEAD_DESKTOP_TEST_TMPDIR")
             ) as runtime,
             patch.object(
-                app_module, "PersistentMcpGateway", wraps=gateway_type
+                commands_module, "PersistentMcpGateway", wraps=gateway_type
             ) as gateway_constructor,
         ):
             retained_copy = root / "retained-copy"
