@@ -2646,6 +2646,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="seohead", description="Headless Python SEO toolkit.")
     p.add_argument("--version", action="version", version=f"seohead {__version__}")
     subs = p.add_subparsers(dest="command", metavar="<command>")
+    version = subs.add_parser("version", help="core version, formats and commands")
+    version.add_argument("--json", action="store_true", help="print machine-readable core info")
     for cmd in COMMANDS:
         epilog = (
             CRAWL_SITE_HELP_NOTE
@@ -2811,6 +2813,16 @@ def main(argv: list[str] | None = None) -> int:
         cmd = "scenario-" + args.scenario_command
     if not cmd:
         build_parser().print_help()
+        return 0
+    if cmd == "version":
+        from seohead.core.core_info import core_info
+
+        info = core_info()
+        if args.json:
+            print(json.dumps(info, ensure_ascii=False, indent=2))
+        else:
+            rev = f" ({info['revision'][:7]})" if info["revision"] else ""
+            print(f"seohead {info['package_version']}{rev}")
         return 0
     if cmd == "sf":
         # The crawl-audit subsystem owns its parser; preserve and forward its argument tail.
