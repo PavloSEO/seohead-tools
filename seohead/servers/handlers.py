@@ -4215,6 +4215,33 @@ def scan_inspect(
     return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
 
 
+def scan_url_query(
+    input_path: str,
+    filters: list[dict[str, Any]] | None = None,
+    sort: str | None = None,
+    direction: str = "asc",
+    columns: list[str] | None = None,
+    offset: int = 0,
+    limit: int = 200,
+    count_timeout_seconds: float = 1.0,
+    max_bytes: int = 1_048_576,
+) -> dict[str, Any]:
+    """Filter, sort and paginate the whole page table of one saved scan, read-only."""
+    from seohead.storage.url_query import scan_url_query as core
+
+    return core(
+        input_path,
+        filters=filters,
+        sort=sort,
+        direction=direction,
+        columns=columns,
+        offset=offset,
+        limit=limit,
+        count_timeout_seconds=count_timeout_seconds,
+        max_bytes=max_bytes,
+    )
+
+
 def scan_url_detail(
     input_path: str,
     url: str,
@@ -6025,6 +6052,7 @@ _RAW_HANDLERS = {
     "scan_list": scan_list,
     "scan_inspect": scan_inspect,
     "scan_url_detail": scan_url_detail,
+    "scan_url_query": scan_url_query,
     "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,

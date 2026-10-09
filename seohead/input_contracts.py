@@ -991,6 +991,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("scan_artifact", "input_path"),
         _form("selector", "url", note="Exact retained native URL; output redacts query values."),
     ),
+    _command("scan-url-query", "scan_url_query", _form("scan_artifact", "input_path")),
     _command(
         "scan-link-inspect",
         "scan_link_inspect",
@@ -1200,6 +1201,7 @@ def render_markdown() -> str:
     ]
     scan_commands = {
         "scan-inspect",
+        "scan-url-query",
         "scan-link-inspect",
         "scan-status",
         "scan-rendered-routes",
