@@ -14,14 +14,14 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtWidgets import QApplication
 
-from seohead_desktop import theming  # noqa: E402
-from seohead_desktop.app import load_theme  # noqa: E402
-from seohead_desktop.settings_store import AppSettings  # noqa: E402
-from seohead_desktop.ui.settings import full_schema  # noqa: E402
-from seohead_desktop.ui.settings.context import SettingsContext  # noqa: E402
-from seohead_desktop.ui.settings.dialog import SettingsDialog  # noqa: E402
+from seohead_desktop import theming
+from seohead_desktop.app import load_theme
+from seohead_desktop.settings_store import AppSettings
+from seohead_desktop.ui.settings import full_schema
+from seohead_desktop.ui.settings.context import SettingsContext
+from seohead_desktop.ui.settings.dialog import SettingsDialog
 
 
 def build(name, width, height, store):
