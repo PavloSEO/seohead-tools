@@ -1,0 +1,5 @@
+/* Profile actions have the canonical total height; no legacy vertical padding. */
+QMenu[profile_menu="true"]::item {
+    height: ${control_menu_item}px;
+    padding: 0 12px 0 10px;
+}

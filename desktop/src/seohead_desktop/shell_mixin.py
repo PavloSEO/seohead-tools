@@ -12,13 +12,10 @@ from PyQt5.QtWidgets import (
     QMenu,
     QShortcut,
     QSizePolicy,
-    QVBoxLayout,
-    QWidget,
     QWidgetAction,
 )
 
 from . import i18n, shortcuts, theming
-from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
@@ -47,6 +44,9 @@ class ShellMixin:
         self.update_display_widgets()
 
     def update_display_widgets(self):
+        from .ui.profile_menu import update_profile
+
+        update_profile(self)
         simple = self.display == "simple"
         self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
@@ -66,51 +66,16 @@ class ShellMixin:
     # Profile menu (bottom-left)
     def show_profile_menu(self):
         menu = self.build_profile_menu()
-        menu.exec_(self.navigation.profile.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
+        try:
+            menu.exec_(self.navigation.profile.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
+        finally:
+            self.navigation.profile.setFocus(Qt.PopupFocusReason)
+            menu.deleteLater()
 
     def build_profile_menu(self):
-        button = self.navigation.profile
-        menu = QMenu(self)
-        header = QWidget()
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(10, 8, 10, 6)
-        header_layout.setSpacing(2)
-        name = QLabel(button.name.text())
-        name.setProperty("text_style", "control")
-        where = QLabel("локально · этот компьютер")
-        where.setProperty("text_style", "meta")
-        header_layout.addWidget(name)
-        header_layout.addWidget(where)
-        self._menu_widget(menu, header)
-        menu.addSeparator()
-        box = QWidget()
-        box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(10, 4, 10, 8)
-        label = QLabel("ОТОБРАЖЕНИЕ")
-        label.setProperty("text_style", "overline")
-        segmented = Segmented([("agent", "С агентом"), ("simple", "Простой")], self.display, "Отображение")
-        segmented.changed.connect(lambda mode: (self.set_display(mode), menu.close()))
-        box_layout.addWidget(label)
-        box_layout.addWidget(segmented)
-        self._menu_widget(menu, box)
-        crawler = menu.addAction(icon("travel_explore"), "Быстрый краул без проекта")
-        crawler.setEnabled(self.can_open_crawler())
-        crawler.setToolTip(UNAVAILABLE)
-        settings = menu.addAction(icon("settings"), "Настройки")
-        settings.setShortcut(QKeySequence.Preferences)
-        settings.triggered.connect(lambda: self.open_settings())
-        self._theme_menu(menu)
-        self._language_menu(menu)
-        mcp = menu.addAction(icon("hub"), "MCP-сервер")
-        mcp.triggered.connect(lambda: self.open_settings("mcp"))
-        menu.addSeparator()
-        cli = menu.addAction(icon("terminal"), "Командная строка")
-        cli.setEnabled(False)
-        cli.setToolTip(UNAVAILABLE)
-        menu.addAction(icon("help"), "Справка", self.show_help, "F1")
-        menu.setMinimumWidth(264)
-        i18n.retranslate(menu)
-        return menu
+        from .ui.profile_menu import build_profile_menu
+
+        return build_profile_menu(self)
 
     def show_display_menu(self):
         """Chip «Простой режим ▾» (SHELL-CANON §2b): display switch and crawler entry."""
@@ -186,8 +151,14 @@ class ShellMixin:
                 pass  # the settings dialog was closed before the answer arrived
 
     def settings_context(self):
+        from .source_service import SourceService
+
+        if not hasattr(self, "_source_service"):
+            self._source_service = SourceService(self.core_executable, self)
+        self._source_service.executable = self.core_executable
         return SettingsContext(core_executable=self.core_executable, project_directory=self.project_directory,
-                               actions={"providers": self.request_providers})
+                               actions={"providers": self.request_providers,
+                                        "sources": lambda **kwargs: self._source_service.request(project=self.project_directory, **kwargs)})
 
     def open_settings(self, section="general"):
         """Settings are a modal window over the application (sheet Settings), never a workspace tab."""

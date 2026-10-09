@@ -85,6 +85,8 @@ class SettingsDialog(QDialog):
         self.section_title.setProperty("text_style", "title")
         self.section_hint = QLabel()
         self.section_hint.setProperty("text_style", "meta")
+        self.section_hint.setWordWrap(True)
+        self.section_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         titles.addWidget(self.section_title)
         titles.addWidget(self.section_hint)
         header.addLayout(titles, 1)
@@ -142,6 +144,7 @@ class SettingsDialog(QDialog):
         self.stack.setCurrentWidget(self._pages[module.ID][0])
         self.section_title.setText(i18n.tr(module.TITLE))
         self.section_hint.setText(i18n.tr(module.HINT))
+        self.reset_button.setVisible(bool(module.SCHEMA))
 
     def reset_section(self):
         section_id = self.current_section()
