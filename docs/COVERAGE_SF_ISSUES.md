@@ -17,15 +17,15 @@ here is written about *our own* behaviour.
 |---|---:|---|
 | check | 126 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
-| partial | 18 | we find part of it; the missing part is stated |
-| gap | 7 | we should find it and do not |
+| partial | 19 | we find part of it; the missing part is stated |
+| gap | 6 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **159 are found today**, 18 are
-found in part, 7 are gaps worth closing, and
+remaining 212 issues, **159 are found today**, 19 are
+found in part, 6 are gaps worth closing, and
 28 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
@@ -46,7 +46,7 @@ having, because the alternative is an absence nobody has noticed.
 | Internal Redirection (3XX) | check | `INTERNAL_LINK_TO_REDIRECT` `BAD_REDIRECT_TYPE` |  |
 | Internal Redirection (Meta Refresh) | check | `META_REFRESH_REDIRECT` |  |
 | Internal Redirection (HTTP Refresh) | check | `HTTP_REFRESH_REDIRECT` |  |
-| Internal Redirection (JavaScript) | gap | — | needs rendering plus navigation tracking; render mode reports the DOM, not location changes |
+| Internal Redirection (JavaScript) | partial | — | navigation is observed on rendered scans (`scan-navigation`, cause `script_navigation`), but no finding reports a script-initiated location change as a redirect yet, and the SF-export and legacy paths never see one |
 | External No Response | tool | `links-check` |  |
 | External Client Error (4XX) | check | `BROKEN_EXTERNAL_LINK` |  |
 | External Server Error (5XX) | check | `BROKEN_EXTERNAL_LINK` |  |
