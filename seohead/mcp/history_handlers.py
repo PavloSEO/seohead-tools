@@ -208,6 +208,8 @@ def scan_inspect(
     offset: int = 0,
     limit: int = 100,
     max_bytes: int = 1_048_576,
+    columns: list[str] | None = None,
+    total: bool = False,
 ) -> dict[str, Any]:
     return inspect_scan(
         _path(input_path, "input"),
@@ -215,6 +217,8 @@ def scan_inspect(
         offset=offset,
         limit=limit,
         max_bytes=max_bytes,
+        columns=columns,
+        total=total,
     )
 
 

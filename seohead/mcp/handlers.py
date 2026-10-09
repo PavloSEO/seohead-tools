@@ -4209,10 +4209,20 @@ def scan_inspect(
     offset: int = 0,
     limit: int = 100,
     max_bytes: int = 1_048_576,
+    columns: list[str] | None = None,
+    total: bool = False,
 ) -> dict[str, Any]:
     from seohead.mcp.history_handlers import scan_inspect as core
 
-    return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
+    return core(
+        input_path,
+        table=table,
+        offset=offset,
+        limit=limit,
+        max_bytes=max_bytes,
+        columns=columns,
+        total=total,
+    )
 
 
 def scan_url_query(

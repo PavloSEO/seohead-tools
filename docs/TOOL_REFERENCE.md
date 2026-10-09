@@ -2747,8 +2747,14 @@ Read a bounded, paginated table view from one saved scan.
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
 | `max_bytes` | `int` | `1048576` |
+| `columns` | `list[str] | None` | `None` |
+| `total` | `bool` | `False` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+``columns`` projects the named table columns; ``total`` adds the table's row count.
 
 ### `scan-url-detail`
 

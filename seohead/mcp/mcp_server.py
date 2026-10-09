@@ -2909,8 +2909,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         offset: int = 0,
         limit: int = 100,
         max_bytes: int = 1_048_576,
+        columns: list[str] | None = None,
+        total: bool = False,
     ) -> dict[str, Any]:
-        """Read a bounded, paginated table view from one saved scan."""
+        """Read a bounded, paginated table view from one saved scan.
+
+        ``columns`` projects the named table columns; ``total`` adds the table's row count.
+        """
         return _checked(
             handlers.scan_inspect(
                 input_path=input_path,
@@ -2918,6 +2923,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 offset=offset,
                 limit=limit,
                 max_bytes=max_bytes,
+                columns=columns,
+                total=total,
             )
         )
 
