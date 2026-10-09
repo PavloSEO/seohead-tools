@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from seohead.storage import open_scan
+from seohead.storage import READ_TIMEOUT_SECONDS, open_scan, open_scan_mode
 from seohead.storage.body_diff import body_diff
 from seohead.storage.history import (
     inspect_scan,
@@ -18,6 +19,8 @@ from seohead.storage.history import (
     snapshot_scan,
 )
 from seohead.storage.status import scan_status as _scan_status
+
+_EFFECTIVE_LOOKUP_SECONDS = 0.5
 
 
 def scan_link_inspect(
@@ -164,9 +167,13 @@ def scan_inspect(
     )
 
 
-def scan_status(input_path: str) -> dict[str, Any]:
-    """Summarize saved frontier work and committed page outcomes offline."""
-    return _scan_status(_path(input_path, "input"))
+def scan_status(input_path: str, full_validation: bool = False) -> dict[str, Any]:
+    """Summarize saved frontier work and committed page outcomes offline.
+
+    ``validation`` in the result is ``"light"`` (header/schema check) or ``"full"``
+    (``full_validation=True``, or the same bytes were already fully validated).
+    """
+    return _scan_status(_path(input_path, "input"), full_validation=full_validation)
 
 
 _DETAIL_SENSITIVE_HEADERS = frozenset(
@@ -358,7 +365,7 @@ def _scan_url_detail(
                 "evidence_revision": None,
             },
         }
-    con = open_scan(path, require_audit=False)
+    con, validation = open_scan_mode(path, require_audit=False, light=True)
     try:
         source_row = con.execute(
             "SELECT scan_uuid,format_version,source_kind,evidence_revision,lifecycle,finish_reason,"
@@ -371,6 +378,7 @@ def _scan_url_detail(
         source["corpus_partial"] = bool(source["corpus_partial"])
         if source["source_kind"] != "native":
             return {
+                "validation": validation,
                 "ok": True,
                 "state": "unavailable",
                 "reason": "this saved source does not retain native per-URL transport evidence",
@@ -378,13 +386,20 @@ def _scan_url_detail(
             }
         url_row = con.execute("SELECT url_id,url FROM urls WHERE url=?", (url,)).fetchone()
         if url_row is None:
-            return {"ok": True, "state": "not_found", "source": source, "url": _detail_url(url)}
+            return {
+                "ok": True,
+                "state": "not_found",
+                "source": source,
+                "url": _detail_url(url),
+                "validation": validation,
+            }
         page = con.execute(
             "SELECT p.*,u.url FROM pages p JOIN urls u USING(url_id) WHERE p.url_id=?",
             (url_row["url_id"],),
         ).fetchone()
         if page is None:
             return {
+                "validation": validation,
                 "ok": True,
                 "state": "unavailable",
                 "reason": "URL was retained without a page record",
@@ -392,6 +407,36 @@ def _scan_url_detail(
                 "url": _detail_url(url_row["url"]),
                 "url_id": url_row["url_id"],
             }
+        # responses has an index on request_url_id only: the effective-URL (redirect target)
+        # match is a table scan, so it runs under a short budget and is reported when skipped.
+        ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT response_id FROM responses WHERE request_url_id=?", (url_row["url_id"],)
+            )
+        ]
+        effective_state: dict[str, Any] = {"state": "complete"}
+        deadline = time.monotonic() + _EFFECTIVE_LOOKUP_SECONDS
+        con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
+        try:
+            ids += [
+                row[0]
+                for row in con.execute(
+                    "SELECT response_id FROM responses WHERE effective_url_id=? AND request_url_id!=?",
+                    (url_row["url_id"], url_row["url_id"]),
+                )
+            ]
+        except sqlite3.OperationalError as exc:
+            if "interrupted" not in str(exc).lower():
+                raise
+            effective_state = {
+                "state": "skipped",
+                "reason": "redirect-target lookup exceeds the light-read budget; "
+                "only responses requested for this URL are listed",
+            }
+        finally:
+            rest = time.monotonic() + READ_TIMEOUT_SECONDS
+            con.set_progress_handler(lambda: int(time.monotonic() > rest), 10000)
         response_rows = con.execute(
             "SELECT r.response_id,r.request_ordinal,r.request_url_id,r.effective_url_id,"
             "request_url.url AS request_url,effective_url.url AS effective_url,r.redirect_chain_json,"
@@ -403,9 +448,9 @@ def _scan_url_detail(
             "r.body_reason,r.error,r.error_kind "
             "FROM responses r JOIN urls request_url ON request_url.url_id=r.request_url_id "
             "LEFT JOIN urls effective_url ON effective_url.url_id=r.effective_url_id "
-            "WHERE r.request_url_id=? OR r.effective_url_id=? ORDER BY r.request_ordinal "
+            "WHERE r.response_id IN (SELECT value FROM json_each(?)) ORDER BY r.request_ordinal "
             "LIMIT ? OFFSET ?",
-            (url_row["url_id"], url_row["url_id"], response_limit + 1, response_offset),
+            (json.dumps(ids), response_limit + 1, response_offset),
         ).fetchall()
         form_rows = con.execute(
             "SELECT form_id,ordinal,source_document_id,evidence_representation,method,action,has_password "
@@ -415,6 +460,7 @@ def _scan_url_detail(
         detail = {
             "ok": True,
             "state": "available",
+            "validation": validation,
             "source": source,
             "url": _detail_url(url_row["url"]),
             "url_id": url_row["url_id"],
@@ -425,6 +471,7 @@ def _scan_url_detail(
                 "items": [_detail_response(row) for row in response_rows[:response_limit]],
                 "has_more": len(response_rows) > response_limit,
                 "next_offset": response_offset + min(len(response_rows), response_limit),
+                "redirect_target_lookup": effective_state,
             },
             "forms": {
                 "offset": form_offset,
@@ -438,6 +485,7 @@ def _scan_url_detail(
         size = len(json.dumps(detail, ensure_ascii=False, default=str).encode("utf-8"))
         if size > max_bytes:
             return {
+                "validation": validation,
                 "ok": False,
                 "state": "limit_reached",
                 "reason": "output_byte_limit_exceeded",

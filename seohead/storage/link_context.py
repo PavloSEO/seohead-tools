@@ -10,7 +10,7 @@ from urllib.parse import urldefrag, urlsplit
 from seohead.crawl.spider import Scope
 from seohead.tools.link_context import MAX_ANCHORS, SCHEMA_VERSION, extract_occurrences
 
-from . import ScanError, open_scan
+from . import ScanError, open_scan_mode
 from .bodies import read_document
 
 
@@ -293,9 +293,10 @@ def contexts_for_document(
     _validate_limits(offset, limit, max_body_bytes, max_result_bytes)
     if type(document_id) is not int or document_id < 1:
         raise ScanError("source document ID must be a positive integer")
-    con = open_scan(scan_path, require_audit=False)
+    con, validation = open_scan_mode(scan_path, require_audit=False, light=True)
     try:
-        return _document_page(con, document_id, offset, limit, max_body_bytes, max_result_bytes)
+        page = _document_page(con, document_id, offset, limit, max_body_bytes, max_result_bytes)
+        return {**page, "validation": validation}
     finally:
         con.close()
 
@@ -311,7 +312,7 @@ def context_for_link(
     if type(link_id) is not int or link_id < 1:
         raise ScanError("link ID must be a positive integer")
     _validate_limits(0, 1, max_body_bytes, max_result_bytes)
-    con = open_scan(scan_path, require_audit=False)
+    con, validation = open_scan_mode(scan_path, require_audit=False, light=True)
     try:
         row = con.execute(
             "SELECT l.link_id,l.source_url_id,l.destination_url_id,l.source_document_id,"
@@ -339,12 +340,12 @@ def context_for_link(
             }
             if len(json.dumps(item, ensure_ascii=False).encode("utf-8")) > max_result_bytes:
                 raise ScanError("one link context record exceeds max_result_bytes")
-            return item
+            return {**item, "validation": validation}
         document_id = link["source_document_id"]
         ordinal = link["ordinal"]
         page = _document_page(con, document_id, ordinal, 1, max_body_bytes, max_result_bytes)
         if not page["items"] or page["items"][0]["link_id"] != link_id:
             raise ScanError("link ordinal does not identify its source document occurrence")
-        return page["items"][0]
+        return {**page["items"][0], "validation": validation}
     finally:
         con.close()
