@@ -1,11 +1,13 @@
 """Проблемы (canvas Issues.dc.html, StatesIssues.dc.html): findings of the selected saved scan.
 
 The core gives per scan the totals by severity, the first 20 findings and the list of checks it skipped (the scan row of
-``project-scans``). Per-check counters and the full list of affected URLs wait for #932; the path «found → task → fixed →
-confirmed» waits for the remediation ledger (#926) and tasks (#922). Nothing is counted here from the 20-row sample.
+``project-scans``). Per-check counters for the whole scan and the filter by check wait for #981, the paged findings for #980; the path
+«found → task → fixed → confirmed» waits for the remediation ledger (#926) and tasks (#922). Nothing is counted here from the 20-row sample.
 """
 
 from __future__ import annotations
+
+import re
 
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtWidgets import (
@@ -33,6 +35,7 @@ from ..ui.kit import (
     StatePanel,
     no_project_panel,
     style_table,
+    unavailable_tip,
     waiting_badge,
 )
 from .base import Screen
@@ -47,12 +50,53 @@ CHECK_NAMES = {
     "H1_MISSING": "Без H1", "CANONICAL_MISSING": "Без canonical", "CANONICAL_CHAIN": "Цепочка canonical",
     "CANONICAL_NON_INDEXABLE": "Canonical на неиндексируемый URL", "HREFLANG_INVALID_CODE": "Неверный код hreflang",
     "HREFLANG_INCONSISTENT_CONFIRMATION": "Hreflang без обратного подтверждения", "REDIRECT_CHAIN": "Цепочки редиректов",
+    "IMG_MISSING_ALT": "Изображения без alt", "IMG_OVER_KB": "Тяжёлые изображения", "IMG_MISSING_DIMENSIONS": "Изображения без width и height",
+    "MIXED_CONTENT": "Смешанный контент HTTP на HTTPS", "MISSING_HSTS": "Нет заголовка HSTS", "STRUCTURED_DATA_MISSING": "Нет микроразметки",
+    "HREFLANG_ERROR": "Ошибки hreflang", "HREFLANG_BROKEN_TARGET": "Hreflang ведёт на битый URL", "HREFLANG_NOINDEX_TARGET": "Hreflang ведёт на noindex",
+    "HREFLANG_MISSING_RETURN_LINK": "Hreflang без обратной ссылки", "SITEMAP_URL_4XX_5XX": "В sitemap URL с ответом 4xx/5xx",
+    "SITEMAP_URL_3XX": "В sitemap URL с редиректом", "SITEMAP_URL_NON_INDEXABLE": "В sitemap неиндексируемые URL",
+    "SITEMAP_URL_DUPLICATED": "Дубли URL в sitemap", "SITEMAP_NOT_IN_ROBOTS": "Sitemap не указан в robots.txt",
+    "SITEMAP_TOO_MANY_URLS": "В sitemap больше 50 000 URL", "SITEMAP_TOO_LARGE": "Sitemap тяжелее 50 МБ", "SITEMAP_STALE_LASTMOD": "Устаревший lastmod в sitemap",
+    "SITEMAP_DESYNC": "Sitemap расходится со сканом", "SITEMAP_ORPHAN": "URL из sitemap без внутренних ссылок", "SITEMAP_FETCH_INCOMPLETE": "Sitemap загружен не полностью",
+    "URL_NOT_IN_SITEMAP": "Индексируемый URL вне sitemap", "H2_MISSING": "Без H2", "META_KEYWORDS_PRESENT": "Заполнен meta keywords",
+    "PAGINATION_CANONICAL_POLICY": "Canonical на страницах пагинации", "FILTER_CANONICAL_POLICY": "Canonical на страницах фильтров",
+    "SCHEMA_VALIDATION_ERROR": "Ошибки валидации микроразметки", "DUPLICATE_BY_HASH": "Точные дубли страниц", "NEAR_DUPLICATE": "Почти дубли страниц",
+    "READABILITY_DIFFICULT": "Текст трудно читать", "LONG_SENTENCES": "Длинные предложения", "SPELLING_ERRORS": "Орфографические ошибки",
+    "GRAMMAR_ERRORS": "Грамматические ошибки", "CANONICAL_MULTIPLE": "Несколько canonical", "CANONICAL_TARGET_ERROR": "Canonical на URL с ошибкой",
+    "PAGINATION_LOOP": "Петля в пагинации", "UNLINKED_PAGINATION_SERIES": "Пагинация без связи между страницами",
+    "PAGINATION_SEQUENCE_ERROR": "Нарушен порядок пагинации", "PAGINATION_MULTIPLE": "Несколько rel=next/prev", "PAGINATION_URL_NOT_IN_ANCHOR": "Страница пагинации без ссылки в тексте",
+    "HTTP1_ONLY": "Только HTTP/1.1", "AMPHTML_PRESENT": "Есть AMP-версия", "DECLARED_MIME_MISMATCH": "Тип контента не совпадает с расширением",
+    "TITLE_MULTIPLE": "Несколько title", "BROKEN_INTERNAL_LINK": "Битые внутренние ссылки", "BROKEN_EXTERNAL_LINK": "Битые внешние ссылки",
+    "LINK_TO_5XX": "Ссылки на страницы с ответом 5xx", "INTERNAL_LINK_TO_REDIRECT": "Внутренние ссылки на редирект",
+    "EXTERNAL_LINK_TO_REDIRECT": "Внешние ссылки на редирект", "HTTP_LINK_ON_HTTPS": "Ссылка по HTTP на странице HTTPS",
+    "INSECURE_SUBRESOURCE": "Небезопасные ресурсы страницы", "ROBOTS_BLOCKS_RESOURCES": "robots.txt закрывает JS и CSS",
+    "OG_MISSING": "Нет разметки Open Graph", "NO_AUTHOR_BYLINE": "У статьи нет автора", "NO_CONTENT_DATES": "У статьи нет дат",
+    "FEW_CITATIONS": "В статье мало источников", "DOM_TOO_DEEP": "Слишком глубокий DOM", "DOM_TOO_MANY_NODES": "Слишком много узлов DOM",
 }
+# Core reason of a skipped check (English, free text) -> Russian. First matching pattern wins; unknown stays «причина не указана ядром».
+SKIP_REASONS = (
+    (r"missing export|export \S+ not available|no \S+ export", "нет выгрузки в источнике"),
+    (r"requirements\.\S+ is false|disabled", "отключено в профиле"),
+    (r"policy configured", "политика не задана в профиле"),
+    (r"no stored html", "нет сохранённого HTML"),
+    (r"sitemap", "нет данных sitemap"),
+    (r"article-scope", "в скане нет страниц-статей"),
+    (r"no .*column|has no \S+ column|link inventory carries no|link_attributes", "в выгрузке нет нужной колонки"),
+    (r"partial|unmeasured|incomplete", "данные скана неполные"),
+    (r"no url with", "нет подходящих URL"),
+    (r"not captured", "ответ цели не сохранён в скане"),
+)
 COLUMNS = ("Адрес", "HTTP", "Доказательство", "Состояние")
 
 
-def check_name(check, message=None):
-    return tr(CHECK_NAMES[check]) if check in CHECK_NAMES else (message or check or tr("Нет данных"))
+def check_name(check, _message=None):
+    """Russian name of a check; an unknown code is never shown raw (it stays in the tooltip)."""
+    return tr(CHECK_NAMES[check]) if check in CHECK_NAMES else tr("Другая проверка")
+
+
+def skip_reason(reason):
+    text = (reason or "").casefold()
+    return tr(next((ru for pattern, ru in SKIP_REASONS if re.search(pattern, text)), "причина не указана ядром"))
 
 
 def selected_scan(host):
@@ -96,14 +140,14 @@ class FindingModel(QAbstractTableModel):
         if column == 3 and role == BADGE_ROLE:
             return "mut", tr("Найдена в скане")
         if role == Qt.DisplayRole:
-            return (item.get("target_url") or tr("Нет данных"), tr("Нет данных"), item.get("message") or tr("Нет данных"), tr("Найдена в скане"))[column]
+            return (item.get("target_url") or tr("Нет данных"), "—", item.get("message") or tr("Нет данных"), tr("Найдена в скане"))[column]
         if role == Qt.ToolTipRole:
-            return item.get("target_url") if column == 0 else item.get("fingerprint") if column == 3 else None
+            return item.get("target_url") if column == 0 else tr("Нет данных") if column == 1 else item.get("fingerprint") if column == 3 else None
         return None
 
 
 class IssuesScreen(Screen):
-    slot = "audit"
+    slot = "issues"
     watches = ("project", "scans", "scan_status")
 
     def __init__(self, host):
@@ -161,7 +205,7 @@ class IssuesScreen(Screen):
         self.list_note.setProperty("text_style", "meta")
         self.list_note.setWordWrap(True)
         layout.addWidget(self.list_note)
-        self.list_waiting = waiting_badge(932)
+        self.list_waiting = waiting_badge(981, "Число находок по каждой проверке для всего скана и фильтр по проверке")
         layout.addWidget(self.list_waiting, 0, Qt.AlignLeft)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -200,7 +244,7 @@ class IssuesScreen(Screen):
         self.to_task.setProperty("role", "primary")
         self.to_task.setIcon(material_icon("assignment_add", theming.roles()["on_primary"]))
         self.to_task.setEnabled(False)
-        self.to_task.setToolTip(f"{tr('Создание задач из проверок ждёт ядра')} · {tr('ждёт')} #922, #926")
+        self.to_task.setToolTip(unavailable_tip("Создание задач из проверок"))
         top.addWidget(self.open_url)
         top.addWidget(self.to_task)
         head_layout.addLayout(top)
@@ -213,12 +257,12 @@ class IssuesScreen(Screen):
         head_layout.addWidget(self.lane_found)
         lane = QHBoxLayout()
         lane.setSpacing(8)
-        lane.addWidget(waiting_badge(926))
+        lane.addWidget(waiting_badge(926, "Путь находки: задача, исправление и подтверждение перепроверкой"))
         lane.addStretch(1)
         self.recheck = QPushButton(tr("Перепроверить"))
         self.recheck.setIcon(material_icon("replay"))
         self.recheck.setEnabled(False)
-        self.recheck.setToolTip(f"{tr('Перепроверка по проверке ждёт журнала исправлений')} · {tr('ждёт')} #926")
+        self.recheck.setToolTip(unavailable_tip("Перепроверка по проверке"))
         lane.addWidget(self.recheck)
         head_layout.addLayout(lane)
         layout.addWidget(head)
@@ -285,13 +329,20 @@ class IssuesScreen(Screen):
         self.total = QLabel()
         self.total.setProperty("text_style", "meta")
         layout.addWidget(self.total)
-        groups = StatePanel("waiting", "Крупнейшие группы и счётчики по проверкам", "Ядро отдаёт итоги по важности и первые 20 находок; счётчики по каждой проверке и постраничный список URL ждут ядра", issue=932)
+        groups = StatePanel("waiting", "Крупнейшие группы и счётчики по проверкам", "Ядро отдаёт итоги по важности и первые 20 находок; счётчики по каждой проверке и постраничный список URL появятся позже",
+                            issue=980, hint="Находки по проверкам для всего скана и постраничный список URL")
         groups.setMinimumHeight(220)
         layout.addWidget(groups)
-        layout.addWidget(section_label("Не выполнялись этим источником"))
+        self.skipped_toggle = QToolButton()
+        self.skipped_toggle.setCheckable(True)
+        self.skipped_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.skipped_toggle.setStyleSheet("QToolButton { border: none; background: transparent; text-align: left; padding: 4px 0; }")
+        self.skipped_toggle.toggled.connect(lambda _on: self._sync_skipped())
+        layout.addWidget(self.skipped_toggle, 0, Qt.AlignLeft)
         self.skipped = QLabel()
         self.skipped.setWordWrap(True)
         self.skipped.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.skipped.setVisible(False)
         layout.addWidget(self.skipped)
         layout.addStretch(1)
         scroll.setWidget(body)
@@ -303,6 +354,8 @@ class IssuesScreen(Screen):
         for button, text in ((self.open_url, "Открыть в URL"), (self.to_task, "В задачу"), (self.recheck, "Перепроверить")):
             button.setText("" if narrow else tr(text))
             button.setToolTip(button.toolTip() or tr(text))
+        for column in (1, 3):  # constant «—» and «Найдена в скане» only steal width from address and evidence when narrow
+            self.table.setColumnHidden(column, narrow)
 
     # ---- state -----------------------------------------------------------------------------------------------
     def _set_state(self, kind, panel=None):
@@ -351,6 +404,8 @@ class IssuesScreen(Screen):
 
     def _set_severity(self, key):
         self.severity = key
+        for name, (button, _label) in self.pills.items():
+            button.setChecked(name == key)
         self._fill_list()
 
     def _fill_all(self):
@@ -372,16 +427,27 @@ class IssuesScreen(Screen):
         self.partial_note.setVisible(partial)
         self.partial_text.setText(tr("Скан частичный. Находки — только по обойдённой части; «нет данных» не равно нулю. Не закрывайте задачи по неполному скану."))
         self.resume.setVisible(partial and hasattr(self.host, "resume_selected_scan"))
-        skipped = evidence.get("skipped_checks") or []
-        self.skipped.setText("\n".join(f"{item.get('id')} · {item.get('reason') or tr('причина не указана')}" for item in skipped if isinstance(item, dict)) or tr("Нет данных"))
-        self.list_note.setText(trf("Показаны проверки из первых {n} находок. Счётчики по каждой проверке и полный список — ждут ядра.", n=len(findings.get("items") or [])))
+        skipped = [item for item in evidence.get("skipped_checks") or [] if isinstance(item, dict)]
+        self.skipped_rows = [f"{check_name(item.get('id'))} — {skip_reason(item.get('reason'))}" for item in skipped]
+        self._sync_skipped()
+        self.list_note.setText(trf("Проверки из первых {n} находок. Число рядом с проверкой — находки в этой выборке, не во всём скане.", n=len(findings.get("items") or [])))
         self._fill_list()
         self._fill_detail()
+
+    def _sync_skipped(self):
+        rows = getattr(self, "skipped_rows", [])
+        opened = self.skipped_toggle.isChecked() and bool(rows)
+        self.skipped_toggle.setText(trf("Не выполнялось: {n}", n=len(rows)) if rows else tr("Не выполнялось: нет данных"))
+        self.skipped_toggle.setEnabled(bool(rows))
+        self.skipped_toggle.setArrowType(Qt.DownArrow if opened else Qt.RightArrow)
+        self.skipped.setText("\n".join(rows))
+        self.skipped.setVisible(opened)
 
     def _fill_list(self):
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
+                item.widget().hide()  # deleteLater alone leaves it painted until the event loop runs
                 item.widget().deleteLater()
         needle = self.search.text().strip().casefold()
         self.row_buttons = {}
@@ -405,6 +471,11 @@ class IssuesScreen(Screen):
             button.clicked.connect(lambda _c=False, c=check: self._select(c))
             self.list_layout.insertWidget(self.list_layout.count() - 1, button)
             self.row_buttons[check] = button
+        if not self.row_buttons:
+            empty = QLabel(tr("В первых находках нет проверок с такой важностью или названием."))
+            empty.setProperty("text_style", "meta")
+            empty.setWordWrap(True)
+            self.list_layout.insertWidget(0, empty)
 
     def _select(self, check):
         self.selected = None if check == self.selected else check
@@ -423,9 +494,11 @@ class IssuesScreen(Screen):
             self.lane_found.setText(self._lane(scan))
             self.open_url.setEnabled(False)
             self.open_url.setToolTip(tr("Выберите проверку"))
-            self.foot.setText(trf("Проверка core: findings · скан {id}", id=(scan.get("uuid") or "")[:8]))
+            self.foot.setText("")
+            self.foot.setVisible(False)
             return
         self.pages.setCurrentIndex(1)
+        self.foot.setVisible(True)
         name = check_name(self.selected, entry["message"])
         icon, colour = next(((i, c) for k, _n, i, c in SEVERITIES if k == entry["severity"]), ("help", "text_muted"))
         self.title.setText(name)
@@ -435,12 +508,12 @@ class IssuesScreen(Screen):
         self.model.set_rows(entry["items"])
         urls = [i.get("target_url") for i in entry["items"] if i.get("target_url")]
         self.open_url.setEnabled(bool(urls))
-        self.open_url.setToolTip(trf("Откроет URL из выборки находок этой проверки ({n}); полный фильтр по проверке ждёт #932", n=len(urls)))
-        self.foot.setText(trf("{n} URL в выборке находок · проверка core:{id} · скан {scan}. Полный список ждёт #932.", n=len(entry["items"]), id=self.selected, scan=(scan.get("uuid") or "")[:8]))
+        self.open_url.setToolTip(trf("Откроет URL из выборки находок этой проверки ({n}). Фильтр по проверке для всего скана пока недоступен", n=len(urls)))
+        self.foot.setText(trf("{n} URL в выборке находок этой проверки. Полный список по всему скану пока недоступен.", n=len(entry["items"])))
 
     @staticmethod
     def _lane(scan):
-        steps = [trf("Найдена · {scan}", scan=(scan.get("uuid") or "")[:8]), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой")]
+        steps = [tr("Найдена в скане"), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой")]
         return "  →  ".join([f"1 {steps[0]}", *(f"{n} {text}" for n, text in enumerate(steps[1:], 2))])
 
     # ---- actions ---------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -7,8 +8,10 @@ from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
-from seohead_desktop.screens.issues import IssuesScreen, sample_checks
+from seohead_desktop.screens.base import SLOTS
+from seohead_desktop.screens.issues import IssuesScreen, check_name, sample_checks, skip_reason
 from seohead_desktop.ui.kit import StatePanel
+from seohead_desktop.ui.workspace import VIEW_ALIASES, VIEW_IDS
 from tests._qt import sweep_widgets
 from tests._screens_core import fixture
 from tests._screens_host import FakeHost
@@ -50,7 +53,7 @@ class IssuesTests(IssuesBase):
         pill, _label = self.screen.pills["critical"]
         self.assertIn(str(findings["by_severity"]["critical"]), pill.text())
         self.assertIn("4 272", self.screen.pills["all"][0].text().replace("\u202f", " ").replace("\xa0", " "))
-        self.assertTrue(any("ждёт" in t and "932" in t for t in self.texts()) or self.screen.list_waiting.text().endswith("932"))
+        self.assertEqual(self.screen.list_waiting.property("waiting_issue"), 981)
 
     def test_list_holds_only_checks_of_the_sample_and_filters_by_severity(self):
         checks = sample_checks(self.scan["evidence"]["findings"])
@@ -71,9 +74,44 @@ class IssuesTests(IssuesBase):
         self.assertEqual(filters[0]["value"], [i["target_url"] for i in entry["items"]])
         self.assertFalse(self.screen.to_task.isEnabled())
 
-    def test_skipped_checks_are_listed_not_counted_as_zero(self):
-        for item in self.scan["evidence"]["skipped_checks"]:
-            self.assertIn(item["id"], self.screen.skipped.text())
+    def test_skipped_checks_are_collapsed_russian_and_never_raw(self):
+        skipped = self.scan["evidence"]["skipped_checks"]
+        self.assertFalse(self.screen.skipped_toggle.isChecked())
+        self.assertTrue(self.screen.skipped.isHidden())
+        self.assertEqual(self.screen.skipped_toggle.text(), f"Не выполнялось: {len(skipped)}")
+        self.screen.skipped_toggle.click()
+        self.app.processEvents()
+        self.assertFalse(self.screen.skipped.isHidden())
+        text = self.screen.skipped.text()
+        self.assertEqual(len(text.splitlines()), len(skipped))
+        self.assertIn("Изображения без alt — нет выгрузки в источнике", text)
+        self.assertIn("Без H2 — отключено в профиле", text)
+        for item in skipped:
+            self.assertNotIn(item["id"], text)
+        for english in ("missing", "export", "column", "not available", "configured"):
+            self.assertNotIn(english, text)
+        self.assertNotIn("причина не указана ядром", text)  # every reason of the fixture is mapped
+
+    def test_unknown_reason_and_check_are_not_shown_raw(self):
+        self.assertEqual(skip_reason("something unexpected"), "причина не указана ядром")
+        self.assertEqual(check_name("BRAND_NEW_CHECK"), "Другая проверка")
+
+    def test_no_issue_numbers_and_no_service_footer_on_screen(self):
+        self.screen.row_buttons[next(iter(self.screen.row_buttons))].click()
+        self.app.processEvents()
+        widgets = self.screen.findChildren(QLabel) + self.screen.findChildren(QPushButton)
+        shown = " ".join(w.text() + " " + w.toolTip() for w in widgets) + " " + self.screen.foot.text()
+        self.assertFalse(re.search(r"#\d{3}", shown), shown)
+        self.assertNotIn("core:", shown)
+        self.assertNotIn(self.scan["uuid"][:8], shown)
+        self.assertIn("Недоступно в этой версии ядра", shown)
+
+    def test_slot_is_issues(self):
+        self.assertEqual(IssuesScreen.slot, "issues")
+        self.assertIn("issues", SLOTS)
+        self.assertNotIn("audit", SLOTS)
+        self.assertEqual(VIEW_ALIASES["audit"], "issues")
+        self.assertIn("issues", VIEW_IDS)
 
     def test_no_findings_state_is_an_honest_panel(self):
         self.scan["evidence"]["findings"] = {"state": "unavailable", "reason": "нет аудита"}

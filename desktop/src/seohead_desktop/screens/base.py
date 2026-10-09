@@ -10,7 +10,7 @@ from __future__ import annotations
 from PyQt5.QtWidgets import QWidget
 
 # page slot -> index in MainWindow.pages (the order the legacy pages were added in)
-SLOTS = {"work": 0, "url": 1, "audit": 2, "project": 3, "tasks": 4, "scans": 5, "inbox": 6, "reports": 7, "journal": 8,
+SLOTS = {"work": 0, "url": 1, "issues": 2, "project": 3, "tasks": 4, "scans": 5, "inbox": 6, "reports": 7, "journal": 8,
          "content_search": 9}
 
 

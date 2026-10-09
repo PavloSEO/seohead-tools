@@ -41,6 +41,7 @@ from .ui.presentation import (
 )
 from .ui.workspace import (
     LAYOUTS,
+    VIEW_ALIASES,
     VIEW_IDS,
     ActionFinder,
 )
@@ -181,6 +182,7 @@ class AgentMixin:
         if operation in {"select_view", "select_scan", "new_scan"}:
             context = self.control_tab(arguments, ready=operation != "select_view")
             if operation == "select_view":
+                arguments = {**arguments, "view_id": VIEW_ALIASES.get(arguments["view_id"], arguments["view_id"])}
                 if arguments["view_id"] not in VIEW_IDS:
                     raise ControlError("unknown_view", "Раздел не объявлен в этом приложении")
                 if context.id != self._active_workspace_id:
