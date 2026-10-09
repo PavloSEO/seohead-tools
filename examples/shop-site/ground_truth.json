@@ -1,6 +1,6 @@
 {
  "format": "seohead.shop-site.v1",
- "base": "http://shop.localhost:18431",
+ "base": "http://shop.example.test:18431",
  "versions": {
   "v1": {
    "reachable_urls": 1253,
