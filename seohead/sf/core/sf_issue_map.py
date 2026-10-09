@@ -171,9 +171,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _t(
             "Non-sequential",
-            "heading-outline",
-            note="the full H1-H6 order is built by the heading-outline skill, not by the "
-            "crawl registry",
+            "parse",
+            note="the full H1-H6 order is the heading_outline field of parse, not a crawl-registry check",
         ),
         _c("Duplicate", "H1_DUPLICATE"),
         _c("Over 70 Characters", "H1_TOO_LONG"),
@@ -186,7 +185,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "defensible count past which they stop being normal; we record them without "
             "judging the count",
         ),
-        _t("Non-sequential", "heading-outline"),
+        _t("Non-sequential", "parse"),
         _c("Duplicate", "H2_DUPLICATE"),
         _c("Over 70 Characters", "H2_TOO_LONG"),
     ],

@@ -118,7 +118,7 @@ having, because the alternative is an absence nobody has noticed.
 | Missing | check | `H1_MISSING` |  |
 | Multiple | check | `H1_MULTIPLE` |  |
 | Alt Text in h1 | check | `H1_ALT_TEXT_ONLY` | fires only when the H1 has no text of its own; a logo image beside real heading text is normal and is never flagged |
-| Non-sequential | tool | `heading-outline` | the full H1-H6 order is built by the heading-outline skill, not by the crawl registry |
+| Non-sequential | tool | `parse` | the full H1-H6 order is the heading_outline field of parse, not a crawl-registry check |
 | Duplicate | check | `H1_DUPLICATE` |  |
 | Over 70 Characters | check | `H1_TOO_LONG` |  |
 
@@ -128,7 +128,7 @@ having, because the alternative is an absence nobody has noticed.
 |---|---|---|---|
 | Missing | check | `H2_MISSING` |  |
 | Multiple | partial | — | multiple H2s are normal, and the issue that asked for this row supplied no defensible count past which they stop being normal; we record them without judging the count |
-| Non-sequential | tool | `heading-outline` |  |
+| Non-sequential | tool | `parse` |  |
 | Duplicate | check | `H2_DUPLICATE` |  |
 | Over 70 Characters | check | `H2_TOO_LONG` |  |
 
