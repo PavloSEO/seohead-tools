@@ -49,6 +49,38 @@ def open_project(window, directory, timeout=60):
         time.sleep(0.05)
 
 
+def render_modal(dialog, width, height, theme, lang):
+    """Settings are a modal window: paint the dialog centred over the dimmed application window, as in the canvas."""
+    from PyQt5.QtGui import QColor, QPainter
+
+    from seohead_desktop.app import MainWindow
+
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    window.show_startup_workspace()
+    if OPTIONS.get("project"):
+        open_project(window, OPTIONS["project"])
+    window.setAttribute(Qt.WA_DontShowOnScreen, True)
+    window.resize(width, height)
+    window.show()
+    QApplication.processEvents()
+    image = QPixmap(width, height)
+    window.render(image)
+    size = dialog.size().boundedTo(image.size() * 0.92)
+    dialog.setAttribute(Qt.WA_DontShowOnScreen, True)
+    dialog.resize(min(size.width(), 920), min(size.height(), 640))
+    dialog.show()
+    QApplication.processEvents()
+    painter = QPainter(image)
+    painter.fillRect(image.rect(), QColor(0, 0, 0, 100))
+    shot = dialog.grab()
+    painter.drawPixmap((width - shot.width()) // 2, (height - shot.height()) // 2, shot)
+    painter.end()
+    window.close()
+    return image
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -121,7 +153,10 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith("shell"):
+            if name.startswith("settings"):
+                image = render_modal(widget, width, height, args.theme, args.lang)
+                image.save(str(path))
+            elif name.startswith("shell"):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)
