@@ -207,14 +207,13 @@ class _NavDelegate(QStyledItemDelegate):
             painter.setPen(ink)
             count = index.data(ROLE_COUNT)
             hint = tr("нужен проект") if locked else ""
-            if hint:
-                small = QFont(font)
-                small.setPixelSize(10)
-                painter.setFont(small)
-                hint_width = QFontMetrics(small).horizontalAdvance(hint) + 12
-                painter.setFont(font)
-            painter.drawText(body.adjusted(44, 0, -(hint_width + 4) if hint else -48 if count else -8, 0), Qt.AlignLeft | Qt.AlignVCenter,
-                             QFontMetrics(font).elidedText(index.data(Qt.DisplayRole), Qt.ElideRight, body.width() - 44 - ((hint_width + 4) if hint else 48 if count else 8)))
+            label_width = QFontMetrics(font).horizontalAdvance(index.data(Qt.DisplayRole))
+            small = QFont(font)
+            small.setPixelSize(10)
+            hint_width = QFontMetrics(small).horizontalAdvance(hint) if hint else 0
+            hint = hint if hint and 44 + label_width + 8 + hint_width + 12 <= body.width() else ""  # no room: the tooltip says it
+            painter.drawText(body.adjusted(44, 0, -(hint_width + 16) if hint else -48 if count else -8, 0), Qt.AlignLeft | Qt.AlignVCenter,
+                             QFontMetrics(font).elidedText(index.data(Qt.DisplayRole), Qt.ElideRight, body.width() - 44 - ((hint_width + 16) if hint else 48 if count else 8)))
             if hint:
                 painter.setFont(small)
                 painter.setPen(QColor(r["text_3"]))
