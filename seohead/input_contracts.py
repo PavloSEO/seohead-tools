@@ -998,7 +998,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "scan_artifact",
             "input_path",
-            note="Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required.",
+            note="Offline path, inlinks, occurrence context or one URL's paged links selected by view; mode-specific selectors and limits are required.",
         ),
     ),
     _command("scan-status", "scan_status", _form("scan_artifact", "input_path")),

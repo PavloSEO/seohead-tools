@@ -394,7 +394,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
 | `scan-url-detail` | Reads one exact native URL's bounded retained page, redacted request/response headers, redirect chain and forms. Query values and sensitive headers are redacted; HTML body bytes are not returned. Legacy and Screaming Frog sources name this evidence as unavailable. | — |
 | `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. Failures carry a machine-readable `reason_code`. | — |
-| `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, or one retained document's per-link placement/heading context. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
+| `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, one retained document's per-link placement/heading context, or (`--view links`) the paged outgoing/incoming links of one URL. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. The scan is accepted by a light header/schema check and the response carries `validation: "light"`; `full_validation: true` (or earlier full validation of the same bytes) reports `"full"`. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
 | `scan-snapshot` | Makes a validated, portable single-file SQLite copy. `--out` may name a new file or an existing directory; a directory receives a UTC timestamp, host, and short scan UUID filename. Existing destinations are never overwritten. | writes a new file |
@@ -412,7 +412,18 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-import-urls` | Imports an explicit local URL list into a saved scan only after creating a mandatory verified backup. | writes artifact and backup |
 
 For a saved route, use `scan-link-inspect --scan FILE --view path --seed URL --target URL`.
-For reverse links use `--view inlinks --target URL`, then pass `next_cursor`
+For the links of one page by URL use `--view links --url URL --direction out|in`
+(`--offset`, `--limit` up to 200; filters `--link-type internal|external`,
+`--follow follow|nofollow`, `--status-class 2xx|3xx|4xx|5xx|broken|error|unscanned`,
+`--contains`, and for `out` `--sort order|url|status`). Each row has the anchor, `rel`
+with `nofollow`/`sponsored`/`ugc`, internal/external, the stored position (null when
+the scan did not classify it), the `target` attribute and the HTTP status of the other end
+(`null` with `target_scanned: false` when that page was not scanned, never 0). `total` and
+`filtered_total` are exact or flagged capped (`total_capped`, `filtered_total_state`); the scan
+is opened read-only without full validation. Failures carry a `reason_code`: `url_not_found`,
+`scan_not_available`, `url_not_scanned`, `links_not_retained` (links were not stored, which is
+not zero links). `hreflang` and `download` are not retained in `scan.v1`.
+For reverse links by cursor use `--view inlinks --target URL`, then pass `next_cursor`
 back as `--cursor`; the cursor is tied to the scan revision, target and
 representation. For a particular occurrence use `--view context --link-id ID`,
 or paginate one source document with `--document-id ID --offset N --limit N`.

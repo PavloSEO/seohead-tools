@@ -936,7 +936,8 @@ item bytes, and 15 seconds. Rows preserve raw/rendered identity. A blank
 position is unmeasured. Each result includes the scan UUID and evidence revision
 so clients can avoid combining pages from different scan snapshots. The shared
 `scan-link-inspect` CLI and `seo_scan_link_inspect` MCP entry points expose the
-same core with `--view path` or `--view inlinks` and bounded output.
+same core with `--view path`, `--view inlinks` or `--view links` (the paged links of one URL, looked up
+through the `urls` index) and bounded output.
 
 A found path proves only that these retained edges connect the two URLs.
 `unreachable_in_observed_graph` does not prove a site-wide orphan. The result

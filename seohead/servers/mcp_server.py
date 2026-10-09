@@ -2977,8 +2977,25 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         max_edges: int = 200_000,
         max_depth: int = 20,
         timeout_seconds: float = 15.0,
+        url: str | None = None,
+        direction: str = "out",
+        link_type: str = "all",
+        follow: str = "all",
+        status_class: str = "all",
+        contains: str | None = None,
+        sort: str = "order",
     ) -> dict[str, Any]:
-        """Inspect saved shortest paths, reverse inlinks, or per-link DOM context offline.
+        """Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's links.
+
+        view=links pages the outgoing (direction=out) or incoming (direction=in) hyperlinks of
+        one URL (`url`, not a document id): anchor, rel with nofollow/sponsored/ugc flags,
+        internal/external, position when classified at scan time, and the HTTP status of the
+        target (outgoing) or source (incoming); the status is null when that page was not
+        scanned. Filters: link_type, follow, status_class (2xx..5xx, broken, error, unscanned),
+        contains; sort (out only): order, url, status. At most 200 rows per page with offset;
+        `total` and `filtered_total` are exact or flagged capped/null. The scan is opened
+        read-only without full validation; failures carry a machine `reason_code`
+        (url_not_found, scan_not_available, url_not_scanned, links_not_retained).
 
         Path hops and inlinks cite exact link IDs and scan identity; absence in a
         partial graph is never a confirmed orphan. Inlinks use a cursor bound to
@@ -3010,6 +3027,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_edges=max_edges,
                 max_depth=max_depth,
                 timeout_seconds=timeout_seconds,
+                url=url,
+                direction=direction,
+                link_type=link_type,
+                follow=follow,
+                status_class=status_class,
+                contains=contains,
+                sort=sort,
             )
         )
 

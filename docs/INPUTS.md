@@ -170,7 +170,7 @@ and this decision makes no backend migration.
 | `scan-content-search-page` | Local file (`package`) | Read one bounded page from a prior offline search package. |
 | `scan-url-detail` | Scan artifact (`input_path`)<br>Selector (`url`) | Exact retained native URL; output redacts query values. |
 | `scan-url-query` | Scan artifact (`scan`) | — |
-| `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks or occurrence context selected by view; mode-specific selectors and limits are required. |
+| `scan-link-inspect` | Scan artifact (`scan`) | Offline path, inlinks, occurrence context or one URL's paged links selected by view; mode-specific selectors and limits are required. |
 | `scan-status` | Scan artifact (`scan`) | — |
 | `scan-rendered-routes` | Scan artifact (`scan`) | — |
 | `scan-snapshot` | Scan artifact (`scan`) | — |

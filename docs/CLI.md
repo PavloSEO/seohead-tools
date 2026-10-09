@@ -54,7 +54,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-inspect` | Read a bounded, paginated table view from one saved scan. | offline, read-only |
 | `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. | offline, read-only |
 | `scan-url-detail` | Read one exact native URL's retained headers, redirects, page fields, and forms. | offline, read-only |
-| `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, or per-link DOM context offline. | offline, read-only |
+| `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's paged links offline. | offline, read-only |
 | `scan-navigation` | Read bounded observed navigation evidence from a retained local scan. | offline, read-only |
 | `scan-rendered-routes` | Read stored static/rendered route evidence without fetching routes. | offline, read-only |
 | `scan-evidence` | Read captured evidence, resource windows or the event timeline without fetching or migration. | offline, read-only |

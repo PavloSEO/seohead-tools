@@ -4282,6 +4282,13 @@ def scan_link_inspect(
     max_edges: int = 200_000,
     max_depth: int = 20,
     timeout_seconds: float = 15.0,
+    url: str | None = None,
+    direction: str = "out",
+    link_type: str = "all",
+    follow: str = "all",
+    status_class: str = "all",
+    contains: str | None = None,
+    sort: str = "order",
 ) -> dict[str, Any]:
     from seohead.servers.history_handlers import scan_link_inspect as core
 
@@ -4302,6 +4309,13 @@ def scan_link_inspect(
         max_edges=max_edges,
         max_depth=max_depth,
         timeout_seconds=timeout_seconds,
+        url=url,
+        direction=direction,
+        link_type=link_type,
+        follow=follow,
+        status_class=status_class,
+        contains=contains,
+        sort=sort,
     )
 
 
