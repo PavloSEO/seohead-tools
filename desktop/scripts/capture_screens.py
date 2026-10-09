@@ -214,7 +214,11 @@ def main(argv=None):
             else:
                 widget.show()
                 app.processEvents()
-                widget.grab().save(str(path))
+                widget.resize(widget.sizeHint())  # a popup taller than the 800x600 offscreen screen is clamped otherwise
+                app.processEvents()
+                image = QPixmap(widget.size())
+                widget.render(image)
+                image.save(str(path))
             print(path)
             widget.close()
     app.quit()

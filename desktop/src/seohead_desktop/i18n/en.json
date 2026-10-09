@@ -1972,7 +1972,6 @@
  "проверяем…": "checking…",
  "не запускалась · по кнопке «Проверить доступ»": "not run · via «Check access»",
  "доступ подтверждён": "access confirmed",
- "Проверить доступ (бесплатно)": "Check access (free)",
  "не подтверждён · {state}": "not confirmed · {state}",
  "Лимит в месяц": "Monthly limit",
  "Расход": "Spent",
@@ -2059,5 +2058,7 @@
  "Ядро не вернуло список источников. Проверьте его командой seohead provider-readiness.": "The core returned no source list. Check it with seohead provider-readiness.",
  "# «Проверить все»: где ядро нашло ключи · сеть не используется, доступ у провайдера не проверяется": "# «Check all»: where the core found keys · no network, provider access is not checked",
  "! нужен ключ: {names}": "! key needed: {names}",
- "проверено {time}": "checked {time}"
+ "проверено {time}": "checked {time}",
+ "Проверить доступ": "Check access",
+ "Бесплатный пробный запрос к провайдеру": "A free trial request to the provider"
 }

@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import i18n
-from ...i18n import tr
+from ...i18n import joined, tr
 from ..brand_logos import BORDER, TILE, BrandTile, logo_path
 from ..icons import material_icon
 from .listing import action_button, badge
@@ -80,11 +80,11 @@ class SourceRow(QFrame):
         head.setSpacing(8)
         title = QLabel(name_of(pid))
         title.setProperty("text_style", "control")
-        head.addWidget(title)
-        if paid:
-            head.addWidget(badge("mut", "платный" if paid == "paid" else "платный по желанию", "payments"))
-        head.addStretch(1)
+        title.setWordWrap(True)
+        head.addWidget(title, 1)
         texts.addLayout(head)
+        if paid:  # in the sub line, so a narrow window keeps the row without a sideways scroll
+            sub = joined(" · ", [p for p in ("платный" if paid == "paid" else "платный по желанию", sub) if p])
         meta = QLabel(sub)
         meta.setProperty("text_style", "meta")
         meta.setWordWrap(True)

@@ -202,5 +202,6 @@ class KeyValue(QWidget):
             v.setProperty("kv", "value")
             v.setProperty("na", value is None)
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            v.setWordWrap(True)
             grid.addWidget(k, index, 0)
             grid.addWidget(v, index, 1)

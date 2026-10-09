@@ -162,10 +162,8 @@ class SourcesPage(QWidget):
         kpis = QWidget()
         kpi_layout = QHBoxLayout(kpis)
         kpi_layout.setContentsMargins(0, 8, 0, 8)
-        calls = (self.spend or {}).get("calls")
         for kpi in (Kpi(trf("подключено и проверено из {total}", total=len(ids)), count("verified")), Kpi("ключ задан, не проверен", count("configured_unverified")),
-                    Kpi("истёк токен / ошибка", count("expired", "revoked", "invalid", "failed")), Kpi("нужен ключ", count("missing", "not_configured")),
-                    Kpi("вызовов в журнале расходов", calls)):
+                    Kpi("истёк токен / ошибка", count("expired", "revoked", "invalid", "failed")), Kpi("нужен ключ", count("missing", "not_configured"))):
             kpi.caption.setWordWrap(True)
             kpi.setMinimumWidth(0)
             kpi_layout.addWidget(kpi)

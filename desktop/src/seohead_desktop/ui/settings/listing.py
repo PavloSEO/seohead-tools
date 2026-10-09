@@ -189,6 +189,12 @@ class Columns(QWidget):
         self._grid.setColumnStretch(0, 1)
         self._grid.setColumnStretch(1, 0 if narrow else 1)
 
+    def minimumSizeHint(self):
+        """Narrow enough for one column: the wide layout must never force a sideways scroll."""
+        hint = super().minimumSizeHint()
+        hint.setWidth(max(box.minimumSizeHint().width() for box in self._columns))
+        return hint
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         narrow = self.width() < self._breakpoint

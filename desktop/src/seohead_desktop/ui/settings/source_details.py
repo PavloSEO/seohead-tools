@@ -7,7 +7,8 @@ browser OAuth need core contracts that do not exist yet, so those controls are a
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...i18n import joined, tr, trf
 from ...source_service import VERIFY_PROVIDERS
@@ -42,13 +43,14 @@ def amount(units):
                           else f"{value:,.2f}".replace(",", " ") + " " + tr(UNITS.get(unit, unit)) for unit, value in units.items()])
 
 
-def row_widget(*widgets):
+def row_widget(*widgets, stacked=False):
+    """Widgets in one line; ``stacked`` puts them under each other so a narrow window never scrolls sideways."""
     box = QWidget()
-    layout = QHBoxLayout(box)
+    layout = (QVBoxLayout if stacked else QHBoxLayout)(box)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(8)
     for widget in widgets:
-        layout.addWidget(widget)
+        layout.addWidget(widget, 0, Qt.AlignLeft if stacked else Qt.Alignment())
     return box
 
 
@@ -121,8 +123,8 @@ def sync_block(page, pid):
 def detail_view(page, pid):
     reg, entry = page.registry.get(pid, {}), page.readiness.get(pid, {})
     state, kind, text, icon = describe(entry)
-    verify = action_button("Проверить доступ (бесплатно)", icon="stethoscope", role="primary", enabled=pid in VERIFY_PROVIDERS and page.verified.get(pid) != "running",
-                           tooltip=None if pid in VERIFY_PROVIDERS else "Проверка доступа этого сервиса ядро пока не умеет")
+    verify = action_button("Проверить доступ", icon="stethoscope", role="primary", enabled=pid in VERIFY_PROVIDERS and page.verified.get(pid) != "running",
+                           tooltip="Бесплатный пробный запрос к провайдеру" if pid in VERIFY_PROVIDERS else "Проверка доступа этого сервиса ядро пока не умеет")
     verify.clicked.connect(lambda: page.start_verify(pid))
     sub = joined(" · ", [tr(ACCESS.get(reg.get("access"), "")) if reg.get("access") else "", credential_line(reg, entry, refs=False)])
     status = [("Состояние", row_widget(badge(kind, text, icon))),
@@ -133,7 +135,7 @@ def detail_view(page, pid):
     parts = [back_header(name_of(pid), "Все источники", page.show_list, sub, pid=pid, actions=[verify]),
              key_values(status), group_label("Способы доступа"), *credential_rows(pid, reg, entry)]
     entry_key = row_widget(action_button("Ввести ключ…", icon="key", enabled=False, tooltip="Недоступно в этой версии ядра"),
-                           waiting_badge(KEY_GAP, "Сохранение ключа источника из приложения"))
+                           waiting_badge(KEY_GAP, "Сохранение ключа источника из приложения"), stacked=True)
     methods = [METHOD_LABELS.get(c) for c in reg.get("credential_components") or []]
     if reg.get("credential_components"):
         parts.append(key_values([("Ввод из приложения", entry_key)]))
@@ -141,7 +143,7 @@ def detail_view(page, pid):
         auth = page.auth
         parts.append(key_values([
             ("Аккаунт Google", row_widget(action_button("Подключить через браузер", icon="open_in_browser", enabled=False, tooltip="Недоступно в этой версии ядра"),
-                                          waiting_badge(OAUTH_GAP, "Вход через браузер, обновление и отзыв токена из приложения"))),
+                                          waiting_badge(OAUTH_GAP, "Вход через браузер, обновление и отзыв токена из приложения"), stacked=True)),
             ("Токен обновления", None if auth is None else "задан · не проверен" if auth.get("configured") else "не задан")]))
     if howto and howto[1] != "—":
         parts += [group_label("Как подключить"), key_values([("Где взять", howto[1]), ("Срок токена", howto[0]), ("Что видно после подключения", howto[2])])]
