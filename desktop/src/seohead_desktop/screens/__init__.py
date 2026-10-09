@@ -39,6 +39,7 @@ def install_screens(window):
     window.show_start = lambda: show_start(window)
     window.leave_start = lambda: leave_start(window)
     window.pages.currentChanged.connect(lambda _index: sync_chrome(window))
+    window.data_changed.connect(lambda kind: leave_start(window) if kind == "project" and window.project_directory else None)
 
 
 def show_screen(window, name):

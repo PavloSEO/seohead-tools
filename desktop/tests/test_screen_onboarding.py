@@ -49,6 +49,14 @@ class OnboardingTests(unittest.TestCase):
     def settle(self, condition):
         self.assertTrue(wait_for(self.app, condition))
 
+    def test_a_project_opened_by_any_route_takes_over_from_the_wizard(self):
+        self.window.show_startup_workspace()
+        self.assertIs(self.window.pages.currentWidget(), self.wizard)
+        self.window.project_directory = str(self.base)  # what project_loaded has set once the core answered
+        self.window.data_changed.emit("project")
+        self.assertIsNot(self.window.pages.currentWidget(), self.wizard)
+        self.assertNotIn(self.window.pages.currentWidget(), self.window.extra_screens.values())
+
     def test_first_run_shows_the_wizard_and_later_runs_show_the_list(self):
         self.window.show_startup_workspace()
         self.assertIs(self.window.pages.currentWidget(), self.wizard)
