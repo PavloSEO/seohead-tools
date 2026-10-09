@@ -8,7 +8,8 @@ from .base import SLOTS
 
 # slot -> "module:Class"; modules appear as screens are rebuilt from the canvas
 SCREENS = {"scans": "scans:ScansScreen", "journal": "journal:JournalScreen", "work": "work:WorkScreen", "tasks": "simple:SimpleScreen",
-           "inbox": "inbox:InboxScreen"}
+           "inbox": "inbox:InboxScreen",
+           "audit": "issues:IssuesScreen"}
 # name -> "module:Class"; screens outside the navigation slots (start, first-run wizard), appended after the pages
 EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScreen"}
 # top-bar widgets that a screen with ``chrome_free = True`` hides (SHELL-CANON §7)
@@ -35,11 +36,20 @@ def install_screens(window):
         screen = getattr(import_module(f"{__name__}.{module}"), cls)(window)
         window.pages.addWidget(screen)
         window.extra_screens[name] = screen
+    window.open_url_filtered = lambda label, filters: open_url_filtered(window, label, filters)
     window.show_screen = lambda name: show_screen(window, name)
     window.show_start = lambda: show_start(window)
     window.leave_start = lambda: leave_start(window)
     window.pages.currentChanged.connect(lambda _index: sync_chrome(window))
     window.data_changed.connect(lambda kind: leave_start(window) if kind == "project" and window.project_directory else None)
+
+
+def open_url_filtered(window, label, filters):
+    """Open the URL table with an extra condition (e.g. from «Проблемы»); the URL screen applies it to the whole scan."""
+    screen = window.screens.get("url")
+    if screen is not None and hasattr(screen, "apply_external"):
+        screen.apply_external(label, filters)
+    window.navigation.select_section("url")
 
 
 def show_screen(window, name):

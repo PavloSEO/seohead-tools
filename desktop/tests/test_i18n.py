@@ -39,6 +39,7 @@ SCOPE = [
     PACKAGE / "screens/work.py", PACKAGE / "screens/simple.py", PACKAGE / "screens/inbox.py",
     PACKAGE / "screens/scans.py", PACKAGE / "screens/scan_run.py", PACKAGE / "screens/scan_common.py", PACKAGE / "screens/journal.py",
     PACKAGE / "screens/new_scan.py", PACKAGE / "screens/new_scan_draft.py", PACKAGE / "screens/new_scan_pages.py", PACKAGE / "screens/new_scan_settings.py",
+    PACKAGE / "screens/issues.py",
 ]
 CYRILLIC = re.compile("[Ѐ-ӿ]")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
