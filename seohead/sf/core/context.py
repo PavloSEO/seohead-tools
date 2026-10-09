@@ -695,7 +695,7 @@ class AuditContext:
         # Where the crawl actually started, when the producer knows. A native crawl
         # does; a Screaming Frog export carries no such field, and the checks that
         # need one fall back to Crawl Depth 0 -- but only when exactly one page has
-        # it (see inlinks._click_depth_seed). Never guessed here.
+        # it (see inlinks.click_depth_seed). Never guessed here.
         self.start_url: str | None = None
         # The internal link graph's own shape, filled by
         # inlinks.check_internal_link_graph and copied into the audit summary by
