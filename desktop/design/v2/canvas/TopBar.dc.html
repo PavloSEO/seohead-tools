@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Шапка и вкладки рабочей области</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -26,7 +26,7 @@
     <div class="fld" style="width: 380px; height: 32px"><span class="ms s18" aria-hidden="true" style="color: #45464F">language</span><span class="mono" style="font-size: 12px">{{target}}</span></div>
     <span class="b st-done"><span class="ms" aria-hidden="true">check_circle</span>{{crawlState}}</span>
     <div style="flex: 1"></div>
-    <a class="btn" href="/Palette.dc.html" style="gap: 8px; color: #45464F; width: 150px; justify-content: flex-start"><span class="ms s18" aria-hidden="true">search</span><span style="font-weight: 400">Действия</span><span class="kbd" style="margin-left: auto">⌘K</span></a>
+    <a class="btn" href="/Palette.dc.html" style="gap: 8px; color: #45464F; width: 220px; justify-content: flex-start"><span class="ms s18" aria-hidden="true">search</span><span style="font-weight: 400">Действия и переходы</span><span class="kbd" style="margin-left: auto">⌘K</span></a>
     <a class="btn" href="/Crawler.dc.html"><span class="ms s18" aria-hidden="true">refresh</span>Новый краул</a>
     <a class="btn pri" href="/Modals.dc.html"><span class="ms s18" aria-hidden="true">create_new_folder</span>Сохранить как проект</a>
   </header>
@@ -100,7 +100,7 @@ class Component extends DCLogic {
       cls: 'wtab' + (id === active ? ' on' : '')
     }));
     const extra = (icon, label, href) => tabs.push({ icon, label, href, on: true, title: label, xIcon: 'close', xLabel: 'Закрыть вкладку', color: '#1565C0', cls: 'wtab on' });
-    if (active === 'new') extra('add_circle', 'Новая вкладка', '/NewTab.dc.html');
+    if (active === 'new') extra('tab', 'Новая вкладка', '/NewTab.dc.html');
     if (active === 'none' && this.props.label) extra(this.props.icon || 'tab', this.props.label, ({ history: '/Scans.dc.html', inbox: '/Inbox.dc.html', terminal: '/Log.dc.html', find_in_page: '/Search.dc.html', description: '/Handoff.dc.html', menu_book: '/Methods.dc.html', help: '/Help.dc.html', settings: '/ProjSettings.dc.html', event_repeat: '/ProjSchedule.dc.html' })[this.props.icon] || '/Main.dc.html');
     const st = this.props.agent || 'seen';
     const chip = { seen: ['b st-agent', 'Агент · был 3 мин назад'], online: ['b st-run', 'Агент · на связи'], off: ['b st-off', 'Агент · не подключён'] }[st] || ['b st-agent', 'Агент · был 3 мин назад'];

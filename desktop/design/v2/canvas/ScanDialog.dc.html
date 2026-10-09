@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Новый скан</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -73,8 +73,8 @@
           <div style="display: flex; flex-direction: column; gap: 6px">
             <div style="display: flex; align-items: center; gap: 8px">
               <label class="lbl" for="list" style="margin: 0; flex: 1">Список URL · по одному в строке</label>
-              <button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">upload_file</span>Из файла .txt / .csv</button>
-              <button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">content_paste</span>Вставить</button>
+              <button class="btn sm"><span class="ms s16" aria-hidden="true">upload_file</span>Из файла .txt / .csv</button>
+              <button class="btn sm"><span class="ms s16" aria-hidden="true">content_paste</span>Вставить</button>
             </div>
             <textarea id="list" class="area" rows="5" aria-describedby="list-hint">https://shop.example.test/catalog/chair-oak/
 https://shop.example.test/blog/kak-vybrat-stul/
@@ -88,7 +88,7 @@ https://shop.example.test/catalog/chair-oak/</textarea>
               <span class="b info"><span class="ms" aria-hidden="true">auto_fix</span>1 дополнен https://</span>
               <span class="b mut"><span class="ms" aria-hidden="true">content_copy</span>1 дубль убран</span>
               <span class="b warn"><span class="ms" aria-hidden="true">public_off</span>1 чужой домен — пропущен</span>
-              <button class="btn txt" style="height: 22px; font-size: 12px; padding: 0 6px">Взять 4xx из скана №2</button>
+              <button class="btn txt sm" style="padding: 0 6px">Взять 4xx из скана №2</button>
             </div>
           </div>
         </sc-if>
@@ -172,7 +172,7 @@ class Component extends DCLogic {
     const s = this.state;
     const src = s.src ?? this.props.mode ?? 'site';
     const defs = [
-      ['site', 'travel_explore', 'Сайт целиком', 'Native crawler: обход по ссылкам со стартового URL'],
+      ['site', 'travel_explore', 'Сайт целиком', 'Встроенный краулер: обход по ссылкам со стартового URL'],
       ['sitemap', 'account_tree', 'По sitemap', 'Только URL из sitemap.xml, без обхода ссылок'],
       ['list', 'format_list_bulleted', 'Список URL', 'Вставить или загрузить свой список адресов'],
       ['sf', 'bug_report', 'Screaming Frog', 'Скан лицензионным SF CLI с импортом в проект']
@@ -189,7 +189,7 @@ class Component extends DCLogic {
       isRaw: !s.js, isJs: s.js,
       rawCls: s.js ? '' : 'on', jsCls: s.js ? 'on' : '',
       pickRaw: () => this.setState({ js: false }), pickJs: () => this.setState({ js: true }),
-      modeHint: s.js ? 'Медленнее примерно в 3 раза; сохраняет Rendered DOM' : 'Быстро; Rendered DOM не сохраняется',
+      modeHint: s.js ? 'Медленнее примерно в 3 раза; сохраняет HTML после рендеринга' : 'Быстро; HTML после рендеринга не сохраняется',
       rps: s.rps, rpsBad,
       rpsCls: 'fld' + (rpsBad ? ' bad' : ''),
       rpsHint: rpsBad ? 'Для боевого сайта не больше 2 запросов/с' : 'Бережно для боевого сайта',

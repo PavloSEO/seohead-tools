@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Старт · проекты</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -34,7 +34,7 @@
           <div style="font: 400 13px Roboto, sans-serif; color: #5D6069">Открытые ранее · агент работает с теми же проектами через MCP</div>
         </div>
         <button class="btn lg"><span class="ms" aria-hidden="true">folder_open</span>Открыть папку проекта</button>
-        <a class="btn lg pri" href="/Modals.dc.html"><span class="ms" aria-hidden="true">add</span>Новый проект</a>
+        <a class="btn lg pri" href="/Modals.dc.html"><span class="ms" aria-hidden="true">create_new_folder</span>Новый проект</a>
       </div>
       <label class="fld" style="height: 40px; color: #6A6D76"><span class="ms" aria-hidden="true">search</span><input placeholder="Найти по имени или домену" aria-label="Найти проект"></label>
       <div class="card" style="overflow: hidden">
@@ -48,7 +48,7 @@
           </a>
         </sc-for>
       </div>
-      <div class="note w" style="align-items: center"><span class="ms" aria-hidden="true" style="color: #7A4F00">drive_file_move</span><div style="flex: 1"><b style="font-weight: 500">Проект «Старый блог» не найден по прежнему пути.</b> Возможно, папку перенесли.</div><a class="btn" href="/Modals.dc.html" style="height: 28px; font-size: 12px">Указать новый путь</a><button class="btn txt" style="height: 28px; font-size: 12px; color: #45464F">Убрать из списка</button></div>
+      <div class="note w" style="align-items: center"><span class="ms" aria-hidden="true" style="color: #7A4F00">drive_file_move</span><div style="flex: 1"><b style="font-weight: 500">Проект «Старый блог» не найден по прежнему пути.</b> Возможно, папку перенесли.</div><a class="btn sm" href="/Modals.dc.html">Указать новый путь</a><button class="btn txt sm" style="color: #45464F">Убрать из списка</button></div>
     </div>
   </div>
 </div>
@@ -57,9 +57,9 @@
 class Component extends DCLogic {
   renderVals() {
     const P = [
-      ['МС', '#E3F0FF', '#0B4A94', 'Мебельный магазин', 'shop.example.test', '~/Work/projects/shop', ['b info', 'progress_activity', 'Скан идёт'], 'сейчас', '/Project.dc.html'],
+      ['МС', '#E3F0FF', '#0B4A94', 'Мебельный магазин', 'shop.example.test', '~/Work/projects/shop', ['b st-run', 'progress_activity', 'Скан идёт'], 'сейчас', '/Project.dc.html'],
       ['НС', '#E2F4E8', '#174D2A', 'Насосы · каталог', 'pumps.example.test', '~/Work/projects/pumps', ['b ok', 'check_circle', 'Задачи в работе'], 'сегодня 11:20', '/Project.dc.html'],
-      ['БЛ', '#FFEBC7', '#5B3B00', 'Блог о ремонте', 'blog.example.test', '~/Work/projects/blog', ['b warn', 'warning', 'Частичный скан'], 'вчера', '/Project.dc.html'],
+      ['БЛ', '#FFEBC7', '#5B3B00', 'Блог о ремонте', 'blog.example.test', '~/Work/projects/blog', ['b st-partial', 'incomplete_circle', 'Частичный скан'], 'вчера', '/Project.dc.html'],
       ['СБ', '#ECEEF2', '#45464F', 'Старый блог', 'old.example.test', '~/Desktop/old-blog', ['b st-int', 'folder_off', 'Папка не найдена'], '12.09.2026', '/Modals.dc.html'],
       ['КЛ', '#ECE6FF', '#2E1F66', 'Клиника · аудит', 'clinic.example.test', '~/Work/projects/clinic', ['b mut', 'pause_circle', 'Нет активных задач'], '02.09.2026', '/Project.dc.html']
     ];

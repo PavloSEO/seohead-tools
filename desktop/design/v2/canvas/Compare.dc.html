@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Сравнение сканов</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -19,9 +19,9 @@
   <dc-import name="SideNav" mode="agent" active="compare" h="786" hint-size="200px,786px"></dc-import>
   <main class="main" style="background: #FDFCFF">
     <div style="padding: 16px 20px 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid #EEF0F3; background: #FFFFFF">
-      <button class="btn" style="height: 40px; gap: 8px"><span class="b st-off">Было</span><span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2"><span>Скан №1 · r-0139</span><span style="font: 400 11px Roboto, sans-serif; color: #5D6069">21.09.2026 · native · 1 248 URL</span></span><span class="ms s18" aria-hidden="true">expand_more</span></button>
+      <button class="btn" style="height: 40px; gap: 8px"><span class="b st-off">Было</span><span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2"><span>Скан №1 · r-0139</span><span style="font: 400 11px Roboto, sans-serif; color: #5D6069">21.09.2026 · встроенный краулер · 1 248 URL</span></span><span class="ms s18" aria-hidden="true">expand_more</span></button>
       <span class="ms" aria-hidden="true" style="color: #6A6D76">arrow_forward</span>
-      <button class="btn" style="height: 40px; gap: 8px"><span class="b st-run">Стало</span><span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2"><span>Скан №2 · r-0142</span><span style="font: 400 11px Roboto, sans-serif; color: #5D6069">07.10.2026 · native · 1 314 URL</span></span><span class="ms s18" aria-hidden="true">expand_more</span></button>
+      <button class="btn" style="height: 40px; gap: 8px"><span class="b st-run">Стало</span><span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2"><span>Скан №2 · r-0142</span><span style="font: 400 11px Roboto, sans-serif; color: #5D6069">07.10.2026 · встроенный краулер · 1 314 URL</span></span><span class="ms s18" aria-hidden="true">expand_more</span></button>
       <button class="ib" aria-label="Поменять местами"><span class="ms" aria-hidden="true">swap_horiz</span></button>
       <div style="width: 1px; height: 28px; background: #DDE1E7; margin: 0 6px"></div>
       <div class="seg" role="radiogroup" aria-label="Сегмент" style="width: 380px">
@@ -109,10 +109,10 @@ class Component extends DCLogic {
     const s = this.state;
     const segs = [['all','Весь сайт'],['blog','Блог'],['catalog','Каталог'],['product','Карточки']].map(([id, label]) => ({ label, on: id === s.seg, cls: id === s.seg ? 'on' : '', pick: () => this.setState({ seg: id, kpi: 0 }) }));
     const K = {
-      blog: [['Слов на статье, медиана','860','1 420','+65%','up'],['Внутренних ссылок на статью','6,2','11,8','+90%','up'],['Статей без входящих','14','3','−11','up'],['Title > 60 знаков','18','4','−14','up'],['Ответы 4xx','5','0','−5','up'],['Медиана ответа, мс','214','198','−7%','up']],
-      all: [['Слов на странице, медиана','410','520','+27%','up'],['Внутренних ссылок, медиана','24','31','+29%','up'],['Ответы 4xx','61','9','−52','up'],['Цепочки редиректов','14','2','−12','up'],['Title > 60 знаков','96','31','−65','up'],['Медиана ответа, мс','214','231','+8%','down']],
-      catalog: [['Слов на странице, медиана','380','410','+8%','up'],['Внутренних ссылок, медиана','212','198','−7%','flat'],['Ответы 4xx','22','2','−20','up'],['Canonical на другой URL','41','6','−35','up'],['Title > 60 знаков','40','12','−28','up'],['Медиана ответа, мс','241','252','+5%','down']],
-      product: [['Слов на карточке, медиана','120','310','+158%','up'],['Внутренних ссылок, медиана','18','26','+44%','up'],['Ответы 4xx','34','7','−27','up'],['Изображения > 300 КБ','37','5','−32','up'],['Без description','52','9','−43','up'],['Медиана ответа, мс','480','420','−13%','up']]
+      blog: [['Слов на статье, медиана','860','1 420','+65%','up'],['Внутренних ссылок на статью','6,2','11,8','+90%','up'],['Статей без входящих','14','3','−11','up'],['Title > 60 знаков','18','4','−14','up'],['Ссылки на 4xx','5','0','−5','up'],['Медиана ответа, мс','214','198','−7%','up']],
+      all: [['Слов на странице, медиана','410','520','+27%','up'],['Внутренних ссылок, медиана','24','31','+29%','up'],['Ссылки на 4xx','113','61','−52','up'],['Цепочки редиректов','22','14','−8','up'],['Title > 60 знаков','118','96','−22','up'],['Медиана ответа, мс','214','231','+8%','down']],
+      catalog: [['Слов на странице, медиана','380','410','+8%','up'],['Внутренних ссылок, медиана','212','198','−7%','flat'],['Ссылки на 4xx','58','34','−24','up'],['Canonical на другой URL','76','41','−35','up'],['Title > 60 знаков','70','52','−18','up'],['Медиана ответа, мс','241','252','+5%','down']],
+      product: [['Слов на карточке, медиана','120','310','+158%','up'],['Внутренних ссылок, медиана','18','26','+44%','up'],['Ссылки на 4xx','50','27','−23','up'],['Изображения > 300 КБ','69','37','−32','up'],['Без description','95','52','−43','up'],['Медиана ответа, мс','480','420','−13%','up']]
     }[s.seg];
     const kpis = K.map(([label, before, after, delta, dir], i) => ({
       label, before, after, delta,
@@ -132,9 +132,9 @@ class Component extends DCLogic {
     const segRows = [['Блог · 48 статей','860','1 420'],['Каталог · 62','380','410'],['Карточки · 1 020','120','310'],['Служебные · 52','95','95']].map(([label, a, b]) => ({ label, a, b }));
     const tasks = [
       ['check_circle','#246B3C','Перелинковка статей блога','SEO','подтверждено: +5,6 ссылки на статью'],
-      ['check_circle','#246B3C','Исправить ссылки на 404','Программист','подтверждено: 4xx 61 → 9'],
+      ['check_circle','#246B3C','Убрать ссылки на 404 в блоге','Контент','подтверждено: ссылки на 4xx в блоге 5 → 0'],
       ['check_circle','#246B3C','Расширить тексты блога','Контент','подтверждено: медиана 860 → 1 420 слов'],
-      ['error','#B3261E','Ошибка 5xx /api/cart','Программист','новая проблема, задача предложена']
+      ['error','#B3261E','Ошибка 500 на /api/cart','Программист','новая проблема, задача предложена']
     ].map(([icon, color, title, who, ev]) => ({ icon, color, title, who, ev }));
     return {
       segs, kpis, tabs, rows, segRows, tasks,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Скан — JS-рендеринг</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -51,7 +51,7 @@
 <h2>JS-рендеринг</h2><div class="hint" style="margin: 0 0 6px">Исполнять JavaScript перед разбором страницы · браузер на этом компьютере</div>
 <div class="set-row"><div><div class="t">Режим</div><div class="d">«Авто» — рендерить, только если в HTML мало текста или ссылок</div></div><div class="seg" style="width: 300px"><sc-for list="{{mode}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div>
 <sc-if value="{{costWarn}}" hint-placeholder-val="{{true}}"><div class="note w" style="margin: 6px 0"><span class="ms" aria-hidden="true" style="color: #8A5A00">bolt</span><div><b>{{costText}}</b> Рендер в 6–10 раз медленнее и тянет ресурсы сайта: нагрузка на сервер растёт. Начните с «Авто» на выборке.</div></div></sc-if>
-<div class="set-row"><div><div class="t">Движок</div><div class="d">Chromium через Playwright · установлен 128.0</div></div><button class="selbox">Chromium (Playwright)<span class="ms s18" aria-hidden="true">expand_more</span></button></div><div class="set-row"><div><div class="t">Окно просмотра</div><div class="d">Desktop 1366×768 или Mobile 412×915</div></div><div class="seg" style="width: 240px"><sc-for list="{{vp}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div><div class="set-row"><div><div class="t">Ждать готовности</div><div class="d">Сигнал, после которого DOM считается готовым</div></div><div class="seg" style="width: 360px"><sc-for list="{{wait}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div>
+<div class="set-row"><div><div class="t">Движок</div><div class="d">Chromium через Playwright · установлен 128.0</div></div><button class="selbox">Chromium (Playwright)<span class="ms s18" aria-hidden="true">expand_more</span></button></div><div class="set-row"><div><div class="t">Окно просмотра</div><div class="d">компьютер 1366×768 или телефон 412×915</div></div><div class="seg" style="width: 240px"><sc-for list="{{vp}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div><div class="set-row"><div><div class="t">Ждать готовности</div><div class="d">Сигнал, после которого DOM считается готовым</div></div><div class="seg" style="width: 360px"><sc-for list="{{wait}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div>
 <div class="set-row"><div><div class="t">Тайм-аут и пауза</div><div class="d">Предел ожидания и доп. пауза после сигнала</div></div><div style="display: flex; gap: 8px; align-items: center"><label class="fld" style="width: 80px"><input value="15" aria-label="Тайм-аут"></label><span class="hint" style="margin: 0">с ·</span><label class="fld" style="width: 80px"><input value="500" aria-label="Пауза"></label><span class="hint" style="margin: 0">мс</span></div></div>
 <div class="set-row"><div><div class="t">Одновременных вкладок</div><div class="d">Отдельно от потоков HTTP · ~300 МБ ОЗУ на вкладку</div></div><div class="seg" style="width: 200px"><sc-for list="{{rc}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div>
 <div class="set-row"><div><div class="t">Блокировать ресурсы</div><div class="d">Быстрее и меньше нагрузки; layout может отличаться</div></div><div style="display: flex; gap: 16px"><sc-for list="{{blk}}" as="f" hint-placeholder-count="4"><button class="ck" onClick="{{f.pick}}" role="checkbox" aria-checked="{{f.on}}"><span class="{{f.cls}}">{{f.mark}}</span>{{f.label}}</button></sc-for></div></div>
@@ -85,7 +85,7 @@ class Component extends DCLogic {
     const sw = (k) => 'swt' + (s[k] ? ' on' : '');
     const tg = (k) => () => this.setState({ [k]: !s[k] });
     const seg = (k, opts) => opts.map(([id, label]) => ({ label, cls: s[k] === id ? 'on' : '', pick: () => this.setState({ [k]: id }) }));
-    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','всегда · Mobile'],['Тело','HTML, до 2 МБ'],['Экстракторов','3']].map(([k, v]) => ({ k, v }));
+    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','всегда · телефон'],['Тело','HTML, до 2 МБ'],['Экстракторов','3']].map(([k, v]) => ({ k, v }));
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '4';
 const swv = {}, tgv = {}; ['shot'].forEach(k => { swv[k] = sw(k); tgv[k] = tg(k); });
     const blk = s.blk.map((f, i) => ({ label: f[0], on: f[1], cls: 'cb' + (f[1] ? ' on' : ''), mark: f[1] ? '✓' : '', pick: () => { const n = s.blk.map(x => x.slice()); n[i][1] = !n[i][1]; this.setState({ blk: n }); } }));
@@ -93,7 +93,7 @@ const swv = {}, tgv = {}; ['shot'].forEach(k => { swv[k] = sw(k); tgv[k] = tg(k)
     load = '≈ 2 запроса/с · 1 500 URL · ~' + mins + ' мин · ~' + (380 + (s.shot ? 180 : 0)) + ' МБ';
     const V = { blk, sw: swv, tg: tgv, mode: seg('mode', [['off','Выкл'],['auto','Авто'],['always','Всегда']]), costWarn: s.mode !== 'off',
       costText: s.mode === 'always' ? 'Всегда: ~190 мин вместо 25.' : 'Авто: ~60 мин вместо 25, если рендер нужен половине страниц.',
-      vp: seg('vp', [['d','Desktop'],['m','Mobile']]), wait: seg('wait', [['load','load'],['dcl','DOMContentLoaded'],['idle','networkidle']]), rc: seg('rc', [['1','1'],['2','2'],['4','4']]) };
+      vp: seg('vp', [['d','Компьютер'],['m','Телефон']]), wait: seg('wait', [['load','load'],['dcl','DOMContentLoaded'],['idle','networkidle']]), rc: seg('rc', [['1','1'],['2','2'],['4','4']]) };
     return Object.assign({ sum, load, changed, reset: () => this.setState(JSON.parse(JSON.stringify(this.init))) }, V);
   }
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Проектная консоль</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -48,7 +48,7 @@
       </div>
       <div class="card" style="padding: 12px 14px">
         <div style="font: 400 12px Roboto, sans-serif; color: #5D6069">Исправление проблем</div>
-        <div style="display: flex; align-items: baseline; gap: 6px; margin: 4px 0 8px"><span style="font: 500 22px Roboto, sans-serif; font-variant-numeric: tabular-nums">12</span><span style="font: 400 12px Roboto, sans-serif; color: #5D6069">подтверждено перепроверкой</span></div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin: 4px 0 8px"><span style="font: 500 22px Roboto, sans-serif; font-variant-numeric: tabular-nums">52</span><span style="font: 400 12px Roboto, sans-serif; color: #5D6069">подтверждено перепроверкой</span></div>
         <div class="bar"><div style="width: 32%; background: #2E7D4F"></div><div style="width: 18%; background: #D9822B"></div></div>
       </div>
       <div class="card" style="padding: 12px 14px">
@@ -64,8 +64,8 @@
         <button class="tab">Запуски<span style="font: 500 11px Roboto, sans-serif; color: #6A6D76">6</span></button>
         <button class="tab">Активность</button>
         <div style="flex: 1"></div>
-        <button class="btn" style="height: 28px; border-radius: 14px; font-size: 12px; background: #E3F0FF; border-color: transparent; color: #0B4A94">Открытые</button>
-        <button class="btn" style="height: 28px; border-radius: 14px; font-size: 12px; border-color: transparent; color: #45464F">Все</button>
+        <button class="btn pill ton">Открытые</button>
+        <button class="btn pill txt" style="color: #45464F">Все</button>
         <button class="ib" aria-label="Фильтры"><span class="ms" aria-hidden="true">filter_list</span></button>
       </div>
       <div class="trow" style="background: #F4F6FA; cursor: default; border-bottom: 1px solid #DDE1E7">
@@ -136,25 +136,25 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sel: 0 }; }
   renderVals() {
     const S = {
-      run: ['b info', 'В работе', 'progress_activity', '#1565C0'],
-      blk: ['b err', 'Заблокирована', 'block', '#B3261E'],
-      rev: ['b warn', 'На проверке', 'rate_review', '#7A4F00'],
-      done: ['b ok', 'Выполнена', 'check_circle', '#246B3C'],
-      no: ['b mut', 'Не согласована', 'help', '#6A6D76']
+      new: ['b st-new', 'Новая', 'fiber_new', '#1565C0'],
+      run: ['b st-run', 'В работе', 'progress_activity', '#1565C0'],
+      wait: ['b st-queue', 'Ждёт перепроверки', 'schedule', '#45464F'],
+      ver: ['b st-verified', 'Подтверждено', 'verified', '#246B3C'],
+      no: ['b st-off', 'Не согласована', 'radio_button_unchecked', '#6A6D76']
     };
     const P = { high: ['Высокий', 'keyboard_double_arrow_up', '#B3261E'], mid: ['Средний', 'drag_handle', '#7A4F00'], low: ['Низкий', 'keyboard_arrow_down', '#45464F'] };
     const data = [
-      { id: 'custom:redirects-catalog', title: 'Убрать цепочки редиректов в каталоге', st: 'run', p: 'high', next: 'Собрать карту 301 → конечный URL', upd: '3 мин назад', method: 'Метод: redirects_check' },
-      { id: 'custom:404-inlinks', title: 'Исправить внутренние ссылки на 404', st: 'blk', p: 'high', next: 'Нужен доступ к шаблону меню', upd: '1 ч назад', method: 'Метод: links_check', reason: 'Блокировка: ссылки в меню формирует шаблон темы, правка вне доступа агента. Нужна задача разработчику.' },
-      { id: 'custom:canonical-pagination', title: 'Canonical на страницах пагинации', st: 'rev', p: 'mid', next: 'Проверить решение специалистом', upd: 'вчера', method: 'Метод: canonical_review' },
-      { id: 'custom:slow-product', title: 'Медленные карточки товаров > 1 с', st: 'run', p: 'mid', next: 'Сравнить с запуском r-0139', upd: 'вчера', method: 'Метод: response_times' },
-      { id: 'custom:titles-dup', title: 'Дубли title в фильтрах', st: 'done', p: 'low', next: 'Перепроверка подтвердила', upd: '05.10.2026', method: 'Метод: duplicate_check' },
-      { id: 'custom:sitemap', title: 'Сверить sitemap с краулом', st: 'no', p: 'low', next: 'Ждёт согласования цели', upd: '05.10.2026', method: 'Метод: sitemap_crawl' }
+      { id: 'T-109', title: 'Сократить цепочки редиректов', st: 'run', p: 'high', next: 'Собрать карту 301 → конечный URL', upd: '3 мин назад', method: 'Метод: redirects_check' },
+      { id: 'T-118', title: 'Убрать ссылки на 404', st: 'wait', p: 'high', next: 'Дождаться перепроверки r-0143', upd: '1 ч назад', method: 'Метод: links_check' },
+      { id: 'T-101', title: 'Canonical на пагинации', st: 'new', p: 'mid', next: 'Проверить решение специалистом', upd: 'вчера', method: 'Метод: canonical_review' },
+      { id: 'T-114', title: 'Title длиннее 60 знаков', st: 'run', p: 'mid', next: 'Сократить по шаблону «Товар — категория»', upd: 'вчера', method: 'Метод: meta_review' },
+      { id: 'T-121', title: 'Перелинковка статей блога', st: 'ver', p: 'high', next: 'Перепроверка подтвердила', upd: '07.10.2026', method: 'Метод: internal_linking' },
+      { id: 'предложение агента', title: 'Ошибка 500 на /api/cart', st: 'no', p: 'mid', next: 'Ждёт согласования', upd: 'сегодня', method: 'Метод: response_times' }
     ];
     const tasks = data.map((d, i) => ({
       ...d, stCls: S[d.st][0], state: S[d.st][1], icon: S[d.st][2], iconColor: S[d.st][3],
       pri: P[d.p][0], priIcon: P[d.p][1], priColor: P[d.p][2],
-      blocked: d.st === 'blk',
+      blocked: false,
       cls: 'trow' + (i === this.state.sel ? ' sel' : ''),
       pick: () => this.setState({ sel: i })
     }));

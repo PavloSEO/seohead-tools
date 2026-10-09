@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Скан идёт · подробно</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -103,9 +103,9 @@ class Component extends DCLogic {
       ['14:33:11', 'https://shop.example.test/blog/staraya-akciya', '404', 96],
       ['14:33:10', 'https://shop.example.test/product/divan-oslo-3/', '200', 521],
       ['14:33:09', 'https://shop.example.test/old-catalog/stoly/', '301', 74],
-      ['14:33:09', 'https://shop.example.test/api/cart/add', '503', 1204],
+      ['14:33:09', 'https://shop.example.test/api/cart/add', '503', '1 204'],
       ['14:33:08', 'https://shop.example.test/product/stul-nord/', '200', 344]
-    ].map(([t, url, code, ms]) => ({ t, url, code, ms, cls: 'b ' + (code[0] === '2' ? 'st-done' : code[0] === '3' ? 'st-warn' : 'st-err') }));
+    ].map(([t, url, code, ms]) => ({ t, url, code, ms, cls: 'b ' + (code[0] === '2' ? 'ok' : code[0] === '3' ? 'info' : code[0] === '4' ? 'warn' : 'err') }));
     return { stream, togglePause: () => this.setState({ paused: !p }),
       pIcon: p ? 'play_arrow' : 'pause', pLabel: p ? 'Продолжить' : 'Пауза',
       stCls: 'b ' + (p ? 'st-cancel' : 'st-run'), stIcon: p ? 'pause_circle' : 'progress_activity', stLabel: p ? 'На паузе' : 'Идёт обход',

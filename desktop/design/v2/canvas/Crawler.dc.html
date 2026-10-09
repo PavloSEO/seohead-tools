@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Режим «Краулер»</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -113,8 +113,8 @@ class Component extends DCLogic {
       ['/catalog/?sort=price&page=2', 'text/html', 200, 'Не индексируется', 'Каталог — страница 2', 20, 2, 230],
       ['/о-компании/', 'text/html', 200, 'Индексируется', 'О компании', 10, 1, 205]
     ];
-    const hc = (h) => 'b ' + (h >= 500 ? 'st-err' : h >= 400 ? 'st-warn' : h >= 300 ? 'st-run' : 'st-done');
-    const ic = (i) => 'b ' + (i === 'Индексируется' ? 'st-done' : i === 'Редирект' ? 'st-run' : 'st-off');
+    const hc = (h) => 'b ' + (h >= 500 ? 'err' : h >= 400 ? 'warn' : h >= 300 ? 'info' : 'ok');
+    const ic = (i) => 'b ' + (i === 'Индексируется' ? 'ok' : i === 'Редирект' ? 'info' : 'mut');
     const rows = D.map(([p, t, h, i, ti, l, d, ms], k) => ({ p, t, h, i, ti, l, d, ms, hc: hc(h), ic: ic(i), url: 'https://shop.example.test' + p, st: h === 200 ? 'OK' : h === 301 ? 'Moved Permanently' : h === 404 ? 'Not Found' : 'Internal Server Error', cls: 'tr' + (k % 2 ? ' alt' : '') + (k === s.sel ? ' sel' : ''), pick: () => this.setState({ sel: k }) }));
     const T = [
       ['all','h','folder','Всё','412','100%',0], ['int','h','folder_open','Внутренние','372','90,3%',0], ['html','','description','HTML','298','72,3%',16], ['js','','javascript','JavaScript','21','5,1%',16], ['css','','css','CSS','9','2,2%',16], ['img','','image','Изображения','44','10,7%',16],

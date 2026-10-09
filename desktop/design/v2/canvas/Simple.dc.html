@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Простой режим · проект без агента</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -67,8 +67,8 @@
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sel: 0 }; }
   renderVals() {
-    const S = { run: ['b st-run', 'В работе', 'progress_activity', '#1565C0'], wait: ['b st-queue', 'Ждёт перепроверки', 'schedule', '#45464F'], ver: ['b st-verified', 'Подтверждено', 'verified', '#246B3C'], open: ['b st-off', 'Открыта', 'radio_button_unchecked', '#6A6D76'] };
-    const D = [['Убрать ссылки на 404', 'wait', 'Программист', '61', 'сегодня'], ['Сократить цепочки редиректов', 'run', 'Программист', '14', 'вчера'], ['Перелинковка статей блога', 'ver', 'Я', '48', '07.10.2026'], ['Title длиннее 60 знаков', 'run', 'Контент-менеджер', '96', 'вчера'], ['Canonical на пагинации', 'open', 'Я', '41', '05.10.2026'], ['Сжать изображения > 300 КБ', 'ver', 'Программист', '37', '04.10.2026']];
+    const S = { run: ['b st-run', 'В работе', 'progress_activity', '#1565C0'], wait: ['b st-queue', 'Ждёт перепроверки', 'schedule', '#45464F'], ver: ['b st-verified', 'Подтверждено', 'verified', '#246B3C'], open: ['b st-new', 'Новая', 'fiber_new', '#1565C0'] };
+    const D = [['Убрать ссылки на 404', 'wait', 'Программист', '61', 'сегодня'], ['Сократить цепочки редиректов', 'run', 'Программист', '14', 'вчера'], ['Перелинковка статей блога', 'ver', 'SEO', '48', '07.10.2026'], ['Title длиннее 60 знаков', 'run', 'SEO', '96', 'вчера'], ['Canonical на пагинации', 'open', 'SEO', '41', '05.10.2026'], ['Сжать изображения > 300 КБ', 'open', 'Программист', '37', '04.10.2026']];
     const tasks = D.map(([title, st, who, n, upd], i) => ({ title, who, n, upd, stCls: S[st][0], st: S[st][1], icon: S[st][2], c: S[st][3], cls: 'srow' + (i === this.state.sel ? ' sel' : ''), pick: () => this.setState({ sel: i }) }));
     return { tasks, yes: true };
   }

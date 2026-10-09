@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Все модалки</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -73,13 +73,13 @@
       <sc-if value="{{is.newp}}" hint-placeholder-val="{{false}}"><div class="db">
         <div><label class="lbl" for="pn">Название</label><div class="fld"><input id="pn" value="Мебельный магазин"></div></div>
         <div><label class="lbl" for="pd">Основной сайт</label><div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">language</span><input id="pd" value="https://shop.example.test/"></div></div>
-        <div><label class="lbl" for="pf">Папка проекта</label><div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">folder</span><input id="pf" value="~/Work/projects/shop"><button class="btn sm" style="height: 26px; font-size: 12px">Выбрать…</button></div><div class="hint">Папка пустая — будет создан project.json. Скан не запускается.</div></div>
+        <div><label class="lbl" for="pf">Папка проекта</label><div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">folder</span><input id="pf" value="~/Work/projects/shop"><button class="btn sm">Выбрать…</button></div><div class="hint">Папка пустая — будет создан project.json. Скан не запускается.</div></div>
         <div style="display: flex; gap: 8px; align-items: center"><span class="swt on"><i></i></span>Сразу открыть «Работа» и предложить цель</div>
       </div></sc-if>
 
       <sc-if value="{{is.reloc}}" hint-placeholder-val="{{false}}"><div class="db">
         <div class="note e"><span class="ms" aria-hidden="true" style="color: #B3261E">folder_off</span><div><b style="font-weight: 500">Проект «Старый блог» не найден</b> по пути ~/Desktop/old-blog</div></div>
-        <div><label class="lbl" for="np">Новый путь</label><div class="fld"><input id="np" value="~/Work/projects/old-blog"><button class="btn sm" style="height: 26px; font-size: 12px">Выбрать…</button></div></div>
+        <div><label class="lbl" for="np">Новый путь</label><div class="fld"><input id="np" value="~/Work/projects/old-blog"><button class="btn sm">Выбрать…</button></div></div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="b st-done"><span class="ms" aria-hidden="true">check_circle</span>project.json найден</span><span class="b st-done"><span class="ms" aria-hidden="true">fingerprint</span>UUID совпадает: 4b2e…91a</span></div>
       </div></sc-if>
 
@@ -189,7 +189,7 @@
         <img src="/_blob/9bbee7a83aa50baa041e02870d2402e4" alt="" width="72" height="72">
         <div style="font: 700 18px Roboto, sans-serif; letter-spacing: .6px">SEOHEAD Desktop</div>
         <div class="hint" style="margin: 0">Приложение 0.9.0 · ядро seohead 3.4 (a7dff37) · Qt 5.15 · macOS</div>
-        <div style="display: flex; gap: 8px"><button class="btn sm" style="height: 28px">Лицензии</button><button class="btn sm" style="height: 28px">Скопировать сведения</button></div>
+        <div style="display: flex; gap: 8px"><button class="btn sm">Лицензии</button><button class="btn sm">Скопировать сведения</button></div>
       </div></sc-if>
 
       <sc-if value="{{is.del}}" hint-placeholder-val="{{false}}"><div class="db"><div>Вид «Медленные карточки &gt; 1 с» будет удалён у вас и у агента. Данные скана не затрагиваются.</div></div></sc-if>
@@ -218,7 +218,7 @@ class Component extends DCLogic {
       ['reloc', 'Проект и агент', 'drive_file_move', 'Проект перенесён', 'Указать новый путь', 'Проект ищется по UUID, а не по имени папки', 600, W, 'Открыть по новому пути', 'folder_open', 'pri', 'Отмена', 'Убрать из списка', ''],
       ['corrupt', 'Проект и агент', 'report', 'Проект несовместим', 'Проект нельзя открыть', 'Нужна миграция ядром', 600, E, 'Открыть папку', 'folder_open', 'sec', 'Закрыть', '', 'Приложение не меняет проект само'],
       ['core', 'Скан', 'tune', 'Параметры ядра', 'Расширенные параметры скана', '42 параметра ядра · профиль «Каталог · стандарт»', 900, P, 'Применить', 'check', 'pri', 'Отмена', 'Сохранить как профиль', 'Серым — недоступно для выбранного источника'],
-      ['sf', 'Скан', 'bug_report', 'Диагностика SF', 'Screaming Frog', 'Проверка перед запуском', 600, N, 'Готово', 'check', 'pri', 'Повторить проверку', '', ''],
+      ['sf', 'Скан', 'stethoscope', 'Диагностика SF', 'Screaming Frog', 'Проверка перед запуском', 600, N, 'Готово', 'check', 'pri', 'Повторить проверку', '', ''],
       ['stop', 'Скан', 'stop_circle', 'Остановить скан', 'Остановить скан №3?', 'Перепроверка списком · r-0143', 520, W, 'Запросить остановку', 'stop_circle', 'dng', 'Продолжить скан', '', ''],
       ['paid', 'Скан', 'payments', 'Платный провайдер', 'Подтвердите расход', 'Arsenkin · частотность Яндекса', 560, W, 'Запустить за ≈ 64 ₽', 'play_arrow', 'off', 'Отмена', '', 'Кнопка активна после галочки'],
       ['exp', 'Данные', 'download', 'Экспорт', 'Экспорт URL', 'Скан №2 · r-0142', 640, P, 'Экспортировать', 'download', 'pri', 'Отмена', '', ''],

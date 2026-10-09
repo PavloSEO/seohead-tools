@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Проблемы</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -101,14 +101,14 @@ class Component extends DCLogic {
       ['info', 'image', '#45464F', 'Изображения > 300 КБ', 37, 'image_weight', 'Тяжёлые изображения замедляют загрузку.'],
       ['info', 'description', '#45464F', 'Без meta description', 52, 'desc_missing', 'Нет описания — сниппет собирается из текста.'],
       ['info', 'account_tree', '#45464F', 'Глубина > 4', 12, 'depth', 'Страницы глубоко в структуре реже обходятся.'],
-      ['na', 'help', '#6A6D76', 'Hreflang · не измерялось', '—', 'hreflang', 'Источник native/static не собирал hreflang. Это не «0 проблем».']
+      ['na', 'help', '#6A6D76', 'Hreflang · не измерялось', '—', 'hreflang', 'Встроенный краулер без рендеринга не собирал hreflang. Это не «0 проблем».']
     ];
     const sevDefs = [['all', 'Все', '37'], ['crit', 'Критичные', '2'], ['warn', 'Важные', '4'], ['info', 'Советы', '3']];
     const sevs = sevDefs.map(([id, label, n]) => ({ label, n, cls: 'grp' + (id === s.sev ? ' on' : ''), pick: () => this.setState({ sev: id }) }));
     const finds = F.map(([sev, icon, color, label, n, id, desc], i) => ({ sev, icon, color, label, n, id, desc, i, cls: 'fi' + (i === s.sel ? ' sel' : ''), pick: () => this.setState({ sel: i }) }))
       .filter((f) => s.sev === 'all' || f.sev === s.sev);
     const cur = F.map(([sev, icon, color, label, n, id, desc]) => ({ icon, color, label, n, id, desc }))[s.sel];
-    const S = { fixed: ['b ok', 'check_circle', 'Подтверждено'], wait: ['b info', 'schedule', 'Ждёт перепроверки'], open: ['b mut', 'radio_button_unchecked', 'Открыта'], back: ['b err', 'replay', 'Вернулась'] };
+    const S = { fixed: ['b st-verified', 'verified', 'Подтверждено'], wait: ['b st-queue', 'schedule', 'Ждёт перепроверки'], open: ['b st-off', 'radio_button_unchecked', 'Открыта'], back: ['b err', 'replay', 'Вернулась'] };
     const urls = [
       ['/missing/', '404', 'Меню каталога · 12 ссылок', 'wait'], ['/catalog/old-sale/', '404', 'Футер · 212 ссылок', 'wait'], ['/catalog/stul-retro/', '410', 'Статья блога', 'fixed'],
       ['/catalog/divan-ugl/', '404', 'Карточка товара', 'wait'], ['/blog/old-post/', '404', 'Карта сайта HTML', 'open'], ['/promo/black-friday/', '404', 'Баннер на главной', 'back'],

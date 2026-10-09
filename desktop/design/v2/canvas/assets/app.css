@@ -28,6 +28,7 @@ a{color:#1565C0}a:hover{color:#0D4A8F}
 .btn.dng{color:#B3261E;border-color:#E2B4AE}
 .btn.dng:hover{background:#FFF1EF}
 .btn.off,.btn:disabled{background:#ECEEF2;border-color:#ECEEF2;color:#8A8D95;cursor:not-allowed}
+.btn.sm{height:28px;font-size:12px;padding:0 10px}
 .btn.pill{border-radius:16px;height:28px;font-size:12px;padding:0 10px}
 
 /* nav */

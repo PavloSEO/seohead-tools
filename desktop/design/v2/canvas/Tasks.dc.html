@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Задачи проекта · доска</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -61,18 +61,17 @@ class Component extends DCLogic {
     const W = { dev: ['Программист', 'code'], seo: ['SEO', 'query_stats'], cnt: ['Контент', 'edit_note'] };
     const P = { h: ['Высокий', '#B3261E'], m: ['Средний', '#C77700'], l: ['Низкий', '#8A8D95'] };
     const all = [
-      ['new', 'T-118', 'Ссылки на 404 в блоге: убрать или заменить', 'cnt', 'h', 38],
-      ['new', 'T-121', 'Пустые meta description в карточках диванов', 'cnt', 'm', 112],
-      ['new', 'T-122', 'Hreflang отсутствует на /en/', 'dev', 'l', 54],
-      ['work', 'T-109', 'Цепочки редиректов /old-catalog/ → 2 шага', 'dev', 'h', 46],
-      ['work', 'T-114', 'Дубли title на страницах пагинации', 'seo', 'm', 210],
-      ['fixed', 'T-101', 'Canonical на фильтрах ведёт на себя', 'dev', 'h', 318],
-      ['fixed', 'T-105', 'Изображения без alt в разделе «Кресла»', 'cnt', 'l', 87],
-      ['fixed', 'T-107', 'Sitemap содержит 301-адреса', 'seo', 'm', 24],
-      ['ok', 'T-092', 'Ответ 5xx на /api/* в sitemap', 'dev', 'h', 12],
-      ['ok', 'T-095', 'H1 дублирует title на категориях', 'seo', 'l', 64]
+      ['new', 'T-101', 'Canonical на пагинации', 'seo', 'm', 41],
+      ['new', 'T-092', 'Сжать изображения > 300 КБ', 'dev', 'l', 37],
+      ['work', 'T-109', 'Сократить цепочки редиректов', 'dev', 'h', 14],
+      ['work', 'T-114', 'Title длиннее 60 знаков', 'seo', 'm', 96],
+      ['fixed', 'T-118', 'Убрать ссылки на 404', 'dev', 'h', 61],
+      ['fixed', 'T-095', 'Описания карточек товаров', 'cnt', 'l', 52],
+      ['ok', 'T-121', 'Перелинковка статей блога', 'seo', 'h', 48],
+      ['ok', 'T-107', 'Расширить тексты блога', 'cnt', 'm', 22],
+      ['ok', 'T-105', 'Убрать ссылки на 404 в блоге', 'cnt', 'm', 5]
     ].filter((r) => this.state.who === 'all' || r[3] === this.state.who);
-    const C = [['new', 'Новые', 'fiber_new', '#1565C0'], ['work', 'В работе', 'pending', '#C77700'], ['fixed', 'Исправлено — ждёт перепроверки', 'published_with_changes', '#64549B'], ['ok', 'Подтверждено', 'verified', '#246B3C']];
+    const C = [['new', 'Новые', 'fiber_new', '#1565C0'], ['work', 'В работе', 'progress_activity', '#1565C0'], ['fixed', 'Ждёт перепроверки', 'schedule', '#45464F'], ['ok', 'Подтверждено', 'verified', '#246B3C']];
     const cols = C.map(([k, title, icon, color]) => {
       const cards = all.filter((r) => r[0] === k).map(([, id, t, w, p, urls]) => ({ id, title: t, who: W[w][0], wIcon: W[w][1], pr: P[p][0], prc: P[p][1], urls, recheck: k === 'fixed', ok: k === 'ok' }));
       return { title, icon, color, cards, n: cards.length };

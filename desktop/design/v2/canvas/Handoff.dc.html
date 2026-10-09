@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Отчёты и задачи исполнителям</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -30,7 +30,7 @@
   <main class="main" style="flex-direction: row">
     <section aria-label="Задачи по исполнителям" style="width: 470px; flex-shrink: 0; border-right: 1px solid #DDE1E7; display: flex; flex-direction: column">
       <div style="padding: 14px 16px 8px; display: flex; flex-direction: column; gap: 6px">
-        <div style="display: flex; align-items: center; gap: 8px"><h1 style="margin: 0; font: 500 16px Roboto, sans-serif; flex: 1">Задачи по итогам скана №1</h1><button class="btn pill"><span class="ms s16" aria-hidden="true">add</span>Задача</button></div>
+        <div style="display: flex; align-items: center; gap: 8px"><h1 style="margin: 0; font: 500 16px Roboto, sans-serif; flex: 1">Задачи по итогам скана №2</h1><button class="btn pill"><span class="ms s16" aria-hidden="true">add</span>Задача</button></div>
         <div style="font: 400 12px Roboto, sans-serif; color: #5D6069">Собраны агентом из 37 проблем · вы проверяете и передаёте</div>
       </div>
       <div class="tabbar" style="padding-left: 8px">
@@ -69,7 +69,7 @@
       </div>
       <div style="flex: 1; min-height: 0; overflow: hidden; padding: 20px 24px">
         <article class="doc card" style="max-width: 760px; margin: 0 auto; padding: 28px 32px; box-shadow: 0 1px 3px rgba(10,20,40,.06)">
-          <div style="display: flex; gap: 8px; margin-bottom: 14px"><span class="b mut">{{cur.whoLabel}}</span><span class="{{cur.prCls}}">{{cur.pr}}</span><span class="b mut">скан r-0139 · 21.09.2026</span></div>
+          <div style="display: flex; gap: 8px; margin-bottom: 14px"><span class="b mut">{{cur.whoLabel}}</span><span class="{{cur.prCls}}">{{cur.pr}}</span><span class="b mut">скан r-0142 · 07.10.2026</span></div>
           <h3 style="font-size: 20px; margin-bottom: 12px">{{cur.title}}</h3>
           <h3>Что не так</h3>
           <p>{{cur.what}}</p>
@@ -93,7 +93,7 @@
     </section>
   </main>
 </div>
-<footer class="status"><span>Отчёт собран по сохранённому аудиту · наличие файла не подтверждает исправление</span><div style="flex: 1"></div><span>report-build · r-0139</span></footer>
+<footer class="status"><span>Отчёт собран по сохранённому аудиту · наличие файла не подтверждает исправление</span><div style="flex: 1"></div><span>report-build · r-0142</span></footer>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
@@ -104,25 +104,25 @@ class Component extends DCLogic {
     const P = { high: ['keyboard_double_arrow_up', '#B3261E', 'b err', 'Высокий'], mid: ['drag_handle', '#7A4F00', 'b warn', 'Средний'], low: ['keyboard_arrow_down', '#45464F', 'b mut', 'Низкий'] };
     const T = {
       dev: [
-        { title: 'Убрать ссылки на страницы 404', p: 'high', urls: 61, crit: '4xx во внутренних ссылках = 0', st: 'Готова', what: '61 внутренняя ссылка ведёт на несуществующие страницы. Чаще всего — меню каталога и старые карточки товаров.', todo: 'Заменить ссылки в шаблоне меню на актуальные адреса; для удалённых товаров настроить 301 на ближайшую категорию.', check: 'Скан №2 по тем же страницам: ни одной внутренней ссылки с ответом 4xx.', rows: [{ u: '/missing/', h: '404', w: 'Меню · каталог' }, { u: '/catalog/old-sale/', h: '404', w: 'Футер' }, { u: '/catalog/stul-retro/', h: '410', w: 'Контент статьи' }], more: 58 },
-        { title: 'Сократить цепочки редиректов', p: 'high', urls: 14, crit: 'не больше 1 перехода', st: 'Готова', what: '14 адресов отдают 2–3 редиректа подряд.', todo: 'Сразу вести на конечный адрес; обновить ссылки на сайте на конечные URL.', check: 'Скан №2: у всех 14 адресов не больше 1 редиректа.', rows: [{ u: '/old-product/', h: '301', w: 'Карточки' }], more: 13 },
-        { title: 'Ошибка 500 на /api/cart', p: 'mid', urls: 8, crit: 'ответ 200 или закрыть от обхода', st: 'Черновик', what: 'Служебные адреса корзины отдают 500 и попадают в обход.', todo: 'Исправить ответ или закрыть /api/ в robots.txt.', check: 'Скан №2: /api/* не отдаёт 5xx или исключён правилом.', rows: [{ u: '/api/cart', h: '500', w: 'JS-ссылка' }], more: 7 },
-        { title: 'Сжать изображения > 300 КБ', p: 'low', urls: 37, crit: 'вес < 300 КБ', st: 'Черновик', what: '37 изображений тяжелее 300 КБ.', todo: 'Пережать в WebP, отдать размеры по контейнеру.', check: 'Скан №2: изображений > 300 КБ нет.', rows: [{ u: '/images/chair-oak-1920.jpg', h: '200', w: 'Карточка' }], more: 36 }
+        { title: 'Убрать ссылки на 404', p: 'high', urls: 61, crit: '4xx во внутренних ссылках = 0', st: 'Готова', what: '61 внутренняя ссылка ведёт на несуществующие страницы. Чаще всего — меню каталога и старые карточки товаров.', todo: 'Заменить ссылки в шаблоне меню на актуальные адреса; для удалённых товаров настроить 301 на ближайшую категорию.', check: 'Перепроверка списком по тем же страницам: ни одной внутренней ссылки с ответом 4xx.', rows: [{ u: '/missing/', h: '404', w: 'Меню · каталог' }, { u: '/catalog/old-sale/', h: '404', w: 'Футер' }, { u: '/catalog/stul-retro/', h: '410', w: 'Контент статьи' }], more: 58 },
+        { title: 'Сократить цепочки редиректов', p: 'high', urls: 14, crit: 'не больше 1 перехода', st: 'Готова', what: '14 адресов отдают 2–3 редиректа подряд.', todo: 'Сразу вести на конечный адрес; обновить ссылки на сайте на конечные URL.', check: 'Перепроверка: у всех 14 адресов не больше 1 редиректа.', rows: [{ u: '/old-product/', h: '301', w: 'Карточки' }], more: 13 },
+        { title: 'Ошибка 500 на /api/cart', p: 'mid', urls: 8, crit: 'ответ 200 или закрыть от обхода', st: 'Черновик', what: 'Служебные адреса корзины отдают 500 и попадают в обход.', todo: 'Исправить ответ или закрыть /api/ в robots.txt.', check: 'Перепроверка: /api/* не отдаёт 5xx или исключён правилом.', rows: [{ u: '/api/cart', h: '500', w: 'JS-ссылка' }], more: 7 },
+        { title: 'Сжать изображения > 300 КБ', p: 'low', urls: 37, crit: 'вес < 300 КБ', st: 'Черновик', what: '37 изображений тяжелее 300 КБ.', todo: 'Пережать в WebP, отдать размеры по контейнеру.', check: 'Перепроверка: изображений > 300 КБ нет.', rows: [{ u: '/images/chair-oak-1920.jpg', h: '200', w: 'Карточка' }], more: 36 }
       ],
       seo: [
-        { title: 'Перелинковка статей блога', p: 'high', urls: 48, crit: '≥ 8 входящих ссылок на статью', st: 'Готова', what: 'У статей блога в среднем 6 входящих ссылок, 14 статей без входящих.', todo: 'Добавить ссылки из категорий и связанных статей; убрать статьи-сироты.', check: 'Скан №2: медиана входящих ≥ 8, сирот нет.', rows: [{ u: '/blog/kak-sobrat-shkaf/', h: '200', w: 'нет входящих' }], more: 47 },
-        { title: 'Title длиннее 60 знаков', p: 'mid', urls: 96, crit: 'длина ≤ 60', st: 'Готова', what: '96 страниц с длинным title, обрезается в выдаче.', todo: 'Сократить по шаблону «Товар — категория».', check: 'Скан №2: title ≤ 60 у этих страниц.', rows: [{ u: '/blog/uhod-za-derevom/', h: '200', w: '71 знак' }], more: 95 },
-        { title: 'Canonical на пагинации', p: 'mid', urls: 41, crit: 'self-canonical', st: 'Черновик', what: 'Страницы пагинации указывают canonical на первую страницу.', todo: 'Поставить self-canonical на страницы 2+.', check: 'Скан №2: у пагинации canonical на себя.', rows: [{ u: '/catalog/?page=2', h: '200', w: 'canonical → /catalog/' }], more: 40 }
+        { title: 'Перелинковка статей блога', p: 'high', urls: 48, crit: '≥ 8 входящих ссылок на статью', st: 'Готова', what: 'У статей блога в среднем 6 входящих ссылок, 14 статей без входящих.', todo: 'Добавить ссылки из категорий и связанных статей; убрать статьи-сироты.', check: 'Перепроверка: медиана входящих ≥ 8, сирот нет.', rows: [{ u: '/blog/kak-sobrat-shkaf/', h: '200', w: 'нет входящих' }], more: 47 },
+        { title: 'Title длиннее 60 знаков', p: 'mid', urls: 96, crit: 'длина ≤ 60', st: 'Готова', what: '96 страниц с длинным title, обрезается в выдаче.', todo: 'Сократить по шаблону «Товар — категория».', check: 'Перепроверка: title ≤ 60 у этих страниц.', rows: [{ u: '/blog/uhod-za-derevom/', h: '200', w: '71 знак' }], more: 95 },
+        { title: 'Canonical на пагинации', p: 'mid', urls: 41, crit: 'self-canonical', st: 'Черновик', what: 'Страницы пагинации указывают canonical на первую страницу.', todo: 'Поставить self-canonical на страницы 2+.', check: 'Перепроверка: у пагинации canonical на себя.', rows: [{ u: '/catalog/?page=2', h: '200', w: 'canonical → /catalog/' }], more: 40 }
       ],
       content: [
-        { title: 'Расширить тексты блога', p: 'mid', urls: 22, crit: '≥ 1 200 слов', st: 'Готова', what: 'У 22 статей меньше 900 слов, тема раскрыта слабо.', todo: 'Дописать разделы по плану из методички; добавить FAQ.', check: 'Скан №2: медиана слов в блоге ≥ 1 200.', rows: [{ u: '/blog/uhod-za-derevom/', h: '200', w: '740 слов' }], more: 21 },
-        { title: 'Описания карточек товаров', p: 'low', urls: 52, crit: '≥ 250 слов', st: 'Черновик', what: '52 карточки без описания.', todo: 'Написать описание по шаблону.', check: 'Скан №2: описания есть.', rows: [{ u: '/catalog/chair-oak/', h: '200', w: '120 слов' }], more: 51 }
+        { title: 'Расширить тексты блога', p: 'mid', urls: 22, crit: '≥ 1 200 слов', st: 'Готова', what: 'У 22 статей меньше 900 слов, тема раскрыта слабо.', todo: 'Дописать разделы по плану из методички; добавить FAQ.', check: 'Перепроверка: медиана слов в блоге ≥ 1 200.', rows: [{ u: '/blog/uhod-za-derevom/', h: '200', w: '740 слов' }], more: 21 },
+        { title: 'Описания карточек товаров', p: 'low', urls: 52, crit: '≥ 250 слов', st: 'Черновик', what: '52 карточки без описания.', todo: 'Написать описание по шаблону.', check: 'Перепроверка: описания есть.', rows: [{ u: '/catalog/chair-oak/', h: '200', w: '120 слов' }], more: 51 }
       ]
     };
     const whoDefs = [['dev', 'code', 'Программист'], ['seo', 'query_stats', 'SEO'], ['content', 'edit_note', 'Контент']];
     const who = whoDefs.map(([id, icon, label]) => ({ icon, label, n: String(T[id].length), cls: 'tab' + (id === s.who ? ' on' : ''), pick: () => this.setState({ who: id, sel: 0 }) }));
     const list = T[s.who];
-    const tasks = list.map((t, i) => ({ ...t, picon: P[t.p][0], pc: P[t.p][1], stCls: 'b ' + (t.st === 'Готова' ? 'ok' : 'mut'), cls: 'task' + (i === s.sel ? ' sel' : ''), pick: () => this.setState({ sel: i }) }));
+    const tasks = list.map((t, i) => ({ ...t, picon: P[t.p][0], pc: P[t.p][1], stCls: 'b ' + (t.st === 'Готова' ? 'st-done' : 'st-draft'), cls: 'task' + (i === s.sel ? ' sel' : ''), pick: () => this.setState({ sel: i }) }));
     const c = tasks[Math.min(s.sel, tasks.length - 1)];
     const cur = { ...c, pr: P[c.p][3], prCls: P[c.p][2], whoLabel: whoDefs.find((w) => w[0] === s.who)[2] };
     return {

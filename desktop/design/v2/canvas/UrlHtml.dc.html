@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>URL · HTML</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -19,7 +19,7 @@
   <dc-import name="SideNav" mode="agent" active="url" h="786" hint-size="200px,786px"></dc-import>
   <main class="main">
     <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 8px 0 12px; border-bottom: 1px solid #EEF0F3; overflow: hidden">
-      <button class="grp on">Все URL<span class="n">2 486</span></button><button class="grp">Внутренние<span class="n">2 311</span></button><button class="grp">Внешние<span class="n">175</span></button><button class="grp">Ответы<span class="n">204</span></button><button class="grp">Title<span class="n">131</span></button><button class="grp">Canonical<span class="n">57</span></button><button class="grp">Ссылки<span class="n">88</span></button>
+      <button class="grp on">Все URL<span class="n">1 314</span></button><button class="grp">Внутренние<span class="n">1 190</span></button><button class="grp">Внешние<span class="n">58</span></button><button class="grp">Ответы<span class="n">187</span></button><button class="grp">Title<span class="n">96</span></button><button class="grp">Canonical<span class="n">41</span></button><button class="grp">Ссылки<span class="n">64</span></button>
       <div style="flex: 1"></div>
       <button class="ib" aria-label="Все группы"><span class="ms" aria-hidden="true">more_horiz</span></button>
     </div>
@@ -48,7 +48,7 @@
       </sc-for>
       <div style="flex: 1"></div>
       <div style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-top: 1px solid #DDE1E7; font: 400 12px Roboto, sans-serif; color: #5D6069">
-        <span>Строки 1–6 из 64 · всего в запуске 2 486</span><div style="flex: 1"></div>
+        <span>Строки 1–6 из 64 · всего в запуске 1 314</span><div style="flex: 1"></div>
         <button class="ib" aria-label="Предыдущая страница" disabled><span class="ms" aria-hidden="true">chevron_left</span></button><span class="tnum">1 / 11</span><button class="ib" aria-label="Следующая страница"><span class="ms" aria-hidden="true">chevron_right</span></button>
       </div>
     </div>
@@ -73,13 +73,13 @@
         <span class="mono" style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">https://shop.example.test{{cur.path}}</span>
         <button class="ib" aria-label="Копировать URL" style="width: 28px; height: 28px"><span class="ms s18" aria-hidden="true">content_copy</span></button>
         <div style="flex: 1"></div>
-        <span style="font: 400 12px Roboto, sans-serif; color: #5D6069; white-space: nowrap">Скан №2 · 07.10.2026 14:20 · native crawler</span>
+        <span style="font: 400 12px Roboto, sans-serif; color: #5D6069; white-space: nowrap">Скан №2 · 07.10.2026 14:20 · встроенный краулер</span>
       </div>
       <div style="flex: 1; min-height: 0; overflow: hidden; position: relative">
         <div style="position: absolute; inset: 0; display: flex">
           <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
             <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; border-bottom: 1px solid #EEF0F3">
-              <div class="seg" style="width: 300px"><button class="{{rawCls}}" onClick="{{setRaw}}">Исходный</button><button class="{{renCls}}" onClick="{{setRen}}">Отрисованный JS</button></div>
+              <div class="seg" style="width: 300px"><button class="{{rawCls}}" onClick="{{setRaw}}">Исходный</button><button class="{{renCls}}" onClick="{{setRen}}">После рендеринга JS</button></div>
               <span class="b pur" title="Разница исходного и отрисованного HTML"><span class="ms" aria-hidden="true">difference</span>Diff: +214 / −9 строк</span>
               <div style="flex: 1"></div>
               <label class="fld" style="width: 240px; height: 32px; color: #6A6D76"><span class="ms s18" aria-hidden="true">search</span><input aria-label="Поиск в HTML" value="itemprop"></label>
@@ -124,7 +124,7 @@ class Component extends DCLogic {
     const s = this.state;
     const fmt = (n) => n == null ? 'Нет данных' : n.toLocaleString('ru-RU');
     const data = [
-      { path: '/catalog/divany/', http: 200, idx: 'Индексируется', title: 'Диваны — купить в Москве, 412 моделей', depth: 1, inl: 1840, words: 520, ms: 214, iss: 0 },
+      { path: '/catalog/divany/', http: 200, idx: 'Индексируется', title: 'Диваны — купить в Москве, 412 моделей', depth: 1, inl: '1 840', words: 520, ms: 214, iss: 0 },
       { path: '/old/divan-oslo.html', http: 301, idx: 'Редирект', title: null, depth: 3, inl: 6, words: null, ms: 71, iss: 1 },
       { path: '/catalog/divany/divan-oslo/', http: 200, idx: 'Индексируется', title: 'Диван Осло угловой — 54 900 ₽, доставка по Москве', depth: 2, inl: 48, words: 1186, ms: 642, iss: 3 },
       { path: '/catalog/divany/divan-oslo/?color=grey', http: 200, idx: 'Не индексируется', title: 'Диван Осло угловой — 54 900 ₽, доставка по Москве', depth: 3, inl: 12, words: 1186, ms: 598, iss: 1 },

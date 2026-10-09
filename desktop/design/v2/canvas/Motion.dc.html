@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Анимации и движение</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -38,7 +38,7 @@
 
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start">
     <div class="panel demo" style="padding: 16px">
-      <div class="h">Панель деталей · 120 мс<div style="flex: 1"></div><button class="btn sm" style="height: 28px" onClick="{{togglePanel}}">{{panelLabel}}</button></div>
+      <div class="h">Панель деталей · 120 мс<div style="flex: 1"></div><button class="btn sm"  onClick="{{togglePanel}}">{{panelLabel}}</button></div>
       <div class="stage" style="justify-content: flex-start; padding-left: 16px"><div style="font: 400 12px Roboto, sans-serif; color: #45464F">Таблица</div><div class="pnl" style="width: {{pw}}px; {{noAnim}}"><div style="padding: 12px; font: 500 12px Roboto, sans-serif; white-space: nowrap">Детали URL</div></div></div>
     </div>
     <div class="panel demo" style="padding: 16px">
@@ -46,19 +46,19 @@
       <div class="stage" style="flex-direction: column; justify-content: center"><div style="position: relative; display: flex; border-bottom: 1px solid #DDE1E7"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="3"><button class="{{t.cls}}" onClick="{{t.pick}}" style="width: 110px; justify-content: center">{{t.label}}</button></sc-for><i class="ul" style="left: {{ulx}}px; width: 110px; {{noAnim}}"></i></div></div>
     </div>
     <div class="panel demo" style="padding: 16px">
-      <div class="h">Тост · въезд 160 мс, 5 с, пауза на наведении<div style="flex: 1"></div><button class="btn sm" style="height: 28px" onClick="{{replay}}">Воспроизвести</button></div>
+      <div class="h">Тост · въезд 160 мс, 5 с, пауза на наведении<div style="flex: 1"></div><button class="btn sm"  onClick="{{replay}}">Воспроизвести</button></div>
       <div class="stage" style="align-items: flex-end; justify-content: flex-end; padding: 12px"><sc-if value="{{showA}}" hint-placeholder-val="{{true}}"><div class="toast anim-toast" style="width: 260px"><span class="ms" aria-hidden="true" style="color: #93D2A6">check_circle</span><span style="flex: 1">Скан завершён</span><button class="act">Открыть</button></div></sc-if><sc-if value="{{showB}}" hint-placeholder-val="{{false}}"><div class="toast anim-toast" style="width: 260px"><span class="ms" aria-hidden="true" style="color: #93D2A6">check_circle</span><span style="flex: 1">Скан завершён</span><button class="act">Открыть</button></div></sc-if></div>
     </div>
     <div class="panel demo" style="padding: 16px">
-      <div class="h">Меню · 80 мс · диалог 120 мс + затемнение<div style="flex: 1"></div><button class="btn sm" style="height: 28px" onClick="{{replay}}">Воспроизвести</button></div>
+      <div class="h">Меню · 80 мс · диалог 120 мс + затемнение<div style="flex: 1"></div><button class="btn sm"  onClick="{{replay}}">Воспроизвести</button></div>
       <div class="stage"><sc-if value="{{showA}}" hint-placeholder-val="{{true}}"><div style="display: flex; gap: 16px"><div class="menu anim-pop" style="position: static; width: 150px"><div class="mi">Копировать</div><div class="mi on">Детали</div></div><div class="card anim-fade" style="padding: 14px; width: 150px; box-shadow: 0 12px 40px rgba(10,20,40,.18)"><b style="font: 500 13px Roboto, sans-serif">Остановить скан?</b></div></div></sc-if><sc-if value="{{showB}}" hint-placeholder-val="{{false}}"><div style="display: flex; gap: 16px"><div class="menu anim-pop" style="position: static; width: 150px"><div class="mi">Копировать</div><div class="mi on">Детали</div></div><div class="card anim-fade" style="padding: 14px; width: 150px; box-shadow: 0 12px 40px rgba(10,20,40,.18)"><b style="font: 500 13px Roboto, sans-serif">Остановить скан?</b></div></div></sc-if></div>
     </div>
     <div class="panel demo" style="padding: 16px">
-      <div class="h">Прогресс · 200 мс только при новом наблюдении<div style="flex: 1"></div><button class="btn sm" style="height: 28px" onClick="{{tick}}">Новое наблюдение</button></div>
+      <div class="h">Прогресс · 200 мс только при новом наблюдении<div style="flex: 1"></div><button class="btn sm"  onClick="{{tick}}">Новое наблюдение</button></div>
       <div class="stage" style="flex-direction: column; gap: 10px"><div class="pg"><i style="width: {{pct}}%; {{noAnim}}"></i></div><span class="mono tnum">{{done}} / 640 URL</span></div>
     </div>
     <div class="panel demo" style="padding: 16px">
-      <div class="h">Спиннер: живой → замер → устарело<div style="flex: 1"></div><button class="btn sm" style="height: 28px" onClick="{{age}}">+ 1 с</button></div>
+      <div class="h">Спиннер: живой → замер → устарело<div style="flex: 1"></div><button class="btn sm"  onClick="{{age}}">+ 1 с</button></div>
       <div class="stage" style="flex-direction: column; gap: 8px">
         <sc-if value="{{fresh}}" hint-placeholder-val="{{true}}"><span class="b st-run" style="height: 26px"><span class="ring" aria-hidden="true" style="width: 14px; height: 14px; border-width: 2px"></span>Идёт · наблюдение {{ageS}} с назад</span></sc-if>
         <sc-if value="{{frozen}}" hint-placeholder-val="{{false}}"><span class="b st-run" style="height: 26px"><span class="ms" aria-hidden="true">progress_activity</span>Идёт · {{ageS}} с назад</span></sc-if>

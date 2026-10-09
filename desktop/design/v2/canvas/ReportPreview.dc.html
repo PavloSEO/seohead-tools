@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Предпросмотр отчёта</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -39,7 +39,7 @@
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px">
           <div style="border: 1px solid #DDE1E7; border-radius: 8px; padding: 8px"><div style="font: 400 9px Roboto, sans-serif; color: #5D6069">{{t.k1}}</div><div style="font: 500 18px Roboto, sans-serif">1 314</div></div>
           <div style="border: 1px solid #DDE1E7; border-radius: 8px; padding: 8px"><div style="font: 400 9px Roboto, sans-serif; color: #5D6069">{{t.k2}}</div><div style="font: 500 18px Roboto, sans-serif; color: #B3261E">37</div></div>
-          <div style="border: 1px solid #DDE1E7; border-radius: 8px; padding: 8px"><div style="font: 400 9px Roboto, sans-serif; color: #5D6069">{{t.k3}}</div><div style="font: 500 18px Roboto, sans-serif; color: #246B3C">12</div></div>
+          <div style="border: 1px solid #DDE1E7; border-radius: 8px; padding: 8px"><div style="font: 400 9px Roboto, sans-serif; color: #5D6069">{{t.k3}}</div><div style="font: 500 18px Roboto, sans-serif; color: #246B3C">3</div></div>
         </div>
         <div style="font: 500 12px Roboto, sans-serif; margin-top: 4px">{{t.top}}</div>
         <sc-for list="{{t.items}}" as="i" hint-placeholder-count="4"><div style="display: flex; gap: 8px; font: 400 11px/1.45 Roboto, sans-serif"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{i.c}}; margin-top: 5px; flex-shrink: 0"></span><span>{{i.t}}</span></div></sc-for>
@@ -77,17 +77,17 @@ class Component extends DCLogic {
   renderVals() {
     const ru = this.state.lang === 'ru';
     const L = ru ? {
-      sum: 'Резюме для руководителя', lead: 'Скан №2 от 07.10.2026 охватил 1 314 URL из ~1 500. После исправлений число критичных проблем снизилось с 52 до 37; 12 задач подтверждены повторным сканом.',
+      sum: 'Резюме для руководителя', lead: 'Скан №2 от 07.10.2026 охватил 1 314 URL (лимит 1 500). Перепроверка подтвердила 52 исправления; осталось 37 проверок с находками, из них 2 критичные. Подтверждено 3 задачи из 9.',
       k1: 'URL просканировано', k2: 'Проблем осталось', k3: 'Задач подтверждено', top: 'Главное сейчас',
-      items: ['38 ссылок на 404 в блоге — теряется вес', '17 фильтров с самоканоникалом в /catalog/kresla/', 'Цепочки редиректов /old-catalog/ — 46 URL', '112 карточек без meta description'],
+      items: ['61 внутренняя ссылка на 404 — теряется вес', 'Ответ 5xx на /api/cart — 8 URL', 'Цепочки редиректов — 14 URL', '52 страницы без meta description'],
       iss: 'Проблемы по приоритету', c1: 'Проблема', c2: 'Статус', foot: 'Подготовлено в SEOHEAD Desktop', thumbs: ['Резюме', 'Проблемы', 'Задачи', 'Методика'],
-      rows: [['Ссылки на 404', 38, 'новая'], ['Цепочки редиректов', 46, 'в работе'], ['Самоканоникал на фильтрах', 17, 'частично'], ['Пустой description', 112, 'новая'], ['Дубли title', 210, 'в работе'], ['Без alt', 87, 'исправлено'], ['5xx в sitemap', 12, 'подтверждено']]
+      rows: [['Ссылки на 404', 61, 'ждёт перепроверки'], ['Ошибка 500 на /api/cart', 8, 'новая'], ['Цепочки редиректов', 14, 'в работе'], ['Title длиннее 60 знаков', 96, 'в работе'], ['Canonical на пагинации', 41, 'новая'], ['Описания карточек', 52, 'ждёт перепроверки'], ['Изображения > 300 КБ', 37, 'новая']]
     } : {
-      sum: 'Executive summary', lead: 'Scan #2 (07 Oct 2026) covered 1,314 of ~1,500 URLs. Critical issues dropped from 52 to 37 after fixes; 12 tasks were confirmed by a re-scan.',
+      sum: 'Executive summary', lead: 'Scan #2 (07 Oct 2026) covered 1,314 URLs (limit 1,500). The recheck confirmed 52 fixes; 37 checks still have findings, 2 of them critical. 3 of 9 tasks are verified.',
       k1: 'URLs crawled', k2: 'Issues left', k3: 'Tasks confirmed', top: 'Top priorities',
-      items: ['38 blog links to 404 pages', '17 self-canonical filters in /catalog/kresla/', 'Redirect chains in /old-catalog/ — 46 URLs', '112 product pages without meta description'],
+      items: ['61 internal links to 404 pages', '5xx on /api/cart — 8 URLs', 'Redirect chains — 14 URLs', '52 pages without meta description'],
       iss: 'Issues by priority', c1: 'Issue', c2: 'Status', foot: 'Prepared with SEOHEAD Desktop', thumbs: ['Summary', 'Issues', 'Tasks', 'Method'],
-      rows: [['Links to 404', 38, 'new'], ['Redirect chains', 46, 'in progress'], ['Self-canonical filters', 17, 'partial'], ['Empty description', 112, 'new'], ['Duplicate titles', 210, 'in progress'], ['Missing alt', 87, 'fixed'], ['5xx in sitemap', 12, 'verified']]
+      rows: [['Links to 404', 61, 'awaiting recheck'], ['500 on /api/cart', 8, 'new'], ['Redirect chains', 14, 'in progress'], ['Title over 60 chars', 96, 'in progress'], ['Canonical on pagination', 41, 'new'], ['Product descriptions', 52, 'awaiting recheck'], ['Images > 300 KB', 37, 'new']]
     };
     const col = ['#B3261E', '#C77700', '#C77700', '#B3261E', '#C77700', '#64549B', '#246B3C'];
     const t = { ...L, items: L.items.map((x, i) => ({ t: x, c: col[i] })), rows: L.rows.map(([a, b, c], i) => ({ a, b, c, col: col[i] })) };

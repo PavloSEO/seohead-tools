@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Сканы и наблюдение</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -56,7 +56,7 @@
 
     <sc-if value="{{live}}" hint-placeholder-val="{{true}}">
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
-        <div style="display: flex; align-items: center; gap: 8px"><span class="b info"><span class="ms" aria-hidden="true">progress_activity</span>Идёт обход</span><span style="font: 400 12px Roboto, sans-serif; color: #5D6069">наблюдение 2 с назад · 06:41 прошло</span></div>
+        <div style="display: flex; align-items: center; gap: 8px"><span class="b st-run"><span class="ms" aria-hidden="true">progress_activity</span>Идёт обход</span><span style="font: 400 12px Roboto, sans-serif; color: #5D6069">наблюдение 2 с назад · 06:41 прошло</span></div>
         <div>
           <div style="display: flex; justify-content: space-between; font: 400 13px Roboto, sans-serif; margin-bottom: 6px"><span>Обработано известных URL</span><span class="tnum"><b style="font-weight: 500">412</b> / 640</span></div>
           <div class="bar" style="height: 8px"><div style="width: 58%; background: #1565C0"></div><div style="width: 6%; background: #8DB4E6"></div></div>
@@ -130,11 +130,11 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sel: 0 }; }
   renderVals() {
     const S = {
-      run: ['b info', 'Идёт', 'progress_activity', '#1565C0'],
-      stale: ['b warn', 'Устарело · 4 мин', 'update', '#7A4F00'],
-      part: ['b warn', 'Частичный', 'warning', '#7A4F00'],
+      run: ['b st-run', 'Идёт', 'progress_activity', '#1565C0'],
+      stale: ['b st-stale', 'Устарело · 4 мин', 'update', '#263247'],
+      part: ['b st-partial', 'Частичный', 'warning', '#7A4F00'],
       ok: ['b ok', 'Завершён', 'check_circle', '#246B3C'],
-      fail: ['b err', 'Прерван', 'error', '#B3261E']
+      fail: ['b st-int', 'Прерван', 'error', '#B3261E']
     };
     const data = [
       ['Скан №3 · перепроверка', 'r-0143', 'Список URL', 'run', '412 / 640', 'сегодня 14:20', 'идёт', 'перепроверка задач'],

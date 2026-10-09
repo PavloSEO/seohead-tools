@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import os, shutil
 CANVAS = Path(__file__).resolve().parents[1] / "canvas"
 SITE = Path(os.environ.get("QA_SITE_DIR", "/tmp/seohead-canvas-qa"))
-BLOBS = {"4a414078cb0b30a9f33cd7ff3f95b4b1": "app.css", "91b098e33df1d5d3a71b967b3280aee7": "ext.css"}
+BLOBS = {"c938fb19e1f0b2f77a9fb7cde6b9bc65": "app.css", "91b098e33df1d5d3a71b967b3280aee7": "ext.css"}
 ICONS = {  # canvas asset id -> design/v2/brand file
     "9bbee7a83aa50baa041e02870d2402e4": "seohead-logo.svg", "d9315c4d275086b182d8bb919224809e": "seohead-logo.svg",
     "bce3e94b48603d5d8de3a11a27b69aae": "archive/icon-w1-widow-lens.svg", "cc4a78a69360a9a1e1e4328ccfac514a": "archive/icon-w2-widow-circle.svg",

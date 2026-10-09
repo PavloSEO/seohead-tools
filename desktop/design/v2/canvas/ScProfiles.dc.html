@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Скан — профили</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -92,7 +92,7 @@ class Component extends DCLogic {
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '0';
     const P = [['std','Стандартный','tune','2 req/s · 1 500 URL · без JS','по умолчанию','st-new',[]],
       ['safe','Бережный боевой','eco','1 req/s · адаптивно · пауза 1 с','встроенный','st-queue',[['speed.max_rps','2','1'],['speed.concurrency','4','2'],['speed.min_delay_seconds','0,5','1,0'],['limits.max_crawl_seconds','1 800','3 600']]],
-      ['js','Полный с JS','javascript','рендер всегда · Mobile · 5 000 URL','свой','st-agent',[['render.mode','off','always'],['render.viewport','—','mobile 412×915'],['limits.max_urls','1 500','5 000'],['storage.body_mode','html','all'],['render.screenshots','нет','да']]],
+      ['js','Полный с JS','javascript','рендер всегда · телефон · 5 000 URL','свой','st-agent',[['render.mode','off','always'],['render.viewport','—','mobile 412×915'],['limits.max_urls','1 500','5 000'],['storage.body_mode','html','all'],['render.screenshots','нет','да']]],
       ['sm','Только sitemap','account_tree','URL из sitemap, без обхода ссылок','встроенный','st-queue',[['limits.max_depth','10','0'],['sitemaps.auto_discover','да','да, единственный источник'],['scope.follow_links','да','нет']]]];
     const cur = P.find(p => p[0] === s.sel);
     const profs = P.map(p => ({ n: p[1], icon: p[2], d: p[3], tag: p[4], badge: 'b ' + p[5], on: p[0] === s.sel, border: p[0] === s.sel ? '2px solid #1565C0' : '1px solid #DDE1E7', bg: p[0] === s.sel ? '#F3F8FF' : '#FFFFFF', pick: () => this.setState({ sel: p[0] }) }));

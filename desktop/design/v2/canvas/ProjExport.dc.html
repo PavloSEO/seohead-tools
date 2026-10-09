@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Экспорт и отчёты</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -33,7 +33,7 @@
 </style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" mode="agent" tab="none" label="Экспорт и отчёты" icon="description" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="none" label="Экспорт и отчёты" icon="ios_share" hint-size="1440px,88px"></dc-import>
 <div class="body">
   <dc-import name="SideNav" mode="agent" active="reports" h="786" hint-size="200px,786px"></dc-import>
   <main class="main">
@@ -58,7 +58,7 @@
           </sc-for>
         </div>
         <div style="flex: 1"></div>
-        <sc-if value="{{xlsx}}" hint-placeholder-val="{{true}}"><div class="note w"><span class="ms s18" aria-hidden="true">call_split</span><span>XLSX вмещает 1 048 576 строк на лист. Набор из 1 000 000 URL + заголовок поместится; больший экспорт будет разбит на файлы <span class="mono">…_part1.xlsx</span>, <span class="mono">…_part2.xlsx</span>.</span></div></sc-if>
+        <sc-if value="{{xlsx}}" hint-placeholder-val="{{true}}"><div class="note w"><span class="ms s18" aria-hidden="true">call_split</span><span>XLSX вмещает 1 048 576 строк на лист: 1 314 URL скана №2 поместятся в один файл. Больший экспорт разбивается на файлы <span class="mono">…_part1.xlsx</span>, <span class="mono">…_part2.xlsx</span>.</span></div></sc-if>
       </section>
       <div style="display: flex; flex-direction: column; gap: 16px; min-height: 0">
         <section class="cd">
@@ -91,11 +91,11 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { set: 'url', fmt: 'xlsx', off: { 6: true, 7: true, 10: true, 11: true, 14: true, 15: true }, running: false }; }
   renderVals() {
     const s = this.state;
-    const SETS = [['url', 'table_view', 'Таблица URL', '1 000 000 строк'], ['issues', 'rule', 'Проблемы', '1 001 233 находки'], ['compare', 'compare_arrows', 'Сравнение №1 → №2', '387 изменений'], ['tasks', 'checklist', 'Задачи', '18 задач · 412 URL']];
+    const SETS = [['url', 'table_view', 'Таблица URL', '1 314 строк'], ['issues', 'rule', 'Проблемы', '37 проверок с находками'], ['compare', 'compare_arrows', 'Сравнение №1 → №2', '387 изменений'], ['tasks', 'checklist', 'Задачи', '9 задач · 376 URL']];
     const FM = [['csv', 'CSV'], ['xlsx', 'XLSX'], ['json', 'JSON'], ['pdf', 'PDF']];
     const HINT = { csv: 'UTF-8, разделитель «;» — открывается в Excel без потери кириллицы', xlsx: 'Лист на набор, закреплённая шапка, автофильтр', json: 'Построчный JSON — для скриптов и агентов', pdf: 'Отчёт-сводка: графики и топ находок, без полной таблицы' };
     const C = ['Адрес', 'HTTP-код', 'Индексация', 'Title', 'Длина title', 'Meta description', 'H1', 'Canonical', 'Глубина', 'Входящие ссылки', 'Время ответа', 'Размер', 'Тип контента', 'Последнее изменение', 'Hreflang', 'Структ. данные'];
-    const SZ = { csv: '210 МБ', xlsx: '96 МБ', json: '340 МБ', pdf: '2 МБ' };
+    const SZ = { csv: '0,6 МБ', xlsx: '0,3 МБ', json: '1,1 МБ', pdf: '2 МБ' };
     const n = C.filter((_, i) => !s.off[i]).length;
     return {
       sets: SETS.map(([id, icon, l, cnt]) => ({ icon, l, n: cnt, on: id === s.set, cls: 'opt' + (id === s.set ? ' on' : ''), pick: () => this.setState({ set: id }) })),
@@ -106,7 +106,7 @@ class Component extends DCLogic {
       all: () => this.setState({ off: {} }), none: () => this.setState({ off: Object.fromEntries(C.map((_, i) => [i, i > 0])) }),
       fname: 'shop_' + s.set + '_r-0142.' + s.fmt, size: SZ[s.fmt],
       running: s.running, run: () => this.setState({ running: !s.running }), runIcon: s.running ? 'stop' : 'download', runLabel: s.running ? 'Остановить · 64%' : 'Экспортировать',
-      recent: [['table_view', 'shop_url_r-0142.xlsx', 'сегодня 11:42 · 96 МБ · XLSX'], ['rule', 'shop_issues_r-0142.csv', 'сегодня 11:30 · 181 МБ · CSV'], ['picture_as_pdf', 'shop_report_r-0142.pdf', '07.10 · 2 МБ · PDF'], ['compare_arrows', 'shop_compare_4-5.json', '07.10 · 12 МБ · JSON']].map(([icon, f, m]) => ({ icon, f, m }))
+      recent: [['table_view', 'shop_url_r-0142.xlsx', 'сегодня 11:42 · 0,3 МБ · XLSX'], ['rule', 'shop_issues_r-0142.csv', 'сегодня 11:30 · 0,2 МБ · CSV'], ['picture_as_pdf', 'shop_report_r-0142.pdf', '07.10 · 2 МБ · PDF'], ['compare_arrows', 'shop_compare_r-0139-r-0142.json', '07.10 · 0,4 МБ · JSON']].map(([icon, f, m]) => ({ icon, f, m }))
     };
   }
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Уведомления</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -23,17 +23,17 @@
   <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
     <div class="panel" style="overflow: hidden">
       <div style="padding: 14px 18px 10px"><div class="sec" style="margin: 0">Плашки · во всю ширину рабочей области, под вкладками · остаются, пока причина не ушла</div></div>
-      <div class="banner i"><span class="ms" aria-hidden="true" style="color: #1565C0">info</span><span style="flex: 1">Открыт сохранённый запуск от 07.10.2026. Данные только для чтения.</span><button class="btn txt sm" style="height: 28px">Последний запуск</button></div>
-      <div class="banner w"><span class="ms" aria-hidden="true" style="color: #7A4F00">warning</span><span style="flex: 1"><b style="font-weight: 500">Запуск частичный.</b> Остановлен по лимиту 1 500 URL — 312 URL не обработаны.</span><button class="btn sm" style="height: 28px">Продолжить скан</button><button class="ib" aria-label="Скрыть"><span class="ms s18" aria-hidden="true">close</span></button></div>
-      <div class="banner e"><span class="ms" aria-hidden="true" style="color: #B3261E">error</span><span style="flex: 1"><b style="font-weight: 500">Ядро не отвечает.</b> Показаны последние данные от 14:02. Новые запуски недоступны.</span><button class="btn sm dng" style="height: 28px">Повторить</button><button class="btn txt sm" style="height: 28px">Диагностика</button></div>
-      <div class="banner s"><span class="ms" aria-hidden="true" style="color: #246B3C">verified</span><span style="flex: 1">Перепроверка подтвердила 52 исправления. 3 задачи можно закрыть.</span><a class="btn sm" href="/Compare.dc.html" style="height: 28px">Открыть сравнение</a></div>
-      <div class="banner a"><span class="ms anim-pulse" aria-hidden="true" style="color: #64549B; border-radius: 12px">smart_toy</span><span style="flex: 1">Агент работает с проектом: «Собрать задачи по скану №2». Ваши фильтры и выделение не сбросятся.</span><a class="btn txt sm" href="/Log.dc.html" style="height: 28px">Что делает агент</a></div>
+      <div class="banner i"><span class="ms" aria-hidden="true" style="color: #1565C0">info</span><span style="flex: 1">Открыт сохранённый запуск от 07.10.2026. Данные только для чтения.</span><button class="btn txt sm">Последний запуск</button></div>
+      <div class="banner w"><span class="ms" aria-hidden="true" style="color: #7A4F00">warning</span><span style="flex: 1"><b style="font-weight: 500">Запуск частичный.</b> Остановлен по лимиту 1 500 URL — 312 URL не обработаны.</span><button class="btn sm">Продолжить скан</button><button class="ib" aria-label="Скрыть"><span class="ms s18" aria-hidden="true">close</span></button></div>
+      <div class="banner e"><span class="ms" aria-hidden="true" style="color: #B3261E">error</span><span style="flex: 1"><b style="font-weight: 500">Ядро не отвечает.</b> Показаны последние данные от 14:02. Новые запуски недоступны.</span><button class="btn sm dng">Повторить</button><button class="btn txt sm">Диагностика</button></div>
+      <div class="banner s"><span class="ms" aria-hidden="true" style="color: #246B3C">verified</span><span style="flex: 1">Перепроверка подтвердила 52 исправления. 3 задачи можно закрыть.</span><a class="btn sm" href="/Compare.dc.html">Открыть сравнение</a></div>
+      <div class="banner a"><span class="ms anim-pulse" aria-hidden="true" style="color: #64549B; border-radius: 12px">smart_toy</span><span style="flex: 1">Агент работает с проектом: «Собрать задачи по скану №2». Ваши фильтры и выделение не сбросятся.</span><a class="btn txt sm" href="/Log.dc.html">Что делает агент</a></div>
       <div class="banner n"><span class="ms" aria-hidden="true" style="color: #9EC4F8">cloud_off</span><span style="flex: 1">Нет сети. Сохранённые данные доступны; сканы и провайдеры недоступны.</span></div>
     </div>
 
     <div class="panel" style="padding: 18px; display: flex; flex-direction: column; gap: 12px">
       <div style="display: flex; align-items: center; gap: 10px"><div class="sec" style="margin: 0; flex: 1">Тосты · снизу справа · максимум 3 · 5 с, ошибки — до закрытия</div>
-        <sc-for list="{{triggers}}" as="t" hint-placeholder-count="5"><button class="btn sm" onClick="{{t.fire}}" style="height: 28px"><span class="ms s16" aria-hidden="true" style="color: {{t.c}}">{{t.icon}}</span>{{t.label}}</button></sc-for>
+        <sc-for list="{{triggers}}" as="t" hint-placeholder-count="5"><button class="btn sm" onClick="{{t.fire}}"><span class="ms s16" aria-hidden="true" style="color: {{t.c}}">{{t.icon}}</span>{{t.label}}</button></sc-for>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
         <div class="toast" style="position: relative"><span class="ms" aria-hidden="true" style="color: #93D2A6">check_circle</span><span style="flex: 1">Скан №2 завершён · 1 314 URL</span><button class="act">Открыть</button><button class="ib x" aria-label="Закрыть" style="width: 28px; height: 28px"><span class="ms s18" aria-hidden="true">close</span></button></div>
@@ -67,7 +67,7 @@
   </div>
 
   <aside class="panel" style="display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(10,20,40,.12)">
-    <div style="height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid #EEF0F3"><span class="ms" aria-hidden="true">notifications</span><b style="font: 500 15px Roboto, sans-serif; flex: 1">Центр уведомлений</b><button class="btn txt sm" onClick="{{readAll}}" style="height: 28px">Прочитать все</button></div>
+    <div style="height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid #EEF0F3"><span class="ms" aria-hidden="true">notifications</span><b style="font: 500 15px Roboto, sans-serif; flex: 1">Центр уведомлений</b><button class="btn txt sm" onClick="{{readAll}}">Прочитать все</button></div>
     <div style="display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid #EEF0F3"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><button class="{{t.cls}}" onClick="{{t.pick}}">{{t.label}}<span class="n">{{t.n}}</span></button></sc-for></div>
     <div style="overflow: hidden">
       <div class="sec" style="padding: 10px 14px 4px; margin: 0">Сегодня</div>
@@ -109,7 +109,7 @@ class Component extends DCLogic {
       ['e1', 'err', 'error', '#FFDAD6', '#410002', '3 ответа 5xx на /api/*', 'скан №3 · повторы исчерпаны', '14:26'],
       ['v1', 'scan', 'verified', '#B7F0CC', '#002112', 'Подтверждено 52 исправления', 'перепроверка списком URL', '11:20'],
       ['w1', 'scan', 'update', '#F1EAD8', '#4D3A0A', 'Импорт SF устарел', 'нет статуса процесса 4 мин', '13:52'],
-      ['a2', 'agent', 'flag', '#E8DFFF', '#1F1048', 'Цель принята агентом', '«Подготовить сайт к переезду»', '14:05'],
+      ['a2', 'agent', 'flag', '#E8DFFF', '#1F1048', 'Цель обновлена агентом', '«Убрать технические ошибки каталога…»', '14:05'],
       ['r1', 'all', 'description', '#ECEEF2', '#45464F', 'Отчёт для программиста готов', 'DOCX · 4 задачи', '12:10']
     ];
     const tabs = [['all', 'Все', '7'], ['agent', 'Агент', '2'], ['scan', 'Сканы', '3'], ['err', 'Ошибки', '1']].map(([id, label, n]) => ({ label, n, cls: 'grp' + (id === s.tab ? ' on' : ''), pick: () => this.setState({ tab: id }) }));

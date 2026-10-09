@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Журнал</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -55,19 +55,19 @@ class Component extends DCLogic {
       ['14:26:51', 'error', '#B3261E', 'Скан r-0143', 'scan', '3 ответа 5xx на /api/* — повторы исчерпаны', 'r-0143'],
       ['14:25:40', 'smart_toy', '#1565C0', 'Агент', 'agent', 'Прочитал заметку «Футер ссылается на старые акции»', 'inbox-0030'],
       ['14:24:10', 'travel_explore', '#45464F', 'Скан r-0143', 'scan', 'Найдено 52 новых URL в /blog/', 'r-0143'],
-      ['14:22:05', 'smart_toy', '#1565C0', 'Агент', 'agent', 'Перевёл задачу «Перелинковка блога» в «На перепроверке»', 'custom:linking'],
+      ['14:22:05', 'smart_toy', '#1565C0', 'Агент', 'agent', 'Перевёл задачу «Убрать ссылки на 404» в «Ждёт перепроверки»', 'T-118'],
       ['14:20:22', 'play_arrow', '#246B3C', 'Вы', 'me', 'Запустили скан по списку из 640 URL', 'r-0143'],
-      ['14:05:12', 'flag', '#2E1F66', 'Агент', 'agent', 'Принял цель «Подготовить сайт к переезду»', 'inbox-0031'],
+      ['14:05:12', 'flag', '#2E1F66', 'Агент', 'agent', 'Сверил задачи с целью проекта · 9 задач', 'inbox-0031'],
       ['14:02:00', 'edit_note', '#45464F', 'Вы', 'me', 'Предложили цель проекта', 'inbox-0031'],
       ['13:52:44', 'update', '#7A4F00', 'Импорт SF', 'scan', 'Нет статуса процесса SF 4 мин — помечено «устарело»', 'sf-0021'],
       ['13:40:02', 'bug_report', '#45464F', 'Импорт SF', 'scan', 'Запущен Screaming Frog CLI · профиль «Каталог»', 'sf-0021'],
       ['12:10:31', 'description', '#45464F', 'Агент', 'agent', 'Собрал отчёт для программиста · 4 задачи', 'report-07'],
-      ['11:58:00', 'compare_arrows', '#45464F', 'Вы', 'me', 'Сравнили скан №1 и №2', 'r-0139↔0142'],
-      ['11:20:16', 'check_circle', '#246B3C', 'Агент', 'agent', 'Подтвердил исправление 52 ссылок перепроверкой', 'custom:404'],
+      ['11:58:00', 'compare_arrows', '#45464F', 'Вы', 'me', 'Сравнили скан №1 и №2', 'r-0139 ↔ r-0142'],
+      ['11:20:16', 'check_circle', '#246B3C', 'Агент', 'agent', 'Подтвердил задачу «Убрать ссылки на 404 в блоге» перепроверкой', 'T-105'],
       ['10:02:41', 'login', '#45464F', 'Приложение', 'app', 'Открыт проект «Мебельный магазин»', '7c1d…']
     ];
     const s = this.state.who;
-    const who = [['all', 'apps', 'Все'], ['agent', 'smart_toy', 'Агент'], ['me', 'person', 'Вы'], ['scan', 'manage_search', 'Сканы'], ['app', 'desktop_windows', 'Приложение']].map(([id, icon, label]) => ({ icon, label, cls: 'grp' + (id === s ? ' on' : ''), pick: () => this.setState({ who: id }) }));
+    const who = [['all', 'apps', 'Все'], ['agent', 'smart_toy', 'Агент'], ['me', 'person', 'Вы'], ['scan', 'history', 'Сканы'], ['app', 'desktop_windows', 'Приложение']].map(([id, icon, label]) => ({ icon, label, cls: 'grp' + (id === s ? ' on' : ''), pick: () => this.setState({ who: id }) }));
     const rows = E.filter((e) => s === 'all' || e[4] === s).map(([t, i, c, w, k, text, ref]) => ({ t, i, c, who: w, text, ref }));
     return { who, rows };
   }

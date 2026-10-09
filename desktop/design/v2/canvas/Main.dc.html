@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>URL-инспектор</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -108,7 +108,7 @@
                 <span class="mono" style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{cur.url}}</span>
                 <button class="ib" aria-label="Копировать URL" style="width: 28px; height: 28px"><span class="ms s18" aria-hidden="true">content_copy</span></button>
                 <button class="ib" aria-label="Открыть в системном браузере" style="width: 28px; height: 28px"><span class="ms s18" aria-hidden="true">open_in_new</span></button>
-                <button class="btn" style="height: 28px; font-size: 12px; margin-left: auto"><span class="ms s16" aria-hidden="true">edit_note</span>Заметка агенту</button>
+                <button class="btn sm" style="margin-left: auto"><span class="ms s16" aria-hidden="true">edit_note</span>Заметка агенту</button>
               </div>
               <div class="kv">
                 <div class="k">Индексация</div><div class="v">{{cur.idx}} · {{cur.reason}}</div>
@@ -122,7 +122,7 @@
             <div style="min-width: 0">
               <div class="sec">Происхождение</div>
               <div class="kv" style="grid-template-columns: 120px minmax(0, 1fr)">
-                <div class="k">Источник</div><div class="v">Native crawler · static</div>
+                <div class="k">Источник</div><div class="v">Встроенный краулер · без рендеринга</div>
                 <div class="k">Запуск</div><div class="v mono">r-0142 · 3f9c…a71e</div>
                 <div class="k">Снято</div><div class="v">07.10.2026 14:23:51</div>
                 <div class="k">Ответ</div><div class="v">{{cur.msText}} мс · без рендеринга</div>
@@ -161,7 +161,7 @@
             <div style="width: 280px; padding: 12px 16px; border-left: 1px solid #EEF0F3; font: 400 12px/1.5 Roboto, sans-serif; color: #45464F">
               <div class="sec">Сохранённый ответ</div>
               Заголовки из записи <span class="mono">resp-88412</span>. Клик по вкладке не отправляет новый запрос.
-              <div style="display: flex; gap: 8px; margin-top: 12px"><button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">content_copy</span>Копировать</button></div>
+              <div style="display: flex; gap: 8px; margin-top: 12px"><button class="btn sm"><span class="ms s16" aria-hidden="true">content_copy</span>Копировать</button></div>
             </div>
           </div>
         </sc-if>
@@ -184,7 +184,7 @@
             <div style="width: 280px; padding: 12px 16px; border-left: 1px solid #EEF0F3; font: 400 12px/1.5 Roboto, sans-serif; color: #45464F">
               <div class="sec">Сохранённый исходник</div>
               Static HTML · 48,2 КБ · UTF-8<br>SHA-256 <span class="mono">9c1e…44b0</span><br>Показаны первые 64 КБ; скрипты не исполняются.
-              <div style="display: flex; gap: 8px; margin-top: 12px"><button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">search</span>Найти</button><button class="btn" style="height: 28px; font-size: 12px"><span class="ms s16" aria-hidden="true">download</span>Сохранить</button></div>
+              <div style="display: flex; gap: 8px; margin-top: 12px"><button class="btn sm"><span class="ms s16" aria-hidden="true">search</span>Найти</button><button class="btn sm"><span class="ms s16" aria-hidden="true">download</span>Сохранить</button></div>
             </div>
           </div>
         </sc-if>
@@ -195,7 +195,7 @@
               <span class="ms s24" aria-hidden="true" style="color: #6A6D76">help</span>
               <div>
                 <div style="font: 500 14px Roboto, sans-serif; margin-bottom: 4px">Нет измерения в этом запуске</div>
-                <div style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Источник native/static не сохраняет раздел «{{tabName}}». Это не пустой результат: данных нет, а не «0 найдено».</div>
+                <div style="font: 400 13px/1.5 Roboto, sans-serif; color: #45464F">Встроенный краулер без рендеринга не сохраняет раздел «{{tabName}}». Это не пустой результат: данных нет, а не «0 найдено».</div>
                 <div style="display: flex; gap: 8px; margin-top: 12px"><button class="btn">Выбрать другой запуск</button><a class="btn txt" href="/ScanDialog.dc.html">Скан с рендерингом</a></div>
               </div>
             </div>
@@ -280,7 +280,7 @@
     <sc-for list="{{colItems}}" as="c" hint-placeholder-count="8">
       <label class="mi"><input type="checkbox" checked="{{c.on}}" style="accent-color: #1565C0; width: 16px; height: 16px; margin: 0"><span style="flex: 1">{{c.label}}</span><span class="ms s18" aria-hidden="true" style="color: #A3A7AF">drag_indicator</span></label>
     </sc-for>
-    <div style="display: flex; gap: 8px; padding: 8px 6px 4px; border-top: 1px solid #EEF0F3; margin-top: 4px"><button class="btn txt" style="height: 28px; font-size: 12px">Сбросить</button><div style="flex: 1"></div><button class="btn pri" style="height: 28px; font-size: 12px" onClick="{{toggleCols}}">Готово</button></div>
+    <div style="display: flex; gap: 8px; padding: 8px 6px 4px; border-top: 1px solid #EEF0F3; margin-top: 4px"><button class="btn txt sm">Сбросить</button><div style="flex: 1"></div><button class="btn pri sm"  onClick="{{toggleCols}}">Готово</button></div>
   </div>
 </sc-if>
 </div>
@@ -329,7 +329,7 @@ class Component extends DCLogic {
     const cur = { ...c, titleV: c.title ? 'v' : 'v na' };
     const groups = [['all','Все URL','1 314'],['int','Внутренние','1 190'],['ext','Внешние','58'],['resp','Ответы','187'],['titles','Title','96'],['canon','Canonical','41'],['dir','Директивы','23'],['links','Ссылки','64'],['sm','Sitemap','Нет данных']]
       .map(([id, label, n]) => ({ label, n, cls: 'grp' + (id === s.grp ? ' on' : ''), pick: () => this.setState({ grp: id }) }));
-    const tabDefs = [['info','Обзор',''],['in','Ссылки', String(c.inl), 'UrlLinks'],['hdr','Заголовки','', 'UrlHeaders'],['html','HTML','', 'UrlHtml'],['res','Ресурсы','', 'UrlResources'],['redir','Редиректы','', 'UrlRedirects'],['hist','История','', 'UrlHistory'],['schema','Schema','', 'UrlSchema'],['serp','Сниппет',''],['checks','Проверки', String(c.iss)]];
+    const tabDefs = [['info','Обзор',''],['in','Ссылки', String(c.inl), 'UrlLinks'],['graph','Граф','', 'LinkGraphLocal'],['hdr','Заголовки','', 'UrlHeaders'],['html','HTML','', 'UrlHtml'],['res','Ресурсы','', 'UrlResources'],['redir','Редиректы','', 'UrlRedirects'],['hist','История','', 'UrlHistory'],['schema','Schema','', 'UrlSchema'],['serp','Сниппет',''],['checks','Проверки', String(c.iss)]];
     const tabs = tabDefs.map(([id, label, n, board]) => ({ label, n, href: board ? '/' + board + '.dc.html' : '', local: !board, cls: 'tab' + (id === s.tab ? ' on' : ''), pick: () => this.setState({ tab: id }) }));
     const t = s.tab;
     const tabName = (tabDefs.find((x) => x[0] === t) || [0, ''])[1];

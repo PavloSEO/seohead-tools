@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Методы и навыки</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/4a414078cb0b30a9f33cd7ff3f95b4b1">
+<link rel="stylesheet" href="/_blob/c938fb19e1f0b2f77a9fb7cde6b9bc65">
 <link rel="stylesheet" href="/_blob/91b098e33df1d5d3a71b967b3280aee7">
 </head>
 <body>
@@ -61,12 +61,12 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sel: 0 }; }
   renderVals() {
     const L = [
-      ['link_off', 'Ссылки на 404', 'links_check', 2, 'в 1 задаче', 'Когда в скане есть внутренние ссылки на 4xx.'],
+      ['link_off', 'Ссылки на 404', 'links_check', 2, 'в 2 задачах', 'Когда в скане есть внутренние ссылки на 4xx.'],
       ['turn_right', 'Редиректы', 'redirects_check', 3, 'в 1 задаче', 'Когда есть цепочки и петли редиректов.'],
       ['hub', 'Перелинковка', 'internal_linking', 1, 'в 1 задаче', 'Когда у разделов мало входящих ссылок или есть сироты.'],
-      ['title', 'Метаданные', 'meta_review', 2, 'не использован', 'Длина и дубли title/description.'],
+      ['title', 'Метаданные', 'meta_review', 2, 'в 2 задачах', 'Длина и дубли title/description.'],
       ['link', 'Canonical', 'canonical_review', 1, 'в 1 задаче', 'Canonical на другой URL, пагинация.'],
-      ['speed', 'Время ответа', 'response_times', 1, 'в 1 задаче', 'Медленные страницы по сохранённым замерам.'],
+      ['speed', 'Время ответа', 'response_times', 1, 'не использован', 'Медленные страницы по сохранённым замерам.'],
       ['account_tree', 'Sitemap и краул', 'sitemap_crawl', 2, 'не использован', 'Сверка sitemap с найденными URL.'],
       ['data_object', 'Структурированные данные', 'schema_check', 1, 'не использован', 'Ошибки JSON-LD/microdata.'],
       ['smart_toy', 'Доступ ИИ-ботов', 'ai_bots_check', 1, 'не использован', 'robots.txt и llms.txt для ИИ-краулеров.']
