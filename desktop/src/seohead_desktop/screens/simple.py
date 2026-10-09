@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (
 from .. import i18n
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import Kpi, StatePanel, waiting_badge
+from ..ui.kit import Kpi, StatePanel, no_project_panel, waiting_badge
 from .base import Screen
 from .work import (
     RowsModel,
@@ -313,7 +313,7 @@ class SimpleScreen(Screen):
         host = self.host
         status, _text = project_state(host)
         if status == "none":
-            self._show_empty(StatePanel("empty", "Проект не открыт", "Откройте проект, чтобы увидеть сканы и задачи", action=("Открыть проект…", host.choose_project)))
+            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть сканы и задачи"))
             return
         if status == "loading":
             self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))

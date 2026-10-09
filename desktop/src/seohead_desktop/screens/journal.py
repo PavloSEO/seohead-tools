@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import (
 from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.icons import material_icon
-from ..ui.kit import StatePanel, style_table, waiting_badge
+from ..ui.kit import StatePanel, no_project_panel, style_table, waiting_badge
 from . import scan_common
 from .base import Screen
 from .scan_common import CODES, EVENT_ICONS, JOURNAL_ISSUE, PHASES, parse_time
@@ -237,7 +237,7 @@ class JournalScreen(Screen):
         today = scan_common.now().astimezone().date()
         shown = [event for event in self.events if not self.query or self.query in event.haystack(today)]
         if not host.project_directory:
-            kind, build = "noproject", lambda: StatePanel("empty", "Проект не открыт", "Откройте проект, чтобы увидеть события его запусков.", action=("Открыть проект…", host.choose_project))
+            kind, build = "noproject", lambda: no_project_panel(host, "Откройте проект, чтобы увидеть события его запусков.")
         elif not self.events and host._project_loading:
             kind, build = "loading", lambda: StatePanel("loading", "Чтение проекта", "События запусков появятся после чтения.")
         elif not self.events:

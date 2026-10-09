@@ -30,7 +30,15 @@ from .. import i18n
 from ..i18n import tr, trf
 from ..ui.controls import Note, Segmented
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import BADGE_ROLE, BadgeDelegate, Kpi, StatePanel, style_table, waiting_badge
+from ..ui.kit import (
+    BADGE_ROLE,
+    BadgeDelegate,
+    Kpi,
+    StatePanel,
+    no_project_panel,
+    style_table,
+    waiting_badge,
+)
 from .base import Screen
 
 TASK_STATES = {  # core display_state -> (badge kind, label, icon)
@@ -602,7 +610,7 @@ class WorkScreen(Screen):
         host = self.host
         status, _text = project_state(host)
         if status == "none":
-            self._show_empty(StatePanel("empty", "Проект не открыт", "Откройте проект, чтобы увидеть цель и задачи", action=("Открыть проект…", host.choose_project)))
+            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть цель и задачи"))
             return
         if status == "loading":
             self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))

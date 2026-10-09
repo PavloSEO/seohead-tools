@@ -35,7 +35,7 @@ class StatePanel(QFrame):
     nothing is shown instead of pretending the data is empty.
     """
 
-    def __init__(self, kind, title, text="", action=None, issue=None, parent=None):
+    def __init__(self, kind, title, text="", action=None, issue=None, parent=None, secondary=None):
         super().__init__(parent)
         self.kind = kind
         self.setProperty("state_panel", kind)
@@ -66,6 +66,18 @@ class StatePanel(QFrame):
             self.action.setProperty("role", "primary")
             self.action.clicked.connect(callback)
             layout.addWidget(self.action, 0, Qt.AlignHCenter)
+        self.secondary = None
+        if secondary is not None:
+            label, callback = secondary
+            self.secondary = QPushButton(tr(label))
+            self.secondary.clicked.connect(callback)
+            layout.addWidget(self.secondary, 0, Qt.AlignHCenter)
+
+
+def no_project_panel(host, text):
+    """«Проект не открыт» with both ways forward: open an existing project or create a new one."""
+    return StatePanel("empty", "Проект не открыт", text, action=("Открыть проект…", host.choose_project),
+                      secondary=("Создать проект", lambda: host.extra_screens["start"].new_project()))
 
 
 class Gate(QStackedWidget):

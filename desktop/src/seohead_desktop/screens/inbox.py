@@ -30,7 +30,7 @@ from .. import i18n
 from ..i18n import tr, trf
 from ..ui.controls import Note
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import StatePanel, waiting_badge
+from ..ui.kit import StatePanel, no_project_panel, waiting_badge
 from .base import Screen
 from .work import RowsModel, build_table, clear_layout, local_stamp, number, project_state
 
@@ -455,7 +455,7 @@ class InboxScreen(Screen):
         host = self.host
         status, _text = project_state(host, errors=("observer",))
         if status == "none":
-            self._show_empty(StatePanel("empty", "Проект не открыт", "Откройте проект, чтобы увидеть входящие и писать заметки", action=("Открыть проект…", host.choose_project)))
+            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть входящие и писать заметки"))
             return
         if status == "loading":
             self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))

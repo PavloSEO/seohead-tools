@@ -174,6 +174,16 @@ class ShellV2Tests(unittest.TestCase):
         self.window.load_unread({"count": None})
         self.assertEqual(item.data(ROLE_COUNT), "")
 
+    def test_every_section_without_a_project_offers_open_and_create(self):
+        from seohead_desktop.ui.kit import StatePanel
+
+        for section in ("work", "scans", "log", "inbox"):
+            self.window.navigation.select_section(section)
+            self.app.processEvents()
+            panels = [p for p in self.window.pages.currentWidget().findChildren(StatePanel) if p.secondary is not None]
+            self.assertTrue(panels, section)
+            self.assertEqual((panels[0].action.text(), panels[0].secondary.text()), ("Открыть проект…", "Создать проект"))
+
     def test_no_demo_wording_in_real_mode_chrome(self):
         texts = [self.window.windowTitle(), self.window.project_button.title.text(), self.window.scan_button.title.text(),
                  self.window.source_badge.text(), self.window.mode_label.text(), self.window.core_label.text()]

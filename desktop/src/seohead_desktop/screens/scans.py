@@ -33,7 +33,15 @@ from PyQt5.QtWidgets import (
 from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import BADGE_ROLE, BadgeDelegate, PageHeader, StatePanel, style_table, waiting_badge
+from ..ui.kit import (
+    BADGE_ROLE,
+    BadgeDelegate,
+    PageHeader,
+    StatePanel,
+    no_project_panel,
+    style_table,
+    waiting_badge,
+)
 from . import scan_common
 from .base import Screen
 from .scan_common import (
@@ -632,7 +640,7 @@ class ScansScreen(Screen):
             kind = None
         if kind != self.panel_state:
             panels = {
-                "noproject": lambda: StatePanel("empty", "Проект не открыт", "Откройте проект, чтобы увидеть его запуски и сканы.", action=("Открыть проект…", host.choose_project)),
+                "noproject": lambda: no_project_panel(host, "Откройте проект, чтобы увидеть его запуски и сканы."),
                 "loading": lambda: StatePanel("loading", "Чтение проекта", "Запуски и сканы появятся после чтения."),
                 "empty": lambda: StatePanel("empty", "В проекте нет запусков", "Запустите первый скан: результат сохранится в проект.", action=("Новый скан", host.scan_preview)),
             }
