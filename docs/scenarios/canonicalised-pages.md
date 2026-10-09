@@ -89,7 +89,7 @@ a site whose URL scheme generates pages nobody wants, and the fix is upstream of
 - **Whether the canonicalised URL still receives traffic.** There is no analytics or Search
   Console data in this loop. A page that is canonicalised and still ranking is invisible here.
 - **Whether the target is the same content.** Canonicalisation to an unrelated page is a real
-  and common defect, and this chain will call it clean. The [content scenario](content.md) compares what
+  and common defect, and this chain will call it clean. The [duplicate-content scenario](duplicate-content.md) compares what
   the pages actually contain.
 - **Anything about pages the crawl did not reach.** `run.crawl_partial` decides how much of the
   ratio above is a fact about the site rather than about the URL budget.
