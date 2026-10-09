@@ -1,8 +1,6 @@
 <p align="center"><img src="docs/assets/readme-hero.svg" alt="SEOHEAD Tools: local-first SEO crawler, audit toolkit and desktop app — CLI, MCP and Desktop" width="100%"></p>
 
-<h1 align="center">SEOHEAD Tools</h1>
 
-<p align="center"><b>Local-first SEO crawler, audit toolkit and desktop app for SEO specialists and their AI agents.</b></p>
 
 <p align="center">
 <a href="https://seohead.tech/seotools">Website</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/CLI.md">CLI overview</a> · <a href="docs/examples/README.md">Examples</a> · <a href="docs/COMPARISON.md">Scope and trade-offs</a>
