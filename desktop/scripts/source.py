@@ -133,7 +133,7 @@ def install(args) -> int:
         [
             str(python),
             "-c",
-            "from seohead.servers.mcp_server import main; from seohead_desktop.control_cli import create_mcp_server; from PyQt5.QtSvg import QSvgRenderer",
+            "from seohead.mcp.mcp_server import main; from seohead_desktop.control_cli import create_mcp_server; from PyQt5.QtSvg import QSvgRenderer",
         ],
         check=True,
     )

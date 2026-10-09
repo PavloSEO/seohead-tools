@@ -332,7 +332,7 @@
       "type": "bool",
       "default": true,
       "results_affecting": false,
-      "description": "Write one JSON line per exclusion decision to decisions.jsonl, naming the URL and the rule that rejected it — see seohead.tools.logscan for what reads it."
+      "description": "Write one JSON line per exclusion decision to decisions.jsonl, naming the URL and the rule that rejected it — see seohead.checks.logscan for what reads it."
     },
     {
       "path": "output.write_pages_jsonl",
