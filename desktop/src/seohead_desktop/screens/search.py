@@ -2,7 +2,7 @@
 
 The search is the core's ``scan-content-search`` run by ``ContentSearchController`` in a separate process (cancellable); the
 result is a package read back one page of at most 100 records at a time, so memory stays bounded for any scan size.
-What the core does not report yet is shown as «Нет данных» with the issue it waits for (#939): regex, the number of
+What the core does not report yet is shown as «Нет данных» with the neutral «Недоступно в этой версии ядра» badge (issue #939 stays in code only): regex, the number of
 occurrences, the code around a marker, a status filter, progress of a running search.
 """
 
@@ -40,7 +40,7 @@ from ..content_search import SEARCH_PRESETS
 from ..i18n import tr, trf
 from ..ui.controls import Note, Segmented, polish
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import StatePanel, no_project_panel, waiting_badge
+from ..ui.kit import StatePanel, no_project_panel, unavailable_tip, waiting_badge
 from .base import Screen
 from .scan_common import Pairs, RunRow, duration, number
 from .search_results import (
@@ -63,11 +63,35 @@ PRESET_LABELS = {"gtm": "GTM в head", "ga4": "GA4 / Google tag", "metrika": "Я
 LANES = {"complete": "сохранён полностью", "partial": "сохранён частично", "unavailable": "не сохранён"}
 
 
-def waiting(issue):
-    """«ждёт #N» that keeps its own width inside a layout."""
-    label = waiting_badge(issue)
+CHECK_QUERY = "Проверьте запрос, область поиска и селектор: результат поиска не получен."
+HINT_PROGRESS = "Сколько страниц уже просмотрено во время поиска"
+HINT_OCCURRENCES = "Число вхождений строки: на странице и во всём результате"
+HINT_NAVIGATION = "Список вхождений страницы и переход между ними"
+HINT_AROUND = "Код вокруг совпадения и окно тела страницы"
+HINT_STATUS = "Отбор страниц по коду ответа прямо в поиске"
+
+
+def waiting(hint):
+    """The neutral «Недоступно в этой версии ядра» badge (the issue number stays in code), keeping its own width in a layout."""
+    label = waiting_badge(SEARCH_ISSUE, hint)
     label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
     return label
+
+
+class AddressLabel(QLabel):
+    """A one-line address that elides in the middle to the width the layout gives it (the full address is the tooltip)."""
+
+    def set_address(self, text):
+        self._full = text or ""
+        self.setToolTip(self._full)
+        self._fit()
+
+    def _fit(self):
+        self.setText(self.fontMetrics().elidedText(getattr(self, "_full", ""), Qt.ElideMiddle, max(40, self.width() - 6)))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
 
 
 class RunningPanel(QFrame):
@@ -102,7 +126,7 @@ class RunningPanel(QFrame):
         caption.setProperty("text_style", "meta")
         row.addWidget(caption)
         row.addStretch(1)
-        row.addWidget(waiting(SEARCH_ISSUE))
+        row.addWidget(waiting(HINT_PROGRESS))
         layout.addLayout(row)
         text = QLabel(tr("Поиск идёт в отдельном процессе ядра, окно остаётся доступным. Результат появится после его завершения."))
         text.setProperty("text_style", "meta")
@@ -127,6 +151,8 @@ class SearchScreen(Screen):
         self.values = {}
         self.elapsed = None
         self._started = None
+        # matched rows before each core page, learnt while paging forward (the core cannot filter its result)
+        self._before, self._search_id, self._direction = {0: 0}, None, 1
         self.scope, self.mode, self.representation = Choice(SCOPES, self), Choice(MODES, self), Choice(REPRESENTATIONS, self)
         # older callers (action finder, workspace tabs) address this page as ``host.content_search_panel``
         host.content_search_panel = self
@@ -168,7 +194,7 @@ class SearchScreen(Screen):
         self.kind = Segmented((("text", tr("Текст")), ("regex", tr("Regex"))), "text", tr("Тип запроса"))
         regex = self.kind._buttons["regex"]
         regex.setEnabled(False)
-        regex.setToolTip(tr("Регулярные выражения ядро не поддерживает: поиск только по буквальной строке") + f" · {tr('ждёт')} #{SEARCH_ISSUE}")
+        regex.setToolTip(unavailable_tip("Регулярные выражения: поиск идёт только по буквальной строке"))
         row.addWidget(self.kind)
         self.start = QPushButton(tr("Найти"))
         self.start.setObjectName("bodySearchStart")
@@ -211,9 +237,10 @@ class SearchScreen(Screen):
         flags.addWidget(self.case_sensitive)
         self.only_ok = QCheckBox(tr("Только HTML 200"))
         self.only_ok.setEnabled(False)
-        self.only_ok.setToolTip(tr("Отбор по коду ответа ядро в поиске не поддерживает") + f" · {tr('ждёт')} #{SEARCH_ISSUE}")
+        self.only_ok.setToolTip(unavailable_tip("Отбор по коду ответа"))
         flags.addWidget(self.only_ok)
-        flags.addWidget(waiting(SEARCH_ISSUE))
+        flags.addWidget(waiting(HINT_STATUS))
+        flags.addStretch(1)
         self.more = QToolButton()
         self.more.setProperty("role", "icon")
         self.more.setIcon(material_icon("tune"))
@@ -316,7 +343,7 @@ class SearchScreen(Screen):
         self.matched.setCheckable(True)
         self.matched.setChecked(True)
         self.matched.setText(tr("Только найденные"))
-        self.matched.setToolTip(tr("Фильтр действует на загруженной странице: отбор по всему результату ядро пока не умеет") + f" · {tr('ждёт')} #{SEARCH_ISSUE}")
+        self.matched.setToolTip(tr("Показывать только страницы, где условие выполнено; остальные строки результата скрыты"))
         self.matched.toggled.connect(self._filter_changed)
         grid.addWidget(self.matched, 0, 1)
         self.folder = QToolButton()
@@ -339,7 +366,7 @@ class SearchScreen(Screen):
         value.setProperty("na", True)
         meta.addWidget(label)
         meta.addWidget(value)
-        meta.addWidget(waiting(SEARCH_ISSUE))
+        meta.addWidget(waiting(HINT_OCCURRENCES))
         grid.addLayout(meta, 1, 0, 1, 3)
         layout.addWidget(strip)
         self.model = ResultModel(self)
@@ -401,7 +428,7 @@ class SearchScreen(Screen):
         row = QHBoxLayout(head)
         row.setContentsMargins(16, 6, 8, 6)
         row.setSpacing(4)
-        self.address = QLabel()
+        self.address = AddressLabel()
         self.address.setProperty("text_style", "mono")
         self.address.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.address.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -409,13 +436,13 @@ class SearchScreen(Screen):
         caption = QLabel(tr("Все вхождения страницы"))
         caption.setProperty("text_style", "meta")
         row.addWidget(caption)
-        row.addWidget(waiting(SEARCH_ISSUE))
+        row.addWidget(waiting(HINT_NAVIGATION))
         for icon, tip in (("keyboard_arrow_up", "Предыдущее совпадение"), ("keyboard_arrow_down", "Следующее совпадение")):
             button = QToolButton()
             button.setProperty("role", "icon")
             button.setIcon(material_icon(icon, theming.roles()["disabled_icon"]))
             button.setEnabled(False)
-            button.setToolTip(tr(tip) + f" · {tr('ждёт')} #{SEARCH_ISSUE}")
+            button.setToolTip(unavailable_tip(tip))
             button.setAccessibleName(tr(tip))
             row.addWidget(button)
         self.open_url = QToolButton()
@@ -445,7 +472,7 @@ class SearchScreen(Screen):
         around_label = QLabel(tr("Код вокруг совпадения и окно тела страницы"))
         around_label.setProperty("text_style", "meta")
         around.addWidget(around_label)
-        around.addWidget(waiting(SEARCH_ISSUE))
+        around.addWidget(waiting(HINT_AROUND))
         around.addStretch(1)
         body_layout.addWidget(self.around)
         self.facts = Pairs(("Код ответа", "Источник", "Состояние"))
@@ -509,11 +536,17 @@ class SearchScreen(Screen):
 
     def _page(self, step):
         offset = self.payload.get("offset") or 0
+        self._direction = 1 if step > 0 else -1
         self.host.content_search.page(max(0, offset + step * PAGE), PAGE)
 
     def _filter_changed(self, on):
+        """The filtered list is walked page after page from the start, so its numbers stay exact."""
         self.proxy.set_matched_only(on)
-        self._after_rows()
+        self._before, self._direction = {0: 0}, 1
+        if (self.payload.get("offset") or 0) and self.payload.get("state") == "ready":
+            self.host.content_search.page(0, PAGE)
+        else:
+            self._fill_results()
 
     def _reveal(self):
         package = self.payload.get("package")
@@ -583,7 +616,7 @@ class SearchScreen(Screen):
             panel.query.setText(self.payload.get("query") or self.values.get("query") or "")
             return panel
         if view == "error":
-            return StatePanel("error", "Поиск не выполнен", reason or "Ядро не вернуло результат.", action=("Повторить", self.request_search))
+            return StatePanel("error", "Поиск не выполнен", f"{(reason or tr('Ядро не вернуло результат.')).rstrip('.')}. {tr(CHECK_QUERY)}", action=("Повторить", self.request_search))
         if view == "cancelled":
             return StatePanel("empty", "Поиск отменён", "Поиск не дошёл до конца, поэтому отсутствие строки в скане не подтверждено.", action=("Искать снова", self.request_search))
         if view == "zero":
@@ -639,6 +672,12 @@ class SearchScreen(Screen):
         coverage = payload.get("coverage") or {}
         rows = payload.get("rows") or []
         if payload.get("state") == "ready":
+            search_id = (payload.get("source") or {}).get("search_id")
+            if search_id != self._search_id:
+                self._search_id, self._before, self._direction = search_id, {0: 0}, 1
+            offset = payload.get("offset") or 0
+            if offset in self._before and rows:
+                self._before.setdefault(offset + len(rows), self._before[offset] + sum(row.get("status") == "matched" for row in rows))
             self.delegate.query, self.delegate.case_sensitive = payload.get("query") or "", bool(self.values.get("case_sensitive"))
             self.model.set_rows(rows)
         matching = coverage.get("filter_matching_documents")
@@ -660,14 +699,28 @@ class SearchScreen(Screen):
         offset, total = payload.get("offset") or 0, payload.get("total")
         loaded, shown = len(self.model.rows), self.proxy.rowCount()
         busy = payload.get("state") == "loading"
-        text = trf("Строки {a}–{b} из {n}", a=number(offset + 1), b=number(offset + loaded), n=number(total)) if loaded and isinstance(total, int) else tr("Нет строк на этой странице")
-        if self.matched.isChecked() and shown != loaded:
-            text += " · " + trf("показано найденных: {n}", n=number(shown))
+        filtered = self.matched.isChecked()
+        matching = (payload.get("coverage") or {}).get("filter_matching_documents")
+        before = self._before.get(offset)
+        if filtered and isinstance(matching, int):
+            # rows of the list = pages where the condition holds; the same quantity as the number above the list
+            first = (before or 0) + 1
+            what = "Строки {a}–{b} из {n} найденных" if payload.get("mode", "contains") == "contains" else "Строки {a}–{b} из {n} без строки"
+            text = trf(what, a=number(first), b=number(first + shown - 1), n=number(matching)) if shown and before is not None else tr("Нет подходящих строк на этой странице")
+            more = before is not None and (before + shown) < matching
+            earlier = bool(before)
+        else:
+            text = trf("Строки {a}–{b} из {n} документов", a=number(offset + 1), b=number(offset + loaded), n=number(total)) if loaded and isinstance(total, int) else tr("Нет строк на этой странице")
+            more, earlier = bool(payload.get("has_more")), offset > 0
         if busy:
             text = tr("Чтение страницы результата…")
         self.page_label.setText(text)
-        self.previous.setEnabled(not busy and offset > 0)
-        self.next.setEnabled(not busy and bool(payload.get("has_more")))
+        self.previous.setEnabled(not busy and earlier)
+        self.next.setEnabled(not busy and more)
+        skip = filtered and not busy and payload.get("state") == "ready" and not shown and (payload.get("has_more") if self._direction > 0 else offset > 0)
+        if skip:  # a core page without a single matching row: step over it in the direction of travel
+            self._page(self._direction)
+            return
         if shown and not self.table.currentIndex().isValid():
             self.table.selectionModel().setCurrentIndex(self.proxy.index(0, 0), QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
         self._show_row()
@@ -676,8 +729,7 @@ class SearchScreen(Screen):
         index = self.table.currentIndex()
         record = index.data(ROW_ROLE) if index.isValid() else None
         self.open_url.setEnabled(record is not None)
-        self.address.setText(record.get("url") if record else "")
-        self.address.setToolTip(record.get("url") if record else "")
+        self.address.set_address(record.get("url") if record else "")
         selections = []
         if record is None:
             self.code.setPlainText("")

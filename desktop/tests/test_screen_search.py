@@ -6,7 +6,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QWidget
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
@@ -123,7 +123,9 @@ class SearchScreenTests(unittest.TestCase):
     def test_regex_and_status_filter_wait_for_the_core(self):
         self.assertFalse(self.screen.kind._buttons["regex"].isEnabled())
         self.assertFalse(self.screen.only_ok.isEnabled())
-        self.assertIn("#939", " ".join(texts(self.screen)))
+        shown = " ".join(texts(self.screen)) + " ".join(w.toolTip() for w in self.screen.findChildren(QWidget))
+        self.assertNotIn("#", shown)
+        self.assertIn("Недоступно в этой версии ядра", shown)
 
     def test_running_shows_an_indeterminate_bar_and_cancel_reaches_the_controller(self):
         self.feed({"state": "loading", "operation_status": "searching", "query": "x", "rows": []})
@@ -140,7 +142,7 @@ class SearchScreenTests(unittest.TestCase):
         self.screen.query.setText("x")
         self.feed({"state": "error", "reason": "invalid CSS selector", "rows": []})
         self.assertEqual(self.screen.view, "error")
-        self.assertIn("invalid CSS selector", texts(self.screen.state_panel))
+        self.assertIn("invalid CSS selector", " ".join(texts(self.screen.state_panel)))
         self.screen.state_panel.action.click()
         self.assertEqual(self.host.content_search.calls[-1][0], "start")
 
@@ -152,7 +154,7 @@ class SearchScreenTests(unittest.TestCase):
         self.assertLessEqual(self.screen.model.rowCount(), PAGE)
         self.assertIn("1\u202f326", self.screen.count.text())
         self.assertIn("100%", self.screen.coverage.text())
-        self.assertEqual(self.screen.page_label.text(), "Строки 1–10 из 1\u202f330")
+        self.assertEqual(self.screen.page_label.text(), "Строки 1–10 из 1\u202f326 найденных")
         self.assertFalse(self.screen.banner_holder.isVisible())
         self.assertIn("Каталог", self.screen.code.toPlainText())
         self.assertEqual(len(self.screen.code.extraSelections()), self.screen.code.toPlainText().lower().count("каталог"))
@@ -163,8 +165,9 @@ class SearchScreenTests(unittest.TestCase):
         self.assertEqual(self.host.content_search.calls[-1], ("page", PAGE, PAGE))
 
     def test_second_page_enables_previous_and_keeps_rows_while_paging(self):
+        self.feed(ready_payload("search_catalogue"))
         self.feed(ready_payload("search_catalogue", "page2"))
-        self.assertEqual(self.screen.page_label.text(), "Строки 11–20 из 1\u202f330")
+        self.assertEqual(self.screen.page_label.text(), "Строки 11–20 из 1\u202f326 найденных")
         self.assertTrue(self.screen.previous.isEnabled())
         self.feed({"state": "loading", "operation_status": "paging", "rows": []})
         self.assertEqual(self.screen.view, "results")
@@ -202,7 +205,8 @@ class SearchScreenTests(unittest.TestCase):
         self.feed(ready_payload("search_catalogue"))
         shown = " ".join(texts(self.screen))
         self.assertIn("Нет данных", shown)
-        self.assertIn("ждёт #939", shown)
+        self.assertIn("Недоступно в этой версии ядра", shown)
+        self.assertNotIn("#939", shown)
 
     def test_legacy_callers_find_the_screen_and_its_fields(self):
         self.assertIs(self.host.content_search_panel, self.screen)
@@ -224,6 +228,48 @@ class SearchScreenTests(unittest.TestCase):
         self.app.processEvents()
         self.feed(ready_payload("search_catalogue"))
         self.assertEqual(self.screen.page_label.text().split()[0], "Rows")
+
+    def walk_to_the_tail(self):
+        """Page forward from the start like a user: thirteen full core pages (real rows of the shop scan), then the last one."""
+        for step in range(13):
+            payload = ready_payload("search_catalogue_tail", "page1200")
+            self.feed({**payload, "offset": step * PAGE})
+        self.assertEqual(self.screen.page_label.text(), "Строки 1\u202f201–1\u202f300 из 1\u202f326 найденных")
+
+    def test_one_count_for_the_list_and_for_the_pages_with_the_string(self):
+        """The core lists every searched document (1 330) and counts those with the string (1 326): the list says which one it counts."""
+        self.feed({**ready_payload("search_catalogue_tail", "page1200"), "offset": 0})
+        self.assertIn("1\u202f326", self.screen.count.text())
+        self.assertEqual(self.screen.page_label.text(), "Строки 1–100 из 1\u202f326 найденных")
+        self.assertTrue(self.screen.next.isEnabled())
+        self.assertFalse(self.screen.previous.isEnabled())
+        self.walk_to_the_tail()
+        self.screen.next.click()
+        self.assertEqual(self.host.content_search.calls[-1], ("page", 1300, PAGE))
+        # the last core page has 30 documents, 4 of them redirects without the string: the list ends at 1 326, not 1 330
+        self.feed(ready_payload("search_catalogue_tail", "page1300"))
+        self.assertEqual(self.screen.proxy.rowCount(), 26)
+        self.assertEqual(self.screen.page_label.text(), "Строки 1\u202f301–1\u202f326 из 1\u202f326 найденных")
+        self.assertFalse(self.screen.next.isEnabled())
+        self.assertTrue(self.screen.previous.isEnabled())
+
+    def test_unfiltered_list_counts_documents_and_turning_the_filter_restarts_the_walk(self):
+        self.walk_to_the_tail()
+        self.feed(ready_payload("search_catalogue_tail", "page1300"))
+        self.screen.matched.setChecked(False)
+        self.assertEqual(self.host.content_search.calls[-1], ("page", 0, PAGE))
+        self.feed(ready_payload("search_catalogue_tail", "page1300"))
+        self.assertEqual(self.screen.proxy.rowCount(), 30)
+        self.assertEqual(self.screen.page_label.text(), "Строки 1\u202f301–1\u202f330 из 1\u202f330 документов")
+        self.assertFalse(self.screen.next.isEnabled())
+
+    def test_page_without_matching_rows_is_stepped_over(self):
+        self.walk_to_the_tail()
+        empty = ready_payload("search_catalogue_tail", "page1300")
+        empty["rows"] = [{**row, "status": "not_matched", "presence": False} for row in empty["rows"]]
+        self.feed(empty)
+        self.assertEqual(self.host.content_search.calls[-1], ("page", 1300 + PAGE, PAGE)) if empty["has_more"] else None
+        self.assertEqual(self.screen.proxy.rowCount(), 0)
 
 
 if __name__ == "__main__":
