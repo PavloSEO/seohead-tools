@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QStackedWidget,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
@@ -65,6 +66,28 @@ class StatePanel(QFrame):
             self.action.setProperty("role", "primary")
             self.action.clicked.connect(callback)
             layout.addWidget(self.action, 0, Qt.AlignHCenter)
+
+
+class Gate(QStackedWidget):
+    """Shows a legacy page only while it has real core data; otherwise an honest state (never a sample).
+
+    ``state()`` returns "content", "open" (no project: «Откройте проект») or "partial" (screen not rebuilt yet).
+    """
+
+    def __init__(self, content, state, open_project, parent=None):
+        super().__init__(parent)
+        self.content = content
+        self._state = state
+        self.open_panel = StatePanel("empty", "Откройте проект", "Данные появятся из сохранённого проекта.",
+                                     action=("Открыть проект…", open_project))
+        self.partial_panel = StatePanel("partial", "Экран переделывается — ждёт шага 5",
+                                        "Сохранённые данные проекта доступны в разделах «Сканы» и «Работа».")
+        for widget in (content, self.open_panel, self.partial_panel):
+            self.addWidget(widget)
+        self.refresh()
+
+    def refresh(self):
+        self.setCurrentWidget({"open": self.open_panel, "partial": self.partial_panel}.get(self._state(), self.content))
 
 
 def waiting_badge(issue):

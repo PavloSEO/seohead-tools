@@ -44,6 +44,7 @@ from .models import RecordModel, UrlModel
 from .scan_runner import crawl_arguments
 from .ui.crawl_configuration_dialog import CrawlConfigurationDialog
 from .ui.icons import material_icon as icon
+from .ui.kit import Gate
 from .ui.panels import AuditWorkspace, ProjectPanels
 from .ui.presentation import (
     ElidedLabel,
@@ -70,7 +71,7 @@ class PagesMixin:
         caption.hide()
         title.setToolTip(caption.text())
         self.work_splitter = WorkspaceSplitter(Qt.Vertical)
-        self.progress_text = plain("Откройте проект, чтобы увидеть сохранённые задачи и согласованный план.\n\nДемо не содержит измеренного прогресса проекта.")
+        self.progress_text = plain("Откройте проект, чтобы увидеть сохранённые задачи и согласованный план.")
         self.progress_text.setAccessibleName("Прогресс задач проекта")
         self.progress_text.setProperty("role", "summary")
         activity = QWidget()
@@ -152,18 +153,17 @@ class PagesMixin:
             self.work_inspector.hide()
 
     def reports_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 16, 20, 16)
-        title = QLabel("Отчёты")
-        title.setObjectName("sectionTitle")
-        layout.addWidget(title)
-        message = QLabel("Экспорт отчётов из этого окна пока не подключён.\n\nСохранённые URL и результаты сканов доступны в разделах «URL» и «Сканы».")
-        message.setObjectName("panelMessage")
-        message.setWordWrap(True)
-        layout.addWidget(message)
-        layout.addStretch()
-        return page
+        return self.legacy_gate(QWidget(), lambda: "partial" if self.project_directory else "open")
+
+    def legacy_gate(self, content, state):
+        """Wrap a not-yet-rebuilt page so it shows real data or an honest state, never a sample."""
+        gate = Gate(content, state, self.choose_project)
+        self.__dict__.setdefault("_gates", []).append(gate)
+        return gate
+
+    def refresh_gates(self):
+        for gate in self.__dict__.get("_gates", ()):
+            gate.refresh()
 
     def journal_page(self):
         page = QWidget()
@@ -244,7 +244,7 @@ class PagesMixin:
     def audit_page(self):
         self.audit_workspace = AuditWorkspace()
         self.audit_workspace.intent_requested.connect(self.handle_audit_intent)
-        return self.audit_workspace
+        return self.legacy_gate(self.audit_workspace, lambda: "open" if not self.project_directory else "content" if self.selected_scan_path else "partial")
 
     def project_page(self):
         self.project_panels = ProjectPanels()
@@ -253,7 +253,7 @@ class PagesMixin:
         self.project_panels.select_scan.connect(self.select_project_scan)
         self.project_panels.submit_note.connect(self.submit_note)
         self.project_panels.intent_requested.connect(self.handle_project_intent)
-        return self.project_panels
+        return self.legacy_gate(self.project_panels, lambda: "content" if self.project_directory else "open")
 
     def url_page(self):
         page = QWidget()
@@ -266,12 +266,12 @@ class PagesMixin:
         area = QVBoxLayout(table_area)
         area.setContentsMargins(0, 0, 0, 0)
         toolbar = QHBoxLayout()
-        self.url_caption = QLabel("URL · 5 демо-записей")
+        self.url_caption = QLabel("URL")
         self.url_caption.setObjectName("sectionTitle")
         toolbar.addWidget(self.url_caption)
         toolbar.addStretch()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Поиск URL в демо-наборе")
+        self.search.setPlaceholderText("Поиск URL в загруженной странице")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(180)
         self.search.setMaximumWidth(420)
@@ -292,10 +292,10 @@ class PagesMixin:
         settings.clicked.connect(lambda: self.set_panel_visible("Сводка", not self.overview.isVisible()))
         toolbar.addWidget(settings)
         area.addLayout(toolbar)
-        self.url_scope_caption = ElidedLabel("Демо · поиск и сортировка по 5 синтетическим строкам")
+        self.url_scope_caption = ElidedLabel("Выберите сохранённый скан, чтобы загрузить URL")
         self.url_scope_caption.setObjectName("metadata")
         area.addWidget(self.url_scope_caption)
-        self.model = UrlModel(self.demo["rows"], self)
+        self.model = UrlModel([], self)
         self.proxy = QSortFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
         self.proxy.setFilterKeyColumn(0)
@@ -327,7 +327,7 @@ class PagesMixin:
         self.url_empty.hide()
         area.addWidget(self.url_empty, 1)
         paging = QHBoxLayout()
-        self.url_page_label = QLabel("Демо · без постраничного чтения")
+        self.url_page_label = QLabel("Страница не загружена")
         self.url_page_label.setObjectName("metadata")
         paging.addWidget(self.url_page_label, 1)
         self.url_previous = QPushButton("Назад")
@@ -374,8 +374,8 @@ class PagesMixin:
         self.overview.setMaximumWidth(380)
         box = QGroupBox("Сводка")
         facts = QFormLayout(box)
-        self.summary_source = QLabel("Синтетическое демо")
-        self.summary_records = QLabel("5")
+        self.summary_source = QLabel("Нет данных")
+        self.summary_records = QLabel("Нет данных")
         self.summary_scan = QLabel("Не запускался")
         self.summary_coverage = QLabel("Нет измерений")
         for label, value in [("Источник", self.summary_source), ("Записей", self.summary_records), ("Краул", self.summary_scan), ("Покрытие", self.summary_coverage)]:
@@ -388,7 +388,8 @@ class PagesMixin:
         summary.addWidget(self.summary_note)
         self.horizontal.addWidget(self.overview)
         self.horizontal.setSizes([1000, 280])
-        layout.addWidget(self.horizontal)
+        layout.addWidget(self.legacy_gate(self.horizontal, lambda: "open" if not self.project_directory else "content" if self.model.rows else "partial"))
+        self.model.modelReset.connect(self.refresh_gates)
         return page
 
     def tasks_page(self):

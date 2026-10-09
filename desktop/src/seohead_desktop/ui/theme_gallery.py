@@ -1,7 +1,7 @@
 """Design-v2 component board for one theme: python -m seohead_desktop.ui.theme_gallery OUT_DIR.
 
 Renders the same board in the three themes at 1440x900 and 800x800 so the generated QSS can be
-compared with canvas sheets "Colors", "Themes" and "Library". Synthetic labels only.
+compared with canvas sheets "Colors", "Themes" and "Library". Component labels only.
 """
 
 from __future__ import annotations

@@ -1248,5 +1248,11 @@
  "профили скана в ядре (#941)": "scan profiles in the core (#941)",
  "Новая": "New task",
  "Возможность не объявлена ядром": "The core does not declare this capability",
- "Адресов: {n} (оценка приложения)": "Addresses: {n} (app estimate)"
+ "Адресов: {n} (оценка приложения)": "Addresses: {n} (app estimate)",
+ "Откройте проект": "Open a project",
+ "Данные появятся из сохранённого проекта.": "Data will appear from the saved project.",
+ "Экран переделывается — ждёт шага 5": "Screen is being rebuilt — waits for step 5",
+ "Сохранённые данные проекта доступны в разделах «Сканы» и «Работа».": "Saved project data is available in the Scans and Work sections.",
+ "Выберите сохранённый скан, чтобы загрузить URL": "Choose a saved scan to load its URLs",
+ "Страница не загружена": "Page not loaded"
 }

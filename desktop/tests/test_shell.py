@@ -18,6 +18,7 @@ from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.bundle import verified_bundled_core_identity
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
 from seohead_desktop.scan_runner import crawl_arguments, resume_arguments
+from tests._screens_core import load_url_rows
 
 
 class ShellTests(unittest.TestCase):
@@ -37,18 +38,20 @@ class ShellTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_filter_selection_and_navigation(self):
+        load_url_rows(self.window)
         self.window.search.setText("chair")
         self.app.processEvents()
         self.assertEqual(self.window.proxy.rowCount(), 1)
         self.window.table.selectRow(0)
         self.app.processEvents()
-        self.assertIn("/catalog/chair/", self.window.detail.toPlainText())
+        self.assertEqual(self.window.selected_url, "https://shop.example.test/catalog/chair/")
         self.window.navigation.setCurrentRow(0)
         self.assertEqual(self.window.pages.currentIndex(), 0)
         self.window.navigation.setCurrentRow(1)
         self.assertEqual(self.window.pages.currentIndex(), 1)
 
     def test_panels_restore_and_compact_window(self):
+        load_url_rows(self.window)
         self.window.overview.hide()
         self.window.inspector.hide()
         self.window.restore_panels()
@@ -78,9 +81,9 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertEqual("Новый скан", seen[0])
 
-    def test_real_metadata_clears_demo_rows(self):
+    def test_real_metadata_clears_rows(self):
         self.window.read_generation = 1
-        self.window.project_loaded({"project": {"label": "Synthetic core project"}}, 1)
+        self.window.project_loaded({"project": {"label": "Core project"}}, 1)
         self.assertEqual(self.window.model.rowCount(), 0)
         self.assertFalse(self.window.search.isEnabled())
         self.assertNotIn("5 демо", self.window.url_caption.text())
@@ -132,12 +135,12 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(self.window.selected_scan_uuid, "next-scan")
         self.assertEqual(self.window.audit_workspace.panel("internal").state, "loading")
 
-    def test_retained_projection_pages_replace_demo_models(self):
+    def test_retained_projection_pages_fill_models(self):
         self.window.load_tasks(
             {
                 "items": [
                     {
-                        "id": "check:demo",
+                        "id": "check:title",
                         "title": "Retained task",
                         "kind": "check",
                         "display_state": "remaining",
@@ -179,7 +182,7 @@ class ShellTests(unittest.TestCase):
                 "pagination": {"total": 1},
             }
         )
-        self.assertEqual(self.window.task_model.rows[0]["id"], "check:demo")
+        self.assertEqual(self.window.task_model.rows[0]["id"], "check:title")
         self.assertEqual(self.window.scan_model.rows[0]["partial"], "нет")
         self.assertEqual(self.window.inbox_revision, 3)
         self.assertEqual(self.window.inbox_model.rows[0]["text"], "Retained handoff")

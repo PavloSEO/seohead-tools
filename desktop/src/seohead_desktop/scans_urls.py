@@ -332,13 +332,7 @@ class ScansUrlsMixin:
             self.debug_detail.setPlainText(json.dumps(retained, ensure_ascii=False, indent=2))
             self.show_retained_url(row)
             return
-        self.detail.setPlainText(
-            "Демо · синтетическая запись\n\n"
-            f"Адрес: {row['url']}\nHTTP: {row.get('status', 'Не измерено')}\n"
-            f"Тип: {row.get('type', 'Не измерено')}\nИндексация: {row.get('indexability', 'Не измерено')}\n"
-            f"Title: {row.get('title') or 'Не измерено'}\nПроблемы: {row.get('issues', 'Не измерено')}\n\n"
-            "Это демонстрационные данные. Headers, HTML и cookies не измерялись."
-        )
+        self.detail.setPlainText(readable_record({k: v for k, v in row.items() if not k.startswith("_")}, heading="Данные URL"))
         self.debug_detail.setPlainText(json.dumps(row, ensure_ascii=False, indent=2))
 
     def load_url_links(self, result, scan_path=None, url=None, selection_generation=None):

@@ -25,7 +25,6 @@ same CLI/MCP contracts the agents use.
 | `src/seohead_desktop/comparison.py`, `content_search.py` | Compare two scans; search inside saved HTML |
 | `src/seohead_desktop/local_control.py`, `control_cli.py` | Opt-in local control channel so an agent can drive the window (`seohead-desktop-agent`) |
 | `src/seohead_desktop/bundle.py` | Locates the bundled core inside a frozen app |
-| `src/seohead_desktop/fixtures/` | Labelled synthetic demo data (only for `--capture` and tests) |
 | `tests/` | Offscreen Qt tests (`QT_QPA_PLATFORM=offscreen`) |
 | `examples/qa-site/` | Local loopback SEO test site with profiles `broken`, `clean`, `fix-delta`, `tracking` — the only site real scans are tested on |
 | `packaging/`, `scripts/build_*.sh/.ps1`, `SEOHEAD Desktop.spec` | PyInstaller bundle that ships app + compatible core + `seohead` CLI together |

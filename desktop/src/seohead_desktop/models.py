@@ -1,4 +1,4 @@
-"""Bounded Qt presentation models for demo and retained core projections."""
+"""Bounded Qt presentation models for retained core projections."""
 
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtGui import QColor

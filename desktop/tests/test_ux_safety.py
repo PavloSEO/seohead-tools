@@ -109,6 +109,7 @@ class UXSafetyTests(unittest.TestCase):
 
     def test_empty_filter_clears_all_url_fields_and_rejects_late_response(self):
         self.window.selected_scan_path = "/scan.sqlite"
+        self.window.project_directory = "/p"
         self.window.current_project_uuid = "p"
         self.window.load_urls({"rows": [{"url": "https://fixture.test/", "status_code": 200}]}, "/scan.sqlite")
         token = self.window.url_selection_generation

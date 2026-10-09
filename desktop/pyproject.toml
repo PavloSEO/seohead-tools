@@ -24,7 +24,7 @@ seohead-desktop-agent = "seohead_desktop.control_cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-seohead_desktop = ["theme/*.json", "theme/*.qss", "theme/parts/*.qss", "assets/icons/*", "assets/fonts/*", "assets/app/*", "assets/*.json", "fixtures/*.json", "i18n/*.json"]
+seohead_desktop = ["theme/*.json", "theme/*.qss", "theme/parts/*.qss", "assets/icons/*", "assets/fonts/*", "assets/app/*", "assets/*.json", "i18n/*.json"]
 
 [tool.ruff]
 line-length = 100

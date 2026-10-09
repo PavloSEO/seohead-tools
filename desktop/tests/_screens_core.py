@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from PyQt5.QtWidgets import QLabel, QPushButton, QToolButton, QWidget
+from PyQt5.QtWidgets import QApplication, QLabel, QPushButton, QToolButton, QWidget
 
 DIRECTORY = "/project/qa"
 FIXTURES = Path(__file__).resolve().parent / "core_fixtures"
@@ -46,3 +46,15 @@ def texts(root):
         if isinstance(widget, (QLabel, QPushButton, QToolButton)):
             found.append(widget.text())
     return [text for text in found if text]
+
+
+def load_url_rows(window, scan="/project/qa/scans/one.sqlite"):
+    """Feed the legacy URL page a core-shaped page of saved URLs (the page shows data only after a scan was read)."""
+    window.project_directory = window.project_directory or DIRECTORY
+    window.selected_scan_path = scan
+    window.load_urls({"rows": [
+        {"url": "https://shop.example.test/", "status_code": 200, "content_type": "text/html", "indexability": "Indexable", "title": "Shop"},
+        {"url": "https://shop.example.test/catalog/chair/", "status_code": 200, "content_type": "text/html", "indexability": "Indexable", "title": "Chair"},
+        {"url": "https://shop.example.test/missing/", "status_code": 404, "content_type": "text/html", "indexability": "Non-indexable", "title": None},
+    ], "offset": 0, "has_more": False}, scan)
+    QApplication.processEvents()

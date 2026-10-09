@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -181,7 +180,6 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.scan_poll_timer = QTimer(self)
         self.scan_poll_timer.setInterval(self.poll_backoff_ms)
         self.scan_poll_timer.timeout.connect(self.poll_active_scan)
-        self.demo = json.loads((ROOT / "fixtures/demo.json").read_text())
 
         workspace = QWidget()
         workspace.setObjectName("workspace")
@@ -233,6 +231,8 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.update_content_search_context()
         self.content_search.changed.connect(self.load_content_search)
         install_screens(self)
+        self.data_changed.connect(lambda _kind: self.refresh_gates())
+        self.pages.currentChanged.connect(lambda _index: self.refresh_gates())
         self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
         self.build_status_bar()
@@ -372,7 +372,7 @@ def main():
                 generator.setFileName(str(args.export_svg))
                 generator.setSize(window.size())
                 generator.setViewBox(window.rect())
-                generator.setTitle("SEOHEAD native Qt preparation skeleton — demo")
+                generator.setTitle("SEOHEAD")
                 painter = QPainter(generator)
                 window.render(painter)
                 painter.end()

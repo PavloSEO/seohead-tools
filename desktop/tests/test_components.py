@@ -14,7 +14,6 @@ from seohead_desktop.ui.components import (
     TabDeck,
     TablePanel,
 )
-from seohead_desktop.ui.gallery import ROWS, SCANS, TASKS, GalleryWindow
 from seohead_desktop.ui.panels import (
     AuditWorkspace,
     ComparePanel,
@@ -31,6 +30,25 @@ from seohead_desktop.ui.tabcatalogue import (
     RIGHT_TABS,
     TAB_BY_ID,
 )
+from tests._screens_core import fixture
+
+
+def _row(path, status=200, kind="text/html", indexability="Indexable", title="Page", issues=0, depth=1):
+    return {"url": "https://catalog.example.test" + path, "status": status, "type": kind,
+            "indexability": indexability, "title": title, "issues": issues, "crawl_depth": depth}
+
+
+# Rows in the shape scans_urls builds from the core's URL page; scans and tasks are real core answers.
+ROWS = [
+    _row("/", title="Catalog", depth=0), _row("/chairs/", issues=1), _row("/chairs/oak/", depth=2),
+    _row("/journal/care/", title="", issues=1, depth=2),
+    _row("/archive/desk/", 301, indexability="Non-Indexable", title=None, issues=1, depth=2),
+    _row("/search/?q=chair", indexability="Non-Indexable", title="Search results"),
+    _row("/images/chair.webp", kind="image/webp", indexability=None, title=None, issues=None, depth=2),
+    _row("/discontinued/", 404, indexability="Non-Indexable", issues=1, depth=2),
+]
+SCANS = [dict(fixture("scan_row.json"), uuid=f"scan-{n}", finished_at=f"2026-10-0{n}T10:00:00Z") for n in (2, 1)]
+TASKS = fixture("checklist_page.json")["items"][:2]
 
 
 class ComponentTests(unittest.TestCase):
@@ -93,7 +111,7 @@ class ComponentTests(unittest.TestCase):
             {"url": "https://example.test/b", "status": 404},
             {"url": "https://example.test/a", "status": 99},
         ]
-        panel.set_page(rows, total=2, source="Synthetic test")
+        panel.set_page(rows, total=2, source="Test page")
         panel.table.sortByColumn(2, Qt.AscendingOrder)
         self.assertEqual(panel.proxy.index(0, 2).data(), "99")
         seen = QSignalSpy(panel.intent_requested)
@@ -123,7 +141,7 @@ class ComponentTests(unittest.TestCase):
         panel = self.own(TablePanel(TAB_BY_ID["page_titles"]))
         self.assertEqual(panel.count_label.text(), "Количество не измерено")
         self.assertFalse(panel.next_button.isEnabled())
-        panel.set_page(ROWS, total=8, source="Synthetic test")
+        panel.set_page(ROWS, total=8, source="Test page")
         self.assertTrue(panel.filter.model().item(0).isEnabled())
         self.assertFalse(panel.filter.model().item(1).isEnabled())
         self.assertIn("недоступен", panel.filter.model().item(1).toolTip())
@@ -210,8 +228,8 @@ class ComponentTests(unittest.TestCase):
         )
         panels.set_page("tasks", TASKS, source="Fixture")
         panels.panel("tasks").table.selectRow(0)
-        self.assertEqual(task_spy[-1][0], "demo-title")
-        scans = [dict(SCANS[0], path="/trusted/retained/demo")]
+        self.assertEqual(task_spy[-1][0], TASKS[0]["id"])
+        scans = [dict(SCANS[0], path="/trusted/retained/scan")]
         panels.set_page("scans", scans, source="Fixture")
         panels.panel("scans").table.selectRow(0)
         self.assertEqual(scan_spy[-1][0], scans[0])
@@ -279,10 +297,10 @@ class ComponentTests(unittest.TestCase):
             ("config", "provider.api_key"),
         ):
             panel = self.own(TablePanel(TAB_BY_ID[id]))
-            row = {"name": name, "value": "synthetic-sensitive-value"}
+            row = {"name": name, "value": "sensitive-value"}
             panel.set_page([row], source="Fixture")
             self.assertEqual(panel.model.rows[0]["value"], "[скрыто]")
-            self.assertEqual(row["value"], "synthetic-sensitive-value")
+            self.assertEqual(row["value"], "sensitive-value")
 
     def test_every_catalogue_panel_can_render_empty_and_unavailable_states(self):
         audit = self.own(AuditWorkspace())
@@ -301,24 +319,24 @@ class ComponentTests(unittest.TestCase):
         self.assertEqual(len(audit.findChildren(QTableView)), 39)
         self.assertEqual(len(projects.findChildren(QTableView)), 15)
 
-    def test_gallery_desktop_and_compact_keep_operable_tables(self):
-        window = self.own(GalleryWindow())
+    def test_audit_workspace_desktop_and_compact_keep_operable_tables(self):
+        window = self.own(AuditWorkspace())
+        window.set_page("internal", ROWS, total=len(ROWS), source="Test page")
         window.show()
         for size in ((1440, 900), (1024, 720)):
             window.resize(*size)
             self.app.processEvents()
             self.assertEqual((window.width(), window.height()), size)
-            panel = window.audit.main.panel("internal")
+            panel = window.main.panel("internal")
             self.assertGreater(panel.table.width(), 300)
             self.assertGreater(panel.table.height(), 180)
             self.assertGreater(panel.search.width(), 100)
-            right = window.audit.right.panel("overview")
+            right = window.right.panel("overview")
             self.assertGreater(right.search.width(), 140)
-        window.audit.main.tabbar.setFocus()
-        QTest.keyClick(window.audit.main.tabbar, Qt.Key_Right)
-        self.assertEqual(window.audit.main.current_id, "external")
-        self.assertEqual(window.audit.panel("url_details").state, "unavailable")
-
+        window.main.tabbar.setFocus()
+        QTest.keyClick(window.main.tabbar, Qt.Key_Right)
+        self.assertEqual(window.main.current_id, "external")
+        self.assertEqual(window.panel("url_details").state, "unavailable")
 
 if __name__ == "__main__":
     unittest.main()

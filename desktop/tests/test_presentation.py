@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.presentation import run_projection, theme_tokens, value_text
+from tests._screens_core import load_url_rows
 from tests.test_crawl_configuration import descriptor
 
 
@@ -81,6 +82,7 @@ class PresentationTests(unittest.TestCase):
         self.assertIn("run-3", self.window.activity_text.toPlainText())
 
     def test_compact_layout_density_and_panel_restore(self):
+        load_url_rows(self.window)
         self.window.resize(1024, 720)
         self.app.processEvents()
         self.assertEqual(self.window.width(), 1024)
@@ -98,6 +100,7 @@ class PresentationTests(unittest.TestCase):
         self.window.set_density("standard")
 
     def test_find_shortcut_and_table_copy_preserve_literal_url(self):
+        load_url_rows(self.window)
         self.window.focus_search()
         self.assertIs(self.app.focusWidget(), self.window.search)
         self.window.search.setText("chair")
