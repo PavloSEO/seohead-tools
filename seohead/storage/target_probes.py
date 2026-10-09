@@ -65,17 +65,21 @@ def capture(
 ) -> dict[str, int]:
     """Probe every same-host uncaptured canonical/hreflang target once and store the result."""
     from seohead.crawl.collect import fetch_one
+    from seohead.crawl.throttle import RequestBudgetExhausted
     from seohead.sf.core.normalize import norm_url
 
-    start_url = scan.con.execute("SELECT start_url FROM scan WHERE singleton=1").fetchone()[0]
-    host = (urlsplit(start_url or "").hostname or "").lower()
+    row = scan.con.execute("SELECT start_url FROM scan WHERE singleton=1").fetchone()
+    host = (urlsplit((row[0] if row else "") or "").hostname or "").lower()
     if not host:
         return {"probed": 0, "answered": 0, "failed": 0}
     counts = {"probed": 0, "answered": 0, "failed": 0}
     user_agent = settings["http"]["user_agent"]
     for url in _candidate_targets(scan.con, host).values():
-        if wait is not None:
-            wait()
+        try:
+            if wait is not None:
+                wait()  # counts against the scan's total request budget
+        except RequestBudgetExhausted:
+            break  # unprobed targets stay unmeasured rather than overrunning the budget
         try:
             record, _ = fetch_one(
                 url,
