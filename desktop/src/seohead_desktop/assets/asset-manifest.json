@@ -290,22 +290,6 @@
     "sha256": "8b95c9b784cd4901f1fe09d5c4076f42f5af3f9e7173fc49a93eb1bd82377bcd"
   },
   {
-    "path": "app/seohead.svg",
-    "repository": "https://github.com/PavloSEO/seohead-tools",
-    "source_path": "desktop/design/v2/brand/seohead-logo.svg",
-    "license": "SEOHEAD brand asset; used with the project owner authorization",
-    "transform": "none; original source bytes",
-    "sha256": "cff1083bffe17d653a59365c40a67aef1b2276964b3ec236da6632c43273bc72"
-  },
-  {
-    "path": "app/seohead-small.svg",
-    "repository": "https://github.com/PavloSEO/seohead.tech",
-    "source_path": "design/brand/seohead-mark-small.svg",
-    "license": "SEOHEAD brand asset; used with the project owner authorization",
-    "transform": "none; simplified mark for 16-48 px",
-    "sha256": "7f130bb8423c13d3c70ba6bd25550e344e2d1a61df073b4fac467cbb2f7e25b6"
-  },
-  {
     "path": "icons/add.svg",
     "url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/add/materialsymbolsoutlined/add_24px.svg",
     "sha256": "e9532de2b9be01ce951e899e98ee673bb97acd574f0db118feb72fe074a1c376"
@@ -1015,5 +999,17 @@
     "derived_from": "brand/seohead-logo.svg + brand/seohead-spider.svg",
     "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
     "sha256": "7669470383674cb37f2dc040dbb6410f32f28685f4ded9267ff75cfe6d08ef41"
+  },
+  {
+    "path": "app/seohead.svg",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "cff1083bffe17d653a59365c40a67aef1b2276964b3ec236da6632c43273bc72"
+  },
+  {
+    "path": "app/seohead-small.svg",
+    "derived_from": "brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "67f1f6c8e346066f687f41a9f9487b58e36cb49ecd3916e6776ca55edc114d7f"
   }
 ]

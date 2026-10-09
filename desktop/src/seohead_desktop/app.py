@@ -380,7 +380,7 @@ def main():
     code = app.exec_()
     if window.settings:
         window.settings.sync()  # objects are not destroyed on exit, so write preferences explicitly
-    return code
+    qt.exit_now(code)  # no interpreter finalisation: PyQt's exit cleanup crashes (SIGSEGV)
 
 
 if __name__ == "__main__":

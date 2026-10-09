@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | projsources[:state] | shell[:<section>] | newscan | menu | gallery. In-memory settings; scans only through --project.
+NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
@@ -147,19 +147,10 @@ def build(name, width, height, store, theme="light", lang="ru"):
         if arg and arg != "simple":
             window.navigation.select_section(arg)
         return window
-    if kind == "newscan":
-        from seohead_desktop.app import MainWindow
-        from seohead_desktop.screens.new_scan import NewScanDialog
+    if kind in ("newscan", "scanset", "quickscan"):
+        from capture_scan_dialog import Job
 
-        window = MainWindow(persistent=False)
-        window.prefs.set("view.theme", theme)
-        window.prefs.set("view.language", lang)
-        if OPTIONS.get("project"):
-            open_project(window, OPTIONS["project"])
-        dialog = NewScanDialog(window)
-        dialog._owner_window = window  # keep the host alive while the dialog is rendered
-        dialog.resize(width, height)
-        return dialog
+        return Job(name, OPTIONS, open_project)
     if kind == "projsources":
         return projsources_dialog(arg or "ready", theme, lang)
     if kind == "menu":
@@ -203,6 +194,8 @@ def main(argv=None):
             if name.startswith(("settings", "projsources")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
+            elif hasattr(widget, "render_image"):
+                widget.render_image(width, height, args.theme, args.lang).save(str(path))
             elif name.startswith("shell"):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
@@ -225,7 +218,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    code = main()
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(code)  # no interpreter finalisation: Qt objects must not be torn down by Python
+    qt.exit_now(main())  # no interpreter finalisation: Qt objects must not be torn down by Python

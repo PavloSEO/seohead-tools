@@ -94,6 +94,8 @@ def render(source: Path, output: Path, small: Path) -> list[Path]:
 
 
 def derived_from(path: Path, source: Path, small: Path) -> str:
+    if path.suffix == ".svg":
+        return f"brand/{(small if path.stem.endswith('small') else source).name}"
     stem = path.stem.rsplit("-", 1)[-1]
     if stem.isdigit():
         return f"brand/{source_for(int(stem), source, small).name}"
@@ -111,6 +113,7 @@ def main() -> int:
     shutil.copyfile(source, ASSETS / "app" / "seohead.svg")
     shutil.copyfile(small, ASSETS / "app" / "seohead-small.svg")
     paths = render(source, args.output.resolve(), small)
+    paths += [ASSETS / "app" / "seohead.svg", ASSETS / "app" / "seohead-small.svg"]  # copies of the brandbook sources
     if args.output.resolve() == (ASSETS / "app").resolve():
         manifest_path = ASSETS / "asset-manifest.json"
         entries = json.loads(manifest_path.read_text(encoding="utf-8"))
