@@ -148,13 +148,15 @@ class ChromeMixin:
         self.action_finder_button.setProperty("search_field", True)
         self.action_finder_button.setIcon(icon("search"))
         self.action_finder_button.setFixedWidth(220)
+        self.action_finder_button.setFixedHeight(32)
         self.action_finder_button.setLayout(QHBoxLayout())
         self.action_finder_button.layout().setContentsMargins(0, 0, 8, 0)
         self.action_finder_button.layout().addStretch(1)
         self.finder_hint = QLabel("Ctrl+K" if sys.platform != "darwin" else "⌘K")
-        self.finder_hint.setProperty("kbd", True)
+        self.finder_hint.setProperty("kbd_badge", True)  # a small badge inside the pill: no border, no divider
         self.finder_hint.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.action_finder_button.layout().addWidget(self.finder_hint)
+        self.finder_hint.setFixedHeight(20)
+        self.action_finder_button.layout().addWidget(self.finder_hint, 0, Qt.AlignVCenter)
         self.action_finder_button.setToolTip("Найти действие · Ctrl/⌘+K")
         self.action_finder_button.setAccessibleName("Найти действие или раздел")
         self.action_finder_button.clicked.connect(self.show_action_finder)
@@ -206,6 +208,13 @@ class ChromeMixin:
             action.setCheckable(index != combo.count() - 1 or combo.itemData(index) != {"action": "open"})
             action.setChecked(index == combo.currentIndex())
             action.triggered.connect(lambda _checked, i=index: self._pick(combo, i))
+        if combo is self.project_picker:
+            from .screens.project_sources_page import open_project_settings
+
+            menu.addSeparator()
+            settings = menu.addAction(icon("settings"), tr("Настройки проекта…"))
+            settings.setEnabled(bool(self.project_directory))
+            settings.triggered.connect(lambda _checked: open_project_settings(self))
         menu.exec_(button.mapToGlobal(button.rect().bottomLeft()))
 
     @staticmethod

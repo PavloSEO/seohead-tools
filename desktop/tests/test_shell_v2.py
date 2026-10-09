@@ -214,6 +214,16 @@ class ShellV2Tests(unittest.TestCase):
         self.assertFalse(card.active)
         self.assertTrue(card.isHidden())
 
+    def test_action_finder_is_one_pill_with_a_badge_inside(self):
+        from PyQt5.QtWidgets import QAbstractButton
+
+        pill = self.window.action_finder_button
+        self.assertEqual(pill.height(), 32)
+        self.assertIs(self.window.finder_hint.parentWidget(), pill)  # a child of the pill, not a separate cell
+        buttons = [b for b in pill.findChildren(QAbstractButton)]
+        self.assertEqual(buttons, [])
+        self.assertTrue(self.window.finder_hint.property("kbd_badge"))
+
     def test_core_status_is_never_not_found_while_the_core_answered(self):
         self.window.core_executable = None
         self.window.project_result = {"path": "/p"}
