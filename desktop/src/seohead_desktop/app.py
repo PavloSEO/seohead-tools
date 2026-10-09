@@ -101,9 +101,6 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.prefs = AppSettings(self.settings, full_schema())
         i18n.set_language(self.prefs.get("view.language"))
         self.display = self.prefs.get("shell.display")
-        self.settings_view = None
-        self._settings_return_id = None
-        self._settings_section = None
         self.core_executable = core_executable or shutil.which("seohead")
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(4)
@@ -195,7 +192,6 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         shell.addWidget(self.notice)
 
         body = QHBoxLayout()
-        self.body_layout = body
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
         self.navigation = NavPanel()

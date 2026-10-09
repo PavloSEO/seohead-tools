@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.settings import SECTION_IDS
-from seohead_desktop.ui.workspace import SETTINGS_VIEW
+from seohead_desktop.ui.settings.dialog import SettingsDialog
 from tests._qt import sweep_widgets
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "seohead_desktop"
@@ -147,6 +147,7 @@ class SwitchingTests(unittest.TestCase):
     def setUp(self):
         sweep_widgets()
         i18n.set_language("ru")
+        self._dialog = None
         patcher = patch("seohead_desktop.app.shutil.which", return_value=None)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -161,9 +162,15 @@ class SwitchingTests(unittest.TestCase):
         if theming.active_theme() != "light":
             load_theme(self.app, "light")
 
+    def settings_dialog(self, section="general"):
+        """The settings window as the application builds it (never executed here: tests inspect it)."""
+        if getattr(self, "_dialog", None) is None:
+            self._dialog = SettingsDialog(self.window.prefs, self.window.settings_context(), self.window, section)
+        return self._dialog
+
     def scopes(self):
         window = self.window
-        dialog = window.settings_view
+        dialog = self.settings_dialog()
         return {
             "topbar": window.findChild(QWidget, "topbar"),
             "navigation": window.navigation,
@@ -173,8 +180,7 @@ class SwitchingTests(unittest.TestCase):
         }
 
     def open_every_section(self):
-        self.window.open_settings("general")
-        dialog = self.window.settings_view
+        dialog = self.settings_dialog()
         for section in SECTION_IDS:
             dialog.show_section(section)
         dialog.show_section("view")
@@ -286,8 +292,7 @@ class SwitchingTests(unittest.TestCase):
         self.assertEqual(self.window.navigation.current_section(), section_before)
         self.assertEqual([(c.id, c.view_id) for c in self.window.workspace_tabs.contexts()], tabs_before)
         self.assertEqual(self.window.workspace_tabs.current_id, current_before)
-        self.assertEqual(self.window.settings_view.current_section(), "keys")
-        self.assertTrue(any(c.view_id == SETTINGS_VIEW for c in self.window.workspace_tabs.contexts()))
+        self.assertEqual(dialog.current_section(), "keys")
         self.assertEqual(self.window.prefs.get("view.language"), "en")
 
     def test_settings_search_uses_the_current_language(self):
@@ -305,16 +310,11 @@ class SwitchingTests(unittest.TestCase):
         self.assertEqual(dialog.section_title.text(), "Вид")
         dialog.search.setText("")
 
-    def test_workspace_tabs_and_settings_tab_are_translated(self):
-        self.window.open_settings("view")
+    def test_workspace_tabs_are_translated(self):
         self.window.prefs.set("view.language", "en")
         tabbar = self.window.workspace_tabs.tabbar
         titles = [tabbar.tabText(i) for i in range(tabbar.count())]
-        self.assertIn("Settings", titles)
+        self.assertIn("New tab", titles)
         self.window.prefs.set("view.language", "ru")
         titles = [tabbar.tabText(i) for i in range(tabbar.count())]
-        self.assertIn("Настройки", titles)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertIn("Новая вкладка", titles)

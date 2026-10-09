@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QPoint, Qt
+from PyQt5.QtCore import QPoint
 from PyQt5.QtGui import QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QAction,
@@ -23,8 +23,6 @@ from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
-from .ui.workspace import SETTINGS_VIEW
-from .ui.workspace_tabs import WorkspaceContext
 
 tr, trf = i18n.tr, i18n.trf
 
@@ -192,35 +190,8 @@ class ShellMixin:
                                actions={"providers": self.request_providers})
 
     def open_settings(self, section="general"):
-        """Settings open as a workspace tab (SHELL-CANON §4); a modal window only when the tab strip is full."""
-        existing = next((c for c in self.workspace_tabs.contexts() if c.view_id == SETTINGS_VIEW), None)
-        if existing is None:
-            existing_id = self.workspace_tabs.add(WorkspaceContext(view_id=SETTINGS_VIEW, project_label="Настройки"),
-                                                  title="Настройки", icon=icon("settings"), select=False,
-                                                  after_id=self._active_workspace_id) if len(self.workspace_tabs.contexts()) < self.workspace_tabs.max_tabs else None
-            if existing_id is None:
-                SettingsDialog(self.prefs, self.settings_context(), self, section).exec_()
-                return
-        else:
-            existing_id = existing.id
-        self.ensure_settings_view().show_section(section)
-        self.workspace_tabs.select(existing_id)
-
-    def ensure_settings_view(self):
-        """Embedded (non-window) SettingsDialog placed beside the page stack."""
-        if self.settings_view is None:
-            view = SettingsDialog(self.prefs, self.settings_context(), self)
-            view.setWindowFlags(Qt.Widget)
-            view.accepted.connect(self.close_settings_tab)
-            view.hide()
-            self.body_layout.addWidget(view, 1)
-            self.settings_view = view
-        return self.settings_view
-
-    def close_settings_tab(self):
-        for context in self.workspace_tabs.contexts():
-            if context.view_id == SETTINGS_VIEW:
-                self.close_workspace_tab(context.id)
+        """Settings are a modal window over the application (sheet Settings), never a workspace tab."""
+        SettingsDialog(self.prefs, self.settings_context(), self, section).exec_()
 
     def connect_preferences(self):
         self.prefs.changed.connect(self.apply_preference)

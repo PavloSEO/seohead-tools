@@ -265,8 +265,6 @@ class AgentMixin:
         self.search.selectAll()
 
     def navigate(self, row):
-        if self.settings_active() and self._settings_return_id:
-            self.workspace_tabs.select(self._settings_return_id)
         self.pages.setCurrentIndex(3 if row == 9 else 9 if row == 10 else row)
         self.sync_workspace_identity()
         if row == 9:

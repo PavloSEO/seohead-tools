@@ -132,47 +132,15 @@ class ShellV2Tests(unittest.TestCase):
             self.window.show_profile_menu()
         self.assertEqual(len(shown), 1)
 
-    def test_settings_open_as_a_workspace_tab_and_keep_the_project_tab(self):
-        before = self.window._active_workspace_id
-        self.window.show()
-        self.window.open_settings("view")
-        self.app.processEvents()
-        settings_tabs = [c for c in self.window.workspace_tabs.contexts() if c.view_id == "settings"]
-        self.assertEqual(len(settings_tabs), 1)
-        self.assertEqual(self.window._active_workspace_id, settings_tabs[0].id)
-        self.assertTrue(self.window.settings_view.isVisible())
-        self.assertFalse(self.window.pages.isVisible())
-        self.assertEqual(self.window.settings_view.current_section(), "view")
-        self.window.open_settings("mcp")  # reuses the same tab
-        self.assertEqual(len([c for c in self.window.workspace_tabs.contexts() if c.view_id == "settings"]), 1)
-        self.assertEqual(self.window.settings_view.current_section(), "mcp")
-        self.window.workspace_tabs.select(before)
-        self.app.processEvents()
-        self.assertFalse(self.window.settings_view.isVisible())
-        self.assertTrue(self.window.pages.isVisible())
-        self.assertEqual(self.window._active_workspace_id, before)
-
-    def test_done_closes_the_settings_tab_and_nav_click_leaves_settings(self):
-        self.window.show()
-        self.window.open_settings()
-        self.app.processEvents()
-        self.window.settings_view.accept()
-        self.app.processEvents()
-        self.assertFalse([c for c in self.window.workspace_tabs.contexts() if c.view_id == "settings"])
-        self.assertTrue(self.window.pages.isVisible())
-        self.window.open_settings()
-        self.app.processEvents()
-        self.window.navigation.select_section("scans")
-        self.app.processEvents()
-        self.assertFalse(self.window.settings_view.isVisible())
-        self.assertEqual(self.window.pages.currentIndex(), 5)
-
-    def test_settings_dialog_is_the_fallback_when_the_tab_strip_is_full(self):
+    def test_settings_are_a_modal_window_never_a_workspace_tab(self):
         opened = []
-        self.window.workspace_tabs.max_tabs = len(self.window.workspace_tabs.contexts())
-        with patch.object(SettingsDialog, "exec_", lambda dialog: opened.append(dialog.current_section())):
+        tabs_before = [(c.id, c.view_id) for c in self.window.workspace_tabs.contexts()]
+        with patch.object(SettingsDialog, "exec_", lambda dialog: opened.append((dialog.current_section(), dialog.isModal()))):
             self.window.open_settings("view")
-        self.assertEqual(opened, ["view"])
+            self.window.open_settings()
+        self.assertEqual(opened, [("view", True), ("general", True)])
+        self.assertEqual([(c.id, c.view_id) for c in self.window.workspace_tabs.contexts()], tabs_before)
+        self.assertFalse(hasattr(self.window, "settings_view"))
 
     def test_preferences_drive_theme_density_and_motion(self):
         self.window.prefs.set("view.theme", "dark")

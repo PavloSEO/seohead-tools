@@ -27,7 +27,6 @@ from .ui.workspace import (
     LAYOUT_SCHEMA,
     LAYOUTS,
     PANEL_IDS,
-    SETTINGS_VIEW,
     VIEW_IDS,
     ProjectMonitor,
     keep_on_screen,
@@ -152,7 +151,7 @@ class WorkspaceMixin:
         return next((item for item in self.workspace_tabs.contexts() if item.id == wanted), None)
 
     def sync_workspace_identity(self):
-        if not self._active_workspace_id or self._workspace_restore or not self.workspace_context() or self.settings_active():
+        if not self._active_workspace_id or self._workspace_restore or not self.workspace_context():
             return
         row = self.navigation.currentRow()
         self.workspace_tabs.update_context(self._active_workspace_id,
@@ -168,7 +167,7 @@ class WorkspaceMixin:
 
     def capture_workspace_context(self):
         context = self.workspace_context()
-        if context is None or self._workspace_restore or context.view_id == SETTINGS_VIEW:
+        if context is None or self._workspace_restore:
             return context
         self.stash_note_drafts()
         decks = {"audit_main": self.audit_workspace.main, "audit_detail": self.audit_workspace.detail,
@@ -233,41 +232,10 @@ class WorkspaceMixin:
             self.notice.show_error(str(exc))
             return None
 
-    # Settings live in a workspace tab; the project behind the previous tab is left untouched.
-    def settings_active(self):
-        context = self.workspace_context()
-        return bool(context and context.view_id == SETTINGS_VIEW)
-
-    def show_settings_view(self, visible):
-        self.ensure_settings_view().setVisible(visible)
-        self.pages.setVisible(not visible)
-        if visible:
-            self._settings_section = self.navigation.current_section()
-            self.navigation.list.blockSignals(True)
-            self.navigation.list.clearSelection()
-            self.navigation.list.setCurrentItem(None)
-            self.navigation.list.blockSignals(False)
-        elif getattr(self, "_settings_section", None):
-            self.navigation.select_section(self._settings_section, emit=False)
-
-    def enter_settings_tab(self, identifier):
-        if not self.settings_active():
-            self.capture_workspace_context()
-            self._settings_return_id = self._active_workspace_id
-        self._active_workspace_id = identifier
-        self.show_settings_view(True)
-
     def close_workspace_tab(self, identifier):
         if self._pending_note is not None:
             self.notice.show_error("Дождитесь подтверждения сохранения заметки перед закрытием вкладки.", "inbox-submit")
             return False
-        if identifier == self._active_workspace_id and self.settings_active():
-            self.show_settings_view(False)
-            if self.workspace_context(self._settings_return_id):
-                self._active_workspace_id = self._settings_return_id
-                self.workspace_tabs.remove(identifier)
-                self.workspace_tabs.select(self._settings_return_id)
-                return True
         if identifier == self._active_workspace_id:
             self.capture_workspace_context()
         removed = self.workspace_tabs.remove(identifier)
@@ -329,17 +297,6 @@ class WorkspaceMixin:
         context = self.workspace_context(identifier)
         if context is None:
             return
-        if context.view_id == SETTINGS_VIEW:
-            self.enter_settings_tab(identifier)
-            return
-        if self.settings_active():
-            leaving = self._active_workspace_id
-            self.show_settings_view(False)
-            if identifier == self._settings_return_id and self.workspace_context(identifier):
-                self._active_workspace_id = identifier  # the project state was kept while Settings was open
-                self.sync_workspace_identity()
-                return
-            self._active_workspace_id = self._settings_return_id if self.workspace_context(self._settings_return_id) else leaving
         if self._pending_note is not None:
             self._switching_workspace = True
             self.workspace_tabs.select(self._active_workspace_id)
