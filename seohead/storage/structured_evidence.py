@@ -79,6 +79,7 @@ def _validation(html: str | None) -> dict[str, Any]:
                 ),
                 "missing_required": list(item.get("missing_required") or []),
                 "missing_required_any_of": list(item.get("missing_required_any_of") or []),
+                "rules_version": str(item.get("rules_version") or ""),
             }
         )
     structural_state = (
