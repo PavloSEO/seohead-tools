@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QStyle,
     QStyledItemDelegate,
@@ -135,19 +136,49 @@ class Gate(QStackedWidget):
         self.setCurrentWidget({"open": self.open_panel, "partial": self.partial_panel}.get(self._state(), self.content))
 
 
+class UnavailableBadge(QLabel):
+    """Pill «Недоступно в этой версии ядра» that falls back, by whole words, to «Недоступно» when the row is narrow."""
+
+    PAD = 20  # 8 + 8 padding and the border, see QLabel[badge] in theme.qss
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.full = tr(UNAVAILABLE)
+        self.short = tr("Недоступно")
+        self.setProperty("badge", "mut")
+        self.setText(self.full)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+    def _width(self, text):
+        return self.fontMetrics().horizontalAdvance(text) + self.PAD
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setWidth(self._width(self.full))
+        return hint
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setWidth(self._width(self.short))
+        return hint
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        text = self.full if self.width() >= self._width(self.full) else self.short
+        if text != self.text():
+            self.setText(text)
+
+
 def waiting_badge(issue, hint=""):
-    """Neutral badge «Недоступно в этой версии ядра»; the tooltip says what will appear.
+    """Neutral pill «Недоступно в этой версии ядра»; the tooltip says what will appear.
 
     ``issue`` is the core issue number: kept for code and tests (Qt property ``waiting_issue``), never shown.
-    ``hint`` defaults to the ISSUE_HINTS entry of that issue.
+    ``hint`` defaults to the ISSUE_HINTS entry of that issue. In a narrow row the pill shortens to «Недоступно».
     """
-    label = QLabel(tr(UNAVAILABLE))
-    label.setProperty("badge", "mut")
+    label = UnavailableBadge()
     label.setProperty("waiting_issue", issue)
-    label.setMinimumWidth(1)  # long phrase: shrink (clip) in narrow rows instead of forcing horizontal scroll
     hint = hint or ISSUE_HINTS.get(issue, "")
-    if hint:
-        label.setToolTip(tr("Появится") + ": " + tr(hint))
+    label.setToolTip(tr(UNAVAILABLE) + (f"\n{tr('Появится')}: {tr(hint)}" if hint else ""))
     return label
 
 

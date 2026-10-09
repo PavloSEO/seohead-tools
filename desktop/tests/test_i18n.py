@@ -44,6 +44,7 @@ SCOPE = [
 ]
 CYRILLIC = re.compile("[Ѐ-ӿ]")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
+CASE_VARIANTS = re.compile(r"найденной|проверенной|странице · проверено")
 PROPER = {"Русский"}  # the language's own name stays as it is
 
 
@@ -125,6 +126,8 @@ class DictionaryTests(unittest.TestCase):
         raw = json.loads((PACKAGE / "i18n/en.json").read_text(encoding="utf-8"))
         seen = {}
         for source, english in raw.items():
+            if CASE_VARIANTS.search(source):  # Russian number-agreement forms of one English sentence
+                continue
             self.assertNotIn(english, seen, f"{source!r} and {seen.get(english)!r} share one translation")
             seen[english] = source
 
