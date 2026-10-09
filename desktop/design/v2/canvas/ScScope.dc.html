@@ -30,7 +30,7 @@
     <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #DDE1E7">
       <span class="ms" aria-hidden="true" style="color: #1565C0">manage_search</span>
       <div id="sc-t" style="font: 500 18px Roboto, sans-serif">Настройки скана</div>
-      <span class="hint" style="margin: 0">example.ru · новый скан</span>
+      <span class="hint" style="margin: 0">shop.example.test · новый скан</span>
       <div style="flex: 1"></div>
       <button class="selbox" style="min-width: 230px" aria-label="Профиль">Профиль: Стандартный<span class="ms s18" aria-hidden="true">expand_more</span></button>
       <a class="btn" href="/ScProfiles.dc.html"><span class="ms s18" aria-hidden="true">bookmark_add</span>Сохранить как профиль</a>
@@ -49,7 +49,7 @@
       </nav>
       <main style="flex: 1; min-width: 0; padding: 20px 28px; box-sizing: border-box; overflow: hidden"><div class="sc">
 <h2>Область</h2><div class="hint" style="margin: 0 0 8px">Что попадает в скан · <span class="mono">include / exclude</span>, поддомены, параметры</div>
-<div style="display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; align-items: end"><div><span class="lbl">Стартовый URL</span><label class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">link</span><input value="https://example.ru/" aria-label="Стартовый URL"></label></div><div><span class="lbl">Поддомены</span><div class="seg" style="width: 260px"><sc-for list="{{sub}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; align-items: end"><div><span class="lbl">Стартовый URL</span><label class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">link</span><input value="https://shop.example.test/" aria-label="Стартовый URL"></label></div><div><span class="lbl">Поддомены</span><div class="seg" style="width: 260px"><sc-for list="{{sub}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" onClick="{{o.pick}}">{{o.label}}</button></sc-for></div></div></div>
 <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px">
 <div><div class="cap" style="margin-top: 0">Правила regex · порядок важен</div>
 <div class="gt" style="grid-template-columns: 108px minmax(0, 1fr) 36px">
@@ -58,8 +58,8 @@
 </div>
 <div style="display: flex; gap: 8px; margin-top: 8px"><button class="btn" onClick="{{addInc}}"><span class="ms s18" aria-hidden="true">add</span>Включить</button><button class="btn" onClick="{{addExc}}"><span class="ms s18" aria-hidden="true">remove</span>Исключить</button></div></div>
 <div><div class="cap" style="margin-top: 0">Проверка правил</div>
-<textarea class="area" aria-label="URL для проверки" style="width: 100%; height: 70px; box-sizing: border-box; font: 400 12px/1.5 'Roboto Mono', monospace; resize: none">https://example.ru/catalog/pumps/
-https://example.ru/catalog/?sort=price</textarea>
+<textarea class="area" aria-label="URL для проверки" style="width: 100%; height: 70px; box-sizing: border-box; font: 400 12px/1.5 'Roboto Mono', monospace; resize: none">https://shop.example.test/catalog/stulya/
+https://shop.example.test/catalog/?sort=price</textarea>
 <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px">
 <sc-for list="{{tests}}" as="t" hint-placeholder-count="5"><div style="display: flex; align-items: center; gap: 8px; font: 400 12px Roboto, sans-serif; min-width: 0"><span class="{{t.badge}}"><span class="ms" aria-hidden="true">{{t.icon}}</span>{{t.st}}</span><span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{t.u}}</span></div></sc-for>
 </div></div></div>
@@ -96,10 +96,10 @@ class Component extends DCLogic {
     const sw = (k) => 'swt' + (s[k] ? ' on' : '');
     const tg = (k) => () => this.setState({ [k]: !s[k] });
     const seg = (k, opts) => opts.map(([id, label]) => ({ label, cls: s[k] === id ? 'on' : '', pick: () => this.setState({ [k]: id }) }));
-    const sum = [['Старт','https://example.ru/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3'],['Поддомены','только www'],['Параметры','utm_*, fbclid…']].map(([k, v]) => ({ k, v }));
+    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3'],['Поддомены','только www'],['Параметры','utm_*, fbclid…']].map(([k, v]) => ({ k, v }));
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '0';
     const rules = s.rules.map((r, i) => ({ type: r[0] === 'inc' ? 'включить' : 'исключить', badge: 'b ' + (r[0] === 'inc' ? 'st-done' : 'st-err'), re: r[1], del: () => this.setState({ rules: s.rules.filter((_, j) => j !== i) }) }));
-    const res = [['https://example.ru/catalog/pumps/', 1], ['https://example.ru/catalog/?sort=price', 0], ['https://example.ru/blog/2024/', 1], ['https://example.ru/cart/', 0], ['https://example.ru/search?q=nasos', 0]];
+    const res = [['https://shop.example.test/catalog/stulya/', 1], ['https://shop.example.test/catalog/?sort=price', 0], ['https://shop.example.test/blog/2024/', 1], ['https://shop.example.test/cart/', 0], ['https://shop.example.test/search?q=stul', 0]];
     const tests = res.map(([u, ok]) => ({ u, st: ok ? 'входит' : 'исключён', icon: ok ? 'check' : 'block', badge: 'b ' + (ok ? 'st-done' : 'st-off') }));
     const ft = s.ft.map((f, i) => ({ label: f[0], on: f[1], cls: 'cb' + (f[1] ? ' on' : ''), mark: f[1] ? '✓' : '', pick: () => { const n = s.ft.map(x => x.slice()); n[i][1] = !n[i][1]; this.setState({ ft: n }); } }));
     changed = String(s.rules.length - 3 === 0 ? 1 : 2);

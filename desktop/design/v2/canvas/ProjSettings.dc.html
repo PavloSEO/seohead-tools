@@ -33,9 +33,9 @@
 </style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" tab="none" label="Настройки проекта" icon="settings" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="none" label="Настройки проекта" icon="settings" hint-size="1440px,88px"></dc-import>
 <div class="body">
-  <dc-import name="SideNav" active="none" h="786" hint-size="200px,786px"></dc-import>
+  <dc-import name="SideNav" mode="agent" active="none" h="786" hint-size="200px,786px"></dc-import>
   <main class="main">
     <div class="sechead"><span class="ms s24" aria-hidden="true" style="color: #1565C0">settings</span><h1>Настройки проекта</h1><span class="meta">Мебельный магазин · проект хранится локально</span><div style="flex: 1"></div><a class="btn" href="/Project.dc.html">Отмена</a><button class="btn pri" onClick="{{save}}"><span class="ms s18" aria-hidden="true">save</span>{{saveLabel}}</button></div>
     <div class="pw"><div class="pb" style="grid-template-columns: minmax(0, 1fr) 420px">
@@ -48,7 +48,7 @@
           </div>
           <div class="r2">
             <div><span class="lbl">Профиль скана по умолчанию</span><div style="display: flex; gap: 8px; align-items: center"><span class="selbox" style="flex: 1">Полный · с HTML<span class="ms s18" aria-hidden="true">expand_more</span></span><a class="btn txt" href="/ScProfiles.dc.html">Профили</a></div><div class="hint">Подставляется в «Новый скан» и в расписание</div></div>
-            <div><label class="lbl" for="pf">Папка проекта</label><div style="display: flex; gap: 8px"><label class="fld" style="flex: 1"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">folder</span><input id="pf" class="mono" value="~/Work/projects/freelance/shop" style="font-size: 12px"></label><button class="btn">Выбрать…</button></div><div class="hint">База сканов, экспорты и отчёты — 4,2 ГБ</div></div>
+            <div><label class="lbl" for="pf">Папка проекта</label><div style="display: flex; gap: 8px"><label class="fld" style="flex: 1"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">folder</span><input id="pf" class="mono" value="~/Work/projects/shop" style="font-size: 12px"></label><button class="btn">Выбрать…</button></div><div class="hint">База сканов, экспорты и отчёты — 4,2 ГБ</div></div>
           </div>
         </section>
         <section class="cd">

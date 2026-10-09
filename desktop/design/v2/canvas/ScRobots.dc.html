@@ -30,7 +30,7 @@
     <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #DDE1E7">
       <span class="ms" aria-hidden="true" style="color: #1565C0">manage_search</span>
       <div id="sc-t" style="font: 500 18px Roboto, sans-serif">Настройки скана</div>
-      <span class="hint" style="margin: 0">example.ru · новый скан</span>
+      <span class="hint" style="margin: 0">shop.example.test · новый скан</span>
       <div style="flex: 1"></div>
       <button class="selbox" style="min-width: 230px" aria-label="Профиль">Профиль: Стандартный<span class="ms s18" aria-hidden="true">expand_more</span></button>
       <a class="btn" href="/ScProfiles.dc.html"><span class="ms s18" aria-hidden="true">bookmark_add</span>Сохранить как профиль</a>
@@ -82,18 +82,18 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.init = { robots: 'respect', nof: 'follow', noindexFollow: true, canon: true, hreflang: false, auto: true, maps: [['https://example.ru/sitemap.xml','robots.txt','1 214'],['https://example.ru/sitemap-blog.xml','индекс','318']] }; this.state = JSON.parse(JSON.stringify(this.init)); }
+  constructor(props) { super(props); this.init = { robots: 'respect', nof: 'follow', noindexFollow: true, canon: true, hreflang: false, auto: true, maps: [['https://shop.example.test/sitemap.xml','robots.txt','1 214'],['https://shop.example.test/sitemap-blog.xml','индекс','318']] }; this.state = JSON.parse(JSON.stringify(this.init)); }
   renderVals() {
     const s = this.state;
     const sw = (k) => 'swt' + (s[k] ? ' on' : '');
     const tg = (k) => () => this.setState({ [k]: !s[k] });
     const seg = (k, opts) => opts.map(([id, label]) => ({ label, cls: s[k] === id ? 'on' : '', pick: () => this.setState({ [k]: id }) }));
-    const sum = [['Старт','https://example.ru/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3'],['Sitemap','авто + 2']].map(([k, v]) => ({ k, v }));
+    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3'],['Sitemap','авто + 2']].map(([k, v]) => ({ k, v }));
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '0';
 const swv = {}, tgv = {}; ['noindexFollow','canon','hreflang','auto'].forEach(k => { swv[k] = sw(k); tgv[k] = tg(k); });
     const maps = s.maps.map((m, i) => ({ u: m[0], src: m[1], n: m[2], del: () => this.setState({ maps: s.maps.filter((_, j) => j !== i) }) }));
     const V = { maps, sw: swv, tg: tgv, robots: seg('robots', [['respect','Соблюдать'],['report','Отчёт'],['ignore','Игнорировать']]), ignoreWarn: s.robots === 'ignore',
-      nof: seg('nof', [['follow','Ходить'],['skip','Не ходить']]), addMap: () => this.setState({ maps: s.maps.concat([['https://example.ru/sitemap-news.xml', 'вручную', '—']]) }) };
+      nof: seg('nof', [['follow','Ходить'],['skip','Не ходить']]), addMap: () => this.setState({ maps: s.maps.concat([['https://shop.example.test/sitemap-news.xml', 'вручную', '—']]) }) };
     return Object.assign({ sum, load, changed, reset: () => this.setState(JSON.parse(JSON.stringify(this.init))) }, V);
   }
 }

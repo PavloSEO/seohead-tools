@@ -54,16 +54,16 @@
 <div class="note e" style="margin-top: 10px"><span class="ms s18" aria-hidden="true" style="color: #B3261E">lock</span><div><b style="font-weight: 500">Ключи и пароли агент не видит и не вводит — только вы.</b> Также закрыто: лимиты трат, удаление данных, права самого агента.</div></div>
 </div><div>
 <div class="gh">Запрос от Claude</div>
-<sc-if value="{{flag.nodone}}" hint-placeholder-val="{{true}}"><div style="border: 1px solid #C9B8F5; border-radius: 10px; padding: 10px 12px; margin-top: 6px"><div style="display: flex; align-items: center; gap: 8px; font: 500 13px Roboto, sans-serif"><span class="ms s18" aria-hidden="true" style="color: #5B3FA8">smart_toy</span>Привязать ресурс GSC к post-roy<span style="flex: 1"></span><span class="hint" style="margin: 0">2 мин назад</span></div>
-<div class="diff" style="margin-top: 8px"><div>sources.gsc.mapping:</div><div class="m">-  sc-domain:post-roy.ru: null</div><div class="p">+  sc-domain:post-roy.ru: post-roy</div><div class="p">+  sync: daily 06:00</div></div>
-<div class="hint">Причина: «в проекте post-roy нет данных поиска для отчёта»</div>
+<sc-if value="{{flag.nodone}}" hint-placeholder-val="{{true}}"><div style="border: 1px solid #C9B8F5; border-radius: 10px; padding: 10px 12px; margin-top: 6px"><div style="display: flex; align-items: center; gap: 8px; font: 500 13px Roboto, sans-serif"><span class="ms s18" aria-hidden="true" style="color: #5B3FA8">smart_toy</span>Привязать ресурс GSC к blog.example.test<span style="flex: 1"></span><span class="hint" style="margin: 0">2 мин назад</span></div>
+<div class="diff" style="margin-top: 8px"><div>sources.gsc.mapping:</div><div class="m">-  sc-domain:blog.example.test: null</div><div class="p">+  sc-domain:blog.example.test: blog.example.test</div><div class="p">+  sync: daily 06:00</div></div>
+<div class="hint">Причина: «в проекте blog.example.test нет данных поиска для отчёта»</div>
 <div style="display: flex; gap: 8px; margin-top: 8px"><button class="btn pri" onClick="{{flag.ok_}}">Принять</button><button class="btn" onClick="{{flag.no_}}">Отклонить</button></div></div></sc-if>
 <sc-if value="{{flag.done}}" hint-placeholder-val="{{false}}"><div class="note s" style="margin-top: 6px"><span class="ms s18" aria-hidden="true" style="color: #246B3C">check_circle</span><div>{{verdict}} · записано в журнал</div></div></sc-if>
 <div class="gh">Журнал изменений агентом</div>
 <div class="tbl" style="grid-template-columns: 74px minmax(0,1fr) 90px"><div class="h">Когда</div><div class="h">Изменение</div><div class="h">Итог</div>
 <div>08.10 17:02</div><div>Тема: светлая → тёмная после 21:00</div><div>принято</div>
-<div>08.10 11:30</div><div>Скан: скорость 5 → 2 req/s (lengidroprom)</div><div>принято</div>
-<div>07.10 14:12</div><div>Новый проект post-roy</div><div>принято</div>
+<div>08.10 11:30</div><div>Скан: скорость 5 → 2 req/s (pumps.example.test)</div><div>принято</div>
+<div>07.10 14:12</div><div>Новый проект blog.example.test</div><div>принято</div>
 <div>05.10 10:48</div><div>Включить рендеринг JS для всех</div><div style="color: #B3261E">отклонено</div></div>
 <div style="margin-top: 8px"><a class="btn txt pill" href="/Log.dc.html">Весь журнал</a></div>
 </div></div>

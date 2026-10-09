@@ -20,15 +20,9 @@ button.mi.dis{color:#A3A7AF}
 </style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px; position: relative">
-<div style="height: 52px; background: #FFFFFF"></div>
-<div style="height: 36px; display: flex; align-items: flex-end; gap: 2px; padding: 0 8px; background: #F4F6FA; border-top: 1px solid #DDE1E7; border-bottom: 1px solid #DDE1E7; box-sizing: border-box" role="tablist" aria-label="Вкладки рабочей области">
-  <a class="wtab" href="/Project.dc.html"><span class="ms s16" aria-hidden="true">checklist</span><span class="t">Работа · цель и задачи</span></a>
-  <a class="wtab" href="/Main.dc.html"><span class="ms s16" aria-hidden="true">push_pin</span><span class="t">URL · скан №2</span></a>
-  <a class="wtab" href="/Compare.dc.html"><span class="ms s16" aria-hidden="true">compare_arrows</span><span class="t">Сравнение №1 → №2</span></a>
-  <span class="wtab on" aria-selected="true" role="tab"><span class="ms s16" aria-hidden="true" style="color: #1565C0">add_circle</span><span class="t">Новая вкладка</span><span class="x"><span class="ms s16" aria-hidden="true">close</span></span></span>
-</div>
+<dc-import name="TopBar" mode="agent" tab="new" hint-size="1440px,88px"></dc-import>
 <div class="body">
-  <dc-import name="SideNav" active="none" h="786" hint-size="200px,786px"></dc-import>
+  <dc-import name="SideNav" mode="agent" active="none" h="786" hint-size="200px,786px"></dc-import>
   <main class="main" style="padding: 40px 48px; gap: 24px; overflow: hidden; background: #FDFCFF">
     <div><h1 style="margin: 0 0 4px; font: 500 20px Roboto, sans-serif">Что открыть в новой вкладке</h1><div style="font: 400 13px Roboto, sans-serif; color: #5D6069">Вкладка запоминает раздел, запуск, фильтры и выделение. Её можно закрепить, переименовать и дублировать.</div></div>
     <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
@@ -49,7 +43,7 @@ button.mi.dis{color:#A3A7AF}
     </div>
   </main>
 </div>
-<footer class="status"><span>Вкладок: 4 · закреплено: 1</span></footer>
+<footer class="status"><span>Вкладок: 5 · закреплена: «URL · скан №2»</span></footer>
 
 <div class="menu" style="left: 236px; top: 86px; width: 260px" role="menu" aria-label="Действия с вкладкой URL · скан №2">
   <a class="mi" href="/NewTab.dc.html" role="menuitem"><span class="ms s18" aria-hidden="true">add_circle</span>Новая вкладка<span class="kbd">⌘T</span></a>

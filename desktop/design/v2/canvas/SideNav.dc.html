@@ -15,22 +15,22 @@
 </helmet>
 <nav aria-label="Разделы проекта" style="width: 200px; height: {{h}}px; background: #F4F6FA; border-right: 1px solid #DDE1E7; padding: 10px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; font-family: Roboto, sans-serif; position: relative">
   <sc-for list="{{top}}" as="n" hint-placeholder-count="2">
-    <a class="{{n.cls}}" href="{{n.href}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}">{{n.cnt}}</span></a>
+    <a class="{{n.cls}}" href="{{n.href}}" title="{{n.title}}" aria-disabled="{{n.dis}}" style="{{n.st}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}" style="{{n.cst}}">{{n.cnt}}</span></a>
   </sc-for>
   <div class="navdiv"></div>
   <div class="navsec">Данные</div>
   <sc-for list="{{data}}" as="n" hint-placeholder-count="5">
-    <a class="{{n.cls}}" href="{{n.href}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}">{{n.cnt}}</span></a>
+    <a class="{{n.cls}}" href="{{n.href}}" title="{{n.title}}" aria-disabled="{{n.dis}}" style="{{n.st}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}" style="{{n.cst}}">{{n.cnt}}</span></a>
   </sc-for>
   <div class="navdiv"></div>
   <div class="navsec">Результат</div>
   <sc-for list="{{res}}" as="n" hint-placeholder-count="3">
-    <a class="{{n.cls}}" href="{{n.href}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}">{{n.cnt}}</span></a>
+    <a class="{{n.cls}}" href="{{n.href}}" title="{{n.title}}" aria-disabled="{{n.dis}}" style="{{n.st}}"><span class="ms" aria-hidden="true">{{n.icon}}</span>{{n.label}}<span class="{{n.cntCls}}" style="{{n.cst}}">{{n.cnt}}</span></a>
   </sc-for>
   <div style="flex: 1"></div>
   <div style="border: 1px solid #DDE1E7; border-radius: 10px; background: #FFFFFF; padding: 10px; display: flex; flex-direction: column; gap: 8px">
     <div style="display: flex; align-items: center; gap: 6px; font: 500 12px Roboto, sans-serif"><span class="ms s16" aria-hidden="true" style="color: #1565C0">sensors</span>Активный скан</div>
-    <div style="font: 400 11px Roboto, sans-serif; color: #5D6069">Перепроверка · 412 / 640 URL</div>
+    <div style="font: 400 11px Roboto, sans-serif; color: #5D6069">{{scanLine}}</div>
     <div class="bar"><div style="width: 64%; background: #1565C0"></div></div>
     <a href="/Scans.dc.html" style="font: 500 11px Roboto, sans-serif; text-decoration: none">Открыть наблюдение</a>
   </div>
@@ -56,31 +56,38 @@
   </sc-if>
 </nav>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","search","methods","reports","log"],"default":"url"},"h":{"editor":"int","default":786},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","search","methods","reports","log","crawler","none"],"default":"url"},"h":{"editor":"int","default":786},"mode":{"editor":"enum","options":["","agent","simple","crawler"],"default":""},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { menu: false }; }
   renderVals() {
-    const a = this.props.active ?? 'url';
-    const mk = (rows) => rows.map(([id, icon, label, href, cnt, dot]) => ({
-      icon, label, href, cnt: cnt ?? '',
-      cls: 'nav' + (id === a ? ' on' : ''),
-      cntCls: 'cnt' + (dot ? ' dot' : '')
-    }));
-    const sm = !!this.props.simple;
-    return { mcpLine: sm ? 'выключен' : 'включён', modeLine: sm ? 'Простой режим · MCP выкл.' : 'С агентом · MCP вкл.', segAgent: sm ? '' : 'on', agentFg: sm ? '#45464F' : '#0B4A94', agentBg: sm ? 'transparent' : '#FFFFFF', simpleFg: sm ? '#0B4A94' : '#45464F', simpleBg: sm ? '#FFFFFF' : 'transparent', h: this.props.h ?? 786, menu: this.state.menu, pbg: this.state.menu ? '#E3E7EE' : 'transparent', toggleMenu: () => this.setState({ menu: !this.state.menu }),
-      top: mk(this.props.simple ? [['work', 'checklist', 'Задачи', '/Simple.dc.html', '6']] : [
-        ['work', 'checklist', 'Работа', '/Project.dc.html', '4'],
-        ['inbox', 'inbox', 'Входящие', '/Inbox.dc.html', '2', true]
+    // Канон: SHELL-CANON.ru.md §3. Один список и одни подписи. simple скрывает агентские пункты;
+    // crawler (без проекта) показывает пункты проекта неактивными с подсказкой «нужен проект».
+    const mode = this.props.mode || (this.props.simple ? 'simple' : 'agent');
+    const sm = mode === 'simple', cr = mode === 'crawler';
+    const a = this.props.active ?? (cr ? 'crawler' : 'url');
+    const NEED = new Set(['work', 'inbox', 'issues', 'compare', 'search', 'methods', 'reports']);
+    const mk = (rows) => rows.map(([id, icon, label, href, cnt, dot]) => {
+      const dis = cr && NEED.has(id);
+      return { icon, label, href: dis ? '/Modals.dc.html' : href, cnt: dis ? 'нужен проект' : (cnt ?? ''), dis: dis ? 'true' : 'false',
+        title: dis ? 'Нужен проект · «Сохранить как проект»' : label,
+        st: dis ? 'opacity: .5' : '', cst: dis ? 'font-size: 10px; white-space: nowrap; letter-spacing: 0' : '',
+        cls: 'nav' + (id === a ? ' on' : ''), cntCls: 'cnt' + (dot && !dis ? ' dot' : '') };
+    });
+    return { scanLine: cr ? 'Краул · 412 / 640 URL' : 'Перепроверка · 412 / 640 URL', mcpLine: sm ? 'выключен' : 'включён', modeLine: sm ? 'Простой режим · MCP выкл.' : cr ? 'Краулер · без проекта · MCP вкл.' : 'С агентом · MCP вкл.', segAgent: sm ? '' : 'on', agentFg: sm ? '#45464F' : '#0B4A94', agentBg: sm ? 'transparent' : '#FFFFFF', simpleFg: sm ? '#0B4A94' : '#45464F', simpleBg: sm ? '#FFFFFF' : 'transparent', h: this.props.h ?? 786, menu: this.state.menu, pbg: this.state.menu ? '#E3E7EE' : 'transparent', toggleMenu: () => this.setState({ menu: !this.state.menu }),
+      top: mk([
+        ['work', 'checklist', 'Работа', sm ? '/Simple.dc.html' : '/Project.dc.html', '4'],
+        ...(sm ? [] : [['inbox', 'inbox', 'Входящие', '/Inbox.dc.html', '2', true]]),
+        ['crawler', 'travel_explore', 'Краулер', cr ? '/CrawlerResults.dc.html' : '/Crawler.dc.html', cr ? '1 286' : '']
       ]),
       data: mk([
-        ['scans', 'history', 'Сканы', '/Scans.dc.html', '6'],
-        ['url', 'table_view', 'URL', '/Main.dc.html', '1 314'],
+        ['scans', 'history', 'Сканы', cr ? '/Crawler.dc.html' : '/Scans.dc.html', cr ? '1' : '6'],
+        ['url', 'table_view', 'URL', cr ? '/CrawlerResults.dc.html' : '/Main.dc.html', cr ? '1 286' : '1 314'],
         ['issues', 'rule', 'Проблемы', '/Issues.dc.html', '37'],
         ['compare', 'compare_arrows', 'Сравнение', '/Compare.dc.html'],
         ['search', 'find_in_page', 'Поиск в HTML', '/Search.dc.html']
       ]),
       res: mk([
-        ...(this.props.simple ? [] : [['methods', 'menu_book', 'Методы', '/Methods.dc.html']]),
+        ...(sm ? [] : [['methods', 'menu_book', 'Методы', '/Methods.dc.html']]),
         ['reports', 'description', 'Отчёты и задачи', '/Handoff.dc.html'],
         ['log', 'terminal', 'Журнал', '/Log.dc.html']
       ])

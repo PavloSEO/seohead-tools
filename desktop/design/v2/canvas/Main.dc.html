@@ -14,10 +14,10 @@
 <style>body{margin:0}</style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px; position: relative">
-<dc-import name="TopBar" tab="url" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="url" hint-size="1440px,88px"></dc-import>
 <div class="body">
   <sc-if value="{{showNav}}" hint-placeholder-val="{{true}}">
-    <dc-import name="SideNav" active="url" h="786" hint-size="200px,786px"></dc-import>
+    <dc-import name="SideNav" mode="agent" active="url" h="786" hint-size="200px,786px"></dc-import>
   </sc-if>
 
   <main class="main">

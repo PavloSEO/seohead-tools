@@ -16,14 +16,14 @@
 .cg .kpi .v1{font-size:20px}</style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" tab="none" label="Скан №3 · идёт" icon="history" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="none" label="Скан №3 · идёт" icon="history" hint-size="1440px,88px"></dc-import>
 <div class="body">
-  <dc-import name="SideNav" active="scans" h="786" hint-size="200px,786px"></dc-import>
+  <dc-import name="SideNav" mode="agent" active="scans" h="786" hint-size="200px,786px"></dc-import>
   <main class="main" style="overflow: hidden">
     <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 20px; border-bottom: 1px solid #EEF0F3">
       <a class="ib" href="/Scans.dc.html" aria-label="К списку сканов"><span class="ms" aria-hidden="true">arrow_back</span></a>
       <h1 style="margin: 0; font: 500 16px Roboto, sans-serif">Скан №3 · перепроверка</h1>
-      <span class="mono" style="font-size: 12px; color: #6A6D76">r-0143 · example-shop.ru</span>
+      <span class="mono" style="font-size: 12px; color: #6A6D76">r-0143 · shop.example.test</span>
       <span class="{{stCls}}"><span class="ms" aria-hidden="true">{{stIcon}}</span>{{stLabel}}</span>
       <div style="flex: 1"></div>
       <button class="btn" onClick="{{togglePause}}"><span class="ms s18" aria-hidden="true">{{pIcon}}</span>{{pLabel}}</button>
@@ -76,7 +76,7 @@
           <div class="sec">Диск</div>
           <div style="display: flex; justify-content: space-between; font: 400 13px Roboto, sans-serif; margin-bottom: 6px"><span>База скана</span><span class="tnum">{{disk}} МБ из ~ 380</span></div>
           <div class="bar"><div style="width: {{diskPct}}%; background: #1565C0"></div></div>
-          <div class="hint">Свободно на диске 182 ГБ · папка проекта ~/Documents/SEOHEAD/example-shop</div>
+          <div class="hint">Свободно на диске 182 ГБ · папка проекта ~/Work/projects/shop</div>
         </div>
         <div class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
           <div class="sec" style="margin: 0">Ошибки · 7</div>
@@ -98,13 +98,13 @@ class Component extends DCLogic {
   renderVals() {
     const p = this.state.paused;
     const stream = [
-      ['14:33:12', 'https://example-shop.ru/catalog/divany/uglovye/', '200', 412],
-      ['14:33:11', 'https://example-shop.ru/catalog/kresla/?sort=price', '200', 388],
-      ['14:33:11', 'https://example-shop.ru/blog/staraya-akciya', '404', 96],
-      ['14:33:10', 'https://example-shop.ru/product/divan-oslo-3/', '200', 521],
-      ['14:33:09', 'https://example-shop.ru/old-catalog/stoly/', '301', 74],
-      ['14:33:09', 'https://example-shop.ru/api/cart/add', '503', 1204],
-      ['14:33:08', 'https://example-shop.ru/product/stul-nord/', '200', 344]
+      ['14:33:12', 'https://shop.example.test/catalog/divany/uglovye/', '200', 412],
+      ['14:33:11', 'https://shop.example.test/catalog/kresla/?sort=price', '200', 388],
+      ['14:33:11', 'https://shop.example.test/blog/staraya-akciya', '404', 96],
+      ['14:33:10', 'https://shop.example.test/product/divan-oslo-3/', '200', 521],
+      ['14:33:09', 'https://shop.example.test/old-catalog/stoly/', '301', 74],
+      ['14:33:09', 'https://shop.example.test/api/cart/add', '503', 1204],
+      ['14:33:08', 'https://shop.example.test/product/stul-nord/', '200', 344]
     ].map(([t, url, code, ms]) => ({ t, url, code, ms, cls: 'b ' + (code[0] === '2' ? 'st-done' : code[0] === '3' ? 'st-warn' : 'st-err') }));
     return { stream, togglePause: () => this.setState({ paused: !p }),
       pIcon: p ? 'play_arrow' : 'pause', pLabel: p ? 'Продолжить' : 'Пауза',

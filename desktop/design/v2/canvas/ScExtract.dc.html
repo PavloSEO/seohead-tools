@@ -30,7 +30,7 @@
     <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #DDE1E7">
       <span class="ms" aria-hidden="true" style="color: #1565C0">manage_search</span>
       <div id="sc-t" style="font: 500 18px Roboto, sans-serif">Настройки скана</div>
-      <span class="hint" style="margin: 0">example.ru · новый скан</span>
+      <span class="hint" style="margin: 0">shop.example.test · новый скан</span>
       <div style="flex: 1"></div>
       <button class="selbox" style="min-width: 230px" aria-label="Профиль">Профиль: Стандартный<span class="ms s18" aria-hidden="true">expand_more</span></button>
       <a class="btn" href="/ScProfiles.dc.html"><span class="ms s18" aria-hidden="true">bookmark_add</span>Сохранить как профиль</a>
@@ -56,7 +56,7 @@
 <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center"><button class="btn" onClick="{{add}}"><span class="ms s18" aria-hidden="true">add</span>Экстрактор</button><span class="hint" style="margin: 0">Тип меняется кликом: CSS → XPath → Regex · до 50 экстракторов</span></div>
 <sc-if value="{{hasErr}}" hint-placeholder-val="{{true}}"><div class="note e" style="margin-top: 12px"><span class="ms" aria-hidden="true" style="color: #B3261E">error</span><div><b>«Наличие» — неверный XPath:</b> <span class="mono">//div[@class='stock'</span> — не закрыта квадратная скобка (позиция 21). Экстрактор будет пропущен при запуске.</div></div></sc-if>
 <div class="cap">Образец для проверки</div>
-<div style="display: flex; gap: 8px"><label class="fld" style="flex: 1"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">link</span><input value="https://example.ru/catalog/pumps/cdm-15/" aria-label="URL образца"></label><button class="btn"><span class="ms s18" aria-hidden="true">play_arrow</span>Проверить все</button></div>
+<div style="display: flex; gap: 8px"><label class="fld" style="flex: 1"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">link</span><input value="https://shop.example.test/catalog/stulya/chair-oak/" aria-label="URL образца"></label><button class="btn"><span class="ms s18" aria-hidden="true">play_arrow</span>Проверить все</button></div>
 <div class="hint">Один запрос к образцу с текущими настройками запроса и рендера</div>
       </div></main>
       <aside aria-label="Сводка конфигурации" style="width: 300px; flex-shrink: 0; background: #F8F9FB; border-left: 1px solid #DDE1E7; padding: 18px 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
@@ -81,13 +81,13 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.init = { ex: [['Цена','CSS','.product-price .value','текст','12 480 ₽','ok'],['Артикул','Regex','Артикул:\\s*([A-Z0-9-]+)','группа 1','CDM-15-3','ok'],['Наличие','XPath',"//div[@class='stock'",'текст','ошибка разбора','err'],['Автор','CSS','meta[name=author]','атрибут content','нет совпадений','none']] }; this.state = JSON.parse(JSON.stringify(this.init)); }
+  constructor(props) { super(props); this.init = { ex: [['Цена','CSS','.product-price .value','текст','12 480 ₽','ok'],['Артикул','Regex','Артикул:\\s*([A-Z0-9-]+)','группа 1','CH-OAK-02','ok'],['Наличие','XPath',"//div[@class='stock'",'текст','ошибка разбора','err'],['Автор','CSS','meta[name=author]','атрибут content','нет совпадений','none']] }; this.state = JSON.parse(JSON.stringify(this.init)); }
   renderVals() {
     const s = this.state;
     const sw = (k) => 'swt' + (s[k] ? ' on' : '');
     const tg = (k) => () => this.setState({ [k]: !s[k] });
     const seg = (k, opts) => opts.map(([id, label]) => ({ label, cls: s[k] === id ? 'on' : '', pick: () => this.setState({ [k]: id }) }));
-    const sum = [['Старт','https://example.ru/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','4 · 1 с ошибкой']].map(([k, v]) => ({ k, v }));
+    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','2 на хост'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','10'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','4 · 1 с ошибкой']].map(([k, v]) => ({ k, v }));
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '0';
     const T = ['CSS', 'XPath', 'Regex'];
     const ex = s.ex.map((e, i) => { const bad = e[5] === 'err'; return { n: e[0], t: e[1], x: e[2], r: e[3], res: e[4], bg: bad ? '#FFF1EF' : 'transparent', col: bad ? '#B3261E' : '#1B1B1F',

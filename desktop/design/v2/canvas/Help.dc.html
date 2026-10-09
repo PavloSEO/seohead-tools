@@ -20,7 +20,7 @@
 .art pre{margin:0 0 12px;background:#F7F8FB;border:1px solid #EEF0F3;border-radius:8px;padding:10px 12px;font:400 12px/1.6 'Roboto Mono',monospace;white-space:pre-wrap}</style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" tab="none" label="Справка" icon="help" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="none" label="Справка" icon="help" hint-size="1440px,88px"></dc-import>
 <div class="body">
   <aside style="width: 320px; flex-shrink: 0; border-right: 1px solid #DDE1E7; background: #FDFCFF; display: flex; flex-direction: column; padding: 12px; gap: 10px; overflow: hidden">
     <div class="fld"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">search</span><input aria-label="Поиск по справке" placeholder="Поиск по справке"><span class="kbd">F1</span></div>
@@ -37,7 +37,7 @@
     </div>
     <article class="art" style="padding: 24px 40px; max-width: 760px; overflow: hidden">
       <h1 style="margin: 0 0 6px; font: 500 24px Roboto, sans-serif">{{cur.t}}</h1>
-      <div style="font: 400 12px Roboto, sans-serif; color: #5D6069; margin-bottom: 16px">{{cur.d}} · обновлено 08.10.2026</div>
+      <div style="font: 400 12px Roboto, sans-serif; color: #5D6069; margin-bottom: 16px">{{cur.d}} · обновлено 09.10.2026</div>
       <p>{{cur.p1}}</p>
       <h3>{{cur.h}}</h3>
       <p>{{cur.p2}}</p>
@@ -55,7 +55,7 @@
     <a class="btn" href="/SetAbout.dc.html" style="justify-content: center">О программе</a>
   </aside>
 </div>
-<footer class="status"><span>Справка работает без сети</span><div style="flex: 1"></div><span>SEOHEAD Desktop · ядро 0.42.1</span></footer>
+<footer class="status"><span>Справка работает без сети</span><div style="flex: 1"></div><span>SEOHEAD Desktop 0.9.0 · ядро seohead 3.4</span></footer>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
@@ -63,10 +63,10 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sel: 0 }; }
   renderVals() {
     const A = [
-      ['Начало', 'Первый проект и скан', 'за 5 минут', 'Создайте проект для example-shop.ru, укажите стартовый URL и запустите скан. Ядро обходит сайт с лимитом 2 запроса в секунду и сохраняет каждую страницу в базу скана.', 'Что дальше', 'После скана откройте «Проблемы»: каждая проверка показывает затронутые URL и доказательство. Из выбранных проблем создаются задачи исполнителям.', 'seohead project new example-shop --url https://example-shop.ru/\nseohead scan run example-shop', 'Скан идёт в ядре — окно можно закрыть, прогресс сохранится.'],
+      ['Начало', 'Первый проект и скан', 'за 5 минут', 'Создайте проект для shop.example.test, укажите стартовый URL и запустите скан. Ядро обходит сайт с лимитом 2 запроса в секунду и сохраняет каждую страницу в базу скана.', 'Что дальше', 'После скана откройте «Проблемы»: каждая проверка показывает затронутые URL и доказательство. Из выбранных проблем создаются задачи исполнителям.', 'seohead project new shop --url https://shop.example.test/\nseohead scan run shop', 'Скан идёт в ядре — окно можно закрыть, прогресс сохранится.'],
       ['Начало', 'Режимы «С агентом» и «Простой»', 'отображение', 'Режим меняет только интерфейс: данные и ядро одни и те же. «С агентом» добавляет цель, входящие и предложения агента через MCP.', 'Как переключить', 'Меню профиля внизу навигации → Отображение. MCP-сервер в «Простом» режиме выключен, но его можно включить в настройках.', 'seohead mcp status', 'Агент не меняет задачи сам — предложения ждут вашего подтверждения.'],
-      ['Работа', 'Перепроверка исправлений', 'скан №2 против №1', 'Когда исполнитель отметил задачу «Исправлено», запустите перепроверку: ядро сканирует только затронутые URL и сравнивает с исходным сканом.', 'Статусы', '«Подтверждено» — проблема ушла на всех URL. «Частично» — осталась на части URL, список показан в задаче.', 'seohead scan run example-shop --recheck T-101', 'Сравнить один URL целиком можно в «Сравнение URL».'],
-      ['Работа', 'Отчёт для клиента', 'PDF · RU/EN', 'Отчёт собирается из последнего завершённого скана: резюме, проблемы по приоритету, задачи и методика.', 'Язык и логотип', 'Язык отчёта не зависит от языка интерфейса. Логотип берётся из настроек проекта.', 'seohead report build example-shop --lang en --pdf', 'Тот же отчёт можно собрать из CLI на сервере.'],
+      ['Работа', 'Перепроверка исправлений', 'скан №2 против №1', 'Когда исполнитель отметил задачу «Исправлено», запустите перепроверку: ядро сканирует только затронутые URL и сравнивает с исходным сканом.', 'Статусы', '«Подтверждено» — проблема ушла на всех URL. «Частично» — осталась на части URL, список показан в задаче.', 'seohead scan run shop --recheck T-101', 'Сравнить один URL целиком можно в «Сравнение URL».'],
+      ['Работа', 'Отчёт для клиента', 'PDF · RU/EN', 'Отчёт собирается из последнего завершённого скана: резюме, проблемы по приоритету, задачи и методика.', 'Язык и логотип', 'Язык отчёта не зависит от языка интерфейса. Логотип берётся из настроек проекта.', 'seohead report build shop --lang en --pdf', 'Тот же отчёт можно собрать из CLI на сервере.'],
       ['Если что-то не так', 'Ядро не найдено', 'диагностика', 'Приложение ищет ядро по пути из настроек. Если файла нет или версия старая, откроется экран ошибки с кнопкой выбора пути.', 'Проверка', 'Запустите диагностику: она проверит Python, окружение, права на папку и сеть.', 'seohead doctor', 'Сканы и проекты при этом не теряются.']
     ];
     const cur0 = A[this.state.sel];

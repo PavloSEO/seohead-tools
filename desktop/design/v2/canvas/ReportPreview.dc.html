@@ -22,7 +22,7 @@
 .seg2 button.on{background:#FFFFFF;color:#0B4A94;box-shadow:0 1px 2px rgba(0,0,0,.08)}</style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" tab="none" label="Отчёт · предпросмотр" icon="description" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="none" label="Отчёт · предпросмотр" icon="description" hint-size="1440px,88px"></dc-import>
 <div class="body">
   <div style="width: 140px; flex-shrink: 0; background: #F4F6FA; border-right: 1px solid #DDE1E7; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; overflow: hidden">
     <sc-for list="{{thumbs}}" as="t" hint-placeholder-count="4"><button class="{{t.cls}}" onClick="{{t.pick}}" aria-label="Страница {{t.n}}"><span class="pg"><i style="width: 60%; background: #1565C0"></i><i></i><i style="width: 80%"></i><i></i><i style="width: 70%"></i></span>{{t.n}} · {{t.label}}</button></sc-for>
@@ -31,7 +31,7 @@
     <div class="page">
       <div style="display: flex; align-items: center; gap: 8px; border-bottom: 2px solid #1565C0; padding-bottom: 10px">
         <sc-if value="{{logo}}" hint-placeholder-val="{{true}}"><img src="/_blob/9bbee7a83aa50baa041e02870d2402e4" alt="" width="22" height="22"></sc-if>
-        <span style="font: 700 12px Roboto, sans-serif; letter-spacing: .5px">SEOHEAD</span><div style="flex: 1"></div><span style="font: 400 10px Roboto, sans-serif; color: #5D6069">example-shop.ru · {{date}}</span>
+        <span style="font: 700 12px Roboto, sans-serif; letter-spacing: .5px">SEOHEAD</span><div style="flex: 1"></div><span style="font: 400 10px Roboto, sans-serif; color: #5D6069">shop.example.test · {{date}}</span>
       </div>
       <sc-if value="{{p1}}" hint-placeholder-val="{{true}}">
         <div style="font: 500 22px Roboto, sans-serif">{{t.sum}}</div>
@@ -68,7 +68,7 @@
     <a class="btn pri lg" href="/ProjExport.dc.html" style="justify-content: center"><span class="ms s18" aria-hidden="true">picture_as_pdf</span>Сохранить PDF</a>
   </aside>
 </div>
-<footer class="status"><span>Предпросмотр · страница {{pnum}} из 4</span><div style="flex: 1"></div><span>~/Documents/SEOHEAD/example-shop/reports/</span></footer>
+<footer class="status"><span>Предпросмотр · страница {{pnum}} из 4</span><div style="flex: 1"></div><span>~/Work/projects/shop/reports/</span></footer>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>

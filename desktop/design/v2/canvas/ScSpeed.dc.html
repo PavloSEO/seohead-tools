@@ -30,7 +30,7 @@
     <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #DDE1E7">
       <span class="ms" aria-hidden="true" style="color: #1565C0">manage_search</span>
       <div id="sc-t" style="font: 500 18px Roboto, sans-serif">Настройки скана</div>
-      <span class="hint" style="margin: 0">example.ru · новый скан</span>
+      <span class="hint" style="margin: 0">shop.example.test · новый скан</span>
       <div style="flex: 1"></div>
       <button class="selbox" style="min-width: 230px" aria-label="Профиль">Профиль: Стандартный<span class="ms s18" aria-hidden="true">expand_more</span></button>
       <a class="btn" href="/ScProfiles.dc.html"><span class="ms s18" aria-hidden="true">bookmark_add</span>Сохранить как профиль</a>
@@ -90,7 +90,7 @@ class Component extends DCLogic {
     const sw = (k) => 'swt' + (s[k] ? ' on' : '');
     const tg = (k) => () => this.setState({ [k]: !s[k] });
     const seg = (k, opts) => opts.map(([id, label]) => ({ label, cls: s[k] === id ? 'on' : '', pick: () => this.setState({ [k]: id }) }));
-    const sum = [['Старт','https://example.ru/'],['Запросов/с','3 на хост ⚠'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','ошибка'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3']].map(([k, v]) => ({ k, v }));
+    const sum = [['Старт','https://shop.example.test/'],['Запросов/с','3 на хост ⚠'],['Потоков','4'],['Лимит URL','1 500'],['Глубина','ошибка'],['Время','30 мин'],['robots.txt','соблюдать'],['JS','выкл'],['Тело','HTML, до 2 МБ'],['Экстракторов','3']].map(([k, v]) => ({ k, v }));
     let load = '≈ 2 запроса/с · 1 500 URL · ~25 мин · ~380 МБ', changed = '0';
     const rpsList = [1, 2, 3, 5, 10];
     const rps = rpsList.map(n => ({ label: String(n), cls: s.rps === n ? 'on' : '', pick: () => this.setState({ rps: n }) }));

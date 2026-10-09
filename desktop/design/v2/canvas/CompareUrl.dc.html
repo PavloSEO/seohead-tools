@@ -21,13 +21,13 @@
 .dl2{font:400 12px/1.7 'Roboto Mono',monospace;padding:2px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}</style>
 </helmet>
 <div class="app" style="width: 1440px; height: 900px">
-<dc-import name="TopBar" tab="compare" hint-size="1440px,88px"></dc-import>
+<dc-import name="TopBar" mode="agent" tab="compare" hint-size="1440px,88px"></dc-import>
 <div class="body">
-  <dc-import name="SideNav" active="compare" h="786" hint-size="200px,786px"></dc-import>
+  <dc-import name="SideNav" mode="agent" active="compare" h="786" hint-size="200px,786px"></dc-import>
   <main class="main" style="overflow: hidden">
     <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 12px; border-bottom: 1px solid #EEF0F3">
       <a class="ib" href="/Compare.dc.html" aria-label="К сравнению сканов"><span class="ms" aria-hidden="true">arrow_back</span></a>
-      <h1 style="margin: 0; font: 500 15px Roboto, sans-serif" class="mono">example-shop.ru/catalog/divany/uglovye/</h1>
+      <h1 style="margin: 0; font: 500 15px Roboto, sans-serif" class="mono">shop.example.test/catalog/divany/uglovye/</h1>
       <span class="b st-warn">6 изменений</span>
       <div style="flex: 1"></div>
       <button class="btn pill" onClick="{{toggleOnly}}"><span class="ms s16" aria-hidden="true">{{onlyIcon}}</span>Только изменения</button>
