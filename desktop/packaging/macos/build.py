@@ -19,13 +19,16 @@ def main():
     parser.add_argument("--core-source", type=Path, required=True)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--dmg", action="store_true")
+    parser.add_argument("--output-dir", type=Path, help="new output directory under desktop/dist")
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("macOS build tools are required")
     desktop = Path(__file__).resolve().parents[2]
     source = Path(__file__).resolve().parent
-    dist = desktop / "dist"
-    dist.mkdir(exist_ok=True)
+    dist = (args.output_dir or desktop / "dist").resolve()
+    if not dist.is_relative_to((desktop / "dist").resolve()):
+        parser.error("output must stay under desktop/dist")
+    dist.mkdir(parents=True, exist_ok=True)
     bundle = dist / "SEOHEAD Desktop.app"
     package = dist / "SEOHEAD-Desktop.pkg"
     if bundle.exists() or package.exists():
@@ -38,7 +41,7 @@ def main():
         (payload / "usr/local/bin").mkdir(parents=True)
         scripts.mkdir()
         run("ditto", bundle, payload / "Applications/SEOHEAD Desktop.app")
-        for name, destination in (("seohead", payload / "usr/local/bin/seohead"), ("postinstall", scripts / "postinstall")):
+        for name, destination in (("seohead", payload / "usr/local/bin/seohead"), ("postinstall", scripts / "postinstall"), ("preinstall", scripts / "preinstall")):
             origin = desktop / "src/seohead_desktop/assets/app/seohead-cli.sh" if name == "seohead" else source / name
             destination.write_bytes(origin.read_bytes())
             destination.chmod(0o755)

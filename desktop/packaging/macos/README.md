@@ -17,7 +17,8 @@ No paid certificate, Developer ID signature or notarization is used. PyInstaller
 and the existing bundler apply local ad-hoc signatures required by macOS runtime.
 
 The pkg payload places the app in `/Applications/SEOHEAD Desktop.app` and its
-same-version CLI wrapper in `/usr/local/bin/seohead`. The postinstall only checks
+same-version CLI wrapper in `/usr/local/bin/seohead`. The preinstall refuses symlinks and a foreign CLI, and verifies timestamped
+backups of an existing SEOHEAD wrapper/app before replacement. The postinstall only checks
 the installed payload and wrapper mode, respects the destination volume, and
 starts no processes. It writes no agent configuration. Inspect the scripts before
 manual installation. `SEOHEAD_APP_PATH` lets wrapper smoke tests point at the app
@@ -38,4 +39,5 @@ Manual uninstall: `sudo sh packaging/macos/uninstall.sh --yes`. It refuses a
 foreign wrapper or unrecognized app, removes only this wrapper, archives the app
 alongside its original location, and forgets this pkg receipt. Projects, settings,
 agent entries and backups stay in place. `--yes DESTINATION_VOLUME` supports
-isolated script validation. No system install/uninstall is performed by tests.
+isolated script validation. No system install/uninstall is performed by tests. Use `--output-dir dist/BUILD_ID`
+for another build without replacing earlier artifacts.
