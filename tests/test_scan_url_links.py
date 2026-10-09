@@ -144,6 +144,31 @@ def test_filters_follow_type_status_contains_and_sort(scan):
     assert _page(scan, ROOT, direction="in", follow="nofollow")["filtered_total"] == 1
 
 
+def test_rel_token_filters_match_exact_tokens(scan, tmp_path):
+    assert [r["anchor"] for r in _page(scan, ROOT, follow="ugc")["items"]] == ["Beta"]
+    assert [r["anchor"] for r in _page(scan, ROOT, follow="sponsored")["items"]] == ["Elsewhere"]
+    assert _page(scan, ROOT, follow="sponsored")["filtered_total"] == 1
+    # Unknown or empty rel must not match a weight token by substring.
+    (tmp_path / "rel").mkdir()
+    path = _scan(
+        tmp_path / "rel",
+        {
+            ROOT: [
+                _edge(ROOT, A, anchor="Empty", rel=()),
+                _edge(ROOT, B, anchor="Mystery", rel=("ugcx", "nofollowish")),
+                _edge(ROOT, C, anchor="Both", nofollow=True, rel=("ugc", "nofollow")),
+            ]
+        },
+    )
+    assert [r["anchor"] for r in _page(path, ROOT, follow="ugc")["items"]] == ["Both"]
+    assert [r["anchor"] for r in _page(path, ROOT, follow="nofollow")["items"]] == ["Both"]
+    assert [r["anchor"] for r in _page(path, ROOT, follow="follow")["items"]] == [
+        "Empty",
+        "Mystery",
+    ]
+    assert _page(path, ROOT, follow="sponsored")["filtered_total"] == 0
+
+
 def test_pagination_and_limit_boundary(scan):
     first = _page(scan, ROOT, limit=4)
     assert first["returned"] == 4 and first["has_more"] is True and first["next_offset"] == 4

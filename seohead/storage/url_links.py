@@ -30,7 +30,7 @@ SCAN_CAP = 100_000  # rows a filtered/sorted request may examine before it repor
 _FRAGMENT_VARIANTS = 1_000  # fragment spellings of one destination looked up at most
 
 LINK_TYPES = ("all", "internal", "external")
-FOLLOW = ("all", "follow", "nofollow")
+FOLLOW = ("all", "follow", "nofollow", "sponsored", "ugc")
 STATUS_CLASSES = ("all", "2xx", "3xx", "4xx", "5xx", "broken", "error", "unscanned")
 SORTS = ("order", "url", "status")
 DIRECTIONS = ("out", "in")
@@ -420,7 +420,11 @@ def _page(ctx, result, ids, representation, req) -> None:
         where.append("l.evidence_representation=?")
         params.append(representation)
     base_where, base_params = " AND ".join(where), list(params)
-    if follow != "all":
+    if follow in ("sponsored", "ugc"):
+        # Exact token match on the stored rel list; `json_each` avoids LIKE false hits.
+        where.append("EXISTS (SELECT 1 FROM json_each(l.rel_json) WHERE value=?)")
+        params.append(follow)
+    elif follow != "all":
         where.append("l.nofollow=?")
         params.append(1 if follow == "nofollow" else 0)
     flt_where = " AND ".join(where)
