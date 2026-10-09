@@ -3155,6 +3155,10 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     from seohead.mcp import sf_mcp
 
     sf_mcp.register(mcp)
+    # Semantic-core tools (seohead semantics) share the same local connector.
+    from seohead.mcp import semantics_mcp
+
+    semantics_mcp.register(mcp, _checked)
     from seohead.mcp.mcp_profiles import configure_profile
     from seohead.mcp.mcp_progress import install_progress, wrap_long_tools
 

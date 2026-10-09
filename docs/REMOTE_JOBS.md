@@ -100,14 +100,3 @@ the actual native collector against a fake DNS/HTTP transport; it neither
 opens a public listener nor contacts a customer site. Deployment, TLS,
 service supervision, hard CPU/RAM containment and backup/restore are separate
 from this backend and must be demonstrated in the self-hosted service profile.
-
-`seohead.integrations.bot.AuthorizedJobSubmitter` is a generic consumer for a conversation
-or notification adapter. It maps one authorized actor and an explicit project
-set to this same backend, and exposes only submit, status and cancel. It has no
-messaging SDK, account identity, delivery credentials or crawler code.
-`AuthorizedReportDelivery` previews and sends only complete retained JSON or
-Markdown artifacts through an injected authorized transport. Its private
-receipt store makes a completed delivery idempotent across adapter restart;
-the adapter passes that receipt to the transport as its idempotency key. Failed
-sends remain pending for an explicit retry and unsupported formats are named
-instead of silently producing a different report.
