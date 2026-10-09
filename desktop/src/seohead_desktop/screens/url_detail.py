@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -32,23 +31,11 @@ from ..i18n import joined, tr, trf
 from ..ui.controls import polish
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import StatePanel, waiting_badge
+from ..ui.presentation import short_run_id
 from .scan_common import Pairs, StatusBadge, number, parse_time
 from .url_query import http_badge, index_badge, index_reason, seconds_to_ms
 from .url_widgets import StackBar, section_label
 
-# tab id -> (label, title of the waiting panel, text, core issue); ``None`` issue = built from the loaded page
-WAITING_TABS = {
-    "links": ("Ссылки", "Входящие и исходящие ссылки URL", "Ядро пока не отдаёт ссылки одной страницы: источник, анкор, rel, HTTP цели, внутренняя или внешняя; счётчик входящих и позиция ссылки на странице", 924),
-    "graph": ("Граф", "Граф ссылок вокруг URL", "Постраничное чтение графа вокруг страницы ждёт ядра", 975),
-    "html": ("HTML", "Исходник страницы", "Читатель сохранённого тела страницы (статического и после рендеринга) ждёт ядра", 936),
-    "res": ("Ресурсы", "Ресурсы страницы", "Изображения, CSS и JS страницы со статусом и весом ждут ядра", 935),
-    "redir": ("Редиректы", "Цепочка редиректов", "Цепочка и петли по одному URL одним ответом ждут ядра", 930),
-    "hist": ("История", "История URL по сканам", "Статус и поля URL по сканам («был 404») ждут ядра", 972),
-    "schema": ("Schema", "Структурированные данные", "Блоки JSON-LD, microdata и ошибки разметки по URL ждут ядра", 948),
-    "checks": ("Проверки", "Проверки выбранного URL", "Находки по одному URL ядро пока не отдаёт: в скане они есть только списком проверок", 980),
-}
-TAB_ORDER = ("info", "links", "graph", "hdr", "html", "res", "redir", "hist", "schema", "snip", "checks")
-TAB_LABELS = {"info": "Обзор", "hdr": "Заголовки", "snip": "Сниппет", **{k: v[0] for k, v in WAITING_TABS.items()}}
 SOURCE_KINDS = {"native": "Встроенный краулер", "sitemap": "Sitemap", "screaming_frog": "Импорт Screaming Frog"}
 
 
@@ -64,10 +51,6 @@ def source_text(source, page):
     mode = (page or {}).get("representation")
     suffix = {"static": "без рендеринга", "rendered": "с рендерингом"}.get(mode)
     return f"{tr(kind)} · {tr(suffix)}" if suffix else tr(kind)
-
-
-def short_id(value):
-    return f"{value[:4]}…{value[-4:]}" if isinstance(value, str) and len(value) > 10 else value
 
 
 def stamp_text(value):
@@ -102,11 +85,6 @@ def page_metrics(row, page):
     ms = seconds_to_ms(page.get("response_time", row.get("response_time")))
     return (words if type(words) is int else None, depth if type(depth) is int else None, ms)
 
-
-
-def waiting_page(tab):
-    _label, title, text, issue = WAITING_TABS[tab]
-    return StatePanel("waiting", title, text, issue=issue)
 
 
 def key_label(text):
@@ -149,6 +127,7 @@ class UrlHead(QWidget):
         self.copy.clicked.connect(lambda _c=False: QApplication.clipboard().setText(self.url or ""))
         self.browser = icon_button("open_in_new", "Открыть в системном браузере", False)
         self.browser.clicked.connect(lambda _c=False: self.url and QDesktopServices.openUrl(QUrl(self.url)))
+        self.note_allowed = True
         self.note = QPushButton(tr("Заметка агенту"))
         self.note.setProperty("size", "sm")
         self.note.setIcon(material_icon("edit_note"))
@@ -180,9 +159,8 @@ class OverviewPage(QWidget):
         grid.setHorizontalSpacing(32)
         grid.setColumnStretch(0, 5)
         grid.setColumnStretch(1, 4)
-        self.head = UrlHead()
-        grid.addWidget(self.head, 0, 0, 1, 2)
-        self.left = Pairs(("Индексация", "Title", "Canonical", "Цель редиректа", "Слов в контенте", "H1"), mono=("Canonical", "Цель редиректа"))
+        self.left = Pairs(("Индексация", "Title", "Canonical", "Цель редиректа", "Слов в контенте", "Глубина обхода", "H1"), mono=("Canonical", "Цель редиректа"))
+        self.left.values["Глубина обхода"].setToolTip(tr("Расстояние от стартовых адресов; адреса из sitemap считаются стартовыми"))
         self.right_box = QWidget()
         right = QVBoxLayout(self.right_box)
         right.setContentsMargins(0, 0, 0, 0)
@@ -190,15 +168,9 @@ class OverviewPage(QWidget):
         right.addWidget(section_label("Происхождение"))
         self.right = Pairs(("Источник", "Скан", "Снято", "Ответ"), mono=("Скан",))
         right.addWidget(self.right)
-        self.related = QHBoxLayout()
-        self.related.setSpacing(6)
-        key = key_label("Связано")
-        key.setMinimumWidth(140)
-        self.related.addWidget(key)
-        self.related.addWidget(self._waiting("Проблемы URL", 980))
-        self.related.addWidget(self._waiting("Задача", 922))
-        self.related.addStretch(1)
-        right.addLayout(self.related)
+        right.addWidget(key_label("Связано"))
+        for text, issue in (("Проблемы URL", 980), ("Задача", 922), ("Глубина кликов", 992)):
+            right.addWidget(self._waiting(text, issue))
         right.addStretch(1)
         self.grid = grid
         grid.addWidget(self.left, 1, 0, Qt.AlignTop)
@@ -212,7 +184,7 @@ class OverviewPage(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        narrow = event.size().width() < 900
+        narrow = event.size().width() < 1000
         if narrow != self._narrow:
             self._narrow = narrow
             self.grid.removeWidget(self.left)
@@ -234,10 +206,10 @@ class OverviewPage(QWidget):
         label.setProperty("text_style", "meta")
         layout.addWidget(label)
         layout.addWidget(waiting_badge(issue))
+        layout.addStretch(1)
         return holder
 
     def fill(self, row, page, detail, state, text=""):
-        self.head.set_row(row)
         page = page or {}
         badge = index_badge(page.get("status_code", row.get("status_code")), row.get("indexable"))[1] if row else None
         reason = index_reason(page) if page else None
@@ -248,48 +220,18 @@ class OverviewPage(QWidget):
         self.left.set("Цель редиректа", clean(page.get("redirect_url")) or clean(page.get("final_url")))
         words, _depth, ms = page_metrics(row or {}, page)
         self.left.set("Слов в контенте", number(words))
+        depth = page.get("crawl_depth", row.get("crawl_depth")) if row else None
+        self.left.set("Глубина обхода", number(depth) if type(depth) is int else None)
         self.left.set("H1", clean(page.get("h1")))
         source = (detail or {}).get("source") or {}
         response = first_response(detail)
         self.right.set("Источник", source_text(source, page))
-        self.right.set("Скан", short_id(source.get("scan_uuid")))
+        self.right.set("Скан", short_run_id(source.get("scan_uuid")))
+        self.right.values["Скан"].setToolTip(source.get("scan_uuid") or "")
         self.right.set("Снято", stamp_text(response.get("received_at")))
         self.right.set("Ответ", trf("{ms} мс", ms=number(ms)) if ms is not None else None)
         self.note.setText(text)
         self.note.setVisible(bool(text))
-
-
-class HeadersPage(QWidget):
-    """«Заголовки»: the saved response as text; values the core masked arrive masked."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self.text = QPlainTextEdit()
-        self.text.setReadOnly(True)
-        self.text.setProperty("mono", True)
-        self.text.setFrameShape(QFrame.NoFrame)
-        layout.addWidget(self.text, 1)
-        side = QFrame()
-        side.setProperty("aside", True)
-        side.setFixedWidth(280)
-        side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(16, 12, 16, 12)
-        side_layout.addWidget(section_label("Сохранённый ответ"))
-        self.caption = QLabel()
-        self.caption.setProperty("text_style", "meta")
-        self.caption.setWordWrap(True)
-        side_layout.addWidget(self.caption)
-        side_layout.addStretch(1)
-        layout.addWidget(side)
-
-    def fill(self, detail):
-        text = headers_text(detail)
-        self.text.setPlainText(text or tr("Нет данных"))
-        self.caption.setText(tr("Заголовки из сохранённого ответа. Просмотр не отправляет новый запрос.") if text
-                             else tr("Ядро не сохранило заголовки этого ответа."))
 
 
 class SnippetPage(QWidget):
@@ -310,102 +252,6 @@ class SnippetPage(QWidget):
         self.pairs.set("Длина title", trf("{n} зн.", n=len(title)) if title else None)
         self.pairs.set("Description", description)
         self.pairs.set("Длина description", trf("{n} зн.", n=len(description)) if description else None)
-
-
-class UrlDetail(QFrame):
-    """Bottom panel: tab strip + pages. ``show_*`` calls come from the screen; the panel never reads the core."""
-
-    back_requested = pyqtSignal()
-    hide_requested = pyqtSignal()
-    note_requested = pyqtSignal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setProperty("aside", False)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        bar = QHBoxLayout()
-        bar.setContentsMargins(4, 0, 8, 0)
-        self.tabs = QTabBar()
-        self.tabs.setProperty("tabs", "underline")
-        self.tabs.setDrawBase(False)
-        self.tabs.setExpanding(False)
-        self.tabs.setUsesScrollButtons(True)
-        for tab in TAB_ORDER:
-            self.tabs.addTab(tr(TAB_LABELS[tab]))
-        self.tabs.currentChanged.connect(self._tab_changed)
-        bar.addWidget(self.tabs, 1)
-        self.back = icon_button("arrow_back", "Предыдущий URL в истории", False)
-        self.back.clicked.connect(self.back_requested.emit)
-        self.forward = icon_button("arrow_forward", "Следующий URL в истории", False)
-        self.hide_button = icon_button("bottom_panel_close", "Скрыть детали")
-        self.hide_button.clicked.connect(self.hide_requested.emit)
-        for widget in (self.back, self.forward, self.hide_button):
-            bar.addWidget(widget)
-        layout.addLayout(bar)
-        self.pages = QStackedWidget()
-        layout.addWidget(self.pages, 1)
-        self.state = QStackedWidget()
-        self.overview = OverviewPage()
-        self.overview.head.note_requested.connect(self.note_requested.emit)
-        self.headers = HeadersPage()
-        self.snippet = SnippetPage()
-        self.index = {}
-        self.summary = RunSummary()
-        self.summary.setProperty("aside", False)
-        self.summary.hide_button.hide()
-        overview_scroll = QScrollArea()
-        overview_scroll.setWidgetResizable(True)
-        overview_scroll.setFrameShape(QFrame.NoFrame)
-        overview_scroll.setWidget(self.overview)
-        for tab in TAB_ORDER:
-            widget = {"info": overview_scroll, "hdr": self.headers, "snip": self.snippet}.get(tab) or waiting_page(tab)
-            self.index[tab] = self.pages.addWidget(widget)
-        self.tab = "info"
-        self.placeholder = StatePanel("empty", "Выберите URL в таблице", "Детали сохранённого ответа появятся здесь")
-        self.index["none"] = self.pages.addWidget(self.placeholder)
-        self.index["summary"] = self.pages.addWidget(self.summary)
-        self.pages.setCurrentIndex(self.index["none"])
-        self.has_row = False
-
-    def _tab_changed(self, index):
-        self.tab = TAB_ORDER[index] if index < len(TAB_ORDER) else "summary"
-        self._show()
-
-    def _show(self):
-        self.pages.setCurrentIndex(self.index[self.tab] if self.has_row or self.tab == "summary" else self.index["none"])
-
-    def set_summary_tab(self, visible):
-        """The run summary lives in this panel as a tab when the window is too narrow for the right-hand aside."""
-        present = self.tabs.count() > len(TAB_ORDER)
-        if visible and not present:
-            self.tabs.addTab(tr("Сводка"))
-        elif not visible and present:
-            if self.tab == "summary":
-                self.select_tab("info")
-            self.tabs.removeTab(len(TAB_ORDER))
-
-    def select_tab(self, tab):
-        self.tabs.setCurrentIndex(len(TAB_ORDER) if tab == "summary" else TAB_ORDER.index(tab))
-
-    def set_agent_visible(self, visible):
-        self.overview.head.note.setVisible(visible)
-
-    def render(self, row, page, detail, state, text=""):
-        """state: none | loading | ready | error. ``row`` is the table row, ``page`` the detail page of the core."""
-        self.has_row = state != "none"
-        if self.has_row:
-            self.overview.fill(row, page, detail, state, text)
-            self.headers.fill(detail)
-            self.snippet.fill(page)
-        self._show()
-
-    def retranslate(self):
-        for index, tab in enumerate(TAB_ORDER):
-            self.tabs.setTabText(index, tr(TAB_LABELS[tab]))
-        if self.tabs.count() > len(TAB_ORDER):
-            self.tabs.setTabText(len(TAB_ORDER), tr("Сводка"))
 
 
 class Accordion(QFrame):
@@ -452,6 +298,7 @@ class Accordion(QFrame):
 class UrlSideDetail(QFrame):
     """Layout B (MainB.dc.html): details to the right of the table, header + metrics + chips + accordion."""
 
+    tab_requested = pyqtSignal(str)   # a chip of the strip «Вкладки URL целиком» asks the card to open that tab
     hide_requested = pyqtSignal()
     note_requested = pyqtSignal()
     back_requested = pyqtSignal()
@@ -501,7 +348,7 @@ class UrlSideDetail(QFrame):
         strip_layout = QHBoxLayout(strip)
         strip_layout.setContentsMargins(0, 0, 0, 0)
         strip_layout.setSpacing(0)
-        for key in ("Слов", "Входящих", "Глубина", "Ответ"):
+        for key in ("Слов", "Входящих", "Глубина обхода", "Ответ"):
             cell = QVBoxLayout()
             cell.setContentsMargins(16, 8, 8, 8)
             cell.setSpacing(0)
@@ -513,6 +360,19 @@ class UrlSideDetail(QFrame):
             strip_layout.addLayout(cell, 1)
             self.metrics[key] = value
         root.addWidget(strip)
+        chips = QWidget()
+        chip_grid = QGridLayout(chips)
+        chip_grid.setContentsMargins(16, 8, 16, 8)
+        chip_grid.setSpacing(6)
+        for slot, (tab, label) in enumerate((("hdr", "Заголовки"), ("links", "Ссылки"), ("html", "HTML"), ("res", "Ресурсы"), ("redir", "Редиректы"),
+                                             ("hist", "История"), ("schema", "Schema"))):
+            chip = QToolButton()
+            chip.setProperty("pill", "group")
+            chip.setText(tr(label))
+            chip.clicked.connect(lambda _c=False, t=tab: self.tab_requested.emit(t))
+            chip_grid.addWidget(chip, slot // 4, slot % 4)
+        chip_grid.setColumnStretch(4, 1)
+        root.addWidget(chips)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -557,7 +417,7 @@ class UrlSideDetail(QFrame):
         words, depth, ms = page_metrics(row, page)
         self.metrics["Слов"].setText(number(words) or tr("Нет данных"))
         self.metrics["Входящих"].setText(tr("Недоступно"))
-        self.metrics["Глубина"].setText(number(depth) or tr("Нет данных"))
+        self.metrics["Глубина обхода"].setText(number(depth) or tr("Нет данных"))
         self.metrics["Ответ"].setText(trf("{ms} мс", ms=number(ms)) if ms is not None else tr("Нет данных"))
         title, description = clean(page.get("title")), clean(page.get("meta_description"))
         meta = joined("\n", [trf("Title: {t} ({n} зн.)", t=title, n=len(title)) if title else tr("Title: нет данных"),

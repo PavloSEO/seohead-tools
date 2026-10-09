@@ -43,6 +43,21 @@ def query_arguments(scan, *, filters=(), sort=None, direction="asc", offset=0, l
     return arguments
 
 
+def links_arguments(scan, url, *, direction="out", offset=0, limit=100, contains="", nofollow=False):
+    """``scan-link-inspect --view links``: outgoing or incoming links of one URL, filtered and paged by the core."""
+    if not isinstance(scan, str) or not scan or not isinstance(url, str) or not url:
+        raise ValueError("Выберите сохранённый скан и URL")
+    if direction not in ("in", "out") or type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("Страница ссылок: направление in или out, до 200 строк")
+    arguments = ["scan-link-inspect", "--scan", scan, "--view", "links", "--url", url, "--direction", direction,
+                 "--offset", str(offset), "--limit", str(limit)]
+    if contains.strip():
+        arguments.append("--contains=" + contains.strip())
+    if nofollow:
+        arguments += ["--follow", "nofollow"]
+    return arguments
+
+
 def count_arguments(scan, filters=()):
     """One row, one column: the exact ``filtered_total`` of a filter (used for counters)."""
     return query_arguments(scan, filters=filters, limit=1, columns=("url_id",))

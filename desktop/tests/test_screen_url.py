@@ -43,8 +43,13 @@ if name == "scan-url-query":
         out = "url_query_filtered.json"
     else:
         out = "url_query_page.json"
+elif name == "scan-link-inspect":
+    out = "link_inspect_" + args[args.index("--direction") + 1] + ("_nofollow" if "--follow" in args else "") + ".json"
 else:
-    out = "scan_url_detail.json"
+    url = args[args.index("--url") + 1]
+    out = {{"http://shop.example.test:18431/catalog/stoly/stol-007/": "scan_url_detail_redirect.json",
+           "http://shop.example.test:18431/tovar/stol-007/": "scan_url_detail_redirect2.json",
+           "http://shop.example.test:18431/catalog/stoly/": "scan_url_detail_final.json"}}.get(url, "scan_url_detail.json")
 print("seohead: " + name, file=sys.stderr)
 print(open(fixtures + "/" + out).read())
 '''

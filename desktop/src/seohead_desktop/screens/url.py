@@ -9,6 +9,7 @@ per-check filter) keeps its place with the neutral «Недоступно» badg
 from __future__ import annotations
 
 import math
+from urllib.parse import urlsplit
 
 from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QKeySequence
@@ -49,7 +50,8 @@ from ..ui.kit import (
 )
 from .base import Screen
 from .scan_common import number
-from .url_detail import RunSummary, UrlDetail, UrlSideDetail
+from .url_card import UrlCard
+from .url_detail import RunSummary, UrlSideDetail
 from .url_query import (
     PAGE,
     CoreJob,
@@ -73,13 +75,13 @@ COLUMNS = (
     ("content_type", "Тип", False, "content_type", None),
     ("indexable", "Индексация", False, "indexable", None),
     ("title", "Title", False, "title", None),
-    ("crawl_depth", "Глубина", True, "crawl_depth", None),
+    ("crawl_depth", "Глубина обхода", True, "crawl_depth", None),
     ("inlinks", "Входящих", True, None, 971),
     ("word_count", "Слов", True, "word_count", None),
     ("response_time", "Ответ, мс", True, "response_time", None),
     ("issues", "Проблем", True, None, 980),
 )
-COLUMN_WIDTHS = {1: 68, 2: 74, 3: 132, 5: 76, 6: 88, 7: 66, 8: 92, 9: 82}
+COLUMN_WIDTHS = {1: 68, 2: 74, 3: 132, 5: 112, 6: 88, 7: 66, 8: 92, 9: 82}
 TITLE_WIDTH = 180
 DROP_ORDER = (9, 6, 8, 2, 7, 5, 4)   # columns that give way first when the table is narrow
 URL_MIN = 340
@@ -153,6 +155,12 @@ class UrlPageModel(QAbstractTableModel):
         super().__init__(parent)
         self.rows = []
         self.badges = True
+        self.project_host = None   # hostname of the scan; the host is shown only for other hosts
+
+    def foreign_host(self, url):
+        host, _path = split_url(url)
+        name = (host or "").rsplit(":", 1)[0].lower() if host and ":" in host else (host or "").lower()
+        return host if host and name != (self.project_host or "").lower() else None
 
     def set_rows(self, rows):
         self.beginResetModel()
@@ -173,6 +181,8 @@ class UrlPageModel(QAbstractTableModel):
             return tr(title)
         if role == Qt.ToolTipRole and issue:
             return unavailable_tip(title)
+        if role == Qt.ToolTipRole and _key == "crawl_depth":
+            return tr("Расстояние от стартовых адресов; адреса из sitemap считаются стартовыми")
         if role == Qt.TextAlignmentRole:
             return int((Qt.AlignRight if COLUMNS[section][2] else Qt.AlignLeft) | Qt.AlignVCenter)
         return None
@@ -200,7 +210,7 @@ class UrlPageModel(QAbstractTableModel):
         row = self.rows[index.row()]
         key, _title, right, _sort, issue = COLUMNS[index.column()]
         if role == HOST_ROLE:
-            return split_url(row.get("url"))[0] if key == "url" else None
+            return self.foreign_host(row.get("url")) if key == "url" else None
         if role == PATH_ROLE:
             return split_url(row.get("url"))[1] if key == "url" else None
         text = self.cell_text(row, key)
@@ -400,9 +410,10 @@ class UrlScreen(Screen):
         self.vertical.setChildrenCollapsible(False)
         self.table_box = self._build_table()
         self.vertical.addWidget(self.table_box)
-        self.bottom = UrlDetail()
+        self.bottom = UrlCard(self.host)
         self.bottom.hide_requested.connect(lambda: self._set_detail_visible(False))
         self.bottom.back_requested.connect(self._go_back)
+        self.bottom.expand_toggled.connect(self._expand_card)
         self.bottom.note_requested.connect(lambda: self.host.navigation.select_section("inbox"))
         self.vertical.addWidget(self.bottom)
         self.vertical.setStretchFactor(0, 1)
@@ -415,6 +426,7 @@ class UrlScreen(Screen):
         self.side = UrlSideDetail()
         self.side.hide_requested.connect(lambda: self._set_detail_visible(False))
         self.side.back_requested.connect(self._go_back)
+        self.side.tab_requested.connect(self._open_tab)
         self.horizontal.addWidget(self.side)
         self.horizontal.setStretchFactor(0, 1)
         self.side.setMinimumWidth(400)
@@ -432,6 +444,8 @@ class UrlScreen(Screen):
         body.addWidget(self.summary)
         self.detail_hidden = False
         self.summary_hidden = False
+        self.card_forced = False   # the card is opened over a right-hand layout (a chip, a double click)
+        self.card_expanded = False
         copy = QShortcut(QKeySequence.Copy, self.table)
         copy.setContext(Qt.WidgetShortcut)
         copy.activated.connect(self._copy_row)
@@ -498,7 +512,7 @@ class UrlScreen(Screen):
         self.caption = QLabel()
         self.caption.setProperty("text_style", "meta")
         layout.addWidget(self.caption)
-        self.help = tool_button("help_outline", "Как работает таблица")
+        self.help = tool_button("help", "Как работает таблица")
         self.help.setToolTip(tr("Таблица показывает по 200 строк. Фильтры, сортировка и числа считает ядро по всему скану, а не по загруженной странице. Сортировка по колонке без индекса доступна, когда фильтр оставляет не больше 100 000 строк."))
         layout.addWidget(self.help)
         self.save_view = tool_button("bookmark_add", "Сохранить вид")
@@ -547,6 +561,9 @@ class UrlScreen(Screen):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
             self.table.setColumnWidth(column, width)
         self.table.selectionModel().currentRowChanged.connect(self._row_changed)
+        self.table.doubleClicked.connect(lambda _index: self._open_tab("info"))
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._row_menu)
         self.table_stack.addWidget(self.table)
         self.table_state = QWidget()
         self.table_state_layout = QVBoxLayout(self.table_state)
@@ -592,8 +609,10 @@ class UrlScreen(Screen):
         side = self.side_layout
         has_row = self.current_url is not None
         show_detail = not self.detail_hidden and not self.focus_mode
-        self.bottom.setVisible(show_detail and not side)
-        self.side.setVisible(show_detail and side)
+        show_bottom = show_detail and (not side or self.card_forced or self.card_expanded)
+        self.bottom.setVisible(show_bottom)
+        self.table_box.setVisible(not self.card_expanded)
+        self.side.setVisible(show_detail and side and not show_bottom)
         self.summary.setVisible(wide and not self.summary_hidden and not self.focus_mode and self.scan_path is not None)
         self.bottom.set_summary_tab(not wide and self.scan_path is not None)
         self.caption.setVisible(self.width() >= 1000)
@@ -605,7 +624,35 @@ class UrlScreen(Screen):
 
     def _set_detail_visible(self, visible):
         self.detail_hidden = not visible
+        if not visible:
+            self.card_forced = self.card_expanded = False
+            self.bottom.set_expanded(False)
         self._layout_panels()
+
+    def _open_tab(self, tab):
+        """Open the URL card on a tab (double click, a chip of the right-hand details, the row menu)."""
+        if self.current_url is None:
+            return
+        self.detail_hidden = False
+        self.card_forced = True
+        self.bottom.select_tab(tab)
+        self._layout_panels()
+
+    def _expand_card(self, expanded):
+        self.card_expanded = expanded
+        self.card_forced = self.card_forced or expanded
+        self._layout_panels()
+
+    def _row_menu(self, point):
+        index = self.table.indexAt(point)
+        if not index.isValid():
+            return
+        self.table.selectRow(index.row())
+        menu = QMenu(self.table)
+        menu.addAction(tr("Открыть карточку"), lambda: self._open_tab("info"))
+        menu.addAction(tr("Развернуть карточку"), lambda: (self._open_tab("info"), self.bottom.set_expanded(True, emit=True)))
+        menu.addAction(tr("Копировать URL"), self._copy_row)
+        menu.exec_(self.table.viewport().mapToGlobal(point))
 
     def _set_summary_visible(self, visible):
         self.summary_hidden = not visible
@@ -708,6 +755,7 @@ class UrlScreen(Screen):
                                action=("Новый скан", host.scan_preview), secondary=("Сканы проекта", lambda: host.navigation.select_section("scans")))
             return self._set_state("noscan", panel)
         self._set_state(None)
+        self.model.project_host = scan.get("host") or urlsplit(scan.get("start_url") or "").hostname
         self.summary.set_scan(scan)
         self.bottom.summary.set_scan(scan)
         if scan.get("path") != self.scan_path:
@@ -1063,9 +1111,8 @@ class UrlScreen(Screen):
 
     def _copy_row(self):
         index = self.table.currentIndex()
-        if index.isValid():
-            cells = [self.model.index(index.row(), c).data() for c in range(len(COLUMNS)) if not self.table.isColumnHidden(c)]
-            QApplication.clipboard().setText("\t".join(str(c) for c in cells))
+        if index.isValid() and index.row() < len(self.rows):
+            QApplication.clipboard().setText(self.rows[index.row()].get("url") or "")
 
 
 __all__ = ["QModelIndex", "UrlScreen"]
