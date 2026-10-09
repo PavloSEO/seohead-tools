@@ -540,18 +540,18 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
+| `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
+| `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
+| `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
+| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
 
 The Yandex query-analytics API provides its own rolling retention window. This route preserves
 the provider-returned daily buckets and does not advertise a caller-selected date range.
-| `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
 
 `miratext-analyze` returns a resumable hash while the provider queues work. An accepted result
 contains bounded `author_tables.words` and `author_tables.density_deviation` JSON arrays for
 direct CLI/MCP export or joining into a local report. Values, filters, and stopword handling keep
 the provider's stated units; an unknown or malformed final table is marked unavailable.
-| `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
-| `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
-| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
 
 `gsc-archive --database ./analytics/search-console.sqlite --action prepare --site-url sc-domain:example.test --start-date 2025-06-01 --end-date 2026-09-01`
 creates the archive and queues availability checks without network calls. Dates are inclusive in
@@ -760,8 +760,10 @@ echo '{"url":"https://example.com"}' | seohead parse
 ```
 
 **Side effects only behind an explicit flag.** `--probe-paths` in
-`security-check` and the sitemap live-recheck are off by default: a recon
-tool must not knock where it was not asked to.
+`security-check` is off by default. The SF audit sitemap/robots
+live recheck (`--live-recheck` / `--no-live-recheck`) defaults to off in config, but it
+turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl`) when no
+`--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
 `seo_semantics_*` tools (161 + 5 + 4):
