@@ -15,8 +15,8 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
+| check | 127 | a registry check finds it |
+| tool | 32 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
@@ -285,7 +285,7 @@ having, because the alternative is an absence nobody has noticed.
 |---|---|---|---|
 | Document Request Latency | check | `SLOW_RESPONSE` |  |
 | LCP Request Discovery | out of scope | — | needs Lighthouse's own trace of the loading sequence |
-| Render Blocking Requests | tool | `asset-weight-check` |  |
+| Render Blocking Requests | check | `RENDER_BLOCKING` |  |
 | Network Dependency Tree | out of scope | — | needs a full request waterfall from a real navigation |
 | Use Efficient Cache Lifetimes | tool | `headers-check` `cdn-check` |  |
 | Layout Shift Culprits | out of scope | — | needs layout instrumentation during a real render |

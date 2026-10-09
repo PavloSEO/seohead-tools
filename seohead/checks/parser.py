@@ -1961,6 +1961,12 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = document_doctype(html)
         result["viewport"] = _meta_content(soup, name="viewport")
         result["meta_refresh"] = meta_refresh_content(soup)
+        # Imported here: asset_weight imports this module, so a top-level import cycles.
+        from seohead.checks.asset_weight import find_render_blocking_resources
+
+        result["render_blocking"] = [
+            r["url"] for r in find_render_blocking_resources(soup, base_url)
+        ]
     else:
         result["title"] = None
         result["meta_description"] = None
@@ -1972,6 +1978,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = None
         result["viewport"] = None
         result["meta_refresh"] = ""
+        result["render_blocking"] = []
 
     if opts["canonical"]:
         canonical_tag = _canonical_tag(soup)

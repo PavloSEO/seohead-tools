@@ -2357,6 +2357,27 @@ def check_compression(ctx: AuditContext) -> None:
         )
 
 
+def check_render_blocking(ctx: AuditContext) -> None:
+    """Render Blocking Requests (SF PageSpeed): <head> scripts/stylesheets that hold first paint.
+
+    Only a native seohead crawl measures this (#1022); an SF export without the column
+    skips honestly rather than reporting every page as clean.
+    """
+    if not _has_column(ctx, "render_blocking"):
+        ctx.skip(
+            "RENDER_BLOCKING",
+            "no Render Blocking Resources column (needs a native seohead crawl)",
+        )
+        return
+    for page in ctx.html_pages():
+        rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
+        urls = [u for u in str(rec.get("render_blocking") or "").split("\n") if u]
+        if urls:
+            ctx.add("RENDER_BLOCKING", target_url=page.url, details={"resources": urls})
+
+
 # --------------------------------------------------------------------------
 # Element position & document skeleton (issue #123)
 #
@@ -2874,6 +2895,7 @@ def check_native_exports(ctx: AuditContext) -> None:
 
 ALL_CHECKS = [
     check_response_codes,
+    check_render_blocking,
     check_indexability,
     check_redirect_type,
     check_titles,
