@@ -73,11 +73,12 @@ anything false.
 **5. Verify, then hand it over.**
 
 ```bash
-seohead log-scan --run ./run
+seohead log-scan --run ./run --images-dir ./images
 seohead report-build --audit ./run/audit.json --format xlsx --out ./weight.xlsx
 ```
 
-`log-scan` compares recorded sizes against files on disk when pointed at a download directory,
+`log-scan` compares recorded sizes against files on disk only with `--images-dir`, the output
+directory of `images-download`,
 which is the check that would have caught the decoded-size defect above on the day it shipped.
 
 ## What comes out

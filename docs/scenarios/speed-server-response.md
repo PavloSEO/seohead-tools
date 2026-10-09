@@ -41,8 +41,9 @@ from an absent one.
 seohead crawl-site --url https://example.com --out-dir ./run
 ```
 
-Each page record carries `response_time`, and `SLOW_RESPONSE` fires above the configured
-threshold — 1.5 seconds by default. A whole-site picture matters more than a single page here,
+Each page record carries `response_time`. Compare it with the 1.5-second threshold yourself, or
+read the distribution from the run. `SLOW_RESPONSE` findings come only from `seohead sf run` over
+an export whose Internal:All has a Response Time column. A whole-site picture matters more than a single page here,
 because the shape of the distribution names the cause: uniformly slow is infrastructure, slow
 only on one template is that template's queries.
 
@@ -82,7 +83,7 @@ The single-page measurement, with the delivery context beside it:
 }
 ```
 
-and, from the crawl, one `SLOW_RESPONSE` per page over the threshold, each carrying its own
+and, from an `sf run` over an export, one `SLOW_RESPONSE` per page over the threshold, each carrying its own
 measurement and the threshold it passed:
 
 ```json
