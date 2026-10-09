@@ -2566,7 +2566,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd in ("parse", "images-download"):
         _source_flag(sub, "--urls", help="comma-separated URL list")
     if cmd == "redirects-generate":
-        sub.add_argument("--format", help="apache-rewrite-rule|apache-redirect|nginx|custom")
+        sub.add_argument("--format", help="apache-rewrite-rule|apache-redirect|nginx|csv|custom")
     if cmd == "sitemap-crawl":
         sub.add_argument("--concurrency", type=int, help="parallel fetches (default 3)")
         _source_flag(sub, "--project", help="explicit local project for sitemap observation")

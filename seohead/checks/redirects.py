@@ -17,6 +17,8 @@ Only the standard library plus ``httpx`` are imported.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 from typing import Any
 from urllib.parse import urljoin
@@ -41,6 +43,7 @@ _KNOWN_FORMATS = {
     "apache-rewrite-rule",
     "apache-redirect",
     "nginx",
+    "csv",
     "custom",
 }
 
@@ -121,6 +124,14 @@ def generate_rule(
             raise ValueError("Target URL is required for this format")
         escaped = old_url.replace("$", "\\$")
         return f"rewrite ^{escaped}$ {new_url} permanent;"
+
+    # CSV row: source, target, 301 (one row per rule, quoted when needed)
+    if fmt == "csv":
+        if not new_url:
+            raise ValueError("Target URL is required for this format")
+        buffer = io.StringIO()
+        csv.writer(buffer, lineterminator="").writerow([old_url, new_url, 301])
+        return buffer.getvalue()
 
     raise ValueError(f"Unknown format: {fmt}")
 
