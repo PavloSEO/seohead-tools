@@ -121,6 +121,8 @@ COMMANDS = (
     "project-open",
     "project-status",
     "project-progress",
+    "remediation-create",
+    "remediation-ingest",
     "remediation-summary",
     "remediation-cases",
     "remediation-transition",
@@ -603,6 +605,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         if getattr(args, "directory", None):
             kw["directory"] = args.directory
     elif cmd in {
+        "remediation-create",
+        "remediation-ingest",
         "remediation-summary",
         "remediation-cases",
         "remediation-transition",
@@ -611,6 +615,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "remediation-report",
     }:
         for name in (
+            "path",
+            "project_dir",
+            "producer_build",
+            "scan",
             "ledger",
             "check",
             "url",
@@ -2208,7 +2216,27 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "project-progress":
         sub.add_argument("--limit", type=int, default=20, help="items per page (1..100)")
         sub.add_argument("--offset", type=int, default=0, help="zero-based item offset")
+    if cmd == "remediation-create":
+        sub.add_argument(
+            "--path", required=True, help="new ledger.v1 SQLite path; never overwrites"
+        )
+        _source_flag(
+            sub,
+            "--project-dir",
+            dest="project_dir",
+            required=True,
+            help="validated project directory",
+        )
+        sub.add_argument(
+            "--producer-build",
+            dest="producer_build",
+            required=True,
+            help="full lowercase 40-character Git SHA of the ledger-writing build",
+        )
+    if cmd == "remediation-ingest":
+        _source_flag(sub, "--scan", help="validated saved scan.v1 SQLite artifact")
     if cmd in {
+        "remediation-ingest",
         "remediation-summary",
         "remediation-cases",
         "remediation-transition",

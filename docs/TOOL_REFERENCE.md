@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**163 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 172 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1536,6 +1536,44 @@ Read explicit remediation and recheck coverage from retained local evidence.
 The result keeps verified original cases, resolved, persisting,
 regressed, false-positive-reviewed and unverifiable states separate.
 It does not run a crawl or infer that omitted evidence is clean.
+
+### `remediation-create`
+
+MCP name: `seo_remediation_create`
+
+Create one new empty remediation ledger bound to a validated local project.
+
+| Argument | Type | Default |
+|---|---|---|
+| `path` | `str` | `required` |
+| `project_dir` | `str` | `required` |
+| `producer_build` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+producer_build must be the full lowercase 40-character Git SHA of the
+build that writes the ledger. An existing path is refused; ledgers never
+overwrite.
+
+### `remediation-ingest`
+
+MCP name: `seo_remediation_ingest`
+
+Ingest one retained saved audit into a local ledger without rerunning a crawl.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `scan` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+The scan is opened read-only. Re-ingesting the same revision is idempotent;
+a new revision appends observation history.
 
 ### `workflow-start`
 

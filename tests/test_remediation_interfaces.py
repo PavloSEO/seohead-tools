@@ -19,7 +19,7 @@ from seohead.storage.ledger import (
     read_cases,
     remediation_summary,
 )
-from tests.test_remediation_ledger import A, _issue, _ledger, _scan
+from tests.test_remediation_ledger import A, _issue, _ledger, _project, _scan
 
 
 def _cli(*argv: str) -> dict:
@@ -178,3 +178,68 @@ def test_ledger_selected_synthetic_recheck_records_measured_artifact_and_task_co
         assert resumed["tasks"]["title-fix"]["status"] == "complete"
     finally:
         baseline.close() if hasattr(baseline, "close") else None
+
+
+def test_remediation_create_and_ingest_round_trip_through_cli_and_mcp(tmp_path):
+    """A new ledger is created and fed one saved scan without a hand-built bootstrap."""
+    from tests.test_remediation_ledger import BUILD as SHA
+
+    project = _project(tmp_path)
+    scan = _scan(tmp_path / "scan.sqlite", issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)])
+    ledger = tmp_path / "remediation.sqlite"
+    created = _cli(
+        "remediation-create",
+        "--path",
+        str(ledger),
+        "--project-dir",
+        str(project),
+        "--producer-build",
+        SHA,
+    )
+    assert created["ledger"] == str(ledger)
+    assert created["summary"]["ledger_revision"] == 0
+    ingested = _cli("remediation-ingest", "--ledger", str(ledger), "--scan", str(scan))
+    assert ingested["ledger_revision"] >= 1
+    assert _cli("remediation-summary", "--ledger", str(ledger))["counts"]["detected"] == 1
+
+    pytest.importorskip("mcp")
+    from seohead.mcp.mcp_server import build_server
+
+    server = build_server(profile="full")
+    second = tmp_path / "second.sqlite"
+    via_mcp = asyncio.run(
+        server.call_tool(
+            "seo_remediation_create",
+            {"path": str(second), "project_dir": str(project), "producer_build": SHA},
+        )
+    )[1]
+    assert via_mcp["ledger"] == str(second)
+    asyncio.run(
+        server.call_tool("seo_remediation_ingest", {"ledger": str(second), "scan": str(scan)})
+    )
+    assert remediation_summary(second)["counts"]["detected"] == 1
+
+
+def test_remediation_ingest_is_idempotent_and_create_refuses_existing_or_bad_sha(tmp_path):
+    from seohead.mcp import handlers
+    from seohead.storage.ledger import LedgerError
+    from tests.test_remediation_ledger import BUILD as SHA
+
+    project = _project(tmp_path)
+    scan = _scan(tmp_path / "scan.sqlite", issues=[_issue("ISSUE-000001", "CHECK_ONE", target=A)])
+    ledger = tmp_path / "remediation.sqlite"
+    handlers.remediation_create(path=str(ledger), project_dir=str(project), producer_build=SHA)
+    handlers.remediation_ingest(ledger=str(ledger), scan=str(scan))
+    before = remediation_summary(ledger)
+    handlers.remediation_ingest(ledger=str(ledger), scan=str(scan))
+    assert remediation_summary(ledger) == before
+
+    with pytest.raises(LedgerError):
+        handlers.remediation_create(path=str(ledger), project_dir=str(project), producer_build=SHA)
+    with pytest.raises(LedgerError):
+        handlers.remediation_create(
+            path=str(tmp_path / "other.sqlite"),
+            project_dir=str(project),
+            producer_build="v1.0",
+        )
+    assert not (tmp_path / "other.sqlite").exists()

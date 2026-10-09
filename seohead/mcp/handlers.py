@@ -4453,6 +4453,21 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
     return core(ledger)
 
 
+def remediation_create(path: str, project_dir: str, producer_build: str) -> dict[str, Any]:
+    """Create one new empty ledger bound to a project; existing files are refused."""
+    from seohead.storage.ledger import create_ledger, ledger_summary
+
+    out = create_ledger(path, project_dir=project_dir, producer_build=producer_build)
+    return {"ledger": str(out), "summary": ledger_summary(out)}
+
+
+def remediation_ingest(ledger: str, scan: str) -> dict[str, Any]:
+    """Ingest one saved audit into a ledger as baseline/history; re-ingest is idempotent."""
+    from seohead.storage.ledger import ingest_scan
+
+    return ingest_scan(ledger, scan)
+
+
 def workflow_start(
     directory: str,
     scenario_id: str,
@@ -6088,6 +6103,8 @@ _RAW_HANDLERS = {
     "project_status": project_status,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
+    "remediation_create": remediation_create,
+    "remediation_ingest": remediation_ingest,
     "workflow_start": workflow_start,
     "workflow_checkpoint": workflow_checkpoint,
     "workflow_status": workflow_status,
