@@ -198,13 +198,12 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(self.window.display, "agent")
         self.assertFalse(wizard.mcp_card.isHidden())
 
-    def test_mcp_requires_core_status_before_controls_are_enabled(self):
+    def test_agent_step_is_one_connect_line(self):
         self.window.show_startup_workspace()
         wizard = self.wizard
         wizard.go(2)
-        self.assertFalse(wizard.mcp_switch.isEnabled())
-        self.assertFalse(wizard.mcp_switch.isChecked())
-        self.assertIsNone(wizard.mcp_card.state)
+        self.assertEqual(wizard.connect_button.text(), "Прописать…")
+        self.assertEqual(wizard.connect_button.isEnabled(), bool(self.window.core_executable))
         self.assertIn("разрешения", wizard.later_note.findChildren(QLabel)[-1].text())
         self.assertFalse(self.window.agent_pill.isVisibleTo(self.window))
 

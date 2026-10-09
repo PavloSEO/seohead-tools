@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
 from .. import i18n, theming
 from ..cli_install import InstallCLIButton
 from ..common import ROOT
-from ..mcp_integration import IntegrationPanel
+from ..mcp_integration import PermissionDialog
 from ..ui.controls import Note, Segmented, polish
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import waiting_badge
@@ -43,7 +43,6 @@ STEPS = ("Папка проектов", "Проверка ядра", "Отобр
 LOW_DISK = 10 * 1000 ** 3
 UNAVAILABLE = "Недоступно в этой сборке"
 CORE_VERSION_ISSUE = 979
-MCP_ISSUE = 929
 
 
 def folder_facts(path):
@@ -403,8 +402,22 @@ class OnboardingScreen(Screen):
         self.option_simple.clicked.connect(lambda: self.pick("simple"))
         layout.insertLayout(layout.count() - 1, grid)
 
-        self.mcp_card = IntegrationPanel(self.host.core_executable, self.host.prefs, compact=True)
-        self.mcp_switch = self.mcp_card.switch
+        # Sheet Onboarding: one line; the permission window is the same as in Settings → MCP-сервер.
+        self.mcp_card = QFrame()
+        self.mcp_card.setProperty("card", "panel")
+        line = QHBoxLayout(self.mcp_card)
+        line.setContentsMargins(16, 12, 16, 12)
+        line.setSpacing(12)
+        line.addWidget(MaterialIconLabel("hub", 20, color="role:text_muted"))
+        title = QLabel(tr("Подключить агента"))
+        title.setProperty("text_style", "control")
+        line.addWidget(title, 1)
+        self.connect_button = QPushButton(tr("Прописать…"))
+        self.connect_button.setProperty("role", "tonal")
+        self.connect_button.setEnabled(bool(self.host.core_executable))
+        self.connect_button.setToolTip("" if self.host.core_executable else tr("CLI ядра seohead не найден"))
+        self.connect_button.clicked.connect(self.connect_agent)
+        line.addWidget(self.connect_button)
         layout.insertWidget(layout.count() - 1, self.mcp_card)
         self.later_note = Note("info", "Агента можно подключить позже.", "Подключение — в Настройках → MCP-сервер. Запись в конфиг требует разрешения.")
         layout.insertWidget(layout.count() - 1, self.later_note)
@@ -429,6 +442,9 @@ class OnboardingScreen(Screen):
         layout.insertWidget(layout.count() - 1, link, 0, Qt.AlignLeft)
         self.sync_display()
         return page
+
+    def connect_agent(self):
+        PermissionDialog(self.host.core_executable, ("claude-code",), self).exec_()
 
     def pick(self, mode):
         self.host.set_display(mode)
