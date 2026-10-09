@@ -314,7 +314,7 @@ class IntegrationPanel(QWidget):
         return status, backups
 
     def refresh(self):
-        if self.isVisible() or self.state is None:
+        if self.isVisible():  # a hidden or closed page never keeps calling the core
             self._request(self._read, self.loaded)
 
     def loaded(self, answer):
