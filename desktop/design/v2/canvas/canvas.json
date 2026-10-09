@@ -748,6 +748,14 @@
       "is_interactive": true,
       "x": 12280,
       "y": 14080
+    },
+    "QuickScan.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "Быстрый запуск · командная строка",
+      "w": 1440,
+      "x": 11460,
+      "y": 3180
     }
   },
   "createdOnFiles": {
@@ -858,6 +866,7 @@
     "ProjSettings.dc.html",
     "ProjSchedule.dc.html",
     "ProjExport.dc.html",
+    "QuickScan.dc.html",
     "ScanDialog.dc.html",
     "ScanList.dc.html",
     "ScanRun.dc.html",
