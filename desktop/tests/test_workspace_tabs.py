@@ -18,11 +18,13 @@ from PyQt5.QtWidgets import (
 )
 
 from seohead_desktop.ui.workspace_tabs import WorkspaceContext, WorkspaceTabs
+from tests._qt import sweep_widgets
 
 
 class WorkspaceTabsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        sweep_widgets()
         cls.app = QApplication.instance() or QApplication([])
         cls.app.setStyle("Fusion")
 

@@ -12,6 +12,7 @@ from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
+from tests._qt import sweep_widgets
 
 
 def section_ids(nav):
@@ -31,6 +32,7 @@ class ShellV2Tests(unittest.TestCase):
         load_theme(cls.app, "light")
 
     def setUp(self):
+        sweep_widgets()
         self.window = MainWindow(persistent=False)
 
     def tearDown(self):

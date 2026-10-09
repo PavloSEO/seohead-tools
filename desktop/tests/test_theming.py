@@ -8,6 +8,7 @@ from PyQt5.QtCore import QtMsgType, qInstallMessageHandler
 from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from seohead_desktop import theming
+from tests._qt import sweep_widgets
 
 
 def luminance(hex_color):
@@ -25,6 +26,9 @@ class ThemingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        sweep_widgets()
 
     def tearDown(self):
         theming.set_active_theme("light")
