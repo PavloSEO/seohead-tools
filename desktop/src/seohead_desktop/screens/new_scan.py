@@ -532,6 +532,7 @@ class NewScanDialog(QDialog):
             name = QLabel()
             name.setProperty("text_style", "meta")
             name.setMinimumWidth(118)
+            name.setWordWrap(True)  # long captions wrap by word instead of being cut
             value = QLabel()
             value.setObjectName("plan_" + key)
             value.setWordWrap(True)
