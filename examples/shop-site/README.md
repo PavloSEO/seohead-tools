@@ -68,27 +68,16 @@ host in the commands below accordingly.
 ## Reproduce the three-scan project
 
 ```bash
-export SEOHEAD_ALLOW_PRIVATE_HOSTS=shop.example.test   # scoped private-host opt-in
-P=/path/to/shop-project
-seohead project-new --directory $P/project --target http://shop.example.test:18431/ --label "Мебельный магазин"
-cat > $P/crawl-config.json <<'EOF'
-{"limits": {"max_depth": -1, "max_urls": 5000, "max_query_variants_per_path": 20},
- "speed": {"min_delay_seconds": 0.02, "concurrency": 4},
- "resources": {"fetch": true},
- "sitemaps": {"auto_discover": true}}
-EOF
-for v in v1 v2 v3; do
-  python examples/shop-site/shop_site.py serve --version $v --port 18431 --ready-file $P/ready.json --lifetime 1800 &
-  SRV=$!; while [ ! -f $P/ready.json ]; do sleep 0.1; done
-  seohead crawl-site --project $P/project --config $P/crawl-config.json \
-    --scan-out $P/project/scans/scan-$v.sqlite --approve-large-crawl -q > $P/crawl-$v.json
-  kill $SRV; wait $SRV; rm $P/ready.json
-done
-seohead compare-crawls --before $P/project/scans/scan-v1.sqlite --after $P/project/scans/scan-v2.sqlite --out-dir $P/compare-1-2
-seohead compare-crawls --before $P/project/scans/scan-v2.sqlite --after $P/project/scans/scan-v3.sqlite --out-dir $P/compare-2-3
-for v in v1 v2 v3; do seohead sf tasks --json $P/project/scans/scan-$v.sqlite --out $P/tasks-$v -q; done
-seohead scan-content-search --scan $P/project/scans/scan-v1.sqlite --query GTM-K7OLD12 --scope raw_html --out-dir $P/search-v1
+python examples/shop-site/reproduce.py --out /path/to/shop-project
+python examples/shop-site/reproduce.py --out /path/to/shop-project --host shop.localhost   # no hosts entry
 ```
+
+`reproduce.py` creates the project «Мебельный магазин» for `http://<host>:18431/`, then for each
+of v1, v2, v3 starts the site, runs `crawl-site --project` with the loopback crawl config it
+writes to `crawl-config.json`, and stops the server. Afterwards it runs, offline,
+`compare-crawls` for 1→2 and 2→3, `sf tasks` per scan, and `scan-content-search` for the
+retired tag-manager marker `GTM-K7OLD12`. `SEOHEAD_ALLOW_PRIVATE_HOSTS` is set to the host for
+the crawl only. Expect about a minute per scan.
 
 The defaults (`limits.max_depth` 5, `max_query_variants_per_path` 5, `speed.min_delay_seconds`
 0.5) are polite settings for real sites; on loopback they would only truncate pagination and
