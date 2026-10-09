@@ -1,19 +1,36 @@
 """Sitemap-only native input remains a declared population, never a spider seed."""
 
-from contextlib import closing
-from http.server import BaseHTTPRequestHandler
-from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QCheckBox, QApplication, QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QSpinBox
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+)
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.scan_runner import crawl_arguments
-from tests.test_scan_runner import core_cli, owned_site, create_project, close_window, preserve, wait_for, snapshot
+from tests.test_scan_runner import (
+    close_window,
+    core_cli,
+    create_project,
+    owned_site,
+    preserve,
+    snapshot,
+    wait_for,
+)
 
 
 class _SitemapSite(BaseHTTPRequestHandler):

@@ -25,3 +25,16 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 seohead_desktop = ["theme/*.json", "theme/*.qss", "assets/icons/*", "assets/fonts/*", "assets/app/*", "assets/*.json", "fixtures/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["design", "build", "dist", ".build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# Cyrillic UI strings are intentional (RUF001-003); B905/SIM105 are style-only here.
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "B905", "SIM102", "SIM105", "E731", "B007", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_packaging.py" = ["E402"]

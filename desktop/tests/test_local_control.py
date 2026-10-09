@@ -67,7 +67,7 @@ class LocalControlTests(unittest.TestCase):
         def run():
             try:
                 result.append(function())
-            except Exception as exc:  # noqa: BLE001 - propagate worker failures into the test thread
+            except Exception as exc:
                 failure.append(exc)
 
         thread = threading.Thread(target=run)

@@ -537,8 +537,8 @@ class WorkspaceTabs(QWidget):
                 text = sequence.toString(QKeySequence.PortableText)
                 if (
                     text in seen
-                    or tab_only
-                    and text.split("+")[-1] not in {"Tab", "Backtab"}
+                    or (tab_only
+                    and text.split("+")[-1] not in {"Tab", "Backtab"})
                 ):
                     continue
                 seen.add(text)

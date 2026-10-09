@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import tempfile
 import threading
 import unittest
-
+from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "examples" / "qa-site" / "qa_site.py"
 SPEC = importlib.util.spec_from_file_location("seohead_qa_site", SOURCE)

@@ -76,8 +76,8 @@ def _checked_path(path, *, directory=False, private=False):
             raise ValueError
         if os.name != "nt" and (
             info.st_uid != os.geteuid()
-            or private
-            and stat.S_IMODE(info.st_mode) != (0o700 if directory else 0o600)
+            or (private
+            and stat.S_IMODE(info.st_mode) != (0o700 if directory else 0o600))
         ):
             raise ValueError
     except (OSError, ValueError):
@@ -209,7 +209,7 @@ def _json_tree(value, depth=0):
     if value is None or type(value) is bool:
         return
     if type(value) in {int, float}:
-        if abs(value) > 2**63 - 1 or type(value) is float and not math.isfinite(value):
+        if abs(value) > 2**63 - 1 or (type(value) is float and not math.isfinite(value)):
             raise ControlError(
                 "invalid_request", "JSON numbers must be finite and bounded"
             )
@@ -587,7 +587,7 @@ class DesktopControlServer(QObject):
                     response = _error(request_id, exc.code, str(exc))
                 except ValueError as exc:
                     response = _error(request_id, "rejected", str(exc))
-                except Exception:  # noqa: BLE001 - never let an owner callback crash the Qt event loop
+                except Exception:
                     response = _error(
                         request_id,
                         "callback_failed",
@@ -682,8 +682,8 @@ def request(
                     type(response) is not dict
                     or response.get("protocol") != PROTOCOL
                     or response.get("instance_id") != identity.instance_id
-                    or response.get("id") != request_id
-                    and response.get("id") is not None
+                    or (response.get("id") != request_id
+                    and response.get("id") is not None)
                     or type(response.get("ok")) is not bool
                 ):
                     raise ControlError(

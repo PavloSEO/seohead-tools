@@ -1,20 +1,20 @@
 """Owned-widget smoke tests; no target requests or scan launch."""
 
-import os
-from pathlib import Path
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QDialog
 
-from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop import bundle
+from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.bundle import verified_bundled_core_identity
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
 from seohead_desktop.scan_runner import crawl_arguments, resume_arguments

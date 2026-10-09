@@ -166,7 +166,7 @@ class McpGatewayLifecycleTests(unittest.TestCase):
         def run():
             try:
                 self.gateway.run()
-            except BaseException as exc:  # noqa: BLE001 - propagate worker failure to the test thread
+            except BaseException as exc:
                 self.worker_errors.append(repr(exc))
 
         self.worker = threading.Thread(target=run, daemon=True)

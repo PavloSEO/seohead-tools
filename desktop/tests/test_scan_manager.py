@@ -1,8 +1,8 @@
 """Ownership, admission failure, and post-exit observer regression tests."""
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from PyQt5.QtWidgets import QApplication

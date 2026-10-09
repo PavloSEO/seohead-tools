@@ -93,7 +93,7 @@ class ContentSearchController(QObject):
         return self._job is not None or self._pending is not None
 
     def set_available(self, tools):
-        self.available = TOOLS <= set(tools)
+        self.available = set(tools) >= TOOLS
         if not self.active and self._result is None:
             self._emit("unavailable", "Готов к поиску по всему сохранённому скану" if self.available else "Подключённое ядро не поддерживает поиск по сохранённым телам")
         else:

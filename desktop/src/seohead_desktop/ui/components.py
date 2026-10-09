@@ -36,6 +36,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .icons import material_icon
 from .presentation import (
     COLUMN_LABELS,
     ElidedLabel,
@@ -45,7 +46,6 @@ from .presentation import (
     theme_tokens,
 )
 from .tabcatalogue import filter_id
-from .icons import material_icon
 
 PAGE_LIMIT = 100
 ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "icons"

@@ -2,13 +2,33 @@
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QGridLayout,
-    QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QTableView, QToolButton, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QTableView,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..content_search import SEARCH_PRESETS
 from .components import PageModel, material_icon
-from .presentation import ElidedLabel, StateBadge, value_text, theme_tokens, content_spacing, ProjectEmptyState
+from .presentation import (
+    ElidedLabel,
+    ProjectEmptyState,
+    StateBadge,
+    content_spacing,
+    theme_tokens,
+    value_text,
+)
 
 
 class _SearchModel(PageModel):

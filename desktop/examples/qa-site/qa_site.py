@@ -14,14 +14,13 @@ import html
 import ipaddress
 import json
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 import signal
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-
 
 FORMAT = "seohead.qa-site.v1"
 PROFILES = ("broken", "clean", "fix-delta", "tracking")
@@ -175,14 +174,14 @@ def _body(profile: str, path: str) -> tuple[int, dict[str, str], bytes]:
             return tracked
     if path == "/robots.txt":
         return 200, {"Content-Type": "text/plain; charset=utf-8", **common_headers}, (
-            "User-agent: *\nAllow: /\nDisallow: /private/\nSitemap: /sitemap.xml\n"
-        ).encode()
+            b"User-agent: *\nAllow: /\nDisallow: /private/\nSitemap: /sitemap.xml\n"
+        )
     if path == "/sitemap.xml":
         return 200, {"Content-Type": "application/xml", **common_headers}, (
-            "<?xml version='1.0' encoding='UTF-8'?><sitemapindex>"
-            "<sitemap><loc>/sitemap-main.xml</loc></sitemap>"
-            "<sitemap><loc>/sitemap-extra.xml</loc></sitemap></sitemapindex>"
-        ).encode()
+            b"<?xml version='1.0' encoding='UTF-8'?><sitemapindex>"
+            b"<sitemap><loc>/sitemap-main.xml</loc></sitemap>"
+            b"<sitemap><loc>/sitemap-extra.xml</loc></sitemap></sitemapindex>"
+        )
     if path == "/sitemap-main.xml":
         urls = ["/", "/broken/duplicate-a", "/broken/duplicate-b", "/broken/canonical-source", "/orphan"]
         if profile == "clean":

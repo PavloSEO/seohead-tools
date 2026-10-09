@@ -61,21 +61,19 @@ from PyQt5.QtWidgets import (
 )
 
 from .comparison import ComparisonController
-from .content_search import ContentSearchController, SEARCH_PRESETS
-from .ui.content_search_panel import ContentSearchPanel
-from .ui.workspace_tabs import WorkspaceContext, WorkspaceTabs
-from .ui.icons import material_icon as icon
-from .ui.popup_style import install_popup_style
-from .ui.work_monitor import WorkMonitor, RUN_LIMIT, bounded_observed_runs
-from .ui.help_guide import HelpGuideDialog
+from .content_search import SEARCH_PRESETS, ContentSearchController
 from .crawl_configuration import preview_configuration, validate_overrides
-from .mcp_gateway import PersistentMcpGateway
 from .local_control import ControlError, DesktopControlServer, prepare_endpoint, validate_arguments
+from .mcp_gateway import PersistentMcpGateway
 from .models import RecordModel, UrlModel
 from .scan_manager import LocalScanManager
 from .scan_runner import crawl_arguments
+from .ui.content_search_panel import ContentSearchPanel
 from .ui.crawl_configuration_dialog import CrawlConfigurationDialog
+from .ui.help_guide import HelpGuideDialog
+from .ui.icons import material_icon as icon
 from .ui.panels import AuditWorkspace, ProjectPanels, component_stylesheet
+from .ui.popup_style import install_popup_style
 from .ui.presentation import (
     FIELDS,
     ElidedLabel,
@@ -83,14 +81,15 @@ from .ui.presentation import (
     StateBadge,
     SwitchCheckBox,
     WorkspaceSplitter,
-    field_text,
     content_spacing,
+    field_text,
     readable_record,
     run_projection,
     state_text,
     theme_tokens,
     value_text,
 )
+from .ui.work_monitor import RUN_LIMIT, WorkMonitor, bounded_observed_runs
 from .ui.workspace import (
     LAYOUT_SCHEMA,
     LAYOUTS,
@@ -101,6 +100,7 @@ from .ui.workspace import (
     keep_on_screen,
     system_reduced_motion,
 )
+from .ui.workspace_tabs import WorkspaceContext, WorkspaceTabs
 
 ROOT = Path(__file__).resolve().parent
 CONSUMER_ID = "desktop/gui"

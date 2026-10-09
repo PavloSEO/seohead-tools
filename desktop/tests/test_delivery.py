@@ -66,9 +66,8 @@ class DeliveryTests(unittest.TestCase):
             manifest.importlib.util,
             "find_spec",
             return_value=SimpleNamespace(origin="/different/seohead/__init__.py"),
-        ):
-            with self.assertRaisesRegex(ValueError, "different source"):
-                manifest.verify_import_sources(core, desktop)
+        ), self.assertRaisesRegex(ValueError, "different source"):
+            manifest.verify_import_sources(core, desktop)
         paths = [
             core / "seohead" / "__init__.py",
             desktop / "src" / "seohead_desktop" / "__init__.py",

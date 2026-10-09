@@ -56,7 +56,7 @@ class DesktopControlIntegrationTests(unittest.TestCase):
         def run():
             try:
                 result.append(function())
-            except Exception as exc:  # noqa: BLE001 - propagate peer failures to the test thread
+            except Exception as exc:
                 failures.append(exc)
 
         thread = threading.Thread(target=run)

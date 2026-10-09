@@ -7,8 +7,8 @@ import json
 import os
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")

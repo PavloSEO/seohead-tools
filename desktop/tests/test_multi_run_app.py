@@ -1,20 +1,26 @@
 """Bounded Qt selection regressions and real MCP-owned crawl acceptance."""
 
-from contextlib import closing
 import hashlib
 import json
 import signal
 import sqlite3
 import subprocess
 import unittest
+from contextlib import closing
 from unittest.mock import patch
 
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
 from tests.test_scan_runner import (
-    close_window, core_cli, create_project, owned_site, preserve, retained_pages,
-    snapshot, wait_for,
+    close_window,
+    core_cli,
+    create_project,
+    owned_site,
+    preserve,
+    retained_pages,
+    snapshot,
+    wait_for,
 )
 
 

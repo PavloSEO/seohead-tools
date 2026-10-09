@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QCheckBox, QComboBox, QPushButton, QSpinBox
 
@@ -14,7 +14,15 @@ from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.local_control import ControlError
 from seohead_desktop.ui.panels import component_stylesheet
 from tests.test_crawl_configuration import descriptor
-from tests.test_scan_runner import core_cli, owned_site, create_project, close_window, preserve, wait_for, snapshot
+from tests.test_scan_runner import (
+    close_window,
+    core_cli,
+    create_project,
+    owned_site,
+    preserve,
+    snapshot,
+    wait_for,
+)
 
 
 class FullScanPlanTests(unittest.TestCase):

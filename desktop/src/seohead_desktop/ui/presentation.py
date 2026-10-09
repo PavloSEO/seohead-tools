@@ -12,13 +12,13 @@ from PyQt5.QtGui import QColor, QPainter, QPalette, QPen
 from PyQt5.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QSplitter,
     QSplitterHandle,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 

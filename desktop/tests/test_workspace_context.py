@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QTest
+from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.local_control import ControlError

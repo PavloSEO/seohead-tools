@@ -1,9 +1,11 @@
 """Native history navigation retains its scope and avoids resetting on heartbeats."""
 
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
+
 from PyQt5.QtWidgets import QApplication
+
 from seohead_desktop.app import MainWindow
 
 
@@ -58,9 +60,9 @@ class RunHistoryControlTests(unittest.TestCase):
         self.assertFalse(self.window._run_history_supported)
 
     def test_actual_core_fifty_terminal_ids_remain_accessible_in_native_models(self):
-        from seohead.projects.workspace import create_project
         from seohead.projects import run_observation
         from seohead.projects.observer import observe
+        from seohead.projects.workspace import create_project
 
         scratch = Path(__file__).resolve().parents[1] / ".build"
         scratch.mkdir(exist_ok=True)

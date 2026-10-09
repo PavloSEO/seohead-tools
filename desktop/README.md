@@ -49,7 +49,7 @@ Tests (run from `desktop/`, the suite imports its helpers as `tests.*`):
 `cd desktop && QT_QPA_PLATFORM=offscreen ../.venv-desktop/bin/python -m unittest discover -s tests` — 256 tests, 13 skipped.
 Bundle (macOS): `desktop/scripts/build_macos.sh` → `desktop/dist/SEOHEAD Desktop.app` (ignored by git).
 
-`desktop/` is excluded from the core's ruff/pytest/packaging; it has its own toolchain.
+`desktop/` is excluded from the core's ruff/pytest/packaging; it has its own toolchain. Lint: `cd desktop && ../.venv-desktop/bin/ruff check .` (config in `desktop/pyproject.toml`).
 `packaging/source-install.json` still pins a core commit from the time this was a separate
 repository — inside the monorepo the core is `..`; updating that flow is part of the redesign.
 

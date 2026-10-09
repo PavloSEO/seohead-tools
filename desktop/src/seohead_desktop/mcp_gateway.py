@@ -311,7 +311,7 @@ class PersistentMcpGateway(QRunnable):
                         raise
             if scope.cancel_called:
                 error = f"Local MCP {phase} timed out after {timeout:g} seconds"
-        except Exception as exc:  # noqa: BLE001 - reconnect after SDK bootstrap/transport failure
+        except Exception as exc:
             while len(getattr(exc, "exceptions", ())) == 1:
                 exc = exc.exceptions[0]
             error = str(exc)

@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
 
 from .components import ASSET_ROOT, material_icon
 from .icons import MaterialIconLabel
-from .presentation import StateBadge, readable_record, theme_tokens, content_spacing
+from .presentation import StateBadge, content_spacing, readable_record, theme_tokens
 
 STATUSES = (
     ("resolved", "Исправлено", "Подтверждено проверкой", "check_circle", "success"),

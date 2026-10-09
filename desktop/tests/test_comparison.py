@@ -1,21 +1,21 @@
 """Bounded immutable-package presentation and actual offline MCP comparison."""
 
-from contextlib import closing
 import hashlib
 import json
 import os
-from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
+from pathlib import Path
 
-from PyQt5.QtCore import QObject, QThreadPool, Qt, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThreadPool, pyqtSignal
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.comparison import ComparisonController, comparison_page, retained_pair
 from seohead_desktop.mcp_gateway import PersistentMcpGateway
-from tests.test_scan_runner import core_cli, close_window, wait_for
+from tests.test_scan_runner import close_window, core_cli, wait_for
 
 
 class ComparisonTests(unittest.TestCase):

@@ -25,10 +25,10 @@ from PyQt5.QtWidgets import (
 from .components import PageModel, material_icon
 from .icons import MaterialIconLabel
 from .presentation import (
-    content_spacing,
-    ProjectEmptyState,
     ElidedLabel,
+    ProjectEmptyState,
     StateBadge,
+    content_spacing,
     field_text,
     run_projection,
     state_text,

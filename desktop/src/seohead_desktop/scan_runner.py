@@ -155,7 +155,7 @@ def crawl_arguments(
             continue
         if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_.]*", key):
             raise ValueError("invalid validated crawl override path")
-        if not isinstance(value, (str, int, float, bool, list)) or isinstance(value, float) and not math.isfinite(value):
+        if not isinstance(value, (str, int, float, bool, list)) or (isinstance(value, float) and not math.isfinite(value)):
             raise ValueError("unsupported local crawl override")
         typed_overrides[key] = value
     if max_urls == 0:
