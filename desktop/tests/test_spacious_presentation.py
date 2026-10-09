@@ -38,10 +38,11 @@ class SpaciousPresentationTests(unittest.TestCase):
         for row, view in ((10, window.content_search_panel),):  # row 0 is the Work screen now: its empty state is tested in test_screen_work
             window.navigation.setCurrentRow(row)
             self.app.processEvents()
-            self.assertTrue(view.empty_project.isVisible())
-            self.assertLessEqual(view.empty_project.open_button.height(), 48)
+            button = view.state_panel.action  # the rebuilt «Поиск в HTML» screen shows the shared no-project state
+            self.assertTrue(button.isVisible())
+            self.assertLessEqual(button.height(), 48)
             with patch("seohead_desktop.project_io.QFileDialog.getExistingDirectory", return_value="") as chooser:
-                QTest.mouseClick(view.empty_project.open_button, Qt.LeftButton)
+                QTest.mouseClick(button, Qt.LeftButton)
                 chooser.assert_called_once()
         self.assertIsNone(window.mcp_gateway)
 
