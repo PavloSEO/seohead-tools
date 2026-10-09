@@ -31,9 +31,13 @@ def _implementation_identity(kind: str) -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
     names = ["storage/corpus_inputs.py", "storage/bodies.py", "crawl/evidence.py"]
     names += {
-        "duplicate": ["tools/duplicate.py", "tools/markdown_extract.py", "tools/content_area.py"],
-        "boilerplate": ["tools/boilerplate_report.py"],
-        "semantic": ["tools/content_area.py", "tools/text_normalize.py"],
+        "duplicate": [
+            "checks/duplicate.py",
+            "checks/markdown_extract.py",
+            "checks/content_area.py",
+        ],
+        "boilerplate": ["checks/boilerplate_report.py"],
+        "semantic": ["checks/content_area.py", "checks/text_normalize.py"],
     }[kind]
     digest = hashlib.sha256()
     for name in names:

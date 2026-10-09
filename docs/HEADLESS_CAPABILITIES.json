@@ -1,7 +1,7 @@
 {
   "schema": "seohead.headless-capabilities.v1",
   "inventory_source": "seohead.crawl.settings.describe_settings",
-  "inventory_sha256": "7aef0552df38e56ddb0fa18936568b9b4a5c44f0d925f81575d86407879d2e37",
+  "inventory_sha256": "2cddfa22579ca3c790bfc400e54739d0856f271cf09f008554acb6a8635e46a6",
   "settings_count": 114,
   "settings": [
     {
