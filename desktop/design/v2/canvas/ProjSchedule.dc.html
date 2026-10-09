@@ -38,6 +38,7 @@
   <dc-import name="SideNav" mode="agent" active="scans" h="786" hint-size="200px,786px"></dc-import>
   <main class="main">
     <div class="sechead"><span class="ms s24" aria-hidden="true" style="color: #1565C0">event_repeat</span><h1>Расписание сканов</h1><span class="meta">запуски по профилю проекта</span><div style="flex: 1"></div><button class="btn pri" onClick="{{add}}"><span class="ms s18" aria-hidden="true">add</span>Новое расписание</button></div>
+    <div class="tabbar" role="tablist" aria-label="Разделы проекта"><a class="tab" href="/ProjSettings.dc.html"><span class="ms s18" aria-hidden="true">settings</span>Основное</a><a class="tab" href="/ProjSources.dc.html"><span class="ms s18" aria-hidden="true">dns</span>Источники</a><a class="tab on" href="/ProjSchedule.dc.html" aria-current="page"><span class="ms s18" aria-hidden="true">event_repeat</span>Расписание</a><a class="tab" href="/ProjExport.dc.html"><span class="ms s18" aria-hidden="true">ios_share</span>Экспорт</a></div>
     <div class="banner i"><span class="ms" aria-hidden="true">info</span><span style="flex: 1">Расписание срабатывает, только пока открыт SEOHEAD Desktop или запущен <span class="mono">seohead watch</span> в терминале. Пропущенный запуск выполнится при следующем старте.</span><a class="btn txt" href="/CLI.dc.html">Как запустить watch</a></div>
     <div class="pw"><div class="pb" style="grid-template-rows: minmax(0, 1fr) auto">
       <section class="cd">
