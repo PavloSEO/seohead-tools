@@ -474,7 +474,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Multiple <head> Tags", "HEAD_MULTIPLE"),
         _c("Missing <body> Tag", "BODY_MISSING"),
         _c("Multiple <body> Tags", "BODY_MULTIPLE"),
-        _c("HTML Document Over 2MB", "LARGE_HTML"),
+        _c("HTML Document Over 2MB", "HTML_OVER_2MB"),
         _p(
             "Resource Over 2MB",
             "a body above the configured ceiling is recorded and not parsed; it is a limit, "

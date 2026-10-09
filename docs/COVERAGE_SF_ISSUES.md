@@ -346,7 +346,7 @@ having, because the alternative is an absence nobody has noticed.
 | Multiple <head> Tags | check | `HEAD_MULTIPLE` |  |
 | Missing <body> Tag | check | `BODY_MISSING` |  |
 | Multiple <body> Tags | check | `BODY_MULTIPLE` |  |
-| HTML Document Over 2MB | check | `LARGE_HTML` |  |
+| HTML Document Over 2MB | check | `HTML_OVER_2MB` |  |
 | Resource Over 2MB | partial | — | a body above the configured ceiling is recorded and not parsed; it is a limit, not a finding |
 | Invalid HTML Elements In <head> | check | `INVALID_HEAD_ELEMENT` |  |
 | <body> Element Preceding <html> | check | `HEAD_NOT_FIRST` |  |

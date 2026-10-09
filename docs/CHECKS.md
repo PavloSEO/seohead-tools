@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**183 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -121,6 +121,7 @@ python scripts/generate_checks_reference.py
 | `ORPHAN_PAGE` | warning | SF-derived | Orphan page has no internal inlinks | Add relevant internal links so users and crawlers can discover the page. |
 | `SLOW_RESPONSE` | warning | SF-derived | Slow server response | Improve TTFB by profiling the application and origin, then optimizing caching and infrastructure. |
 | `LARGE_HTML` | warning | SF-derived+heuristic | HTML document is large in absolute terms or relative to the site | Reduce HTML size by removing unnecessary markup, extracting inline styles or scripts, and avoiding embedded base64 assets. |
+| `HTML_OVER_2MB` | warning | SF-derived+heuristic | HTML document is larger than 2 MB | Cut the document below 2 MB: remove inline data URIs and base64 assets, move inline CSS and scripts into cached files, and trim repeated markup. |
 
 ## 7.J — security
 
