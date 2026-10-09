@@ -8,8 +8,9 @@ SEOHEAD Tools runs locally through a CLI and one stdio MCP server. Both use the 
 registry. The optional `remote` extra defines an authenticated, versioned HTTP contract over the
 same Python core. It does not start a listener or provide a worker backend: self-hosted execution,
 target/egress policy and deployment are separate work under #785–#787. Local installs and their
-CLI/MCP behavior do not depend on the HTTP extra. There is no hosted account, GUI, desktop shell,
-or public MCP endpoint.
+CLI/MCP behavior do not depend on the HTTP extra. The native desktop app
+(`desktop/`, PyQt5) is a presentation adapter over the same handlers. There is no hosted account,
+web dashboard or public MCP endpoint.
 
 Reports are output formats, not interfaces. XLSX and DOCX are allowed because they are useful work
 products; report renderers still contain no network or finding logic.

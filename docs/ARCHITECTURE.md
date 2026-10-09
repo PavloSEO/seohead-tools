@@ -157,7 +157,8 @@ numpy scalars and no `inf`/`NaN`.
 
 **CLI and local MCP stay independent of the optional remote contract.** The authenticated HTTP
 adapter needs an injected durable backend and egress policy; it starts no service by itself. A
-GUI, desktop app, hosted account, and public MCP endpoint are outside the current boundary.
+SEOHEAD Desktop (`desktop/`, PyQt5) is a native presentation adapter over the same core. A hosted account,
+web dashboard and public MCP endpoint are outside the current boundary.
 Report files (xlsx/docx) are output, not an interface.
 
 **MIT project code with compatible dependencies.** Prefer permissive dependencies and review any
