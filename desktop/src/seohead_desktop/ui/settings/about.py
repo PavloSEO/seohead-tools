@@ -6,7 +6,7 @@ import os
 import platform
 from importlib import metadata
 
-from PyQt5.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, QLocale, QTimeZone
+from PyQt5.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, QLocale, Qt, QTimeZone
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import brand, theming
-from ...i18n import trf
+from ...i18n import tr, trf
 from ..icons import material_icon
 from .actions import Columns, action_button, button_row, format_size, key_values, meta_label
 from .helpers import group_label, page
@@ -81,22 +81,21 @@ def _license_row(name, license_name):
 
 def _header(version):
     box = QWidget()
-    layout = QHBoxLayout(box)
+    layout = QVBoxLayout(box)
     layout.setContentsMargins(0, 10, 0, 6)
-    layout.setSpacing(18)
+    layout.setSpacing(6)
     logo = QLabel()
-    logo.setPixmap(brand.render(brand.lockup_path(), 240))  # brandbook: About = lockup (mark + name) + version
-    logo.setAccessibleName("SEOHEAD")
-    layout.addWidget(logo)
-    text = QVBoxLayout()
-    text.setSpacing(2)
-    title = QLabel("Desktop")
-    title.setProperty("brand", "title")
-    sub = meta_label(trf("{version} · открытый исходный код · © 2026 Павел Борушко", version=version))
+    logo.setPixmap(brand.render(brand.lockup_path(), 240))  # brandbook: About = lockup (mark + name); the product is «SEOHEAD Tools»
+    logo.setAccessibleName("SEOHEAD Tools")
+    layout.addWidget(logo, 0, Qt.AlignLeft)
+    core = _core_version()
+    parts = [trf("Desktop · версия {version}", version=version)]
+    if core:
+        parts.append(trf("ядро {core}", core=core))
+    parts.append(tr("открытый исходный код · © 2026 Павел Борушко"))
+    sub = meta_label(" · ".join(parts))
     sub.setContentsMargins(0, 0, 0, 0)
-    text.addWidget(title)
-    text.addWidget(sub)
-    layout.addLayout(text, 1)
+    layout.addWidget(sub)
     return box
 
 

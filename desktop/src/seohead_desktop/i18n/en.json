@@ -404,7 +404,6 @@
  "Память": "Memory",
  "Локаль": "Locale",
  "ОС": "OS",
- "{version} · открытый исходный код · © 2026 Павел Борушко": "{version} · open source · © 2026 Pavel Borushko",
  "Приложение": "App",
  "Ядро seohead": "seohead core",
  "MCP-протокол": "MCP protocol",
@@ -1820,5 +1819,8 @@
  "Экран появится в одной из следующих версий приложения.": "The screen will appear in one of the next versions of the app.",
  "Граф ссылок": "Link graph",
  "нужен проект": "project needed",
- "Нужен проект · «Сохранить как проект»": "Project needed · “Save as project”"
+ "Нужен проект · «Сохранить как проект»": "Project needed · “Save as project”",
+ "Desktop · версия {version}": "Desktop · version {version}",
+ "ядро {core}": "core {core}",
+ "открытый исходный код · © 2026 Павел Борушко": "open source · © 2026 Pavel Borushko"
 }

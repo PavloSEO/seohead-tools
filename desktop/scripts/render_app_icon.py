@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Render the SEOHEAD logo SVGs into native icon containers with Qt.
+"""Render the brandbook SVGs (assets/brand) into native icon containers with Qt, deterministically.
 
-Sizes up to SMALL_MAX use the simplified mark (app/seohead-small.svg) when it exists:
-the detailed logo turns into noise at favicon sizes.
+Brandbook: sizes 48 and up use the medium logo (brand/seohead-logo.svg); 16-32 px (incl. the .ico/.icns small frames and the
+tray) use the spider (brand/seohead-spider.svg). app/seohead.svg and app/seohead-small.svg are copies of those two sources.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from PyQt5.QtSvg import QSvgRenderer
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "src" / "seohead_desktop" / "assets"
 SIZES = (16, 24, 32, 48, 64, 128, 256, 512, 1024)
-SMALL_MAX = 48
+SMALL_MAX = 32
 
 
 def source_for(size: int, source: Path, small: Path) -> Path:
@@ -96,9 +96,9 @@ def render(source: Path, output: Path, small: Path) -> list[Path]:
 def derived_from(path: Path, source: Path, small: Path) -> str:
     stem = path.stem.rsplit("-", 1)[-1]
     if stem.isdigit():
-        return f"app/{source_for(int(stem), source, small).name}"
-    # ICO/ICNS mix both sources: small mark for the small frames, full logo above.
-    return "app/seohead.svg + app/seohead-small.svg"
+        return f"brand/{source_for(int(stem), source, small).name}"
+    # ICO/ICNS mix both sources: the spider for the small frames, the logo above.
+    return "brand/seohead-logo.svg + brand/seohead-spider.svg"
 
 
 def main() -> int:
@@ -107,7 +107,9 @@ def main() -> int:
     args = parser.parse_args()
     app = QGuiApplication.instance() or QGuiApplication([])
     app.setApplicationName("SEOHEAD icon export")
-    source, small = ASSETS / "app" / "seohead.svg", ASSETS / "app" / "seohead-small.svg"
+    source, small = ASSETS / "brand" / "seohead-logo.svg", ASSETS / "brand" / "seohead-spider.svg"
+    shutil.copyfile(source, ASSETS / "app" / "seohead.svg")
+    shutil.copyfile(small, ASSETS / "app" / "seohead-small.svg")
     paths = render(source, args.output.resolve(), small)
     if args.output.resolve() == (ASSETS / "app").resolve():
         manifest_path = ASSETS / "asset-manifest.json"

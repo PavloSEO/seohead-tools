@@ -306,72 +306,6 @@
     "sha256": "7f130bb8423c13d3c70ba6bd25550e344e2d1a61df073b4fac467cbb2f7e25b6"
   },
   {
-    "path": "app/seohead-16.png",
-    "derived_from": "app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "824d550317671ce5a1117b20f3c09adde02da05e8e99ce3db4b061668ae5eec5"
-  },
-  {
-    "path": "app/seohead-24.png",
-    "derived_from": "app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "f04cce5ead830faa6e337805a9d7431f58563565bc3e175a6a2142d5589f029e"
-  },
-  {
-    "path": "app/seohead-32.png",
-    "derived_from": "app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "f9a5e59a19a13ac5936bcaf0f79550e0774fa665c20301078e064157fc0a2430"
-  },
-  {
-    "path": "app/seohead-48.png",
-    "derived_from": "app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "c386f7e6172611d2f026b6f94579baffe0ab07134e11bcc930d3060e50c0f9f6"
-  },
-  {
-    "path": "app/seohead-64.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "16018e9ee0b95aea6a5791271e5cadc3a5dca623f9a5a6d729d89d42edc44a99"
-  },
-  {
-    "path": "app/seohead-128.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "22a9184c5e8318d66f2430ab6067cd08be8278ad90715a3cc2d2780e0b521053"
-  },
-  {
-    "path": "app/seohead-256.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "75612700d05bb231ee1fcc394f6ae9c4fdb92855cf4af9b7bb20624bb6db405f"
-  },
-  {
-    "path": "app/seohead-512.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "aa376cb33df8bdeaf0f5745cb05b10258b2bbc9ffae774df5c264141f4c609aa"
-  },
-  {
-    "path": "app/seohead-1024.png",
-    "derived_from": "app/seohead.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "0f02d03a7d5090bbfb91c44f55315ade412977c3c09fe4e34bc786ffa8a4d66e"
-  },
-  {
-    "path": "app/seohead.ico",
-    "derived_from": "app/seohead.svg + app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "6d601a5de38070aa68c2e87853154657c8484fff18586153467d95f8a6585718"
-  },
-  {
-    "path": "app/seohead.icns",
-    "derived_from": "app/seohead.svg + app/seohead-small.svg",
-    "generator": "Chromium/Playwright stand-in for scripts/render_app_icon.py (no PyQt5 env); iconutil for ICNS",
-    "sha256": "a7f9ad0dbc92dd3e386f9bc0c2603cac92df232ebbd1b1efb49cc2c6ca4fbc5c"
-  },
-  {
     "path": "icons/add.svg",
     "url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/add/materialsymbolsoutlined/add_24px.svg",
     "sha256": "e9532de2b9be01ce951e899e98ee673bb97acd574f0db118feb72fe074a1c376"
@@ -1015,5 +949,71 @@
     "path": "icons/sync_problem.svg",
     "url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/sync_problem/materialsymbolsoutlined/sync_problem_24px.svg",
     "sha256": "3461aa9c5fb6031a0e30d8d275bf1fb033969b46a07a9512bbd8146a8939c5b0"
+  },
+  {
+    "path": "app/seohead-16.png",
+    "derived_from": "brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "cab9e6520064fb8cfd2fc9806afd1c633f16e83f5d9465a91ea330dca9213f6e"
+  },
+  {
+    "path": "app/seohead-24.png",
+    "derived_from": "brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "d858931d056c4e2665178c86f0c84d240ed7da97757c67e0a4b86915edda99fe"
+  },
+  {
+    "path": "app/seohead-32.png",
+    "derived_from": "brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "8db5d6378901babe0e5f2e2a5454edacbe947a090022debbfedd8911f60f775a"
+  },
+  {
+    "path": "app/seohead-48.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "1c71e78ae5ecc26e7cd6178c9bad41c5b23636a1117428ef57e9b882ea78b10a"
+  },
+  {
+    "path": "app/seohead-64.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "b13956e8f7e932d8292439568e3f06ca942dee8fd2fa9f92f08561f8407b0db4"
+  },
+  {
+    "path": "app/seohead-128.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "bd2b44fac734cd7d8be825a1f01c184250806015712da6c90d5b1e1bb5a751ce"
+  },
+  {
+    "path": "app/seohead-256.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "1ae18c4f91ca4439b372799763fe00fbc01f898cdf845d91c21f46ff39fdc4ec"
+  },
+  {
+    "path": "app/seohead-512.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "03606a70826b6b093b6a779fa1d2662b7710489656c6c5e7dff38621a3c42d90"
+  },
+  {
+    "path": "app/seohead-1024.png",
+    "derived_from": "brand/seohead-logo.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "07ee91e1b6fe7d837ba494b0c56b261ff2903b868ec7c2d87469f4d2e2324a50"
+  },
+  {
+    "path": "app/seohead.ico",
+    "derived_from": "brand/seohead-logo.svg + brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "7fb4aa73c88e8d3d712fbac21ca8fb8bb1c5cb0c81c749186033bd1412eac884"
+  },
+  {
+    "path": "app/seohead.icns",
+    "derived_from": "brand/seohead-logo.svg + brand/seohead-spider.svg",
+    "generator": "scripts/render_app_icon.py (Qt SVG; iconutil for ICNS)",
+    "sha256": "7669470383674cb37f2dc040dbb6410f32f28685f4ded9267ff75cfe6d08ef41"
   }
 ]
