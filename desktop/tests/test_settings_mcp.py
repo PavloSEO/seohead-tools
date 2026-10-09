@@ -18,6 +18,9 @@ STATUS = {"enabled": True, "tools": 180, "profile": "full", "by": "SEOHEAD Deskt
           "clients": {"claude-code": {"registered": True, "last_seen": "3 мин назад"}, "codex": {"registered": False}}}
 
 
+BACKUPS = [{"client": "cursor", "path": "/x/mcp.json.seohead-1.bak", "created_at": "2026-10-02T09:12:00+00:00", "reason": "install", "verified": True}]
+
+
 class McpSettingsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -55,10 +58,9 @@ class McpSettingsTests(unittest.TestCase):
     def test_controls_write_to_store(self):
         self.make()
         self.assertIsInstance(self.row("Профиль инструментов").control, Segmented)
-        self.row("Профиль инструментов").control._buttons["quick"].click()
-        self.assertEqual(self.store.get("mcp.profile"), "quick")
-        self.row("Писать журнал вызовов").control.click()
-        self.assertFalse(self.store.get("mcp.journal"))
+        self.row("Профиль инструментов").control._buttons["quick-check"].click()
+        self.assertEqual(self.store.get("mcp.profile"), "quick-check")
+        self.assertFalse(self.row("Писать журнал вызовов").control.isEnabled())  # the core has no call journal yet
 
     def test_server_switch_stores_and_notifies_application(self):
         calls = []
@@ -77,8 +79,8 @@ class McpSettingsTests(unittest.TestCase):
         self.assertIn("Нет данных", console)
 
     def test_state_from_application(self):
-        self.make(mcp_status=lambda: STATUS, mcp_backups=lambda: [{"name": "mcp.json", "when": "02.10 09:12 · вручную"}])
-        self.assertEqual(self.row("Локальный MCP-сервер").description.text(), "stdio · без сети · 180 инструментов")
+        self.make(mcp_status=lambda: STATUS, mcp_backups=lambda: BACKUPS)
+        self.assertEqual(self.row("Локальный MCP-сервер").description.text(), "stdio · без сети · 180 инструментов в профиле full")
         self.assertEqual(self.badges().count("включён"), 1)
         self.assertEqual(sorted(b for b in self.badges() if b != "нет данных"), ["включён", "не прописано", "прописано"])
         self.assertEqual(self.badges().count("нет данных"), 2)  # Claude Desktop and Cursor are not in the status
@@ -91,7 +93,7 @@ class McpSettingsTests(unittest.TestCase):
         self.assertIn("выключен", self.badges())
 
     def test_client_and_backup_buttons_are_disabled_with_tooltip(self):
-        self.make(mcp_status=lambda: STATUS, mcp_backups=lambda: [{"name": "mcp.json", "when": "вручную"}])
+        self.make(mcp_status=lambda: STATUS, mcp_backups=lambda: BACKUPS)
         names = [b.text() for b in self.page.findChildren(QPushButton)]
         self.assertEqual(sorted(names), ["Восстановить", "Изменить…", "Прописать…", "Прописать…", "Прописать…"])
         for button in self.page.findChildren(QPushButton):
@@ -102,7 +104,7 @@ class McpSettingsTests(unittest.TestCase):
         self.make()
         self.assertTrue(any(lb.text() == "Нет данных" for lb in self.labels()))
         self.make(mcp_backups=lambda: [])
-        self.assertTrue(any(lb.text() == "Бэкапов нет" for lb in self.labels()))
+        self.assertTrue(any(lb.text() == "Бэкапов ещё нет" for lb in self.labels()))
         self.assertFalse(any(lb.text() == "Нет данных" for lb in self.labels()))
 
     def test_no_demo_wording(self):

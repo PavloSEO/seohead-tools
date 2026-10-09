@@ -28,8 +28,10 @@ from PyQt5.QtWidgets import (
 )
 
 from .. import i18n, theming
+from ..cli_install import InstallCLIButton
 from ..common import ROOT
-from ..ui.controls import Note, Segmented, Switch, polish
+from ..mcp_integration import PermissionDialog
+from ..ui.controls import Note, Segmented, polish
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import waiting_badge
 from .base import Screen
@@ -41,7 +43,6 @@ STEPS = ("Папка проектов", "Проверка ядра", "Отобр
 LOW_DISK = 10 * 1000 ** 3
 UNAVAILABLE = "Недоступно в этой сборке"
 CORE_VERSION_ISSUE = 979
-MCP_ISSUE = 929
 
 
 def folder_facts(path):
@@ -333,6 +334,7 @@ class OnboardingScreen(Screen):
         self.other_core_button.clicked.connect(lambda: self.host.open_settings("core"))
         buttons.addWidget(self.recheck_button)
         buttons.addWidget(self.other_core_button)
+        buttons.addWidget(InstallCLIButton(self))
         buttons.addStretch(1)
         layout.insertLayout(layout.count() - 1, buttons)
         return page
@@ -400,30 +402,24 @@ class OnboardingScreen(Screen):
         self.option_simple.clicked.connect(lambda: self.pick("simple"))
         layout.insertLayout(layout.count() - 1, grid)
 
-        mcp = QFrame()
-        mcp.setProperty("card", "panel")
-        line = QHBoxLayout(mcp)
+        # Sheet Onboarding: one line; the permission window is the same as in Settings → MCP-сервер.
+        self.mcp_card = QFrame()
+        self.mcp_card.setProperty("card", "panel")
+        line = QHBoxLayout(self.mcp_card)
         line.setContentsMargins(16, 12, 16, 12)
         line.setSpacing(12)
         line.addWidget(MaterialIconLabel("hub", 20, color="role:text_muted"))
-        texts = QVBoxLayout()
-        texts.setSpacing(2)
-        title = QLabel(tr("Включить локальный MCP-сервер"))
+        title = QLabel(tr("Подключить агента"))
         title.setProperty("text_style", "control")
-        sub = QLabel(tr("Только stdio на этом компьютере. Агент видит проекты из папки, ключи — нет."))
-        sub.setProperty("text_style", "meta")
-        sub.setWordWrap(True)
-        texts.addWidget(title)
-        texts.addWidget(sub)
-        line.addLayout(texts, 1)
-        line.addWidget(waiting_badge(MCP_ISSUE), 0, Qt.AlignVCenter)
-        self.mcp_switch = Switch(tr("MCP-сервер"), False)
-        self.mcp_switch.setEnabled(False)
-        self.mcp_switch.setToolTip(tr(UNAVAILABLE))
-        line.addWidget(self.mcp_switch)
-        self.mcp_card = mcp
-        layout.insertWidget(layout.count() - 1, mcp)
-        self.later_note = Note("info", "Агента можно подключить позже.", "Подключение — в Настройках → Агент, когда оно станет доступно в этой сборке.")
+        line.addWidget(title, 1)
+        self.connect_button = QPushButton(tr("Прописать…"))
+        self.connect_button.setProperty("role", "tonal")
+        self.connect_button.setEnabled(bool(self.host.core_executable))
+        self.connect_button.setToolTip("" if self.host.core_executable else tr("CLI ядра seohead не найден"))
+        self.connect_button.clicked.connect(self.connect_agent)
+        line.addWidget(self.connect_button)
+        layout.insertWidget(layout.count() - 1, self.mcp_card)
+        self.later_note = Note("info", "Агента можно подключить позже.", "Подключение — в Настройках → MCP-сервер. Запись в конфиг требует разрешения.")
         layout.insertWidget(layout.count() - 1, self.later_note)
 
         look = QGridLayout()
@@ -446,6 +442,9 @@ class OnboardingScreen(Screen):
         layout.insertWidget(layout.count() - 1, link, 0, Qt.AlignLeft)
         self.sync_display()
         return page
+
+    def connect_agent(self):
+        PermissionDialog(self.host.core_executable, ("claude-code",), self).exec_()
 
     def pick(self, mode):
         self.host.set_display(mode)
