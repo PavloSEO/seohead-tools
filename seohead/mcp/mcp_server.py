@@ -2567,16 +2567,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         query: str = "",
         kind: str | None = None,
         state: str | None = None,
+        sort: str = "id",
+        descending: bool = False,
+        states: list[str] | None = None,
     ) -> dict[str, Any]:
         """Read a bounded searchable page of project checklist evidence.
 
+        sort is one of id (stored order, default), priority, state or updated; states
+        keeps up to 8 display states. Each item carries updated, the newest record time.
         Reads saved local evidence with metadata-only receipt status; this is not
         fresh byte verification. Missing historical receipts remain unverified.
         Does not collect, fetch or modify evidence.
         """
         return _checked(
             handlers.project_checklist_page(
-                directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+                directory=directory,
+                offset=offset,
+                limit=limit,
+                query=query,
+                kind=kind,
+                state=state,
+                sort=sort,
+                descending=descending,
+                states=states,
             )
         )
 

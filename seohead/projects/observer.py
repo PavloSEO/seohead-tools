@@ -23,6 +23,21 @@ LOG_BYTES = 32 * 1024
 FINDING_PAGE_SIZE = 50
 MAX_FINDING_PAGE_SIZE = 100
 _FINDING_SORTS = ("severity", "check", "target_url", "id")
+_CHECKLIST_SORTS = ("id", "priority", "state", "updated")
+_CHECKLIST_STATES = frozenset(
+    {
+        "excluded",
+        "not_agreed",
+        "stale",
+        "running",
+        "unavailable",
+        "blocked",
+        "completed",
+        "review",
+        "deliverable",
+        "remaining",
+    }
+)
 _SEVERITY_RANK = {"critical": 0, "error": 1, "warning": 2, "notice": 3, "info": 4}
 _EVIDENCE_CACHE_LIMIT = 32
 _EVIDENCE_CACHE: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
@@ -984,8 +999,15 @@ def checklist_page(
     query: str = "",
     kind: str | None = None,
     state: str | None = None,
+    sort: str = "id",
+    descending: bool = False,
+    states: list[str] | None = None,
 ) -> dict:
-    """Filter before paging; keep rich checklist evidence and source-specific identities."""
+    """Filter before paging; keep rich checklist evidence and source-specific identities.
+
+    ``sort="id"`` keeps the stored item order (the default); the other fields sort by value
+    with item id as the tie-break. ``updated`` is the newest saved record time of the item.
+    """
     from .progress import _item_state
 
     _pagination(0, offset, limit)
@@ -993,6 +1015,20 @@ def checklist_page(
         raise ValueError("checklist query must be text of at most 256 characters")
     if kind not in {None, "method", "schema", "check", "skill", "scenario", "custom"}:
         raise ValueError("unsupported checklist kind")
+    if sort not in _CHECKLIST_SORTS:
+        raise ValueError("checklist sort must be id, priority, state or updated")
+    if type(descending) is not bool:
+        raise ValueError("checklist descending must be a boolean")
+    if states is not None and (
+        not isinstance(states, list)
+        or len(states) > 8
+        or any(value not in _CHECKLIST_STATES for value in states)
+    ):
+        raise ValueError("checklist states must be up to 8 known display states")
+    from .coverage import _read
+
+    root, project = _load(directory)
+    saved_items = (_read(root, project) or {}).get("items", {})
     snapshot = project_status(directory, _verify_evidence=False)
     checklist = snapshot["checklist"]
     rows = []
@@ -1010,10 +1046,28 @@ def checklist_page(
         display = _item_state(item)
         if needle not in text or (state is not None and state != display):
             continue
-        rows.append(dict(item, display_state=display))
+        if states is not None and display not in states:
+            continue
+        saved = saved_items.get(item.get("id"), {})
+        stamps = [
+            str(record.get("recorded_at") or "")
+            for record in saved.get("records", [])
+            if isinstance(record, dict)
+        ]
+        rows.append(dict(item, display_state=display, updated=max(stamps, default="") or None))
+    if sort == "id":
+        if descending:
+            rows.reverse()
+    else:
+        field = {"priority": "priority", "state": "display_state", "updated": "updated"}[sort]
+        rows.sort(
+            key=lambda row: (str(row.get(field) or ""), str(row.get("id") or "")),
+            reverse=descending,
+        )
     return {
         "ok": True,
         "revision": checklist.get("revision"),
+        "sort": {"field": sort, "direction": "desc" if descending else "asc"},
         "items": rows[offset : offset + limit],
         "pagination": _pagination(len(rows), offset, limit),
     }

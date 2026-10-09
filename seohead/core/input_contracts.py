@@ -73,7 +73,9 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project-checklist-page",
         "project_checklist_page",
         _form("project_directory", "directory"),
-        _form("selector", "offset", "limit", "query", "kind", "state"),
+        _form(
+            "selector", "offset", "limit", "query", "kind", "state", "sort", "descending", "states"
+        ),
     ),
     _command(
         "project-task-detail",

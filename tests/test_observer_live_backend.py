@@ -191,6 +191,44 @@ def test_checklist_filter_pages_and_detail_keep_user_task_history(tmp_path):
     )
 
 
+def test_checklist_sorts_pages_and_multi_state_filters_keep_total(tmp_path):
+    root = _project(tmp_path)
+    initialize_coverage(root)
+    for ident, priority in (("custom:b", "P2"), ("custom:a", "P0"), ("custom:c", "P1")):
+        update_item(
+            root,
+            {"id": ident, "title": ident, "priority": priority},
+            coverage_status(root)["revision"],
+        )
+    stored = observer.checklist_page(root, limit=100)
+    assert stored["sort"] == {"field": "id", "direction": "asc"}
+    ids = [row["id"] for row in stored["items"]]
+    assert ids == [
+        row["id"] for row in observer.checklist_page(root, limit=100, sort="id")["items"]
+    ]
+    by_priority = observer.checklist_page(root, limit=100, sort="priority", descending=True)
+    priorities = [row["priority"] for row in by_priority["items"]]
+    assert priorities == sorted(priorities, reverse=True)
+    total = stored["pagination"]["total"]
+    first = observer.checklist_page(root, limit=1, offset=0, sort="priority")
+    second = observer.checklist_page(root, limit=1, offset=1, sort="priority")
+    assert first["pagination"]["total"] == second["pagination"]["total"] == total
+    assert first["items"][0]["id"] != second["items"][0]["id"]
+    assert all("updated" in row for row in stored["items"])
+    remaining = observer.checklist_page(root, limit=100, states=["remaining", "blocked"])
+    assert 0 < remaining["pagination"]["total"] < total
+    assert {row["display_state"] for row in remaining["items"]} <= {"remaining", "blocked"}
+    assert observer.checklist_page(root, limit=100, states=["completed"])["items"] == []
+    for bad in (
+        {"sort": "title"},
+        {"sort": "updated", "descending": "yes"},
+        {"states": ["unknown"]},
+        {"states": ["remaining"] * 9},
+    ):
+        with pytest.raises(ValueError):
+            observer.checklist_page(root, **bad)
+
+
 def test_sf_parser_distinguishes_count_and_localized_percent():
     row = runner.parse_sf_progress("[mActive=2, mCompleted=2,237, mWaiting=542, mCompleted=80,43%]")
     assert row["fetched"] == 2237 and row["queued"] == 542 and row["inflight"] == 2
