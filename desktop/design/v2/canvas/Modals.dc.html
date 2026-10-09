@@ -58,7 +58,7 @@
       </div></sc-if>
 
       <sc-if value="{{is.mcpwrite}}" hint-placeholder-val="{{false}}"><div class="db">
-        <div>SEOHEAD изменит файлы настроек выбранных агентов. Перед записью — копия каждого файла рядом (<span class="mono">*.seohead-backup</span>); отменить можно в Настройках → MCP-сервер.</div>
+        <div>SEOHEAD изменит файлы настроек выбранных агентов. Перед записью — копия каждого файла рядом (<span class="mono">*.seohead-&lt;время&gt;-&lt;хэш&gt;.bak</span>, хэш SHA-256 сверяется); отменить можно в Настройках → MCP-сервер.</div>
         <div style="display: flex; flex-direction: column; gap: 8px">
           <label style="display: flex; gap: 10px; align-items: center"><span class="cb on"><span class="ms s16" aria-hidden="true">check</span></span><span style="flex: 1">Claude Code</span><span class="mono" style="color: #6A6D76">~/.claude.json · добавить mcpServers.seohead</span></label>
           <label style="display: flex; gap: 10px; align-items: center"><span class="cb on"><span class="ms s16" aria-hidden="true">check</span></span><span style="flex: 1">Claude Desktop</span><span class="mono" style="color: #6A6D76">claude_desktop_config.json</span></label>
