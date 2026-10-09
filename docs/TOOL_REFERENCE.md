@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py` and `seoh
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 166 in total.
+**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 167 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1176,6 +1176,20 @@ Every recorded Wayback Machine snapshot of a URL, oldest first: timestamp, HTTP 
 | `limit` | `int | None` | `None` |
 | `from_date` | `str | None` | `None` |
 | `to_date` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
+### `cloudflare-traffic`
+
+MCP name: `seo_cloudflare_traffic`
+
+Bot and human traffic for a Cloudflare zone from edge GraphQL analytics (read-only, free): bots x URLs x status codes x cache status per day, in the same shape as seo_log_analyze. Use it when origin logs are absent. It is aggregated data (source=cloudflare-aggregated), not raw logs: no client IPs, so bots cannot be verified by reverse DNS. Dates are UTC YYYY-MM-DD; the Free plan keeps 32 days. The token is read from CLOUDFLARE_API_TOKEN or SEOHEAD_CLOUDFLARE_TOKEN_FILE.
+
+| Argument | Type | Default |
+|---|---|---|
+| `zone` | `str` | `required` |
+| `since` | `str | None` | `None` |
+| `until` | `str | None` | `None` |
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 

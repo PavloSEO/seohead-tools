@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 166 callable tools,
+The current registry has 162 commands and 167 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -27,7 +27,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 
 `ai-bots-check` · `asset-weight-check` · `audit-workflow` · `backlinks-check` · `bi-bigquery-plan` ·
 `bi-destination-apply` · `bi-export` · `bi-filter` · `bi-sheets-plan` · `boilerplate-report` · `cdn-check` ·
-`citability-check` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export`
+`citability-check` · `cloudflare-traffic` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export`
 · `crawl-enrich` · `crawl-import` · `crawl-site` · `crtsh-subdomains` · `crux-report` · `domain-profile` ·
 `duplicate-check` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` ·
 `google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` · `headers-check` ·
@@ -538,6 +538,7 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `google-serp` | Google organic results for a query | same |
 | `wayback-history` | Every Internet Archive snapshot of a URL: when it changed, what status it returned, what MIME type it was | free, no key |
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
+| `cloudflare-traffic` | Bots x URLs x status codes x cache status per day for a Cloudflare zone, from edge GraphQL analytics, shaped like `log-analyze`. Aggregated (`source: cloudflare-aggregated`), not raw logs: no IPs, no rDNS bot verification; Free plan keeps 32 days | free; needs a read-only Cloudflare API token (`CLOUDFLARE_API_TOKEN` or `SEOHEAD_CLOUDFLARE_TOKEN_FILE`) |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
 
@@ -741,7 +742,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(161 + 5):
+(162 + 5):
 
 ```bash
 seohead mcp        # stdio
