@@ -45,7 +45,7 @@ python3.12 -m venv .venv-desktop
 ```
 
 Tests (run from `desktop/`, the suite imports its helpers as `tests.*`):
-`cd desktop && QT_QPA_PLATFORM=offscreen ../.venv-desktop/bin/python -m unittest discover -s tests` — 256 tests, 13 skipped.
+`cd desktop && ../.venv-desktop/bin/python scripts/run_tests.py` (offscreen Qt; leaves via os._exit, see CLAUDE.md).
 Bundle (macOS): `desktop/scripts/build_macos.sh` → `desktop/dist/SEOHEAD Desktop.app` (ignored by git).
 
 `desktop/` is excluded from the core's ruff/pytest/packaging; it has its own toolchain. Lint: `cd desktop && ../.venv-desktop/bin/ruff check .` (config in `desktop/pyproject.toml`).
