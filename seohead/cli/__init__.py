@@ -935,7 +935,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value:
                 kw[key] = _split_list(value)
     elif cmd == "crawl-enrich":
-        for name in ("audit", "external_csv", "url_column", "out_urls"):
+        for name in (
+            "audit",
+            "external_csv",
+            "url_column",
+            "out_urls",
+            "visits_column",
+            "bounce_column",
+        ):
             value = getattr(args, name, None)
             if value:
                 kw[name] = value
@@ -1745,6 +1752,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--out-urls",
             help="write reliable external-only URLs as a list-mode input file",
+        )
+        sub.add_argument(
+            "--visits-column", help="CSV column with visit counts (analytics findings)"
+        )
+        sub.add_argument(
+            "--bounce-column",
+            help="CSV column with bounce rate, as a percentage or fraction (analytics findings)",
         )
     if cmd == "crawl-import":
         _source_flag(

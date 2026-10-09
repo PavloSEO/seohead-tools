@@ -999,6 +999,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         ignore_scheme: bool = False,
         casefold_path: bool = False,
         out_urls: str | None = None,
+        visits_column: str | None = None,
+        bounce_column: str | None = None,
     ) -> dict[str, Any]:
         """Join an existing audit or scan to an offline URL-keyed CSV without a
         provider call. Matched rows retain both page and external data; crawl-only,
@@ -1014,6 +1016,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 ignore_scheme=ignore_scheme,
                 casefold_path=casefold_path,
                 out_urls=out_urls,
+                visits_column=visits_column,
+                bounce_column=bounce_column,
             )
         )
 

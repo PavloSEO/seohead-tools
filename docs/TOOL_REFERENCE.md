@@ -824,6 +824,8 @@ Join an existing audit or scan to an offline URL-keyed CSV without a provider ca
 | `ignore_scheme` | `bool` | `False` |
 | `casefold_path` | `bool` | `False` |
 | `out_urls` | `str | None` | `None` |
+| `visits_column` | `str | None` | `None` |
+| `bounce_column` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
