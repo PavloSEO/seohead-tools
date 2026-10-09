@@ -467,9 +467,10 @@ Arguments whose names look like credentials — token, key, secret, password, au
 API key would leak it silently, since nothing about a log file suggests it holds secrets.
 
 Each entry carries a `fingerprint` of the call: the same tool with the same arguments produces the
-same value regardless of argument order. Nothing currently reuses it — reuse is a decision for a
-caller who knows whether a stale answer is acceptable, and that decision is deliberately not made
-inside the journal.
+same value regardless of argument order. Reuse is off by default. A tool answers from the journal only
+when `SEOHEAD_REUSE_POLICY` names it with a maximum age, e.g.
+`SEOHEAD_REUSE_POLICY='{"domain_profile": 86400}'`. The answer must be a successful entry no older than
+that age, and it is always marked `reused: true` in the result and in the journal entry.
 
 An unwritable journal never fails a run: a degraded observation is not a failed audit.
 
@@ -484,6 +485,8 @@ Tool behaviour:
 | `SF_CLI`, `SCREAMINGFROG_CLI` | explicit path to the SF CLI executable for audit mode A (`seohead/sf/core/runner.py`) |
 | `SEOHEAD_TECH_DB` | path to an external technology-fingerprint database; not shipped for license reasons (`recon/tech_db.py`) |
 | `SEOHEAD_RUN_LOG` | where the run journal is written (default `~/.config/seohead/runs.jsonl`); `off` disables it |
+| `SEOHEAD_HTTP_CACHE_DIR` | directory of the crawl HTTP cache (default `~/.cache/seohead/http_cache`); `off`, `0`, `none` or `false` disables the cache. The policy is RFC 9111-style: `no-store` is never stored, unstated freshness is treated as stale, and a stored `ETag`/`Last-Modified` is revalidated with a conditional GET (`304` counts as a revalidation). `User-Agent` is always part of the key (`seohead/crawl/cache.py`) |
+| `SEOHEAD_REUSE_POLICY` | opt-in reuse of journal answers, as a JSON object of tool name to maximum age in seconds, e.g. `'{"domain_profile": 86400}'`. Default is empty: nothing is reused. A malformed value disables reuse silently. Reused answers carry `reused: true` and `reused_from_ts`, and results over 20 000 bytes are not stored for reuse (`seohead/core/runlog.py`) |
 | `SEOHEAD_SPEND_LOG` | override for the paid-call journal (default `~/.config/seohead/spend.jsonl`) |
 | `DATAFORSEO_ENV` | `sandbox` (default) or `prod` for the DataForSEO tools |
 | `SEOHEAD_CHROME` | explicit Chrome, Edge or Chromium executable that `metrika-traffic-pdf` uses to print its PDF; otherwise standard install locations and `PATH` are searched |
