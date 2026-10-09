@@ -167,3 +167,13 @@ def test_existing_own_entry_is_only_replaced_with_permission_and_can_be_restored
     assert json.loads(path.read_bytes())["mcpServers"]["other"]["command"] == "kept"
     control.uninstall("claude-code", yes=True)
     assert path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("client", control.CLIENTS)
+def test_restoring_an_initially_missing_config_restores_absence(client):
+    path = control.client_path(client)
+    assert not path.exists()
+    control.install(client, yes=True, command="/opt/seohead")
+    assert path.exists()
+    control.uninstall(client, yes=True)
+    assert not path.exists()

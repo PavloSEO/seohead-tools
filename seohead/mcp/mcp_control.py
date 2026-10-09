@@ -348,8 +348,15 @@ def uninstall(client: str, *, yes: bool = False) -> dict:
                 current[key][SERVER] = prior
             restored = _serialize(client, current)
         _parse(client, restored)
-        _atomic(path, restored)
-        _parse(client, _read(path))
+        if receipt.get("existed") is False and _digest(current_raw) == receipt.get(
+            "installed_sha256"
+        ):
+            # Restore absence, rather than leave an invalid empty JSON configuration.
+            path.unlink()
+            fsync_directory(path.parent)
+        else:
+            _atomic(path, restored)
+            _parse(client, _read(path))
     return {
         "ok": True,
         "client": client,
