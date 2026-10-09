@@ -122,7 +122,7 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
   cover, what they deliberately do not, and which missing tests to write first.
 - **[GOTCHAS.md](GOTCHAS.md)** — operational traps captured by tests and code
   contracts: API money, quotas, stdin quirks, and explicit mutation flags.
-- **[DECISIONS.md](DECISIONS.md)** — decisions with their price: why no GUI,
+- **[DECISIONS.md](DECISIONS.md)** — decisions with their price: why no web dashboard,
   why `load` instead of `networkidle`, why the metrics are called `metrics_lab`,
   why the technology fingerprint database is not shipped.
 - **[COMPARISON.md](COMPARISON.md)** — how to compare workflow requirements and where verified gaps remain. Collection, interpretation,

@@ -2,7 +2,7 @@
 
 <h1 align="center">SEOHEAD Tools</h1>
 
-<p align="center"><b>A local-first SEO crawler and audit toolkit for SEO engineers and the AI agents they work with.</b></p>
+<p align="center"><b>Local-first SEO crawler, audit toolkit and desktop app for SEO specialists and their AI agents.</b></p>
 
 <p align="center">
 <a href="https://seohead.tech/seotools">Website</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/CLI.md">CLI overview</a> · <a href="docs/examples/README.md">Examples</a> · <a href="docs/COMPARISON.md">Scope and trade-offs</a>
@@ -16,7 +16,8 @@
 SEOHEAD turns a project goal into repeatable technical-SEO work: crawl or import evidence, keep it
 in a retained SQLite scan, analyse it offline, compare releases, hand prioritized tasks to
 developers, recheck their fixes and build reports. Everything runs on your machine through one
-Python core. There is no hosted account and no web dashboard.
+Python core, with a native desktop app, a CLI and a local MCP server on top. There is no hosted
+account and no web dashboard.
 
 **Contents:** [Three ways to use it](#three-ways-to-use-it) · [Install](#install) ·
 [Quick start](#quick-start) · [Desktop app](#desktop-app) · [What it can do](#what-it-can-do) ·
@@ -28,14 +29,32 @@ Python core. There is no hosted account and no web dashboard.
 
 | Interface | For | Start with |
 |---|---|---|
+| **Desktop** — SEOHEAD Desktop for macOS, Windows and Linux | Crawling, issues, URL inspector, link graph, toolbox and project work in a native window | `seohead-desktop --project ./shop` |
 | **CLI** — `seohead` | Scripts, CI and terminal work | `seohead crawl-site --url https://example.com --max-urls 500 --scan-out ./scans/audit.sqlite` |
 | **MCP** — local stdio server | Claude and other agent clients | `claude mcp add seohead -- /absolute/path/to/seohead-tools/.venv/bin/seohead mcp` |
-| **Desktop** — SEOHEAD Desktop | Browsing scans, URLs, issues and project work in a native window | `seohead-desktop --project ./shop` |
+
+<p align="center"><img src="docs/assets/screenshots/desktop-quick-scan.png" alt="SEOHEAD Desktop: a running crawl with the internal URL table and the scan overview panel" width="100%"></p>
 
 All three call the same shared handlers (`crawl-site` in the CLI is `seo_crawl_site` over MCP) and
 work on the same local projects and retained scans.
 
 ## Install
+
+### SEOHEAD Desktop
+
+The app lives in `desktop/` and installs together with the core (Python 3.10 or newer):
+
+```bash
+git clone https://github.com/PavloSEO/seohead-tools.git
+cd seohead-tools
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[all]" -e desktop
+seohead-desktop --project /path/to/existing/project
+```
+
+Packaging (PyInstaller bundles with the core and the `seohead` CLI) and the source install are
+described in `desktop/docs/`.
 
 ### Core toolkit (CLI and MCP)
 
@@ -65,19 +84,7 @@ installed command and import package are `seohead`.
 
 Provider credentials and browser binaries are separate and never required for the core crawl.
 [Setup from zero](docs/SETUP.md) covers versions, environment variables, Docker
-([CONTAINERS.md](docs/CONTAINERS.md)) and headless Linux servers ([LINUX_VPS.md](docs/LINUX_VPS.md)).
-
-### SEOHEAD Desktop
-
-The app lives in `desktop/` and installs next to the core in the same environment:
-
-```bash
-python -m pip install -e ".[all]" -e desktop
-seohead-desktop --project /path/to/existing/project
-```
-
-Packaging (PyInstaller bundles with the core and the `seohead` CLI) and the source install are
-described in `desktop/docs/`.
+([CONTAINERS.md](docs/CONTAINERS.md)) and Linux servers without a display ([LINUX_VPS.md](docs/LINUX_VPS.md)).
 
 ## Quick start
 
@@ -98,7 +105,7 @@ seohead report-build --audit ./scans/audit.sqlite --format docx --out audit.docx
 `crawl-site` is the primary collector: free, local, polite by default (about two requests per
 second per host), resumable ([RECOVERY.md](docs/RECOVERY.md)) and configurable through
 `--config`/`--set` (see `seohead crawl-site --config-help` and
-[HEADLESS_CAPABILITIES.md](docs/HEADLESS_CAPABILITIES.md)). It sends only bounded, read-only
+the [configuration inventory](docs/HEADLESS_CAPABILITIES.md)). It sends only bounded, read-only
 requests to the site you name. `report-build` formats existing evidence as XLSX, DOCX, CSV,
 Markdown, JSON or a bounded PDF overview ([PDF_OVERVIEW.md](docs/PDF_OVERVIEW.md)); it never
 invents findings.
@@ -155,8 +162,6 @@ way round.
 - **Installers** — macOS `.pkg`, Windows setup and Linux tarball put the app and the `seohead`
   command on the machine together. Light, dark and high-contrast themes; English and Russian.
 
-<p align="center"><img src="docs/assets/screenshots/desktop-quick-scan.png" alt="SEOHEAD Desktop: a running crawl with the internal URL table and the scan overview panel" width="100%"></p>
-
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/desktop-main.png" alt="URL table with filters, the selected URL's details and provenance" width="100%"><br><sub><b>URLs</b> — filterable table with per-URL details and provenance</sub></td>
@@ -186,8 +191,9 @@ Each area links to the page that documents its method, inputs and limits. The
 
 | Area | What you get | Read |
 |---|---|---|
+| **Native desktop app** | macOS, Windows and Linux: scans, issues, URL inspector, link graph, toolbox | [Desktop app](#desktop-app) |
 | **Native crawling** | HTTP and optional JavaScript crawling, sitemap/list/URL-file modes, scope and template rules, request/time budgets, robots policy, resume, crawl diagnosis | [USAGE](docs/USAGE.md), [RECOVERY](docs/RECOVERY.md), [URL lists](docs/URL_LIST_SCANS.md), [scale profile](docs/SCAN_CAPACITY_PROFILE.md) |
-| **Extraction** | Content selectors, declarative extraction rules over retained bodies, saved-scan source search (for example, which pages carry a GTM marker) | [HEADLESS_CAPABILITIES](docs/HEADLESS_CAPABILITIES.md), [saved evidence](docs/scenarios/saved-evidence.md) |
+| **Extraction** | Content selectors, declarative extraction rules over retained bodies, saved-scan source search (for example, which pages carry a GTM marker) | [configuration inventory](docs/HEADLESS_CAPABILITIES.md), [saved evidence](docs/scenarios/saved-evidence.md) |
 | **Audit checks** | A generated check registry shared by native crawls and SF exports: status codes, redirects, indexability, canonicals, metadata, headings, hreflang, structured data, images, links, sitemaps, rendering and more | [CHECKS](docs/CHECKS.md), [scenarios](docs/scenarios/README.md), [SF coverage](docs/COVERAGE_SF_ISSUES.md) |
 | **Focused URL checks** | `parse`, `robots-check`, `headers-check`, `redirects-check`, `links-check`, `hreflang-check`, `schema-check`/`schema-build`, `render-check`, `soft404-check`, `mirror-check`, `social-meta-check` | [CLI: page checks](docs/CLI.md#page-and-url-checks) |
 | **JavaScript and navigation** | Raw versus rendered DOM, rendered routes, observed navigation, lab timings | [browser navigation](docs/BROWSER_NAVIGATION.md), [rendering scenario](docs/scenarios/rendering.md) |
