@@ -115,7 +115,7 @@ def build_page(store, context):
     right = [
         switch_row(store, "view.reduce_motion", "Уменьшить движение", "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе"),
         switch_row(store, "view.mono_urls", "Моноширинный шрифт для URL", "Roboto Mono в колонках адресов и путей"),
-        switch_row(store, "view.rail_when_narrow", "Сворачивать навигацию в узком окне", "Меньше 1 100 px — только иконки"),
+        switch_row(store, "view.rail_when_narrow", "Сворачивать навигацию в узком окне", "Меньше 900 px — только иконки"),
         switch_row(store, "view.status_badges", "Цветные статусы в таблице", "Плашки статусов вместо текста"),
     ]
     note = Note("info", "Что это меняет.", "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.")

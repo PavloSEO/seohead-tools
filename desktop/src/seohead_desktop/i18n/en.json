@@ -491,7 +491,6 @@
  "Моноширинный шрифт для URL": "Monospaced font for URLs",
  "Roboto Mono в колонках адресов и путей": "Roboto Mono in address and path columns",
  "Сворачивать навигацию в узком окне": "Collapse navigation in a narrow window",
- "Меньше 1 100 px — только иконки": "Below 1,100 px only icons are shown",
  "Цветные статусы в таблице": "Colored statuses in tables",
  "Плашки статусов вместо текста": "Status badges instead of plain text",
  "Тема: {name}": "Theme: {name}",
@@ -1565,5 +1564,8 @@
  "Строка {a} из {n} проверенной": "Row {a} of {n} checked",
  "Найдено на {n} странице · проверено {m}": "Found on {n} pages · checked {m}",
  "Без строки на {n} странице · проверено {m}": "Without the string on {n} pages · checked {m}",
- "Скан №{n} · {id}": "Scan #{n} · {id}"
+ "Скан №{n} · {id}": "Scan #{n} · {id}",
+ "№{n} · {id}": "#{n} · {id}",
+ "№{n}": "#{n}",
+ "Меньше 900 px — только иконки": "Below 900 px only icons are shown"
 }
