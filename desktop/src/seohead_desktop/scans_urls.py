@@ -26,6 +26,7 @@ from .ui.presentation import (
     FIELDS,
     field_text,
     readable_record,
+    short_run_id,
     state_text,
     value_text,
 )
@@ -96,7 +97,7 @@ class ScansUrlsMixin:
         self.scan_picker.clear()
         for item in rows:
             stamp = field_text("finished_at", item.get("finished_at") or item.get("created_at"))
-            self.scan_picker.addItem(f"{stamp} · {state_text(item.get('source_kind'))} · {str(item.get('uuid') or 'ID неизвестен')[:8]}", item)
+            self.scan_picker.addItem(f"{stamp} · {state_text(item.get('source_kind'))} · {short_run_id(item.get('uuid')) or 'ID неизвестен'}", item)
         if not rows:
             self.scan_picker.addItem("В проекте нет сохранённых сканов", None)
         self.scan_picker.setEnabled(bool(rows))

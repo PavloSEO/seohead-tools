@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
 from .. import theming
 from ..i18n import joined, tr
 from .icons import MaterialIconLabel, material_icon
+from .presentation import short_run_id  # noqa: F401  (re-exported: the shared run id format)
 from .workspace import VIEW_IDS
 
 # SHELL-CANON §3: one list, the Simple display only hides the agent items.
@@ -135,11 +136,11 @@ class PickerButton(QPushButton):
     def minimumSizeHint(self):
         return self.layout().minimumSize()
 
-    def set_texts(self, title, subtitle=""):
+    def set_texts(self, title, subtitle="", detail=""):
         self.title.setText(title)
         self.subtitle.setText(subtitle)
         self.subtitle.setVisible(bool(subtitle) and not getattr(self, "_compact", False))
-        self.setToolTip(joined("\n", [title, subtitle]) if subtitle else title)
+        self.setToolTip(joined("\n", [part for part in (title, subtitle, detail) if part]))
 
     def set_compact(self, compact):
         self._compact = bool(compact)
@@ -154,7 +155,7 @@ class _NavDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         if index.data(ROLE_HEADER):
             return QSize(option.rect.width(), 0 if self.view.rail else 28)
-        return QSize(option.rect.width(), 52 if self.view.rail else 36)
+        return QSize(option.rect.width(), 44 if self.view.rail else 36)
 
     def paint(self, painter, option, index):
         r = theming.roles()
@@ -178,18 +179,13 @@ class _NavDelegate(QStyledItemDelegate):
         font = QFont(painter.font())
         font.setWeight(QFont.Medium)
         if self.view.rail:
-            font.setPixelSize(10)
-            pill = QRect(rect.center().x() - 22, rect.top() + 4, 44, 28)
+            pill = QRect(rect.center().x() - 22, rect.top() + 8, 44, 28)  # icon only: the full label is the tooltip
             if selected or hovered:
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(QColor(r["selected"] if selected else r["nav_hover"]))
                 painter.drawRoundedRect(pill, 14, 14)
             index.data(Qt.DecorationRole).paint(painter, QRect(pill.center().x() - 10, pill.center().y() - 10, 20, 20), Qt.AlignCenter,
                                                  QIcon.Selected if selected else QIcon.Normal)
-            painter.setFont(font)
-            painter.setPen(ink)
-            label = elide_words(painter.fontMetrics(), index.data(Qt.DisplayRole), rect.width() - 4)  # the full name is in the tooltip
-            painter.drawText(QRect(rect.left(), rect.top() + 34, rect.width(), 14), Qt.AlignHCenter | Qt.AlignTop, label)
         else:
             body = rect.adjusted(0, 0, 0, 0)
             if selected or hovered:

@@ -71,7 +71,7 @@ class JournalTests(unittest.TestCase):
         self.assertTrue(all(source.startswith("Скан · Native") for source in self.column(1)))
         self.assertIn("Запуск принят · проверка лимитов", self.column(2))
         self.assertIn("Обновление счётчиков · сбор страниц", self.column(2))
-        self.assertEqual(set(self.column(3)), {run()["id"][:8], live_run()["id"][:8]})
+        self.assertEqual(set(self.column(3)), {"r-" + run()["id"][:4], "r-" + live_run()["id"][:4]})
 
     def test_a_message_from_the_core_is_shown_as_is(self):
         item = run(event_list=[{"at": "2026-10-09T09:00:00Z", "code": "progress", "phase": "collection", "message": "checkpoint 400"}])

@@ -23,6 +23,7 @@ from .common import (  # noqa: F401
 )
 from .ui.presentation import (
     content_spacing,
+    short_run_id,
     theme_tokens,
 )
 
@@ -82,7 +83,7 @@ class ViewStateMixin:
                 page.layout().setSpacing(section)
                 page.setProperty("contentMargin", margin)
         width = self.width()
-        narrow = width <= 960
+        narrow = width < 1000  # compact top bar: scan switcher «№3 · r-e134», icon-only search
         if narrow != self._narrow_chrome:
             self._narrow_chrome = narrow
             self.action_finder_button.setText("" if narrow else "Действия и переходы")
@@ -91,13 +92,17 @@ class ViewStateMixin:
             for picker in (self.project_button, self.scan_button):
                 picker.set_compact(narrow)
                 picker.setMinimumWidth(120 if narrow else 250 if picker is self.scan_button else 180)
+            self.sync_picker(self.scan_picker, self.scan_button)
             self.source_badge.setVisible(not narrow)
             self.update_status_tail()
-            self.cancel_button.setText("" if narrow else "Остановить " + self.selected_managed_run_id[:8] if self.selected_managed_run_id else "Отменить чтение")
+            self.cancel_button.setText("" if narrow else "Остановить " + short_run_id(self.selected_managed_run_id) if self.selected_managed_run_id else "Отменить чтение")
         compact = self.centralWidget().width() < theme_tokens()["layout"]["compact_breakpoint"] and self.prefs.get("view.rail_when_narrow")
+        rail = self.centralWidget().width() < 900 and bool(self.prefs.get("view.rail_when_narrow"))  # below 900 px: icon rail
+        if rail != getattr(self, "_rail", None):
+            self._rail = rail
+            self.set_navigation_compact(rail if self._navigation_compact_intent is None else self._navigation_compact_intent)
         if compact != self._compact:
             self._compact = compact
-            self.set_navigation_compact(compact if self._navigation_compact_intent is None else self._navigation_compact_intent)
             wanted = self._panel_intent["Сводка"]
             self.set_panel_visible("Сводка", (not compact if wanted is None else wanted) and not self._focus_mode, remember=False)
             self.audit_workspace.right.setVisible(not compact and not self._focus_mode)

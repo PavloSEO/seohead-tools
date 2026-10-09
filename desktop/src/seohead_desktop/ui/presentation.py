@@ -237,7 +237,7 @@ def run_projection(run):
             pass
     identity = run.get("id")
     if isinstance(identity, str) and identity:
-        label += " · " + identity[:8]
+        label += " · " + short_run_id(identity)
     return {
         "id": identity, "label": label,
         "label_tooltip": f"Начало: {field_text('started_at', run.get('started_at'))}\nID: {value_text(identity)}",
@@ -248,6 +248,12 @@ def run_projection(run):
         "rate_limit": collector.get("max_requests_per_second"),
         "sampled_at": telemetry.get("sampled_at"), "_run": run,
     }
+
+
+def short_run_id(value):
+    """The one short form of a run / scan id everywhere in the UI: «r-» + the first 4 characters; the full id goes to tooltips."""
+    text = str(value or "")
+    return "r-" + text[:4] if text else ""
 
 
 class ElidedLabel(QLabel):

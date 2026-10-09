@@ -80,7 +80,7 @@ class ShellMixin:
         path = self.core_executable or ""
         if version:
             return trf("Ядро seohead {version}", version=version), path
-        return tr("Ядро подключено" if answered else "Ядро найдено"), joined("\n", [path, tr("Версию ядро пока не сообщает")]) if path else tr("Версию ядро пока не сообщает")
+        return tr("Ядро подключено · версия неизвестна" if answered else "Ядро найдено"), joined("\n", [path, tr("Версию ядро пока не сообщает")]) if path else tr("Версию ядро пока не сообщает")
 
     def update_status_tail(self):
         """Right side (SHELL-CANON §6): project · active scans · display · core · observation age; only what the data supports."""

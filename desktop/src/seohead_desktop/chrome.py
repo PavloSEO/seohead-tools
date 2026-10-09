@@ -18,23 +18,27 @@ from PyQt5.QtWidgets import (
 from . import theming
 from .i18n import tr, trf
 from .ui.icons import material_icon as icon
-from .ui.presentation import StateBadge
+from .ui.presentation import StateBadge, short_run_id
 from .ui.shell import PickerButton
 
 
-def scan_texts(combo, index):
+def scan_texts(combo, index, run_ids=None, compact=False):
     """(title, subtitle) of one saved-scan choice: «Скан №3 · r-1a2b» and «09.10.2026 12:34 · 1 314 URL · частичный».
 
     The number is the position among the loaded scans by creation time (the oldest is №1); r-… is the short run id.
     """
     row = combo.itemData(index) if index >= 0 else None
     if not isinstance(row, dict):
-        return tr(combo.itemText(index)) if index >= 0 else "", ""
+        return tr(combo.itemText(index)) if index >= 0 else "", "", ""
     rows = [(i, combo.itemData(i)) for i in range(combo.count()) if isinstance(combo.itemData(i), dict)]
     order = sorted(rows, key=lambda pair: (str(pair[1].get("created_at") or ""), -pair[0]))
     ordinal = next((n for n, (i, _r) in enumerate(order, 1) if i == index), 1)
-    run_id = str(row.get("uuid") or "")[:4]
-    title = trf("Скан №{n} · r-{id}", n=ordinal, id=run_id) if run_id else trf("Скан №{n}", n=ordinal)
+    full_id = str((run_ids or {}).get(row.get("path")) or row.get("uuid") or "")
+    run_id = short_run_id(full_id)
+    if compact:
+        title = trf("№{n} · {id}", n=ordinal, id=run_id) if run_id else trf("№{n}", n=ordinal)
+    else:
+        title = trf("Скан №{n} · {id}", n=ordinal, id=run_id) if run_id else trf("Скан №{n}", n=ordinal)
     from .screens.scan_common import number, parse_time
 
     stamp = parse_time(row.get("finished_at") or row.get("created_at"))
@@ -44,7 +48,7 @@ def scan_texts(combo, index):
         parts.append(f"{number(done)} URL")
     if row.get("crawl_partial") is True:
         parts.append(tr("частичный"))
-    return title, " · ".join(parts)
+    return title, " · ".join(parts), full_id
 
 
 class _HideWhenDisabled(QPushButton):
@@ -172,20 +176,30 @@ class ChromeMixin:
         """Mirror the hidden combo (current text, optional subtitle in the tooltip role, enabled) on its button."""
         index = combo.currentIndex()
         if combo is self.scan_picker:
-            title, subtitle = scan_texts(combo, index)
+            title, subtitle, full_id = scan_texts(combo, index, self.scan_run_ids(), bool(getattr(button, "_compact", False)))
         else:
             title = tr(combo.itemText(index)) if index >= 0 else ""
             subtitle = combo.itemData(index, Qt.ToolTipRole) if index >= 0 else ""
-        button.set_texts(title, tr(subtitle) if isinstance(subtitle, str) else "")
+            full_id = ""
+        button.set_texts(title, tr(subtitle) if isinstance(subtitle, str) else "", full_id)
         button.setEnabled(combo.isEnabled() and combo.count() > 0)
         if combo is self.scan_picker and hasattr(self, "scan_state_badge"):
             self.scan_state_badge.setVisible(combo.currentData() is not None)
+
+    def scan_run_ids(self):
+        """Saved-scan path -> id of its run, so the top bar and the Scans table show the same «r-xxxx»."""
+        from .screens.scan_common import build_rows
+
+        try:
+            return {row.scan.get("path"): row.id for row in build_rows(self) if row.scan and row.id}
+        except (AttributeError, RuntimeError):  # the models are not built yet during start-up
+            return {}
 
     def show_picker_menu(self, combo, button):
         menu = QMenu(button)
         for index in range(combo.count()):
             if combo is self.scan_picker:
-                title, subtitle = scan_texts(combo, index)
+                title, subtitle, _full = scan_texts(combo, index, self.scan_run_ids())  # the list always carries the date
                 action = menu.addAction(f"{title}  ·  {subtitle}" if subtitle else title)
             else:
                 action = menu.addAction(combo.itemText(index))

@@ -308,7 +308,7 @@ class ComparePanel(TablePanel):
         self.sync_pair_controls()
 
     def set_scans(self, items):
-        from .presentation import field_text, state_text
+        from .presentation import field_text, short_run_id, state_text
         scans = list(islice(iter(items), PAGE_LIMIT + 1))
         if len(scans) > PAGE_LIMIT:
             raise ValueError("Scan chooser is bounded to one page")
@@ -319,7 +319,7 @@ class ComparePanel(TablePanel):
             combo.clear()
             combo.addItem("Выберите сохранённый скан", None)
             for scan in scans:
-                label = f"{field_text('finished_at', scan.get('finished_at') or scan.get('created_at'))} · {str(scan.get('uuid') or 'ID неизвестен')[:8]} · {state_text('partial' if scan.get('crawl_partial') or scan.get('corpus_partial') else scan.get('lifecycle'))}"
+                label = f"{field_text('finished_at', scan.get('finished_at') or scan.get('created_at'))} · {short_run_id(scan.get('uuid')) or 'ID неизвестен'} · {state_text('partial' if scan.get('crawl_partial') or scan.get('corpus_partial') else scan.get('lifecycle'))}"
                 combo.addItem(label, dict(scan))
                 combo.setItemData(combo.count() - 1, scan.get("path") or scan.get("uuid"), Qt.ToolTipRole)
                 if scan.get("uuid") == selected_uuid:

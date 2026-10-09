@@ -21,6 +21,7 @@ from .crawl_configuration import preview_configuration
 from .scan_manager import LocalScanManager
 from .ui.presentation import (
     readable_record,
+    short_run_id,
     state_text,
 )
 
@@ -95,7 +96,7 @@ class ScanControlMixin:
         active_states = {"queued", "starting", "running", "stop_requested", "awaiting_core_status"}
         busy = path in self._pending_resume_paths or any(item.get("state") in active_states and path in {item.get("resume_path"), item.get("artifact")} for item in self.owned_runs_for_project())
         self.resume_scan_button.setEnabled(bool(path) and path == self._resume_eligible_path and not busy)
-        self.resume_scan_button.setText("Продолжить скан " + (self.selected_scan_uuid or "")[:8])
+        self.resume_scan_button.setText("Продолжить скан " + short_run_id(self.selected_scan_uuid))
         self.resume_scan_button.setToolTip("Для этого снимка уже есть активная попытка" if busy else f"Сохранённый источник: {path or 'не выбран'}")
 
     def resume_selected_scan(self):
@@ -143,7 +144,7 @@ class ScanControlMixin:
         self.owned_run_picker.clear()
         self.owned_run_picker.addItem("Выберите запуск этого окна" if rows else "Запуски этого окна: нет", None)
         for item in rows:
-            label = f"{item['id'][:8]} · {state_text(item['kind'])} · {state_text(item['state'])}"
+            label = f"{short_run_id(item['id'])} · {state_text(item['kind'])} · {state_text(item['state'])}"
             self.owned_run_picker.addItem(label, item["id"])
         index = self.owned_run_picker.findData(selected)
         self.owned_run_picker.setCurrentIndex(max(index, 0))
@@ -200,7 +201,7 @@ class ScanControlMixin:
     def render_owned_run(self, detail):
         active = bool(detail) and detail.get("state") in {"queued", "starting", "running", "stop_requested"}
         self.stop_run_button.setEnabled(active)
-        short_id = str((detail or {}).get("id") or "")[:8]
+        short_id = short_run_id((detail or {}).get("id"))
         self.stop_run_button.setText("Остановить " + short_id if active else "Остановить выбранный запуск")
         self.cancel_button.setText("" if self._narrow_chrome else "Остановить " + short_id if active else "Отменить чтение")
         self.cancel_button.setEnabled(active or bool(self.requests))
@@ -256,7 +257,7 @@ class ScanControlMixin:
     def managed_scan_failed(self, run_id, text):
         if run_id == self.selected_managed_run_id:
             self.statusBar().showMessage(f"Локальный скан: {text}")
-            self.notice.show_error(f"Запуск {run_id[:8]}: {text}. Полный вывод сохранён в журнале запуска.", "owned:" + run_id)
+            self.notice.show_error(f"Запуск {short_run_id(run_id)}: {text}. Полный вывод сохранён в журнале запуска.", "owned:" + run_id)
 
     def closeEvent(self, event):
         if self._pending_note is not None:

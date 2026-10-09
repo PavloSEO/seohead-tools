@@ -28,6 +28,7 @@ from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import Kpi, StatePanel, waiting_badge
+from ..ui.presentation import short_run_id
 from . import scan_common
 from .base import Screen
 from .scan_common import (
@@ -263,7 +264,7 @@ class ScanRunPage(Screen):
         at = scan_common.now()
         self.badge.show()
         self.title.setText(row.title.split(" · ")[0])
-        self.ident.setText(" · ".join(part for part in (row.id[:8], row.host_name) if part))
+        self.ident.setText(" · ".join(part for part in (short_run_id(row.id), row.host_name) if part))
         self.ident.setToolTip(row.id)
         self.badge.set_state(row.badge_kind, row.state_label(at), row.badge_icon)
         self.stop.setEnabled(can_stop(row))

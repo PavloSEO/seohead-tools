@@ -31,6 +31,7 @@ from .presentation import (
     content_spacing,
     field_text,
     run_projection,
+    short_run_id,
     state_text,
     theme_tokens,
     value_text,
@@ -182,7 +183,7 @@ class _RunCard(QPushButton):
         self.source.setText(source)
         self.state.set_state(run.get("state", "unknown"))
         collector, counters = _mapping(run.get("collector")), _mapping(run.get("counters"))
-        self.title.setText(str(collector.get("origin") or "Запуск") + " · " + self.identity[:8])
+        self.title.setText(str(collector.get("origin") or "Запуск") + " · " + short_run_id(self.identity))
         self.counts.setText(f"Получено: {_display(_counter(counters.get('fetched')))} · В очереди: {_display(_counter(counters.get('queued')))}")
         phase = state_text(_phase(run)) if _phase(run) else "Этап не сообщён"
         terminal = run.get("state") in {"finished", "partial", "interrupted", "failed", "cancelled_before_start"}
@@ -486,7 +487,7 @@ class WorkMonitor(QWidget):
         source, _icon = _source(run)
         telemetry, counters = _mapping(run.get("telemetry")), _mapping(run.get("counters"))
         collector, owned = _mapping(run.get("collector")), _mapping(run.get("_owned"))
-        self.selected_title.setText(f"{source} · запуск {identity[:8]}")
+        self.selected_title.setText(f"{source} · запуск {short_run_id(identity)}")
         self.selected_title.setToolTip(identity)
         self.selected_badge.set_state(run.get("state", "unknown"))
         phase = _phase(run)

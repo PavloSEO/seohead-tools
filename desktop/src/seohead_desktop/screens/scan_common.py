@@ -17,6 +17,7 @@ from .. import theming
 from ..i18n import joined, tr, trf
 from ..ui.controls import polish
 from ..ui.icons import MaterialIconLabel
+from ..ui.presentation import short_run_id
 
 LIVE_ISSUE = 921
 JOURNAL_ISSUE = 923
@@ -179,7 +180,7 @@ class RunRow:
 
     @property
     def meta(self):
-        return self.id[:8]
+        return short_run_id(self.id)
 
     def sample_age(self, at=None):
         """Seconds since the sample behind the counters was taken (observation age plus time since the window observed it)."""

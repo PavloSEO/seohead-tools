@@ -128,6 +128,34 @@ class ShellV2Tests(unittest.TestCase):
         self.assertIn("Мебельный магазин на Садовой", self.window.project_button.toolTip())
         self.assertEqual(self.window.project_button.title.text(), "Мебельный магазин на Садовой")
 
+    def test_one_run_id_format_and_compact_scan_switcher(self):
+        from seohead_desktop.ui.presentation import short_run_id
+
+        self.assertEqual(short_run_id("e134abcd-0000"), "r-e134")
+        self.assertEqual(short_run_id(None), "")
+        self.window.scan_picker.clear()
+        self.window.scan_picker.addItem("raw", {"uuid": "ab12cd34", "created_at": "2026-10-09T09:12:00Z"})
+        self.window.scan_picker.setEnabled(True)
+        self.window.resize(960, 800)
+        self.window.show()
+        self.app.processEvents()
+        self.assertEqual(self.window.scan_button.title.text(), "№1 · r-ab12")
+        self.assertFalse(self.window.scan_button.subtitle.isVisibleTo(self.window))
+        self.assertIn("ab12cd34", self.window.scan_button.toolTip())  # the full id lives in the tooltip
+        self.window.resize(1440, 900)
+        self.app.processEvents()
+        self.assertEqual(self.window.scan_button.title.text(), "Скан №1 · r-ab12")
+
+    def test_navigation_is_an_icon_rail_below_900_px_only(self):
+        self.window.show()
+        self.window.resize(880, 800)
+        self.app.processEvents()
+        self.assertTrue(self.window.navigation.property("compact"))
+        self.assertEqual(self.window.navigation.list._items["url"].toolTip(), "URL")
+        self.window.resize(960, 800)
+        self.app.processEvents()
+        self.assertFalse(self.window.navigation.property("compact"))
+
     def test_core_status_is_never_not_found_while_the_core_answered(self):
         self.window.core_executable = None
         self.window.project_result = {"path": "/p"}
@@ -143,7 +171,7 @@ class ShellV2Tests(unittest.TestCase):
         self.window.core_executable = os.path.join(os.path.dirname(__import__("sys").executable), "seohead")
         self.window.project_result = {"path": "/p"}
         self.window.update_status_tail()
-        self.assertRegex(self.window.core_label.text(), r"^Ядро (seohead \d+\.\d+|подключено)$")
+        self.assertRegex(self.window.core_label.text(), r"^Ядро (seohead \d+\.\d+|подключено · версия неизвестна)$")
 
     def test_profile_menu_contents_and_unavailable_actions(self):
         menu = self.window.build_profile_menu()

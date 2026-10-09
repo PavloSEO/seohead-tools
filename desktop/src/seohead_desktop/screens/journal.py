@@ -26,6 +26,7 @@ from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.icons import material_icon
 from ..ui.kit import StatePanel, no_project_panel, style_table, waiting_badge
+from ..ui.presentation import short_run_id
 from . import scan_common
 from .base import Screen
 from .scan_common import CODES, EVENT_ICONS, JOURNAL_ISSUE, PHASES, parse_time
@@ -100,7 +101,7 @@ class EventModel(QAbstractTableModel):
             return None
         event, column = self.rows[index.row()], index.column()
         if role == Qt.DisplayRole:
-            return (event.when(self.today) or tr("Нет данных"), event.source, event.text, event.run_id[:8] or tr("Нет данных"))[column]
+            return (event.when(self.today) or tr("Нет данных"), event.source, event.text, short_run_id(event.run_id) or tr("Нет данных"))[column]
         if role == Qt.DecorationRole and column == 1:
             colour = theming.roles()[ICON_ROLES.get(event.code, "text_2")]
             return material_icon(EVENT_ICONS.get(event.code, "info"), colour)

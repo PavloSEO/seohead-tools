@@ -26,6 +26,7 @@ from .presentation import (
     ProjectEmptyState,
     StateBadge,
     content_spacing,
+    short_run_id,
     theme_tokens,
     value_text,
 )
@@ -298,7 +299,7 @@ class ContentSearchPanel(QWidget):
         source = payload.get("source") or {}
         query = payload.get("query")
         scopes = {"head_markup": "код <head>", "raw_html": "весь HTML", "body_text": "текст <body>", "selector_markup": "код CSS-элемента"}
-        self.result_context.setText(f"Результат: {query} · {scopes.get(payload.get('scope'), 'область не указана')} · {representations.get(payload.get('representation'), 'источник не указан')} · скан {str(source.get('scan_uuid') or '—')[:8]}" if query else "Результат появится после явного поиска")
+        self.result_context.setText(f"Результат: {query} · {scopes.get(payload.get('scope'), 'область не указана')} · {representations.get(payload.get('representation'), 'источник не указан')} · скан {short_run_id(source.get('scan_uuid')) or '—'}" if query else "Результат появится после явного поиска")
         self.result_context.setToolTip(value_text(source))
         total = payload.get("total")
         self.count.setText(f"Строки {self._offset + 1}–{self._offset + len(rows)} из {total}" if rows else f"Нет строк на этой странице · всего {value_text(total)}")
