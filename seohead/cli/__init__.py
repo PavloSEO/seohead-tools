@@ -534,6 +534,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, flag, None)
             if value is not None:
                 kw[flag] = value
+        if getattr(args, "profile", None):
+            if getattr(args, "config", None):
+                raise ValueError("use --config or --profile, not both")
+            from seohead.crawl import profiles
+
+            kw["config"] = profiles.path_for(args.profile)
         from seohead.crawl import settings as crawl_config
 
         overrides: dict[str, Any] = {}
@@ -1664,6 +1670,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--producer-build", metavar="SHA", help="original source build for SQLite capture"
         )
         sub.add_argument("--config", help="path to a crawler config file (JSON)")
+        sub.add_argument(
+            "--profile",
+            metavar="NAME",
+            help="crawl with a saved profile instead of --config; --set still applies",
+        )
+        sub.add_argument(
+            "--save-profile",
+            metavar="NAME",
+            help="store the --config file as profile NAME after validating it; does not crawl",
+        )
         sub.add_argument(
             "--robots",
             choices=["respect", "report_only", "ignore"],
@@ -2901,6 +2917,19 @@ def main(argv: list[str] | None = None) -> int:
     show_banner(cmd, quiet=getattr(args, "quiet", False))
     if cmd == "crawl-site" and getattr(args, "config_help", False):
         _print_config_help()
+        return 0
+    if cmd == "crawl-site" and getattr(args, "save_profile", None):
+        from seohead.crawl import profiles
+
+        if not getattr(args, "config", None):
+            print("error: --save-profile needs --config FILE", file=sys.stderr)
+            return 1
+        try:
+            stored = profiles.save(args.save_profile, args.config)
+        except profiles.ProfileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"profile": args.save_profile, "path": stored}, ensure_ascii=False))
         return 0
     try:
         handler_name, kwargs = _build_kwargs(cmd, args)
