@@ -328,6 +328,7 @@ class WindowIntegrationTests(unittest.TestCase):
         screen = window.screens["scans"]
         self.assertIsInstance(screen, ScansScreen)
         self.assertIs(window.pages.widget(5), screen)
+        window.project_directory = "/p"  # without a project «Сканы» is the «Раздел готовится» placeholder
         window.navigation.select_section("scans")
         self.assertIs(window.pages.currentWidget(), screen)
         self.open_project([run(), live_run()], [scan()])

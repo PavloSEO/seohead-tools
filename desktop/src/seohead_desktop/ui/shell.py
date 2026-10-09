@@ -48,6 +48,8 @@ VIEW_OF = {"work": "work", "inbox": "inbox", "scans": "scans", "url": "url", "is
            "compare": "compare", "search": "content_search", "reports": "reports", "log": "journal",
            "crawler": "crawler", "methods": "methods", "graph": "graph"}
 # SideNav sheet: without a project these items are shown dimmed with «нужен проект»; the rest stay active.
+# SHELL-CANON hotkeys: ⌘1 Работа · ⌘2 Сканы · ⌘3 URL · ⌘4 Проблемы; the canon gives no other numbers
+NUMBERED_SECTIONS = {1: "work", 2: "scans", 3: "url", 4: "issues"}
 NEEDS_PROJECT = frozenset({"work", "inbox", "issues", "compare", "search", "methods", "reports"})
 SIMPLE_VIEW_OF = {**VIEW_OF, "work": "tasks"}  # «Работа» opens the simple task list in the Simple display
 GROUP_TITLES = {"data": "Данные", "result": "Результат"}
@@ -491,10 +493,10 @@ class NavPanel(QFrame):
     def select_section(self, section_id, emit=True):
         return self.list.set_current(section_id, emit)
 
-    def select_nth(self, number):
-        """Select the n-th (1-based) visible section row."""
-        ids = [i for i in (self.list.item(r).data(ROLE_ID) for r in range(self.list.count())) if i]
-        return self.select_section(ids[number - 1]) if 0 < number <= len(ids) else False
+    def select_number(self, number):
+        """Ctrl+1…4 (SHELL-CANON): fixed sections, not positions; a hidden or unassigned number does nothing."""
+        section = NUMBERED_SECTIONS.get(number)
+        return bool(section) and self.has_section(section) and self.select_section(section)
 
     def has_section(self, section_id):
         return section_id in self.list._items

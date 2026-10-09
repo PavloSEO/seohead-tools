@@ -267,6 +267,9 @@ class AgentMixin:
         self.search.selectAll()
 
     def navigate(self, row):
+        if self.navigation.current_section() == "scans" and not self.project_directory and hasattr(self, "scans_placeholder"):
+            self.pages.setCurrentWidget(self.scans_placeholder)
+            return self.sync_workspace_identity()
         placeholder = self.placeholder_pages.get(row)  # sections whose screen is not built yet: «Раздел готовится»
         self.pages.setCurrentIndex(3 if row == 9 else 9 if row == 10 else row) if placeholder is None else self.pages.setCurrentWidget(placeholder)
         self.sync_workspace_identity()

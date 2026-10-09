@@ -34,7 +34,7 @@ ACTIONS = (
     Action("new_scan", "Новый скан", "Навигация", "Ctrl+N"),
     Action("new_tab", "Новая вкладка", "Навигация", "Ctrl+T"),
     Action("close_tab", "Закрыть вкладку", "Навигация", "Ctrl+W"),
-    Action("sections", "Разделы 1–9", "Навигация", "Ctrl+1…9", tuple(f"Ctrl+{n}" for n in range(1, 10))),
+    Action("sections", "Разделы 1–4", "Навигация", "Ctrl+1…4", tuple(f"Ctrl+{n}" for n in range(1, 5))),  # Работа · Сканы · URL · Проблемы
     Action("settings", "Настройки", "Навигация", "Ctrl+,"),
     Action("stop_scan", "Остановить скан", "Сканы", "Ctrl+Backspace"),
     Action("pause_scan", "Приостановить / продолжить", "Сканы", "Ctrl+."),

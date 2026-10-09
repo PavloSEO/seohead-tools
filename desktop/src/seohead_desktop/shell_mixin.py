@@ -29,6 +29,7 @@ from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
+from .ui.shell import NUMBERED_SECTIONS
 
 tr, trf, joined = i18n.tr, i18n.trf, i18n.joined
 
@@ -44,6 +45,12 @@ class ShellMixin:
         from .ui.workspace import VIEW_IDS
 
         self.placeholder_pages = {}
+        # «Сканы» without a project would be a misleading project-less screen until the crawler mode exists
+        self.scans_placeholder = QWidget()
+        placeholder_layout = QVBoxLayout(self.scans_placeholder)
+        placeholder_layout.setContentsMargins(0, 0, 0, 0)
+        placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+        self.pages.addWidget(self.scans_placeholder)
         for view in ("crawler", "methods", "graph"):
             page = QWidget()
             layout = QVBoxLayout(page)
@@ -52,11 +59,22 @@ class ShellMixin:
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
 
+    def sync_scans_placeholder(self):
+        """Show the placeholder for «Сканы» while no project is open and bring the screen back when one is."""
+        if self.navigation.current_section() != "scans" or not hasattr(self, "scans_placeholder"):
+            return
+        showing = self.pages.currentWidget() is self.scans_placeholder
+        if not self.project_directory and not showing:
+            self.pages.setCurrentWidget(self.scans_placeholder)
+        elif self.project_directory and showing:
+            self.navigate(self.navigation.currentRow())
+
     def sync_navigation_state(self):
         """Locked items without a project and the counters at the right of the items; no data means no number."""
         try:
             opened = bool(self.project_directory)
             self.navigation.set_project_open(opened)
+            self.sync_scans_placeholder()
             url_total = issues = None
             scan = next((row for row in self.scan_model.rows if row.get("path") == self.selected_scan_path), None) if opened and self.selected_scan_path else None
             if scan:
@@ -330,9 +348,9 @@ class ShellMixin:
                 shortcut = QShortcut(seqs[action_id], self)
                 shortcut.activated.connect(lambda h=handler: h())
                 self._bound_shortcuts.append(shortcut)
-        for number in range(1, 10):  # fixed: Ctrl+1…9 select the n-th visible section
+        for number in NUMBERED_SECTIONS:  # fixed by the canon: Ctrl+1 Работа · 2 Сканы · 3 URL · 4 Проблемы
             shortcut = QShortcut(QKeySequence(f"Ctrl+{number}"), self)
-            shortcut.activated.connect(lambda n=number: self.navigation.select_nth(n))
+            shortcut.activated.connect(lambda n=number: self.navigation.select_number(n))
             self._bound_shortcuts.append(shortcut)
 
     def apply_preference(self, key):

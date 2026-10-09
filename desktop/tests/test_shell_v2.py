@@ -278,10 +278,39 @@ class ShellV2Tests(unittest.TestCase):
         self.window.prefs.reset("keys.")
         self.assertEqual(self.window.action_finder_action.shortcut(), QKeySequence("Ctrl+K"))
 
-    def test_ctrl_digit_selects_the_nth_visible_section(self):
-        self.assertTrue(self.window.navigation.select_nth(3))
-        self.assertEqual(self.window.navigation.current_section(), "crawler")  # numbering follows the visible order
-        self.assertFalse(self.window.navigation.select_nth(99))
+    def test_ctrl_digits_are_fixed_by_the_canon(self):
+        nav = self.window.navigation
+        for number, section in ((1, "work"), (2, "scans"), (3, "url"), (4, "issues")):
+            self.assertTrue(nav.select_number(number))
+            self.assertEqual(nav.current_section(), section)
+        for number in (0, 5, 6, 9, 99):  # the canon gives no other numbers: they do nothing
+            nav.select_section("url")
+            self.assertFalse(nav.select_number(number))
+            self.assertEqual(nav.current_section(), "url")
+        self.window.set_display("simple")  # all four sections stay visible in the Simple display
+        self.assertTrue(all(nav.select_number(n) for n in (1, 2, 3, 4)))
+        nav.list._items.pop("issues")  # a hidden section: its number does nothing
+        nav.select_section("url")
+        self.assertFalse(nav.select_number(4))
+        self.assertEqual(nav.current_section(), "url")
+
+    def test_sections_action_lists_only_the_canon_numbers(self):
+        from seohead_desktop import shortcuts
+
+        self.assertEqual(shortcuts.BY_ID["sections"].fixed, ("Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"))
+        self.window.prefs.set("keys.palette", "Ctrl+5")  # numbers beyond the canon are free for the user
+        self.assertEqual(self.window.prefs.get("keys.palette"), "Ctrl+5")
+
+    def test_scans_without_a_project_is_a_placeholder_until_one_opens(self):
+        from seohead_desktop.ui.kit import StatePanel
+
+        self.window.navigation.select_section("scans")
+        page = self.window.pages.currentWidget()
+        self.assertIs(page, self.window.scans_placeholder)
+        self.assertEqual(page.findChild(StatePanel).title.text(), "Раздел готовится")
+        self.window.project_directory = "/p"
+        self.window.sync_navigation_state()
+        self.assertIsNot(self.window.pages.currentWidget(), self.window.scans_placeholder)
 
     def test_counts_and_unread_dot_are_only_shown_when_measured(self):
         self.window.load_unread({"count": 2})
@@ -293,7 +322,7 @@ class ShellV2Tests(unittest.TestCase):
     def test_every_section_without_a_project_offers_open_and_create(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("work", "scans", "log", "inbox"):
+        for section in ("work", "log", "inbox"):
             self.window.navigation.select_section(section)
             self.app.processEvents()
             panels = [p for p in self.window.pages.currentWidget().findChildren(StatePanel) if p.secondary is not None]
