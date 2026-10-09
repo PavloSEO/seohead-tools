@@ -8,7 +8,7 @@
       "title": "Иконка · паук + поиск",
       "w": 1440,
       "x": 3040,
-      "y": 12360
+      "y": 14380
     },
     "CLI.dc.html": {
       "h": 1000,
@@ -16,14 +16,14 @@
       "title": "Командная строка seohead",
       "w": 1440,
       "x": 8420,
-      "y": 9640
+      "y": 11660
     },
     "Colors.dc.html": {
       "h": 1200,
       "title": "Цвета и 17 статусов",
       "w": 1440,
       "x": 4560,
-      "y": 9640
+      "y": 11660
     },
     "Compact.dc.html": {
       "h": 800,
@@ -54,7 +54,7 @@
       "title": "Визуальный гайдлайн · можно / нельзя",
       "w": 1440,
       "x": 1520,
-      "y": 12360
+      "y": 14380
     },
     "Handoff.dc.html": {
       "h": 900,
@@ -70,7 +70,7 @@
       "title": "Библиотека иконок",
       "w": 1440,
       "x": 1520,
-      "y": 11000
+      "y": 13020
     },
     "Inbox.dc.html": {
       "h": 900,
@@ -86,7 +86,7 @@
       "title": "Установка и первый запуск",
       "w": 1440,
       "x": 6900,
-      "y": 9640
+      "y": 11660
     },
     "Issues.dc.html": {
       "h": 900,
@@ -102,7 +102,7 @@
       "title": "Библиотека компонентов",
       "w": 1440,
       "x": 0,
-      "y": 11000
+      "y": 13020
     },
     "Loading.dc.html": {
       "h": 900,
@@ -166,7 +166,7 @@
       "title": "Анимации и движение",
       "w": 1440,
       "x": 4560,
-      "y": 11000
+      "y": 13020
     },
     "NewTab.dc.html": {
       "h": 900,
@@ -182,7 +182,7 @@
       "title": "Уведомления, плашки, тосты",
       "w": 1440,
       "x": 3040,
-      "y": 11000
+      "y": 13020
     },
     "Palette.dc.html": {
       "h": 900,
@@ -245,7 +245,7 @@
       "title": "Компонент · навигация",
       "w": 200,
       "x": 3040,
-      "y": 9640
+      "y": 11660
     },
     "Simple.dc.html": {
       "h": 900,
@@ -268,7 +268,7 @@
       "title": "Токены и компоненты",
       "w": 1440,
       "x": 0,
-      "y": 9640
+      "y": 11660
     },
     "TabSettings.dc.html": {
       "h": 900,
@@ -284,14 +284,14 @@
       "title": "Темы и язык",
       "w": 1440,
       "x": 0,
-      "y": 12360
+      "y": 14380
     },
     "TopBar.dc.html": {
       "h": 88,
       "title": "Компонент · шапка и вкладки",
       "w": 1440,
       "x": 1520,
-      "y": 9640
+      "y": 11660
     },
     "Watch.dc.html": {
       "h": 900,
@@ -299,7 +299,7 @@
       "title": "seohead watch · наблюдатель в терминале",
       "w": 1440,
       "x": 9940,
-      "y": 9640
+      "y": 11660
     },
     "SetGeneral.dc.html": {
       "x": 6900,
@@ -343,47 +343,47 @@
     },
     "SetAgent.dc.html": {
       "x": 8420,
-      "y": 6360,
+      "y": 7420,
       "w": 1440,
       "h": 900,
       "title": "Настройки · Агент",
       "is_interactive": true
     },
     "SetNotify.dc.html": {
-      "x": 9940,
-      "y": 6360,
+      "x": 5380,
+      "y": 8480,
       "w": 1440,
       "h": 900,
       "title": "Настройки · Уведомления",
       "is_interactive": true
     },
     "SetKeys.dc.html": {
-      "x": 5380,
-      "y": 7420,
+      "x": 6900,
+      "y": 8480,
       "w": 1440,
       "h": 900,
       "title": "Настройки · Горячие клавиши",
       "is_interactive": true
     },
     "SetData.dc.html": {
-      "x": 6900,
-      "y": 7420,
+      "x": 8420,
+      "y": 8480,
       "w": 1440,
       "h": 900,
       "title": "Настройки · Хранилище",
       "is_interactive": true
     },
     "SetUpdates.dc.html": {
-      "x": 8420,
-      "y": 7420,
+      "x": 9940,
+      "y": 8480,
       "w": 1440,
       "h": 900,
       "title": "Настройки · Обновления",
       "is_interactive": true
     },
     "SetAbout.dc.html": {
-      "x": 9940,
-      "y": 7420,
+      "x": 5380,
+      "y": 9540,
       "w": 1440,
       "h": 900,
       "title": "Настройки · О программе",
@@ -644,6 +644,46 @@
       "is_interactive": true,
       "x": 0,
       "y": 7520
+    },
+    "SetSources.dc.html": {
+      "w": 1440,
+      "h": 900,
+      "title": "Настройки · Источники данных",
+      "is_interactive": true,
+      "x": 8420,
+      "y": 6360
+    },
+    "SetSourceDetail.dc.html": {
+      "w": 1440,
+      "h": 900,
+      "title": "Источник · OAuth (Search Console)",
+      "is_interactive": true,
+      "x": 9940,
+      "y": 6360
+    },
+    "SetSourceKey.dc.html": {
+      "w": 1440,
+      "h": 900,
+      "title": "Источник · API-ключ (Arsenkin)",
+      "is_interactive": true,
+      "x": 5380,
+      "y": 7420
+    },
+    "SetSpend.dc.html": {
+      "w": 1440,
+      "h": 900,
+      "title": "Источники · расходы и лимиты",
+      "is_interactive": true,
+      "x": 6900,
+      "y": 7420
+    },
+    "SetAgentConfig.dc.html": {
+      "w": 1440,
+      "h": 900,
+      "title": "Агент настраивает приложение",
+      "is_interactive": true,
+      "x": 9940,
+      "y": 7420
     }
   },
   "createdOnFiles": {
@@ -721,14 +761,14 @@
     },
     "zG": {
       "x": 0,
-      "y": 9320,
+      "y": 11340,
       "text": "G · Дизайн-система и бренд",
       "kind": "title1",
       "maxW": 6000
     },
     "zH": {
       "x": 6900,
-      "y": 9320,
+      "y": 11340,
       "text": "H · Установка и терминал",
       "kind": "title1",
       "maxW": 4480
@@ -790,7 +830,12 @@
     "SetScan.dc.html",
     "SetCore.dc.html",
     "SetMcp.dc.html",
+    "SetSources.dc.html",
+    "SetSourceDetail.dc.html",
+    "SetSourceKey.dc.html",
+    "SetSpend.dc.html",
     "SetAgent.dc.html",
+    "SetAgentConfig.dc.html",
     "SetNotify.dc.html",
     "SetKeys.dc.html",
     "SetData.dc.html",

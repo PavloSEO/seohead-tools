@@ -75,6 +75,14 @@
             <div class="hint">Включили здесь — CLI видит то же самое. И наоборот: <span class="mono">seohead mcp disable</span> выключит переключатель в приложении.</div>
           </div></sc-if>
 
+          <sc-if value="{{is.src}}" hint-placeholder-val="{{false}}"><div>
+            <h2>Источники данных</h2><div class="hint" style="margin: 0 0 12px">Ключи и доступы к GSC, Метрике, Вебмастеру и платным API. Значения ключей приложение не показывает</div>
+            <div class="set-row"><div><div class="t">Подключено</div><div class="d">9 из 14 · Wayback и crt.sh работают без ключа</div></div><span class="b st-done"><span class="ms" aria-hidden="true">check_circle</span>9 готовы</span></div>
+            <div class="set-row"><div><div class="t">Требуют внимания</div><div class="d">Яндекс Метрика — истёк токен · Bing — нужен ключ</div></div><span class="b st-err"><span class="ms" aria-hidden="true">error</span>2</span></div>
+            <div class="set-row"><div><div class="t">Платные API в этом месяце</div><div class="d">Arsenkin, Topvisor, DataForSEO, Wordstat · всегда спрашивать перед тратой</div></div><a class="btn" href="/SetSpend.dc.html">2 140 ₽ из 6 000 ₽</a></div>
+            <div style="margin-top: 14px; background: #14161B; color: #D7DAE0; border-radius: 10px; padding: 12px 14px; font: 400 12.5px/1.7 'Roboto Mono', monospace"><span style="color: #7FB2F0">~ $</span> seohead sources status<br><span style="color: #7ED69A">9 ok</span> · <span style="color: #F2C26B">1 expired</span> · <span style="color: #F2C26B">1 missing</span> <span style="color: #7C828D">· 3 import-only/no-key</span></div>
+          </div></sc-if>
+
           <sc-if value="{{is.agent}}" hint-placeholder-val="{{false}}"><div>
             <h2>Агент</h2><div class="hint" style="margin: 0 0 12px">Что агент видит и что может делать через MCP</div>
             <div class="set-row"><div><div class="t">Доступ к проектам</div><div class="d">Только отмеченные · 2 из 5</div></div><a class="btn" href="/Modals.dc.html">Изменить…</a></div>
@@ -125,7 +133,7 @@ class Component extends DCLogic {
   constructor(props) { super(props); this.state = { sec: 'view', dens: 'std', close: true, motion: false, agentScan: false, mcp: true, theme: 'light', lang: 'ru' }; }
   renderVals() {
     const s = this.state;
-    const defs = [['gen', 'settings', 'Общие'], ['view', 'palette', 'Вид'], ['scan', 'manage_search', 'Сканы по умолчанию'], ['core', 'memory', 'Ядро'], ['mcp', 'hub', 'MCP-сервер'], ['agent', 'smart_toy', 'Агент'], ['notif', 'notifications', 'Уведомления'], ['keys', 'keyboard', 'Горячие клавиши'], ['data', 'database', 'Хранилище и данные'], ['upd', 'system_update', 'Обновления'], ['about', 'info', 'О программе']];
+    const defs = [['gen', 'settings', 'Общие'], ['view', 'palette', 'Вид'], ['scan', 'manage_search', 'Сканы по умолчанию'], ['core', 'memory', 'Ядро'], ['mcp', 'hub', 'MCP-сервер'], ['src', 'dns', 'Источники данных'], ['agent', 'smart_toy', 'Агент'], ['notif', 'notifications', 'Уведомления'], ['keys', 'keyboard', 'Горячие клавиши'], ['data', 'database', 'Хранилище и данные'], ['upd', 'system_update', 'Обновления'], ['about', 'info', 'О программе']];
     const secs = defs.map(([id, icon, label]) => ({ icon, label, cls: 'sn' + (id === s.sec ? ' on' : ''), pick: () => this.setState({ sec: id }) }));
     const is = {}; defs.forEach(([id]) => { is[id] = id === s.sec; });
     const dens = [['cmp', 'Плотно'], ['std', 'Стандарт'], ['cmf', 'Просторно']].map(([id, label]) => ({ label, cls: id === s.dens ? 'on' : '', pick: () => this.setState({ dens: id }) }));
@@ -138,7 +146,7 @@ class Component extends DCLogic {
     const notifs = [['Скан завершён или остановлен', 'С итогом и ссылкой на результат', 1, 1], ['Ошибка ядра или скана', 'Остаётся до закрытия', 1, 1], ['Агент предложил задачи или цель', 'Ссылка во «Входящие»', 1, 0], ['Наблюдение устарело', 'Только плашкой в окне', 0, 0], ['Экспорт и отчёт готовы', 'С кнопкой «Открыть папку»', 1, 0]].map(([t, d, a, b]) => ({ t, d, a: 'swt' + (a ? ' on' : ''), b: 'swt' + (b ? ' on' : '') }));
     const keys = [['Действия и переходы', ['⌘', 'K']], ['Новый скан', ['⌘', 'N']], ['Новая вкладка', ['⌘', 'T']], ['Закрыть вкладку', ['⌘', 'W']], ['Разделы 1–9', ['⌘', '1…9']], ['Развернуть таблицу', ['⌥', '⌘', '↵']], ['Копировать как TSV', ['⌘', '⇧', 'C']], ['Найти в таблице', ['⌘', 'F']], ['Назад / вперёд по URL', ['⌘', '[ ]']], ['Справка', ['F1']]].map(([t, k]) => ({ t, k }));
     const themes = [['light', 'Светлая', '#FDFCFF', '#F4F6FA', '#1565C0', '#EEF0F3'], ['dark', 'Тёмная', '#16181D', '#1E2128', '#9EC4F8', '#2A2E37'], ['hc', 'Контраст', '#FFFFFF', '#FFFFFF', '#003C8F', '#1B1B1F']].map(([id, name, bg, nav, acc, line]) => ({ name, bg, nav, acc, line, on: id === s.theme, border: id === s.theme ? '2px solid #1565C0' : '1px solid #DDE1E7', pick: () => this.setState({ theme: id }) }));
-    const boards = { gen: 'SetGeneral', view: 'SetView', scan: 'SetScan', core: 'SetCore', mcp: 'SetMcp', agent: 'SetAgent', notif: 'SetNotify', keys: 'SetKeys', data: 'SetData', upd: 'SetUpdates', about: 'SetAbout' };
+    const boards = { gen: 'SetGeneral', view: 'SetView', scan: 'SetScan', core: 'SetCore', mcp: 'SetMcp', src: 'SetSources', agent: 'SetAgent', notif: 'SetNotify', keys: 'SetKeys', data: 'SetData', upd: 'SetUpdates', about: 'SetAbout' };
     const cur = defs.find(([id]) => id === s.sec);
     return { secs, is, dens, sw, notifs, keys, themes, detail: '/' + boards[s.sec] + '.dc.html', detailLabel: cur[2],
       langRu: s.lang === 'ru' ? 'on' : '', langEn: s.lang === 'en' ? 'on' : '', pickRu: () => this.setState({ lang: 'ru' }), pickEn: () => this.setState({ lang: 'en' }),
