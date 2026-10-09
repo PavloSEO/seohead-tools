@@ -20,12 +20,13 @@
 .term{background:#14161B;color:#D7DAE0;border-radius:10px;padding:6px 12px;font:400 12px/1.65 'Roboto Mono',monospace;flex-shrink:0}
 .gl{width:220px;flex-shrink:0;border-right:1px solid #EEF0F3;padding:10px 8px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;background:#FAFBFC}
 .gl .nav{height:32px;gap:10px}
-.rec{flex:1;min-width:0;border:1px solid #DDE1E7;border-radius:12px;background:#FFFFFF;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.rec{min-width:0;border:1px solid #DDE1E7;border-radius:12px;background:#FFFFFF;padding:6px 10px;display:flex;align-items:center;gap:10px}
 .rec .t{font:500 13px Roboto,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rec .d{font:400 11px Roboto,sans-serif;color:#5D6069;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .ico{width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .tl{display:grid;grid-template-columns:28px 210px minmax(0,1fr) auto 84px;align-items:center;column-gap:10px;height:36px;padding:0 8px;border-bottom:1px solid #EEF0F3;font:400 13px Roboto,sans-serif}
 .tl:hover{background:#F5F8FD}
+.tl.hl{background:#F3F8FF;box-shadow:inset 3px 0 0 #1565C0}
 .tl .nm{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl .ds{color:#5D6069;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl .bd{display:flex;gap:4px;justify-content:flex-end}
@@ -39,7 +40,7 @@
   <dc-import name="SideNav" mode="agent" active="tools" h="786" hint-size="200px,786px"></dc-import>
   <main class="main">
     <div class="sechead"><span class="ms s24" aria-hidden="true" style="color: #1565C0">construction</span><h1>Инструменты</h1><span class="meta">Мебельный магазин · shop.example.test · {{total}} инструментов ядра</span><div style="flex: 1"></div>
-      <label class="fld" style="width: 300px; height: 32px"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">search</span><input placeholder="Найти инструмент…" aria-label="Найти инструмент" value="{{query}}" onInput="{{onQuery}}"></label>
+      <label class="fld" style="width: 220px; height: 32px"><span class="ms s18" aria-hidden="true" style="color: #6A6D76">search</span><input placeholder="Найти инструмент…" aria-label="Найти инструмент" value="{{query}}" onInput="{{onQuery}}"></label>
       <div class="seg" role="radiogroup" aria-label="Фильтр"><sc-for list="{{filters}}" as="f" hint-placeholder-count="4"><button class="{{f.cls}}" onClick="{{f.on}}" aria-pressed="{{f.pr}}">{{f.t}}</button></sc-for></div>
       <span class="ms q" aria-label="Подсказка" title="«Работает с проектом» — берёт данные скана или подключённых источников проекта. «Без проекта» — достаточно URL или файла. «₽» — платный внешний API, перед запуском покажем смету.">help</span>
     </div>
@@ -53,7 +54,7 @@
       </div>
       <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 20px; box-sizing: border-box">
         <div style="display: flex; align-items: center; gap: 6px"><div class="sec" style="margin: 0">Рекомендуем для проекта · по скану №3 r-0143</div><span class="ms q" aria-label="Подсказка" title="Подобрано по находкам скана №3: вес картинок, битые URL из сравнения №2 → №3 и запланированный релиз из «Работы».">help</span></div>
-        <div style="display: flex; gap: 10px">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px">
           <sc-for list="{{recs}}" as="r" hint-placeholder-count="3">
             <div class="rec"><span class="ico" style="background: {{r.bg}}; color: {{r.fg}}"><span class="ms s18" aria-hidden="true">{{r.icon}}</span></span><div style="flex: 1; min-width: 0"><div class="t" title="{{r.t}}">{{r.t}}</div><div class="d">{{r.d}}</div></div><a class="{{r.cls}}" href="{{r.href}}"><span class="ms s18" aria-hidden="true">arrow_forward</span>Открыть</a></div>
           </sc-for>
@@ -62,11 +63,11 @@
           <sc-for list="{{sections}}" as="s" hint-placeholder-count="3">
             <div class="gh"><span class="ms s16" aria-hidden="true">{{s.icon}}</span>{{s.t}}<span style="color: #8E929A">{{s.n}}</span></div>
             <sc-for list="{{s.items}}" as="i" hint-placeholder-count="5">
-              <div class="tl">
+              <div class="{{i.cls}}">
                 <span class="ms s18" aria-hidden="true" style="color: #45464F">{{i.icon}}</span>
                 <div class="nm" title="{{i.name}}">{{i.name}}</div>
                 <div class="ds" title="{{i.desc}}">{{i.desc}}</div>
-                <div class="bd"><span class="cmdb">{{i.cmd}}</span><span class="b info" style="height: 20px">MCP</span><sc-if value="{{i.paid}}" hint-placeholder-val="{{false}}"><span class="b warn" style="height: 20px" title="Платный внешний API · смета перед запуском">₽</span></sc-if><sc-if value="{{i.scan}}" hint-placeholder-val="{{false}}"><span class="b pur" style="height: 20px"><span class="ms" aria-hidden="true">history</span>использует скан</span></sc-if></div>
+                <div class="bd"><span class="cmdb">{{i.cmd}}</span><span class="b info" style="height: 20px">MCP</span><sc-if value="{{i.paid}}" hint-placeholder-val="{{false}}"><span class="b warn" style="height: 20px" title="Платный внешний API · смета перед запуском">₽</span></sc-if><sc-if value="{{i.flag}}" hint-placeholder-val="{{false}}"><span class="b ok" style="height: 20px" title="Встроенный аналог Log File Analyser: логи × скан, проверка ботов по DNS">флагман</span></sc-if><sc-if value="{{i.scan}}" hint-placeholder-val="{{false}}"><span class="b pur" style="height: 20px"><span class="ms" aria-hidden="true">history</span>использует скан</span></sc-if></div>
                 <a class="btn sm" href="{{i.href}}">Открыть</a>
               </div>
             </sc-for>
@@ -107,13 +108,13 @@ const T = [
   ['red', 'inspect-url', 'manage_search', 'Проверка одного URL', 'Мета, заголовки, robots, редиректы, разметка и рендер за раз', ''],
   ['red', 'headers-check', 'http', 'Заголовки ответа', 'X-Robots-Tag, canonical в Link, кэш, Vary, сжатие', ''],
   ['red', 'verify-fixes', 'task_alt', 'Перепроверка исправлений', 'Перепроверяет выбранные находки скана на точном списке URL', 's'],
+  ['idx', 'log-analyze', 'receipt_long', 'Анализ логов сервера', 'Что реально обходят Google, Яндекс и ИИ-боты: визиты, коды, логи × скан', 'sf', '/Logs.dc.html'],
   ['idx', 'robots-check', 'smart_toy', 'Анализ robots.txt', 'Группы user-agent, Sitemap, Clean-param, синтаксис и конфликты', ''],
   ['idx', 'sitemap-crawl', 'account_tree', 'Разбор sitemap', 'Рекурсивно разбирает индекс и urlset, gzip, дерево URL', ''],
   ['idx', 'llms-txt-check', 'article', 'Проверка llms.txt', 'Есть ли /llms.txt и насколько он полезен ИИ — 9 проверок', ''],
   ['idx', 'ai-bots-check', 'robot_2', 'Доступ ИИ-краулеров', 'GPTBot, ClaudeBot, Perplexity, Google-Extended: пускает ли сайт', ''],
   ['idx', 'indexnow-submit', 'send', 'Отправка в IndexNow', 'До 10 000 изменённых URL в Bing, Яндекс, Naver, Seznam', ''],
   ['idx', 'hreflang-check', 'translate', 'Проверка hreflang', 'x-default, самоссылка, дубли и ошибки в кодах языков', '', '/ToolRun.dc.html'],
-  ['idx', 'log-analyze', 'receipt_long', 'Анализ логов сервера', 'Визиты ботов, коды ответов, ошибки по access.log', ''],
   ['sch', 'schema-check', 'data_object', 'Проверка разметки', 'Schema.org и требования Google к расширенным сниппетам', ''],
   ['sch', 'schema-build', 'schema', 'Генератор Schema', 'Предлагает связный @graph JSON-LD по типу страницы', ''],
   ['sch', 'social-meta-check', 'share', 'OpenGraph и Twitter', 'Хватает ли тегов для нормального превью ссылки', ''],
@@ -164,7 +165,8 @@ const T = [
 ];
 const FILT = [['all', 'Все'], ['proj', 'Работает с проектом'], ['free', 'Без проекта'], ['paid', 'Платные ₽']];
 const RECS = [
-  { icon: 'compress', bg: '#E3F0FF', fg: '#0B4A94', t: 'Сжать 214 тяжёлых картинок (38 МБ → ~9 МБ)', d: 'Картинки и ресурсы · images-optimize · из скана №3', href: '/ToolImages.dc.html', cls: 'btn pri sm' },
+  { icon: 'receipt_long', bg: '#E3F0FF', fg: '#0B4A94', t: 'Импортировать логи сервера', d: 'Увидеть, что реально обходят Google и Яндекс · log-analyze', href: '/Logs.dc.html', cls: 'btn pri sm' },
+  { icon: 'compress', bg: '#E3F0FF', fg: '#0B4A94', t: 'Сжать 214 тяжёлых картинок (38 МБ → ~9 МБ)', d: 'Картинки и ресурсы · images-optimize · из скана №3', href: '/ToolImages.dc.html', cls: 'btn sm' },
   { icon: 'alt_route', bg: '#FFE1DD', fg: '#7A1810', t: 'Сгенерировать 301 для 46 битых URL', d: 'Редиректы · redirects-generate · 404 из скана №3', href: '/ToolRedirects.dc.html', cls: 'btn sm' },
   { icon: 'smart_toy', bg: '#FFEBC7', fg: '#5B3B00', t: 'Проверить robots после релиза', d: 'Индексация · robots-check · релиз в «Работе»', href: '/ToolRun.dc.html', cls: 'btn sm' }
 ];
@@ -184,7 +186,7 @@ class Component extends DCLogic {
     const cnt = (k) => vis.filter(t => t[0] === k).length;
     const groups = [['all', 'apps', 'Все инструменты']].concat(G).map(([k, icon, t]) => ({ icon, t, n: k === 'all' ? vis.length : cnt(k), cls: 'nav' + (s.g === k ? ' on' : ''), bg: s.g === k ? '#E3F0FF' : 'transparent', on: () => this.setState({ g: k }) }));
     const sections = G.filter(([k]) => s.g === 'all' || s.g === k).map(([k, icon, t]) => ({ icon, t, n: cnt(k),
-      items: vis.filter(x => x[0] === k).map(x => ({ cmd: x[1], icon: x[2], name: x[3], desc: x[4], paid: x[5].includes('p'), scan: x[5].includes('s'), href: x[6] || '/ToolRun.dc.html' })) })).filter(x => x.items.length);
+      items: vis.filter(x => x[0] === k).map(x => ({ cmd: x[1], icon: x[2], name: x[3], desc: x[4], paid: x[5].includes('p'), scan: x[5].includes('s'), flag: x[5].includes('f'), cls: 'tl' + (x[5].includes('f') ? ' hl' : ''), href: x[6] || '/ToolRun.dc.html' })) })).filter(x => x.items.length);
     const shown = sections.reduce((a, x) => a + x.items.length, 0);
     return {
       total: T.length, shown, paidN: T.filter(t => t[5].includes('p')).length, query: s.q, empty: shown === 0,
