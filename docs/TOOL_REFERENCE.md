@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `
 python scripts/generate_tool_reference.py
 ```
 
-**160 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 165 in total.
+**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 166 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2773,6 +2773,33 @@ Read one exact native URL's retained headers, redirects, page fields, and forms.
 The query is offline and read-only. Header and query values stay redacted,
 body bytes remain unavailable here, and legacy/Screaming Frog sources
 return named unavailable evidence instead of an empty detail record.
+
+### `scan-url-query`
+
+MCP name: `seo_scan_url_query`
+
+Filter, sort and paginate the page table of one saved scan across the whole scan.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `filters` | `list[dict[str, Any]] | None` | `None` |
+| `sort` | `str | None` | `None` |
+| `direction` | `str` | `'asc'` |
+| `columns` | `list[str] | None` | `None` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `200` |
+| `count_timeout_seconds` | `float` | `1.0` |
+| `max_bytes` | `int` | `1048576` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
+non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
+sort_not_indexed). Returns total, filtered_total (null with state capped when the count
+exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
 
 ### `scan-link-inspect`
 
