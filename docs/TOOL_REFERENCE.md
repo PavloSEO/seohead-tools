@@ -2143,12 +2143,12 @@ Join a saved private provider collection to a saved scan with no network; retain
 
 MCP name: `seo_provider_auth`
 
-Manage GSC read-only OAuth grants: import private file, refresh, or explicitly revoke. Never returns secrets.
+Manage GSC read-only OAuth grants: import private file, refresh, cancel a pending flow, or explicitly revoke. Never returns secrets.
 
 | Argument | Type | Default |
 |---|---|---|
 | `provider` | `str` | `required` |
-| `action` | `Literal['status', 'connect', 'refresh', 'disconnect', 'revoke']` | `'status'` |
+| `action` | `Literal['status', 'connect', 'refresh', 'cancel', 'disconnect', 'revoke']` | `'status'` |
 | `grant_file` | `str | None` | `None` |
 | `confirm` | `bool` | `False` |
 

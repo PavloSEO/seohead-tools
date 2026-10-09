@@ -2364,11 +2364,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     @mcp.tool(annotations=submit, structured_output=True)
     def seo_provider_auth(
         provider: str,
-        action: Literal["status", "connect", "refresh", "disconnect", "revoke"] = "status",
+        action: Literal[
+            "status", "connect", "refresh", "cancel", "disconnect", "revoke"
+        ] = "status",
         grant_file: str | None = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
-        """Manage GSC read-only OAuth grants: import private file, refresh, or explicitly revoke. Never returns secrets."""
+        """Manage GSC read-only OAuth grants: import private file, refresh, cancel a pending flow, or explicitly revoke. Never returns secrets."""
         return _checked(
             handlers.provider_auth(
                 provider=provider, action=action, grant_file=grant_file, confirm=confirm
