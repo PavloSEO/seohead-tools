@@ -2794,11 +2794,24 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_content_search_page(
-        package: str, offset: int = 0, limit: int = 100
+        package: str,
+        offset: int = 0,
+        limit: int = 100,
+        status: Literal["matched", "not_matched", "unavailable"] | None = None,
+        status_code: int | None = None,
     ) -> dict[str, Any]:
-        """Read up to 100 indexed derived content-search records without rereading the scan."""
+        """Read up to 100 indexed derived content-search records without rereading the scan.
+
+        Optional status or status_code filters the stream; offset then counts matching records.
+        """
         return _checked(
-            handlers.scan_content_search_page(package=package, offset=offset, limit=limit)
+            handlers.scan_content_search_page(
+                package=package,
+                offset=offset,
+                limit=limit,
+                status=status,
+                status_code=status_code,
+            )
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)

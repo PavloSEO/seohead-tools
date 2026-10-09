@@ -448,7 +448,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if getattr(args, name, False):
                 kw[name] = True
     elif cmd == "scan-content-search-page":
-        for name in ("package", "offset", "limit"):
+        for name in ("package", "offset", "limit", "status", "status_code"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "scan-url-query":
@@ -1589,6 +1589,14 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--package", help="completed local content-search package directory")
         sub.add_argument("--offset", type=int, help="zero-based derived record offset")
         sub.add_argument("--limit", type=int, help="records per page, 1..100")
+        sub.add_argument(
+            "--status",
+            choices=("matched", "not_matched", "unavailable"),
+            help="return only records with this status; offset then counts matching records",
+        )
+        sub.add_argument(
+            "--status-code", type=int, help="return only records with this HTTP status, 100..599"
+        )
     if cmd == "scan-extract":
         _source_flag(sub, "--url", help="optional exact logical URL")
         sub.add_argument("--representation", choices=("static", "rendered", "legacy_fragment"))
