@@ -166,3 +166,21 @@ QScrollBar::handle:horizontal { background: $outline; border-radius: 4px; min-wi
 QScrollBar::handle:hover { background: $outline_hover; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+/* settings rows, key-value */
+QFrame[set_row="true"] { border: 0; border-bottom: 1px solid $divider_inner; background: transparent; }
+QFrame[set_row="true"] QLabel { background: transparent; }
+QLabel[kv="key"] { padding: 7px 0; border-bottom: 1px solid $divider_inner; }
+QLabel[kv="value"] { padding: 6px 0; border-bottom: 1px solid $divider_inner; }
+QLabel[text_style="control"] { font-size: ${font_control}px; font-weight: 500; }
+QFrame[segmented="true"] { background: $raised; border-radius: 10px; border: 0; }
+QToolButton[segment="true"] { height: 30px; padding: 0 12px; border-radius: ${radius_control}px; background: transparent; color: $text_2; font-weight: 500; border: 1px solid transparent; }
+QToolButton[segment="true"]:hover { color: $text; background: transparent; }
+QToolButton[segment="true"]:checked { background: $base; color: $on_selected; border: 1px solid $divider; }
+
+/* settings dialog */
+QFrame#settingsNav { background: $raised; border: 0; border-right: 1px solid $divider; }
+QToolButton#settingsNavItem { height: ${control_nav_item}px; padding: 0 12px; border-radius: ${radius_control}px; color: $text_2; font-weight: 500; text-align: left; }
+QToolButton#settingsNavItem:hover { background: $nav_hover; color: $text; }
+QToolButton#settingsNavItem:checked { background: $selected; color: $on_selected; }
+QFrame#dialogFooter { background: $base; border: 0; border-top: 1px solid $divider; }

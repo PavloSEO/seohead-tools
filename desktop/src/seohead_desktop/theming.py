@@ -141,6 +141,7 @@ def stylesheet(name=None):
     return "\n".join([
         Template((THEME_DIR / "legacy.qss").read_text()).substitute(legacy),
         Template((THEME_DIR / "theme.qss").read_text()).substitute(substitution(name)),
+        *(Template(part.read_text()).substitute(substitution(name)) for part in sorted((THEME_DIR / "parts").glob("*.qss"))),
     ])
 
 
