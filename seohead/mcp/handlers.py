@@ -357,7 +357,10 @@ def _run_render_escalation(
                 # the pattern lands in patterns_unprobed with a reason (#626).
                 reason = (probed.get("findings") or [""])[0] or "the probe reached no verdict"
                 probed = dict(probed, ok=False, error=reason)
-            probed["needs_escalation"] = bool(verdict)
+            needs = bool(verdict)
+            if rendering_config.get("escalation", {}).get("policy") == "auto" and probed.get("ok"):
+                needs = needs or render_tool.little_text(probed.get("raw") or {})
+            probed["needs_escalation"] = needs
             return probed
 
         def render_fetch(target: str) -> dict[str, Any]:

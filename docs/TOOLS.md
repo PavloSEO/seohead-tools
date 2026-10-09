@@ -328,7 +328,9 @@ See [SETUP.md](SETUP.md#crawler-configuration) for the supported transport and l
 `rendering.mode=raw` remains static-only. When a fuller representation is
 enabled, `rendering.escalation.policy=sampled` is the default: it uses the
 configured per-pattern sample before deciding which evidence is worth fuller
-collection. `full` requests the fuller policy deliberately. Both remain bounded
+collection. `full` requests the fuller policy deliberately. `auto` (the desktop Auto mode)
+is sampled plus escalation of any pattern whose raw page carries little text
+(under 50 words), even when raw and rendered agree. All remain bounded
 by render URL/time settings, and a route or corpus relation stays unknown when
 one representation was not completely captured.
 
