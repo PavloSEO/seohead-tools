@@ -153,6 +153,10 @@ def build(name, width, height, store, theme="light", lang="ru"):
         return Job(name, OPTIONS, open_project)
     if kind == "projsources":
         return projsources_dialog(arg or "ready", theme, lang)
+    if kind == "sources":
+        from capture_sources import dialog
+
+        return dialog(arg or "list")
     if kind == "menu":
         from seohead_desktop.app import MainWindow
 
@@ -191,7 +195,7 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith(("settings", "projsources")):
+            if name.startswith(("settings", "projsources", "sources")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):

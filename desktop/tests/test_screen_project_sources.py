@@ -81,7 +81,7 @@ class SourceRowsTests(unittest.TestCase):
         for key in LOGOS:
             with self.subTest(key=key):
                 self.assertIsNotNone(logo_path(key))
-        self.assertEqual(set(LOGOS), {key for key, *_ in SERVICES})
+        self.assertLessEqual({key for key, *_ in SERVICES}, set(LOGOS))
         self.assertFalse(BrandTile("unknown").has_logo)
 
 

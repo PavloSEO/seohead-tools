@@ -13,7 +13,7 @@ from PyQt5.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QWidget
 
-from .. import theming
+
 from .icons import material_icon
 
 ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "brands"
@@ -27,9 +27,13 @@ LOGOS = {
     "bing": ("bing.png", None, 26),
     "topvisor": ("topvisor.png", None, 28),
     "psi": ("pagespeedinsights.svg", "#4285F4", 28),
+    "arsenkin": ("arsenkin.png", None, 28),
+    "dataforseo": ("dataforseo.png", None, 28),
+    "yandex_cloud": ("yandexcloud-color.svg", None, 26),
 }
 TILE = 40
 WHITE = "#FFFFFF"
+BORDER = "#DDE1E7"  # the tile stays white with the same border in both themes (BrandBook)
 
 
 def logo_path(key):
@@ -76,7 +80,7 @@ class BrandTile(QWidget):
         shape = QPainterPath()
         shape.addRoundedRect(tile, 10, 10)
         painter.fillPath(shape, QColor(WHITE))
-        painter.setPen(QPen(QColor(theming.roles()["divider"]), 1))
+        painter.setPen(QPen(QColor(BORDER), 1))
         painter.drawPath(shape)
         if not self.has_logo:
             material_icon("sell", "role:text_muted").paint(painter, self.rect(), Qt.AlignCenter)

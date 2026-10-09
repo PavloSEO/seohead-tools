@@ -3,26 +3,17 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QFrame, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel
 
 from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
+from seohead_desktop.source_service import load_sources, redacted_providers
+from seohead_desktop.ui.brand_logos import BORDER, BrandTile
 from seohead_desktop.ui.settings import SECTION_IDS, full_schema, sources
 from seohead_desktop.ui.settings.context import SettingsContext
 from seohead_desktop.ui.settings.dialog import SettingsDialog
-
-READINESS = {
-    "ok": True, "verification_performed": False,
-    "providers": {
-        "gsc": {"readiness_state": "configured_unverified", "credential_components": {"oauth_bearer": True, "service_account": True},
-                "credential_sources": {"service_account": {"source_reference": "config:gsc/service-account.json"}}},
-        "bing_webmaster": {"readiness_state": "missing", "credential_components": {"api_key": False}},
-        "wayback": {"readiness_state": "not_required", "credential_components": {}},
-        "arsenkin": {"readiness_state": "verified", "verified": True, "credential_components": {"api_token": True},
-                     "quota_mode": "paid limit credits"},
-        "newcomer": {"readiness_state": "weird_state", "credential_components": {}},
-    },
-}
+from seohead_desktop.ui.settings.source_layout import SourceRow
+from tests._sources_support import PROJECT, core_call, sources_hook
 
 
 def texts(widget):
@@ -34,9 +25,9 @@ class SourcesSectionTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = qt_app()
 
-    def page(self, hook):
-        actions = {"providers": hook} if hook else {}
-        return sources.build_page(AppSettings(schema=full_schema()), SettingsContext(actions=actions))
+    def page(self, hook, project=PROJECT):
+        actions = {"sources": hook} if hook else {}
+        return sources.build_page(AppSettings(schema=full_schema()), SettingsContext(project_directory=project, actions=actions))
 
     def test_section_is_twelfth_and_follows_mcp(self):
         self.assertEqual(len(SECTION_IDS), 12)
@@ -45,77 +36,68 @@ class SourcesSectionTests(unittest.TestCase):
     def test_without_a_core_hook_nothing_is_invented(self):
         self.assertIn("Нет данных", texts(self.page(None)))
 
-    def test_waiting_state_then_states_from_the_core(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(cb=callback, err=on_error))
+    def test_loading_then_every_provider_of_the_core_with_its_state(self):
+        pending = []
+        page = self.page(sources_hook(pending=pending))
         self.assertTrue(any("Читаю" in t for t in texts(page)))
-        holder["cb"](READINESS)
-        labels = texts(page)
-        joined = " | ".join(labels)
-        for expected in ("Google Search Console", "ключ задан · не проверен", "нужен ключ", "без ключа", "подключено", "newcomer"):
+        operation, callback, _err = pending[0]
+        self.assertEqual(operation, "snapshot")
+        callback(load_sources("core", "snapshot", call=core_call()))
+        rows = page.findChildren(SourceRow)
+        self.assertEqual(len(rows), 14)
+        joined = " | ".join(texts(page))
+        for expected in ("Google Search Console", "ключ задан · не проверен", "нужен ключ", "без ключа"):
             self.assertIn(expected, joined)
-        self.assertIn("хранится: config:gsc/service-account.json", joined)
 
     def test_configured_is_never_reported_as_connected(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(cb=callback))
-        holder["cb"]({"providers": {"gsc": READINESS["providers"]["gsc"]}})
-        joined = " | ".join(texts(page))
-        self.assertNotIn("подключено", joined.replace("подключено и проверено", ""))
-        self.assertIn("ключ задан · не проверен", joined)
+        page = self.page(sources_hook())
+        states = {row.pid: row.state.text() for row in page.findChildren(SourceRow)}
+        self.assertEqual(states["gsc"], "ключ задан · не проверен")
+        self.assertNotIn("подключено", states.values())
 
-    def test_kpis_count_only_what_was_reported_and_spend_is_not_measured(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(cb=callback))
-        holder["cb"](READINESS)
-        kpis = {frame.findChildren(QLabel)[0].text(): frame.findChildren(QLabel)[1].text() for frame in page.findChildren(QFrame) if frame.property("kpi")}
-        self.assertEqual(kpis["подключено и проверено из 5"], "1")
-        self.assertEqual(kpis["ключ задан, не проверен"], "1")
-        self.assertEqual(kpis["нужен ключ"], "1")
-        self.assertEqual(kpis["платные API · расходы за месяц"], "Нет данных")
+    def test_check_all_runs_only_the_local_doctor(self):
+        hook = sources_hook()
+        page = self.page(hook)
+        page.check_all()
+        commands = [args[0] for args in hook.call.calls]
+        self.assertIn("sources-doctor", commands)
+        self.assertFalse({"sources-sync", "provider-verify"} & set(commands))
+        self.assertTrue(any("проверено" in t for t in texts(page)))
 
-    def test_actions_without_backend_are_disabled_with_the_reason(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(cb=callback))
-        holder["cb"](READINESS)
-        buttons = [b for b in page.findChildren(QPushButton)]
-        self.assertTrue(buttons)
-        for button in buttons:
-            self.assertFalse(button.isEnabled(), button.text())
-            self.assertEqual(button.toolTip(), "Недоступно в этой сборке")
+    def test_core_failure_is_shown_in_place(self):
+        page = self.page(sources_hook({"provider-readiness": ValueError("x"), "provider-registry": ValueError("x")}))
+        self.assertTrue(any("не вернуло список источников" in t for t in texts(page)))
 
-    def test_error_is_shown_in_place(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(err=on_error))
-        holder["err"]("CLI ядра seohead не найден")
-        self.assertTrue(any("CLI ядра seohead не найден" in t for t in texts(page)))
+    def test_secret_values_never_cross_the_adapter(self):
+        leaking = {"gsc": {"readiness_state": "configured_unverified", "api_key": "SECRET-123",
+                           "credential_sources": {"service_account": {"source_reference": "/Users/x/SECRET.json"}}}}
+        self.assertNotIn("SECRET", repr(redacted_providers(leaking)))
 
-    def test_secret_values_never_appear(self):
-        holder = {}
-        page = self.page(lambda callback, on_error: holder.update(cb=callback))
-        leaking = {"providers": {"gsc": {**READINESS["providers"]["gsc"], "api_key": "SECRET-123", "token": "SECRET-456"}}}
-        holder["cb"](leaking)
-        self.assertNotIn("SECRET", " ".join(texts(page)))
+    def test_details_open_for_every_provider(self):
+        page = self.page(sources_hook())
+        for pid in page.provider_ids():
+            page.show_detail(pid)
+            self.assertTrue(texts(page), pid)
+        page.show_list()
+
+    def test_logos_are_white_tiles_with_the_brandbook_border(self):
+        page = self.page(sources_hook())
+        tiles = {tile.key for tile in page.findChildren(BrandTile)}
+        self.assertTrue({"gsc", "metrika", "arsenkin", "dataforseo"} <= tiles, tiles)
+        self.assertEqual(BORDER, "#DDE1E7")
 
     def test_dialog_lists_the_section_with_its_title(self):
         dialog = SettingsDialog(AppSettings(schema=full_schema()), SettingsContext(), section="sources")
         self.assertEqual(dialog.section_title.text(), "Источники данных")
 
-    def test_core_missing_is_reported_and_late_answers_to_a_closed_dialog_are_ignored(self):
+    def test_core_missing_is_reported(self):
         from seohead_desktop.app import MainWindow
 
         window = MainWindow(persistent=False)
         window.core_executable = None
         seen = []
-        window.request_providers(seen.append, seen.append)
+        window.request_sources("snapshot", seen.append, seen.append, window)
         self.assertEqual(seen, ["CLI ядра seohead не найден"])
-
-        def gone(_value):
-            raise RuntimeError("wrapped C/C++ object has been deleted")
-
-        window._provider_handlers = (gone, gone)
-        window._providers_loaded({"providers": {}})  # must not raise
-        window.providers_failed("late")
         window.close()
 
 

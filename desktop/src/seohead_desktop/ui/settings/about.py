@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ... import brand, theming
-from ...i18n import tr, trf
+from ...i18n import joined, tr, trf
 from ..icons import material_icon
 from .actions import Columns, action_button, button_row, format_size, key_values, meta_label
 from .helpers import group_label, page
@@ -93,7 +93,7 @@ def _header(version):
     if core:
         parts.append(trf("ядро {core}", core=core))
     parts.append(tr("открытый исходный код · © 2026 Павел Борушко"))
-    sub = meta_label(" · ".join(parts))
+    sub = meta_label(joined(" · ", parts))
     sub.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(sub)
     return box

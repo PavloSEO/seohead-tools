@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
 
 from . import i18n, shortcuts, theming
 from .screens.scan_common import parse_time
+from .source_service import SourceService
 from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
@@ -311,9 +312,15 @@ class ShellMixin:
             except RuntimeError:
                 pass  # the settings dialog was closed before the answer arrived
 
+    def request_sources(self, operation, callback, on_error, owner, **kwargs):
+        """Settings → Источники данных: allowlisted read-only core calls on a worker (source_service); answers for a closed page are dropped."""
+        if getattr(self, "source_service", None) is None or self.source_service.executable != self.core_executable:
+            self.source_service = SourceService(self.core_executable, self)
+        self.source_service.request(operation, callback, on_error, owner, **kwargs)
+
     def settings_context(self):
         return SettingsContext(core_executable=self.core_executable, project_directory=self.project_directory,
-                               actions={"providers": self.request_providers})
+                               actions={"providers": self.request_providers, "sources": self.request_sources})
 
     def open_settings(self, section="general"):
         """Settings are a modal window over the application (sheet Settings), never a workspace tab."""
