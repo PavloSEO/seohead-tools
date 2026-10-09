@@ -93,14 +93,15 @@ class DeliveryTests(unittest.TestCase):
             self.assertEqual(image.pixelColor(0, 0).alpha(), 0)
             self.assertEqual(image.pixelColor(size // 2, size // 2).alpha(), 255)
             step = max(1, size // 64)
-            self.assertGreater(
-                max(
-                    image.pixelColor(x, y).blue()
-                    for x in range(0, size, step)
-                    for y in range(0, size, step)
-                ),
-                200,
-            )
+            if size > 32:  # the logo tile is bright blue; 16-32 px use the dark spider (brandbook)
+                self.assertGreater(
+                    max(
+                        image.pixelColor(x, y).blue()
+                        for x in range(0, size, step)
+                        for y in range(0, size, step)
+                    ),
+                    200,
+                )
         data = (assets / "app" / "seohead.ico").read_bytes()
         self.assertEqual(struct.unpack_from("<HHH", data), (0, 1, 7))
         for index, size in enumerate((16, 24, 32, 48, 64, 128, 256)):
