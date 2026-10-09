@@ -4,12 +4,19 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
 from seohead_desktop.screens.base import SLOTS
-from seohead_desktop.screens.issues import IssuesScreen, check_name, sample_checks, skip_reason
+from seohead_desktop.screens.issues import (
+    IssuesScreen,
+    check_name,
+    message_ru,
+    sample_checks,
+    skip_reason,
+)
 from seohead_desktop.ui.kit import StatePanel
 from seohead_desktop.ui.workspace import VIEW_ALIASES, VIEW_IDS
 from tests._qt import sweep_widgets
@@ -105,6 +112,29 @@ class IssuesTests(IssuesBase):
         self.assertNotIn("core:", shown)
         self.assertNotIn(self.scan["uuid"][:8], shown)
         self.assertIn("Недоступно в этой версии ядра", shown)
+
+    def test_core_text_is_translated_and_raw_text_only_in_the_collapsed_block(self):
+        findings = self.scan["evidence"]["findings"]
+        for item in findings["items"]:
+            self.assertFalse(re.search(r"[A-Za-z]{5,} [a-z]{3,} [a-z]{3,}", message_ru(item["message"])), item["message"])
+        self.assertEqual(message_ru("Page returns a 4xx response (broken page)"), "Битая страница, ответ 4xx")
+        self.assertIn("языке ядра", message_ru("Some phrase nobody translated"))
+        self.screen.row_buttons["BROKEN_PAGE_4XX"].click()
+        self.app.processEvents()
+        raw = "Page returns a 4xx response"
+        self.assertNotIn(raw, self.screen.desc.text())
+        self.assertNotIn(raw, self.screen.model.data(self.screen.model.index(0, 2)))
+        self.assertTrue(self.screen.raw.isHidden())
+        self.assertEqual(self.screen.raw_toggle.text(), "Исходный ответ ядра")
+        self.screen.raw_toggle.click()
+        self.app.processEvents()
+        self.assertFalse(self.screen.raw.isHidden())
+        self.assertIn(raw, self.screen.raw.text())
+        self.assertTrue(self.screen.raw.textInteractionFlags() & Qt.TextSelectableByMouse)
+
+    def test_every_message_of_the_fixture_has_a_translation(self):
+        for item in self.scan["evidence"]["findings"]["items"]:
+            self.assertNotIn("языке ядра", message_ru(item["message"]), item["message"])
 
     def test_slot_is_issues(self):
         self.assertEqual(IssuesScreen.slot, "issues")

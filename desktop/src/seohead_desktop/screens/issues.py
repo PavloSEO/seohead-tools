@@ -73,6 +73,20 @@ CHECK_NAMES = {
     "OG_MISSING": "Нет разметки Open Graph", "NO_AUTHOR_BYLINE": "У статьи нет автора", "NO_CONTENT_DATES": "У статьи нет дат",
     "FEW_CITATIONS": "В статье мало источников", "DOM_TOO_DEEP": "Слишком глубокий DOM", "DOM_TOO_MANY_NODES": "Слишком много узлов DOM",
 }
+# Core finding message (English, may embed values) -> Russian; matched fully, case-insensitive. Groups are re-inserted as {1}, {2}.
+MESSAGES = (
+    (r"Page returns a 4xx response \(broken page\)", "Битая страница, ответ 4xx"),
+    (r"Page returns a 5xx response \(server error\)", "Ошибка сервера, ответ 5xx"),
+    (r"Page has excessive crawl depth", "Страница слишком глубоко от главной по кликам"),
+    (r"Duplicate meta description", "Дубль meta description"),
+    (r"Meta description is missing", "Нет meta description"),
+    (r"Multiple H1 headings on the page", "На странице несколько заголовков H1"),
+    (r"This page declares a counterpart under a language and region code the counterpart does not confirm for itself",
+     "Страница указывает альтернативу с языком и регионом, которые сама альтернатива не подтверждает"),
+    (r"Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code", "Значение hreflang не является корректным кодом языка ISO 639-1 и региона ISO 3166-1"),
+    (r"URL uses HTTP instead of HTTPS", "Адрес использует HTTP вместо HTTPS"),
+)
+NO_TRANSLATION = "описание на языке ядра — в блоке «Исходный ответ ядра»"
 # Core reason of a skipped check (English, free text) -> Russian. First matching pattern wins; unknown stays «причина не указана ядром».
 SKIP_REASONS = (
     (r"missing export|export \S+ not available|no \S+ export", "нет выгрузки в источнике"),
@@ -92,6 +106,16 @@ COLUMNS = ("Адрес", "HTTP", "Доказательство", "Состоян
 def check_name(check, _message=None):
     """Russian name of a check; an unknown code is never shown raw (it stays in the tooltip)."""
     return tr(CHECK_NAMES[check]) if check in CHECK_NAMES else tr("Другая проверка")
+
+
+def message_ru(message):
+    """Russian text of a core finding message, or the neutral fallback; the raw text lives only in the «Исходный ответ ядра» block."""
+    text = (message or "").strip()
+    for pattern, ru in MESSAGES:
+        match = re.fullmatch(pattern, text, re.IGNORECASE)
+        if match:
+            return tr(ru).format(*match.groups()) if match.groups() else tr(ru)
+    return tr(NO_TRANSLATION) if text else tr("Нет данных")
 
 
 def skip_reason(reason):
@@ -140,9 +164,9 @@ class FindingModel(QAbstractTableModel):
         if column == 3 and role == BADGE_ROLE:
             return "mut", tr("Найдена в скане")
         if role == Qt.DisplayRole:
-            return (item.get("target_url") or tr("Нет данных"), "—", item.get("message") or tr("Нет данных"), tr("Найдена в скане"))[column]
+            return (item.get("target_url") or tr("Нет данных"), "—", message_ru(item.get("message")), tr("Найдена в скане"))[column]
         if role == Qt.ToolTipRole:
-            return item.get("target_url") if column == 0 else tr("Нет данных") if column == 1 else item.get("fingerprint") if column == 3 else None
+            return item.get("target_url") if column == 0 else tr("Нет данных") if column == 1 else item.get("message") if column == 2 else item.get("fingerprint") if column == 3 else None
         return None
 
 
@@ -283,6 +307,18 @@ class IssuesScreen(Screen):
             self.table.setColumnWidth(column, width)
         self.table.doubleClicked.connect(lambda index: self._open_row(index.row()))
         self.pages.addWidget(self.table)
+        self.raw_toggle = QToolButton()
+        self.raw_toggle.setCheckable(True)
+        self.raw_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.raw_toggle.setStyleSheet("QToolButton { border: none; background: transparent; padding: 4px 12px; }")
+        self.raw_toggle.toggled.connect(lambda _on: self._sync_raw())
+        layout.addWidget(self.raw_toggle, 0, Qt.AlignLeft)
+        self.raw = QLabel()
+        self.raw.setWordWrap(True)
+        self.raw.setContentsMargins(12, 0, 12, 4)
+        self.raw.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.raw.setVisible(False)
+        layout.addWidget(self.raw)
         self.foot = QLabel()
         self.foot.setProperty("text_style", "meta")
         self.foot.setContentsMargins(12, 8, 12, 8)
@@ -434,6 +470,19 @@ class IssuesScreen(Screen):
         self._fill_list()
         self._fill_detail()
 
+    def _sync_raw(self):
+        entry = self.checks.get(self.selected)
+        self.raw_toggle.setVisible(entry is not None)
+        opened = self.raw_toggle.isChecked() and entry is not None
+        self.raw_toggle.setText(tr("Исходный ответ ядра"))
+        self.raw_toggle.setArrowType(Qt.DownArrow if opened else Qt.RightArrow)
+        lines = []
+        if entry is not None:
+            lines = [f"check: {self.selected}", f"severity: {entry['severity']}", f"message: {entry['message']}"]
+            lines += [f"{item.get('target_url')} — {item.get('message')} [{item.get('fingerprint')}]" for item in entry["items"][:20]]
+        self.raw.setText("\n".join(lines))
+        self.raw.setVisible(opened)
+
     def _sync_skipped(self):
         rows = getattr(self, "skipped_rows", [])
         opened = self.skipped_toggle.isChecked() and bool(rows)
@@ -496,6 +545,7 @@ class IssuesScreen(Screen):
             self.open_url.setToolTip(tr("Выберите проверку"))
             self.foot.setText("")
             self.foot.setVisible(False)
+            self._sync_raw()
             return
         self.pages.setCurrentIndex(1)
         self.foot.setVisible(True)
@@ -503,7 +553,8 @@ class IssuesScreen(Screen):
         icon, colour = next(((i, c) for k, _n, i, c in SEVERITIES if k == entry["severity"]), ("help", "text_muted"))
         self.title.setText(name)
         self.icon.set_material_icon(icon, f"role:{colour}")
-        self.desc.setText(entry["message"] or tr("Нет данных"))
+        self.desc.setText(message_ru(entry["message"]))
+        self._sync_raw()
         self.lane_found.setText(self._lane(scan))
         self.model.set_rows(entry["items"])
         urls = [i.get("target_url") for i in entry["items"] if i.get("target_url")]
