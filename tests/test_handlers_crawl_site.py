@@ -65,7 +65,8 @@ def test_urls_file_enters_the_existing_list_collector_in_source_order(tmp_path, 
     monkeypatch.setattr(collect_mod, "collect_urls", fake)
     result = handlers.crawl_site(urls_file=str(source), out_dir=str(tmp_path / "legacy"))
 
-    assert captured["urls"] == ["https://example.com/first", "https://example.com/second"]
+    # The file is streamed to the collector (an iterator), never loaded as a list.
+    assert list(captured["urls"]) == ["https://example.com/first", "https://example.com/second"]
     assert result["discovery"]["mode"] == "list"
 
 
