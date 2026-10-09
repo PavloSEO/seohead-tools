@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from seohead import runlog
+from seohead.core import runlog
 
 
 @pytest.fixture(autouse=True)
@@ -100,14 +100,14 @@ def test_a_truncated_final_line_does_not_hide_earlier_entries(journal_path):
 
 def test_every_handler_is_journalled():
     """Registry-level wrapping is what makes this impossible to forget."""
-    from seohead.servers.handlers import HANDLERS
+    from seohead.mcp.handlers import HANDLERS
 
     for name, fn in HANDLERS.items():
         assert getattr(fn, "__wrapped__", None) is not None, f"{name} is not journalled"
 
 
 def test_a_handler_call_writes_exactly_one_entry(journal_path):
-    from seohead.servers.handlers import HANDLERS
+    from seohead.mcp.handlers import HANDLERS
 
     with pytest.raises(ValueError):
         HANDLERS["parse"]()  # missing required argument

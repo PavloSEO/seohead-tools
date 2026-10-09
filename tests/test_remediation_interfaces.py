@@ -71,7 +71,7 @@ def test_remediation_cli_reads_and_records_a_revision_safe_decision(tmp_path):
 
 def test_remediation_mcp_uses_the_same_handlers(tmp_path):
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     ledger = _prepared(tmp_path)
     server = build_server(profile="full")
@@ -119,7 +119,7 @@ def test_ledger_selected_synthetic_recheck_records_measured_artifact_and_task_co
                 str(revision),
             )
             revision += 1
-        from seohead.servers import handlers
+        from seohead.mcp import handlers
 
         baseline = handlers._load_audit(str(scan), "baseline")
         after = json.loads(json.dumps(baseline))
@@ -167,7 +167,7 @@ def test_ledger_selected_synthetic_recheck_records_measured_artifact_and_task_co
         assert summary["counts"]["resolved"] == 1
         assert summary["tasks"]["title-fix"]["resolved_percent"] == 100.0
         pytest.importorskip("mcp")
-        from seohead.servers.mcp_server import build_server
+        from seohead.mcp.mcp_server import build_server
 
         resumed = asyncio.run(
             build_server(profile="full").call_tool(

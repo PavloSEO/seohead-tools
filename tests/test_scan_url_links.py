@@ -9,8 +9,8 @@ import sqlite3
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from seohead.storage.native_scan import NativeScan
 from seohead.storage.url_links import url_links
 from tests.test_scan_native import _link, _metadata, _record, _runtime

@@ -16,12 +16,12 @@ from seohead.reports.bi_destinations import filter_package, sheets_plan
 from seohead.reports.looker_link import LookerLinkError, build_looker_copy_link, load_blueprint
 from seohead.reports.reporting_pack import build_worksheets
 
-PACK_DIR = Path("examples/reporting-pack")
+PACK_DIR = Path("docs/examples/reporting-pack")
 WORKSHEETS_DIR = PACK_DIR / "worksheets"
 
 
 def test_looker_blueprint_uses_only_published_bi_datasets_and_fields():
-    path = Path("examples/reporting-pack/looker-studio-blueprint.json")
+    path = Path("docs/examples/reporting-pack/looker-studio-blueprint.json")
     blueprint = json.loads(path.read_text(encoding="utf-8"))
     assert blueprint["format"] == "seohead.looker-studio-blueprint.v1"
     fields = {name: {field.name for field in spec[0]} for name, spec in DATASET_SPECS.items()}
@@ -39,7 +39,7 @@ def test_looker_blueprint_uses_only_published_bi_datasets_and_fields():
 
 
 def test_reporting_pack_preview_is_valid_svg():
-    path = Path("examples/reporting-pack/layout-preview.svg")
+    path = Path("docs/examples/reporting-pack/layout-preview.svg")
     assert ElementTree.parse(path).getroot().tag.endswith("svg")
     assert "SEOHEAD Evidence Reporting Pack" in path.read_text(encoding="utf-8")
 
@@ -105,7 +105,7 @@ def _sources():
 
 
 def test_copy_link_requires_an_original_template_and_exact_six_source_mappings():
-    blueprint = load_blueprint("examples/reporting-pack/looker-studio-blueprint.json")
+    blueprint = load_blueprint("docs/examples/reporting-pack/looker-studio-blueprint.json")
     result = build_looker_copy_link(
         blueprint=blueprint,
         original_report_id="0B_U5RNpwhcE6SF85TENURnc4UjA",
@@ -129,7 +129,7 @@ def test_copy_link_requires_an_original_template_and_exact_six_source_mappings()
 
 
 def test_copy_link_refuses_missing_template_and_incomplete_source_mapping():
-    blueprint = load_blueprint("examples/reporting-pack/looker-studio-blueprint.json")
+    blueprint = load_blueprint("docs/examples/reporting-pack/looker-studio-blueprint.json")
     with pytest.raises(LookerLinkError, match="original report ID"):
         build_looker_copy_link(
             blueprint=blueprint,
@@ -218,7 +218,7 @@ def test_worksheets_are_usable_by_existing_bi_consumers(tmp_path, monkeypatch, r
         )
         package = tmp_path / "worksheets"
         build_worksheets(
-            audit=Path("examples/audit.json"),
+            audit=Path("docs/examples/audit.json"),
             provider_inputs=sorted((PACK_DIR / "sources").glob("*.json")),
             search_metric="clicks",
             out_dir=package,
@@ -297,7 +297,7 @@ def test_committed_worksheets_are_reproducible_from_sources(tmp_path):
     """The fixture stays byte-bound to the versioned BI projection."""
     out_dir = tmp_path / "worksheets"
     result = build_worksheets(
-        audit=Path("examples/audit.json"),
+        audit=Path("docs/examples/audit.json"),
         provider_inputs=sorted((PACK_DIR / "sources").glob("*.json")),
         search_metric="clicks",
         out_dir=out_dir,
@@ -310,4 +310,4 @@ def test_committed_worksheets_are_reproducible_from_sources(tmp_path):
         "committed worksheets are stale; run python scripts/generate_reporting_pack_worksheets.py"
     )
     assert result["network"] is False
-    assert result["run_id"] == "audit:73121f1fdbf0e2fed6d03e92"
+    assert result["run_id"] == "audit:768af4af695129b27c554783"

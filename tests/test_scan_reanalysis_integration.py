@@ -100,8 +100,8 @@ def _save_native_audit(
     """Use the normal native audit pipeline once, over the retained source scan."""
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers.handlers import _audit_crawl_result
-    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.mcp.handlers import _audit_crawl_result
+    from seohead.mcp.scan_handlers import _rebuild_page_result
     from seohead.storage.native_scan import NativeScan
 
     with NativeScan.open(path) as scan:
@@ -165,8 +165,8 @@ def _forbid_network(monkeypatch, observed_html: list[str]) -> dict[str, int]:
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: forbidden("dns"))
     monkeypatch.setattr(socket, "socket", lambda *_args, **_kwargs: forbidden("socket"))
     monkeypatch.setattr(httpx.Client, "send", lambda *_args, **_kwargs: forbidden("http"))
+    import seohead.checks.render as render
     import seohead.storage.reanalysis_pages as pages
-    import seohead.tools.render as render
 
     original = pages._apply_body
 
@@ -191,7 +191,7 @@ def _forbid_network(monkeypatch, observed_html: list[str]) -> dict[str, int]:
 def test_reanalysis_derives_a_valid_audited_scan_without_network_and_can_chain(
     tmp_path, monkeypatch
 ):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
 
     source = tmp_path / "source.sqlite"
     first = tmp_path / "first.sqlite"
@@ -233,7 +233,7 @@ def test_reanalysis_derives_a_valid_audited_scan_without_network_and_can_chain(
 
 
 def test_reanalysis_reuses_saved_finding_exclusions_without_network(tmp_path, monkeypatch):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
     from seohead.storage import read_audit
 
     source = tmp_path / "source-with-policy.sqlite"
@@ -273,7 +273,7 @@ def test_reanalysis_reuses_saved_finding_exclusions_without_network(tmp_path, mo
 
 
 def test_reanalysis_preserves_partial_capture_reason_across_generations(tmp_path, monkeypatch):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
     from seohead.storage import read_audit
     from seohead.storage.native_scan import NativeScan
 
@@ -304,7 +304,7 @@ def test_reanalysis_preserves_partial_capture_reason_across_generations(tmp_path
 
 
 def test_reanalysis_refuses_missing_required_html_without_creating_output(tmp_path, monkeypatch):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
 
     source = tmp_path / "missing.sqlite"
     output = tmp_path / "must-not-exist.sqlite"
@@ -319,7 +319,7 @@ def test_reanalysis_refuses_missing_required_html_without_creating_output(tmp_pa
 
 
 def test_reanalysis_keeps_http_refresh_evidence_and_its_finding(tmp_path, monkeypatch):
-    from seohead.servers.reanalysis_handlers import reanalyze_scan
+    from seohead.mcp.reanalysis_handlers import reanalyze_scan
     from seohead.storage import read_audit
 
     source, output = tmp_path / "refresh.sqlite", tmp_path / "derived.sqlite"

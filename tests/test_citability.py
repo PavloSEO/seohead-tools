@@ -1,6 +1,6 @@
 """Offline tests for the content citability scorer."""
 
-from seohead.tools import citability as C
+from seohead.checks import citability as C
 
 # A highly citable passage with self-contained paragraphs, evidence, and structure.
 GOOD = """## How caching works

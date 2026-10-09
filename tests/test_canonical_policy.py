@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from seohead.canonical_policy import validate_canonical_policy
+from seohead.core.canonical_policy import validate_canonical_policy
 from seohead.sf.config import ConfigError, load_config, validate_config
 from seohead.sf.core.audit import run_audit
 from seohead.sf.reporters.jsonfile import to_dict
@@ -318,7 +318,7 @@ def test_native_crawl_cli_uses_analysis_policy_and_writes_tasks(tmp_path, monkey
     from seohead.cli import main as cli_main
     from seohead.crawl.collect import PageRecord
     from seohead.crawl.spider import SpiderResult
-    from seohead.servers.handlers import HANDLERS
+    from seohead.mcp.handlers import HANDLERS
 
     config = tmp_path / "crawl.json"
     config.write_text(
@@ -381,7 +381,7 @@ def test_native_crawl_cli_uses_analysis_policy_and_writes_tasks(tmp_path, monkey
 
 def test_sf_cli_and_mcp_export_paths_share_policy_findings_and_tasks(tmp_path, capsys):
     from seohead.cli import main as cli_main
-    from seohead.servers.sf_mcp import _do_run
+    from seohead.mcp.sf_mcp import _do_run
 
     exports = tmp_path / "sf-exports"
     exports.mkdir()

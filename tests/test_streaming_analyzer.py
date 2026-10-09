@@ -104,8 +104,8 @@ def test_native_streaming_writer_preserves_nonempty_collections_without_frames(
     import tests.test_scan_hreflang_graph as fixture
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers.handlers import _audit_crawl_result
-    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.mcp.handlers import _audit_crawl_result
+    from seohead.mcp.scan_handlers import _rebuild_page_result
     from seohead.storage.audit_v2 import AuditV2Reader
     from seohead.storage.native_scan import NativeScan
 

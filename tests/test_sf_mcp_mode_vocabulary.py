@@ -1,6 +1,6 @@
 """sf_mcp's accepted input modes must not drift from the audit core's live modes.
 
-Previously ``sf_mcp.VALID_MODES`` (seohead/servers/sf_mcp.py) manually repeated
+Previously ``sf_mcp.VALID_MODES`` (seohead/mcp/sf_mcp.py) manually repeated
 ``audit.CRAWL_MODES`` (seohead/sf/core/audit.py) plus the MCP-only
 ``"parse-exports"`` value as a second, hand-written literal. They agreed at
 the time, but nothing tied them together: in a temporary offline copy, adding
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import importlib
 
-from seohead.servers import sf_mcp
+from seohead.mcp import sf_mcp
 from seohead.sf.core import audit
 
 

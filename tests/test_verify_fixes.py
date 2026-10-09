@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from seohead.core.verification import classify, results_policy_fingerprint, select, source_identity
 from seohead.crawl import settings
-from seohead.servers import handlers
-from seohead.verification import classify, results_policy_fingerprint, select, source_identity
+from seohead.mcp import handlers
 
 A = "https://example.test/a"
 B = "https://example.test/b"
@@ -507,9 +507,9 @@ def test_local_synthetic_recrawl_verifies_a_title_fix_end_to_end(tmp_path, monke
 def test_js_policy_recrawls_and_compares_rendered_evidence_offline(tmp_path, monkeypatch):
     """The workflow invokes the existing render bridge, with synthetic browser output."""
     import seohead.crawl.spider as spider_module
+    from seohead.checks import render as render_tool
     from seohead.crawl.collect import PageRecord
     from seohead.crawl.spider import SpiderResult
-    from seohead.tools import render as render_tool
 
     state = {"fixed": False}
 

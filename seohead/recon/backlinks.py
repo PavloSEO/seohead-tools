@@ -19,9 +19,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
+from seohead.checks.parser import document_base_url, robots_directives, robots_meta_scoped
 from seohead.recon.net import UA, http_client, normalize_domain, normalize_url
 from seohead.sf.core.normalize import norm_url
-from seohead.tools.parser import document_base_url, robots_directives, robots_meta_scoped
 
 MAX_DONORS = 500
 _NO_WEIGHT_RELS = ("nofollow", "ugc", "sponsored")

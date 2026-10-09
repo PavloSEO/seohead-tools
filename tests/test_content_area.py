@@ -5,8 +5,8 @@ import sys
 
 from bs4 import BeautifulSoup
 
-from seohead.tools import content_area
-from seohead.tools.parser import parse_html
+from seohead.checks import content_area
+from seohead.checks.parser import parse_html
 
 _HTML = """<html><body>
 <nav>Home Products Services About Contact Blog Careers Support Login Sign up now</nav>
@@ -62,7 +62,7 @@ def test_template_candidates_never_win_visible_content_selection():
 
 def test_content_area_direct_import_resolves_visible_candidates():
     code = """from bs4 import BeautifulSoup
-from seohead.tools.content_area import extract_area_text, resolve_content_area
+from seohead.checks.content_area import extract_area_text, resolve_content_area
 soup = BeautifulSoup('<template><main>draft</main></template><main>live</main>', 'lxml')
 root, strategy = resolve_content_area(soup)
 assert strategy == 'auto_main'

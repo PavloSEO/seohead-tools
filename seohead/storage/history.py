@@ -18,7 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
-from seohead import filesystem
+from seohead.core import filesystem
 
 from . import (
     APPLICATION_ID,

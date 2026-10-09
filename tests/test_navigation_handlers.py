@@ -4,10 +4,10 @@ import hashlib
 
 import pytest
 
-from seohead.servers.navigation_handlers import scan_navigation
+from seohead.checks.navigation import NavigationCapture
+from seohead.mcp.navigation_handlers import scan_navigation
 from seohead.storage import ScanError
 from seohead.storage.native_scan import NativeScan
-from seohead.tools.navigation import NavigationCapture
 from tests.test_native_capture import _renderer
 from tests.test_native_render_atomic import _static_page
 from tests.test_scan_native import _metadata

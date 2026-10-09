@@ -23,11 +23,11 @@ import pathlib
 
 import pytest
 
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MCP_SERVER = ROOT / "seohead" / "servers" / "mcp_server.py"
-CLI = ROOT / "seohead" / "cli.py"
+MCP_SERVER = ROOT / "seohead" / "mcp" / "mcp_server.py"
+CLI = ROOT / "seohead" / "cli" / "__init__.py"
 
 
 def _forwarding_calls() -> list[tuple[str, str, set[str]]]:
@@ -240,7 +240,7 @@ def test_seo_crawl_site_declares_sitemap_urls_and_config():
     a client can only send what shows up here."""
     import asyncio
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     schema = next(t for t in tools if t.name == "seo_crawl_site").inputSchema
@@ -256,7 +256,7 @@ def test_seo_crawl_site_forwards_sitemap_urls_and_config_to_the_handler():
     import asyncio
     from unittest.mock import patch
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()
     with patch.object(handlers, "crawl_site", return_value={"urls_collected": 0}) as spy:
@@ -284,8 +284,8 @@ def test_seo_crawl_site_forwards_sitemap_urls_and_config_to_the_handler():
 # Both interfaces compose the Python core. The optional remote adapter may
 # reuse shared handlers, but core crawler/analyzer modules may not import it.
 # The terminal is a CLI presentation adapter, not crawler/analyzer core.
-INTERFACE_PACKAGES = {"servers", "remote_api", "tui"}
-INTERFACE_MODULES = {"cli.py", "__main__.py"}
+INTERFACE_PREFIXES = ("mcp/", "integrations/remote_api/", "cli/", "tui/")
+INTERFACE_MODULES = {"__main__.py"}
 
 
 def _core_python_files() -> list[pathlib.Path]:
@@ -302,7 +302,7 @@ def _core_python_files() -> list[pathlib.Path]:
     return [
         path
         for path in package.rglob("*.py")
-        if path.parts[path.parts.index("seohead") + 1] not in INTERFACE_PACKAGES
+        if not path.relative_to(package).as_posix().startswith(INTERFACE_PREFIXES)
         and path.relative_to(package).as_posix() not in INTERFACE_MODULES
         and "__pycache__" not in path.parts
     ]
@@ -319,24 +319,31 @@ def _imports_the_interface(source: str) -> list[str]:
     found: list[str] = []
     tree = ast.parse(source)
     forbidden = (
-        ["seohead", "servers"],
-        ["seohead", "remote_api"],
-        ["seohead", "cli"],
-        ["seohead", "tui"],
+        "seohead.mcp",
+        "seohead.integrations.remote_api",
+        "seohead.cli",
+        "seohead.tui",
     )
+
+    def hit(module: str) -> bool:
+        # The progress renderer only draws to a stream; sf/cli.py shares it with the CLI.
+        if module == "seohead.cli.terminal_progress":
+            return False
+        return any(module == f or module.startswith(f + ".") for f in forbidden)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".")[:2] in forbidden:
+            if hit(node.module):
                 found.append(node.module)
-            elif node.module == "seohead":
+            elif node.module in ("seohead", "seohead.integrations"):
                 found.extend(
-                    "seohead." + alias.name
+                    f"{node.module}.{alias.name}"
                     for alias in node.names
-                    if ["seohead", alias.name] in forbidden
+                    if hit(f"{node.module}.{alias.name}")
                 )
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[:2] in forbidden:
+                if hit(alias.name):
                     found.append(alias.name)
     return found
 
@@ -366,7 +373,7 @@ def test_the_discovery_actually_sees_every_core_directory():
         for path in _core_python_files()
         if path.name != "__init__.py"
     }
-    for expected in ("audit", "crawl", "data_sources", "recon", "reports", "sf", "tools"):
+    for expected in ("audit", "core", "crawl", "data_sources", "recon", "reports", "sf", "checks"):
         assert expected in found, f"boundary check no longer looks at seohead/{expected}/"
 
 

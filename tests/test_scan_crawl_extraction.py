@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from seohead.checks.parser import parse_html
 from seohead.crawl.collect import _record_from_parsed
 from seohead.crawl.spider import LinkEdge, apply_document_links, form_edges
 from seohead.crawl.throttle import Throttle
-from seohead.tools.parser import parse_html
 
 
 def test_default_parser_output_is_unchanged_when_observation_caps_are_omitted():
@@ -27,7 +27,7 @@ def test_default_parser_output_is_unchanged_when_observation_caps_are_omitted():
 
 
 def test_capped_parser_keeps_prefix_but_reports_full_link_counts(monkeypatch):
-    import seohead.tools.link_position as positions
+    import seohead.checks.link_position as positions
 
     calls = []
     original = positions.classify_link

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import csv
 
+from seohead.checks.parser import parse_html
 from seohead.sf.core.audit import run_audit
-from seohead.tools.parser import parse_html
 from tests.conftest import issues_of
 
 _URL = "https://example.com/framed"

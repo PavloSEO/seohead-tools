@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from seohead.filesystem import fsync_directory
+from seohead.core.filesystem import fsync_directory
 from seohead.storage.audit_v2 import AuditV2Reader
 
 from .compare import (
@@ -296,7 +296,7 @@ def compare_to_files(
     compression: str = "none",
 ) -> dict[str, Any]:
     """Write a compare.v2 directory; reject duplicate identities, never truncate."""
-    from seohead.verification import source_identity
+    from seohead.core.verification import source_identity
 
     destination = Path(out_dir).absolute()
     if destination.exists():

@@ -65,7 +65,7 @@ def _detect(tools: dict[str, Any], target: str) -> dict[str, Any]:
         "facts": [],
         "unavailable": [],
     }
-    from seohead.tools.robots import match_path
+    from seohead.checks.robots import match_path
 
     robots = tools["robots_check"](url=target, paths=[match_path(target)])
     if not isinstance(robots, dict) or not robots.get("ok"):

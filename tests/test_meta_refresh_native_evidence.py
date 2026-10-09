@@ -11,13 +11,13 @@ link discovery, and threw the declaration itself away.
 
 from __future__ import annotations
 
+from seohead.checks.parser import parse_html
 from seohead.crawl.collect import collect_urls as _collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
-from seohead.tools.parser import parse_html
 
 
 def collect_urls(urls, **kw):

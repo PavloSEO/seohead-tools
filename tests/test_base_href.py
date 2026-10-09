@@ -5,9 +5,9 @@ ship a ``<base>`` tag (MODX and older CMS themes do) produced a flood of
 phantom broken links that a browser fetches with a 200.
 """
 
+from seohead.checks import hreflang, page_facts, render
+from seohead.checks.parser import document_base_url, parse_html
 from seohead.recon import regions
-from seohead.tools import hreflang, page_facts, render
-from seohead.tools.parser import document_base_url, parse_html
 
 PAGE = "https://example.com/section/subsection/"
 

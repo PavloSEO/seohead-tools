@@ -34,7 +34,7 @@ python -m pip install -e ".[dev,mcp,cluster,reports]"
 ruff check .
 ruff format --check .
 pytest -q
-seohead sf run --exports-dir examples/exports --out /tmp/seohead-report --tasks
+seohead sf run --exports-dir docs/examples/exports --out /tmp/seohead-report --tasks
 ```
 
 ## Architecture
@@ -96,7 +96,7 @@ notice in `THIRD_PARTY_NOTICES.md`.
 ## Adding a tool
 
 1. Implement the smallest useful core function.
-2. Add a handler in `seohead/servers/handlers.py` and its `HANDLERS` entry.
+2. Add a handler in `seohead/mcp/handlers.py` and its `HANDLERS` entry.
 3. Add the CLI command and argument mapping.
 4. Add the MCP tool with accurate side-effect annotations.
 5. Add offline tests for success, failure, limits, and missing dependencies.

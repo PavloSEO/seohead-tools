@@ -11,10 +11,7 @@ import sqlite3
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
-from seohead.storage import corpus_inputs
-from seohead.storage.native_scan import NativeScan
-from seohead.tools.text_normalize import (
+from seohead.checks.text_normalize import (
     NORMALIZER_VERSION,
     normalization_policy,
     normalize_document,
@@ -22,6 +19,9 @@ from seohead.tools.text_normalize import (
     prepare_items,
     script_evidence,
 )
+from seohead.mcp import handlers
+from seohead.storage import corpus_inputs
+from seohead.storage.native_scan import NativeScan
 from tests.test_scan_corpus_inputs import _scan
 from tests.test_scan_native import _metadata, _record, _runtime
 from tests.test_scan_resource_integration import _event
@@ -366,7 +366,7 @@ def test_semantic_inputs_cli_scan_flag_is_stdin_safe_and_mcp_exposes_it(monkeypa
     assert cli.main(["semantic-inputs", "--scan", "saved.sqlite"]) == 0
     assert json.loads(capsys.readouterr().out)["echo"]["scan"] == "saved.sqlite"
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     schema = {t.name: t for t in tools}["seo_semantic_inputs"].inputSchema["properties"]

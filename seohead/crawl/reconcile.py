@@ -9,7 +9,7 @@ sitemap or a deliberate exclusion. Merging either of those into a generic
 running, so this module always returns three disjoint sets and never collapses
 them into two.
 
-Pure and network-free: callers do the fetching (``seohead.tools.sitemap.crawl``
+Pure and network-free: callers do the fetching (``seohead.checks.sitemap.crawl``
 for the declared set, the spider's own link graph for the observed set) and hand
 plain URL lists here.
 """
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from seohead.tools.sitemap import normalize_url
+from seohead.checks.sitemap import normalize_url
 
 __all__ = ["reconcile_sitemap"]
 

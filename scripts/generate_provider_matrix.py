@@ -4,7 +4,7 @@
     python scripts/generate_provider_matrix.py            # regenerate docs/PROVIDERS.md
     python scripts/generate_provider_matrix.py --check     # exit 1 if it is stale (CI)
 
-The rendering logic lives in seohead.provider_matrix so the same code path that
+The rendering logic lives in seohead.core.provider_matrix so the same code path that
 produces the committed file is what tests/test_docs_drift.py compares it against.
 """
 
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # install elsewhere on the machine could otherwise shadow this checkout's package.
 sys.path.insert(0, str(ROOT))
 
-from seohead.provider_matrix import render  # noqa: E402
+from seohead.core.provider_matrix import render  # noqa: E402
 
 TARGET = ROOT / "docs" / "PROVIDERS.md"
 

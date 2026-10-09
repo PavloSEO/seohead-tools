@@ -3418,7 +3418,7 @@
     }
    ],
    "repo_surface_or_reason": [
-    "seohead.tools.parser collects a href links, retains rel tokens and image-link naming evidence; rendered-link differences are explicitly routed to render-check. No contradiction found."
+    "seohead.checks.parser collects a href links, retains rel tokens and image-link naming evidence; rendered-link differences are explicitly routed to render-check. No contradiction found."
    ],
    "disposition": {
     "status": "no_change",

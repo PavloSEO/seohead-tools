@@ -223,7 +223,7 @@ def test_catalogue_body_profile_is_varied_reproducible_and_reports_entropy():
 def test_consumer_failure_preserves_producer_checkpoint_and_failed_phase(tmp_path, monkeypatch):
     import json
 
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     def fail(*_args, **_kwargs):
         raise RuntimeError("intentional consumer failure")
@@ -245,7 +245,7 @@ def test_consumer_retry_preserves_capture_and_only_fetches_fresh_selected_url(
     tmp_path, monkeypatch
 ):
     from scripts.accept_million_crawl import run_consumers_only
-    from seohead.servers import scan_handlers
+    from seohead.mcp import scan_handlers
 
     original = run_stage(
         tmp_path / "original", pages=8, shard_size=4, interrupt_after=2, consumers=False

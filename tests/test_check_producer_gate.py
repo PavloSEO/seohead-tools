@@ -127,13 +127,13 @@ def test_gate_is_silent_on_a_genuine_check_id(tmp_path):
 
 
 def test_native_handler_producer_is_discovered():
-    handlers = SOURCE_ROOT / "servers" / "handlers.py"
+    handlers = SOURCE_ROOT / "mcp" / "handlers.py"
     assert handlers in _producer_source_files()
 
 
 def test_unregistered_native_handler_id_cannot_pass_the_producer_gate(tmp_path):
     source_root = tmp_path / "seohead"
-    handlers = source_root / "servers" / "handlers.py"
+    handlers = source_root / "mcp" / "handlers.py"
     handlers.parent.mkdir(parents=True)
     handlers.write_text('def emit(ctx):\n    ctx.add("NOT_A_REAL_NATIVE_HANDLER_CHECK")\n')
 

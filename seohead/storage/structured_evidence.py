@@ -50,7 +50,7 @@ def _validation(html: str | None) -> dict[str, Any]:
     }
     if not isinstance(html, str):
         return base
-    from seohead.tools.schema_org import check_schema
+    from seohead.checks.schema_org import check_schema
 
     checked = check_schema(html=html)
     parse_errors = checked.get("parse_errors") or []

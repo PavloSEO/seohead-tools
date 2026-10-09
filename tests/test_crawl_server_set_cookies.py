@@ -25,7 +25,7 @@ from collections.abc import Iterator
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 PAGES = [f"/p{index}/" for index in range(1, 9)]
 HOME = (

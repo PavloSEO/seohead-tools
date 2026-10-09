@@ -218,7 +218,7 @@ def test_failed_overview_leaves_no_partial_package(tmp_path, monkeypatch, render
         )
     elif failure == "sync":
         monkeypatch.setattr(
-            "seohead.filesystem.fsync_directory",
+            "seohead.core.filesystem.fsync_directory",
             lambda *_a: (_ for _ in ()).throw(OSError("injected fsync failure")),
         )
     else:

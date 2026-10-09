@@ -84,8 +84,8 @@ def _renderer(target):
 
 
 def test_native_render_commits_each_dom_then_discards_html(monkeypatch):
+    from seohead.checks import render as render_tool
     from seohead.crawl import sqlite_render
-    from seohead.tools import render as render_tool
 
     target = "https://example.test/"
     record = PageRecord(
@@ -163,7 +163,7 @@ def test_render_route_run_coverage_names_disabled_raw_and_budget(monkeypatch):
         for item in disabled.context
     )
     monkeypatch.setattr(sqlite_render, "_static_html", lambda *_: "<a href='/x'>x</a>")
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
 
     monkeypatch.setattr(
         render_tool,
@@ -187,8 +187,8 @@ def test_render_route_run_coverage_names_disabled_raw_and_budget(monkeypatch):
 
 
 def test_native_render_keeps_raw_when_dom_is_degenerate(monkeypatch):
+    from seohead.checks import render as render_tool
     from seohead.crawl import sqlite_render
-    from seohead.tools import render as render_tool
 
     target = "https://example.test/"
     record = PageRecord(url=target, content_type="text/html", title="Raw", word_count=100)
@@ -241,8 +241,8 @@ def test_native_raw_mode_never_invokes_renderer():
 def test_native_render_updates_a_real_scan_without_materializing_its_graph(
     monkeypatch, tmp_path, cursor_pages
 ):
-    from seohead.servers.scan_handlers import _rebuild_page_result, _StoredPages
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
+    from seohead.mcp.scan_handlers import _rebuild_page_result, _StoredPages
 
     target = "https://example.test/"
     responses = {
@@ -310,8 +310,8 @@ def test_native_render_updates_a_real_scan_without_materializing_its_graph(
 def test_native_render_marks_missing_raw_body_unavailable_without_a_new_request(
     monkeypatch, tmp_path
 ):
-    from seohead.servers.scan_handlers import _rebuild_page_result
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
+    from seohead.mcp.scan_handlers import _rebuild_page_result
 
     target = "https://example.test/"
     path = tmp_path / "off.sqlite"
@@ -366,7 +366,7 @@ def test_native_legacy_fragment_keeps_escaped_navigation_as_response_provenance(
 ):
     from seohead.crawl import sqlite_render
     from seohead.crawl.capture import CaptureEvent
-    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.mcp.scan_handlers import _rebuild_page_result
 
     target = "https://example.test/"
     escaped = "https://example.test/?_escaped_fragment_="
@@ -472,8 +472,8 @@ def test_native_render_bounds_browser_workers_and_commits_on_the_calling_thread(
     the barrier in the fake forces genuine overlap, so max_active reaching
     exactly 2 proves the bound engaged -- while every SQLite touch (preflight,
     commit_render) stays on the orchestrator thread."""
+    from seohead.checks import render as render_tool
     from seohead.crawl import sqlite_render
-    from seohead.tools import render as render_tool
 
     pages = [
         PageRecord(
@@ -559,8 +559,8 @@ def test_concurrent_rendered_route_admission_dedupes_through_the_frontier(monkey
     """#744: two rendered pages discover the same rendered-only route. The
     commits land sequentially on the orchestrator thread even though the
     fetches overlapped, so apply_candidates admits /new-route exactly once."""
-    from seohead.servers.scan_handlers import _rebuild_page_result
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
+    from seohead.mcp.scan_handlers import _rebuild_page_result
 
     root = "https://example.test/"
     body = "word " * 60
@@ -635,8 +635,8 @@ def test_concurrent_rendered_route_admission_dedupes_through_the_frontier(monkey
 def test_graceful_cancel_preserves_observed_render_counts_and_elapsed_on_resume(
     monkeypatch, tmp_path
 ):
-    from seohead.servers.scan_handlers import _StoredPages
-    from seohead.tools import render as render_tool
+    from seohead.checks import render as render_tool
+    from seohead.mcp.scan_handlers import _StoredPages
     from tests.test_native_capture import _claim, _event
     from tests.test_scan_native import _metadata, _record, _runtime
 

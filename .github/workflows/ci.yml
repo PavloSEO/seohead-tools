@@ -33,7 +33,7 @@ jobs:
           # every file as a source target (follow_imports=silent only silences
           # imports OUTSIDE these targets) and pull in modules not annotated yet.
           # Extend this list only as a module is brought fully under the checker.
-          mypy seohead/models.py seohead/tools/parser.py seohead/tools/robots.py
+          mypy seohead/core/models.py seohead/checks/parser.py seohead/checks/robots.py
       - run: pytest --cov=seohead --cov-report=term-missing
 
   windows:
@@ -83,7 +83,7 @@ jobs:
           fi
       - name: Run the synthetic crawl audit
         run: |
-          seohead sf run --exports-dir examples/exports --out /tmp/report --tasks
+          seohead sf run --exports-dir docs/examples/exports --out /tmp/report --tasks
           python - <<'PY'
           import json
           from pathlib import Path
@@ -108,8 +108,8 @@ jobs:
           python - <<'PY'
           import asyncio
           from seohead.cli import COMMANDS
-          from seohead.servers.handlers import HANDLERS
-          from seohead.servers.mcp_server import build_server
+          from seohead.mcp.handlers import HANDLERS
+          from seohead.mcp.mcp_server import build_server
 
           tools = asyncio.run(build_server().list_tools())
           names = {tool.name for tool in tools}
@@ -304,12 +304,12 @@ jobs:
           # 200 MB is visible in the build log, not discovered months later.
           docker images seohead-tools:ci --format 'slim image size: {{.Size}}'
           docker run --rm seohead-tools:ci --version
-          docker run --rm -v "$PWD/examples:/data/examples:ro" seohead-tools:ci \
+          docker run --rm -v "$PWD/docs/examples:/data/examples:ro" seohead-tools:ci \
             sf run --exports-dir /data/examples/exports --out /tmp/report -q
           docker run --rm --entrypoint python seohead-tools:ci -c "
           import asyncio
-          from seohead.servers.handlers import HANDLERS
-          from seohead.servers.mcp_server import build_server
+          from seohead.mcp.handlers import HANDLERS
+          from seohead.mcp.mcp_server import build_server
           tools = asyncio.run(build_server().list_tools())
           names = {tool.name for tool in tools}
           expected = {f'seo_{name}' for name in HANDLERS}
@@ -335,7 +335,7 @@ jobs:
           docker run --rm seohead-tools:ci-full --version
           docker run --rm --entrypoint python seohead-tools:ci-full -c "
           import sklearn
-          from seohead.tools.clusterer import _SKLEARN_OK
+          from seohead.checks.clusterer import _SKLEARN_OK
           assert _SKLEARN_OK, 'clustering extra did not install correctly'
           print(f'scikit-learn available in the full image: {sklearn.__version__}')
           "

@@ -11,9 +11,9 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from seohead.core.runlog import safe_arguments
 from seohead.crawl import settings
 from seohead.recon import net
-from seohead.runlog import safe_arguments
 
 
 def _answers(real, *, target="93.184.216.34"):
@@ -288,8 +288,8 @@ def test_crawl_policy_ignores_ambient_proxies_but_retains_explicit_ca(monkeypatc
 
 def test_cli_and_mcp_reach_the_same_proxy_setting(monkeypatch):
     from seohead import cli
-    from seohead.servers import handlers
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
 
     assignment = "http.proxy=env:SEOHEAD_TEST_PROXY"
     args = cli.build_parser().parse_args(
@@ -331,7 +331,7 @@ def test_saved_proxy_scan_is_inspectable_but_resume_is_refused_without_egress(
     from types import SimpleNamespace
 
     from seohead.crawl.sqlite_adapter import crawl_to_scan
-    from seohead.servers.scan_handlers import resume_inputs
+    from seohead.mcp.scan_handlers import resume_inputs
     from seohead.storage.native_scan import NativeScan
     from tests.test_scan_native import _metadata
 
@@ -371,7 +371,7 @@ def test_saved_proxy_scan_is_inspectable_but_resume_is_refused_without_egress(
 
 
 def test_legacy_and_sqlite_crawls_route_robots_and_pages_through_proxy(monkeypatch, tmp_path):
-    from seohead.servers.handlers import crawl_site
+    from seohead.mcp.handlers import crawl_site
 
     seen = []
 

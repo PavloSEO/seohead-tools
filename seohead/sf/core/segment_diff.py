@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from seohead.tools.parser import robots_directives
+from seohead.checks.parser import robots_directives
 
 from .normalize import norm_url
 

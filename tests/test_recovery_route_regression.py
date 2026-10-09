@@ -1,7 +1,7 @@
 """Offline regression for the recovery route documented in docs/RECOVERY.md (issue #320).
 
 Exercises exactly the three cases that route promises to distinguish, through
-``seohead.servers.handlers.crawl_site`` -- the same public entry point ``crawl-site``
+``seohead.mcp.handlers.crawl_site`` -- the same public entry point ``crawl-site``
 dispatches to -- with a fake fetcher standing in for the network, no real HTTP:
 
 1. An interrupted crawl, retried with the identical invocation, resumes (``resumed`` is
@@ -22,7 +22,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import seohead.crawl.spider as spider
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 PAGES = {
     "https://example.test/": '<a href="/a">a</a><a href="/b">b</a>',

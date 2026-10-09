@@ -1,6 +1,6 @@
-"""Tests for plain-text (.txt) sitemaps in ``seohead.tools.sitemap``."""
+"""Tests for plain-text (.txt) sitemaps in ``seohead.checks.sitemap``."""
 
-from seohead.tools import sitemap as S
+from seohead.checks import sitemap as S
 
 
 def test_parse_text_sitemap_basic():

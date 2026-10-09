@@ -221,7 +221,7 @@ the report says `http_version_measurable: false`.
 
 ---
 
-## Live URL tools (`seohead/tools/`)
+## Live URL tools (`seohead/checks/`)
 
 ### Crawling basics and server responses
 
@@ -288,7 +288,7 @@ seohead report-build --audit audit.json --format pdf --lang ru --out client.pdf
 seohead facts-export --input '{"sites": [{"label": "site-a.test", "crawl_audit": {"schema_version": "2.0", "run": {"source": "https://site-a.test/"}, "summary": {"totals": {"urls_crawled": 10}}, "issues": [], "pages": [], "groups": []}}]}'
 ```
 
-The document contract and skeletons to fill in — [`examples/reports/`](../examples/reports/README.md).
+The document contract and skeletons to fill in — [`docs/examples/reports/`](examples/reports/README.md).
 PDF output uses the self-contained bilingual layout and local Chromium renderer; install
 `seohead-seotools[pdf]` and Chrome, Edge, or Chromium. Rendering makes no network requests.
 
@@ -692,7 +692,7 @@ belongs to the caller's project dataset, not to a provider transport client.
 A subcommand with its own argument parser:
 
 ```bash
-seohead sf run --exports-dir examples/exports --out report --tasks   # mode B
+seohead sf run --exports-dir docs/examples/exports --out report --tasks   # mode B
 seohead sf run --crawl https://example.com --out report --tasks         # mode A
 seohead sf doctor                                                    # diagnostics
 seohead sf tasks --json report/audit.json                            # backlog from a report

@@ -8,8 +8,8 @@ import pytest
 
 from seohead.crawl.settings import fingerprint, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
-from seohead.servers.handlers import _audit_crawl_result
-from seohead.servers.scan_handlers import _rebuild_page_result
+from seohead.mcp.handlers import _audit_crawl_result
+from seohead.mcp.scan_handlers import _rebuild_page_result
 from seohead.storage.native_scan import NativeScan
 from tests.evidence_contract_assertions import assert_saved_contract, semantic_audit
 from tests.test_scan_artifact_office import frozen_office_clock as frozen_office_clock

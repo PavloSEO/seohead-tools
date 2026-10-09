@@ -31,7 +31,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-PROFILE = ROOT / "examples" / "js-bridge-benchmark.v1.json"
+PROFILE = ROOT / "docs" / "examples" / "js-bridge-benchmark.v1.json"
 MIB = 1024 * 1024
 IDENTITY_FIELDS = (
     "revision",
@@ -102,10 +102,10 @@ def source_identity() -> dict:
         "modules": {
             name: digest(ROOT / name)
             for name in (
-                "seohead/tools/render.py",
+                "seohead/checks/render.py",
                 "seohead/crawl/sqlite_render.py",
                 "seohead/crawl/render_escalation.py",
-                "seohead/servers/scan_handlers.py",
+                "seohead/mcp/scan_handlers.py",
                 "seohead/crawl/settings.py",
                 "seohead/storage/native_scan.py",
             )
@@ -405,10 +405,10 @@ class GracefulPause(KeyboardInterrupt):
 
 def evidence(path: Path, case: dict, expected_rendered: int) -> dict:
     """Stream exact typed observations and selected DOM hashes, not timing fields."""
+    from seohead.checks.parser import parse_html
     from seohead.storage import open_scan
     from seohead.storage.audit_v2 import AuditV2Reader
     from seohead.storage.bodies import read_document
-    from seohead.tools.parser import parse_html
 
     con = open_scan(path)
     try:
@@ -538,7 +538,7 @@ def benchmark_overrides(config: dict, profile: dict) -> dict:
 def worker(config: dict, output: Path) -> None:
     import resource
 
-    from seohead.servers import handlers, scan_handlers
+    from seohead.mcp import handlers, scan_handlers
     from seohead.storage.native_scan import NativeScan
 
     profile = json.loads(PROFILE.read_text())

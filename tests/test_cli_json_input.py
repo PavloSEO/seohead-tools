@@ -21,7 +21,7 @@ import json
 import pytest
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def _capture(monkeypatch, handler_name):

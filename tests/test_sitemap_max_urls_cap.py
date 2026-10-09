@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import httpx
 
-from seohead.tools import sitemap as S
+from seohead.checks import sitemap as S
 
 NS = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
 

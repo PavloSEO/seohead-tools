@@ -140,7 +140,7 @@ def _command_reference(name: str) -> list[str]:
     from inspect import getdoc
 
     from seohead.cli import build_parser
-    from seohead.servers.handlers import HANDLERS
+    from seohead.mcp.handlers import HANDLERS
 
     parser = build_parser()
     subparsers = next(action for action in parser._actions if isinstance(action, _SubParsersAction))

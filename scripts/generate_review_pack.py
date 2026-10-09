@@ -14,7 +14,7 @@ creates a release, or touches a network.
 Three boundaries the reader should not blur:
 
 * the wheel already carries ``seohead/_build_provenance.json``, an embedded
-  source-hash manifest validated at build and runtime (``seohead/build_provenance.py``);
+  source-hash manifest validated at build and runtime (``seohead/_build/provenance.py``);
   the pack's provenance record is release-level -- it names the tag, the
   distributions, and what that embedded manifest proved -- and is not a
   cryptographic attestation either;
@@ -357,7 +357,7 @@ def _extract_archive(artifact: Path, destination: Path) -> Path:
 
 def _manifest_record(source_root: Path) -> dict[str, Any]:
     """Validate the packaged build manifest inside an extracted artifact."""
-    from seohead.build_provenance import MANIFEST_FILENAME, BuildProvenanceError, validate_manifest
+    from seohead._build.provenance import MANIFEST_FILENAME, BuildProvenanceError, validate_manifest
 
     record: dict[str, Any] = {"present": False, "valid": False}
     manifest_path = source_root / "seohead" / MANIFEST_FILENAME

@@ -17,9 +17,9 @@ from collections.abc import Callable, Mapping
 from itertools import groupby
 from typing import Any
 
-from seohead.graph import InlinkCompositionRow
-from seohead.tools.hreflang import code_error
-from seohead.tools.parser import robots_directives
+from seohead.checks.hreflang import code_error
+from seohead.checks.parser import robots_directives
+from seohead.core.graph import InlinkCompositionRow
 
 from .context import AuditContext
 from .crawl_path import bfs_tree_from_seed, route_from_parents
@@ -481,7 +481,7 @@ def check_hreflang_quality(ctx: AuditContext) -> None:
     Reads the same Bulk Export → Links → ``All Hreflang`` report as
     :func:`check_hreflang_targets` (one row per source → destination + lang
     annotation) and reuses the ISO 639-1/3166-1 validator already shipped for
-    the single-URL ``seo_hreflang_check`` tool (:func:`seohead.tools.hreflang.
+    the single-URL ``seo_hreflang_check`` tool (:func:`seohead.checks.hreflang.
     code_error`) instead of re-implementing it. Every check here groups by the
     declaring page (source), matching how a browser or crawler reads one
     page's hreflang set. If the export is absent, all five checks skip
@@ -1468,7 +1468,7 @@ def check_internal_link_graph(ctx: AuditContext) -> None:
 
 def _duplicate_groups_from_records(records: list[dict[str, Any]], max_repeats: int):
     """The export-side twin of ``AnalysisGraph.iter_duplicate_links``."""
-    from seohead.graph import DuplicateLinkGroup
+    from seohead.core.graph import DuplicateLinkGroup
 
     by_source: OrderedDict[str, Counter] = OrderedDict()
     for rec in records:

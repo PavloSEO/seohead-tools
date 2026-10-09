@@ -89,7 +89,7 @@ def test_packaged_loader_has_no_cli_or_server_import_dependency(monkeypatch):
     original_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
-        if name == "seohead.cli" or name.startswith("seohead.servers"):
+        if name == "seohead.cli" or name.startswith("seohead.mcp"):
             raise AssertionError(f"catalogue loader imported interface module {name}")
         return original_import(name, *args, **kwargs)
 

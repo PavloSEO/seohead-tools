@@ -142,7 +142,7 @@ def test_offline_saved_scan_operator_workflow(tmp_path, monkeypatch, capsys, fro
     # before the retained-evidence phase prohibits every socket and network route.
     loop = asyncio.new_event_loop()
     try:
-        from seohead.servers.mcp_server import build_server
+        from seohead.mcp.mcp_server import build_server
 
         server = build_server()
         attempts = _forbid_network(monkeypatch, [])

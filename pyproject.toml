@@ -42,7 +42,7 @@ dependencies = [
     # both reject the bytes -- a real detector, not a latin-1 catch-all (#160).
     "charset-normalizer>=3.3,<4",
     "pydantic>=2.6,<3",
-    # Pydantic requires TypedDict from here below Python 3.12; see seohead/models.py.
+    # Pydantic requires TypedDict from here below Python 3.12; see seohead/core/models.py.
     "typing_extensions>=4.7; python_version < '3.12'",
 ]
 
@@ -114,7 +114,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
-"seohead/remote_api/app.py" = ["B008"]  # FastAPI's Depends is an intentional route default.
+"seohead/integrations/remote_api/app.py" = ["B008"]  # FastAPI's Depends is an intentional route default.
 
 # Type checking is being rolled out module by module (issue #31), not enabled
 # lax everywhere at once: `follow_imports = "silent"` means every module not
@@ -131,7 +131,7 @@ ignore_missing_imports = true
 # The new shared TypedDict models: nothing but type declarations, clean under
 # full strict from day one.
 [[tool.mypy.overrides]]
-module = ["seohead.models"]
+module = ["seohead.core.models"]
 strict = true
 
 # The two modules whose return shapes now use those models (parser.parse_url /
@@ -140,7 +140,7 @@ strict = true
 # slice -- but every def is annotated and a function can no longer quietly
 # return `Any` where its signature promises something narrower.
 [[tool.mypy.overrides]]
-module = ["seohead.tools.parser", "seohead.tools.robots"]
+module = ["seohead.checks.parser", "seohead.checks.robots"]
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true

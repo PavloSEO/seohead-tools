@@ -1,6 +1,6 @@
 """Offline tests for the boilerplate-consistency report (issue #19, part 3)."""
 
-from seohead.tools import boilerplate_report as B
+from seohead.checks import boilerplate_report as B
 
 _HEADER = "<header><a href='/'>Logo</a></header>"
 _NAV = "<nav><a href='/a'>A</a><a href='/b'>B</a><a href='/c'>C</a></nav>"

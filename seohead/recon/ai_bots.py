@@ -9,7 +9,7 @@ opposite mistake is unintentionally allowing model-training crawlers.
 
 This module performs no network requests. It accepts existing ``robots.txt``
 content and determines the status of each known AI crawler, delegating parsing
-to the pure functions in :mod:`seohead.tools.robots`.
+to the pure functions in :mod:`seohead.checks.robots`.
 
 Bot roles matter when defining an access policy:
 
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from seohead.tools.robots import is_allowed, parse_robots
+from seohead.checks.robots import is_allowed, parse_robots
 
 # Known AI crawlers. ``token`` is the User-agent value used both in requests and
 # in robots.txt matching; ``type`` describes the crawler's model/answer role.

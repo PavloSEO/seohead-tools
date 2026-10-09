@@ -5,20 +5,20 @@ element said and never *where in the document it was*. A browser closes <head> a
 first element that does not belong there, so a canonical or robots directive placed
 after it is silently read from <body> instead — the page still looks correct in the
 source. These tests cover both halves: the pure parser fact
-(``seohead.tools.parser.parse_html``'s ``position`` key) and the registry checks built
+(``seohead.checks.parser.parse_html``'s ``position`` key) and the registry checks built
 on top of it, through the same native-crawl path ``test_lighthouse_checks.py`` uses for
 the other fields no Screaming Frog export carries by default.
 """
 
 from __future__ import annotations
 
+from seohead.checks.parser import invalid_head_elements, parse_html
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
-from seohead.tools.parser import invalid_head_elements, parse_html
 
 # -- pure parser facts --------------------------------------------------------
 

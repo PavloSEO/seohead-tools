@@ -134,7 +134,7 @@ def _population_scan(path, count):
 
 
 def test_ledger_member_storage_grows_linearly_and_pages_have_a_public_continuation(tmp_path):
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.storage.ledger import ledger_summary, read_cases, read_group_members
     from tests.test_remediation_interfaces import _cli
 

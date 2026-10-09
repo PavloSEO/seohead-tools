@@ -6,7 +6,7 @@ import io
 import json
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_nested_scan_list_routes_flags_without_reading_stdin(monkeypatch, capsys):
@@ -177,7 +177,7 @@ def test_flat_scan_body_diff_and_prune_apply_forward_explicit_arguments(monkeypa
 
 
 def test_history_body_diff_opens_two_validated_readers_and_closes_them(monkeypatch):
-    from seohead.servers import history_handlers
+    from seohead.mcp import history_handlers
 
     closed = []
 
@@ -202,7 +202,7 @@ def test_history_body_diff_opens_two_validated_readers_and_closes_them(monkeypat
 
 
 def test_mcp_history_annotations_match_real_file_side_effects():
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = {tool.name: tool for tool in build_server()._tool_manager.list_tools()}
     for name in ("seo_scan_list", "seo_scan_inspect", "seo_scan_status", "seo_scan_body_diff"):

@@ -395,7 +395,7 @@ DEFAULTS: dict[str, Any] = {
             # A responsive page renders a different DOM at different widths,
             # so word count and link count change with this setting.
             # "desktop" and "mobile" are the only presets (see
-            # seohead.tools.render.VIEWPORT_PRESETS) so two runs are only
+            # seohead.checks.render.VIEWPORT_PRESETS) so two runs are only
             # ever comparable by name, never by an arbitrary pixel value.
             "viewport": "desktop",  # desktop | mobile
             # Optional exact viewport size in CSS pixels. Both must be set
@@ -557,7 +557,7 @@ RESULTS_AFFECTING: frozenset[str] = frozenset(
         "storage.min_free_bytes",
         "storage.history_warning_bytes",
         # Every rendering setting below changes what the crawl finds on the
-        # patterns it escalates -- see seohead.tools.render's module
+        # patterns it escalates -- see seohead.checks.render's module
         # docstring on why raw and rendered numbers are not comparable
         # unless the settings that produced each are recorded.
         "rendering.mode",
@@ -788,7 +788,7 @@ DESCRIPTIONS: dict[str, str] = {
     "output.write_pages_jsonl": "Write one JSON line per fetched page to pages.jsonl.",
     "output.write_decisions_jsonl": (
         "Write one JSON line per exclusion decision to decisions.jsonl, naming the URL and the "
-        "rule that rejected it — see seohead.tools.logscan for what reads it."
+        "rule that rejected it — see seohead.checks.logscan for what reads it."
     ),
     "output.write_tasks": (
         "Write the prioritized backlog beside audit.json as tasks.json and tasks.md — the same "
@@ -923,7 +923,7 @@ RENDER_MODES = ("raw", "legacy_fragment", "js")
 RENDER_VIEWPORTS = ("desktop", "mobile")
 RENDER_WAIT_UNTIL = ("load", "domcontentloaded", "networkidle")
 # Headless engines Playwright can launch through the pinned renderer in
-# seohead/tools/render.py; keep in step with that module's BROWSER_ENGINES.
+# seohead/checks/render.py; keep in step with that module's BROWSER_ENGINES.
 RENDER_ENGINES = ("chromium", "firefox", "webkit")
 # Engines Playwright can emulate a mobile viewport (is_mobile) on -- it
 # documents the option as unsupported on Firefox. Touch input (has_touch) is
@@ -1216,13 +1216,13 @@ def validate(config: dict[str, Any]) -> None:
     _validate_segments(config["scope"])
     if not isinstance(config["analysis"]["segments"], list):
         raise ConfigError("analysis.segments must be a list")
-    from seohead.tools.finding_exclusions import validate_rules
+    from seohead.checks.finding_exclusions import validate_rules
 
     try:
         validate_rules(config["analysis"]["finding_exclusions"])
     except ValueError as exc:
         raise ConfigError(f"analysis.finding_exclusions: {exc}") from exc
-    from seohead.canonical_policy import validate_canonical_policy
+    from seohead.core.canonical_policy import validate_canonical_policy
 
     try:
         validate_canonical_policy(
@@ -1387,7 +1387,7 @@ def _validate_rendering(rendering: dict[str, Any]) -> None:
         raise ConfigError("rendering.escalation.max_render_seconds cannot be negative")
 
     browser = rendering["browser"]
-    from seohead.tools.browser_transport import validate_config as validate_browser_transport
+    from seohead.checks.browser_transport import validate_config as validate_browser_transport
 
     try:
         validate_browser_transport(browser, embedded=True)
@@ -1573,7 +1573,7 @@ def load(
             p for p in DESTRUCTIVE_PATH_PATTERNS if p not in existing
         ]
 
-    from seohead.tools.finding_exclusions import validate_rules
+    from seohead.checks.finding_exclusions import validate_rules
 
     try:
         config["analysis"]["finding_exclusions"] = validate_rules(

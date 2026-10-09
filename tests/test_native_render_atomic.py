@@ -287,8 +287,8 @@ def test_unknown_renderer_failure_is_stored_as_unavailable_evidence(tmp_path):
 
 
 def test_versioned_navigation_survives_reopen_and_rejects_missing_url(tmp_path):
+    from seohead.checks.navigation import NavigationCapture
     from seohead.storage.bodies import read_document_navigation
-    from seohead.tools.navigation import NavigationCapture
 
     path = tmp_path / "navigation.sqlite"
     with NativeScan.create(path, **_metadata()) as scan:
@@ -346,9 +346,9 @@ def test_legacy_navigation_is_explicitly_unavailable(tmp_path):
 
 
 def test_navigation_uses_extensible_settings_and_reads_prior_prerelease_encoding(tmp_path):
+    from seohead.checks.navigation import NavigationCapture
     from seohead.storage.bodies import read_document_navigation
     from seohead.storage.body_diff import _renderer_provenance
-    from seohead.tools.navigation import NavigationCapture
 
     with NativeScan.create(tmp_path / "compatible.sqlite", **_metadata()) as scan:
         lease = _static_page(scan)

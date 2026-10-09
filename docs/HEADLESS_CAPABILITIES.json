@@ -1,7 +1,7 @@
 {
   "schema": "seohead.headless-capabilities.v1",
   "inventory_source": "seohead.crawl.settings.describe_settings",
-  "inventory_sha256": "7aef0552df38e56ddb0fa18936568b9b4a5c44f0d925f81575d86407879d2e37",
+  "inventory_sha256": "2cddfa22579ca3c790bfc400e54739d0856f271cf09f008554acb6a8635e46a6",
   "settings_count": 114,
   "settings": [
     {
@@ -117,7 +117,7 @@
       "results_affecting": true,
       "description": "After the internal frontier closes, check each recorded external destination once — opt-in, bounded by external_checks.*, never recursive. Requires discovery.external.store and a site crawl (--url); refused on the native SQLite route and in list mode.",
       "family": "discovery",
-      "implementation": "seohead/servers/handlers.py",
+      "implementation": "seohead/mcp/handlers.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
       "mcp": "seo_crawl_site overrides/config; inventory: seo_crawl_describe_settings",
       "configuration_test": "tests/test_crawl_settings.py::test_defaults_load_and_validate",
@@ -818,7 +818,7 @@
       "type": "bool",
       "default": true,
       "results_affecting": false,
-      "description": "Write one JSON line per exclusion decision to decisions.jsonl, naming the URL and the rule that rejected it — see seohead.tools.logscan for what reads it.",
+      "description": "Write one JSON line per exclusion decision to decisions.jsonl, naming the URL and the rule that rejected it — see seohead.checks.logscan for what reads it.",
       "family": "output",
       "implementation": "seohead/storage/scan_export.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
@@ -2112,7 +2112,7 @@
     },
     {
       "capability": "offline_reanalysis",
-      "implementation": "seohead/servers/reanalysis_handlers.py",
+      "implementation": "seohead/mcp/reanalysis_handlers.py",
       "cli": "scan-reanalyze",
       "mcp": "seo_scan_reanalyze",
       "behavioral_test_reference": "tests/test_scan_reanalysis_integration.py",
@@ -2134,7 +2134,7 @@
     },
     {
       "capability": "declarative_extraction",
-      "implementation": "seohead/tools/extraction_rules.py",
+      "implementation": "seohead/checks/extraction_rules.py",
       "cli": "scan-extract",
       "mcp": "seo_scan_extract",
       "behavioral_test_reference": "tests/test_custom_extract.py",

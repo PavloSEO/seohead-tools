@@ -243,7 +243,7 @@ def test_self_home_pagination_and_under_threshold_pages_do_not_form_homepage_gro
 
 
 def test_configured_727_patterns_are_exempted_through_the_shared_matcher(tmp_path, monkeypatch):
-    matcher_module = types.ModuleType("seohead.canonical_policy")
+    matcher_module = types.ModuleType("seohead.core.canonical_policy")
 
     def matching_rule(policy, category, url):
         return next(
@@ -252,7 +252,7 @@ def test_configured_727_patterns_are_exempted_through_the_shared_matcher(tmp_pat
         )
 
     matcher_module.matching_canonical_rule = matching_rule
-    monkeypatch.setitem(sys.modules, "seohead.canonical_policy", matcher_module)
+    monkeypatch.setitem(sys.modules, "seohead.core.canonical_policy", matcher_module)
     exports = load_exports(str(_write_exports(tmp_path, _homepage_rows())))
     config = load_config(None)
     config["canonical_policy"] = {
@@ -268,7 +268,7 @@ def test_configured_727_patterns_are_exempted_through_the_shared_matcher(tmp_pat
 
 def test_cli_and_mcp_emit_the_same_canonical_graph_findings(tmp_path):
     from seohead.cli import main as cli_main
-    from seohead.servers.sf_mcp import _do_run
+    from seohead.mcp.sf_mcp import _do_run
 
     exports = _write_exports(tmp_path, _homepage_rows())
     cli_out = tmp_path / "cli-report"

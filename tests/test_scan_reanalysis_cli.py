@@ -4,7 +4,7 @@ import asyncio
 import json
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 def test_nested_reanalysis_cli_uses_file_input(monkeypatch, capsys):
@@ -35,7 +35,7 @@ def test_flat_reanalysis_cli_retains_json_input(monkeypatch, capsys):
 
 
 def test_reanalysis_mcp_annotations_and_handler(monkeypatch):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     calls = []
     monkeypatch.setattr(handlers, "scan_reanalyze", lambda **kw: calls.append(kw) or {"ok": True})

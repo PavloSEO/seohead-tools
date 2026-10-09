@@ -75,7 +75,7 @@ def test_cli_report_and_tasks_accept_the_same_snapshot(legacy_run, scan, tmp_pat
 
 
 def test_unified_mcp_report_and_sf_tasks_are_equal(legacy_run, scan, tmp_path):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     server = build_server()
     tool = server._tool_manager.get_tool("seo_report_build")
@@ -125,8 +125,8 @@ def test_compare_handler_cli_and_mcp_keep_identical_comparability_warnings(
     legacy_run, scan, tmp_path, capsys
 ):
     from seohead import cli
-    from seohead.servers import handlers
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
 
     original = str(legacy_run / "audit.json")
     expected = handlers.compare_crawls(original, original)
@@ -170,7 +170,7 @@ def test_audit_context_is_preserved_without_fabricating_raw_corpus(legacy_run, t
 
 
 def test_mcp_diagnostics_do_not_turn_into_findings(legacy_run, scan, tmp_path):
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     scan.with_name("audit.json").write_text("not JSON")
     server = build_server()

@@ -40,7 +40,7 @@ SOURCES = (
     "seohead/crawl/collect.py",
     "seohead/crawl/spider.py",
     "seohead/crawl/throttle.py",
-    "seohead/tools/parser.py",
+    "seohead/checks/parser.py",
     "seohead/storage/frontier.py",
     "seohead/storage/native_scan.py",
 )

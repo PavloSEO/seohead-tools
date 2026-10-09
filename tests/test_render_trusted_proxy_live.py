@@ -16,8 +16,8 @@ import pytest
 
 pytest.importorskip("playwright.sync_api")
 
+from seohead.checks import render
 from seohead.recon import net
-from seohead.tools import render
 from tests.test_proxy_tls_connect import _certificate, _Server
 
 
@@ -134,7 +134,7 @@ def test_owned_proxy_requires_explicit_ca_and_replays_post(intercepting_proxy, m
 def test_public_handler_over_owned_interceptor_names_cap_and_private_rejection(
     intercepting_proxy, monkeypatch
 ):
-    from seohead.servers.handlers import HANDLERS
+    from seohead.mcp.handlers import HANDLERS
 
     route, cert, _seen = intercepting_proxy
     monkeypatch.setenv("SSL_CERT_FILE", str(cert))

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 
-from seohead.tools import (
+from seohead.checks import (
     clusterer,
     downloader,
     hreflang,

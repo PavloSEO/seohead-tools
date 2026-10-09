@@ -63,7 +63,7 @@ def test_worker_rejects_an_unbound_directory_before_queue_creation(tmp_path):
 
 @pytest.mark.parametrize("mode", ["raw", "js"])
 def test_fixture_preserves_budgets_after_submission_validation(mode):
-    from seohead.job_contracts import ScanOptions
+    from seohead.core.job_contracts import ScanOptions
 
     submitted = ScanOptions(
         max_urls=1, max_requests=30, max_crawl_seconds=60, rendering_mode=mode
@@ -119,8 +119,8 @@ def test_evidence_preserves_sqlite_state_but_not_filler_or_ssh_keys(tmp_path):
 
 def test_actual_loopback_asgi_fixture_preserves_authentication(tmp_path):
     pytest.importorskip("uvicorn")
-    from seohead.job_contracts import Principal
-    from seohead.remote_api.app import TokenAuthenticator, create_app
+    from seohead.core.job_contracts import Principal
+    from seohead.integrations.remote_api.app import TokenAuthenticator, create_app
 
     state = tmp_path / "state"
     state.mkdir(mode=0o700)

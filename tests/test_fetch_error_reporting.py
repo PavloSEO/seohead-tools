@@ -15,7 +15,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from seohead.tools import hreflang, schema_build, schema_org
+from seohead.checks import hreflang, schema_build, schema_org
 
 PAGE = "<html><head><title>Not found</title></head><body><h1>Gone</h1></body></html>"
 
@@ -52,8 +52,8 @@ class _Client:
 # an earlier draft of this file quietly asserted against the live example.com.
 _HTTP_CLIENT_NAMES = (
     "seohead.recon.net.http_client",
-    "seohead.tools.schema_org.http_client",
-    "seohead.tools.hreflang.http_client",
+    "seohead.checks.schema_org.http_client",
+    "seohead.checks.hreflang.http_client",
 )
 
 

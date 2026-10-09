@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from seohead import cli
+from seohead.mcp import handlers
 from seohead.reports.bi import export_bi
 from seohead.reports.bi_destinations import (
     BIDestinationCommitUncertain,
@@ -23,7 +24,6 @@ from seohead.reports.bi_destinations import (
     resolve_host_client,
     sheets_plan,
 )
-from seohead.servers import handlers
 
 
 def _audit():
@@ -796,7 +796,7 @@ def test_cli_and_mcp_resolve_the_same_configured_sheets_client_offline(tmp_path,
         )
         == 0
     )
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tool = build_server()._tool_manager.get_tool("seo_bi_destination_apply")
     result = tool.fn(

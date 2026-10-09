@@ -13,8 +13,8 @@ import httpx
 
 from seohead.audit.site import audit_site
 from seohead.data_sources.arsenkin import ArsenkinError
+from seohead.mcp import handlers
 from seohead.reports import checks_completed_display
-from seohead.servers import handlers
 
 # --- #442: google_keywords(seed=..., difficulty=True) must not silently drop difficulty ---
 
@@ -253,7 +253,7 @@ def test_parse_batch_transport_failure_is_unavailable_and_critical(monkeypatch):
     def failed_parse_url(url, _options):
         return {"url": url, "ok": False, "error": "connection refused"}
 
-    monkeypatch.setattr("seohead.tools.parser.parse_url", failed_parse_url)
+    monkeypatch.setattr("seohead.checks.parser.parse_url", failed_parse_url)
     result = audit_site("https://example.com", limit=5, tools=_site_tools(parse=handlers.parse))
 
     assert result["summary"]["page_tools_failed"] == [
@@ -277,7 +277,7 @@ def test_parse_batch_empty_transport_error_is_unavailable_and_critical(monkeypat
             raise httpx.ReadTimeout("")
 
     monkeypatch.setattr(
-        "seohead.tools.parser.http_client", lambda *_args, **_kwargs: (TimeoutClient(), False)
+        "seohead.checks.parser.http_client", lambda *_args, **_kwargs: (TimeoutClient(), False)
     )
     result = audit_site("https://example.com", limit=1, tools=_site_tools(parse=handlers.parse))
 
@@ -303,7 +303,7 @@ def test_parse_batch_completed_error_response_remains_measured(monkeypatch):
             "word_count": 1,
         }
 
-    monkeypatch.setattr("seohead.tools.parser.parse_url", fetched_not_found)
+    monkeypatch.setattr("seohead.checks.parser.parse_url", fetched_not_found)
     result = audit_site("https://example.com", limit=1, tools=_site_tools(parse=handlers.parse))
 
     assert result["summary"]["page_tools_failed"] == []
@@ -326,7 +326,7 @@ def test_parse_batch_success_remains_available(monkeypatch):
             "word_count": 1,
         }
 
-    monkeypatch.setattr("seohead.tools.parser.parse_url", fetched_page)
+    monkeypatch.setattr("seohead.checks.parser.parse_url", fetched_page)
     result = audit_site("https://example.com", limit=1, tools=_site_tools(parse=handlers.parse))
 
     assert result["summary"]["page_tools_failed"] == []

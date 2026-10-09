@@ -179,13 +179,13 @@ def _one(result: dict, raw_href: str) -> dict:
 
 def _native_audit(path: Path, config: dict, monkeypatch) -> dict:
     """Rebuild a retained scan into a native audit document, fully offline."""
+    import seohead.checks.render as render
     import seohead.recon.net as net
     import seohead.sf.core.sitemap_coverage as sitemap_coverage
-    import seohead.tools.render as render
     from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
     from seohead.crawl.sqlite_adapter import retained_start_gate
-    from seohead.servers import handlers
-    from seohead.servers.scan_handlers import _rebuild_page_result
+    from seohead.mcp import handlers
+    from seohead.mcp.scan_handlers import _rebuild_page_result
 
     def fail(*_args, **_kwargs):
         raise AssertionError("network forbidden")
@@ -730,8 +730,8 @@ def test_handler_cli_and_mcp_return_the_same_result(tmp_path, capsys):
         )
 
     from seohead import cli
-    from seohead.servers import handlers
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
 
     shared = handlers.scan_fragment_links(input_path=str(path))
     rc = cli.main(["scan-fragment-links", "--scan", str(path)])

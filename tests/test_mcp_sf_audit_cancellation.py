@@ -109,7 +109,7 @@ def test_cancelling_a_live_crawl_stops_the_child_and_frees_the_server(tmp_path):
         _, urls, pid_file, out, config = _sleeping_sf_fixture(tmp_path)
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "seohead.servers.mcp_server"],
+            args=["-m", "seohead.mcp.mcp_server"],
             cwd=ROOT,
             env={**os.environ, "FAKE_SF_PID_FILE": str(pid_file)},
         )
@@ -184,7 +184,7 @@ def test_an_uncancelled_crawl_still_completes_normally(tmp_path):
     async def run() -> dict:
         out = tmp_path / "out"
         params = StdioServerParameters(
-            command=sys.executable, args=["-m", "seohead.servers.mcp_server"], cwd=ROOT
+            command=sys.executable, args=["-m", "seohead.mcp.mcp_server"], cwd=ROOT
         )
         async with (
             stdio_client(params) as (read, write),

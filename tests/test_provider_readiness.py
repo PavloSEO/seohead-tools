@@ -327,8 +327,8 @@ def test_bing_verification_error_does_not_echo_api_key(monkeypatch, tmp_path):
 
 
 def test_cli_and_mcp_share_provider_readiness_state(monkeypatch, tmp_path, capsys):
-    from seohead.servers import handlers
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
 
     _isolate_credentials(monkeypatch, tmp_path)
     payload = '{"provider":"gsc","operation":"search_analytics"}'

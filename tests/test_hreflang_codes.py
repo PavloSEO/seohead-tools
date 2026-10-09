@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.tools.hreflang import code_error, validate
+from seohead.checks.hreflang import code_error, validate
 
 VALID = [
     "en",

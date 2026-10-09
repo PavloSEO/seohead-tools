@@ -325,7 +325,7 @@ def test_json_report_streams_document_larger_than_legacy_ceiling(tmp_path):
 
 
 def test_compare_crawls_accepts_streaming_audit_v2_sources(tmp_path):
-    from seohead.servers.handlers import compare_crawls
+    from seohead.mcp.handlers import compare_crawls
 
     before_path = tmp_path / "before.sqlite"
     after_path = tmp_path / "after.sqlite"

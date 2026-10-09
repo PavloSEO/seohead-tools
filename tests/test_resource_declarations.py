@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from bs4 import BeautifulSoup
 
-from seohead.tools.asset_weight import _discover_resources
-from seohead.tools.parser import extract_resource_declarations, parse_html
+from seohead.checks.asset_weight import _discover_resources
+from seohead.checks.parser import extract_resource_declarations, parse_html
 
 
 def _parsed(html: str, cap: int) -> dict:

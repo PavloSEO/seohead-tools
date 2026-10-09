@@ -624,7 +624,7 @@ def _artifact(root: Path, relative: str, payload: bytes) -> tuple[str, str]:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(staged, path)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(path.parent)
     finally:
@@ -742,7 +742,7 @@ def _measurement(record: Any, source: dict[str, Any]) -> tuple[dict[str, Any], s
             "unavailable",
             record.body_unavailable or "body unavailable",
         )
-    from seohead.tools.parser import robots_directives
+    from seohead.checks.parser import robots_directives
 
     directives = robots_directives(record.meta_robots, record.x_robots)
     return (
@@ -961,7 +961,7 @@ def collect_once(
 def local_deliver(directory: str | Path, *, scan_id: str, expected_revision: int) -> dict[str, Any]:
     """Record one authorized local receipt without a network destination."""
     root, project = _workspace_load(directory)
-    from seohead.bot.report_delivery import DeliveryReceipts
+    from seohead.integrations.bot.report_delivery import DeliveryReceipts
     from seohead.projects.service_delivery import MonitorServiceDelivery
 
     receipt_path = _new_report_target(_reports_root(root), "monitor-delivery-receipts.sqlite")

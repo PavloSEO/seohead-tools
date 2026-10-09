@@ -208,7 +208,7 @@ def test_sheets_begin_recovers_after_plain_retry_and_error_status_change(tmp_pat
 
 @pytest.mark.parametrize("duplicate", ["worksheet_id", "worksheet_title"])
 def test_sheets_rejects_duplicate_targets_in_preview_and_apply(tmp_path, monkeypatch, duplicate):
-    package = Path(__file__).resolve().parents[1] / "examples/reporting-pack/worksheets"
+    package = Path(__file__).resolve().parents[1] / "docs/examples/reporting-pack/worksheets"
     manifest = json.loads((package / "manifest.json").read_text())
     mapping = {
         name: {"worksheet_id": i, "worksheet_title": name}

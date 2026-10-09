@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
+from seohead.checks import sitemap
 from seohead.crawl.sitemap_capture import SourceRoot, capture_declared_roots
 from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
 from seohead.storage.native_scan import NativeScan
-from seohead.tools import sitemap
 from tests.test_scan_native import _metadata
 
 NATIVE_ROOT = "https://example.test/sitemap.xml"

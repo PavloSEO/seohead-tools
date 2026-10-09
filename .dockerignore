@@ -2,7 +2,6 @@
 .git
 .github
 docs
-examples
 tests
 skill
 .claude

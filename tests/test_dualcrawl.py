@@ -1,6 +1,6 @@
 """Dual-crawl cross-validation: diff two evidence-gathering passes over the same page."""
 
-from seohead.tools.dualcrawl import build_page_evidence, compare_evidence
+from seohead.checks.dualcrawl import build_page_evidence, compare_evidence
 
 # ── build_page_evidence ──────────────────────────────────────────────────────
 

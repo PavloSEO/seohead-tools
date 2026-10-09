@@ -33,7 +33,7 @@ from tests.test_google_sheets import SheetsDouble, _client
 
 @pytest.fixture
 def package(tmp_path):
-    source = Path(__file__).resolve().parents[1] / "examples/reporting-pack/worksheets"
+    source = Path(__file__).resolve().parents[1] / "docs/examples/reporting-pack/worksheets"
     package = tmp_path / "package"
     shutil.copytree(source, package)
     manifest = json.loads((package / "manifest.json").read_text())

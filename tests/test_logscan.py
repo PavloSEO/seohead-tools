@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 
-from seohead.servers import handlers
-from seohead.tools import logscan
+from seohead.checks import logscan
+from seohead.mcp import handlers
 
 
 def _write_run(tmp_path, pages, audit, decisions=None):
@@ -308,7 +308,7 @@ def test_the_cli_exits_zero_on_a_clean_run(tmp_path):
 def test_scan_names_a_check_that_describes_most_of_the_site(tmp_path):
     """Issue #98: the report's own implausibility list must reach log-scan, so a run
     whose findings are dominated by one check is caught without a person reading it."""
-    from seohead.tools.logscan import RunArtifacts, scan
+    from seohead.checks.logscan import RunArtifacts, scan
 
     run = RunArtifacts(
         audit={
@@ -337,7 +337,7 @@ def test_scan_names_a_check_that_describes_most_of_the_site(tmp_path):
 def test_scan_stays_quiet_when_no_check_dominates(tmp_path):
     """An empty implausibility list is the ordinary case and must produce no anomaly —
     a scanner that cried on every run would be ignored on the run that mattered."""
-    from seohead.tools.logscan import RunArtifacts, scan
+    from seohead.checks.logscan import RunArtifacts, scan
 
     run = RunArtifacts(
         audit={"summary": {"by_check": {}, "implausible_checks": []}, "issues": [], "run": {}}

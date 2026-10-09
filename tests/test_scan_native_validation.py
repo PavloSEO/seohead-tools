@@ -57,7 +57,7 @@ def test_create_requires_non_result_config_fields_too(tmp_path):
 
 
 def test_unsupported_writer_platform_publishes_no_file(tmp_path, monkeypatch):
-    from seohead import filesystem
+    from seohead.core import filesystem
 
     monkeypatch.setattr(filesystem, "fcntl", None)
     monkeypatch.setattr(filesystem, "msvcrt", None)

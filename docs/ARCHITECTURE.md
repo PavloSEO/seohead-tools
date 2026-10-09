@@ -195,7 +195,7 @@ audit and the live tools work on it (skipped without the `mcp` package).
 ## Editing workflow
 
 Refactor in small steps; after each step `pytest -q` stays green **and**
-`audit.json` on `examples/exports` stays byte-identical (diff by
+`audit.json` on `docs/examples/exports` stays byte-identical (diff by
 `summary.by_check`).
 
 Review critical changes adversarially: first "find", then separately

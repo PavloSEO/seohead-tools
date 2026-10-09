@@ -2,8 +2,8 @@
 
 import pytest
 
-from seohead.tools.extraction_rules import evaluate, validate_rules
-from seohead.tools.parser import parse_html
+from seohead.checks.extraction_rules import evaluate, validate_rules
+from seohead.checks.parser import parse_html
 
 
 def rule(kind="text", **kwargs):

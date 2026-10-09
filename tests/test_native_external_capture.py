@@ -8,8 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from seohead.crawl.settings import load
-from seohead.servers.reanalysis_handlers import reanalyze_scan
-from seohead.servers.scan_handlers import crawl_site_scan, resume_scan
+from seohead.mcp.reanalysis_handlers import reanalyze_scan
+from seohead.mcp.scan_handlers import crawl_site_scan, resume_scan
 from seohead.storage import open_scan, read_audit
 
 

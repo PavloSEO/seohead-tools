@@ -48,7 +48,7 @@ the default: a crawler that ignores robots.txt by accident is a crawler nobody s
 **4. Get the finding as a check id, in the audit.**
 
 ```bash
-seohead sf run --exports-dir examples/exports --out report --sitemap https://example.com/sitemap.xml
+seohead sf run --exports-dir docs/examples/exports --out report --sitemap https://example.com/sitemap.xml
 ```
 
 The sitemap stage fetches `robots.txt` itself and raises `ROBOTS_BLOCKS_RESOURCES` when a

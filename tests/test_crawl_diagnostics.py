@@ -9,7 +9,7 @@ import pytest
 from seohead.crawl.events import EventSink
 from seohead.crawl.settings import load, manifest
 from seohead.crawl.sqlite_adapter import crawl_to_scan
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage.native_scan import NativeScan
 
 URL = "https://example.test/"
@@ -323,7 +323,7 @@ def test_cli_prints_readable_summary_and_json(tmp_path, capsys):
 
 
 def test_mcp_diagnosis_has_no_file_write_permission_or_export_argument():
-    from seohead.servers.tool_reference import load_seo_tools
+    from seohead.mcp.tool_reference import load_seo_tools
 
     tool = next(spec for spec in load_seo_tools() if spec.name == "seo_crawl_diagnose")
     assert tool.writes is False

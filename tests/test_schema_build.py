@@ -2,9 +2,9 @@
 
 import json
 
-from seohead.tools import schema_build
-from seohead.tools.parser import parse_html
-from seohead.tools.schema_org import check_schema
+from seohead.checks import schema_build
+from seohead.checks.parser import parse_html
+from seohead.checks.schema_org import check_schema
 
 PRODUCT_HTML = """
 <html><head>
@@ -100,7 +100,7 @@ def test_free_product_page_still_gets_an_offer_in_the_graph():
 </div>
 </body></html>
 """
-    from seohead.tools import page_facts
+    from seohead.checks import page_facts
 
     facts = page_facts.extract(html, "https://example.com/free-widget")
     graph = schema_build.build_graph(
@@ -250,7 +250,7 @@ def test_service_graph_has_provider_and_service_type():
 
 def test_suggested_graph_validates_with_no_dangling_ids():
     # Every @id in the generated graph must resolve to a linked entity.
-    from seohead.tools import schema_org as validator
+    from seohead.checks import schema_org as validator
 
     r = schema_build.build_schema(url="https://shop.example.com/p/widget", html=PRODUCT_HTML)
     rendered = (

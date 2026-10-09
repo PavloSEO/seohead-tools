@@ -223,7 +223,7 @@ def _relation_items(
     items: list[tuple[str, str, str, str, dict[str, str]]] = []
     if isinstance(html, str):
         soup = BeautifulSoup(html, features="lxml")
-        from seohead.tools.parser import document_base_url
+        from seohead.checks.parser import document_base_url
 
         base_url = document_base_url(soup, source_url)
         for ordinal, tag in enumerate(soup.find_all("link")):

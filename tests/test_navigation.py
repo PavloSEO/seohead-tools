@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from seohead.tools.navigation import (
+from seohead.checks.navigation import (
     EVENT_CAP,
     NavigationCapture,
     expand_navigation,

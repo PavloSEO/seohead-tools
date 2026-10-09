@@ -8,7 +8,7 @@ from contextlib import closing
 import pytest
 
 from seohead.crawl.sqlite_adapter import ScanRun, crawl_to_scan
-from seohead.servers import scan_handlers
+from seohead.mcp import scan_handlers
 from seohead.storage import open_scan
 from seohead.storage.audit_v2 import audit_v2_path
 from seohead.storage.native_audit import AuditSizeError
@@ -57,7 +57,7 @@ def capture(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("seohead.crawl.sqlite_adapter.crawl_to_scan", lambda *_args, **_kwargs: run)
     monkeypatch.setattr(
-        "seohead.servers.handlers._audit_crawl_result",
+        "seohead.mcp.handlers._audit_crawl_result",
         lambda *_args, **_kwargs: (
             {"synthetic_summary": "saved"},
             ({"schema_version": "2.0", "issues": [], "pages": []}, {"/issues": [], "/pages": []}),
@@ -126,7 +126,7 @@ def test_interrupt_at_each_post_capture_stage_keeps_checkpoint_and_releases_writ
             interrupt_once(scan_handlers._rebuild_page_result),
         )
     elif stage == "analysis":
-        from seohead.servers import handlers
+        from seohead.mcp import handlers
 
         monkeypatch.setattr(
             handlers, "_audit_crawl_result", interrupt_once(handlers._audit_crawl_result)
@@ -207,7 +207,7 @@ def test_interrupt_after_final_commit_keeps_completed_state_and_audit_truth(
         def unavailable(*_args, **_kwargs):
             raise AuditSizeError("synthetic unavailable audit")
 
-        monkeypatch.setattr("seohead.servers.handlers._audit_crawl_result", unavailable)
+        monkeypatch.setattr("seohead.mcp.handlers._audit_crawl_result", unavailable)
     result = _call(path, settings)
     assert result["finish_reason"] == "finished"
     assert result["partial"] is False and result["finalized"] is True

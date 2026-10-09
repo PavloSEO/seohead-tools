@@ -21,6 +21,7 @@ import json
 
 import pytest
 
+from seohead.checks.parser import extract_trust_signals, parse_html
 from seohead.crawl.evidence import build_evidence
 from seohead.crawl.spider import crawl_site
 from seohead.sf.config import load_config
@@ -30,7 +31,6 @@ from seohead.sf.core.eeat import run_eeat
 from seohead.sf.core.loader import LoadedExports
 from seohead.storage import ScanError, import_run, open_scan
 from seohead.storage.exports import export_run
-from seohead.tools.parser import extract_trust_signals, parse_html
 from tests.test_scan_artifact import BUILD
 from tests.test_scan_artifact import legacy_run as legacy_run
 
@@ -121,7 +121,7 @@ def test_a_date_written_into_the_url_path_is_a_medium_confidence_convention():
 
 
 def test_the_signal_inventory_is_bounded_per_family():
-    from seohead.tools.parser import _TRUST_SIGNAL_CAP
+    from seohead.checks.parser import _TRUST_SIGNAL_CAP
 
     many = "".join(f'<span class="byline">by{i}</span>' for i in range(_TRUST_SIGNAL_CAP + 4))
     signals = _signals(f"<html><body>{many}</body></html>")

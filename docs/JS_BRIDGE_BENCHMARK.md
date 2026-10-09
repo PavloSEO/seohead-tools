@@ -1,6 +1,6 @@
 # Owned HTML and JavaScript bridge benchmark
 
-The versioned profile in `examples/js-bridge-benchmark.v1.json` freezes the
+The versioned profile in `docs/examples/js-bridge-benchmark.v1.json` freezes the
 synthetic acceptance corpus and budgets before measurement. It is an opt-in
 local benchmark, not a claim about arbitrary large JavaScript sites.
 

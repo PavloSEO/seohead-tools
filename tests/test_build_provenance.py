@@ -9,9 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from seohead import __version__, build_provenance
-from seohead.build_provenance import BuildProvenanceError, PackagedProvenance
-from seohead.servers import scan_handlers
+from seohead import __version__
+from seohead._build import provenance as build_provenance
+from seohead._build.provenance import BuildProvenanceError, PackagedProvenance
+from seohead.mcp import scan_handlers
 
 ROOT = Path(__file__).resolve().parent.parent
 REVISION = "a" * 40

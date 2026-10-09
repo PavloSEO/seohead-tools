@@ -1,10 +1,10 @@
-"""seohead.tools.links.check_links — no network; the page and every HTTP response
+"""seohead.checks.links.check_links — no network; the page and every HTTP response
 are faked."""
 
 from __future__ import annotations
 
-from seohead.tools import links as links_mod
-from seohead.tools.links import check_links
+from seohead.checks import links as links_mod
+from seohead.checks.links import check_links
 
 
 class _FakeResponse:
@@ -35,7 +35,7 @@ class _FakeClient:
 
 def _wire_fake_page(monkeypatch, links: list[dict]):
     monkeypatch.setattr(
-        "seohead.tools.parser.parse_url",
+        "seohead.checks.parser.parse_url",
         lambda url, options=None: {"ok": True, "links": links},
     )
     client = _FakeClient()

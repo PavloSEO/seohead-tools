@@ -22,7 +22,7 @@ import pytest
 
 from seohead import cli
 from seohead.data_sources import arsenkin
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 class _StubClient(arsenkin.ArsenkinClient):
@@ -251,11 +251,11 @@ def test_cli_maps_flags_to_the_shared_handler(monkeypatch, capsys):
 
 def test_mcp_tool_calls_the_shared_handler(monkeypatch):
     pytest.importorskip("mcp")
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     seen = {}
     monkeypatch.setattr(
-        "seohead.servers.handlers.keywords_exact",
+        "seohead.mcp.handlers.keywords_exact",
         lambda **kw: seen.update(kw) or {"ok": True},
     )
     tool = next(

@@ -3,7 +3,7 @@
 import hashlib
 
 from scripts.accept_million_crawl import run_stage
-from seohead.servers import handlers
+from seohead.mcp import handlers
 from seohead.storage.audit_v2 import AuditV2Reader
 from seohead.storage.native_scan import NativeScan
 

@@ -9,7 +9,7 @@ Two independent temporary-source mutations against this file each passed all
 2. ``_checked(...)`` removed from only that one wrapper -- a real local stdio
    call then returned a handler ``ok: false`` payload with MCP ``isError:
    false``, the exact success/failure conflation ``_checked`` exists to
-   prevent (see its docstring in seohead/servers/mcp_server.py).
+   prevent (see its docstring in seohead/mcp/mcp_server.py).
 
 test_registration.py proves set membership (every handler has an MCP tool and
 back); test_interface_binding.py proves the forwarded keywords are ones the
@@ -25,7 +25,7 @@ import ast
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MCP_SERVER = ROOT / "seohead" / "servers" / "mcp_server.py"
+MCP_SERVER = ROOT / "seohead" / "mcp" / "mcp_server.py"
 
 # A wrapper whose name suffix and forwarded handler name are allowed to differ,
 # with the reason. Empty today: every current seo_* wrapper's suffix already

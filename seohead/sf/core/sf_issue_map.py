@@ -483,7 +483,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Invalid HTML Elements In <head>", "INVALID_HEAD_ELEMENT"),
         # Both collapse, after an HTML5 parser recovers from either shape of malformed
         # markup, into the same resolved fact: something other than <head> is the first
-        # element under <html>. See seohead/tools/parser.py's _head_not_first for what was
+        # element under <html>. See seohead/checks/parser.py's _head_not_first for what was
         # verified directly against lxml before writing this as one check.
         _c("<body> Element Preceding <html>", "HEAD_NOT_FIRST"),
         _c("<head> Not First In <html> Element", "HEAD_NOT_FIRST"),

@@ -19,6 +19,7 @@ import json
 
 import pytest
 
+from seohead.checks.parser import heading_outline, parse_html
 from seohead.crawl.collect import collect_urls
 from seohead.crawl.evidence import build_evidence
 from seohead.sf.config import load_config
@@ -26,7 +27,6 @@ from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
 from seohead.storage import ScanError, import_run, open_scan
-from seohead.tools.parser import heading_outline, parse_html
 from tests.test_scan_artifact import BUILD
 from tests.test_scan_artifact import legacy_run as legacy_run
 

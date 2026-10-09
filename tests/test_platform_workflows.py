@@ -16,9 +16,9 @@ import pytest
 from seohead import __version__
 from seohead.crawl.settings import load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
+from seohead.mcp.reanalysis_handlers import reanalyze_scan
 from seohead.projects.coverage import initialize_coverage
 from seohead.projects.workspace import create_project, project_status
-from seohead.servers.reanalysis_handlers import reanalyze_scan
 from seohead.storage import open_scan
 from seohead.storage.history import snapshot_scan
 from seohead.storage.retry import requeue_scan
@@ -127,7 +127,7 @@ def test_real_stdio_mcp_starts_and_lists_router_tools():
 def test_parser_supports_older_htmlparser_constructor(monkeypatch):
     from html.parser import HTMLParser
 
-    from seohead.tools.parser import document_base_url, invalid_head_elements
+    from seohead.checks.parser import document_base_url, invalid_head_elements
 
     original = HTMLParser.__init__
 

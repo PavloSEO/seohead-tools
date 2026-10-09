@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT))
 
 from seohead.crawl.sql_sitemap import prepare_sitemap_reconciliation
 from seohead.crawl.sqlite_adapter import retained_start_gate
-from seohead.servers.handlers import _audit_crawl_result
-from seohead.servers.scan_handlers import _rebuild_page_result
+from seohead.mcp.handlers import _audit_crawl_result
+from seohead.mcp.scan_handlers import _rebuild_page_result
 from seohead.storage.native_scan import NativeScan
 
 

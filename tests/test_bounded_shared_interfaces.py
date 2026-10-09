@@ -9,12 +9,12 @@ import pytest
 from pydantic import ValidationError
 
 from seohead import cli
-from seohead.job_contracts import ScanOptions
+from seohead.core.job_contracts import ScanOptions
+from seohead.integrations.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
+from seohead.mcp import handlers
+from seohead.mcp.mcp_server import build_server
 from seohead.projects.coverage import initialize_coverage
 from seohead.projects.workspace import create_project
-from seohead.remote_api.backend import RemoteProjectLimits, SQLiteJobBackend
-from seohead.servers import handlers
-from seohead.servers.mcp_server import build_server
 from tests.test_bi_bounded_delivery import package
 from tests.test_remote_backend import SCANS_A, SITE, _api, _headers, _network
 
@@ -472,7 +472,7 @@ def test_monitor_preview_and_local_receipt_are_reachable_without_network(tmp_pat
 def test_monitor_apply_json_is_preserved_until_an_explicit_flag(
     monkeypatch, value, flags, expected
 ):
-    from seohead.servers import monitor_handlers
+    from seohead.mcp import monitor_handlers
 
     calls = []
     monkeypatch.setattr(
@@ -491,7 +491,7 @@ def test_monitor_apply_json_is_preserved_until_an_explicit_flag(
 def test_remediation_preflight_closes_retained_reader_on_failure(tmp_path, monkeypatch, failure):
     import sqlite3
 
-    from seohead import verification
+    from seohead.core import verification
     from seohead.storage import inputs
     from seohead.storage.ledger import LedgerError
     from tests.test_compare_bounded import _source

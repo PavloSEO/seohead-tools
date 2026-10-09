@@ -545,7 +545,7 @@ def test_mode_b_keeps_partial_exports_analyzable_without_full_manifest(tmp_path,
 
 
 def test_mcp_entrypoint_writes_only_after_full_manifest_succeeds(tmp_path, monkeypatch):
-    from seohead.servers import sf_mcp
+    from seohead.mcp import sf_mcp
 
     _install_fake_sf(monkeypatch, tmp_path)
     monkeypatch.setattr(audit_core, "run_sitemap", lambda *_args, **_kwargs: {})
@@ -567,7 +567,7 @@ def test_mcp_entrypoint_writes_only_after_full_manifest_succeeds(tmp_path, monke
 
 
 def test_mcp_incomplete_manifest_does_not_write_audit_or_tasks(tmp_path, monkeypatch):
-    from seohead.servers import sf_mcp
+    from seohead.mcp import sf_mcp
 
     _install_fake_sf(monkeypatch, tmp_path, omit="page_titles_duplicate.csv")
     urls = tmp_path / "urls.txt"

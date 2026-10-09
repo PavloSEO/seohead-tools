@@ -3,7 +3,7 @@
 ``scripts/doc_commands.py`` extracts every ``seohead ...`` invocation from the public
 Markdown (README, docs/, skills, examples). This module turns each one into something
 runnable entirely offline — URLs point at a loopback fixture server instead of the live
-internet, and file/directory arguments point at materialized copies of ``examples/`` —
+internet, and file/directory arguments point at materialized copies of ``docs/examples/`` —
 then either executes it in-process through :func:`seohead.cli.main` (asserting a clean
 exit) or, for the handful that fundamentally need infrastructure no local fixture can
 stand in for (a real RDAP/DNS ecosystem, a licensed Screaming Frog binary, a paid
@@ -133,16 +133,16 @@ def _substitute(raw: str, base_url: str) -> str:
 
 def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     """Materialize every fixture a documented command's relative path expects."""
-    shutil.copytree(ROOT / "examples", tmp_path / "examples")
+    shutil.copytree(ROOT / "docs" / "examples", tmp_path / "docs" / "examples")
     shutil.copytree(
         ROOT / "tests" / "fixtures_third_party_crawl",
         tmp_path / "third_party_crawl",
     )
-    shutil.copytree(ROOT / "examples" / "exports", tmp_path / "exports")
-    shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "audit.json")
-    shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "old-audit.json")
-    shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "new-audit.json")
-    shutil.copy(ROOT / "config.example.json", tmp_path / "config.json")
+    shutil.copytree(ROOT / "docs" / "examples" / "exports", tmp_path / "exports")
+    shutil.copy(ROOT / "docs" / "examples" / "audit.json", tmp_path / "audit.json")
+    shutil.copy(ROOT / "docs" / "examples" / "audit.json", tmp_path / "old-audit.json")
+    shutil.copy(ROOT / "docs" / "examples" / "audit.json", tmp_path / "new-audit.json")
+    shutil.copy(ROOT / "docs" / "examples" / "config.example.json", tmp_path / "config.json")
     # A finished, internally consistent crawl output, so a documented `log-scan --run ./run`
     # actually scans something instead of reporting that the directory is empty.
     shutil.copytree(ROOT / "tests" / "doc_fixtures" / "run", tmp_path / "run")
@@ -150,7 +150,7 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     # SF-export example audit is not and cannot become: its input never had segments.
     shutil.copytree(ROOT / "tests" / "doc_fixtures" / "segmented", tmp_path / "multilingual")
     (tmp_path / "report").mkdir()
-    shutil.copy(ROOT / "examples" / "audit.json", tmp_path / "report" / "audit.json")
+    shutil.copy(ROOT / "docs" / "examples" / "audit.json", tmp_path / "report" / "audit.json")
     (tmp_path / "crawl.json").write_text(json.dumps({"limits": {"max_urls": 5}}), encoding="utf-8")
     (tmp_path / "donors.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
     images_dir = tmp_path / "images"
@@ -297,7 +297,7 @@ def _seed_prune_plan(tmp_path: Path) -> None:
     to a file, read it, apply exactly that envelope. Seed the file the second step reads
     by running the first step, so the gate exercises the real handoff instead of a plan
     the code would never emit (a hand-written one is rejected on its digest anyway)."""
-    from seohead.servers.history_handlers import scan_prune
+    from seohead.mcp.history_handlers import scan_prune
 
     (tmp_path / "plan.json").write_text(
         json.dumps(scan_prune(str(tmp_path.resolve()))), encoding="utf-8"
@@ -316,7 +316,7 @@ def _seed_resumable_scan(tmp_path: Path, base_url: str, argv: list[str]) -> None
     Seeded under the artifact path and producing build the documented line itself names:
     a resume refuses both if they disagree, which is the behaviour being documented.
     """
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
     from seohead.storage.native_scan import NativeScan
 
     target = tmp_path / argv[argv.index("--resume") + 1]
@@ -420,7 +420,7 @@ def _seed_provider_replay(tmp_path: Path, argv: list[str]) -> None:
 
 def _seed_project_prepare(tmp_path: Path, monkeypatch) -> None:
     """Inject a bounded saved crawl into project preparation instead of contacting the fixture site."""
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     _seed_documented_body_scan(tmp_path, "preparation-source.sqlite")
     source = tmp_path / "preparation-source.sqlite"
@@ -440,7 +440,7 @@ def _seed_project_detection(monkeypatch) -> None:
     site; injecting the two single-page tools keeps the documented line executable
     without letting the gate reach for a real one.
     """
-    from seohead.servers import handlers
+    from seohead.mcp import handlers
 
     monkeypatch.setitem(
         handlers.HANDLERS, "robots_check", lambda **_kwargs: {"ok": True, "path_checks": []}
@@ -517,7 +517,7 @@ def test_documented_command_executes_or_at_least_still_parses(
     }:
         # Each documentation case runs independently; opening/status require the
         # project that the preceding creation command would have published. A line
-        # naming a project shipped under examples/ already has one, copied above.
+        # naming a project shipped under docs/examples/ already has one, copied above.
         from seohead.projects.workspace import create_project
 
         directory = argv[argv.index("--directory") + 1]
@@ -568,7 +568,7 @@ def test_documented_command_executes_or_at_least_still_parses(
     elif argv[:1] == ["scan-content-search-page"]:
         # Each documented command is isolated; derive the package that the
         # preceding search example would create, using the real offline handler.
-        from seohead.servers.handlers import scan_content_search
+        from seohead.mcp.handlers import scan_content_search
 
         source = "content-search-doc-fixture.sqlite"
         _seed_documented_body_scan(tmp_path, source)
@@ -712,10 +712,12 @@ def test_sf_run_then_report_build_renders_the_real_totals(tmp_path, monkeypatch)
     from seohead.cli import main as cli_main
 
     monkeypatch.chdir(tmp_path)
-    shutil.copytree(ROOT / "examples", tmp_path / "examples")
+    shutil.copytree(ROOT / "docs" / "examples", tmp_path / "docs" / "examples")
 
     assert (
-        cli_main(["sf", "run", "--exports-dir", "examples/exports", "--out", "report", "--tasks"])
+        cli_main(
+            ["sf", "run", "--exports-dir", "docs/examples/exports", "--out", "report", "--tasks"]
+        )
         == 0
     )
     audit = json.loads((tmp_path / "report" / "audit.json").read_text(encoding="utf-8"))

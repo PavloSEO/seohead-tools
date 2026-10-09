@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.tools.clusterer import run_clusterer
+from seohead.checks.clusterer import run_clusterer
 
 pytest.importorskip("sklearn", reason="clustering needs the optional cluster extra")
 

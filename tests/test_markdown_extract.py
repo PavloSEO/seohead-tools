@@ -1,6 +1,6 @@
 """Offline tests for Markdown extraction (issue #19, part 2)."""
 
-from seohead.tools import markdown_extract as M
+from seohead.checks import markdown_extract as M
 
 _HTML = """<html><body>
 <nav>Home About Contact</nav>

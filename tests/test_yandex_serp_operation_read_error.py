@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from seohead.data_sources import spend, yandex_cloud
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 @pytest.fixture()

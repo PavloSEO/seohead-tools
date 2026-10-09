@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import pytest
 
-from seohead.tools.page_facts import extract
-from seohead.tools.page_type import classify
-from seohead.tools.price import parse_amount, parse_price
+from seohead.checks.page_facts import extract
+from seohead.checks.page_type import classify
+from seohead.checks.price import parse_amount, parse_price
 
 # The table from the issue, plus the separators that arrive with copied text.
 WRITTEN = [
@@ -177,7 +177,7 @@ def test_a_qualified_symbol_resolves_to_its_own_currency_not_the_bare_symbols(
 
 
 def test_schema_build_publishes_the_qualified_currency_not_a_recoded_one():
-    from seohead.tools.schema_build import build_schema
+    from seohead.checks.schema_build import build_schema
 
     url = "https://shop.example.com/product/widget"
     html = "<html><body><h1>Widget</h1><p>CA$ 1,299.50</p></body></html>"

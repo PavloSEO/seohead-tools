@@ -276,8 +276,8 @@ def test_export_redirect_target_is_unmeasured_for_reciprocity(tmp_path):
 
 def test_report_builder_keeps_the_native_graph_finding(tmp_path):
     from seohead.cli import main
-    from seohead.servers.handlers import report_build
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.handlers import report_build
+    from seohead.mcp.mcp_server import build_server
 
     audit = _capture(
         tmp_path,

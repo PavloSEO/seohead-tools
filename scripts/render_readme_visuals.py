@@ -1,7 +1,7 @@
 """Render README visuals from committed examples and product registries.
 
 The images are documentation artifacts, not a product UI. Audit/report values come
-from ``examples/``; interface counts come from the code registries.
+from ``docs/examples/``; interface counts come from the code registries.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def product_counts() -> tuple[int, int, int]:
     from seohead.cli import COMMANDS
     from seohead.sf.core.registry import CHECKS
 
-    sf_source = (ROOT / "seohead" / "servers" / "sf_mcp.py").read_text(encoding="utf-8")
+    sf_source = (ROOT / "seohead" / "mcp" / "sf_mcp.py").read_text(encoding="utf-8")
     sf_tools = set(re.findall(r"def (sf_[a-z0-9_]+)\(", sf_source))
     return len(COMMANDS), len(sf_tools), len(CHECKS)
 
@@ -190,7 +190,7 @@ def audit_workflow(audit: dict, tasks: dict) -> str:
           <div class="finding mono">BROKEN_INTERNAL_LINK · 404</div>
         </article>
       </section>
-      <div class="footer"><span>Source: examples/exports → examples/audit.* → examples/tasks.*</span><span>Missing inputs remain explicit skipped checks.</span></div>
+      <div class="footer"><span>Source: docs/examples/exports → docs/examples/audit.* → docs/examples/tasks.*</span><span>Missing inputs remain explicit skipped checks.</span></div>
     """
     css = f"""
       .fixture {{ position: absolute; top: 64px; right: 64px; }}
@@ -311,7 +311,7 @@ def reports_visual(report: dict) -> str:
         </div>
       </section>
       <div class="rule">Report renderers add no findings and make no network requests.</div>
-      <div class="footer"><span>Source: examples/reports/full.json</span><span>Unavailable measurements stay visible.</span></div>
+      <div class="footer"><span>Source: docs/examples/reports/full.json</span><span>Unavailable measurements stay visible.</span></div>
     """
     css = f"""
       .report-flow {{ margin-top: 44px; }}
@@ -345,9 +345,9 @@ def digest(path: Path) -> str:
 
 def main() -> None:
     ASSETS.mkdir(parents=True, exist_ok=True)
-    audit = load_json("examples/audit.json")
-    tasks = load_json("examples/tasks.json")
-    report = load_json("examples/reports/full.json")
+    audit = load_json("docs/examples/audit.json")
+    tasks = load_json("docs/examples/tasks.json")
+    report = load_json("docs/examples/reports/full.json")
     core_count, sf_count, check_count = product_counts()
     tool_count = core_count + sf_count
 

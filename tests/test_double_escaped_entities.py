@@ -11,7 +11,7 @@ tab or a Google SERP snippet actually shows, and flipping length-based checks in
 directions.
 """
 
-from seohead.tools.parser import collapse_whitespace, parse_html
+from seohead.checks.parser import collapse_whitespace, parse_html
 
 _DOUBLE_ESCAPED_TITLE = (
     "Nuts &amp;amp; Bolts &amp;amp; Screws &amp;amp; Washers &amp;amp; Rivets Store"

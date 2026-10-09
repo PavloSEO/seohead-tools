@@ -10,11 +10,11 @@ import random
 import sqlite3
 
 from seohead import cli
-from seohead.servers import handlers
+from seohead.checks.markdown_extract import extract_markdown
+from seohead.mcp import handlers
 from seohead.storage import corpus_inputs
 from seohead.storage.corpus_inputs import _indexable
 from seohead.storage.native_scan import NativeScan
-from seohead.tools.markdown_extract import extract_markdown
 from tests.test_scan_native import _metadata, _record, _runtime
 from tests.test_scan_resource_integration import _event
 
@@ -128,7 +128,7 @@ def test_scan_flag_is_a_stdin_safe_source_and_mcp_exposes_it(monkeypatch, capsys
     assert cli.main(["duplicate-check", "--scan", "saved.sqlite"]) == 0
     assert json.loads(capsys.readouterr().out)["echo"]["scan"] == "saved.sqlite"
 
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     assert "scan" in {t.name: t for t in tools}["seo_duplicate_check"].inputSchema["properties"]
@@ -357,7 +357,7 @@ def test_scan_corpus_streams_a_retained_corpus_past_the_old_16_mib_ceiling(tmp_p
 
 def test_inline_duplicate_positional_arguments_keep_the_existing_contract():
     """Adding scan input must not reinterpret an inline caller's threshold as a path."""
-    from seohead.servers.handlers import duplicate_check
+    from seohead.mcp.handlers import duplicate_check
 
     items = [
         {"id": "https://example.test/a", "text": "shared product description with details"},

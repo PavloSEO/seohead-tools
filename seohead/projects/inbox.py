@@ -243,7 +243,7 @@ def _write(root: Path, document: dict[str, Any]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(stage, root / "inbox.json")
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(root)
     finally:

@@ -7,13 +7,13 @@ import io
 import httpx
 import pytest
 
-from seohead.bot.service_delivery import (
+from seohead.core.job_contracts import OpenedArtifact
+from seohead.integrations.bot.service_delivery import (
     AuthorizedHTTPUpload,
     CredentialReference,
     UploadEndpoint,
     UploadUnavailable,
 )
-from seohead.job_contracts import OpenedArtifact
 
 
 def _opened(body: bytes = b"synthetic audit") -> OpenedArtifact:

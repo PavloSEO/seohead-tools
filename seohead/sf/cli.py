@@ -554,7 +554,7 @@ def main(argv: list[str] | None = None) -> int:
             log(f"[cli] protected site: crawling through local auth proxy {proxy_base}")
 
         try:
-            from seohead.terminal_progress import elapsed_progress, show_banner
+            from seohead.cli.terminal_progress import elapsed_progress, show_banner
 
             licensed_run = input_mode in {"crawl", "crawl-list", "load-crawl"}
             observer_kwargs = (

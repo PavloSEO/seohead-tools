@@ -11,7 +11,7 @@ import pytest
 from seohead import cli
 from seohead.data_sources import gsc
 from seohead.data_sources.gsc_archive import Archive
-from seohead.servers import handlers
+from seohead.mcp import handlers
 
 
 @pytest.fixture(autouse=True)
@@ -222,7 +222,7 @@ def test_cli_rejects_bad_json_shape_and_bool_limits(tmp_path, capsys):
 
 
 def test_mcp_schema_and_side_effect_annotations():
-    from seohead.servers.mcp_server import build_server
+    from seohead.mcp.mcp_server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     tool = next(t for t in tools if t.name == "seo_gsc_archive")

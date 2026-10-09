@@ -69,7 +69,7 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
         raise ScanError("rendered document renderer provenance is invalid")
     has_navigation, navigation = _navigation_evidence(value)
     if has_navigation:
-        from seohead.tools.navigation import validate_navigation
+        from seohead.checks.navigation import validate_navigation
 
         def resolve_url(url_id):
             row = con.execute("SELECT url FROM urls WHERE url_id=?", (url_id,)).fetchone()
@@ -112,7 +112,7 @@ def _renderer(document: dict[str, object], con=None) -> dict[str, object]:
     if transform == "direct" and value["navigation_url_id"] != document["url_id"]:
         raise ScanError("direct renderer navigation differs from the logical page")
     if transform == "legacy_escaped_fragment" and con is not None:
-        from seohead.tools.render import legacy_fragment_target
+        from seohead.checks.render import legacy_fragment_target
 
         logical = con.execute(
             "SELECT url FROM urls WHERE url_id=?", (document["url_id"],)
@@ -299,7 +299,7 @@ def read_document(con: sqlite3.Connection, document_id: int, *, max_decoded_byte
 
 def read_document_navigation(con, document_id: int) -> dict[str, object]:
     """Read bounded navigation evidence without fetching or interpreting its cause."""
-    from seohead.tools.navigation import expand_navigation, retain_navigation
+    from seohead.checks.navigation import expand_navigation, retain_navigation
 
     if type(document_id) is not int or document_id < 1:
         raise ValueError("document_id must be a positive integer")

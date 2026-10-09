@@ -20,9 +20,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from seohead.checks.external_join import normalize_join_key
 from seohead.data_sources.evidence_import import NORMALIZED_FORMAT
 from seohead.reports import neutralize_formula
-from seohead.tools.external_join import normalize_join_key
 
 PUBLICATION_FORMAT = "seohead.publication-cohort-input.v1"
 GSC_PROGRESS_FORMAT = "seohead.gsc-progress-input.v1"

@@ -1,6 +1,6 @@
 # Tool reference
 
-Generated from the MCP tool definitions in `seohead/servers/mcp_server.py` and `seohead/servers/sf_mcp.py` — do not edit by hand. Regenerate with:
+Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py` and `seohead/mcp/sf_mcp.py` — do not edit by hand. Regenerate with:
 
 ```bash
 python scripts/generate_tool_reference.py

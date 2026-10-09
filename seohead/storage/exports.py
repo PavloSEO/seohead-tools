@@ -171,7 +171,7 @@ def export_run(scan: str | Path, out_dir: str | Path) -> dict[str, Any]:
         os.link(destination / ".audit.json.tmp", destination / "audit.json", follow_symlinks=False)
         owned[destination / "audit.json"] = owned[destination / ".audit.json.tmp"]
         _unlink_owned(destination / ".audit.json.tmp", owned)
-        from seohead.filesystem import fsync_directory
+        from seohead.core.filesystem import fsync_directory
 
         fsync_directory(destination)
         published = True

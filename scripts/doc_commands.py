@@ -34,7 +34,7 @@ def doc_files(root: Path) -> list[Path]:
             *(root / "docs").glob("**/*.md"),
             *(root / ".claude" / "skills").glob("*/**/*.md"),
             *(root / "seohead" / "skills").glob("*/SKILL.md"),
-            *(root / "examples").glob("**/README.md"),
+            *(root / "docs" / "examples").glob("**/README.md"),
         ]
     )
 

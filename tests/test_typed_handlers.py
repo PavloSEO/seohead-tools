@@ -18,9 +18,9 @@ from __future__ import annotations
 import types
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
-from seohead.models import ParsedPage, ParsedRobots, RobotsGroup
-from seohead.servers.handlers import HANDLERS
-from seohead.tools import parser, robots
+from seohead.checks import parser, robots
+from seohead.core.models import ParsedPage, ParsedRobots, RobotsGroup
+from seohead.mcp.handlers import HANDLERS
 
 _SAMPLE_HTML = """
 <html><head>
