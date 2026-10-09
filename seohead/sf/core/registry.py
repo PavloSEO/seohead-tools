@@ -1038,6 +1038,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "og:title is missing, so social previews may not render correctly",
         "fix": "Add og:title, og:image, and og:url; at minimum, provide og:title and og:image for a useful preview.",
     },
+    "IMG_BROKEN": {
+        "severity": "warning",
+        "source": "crawl:images",
+        "message": "Image URL answered with an HTTP error, so the browser shows nothing",
+        "fix": "Restore the file, or update the reference in the page template or CMS to a URL that answers 200.",
+    },
     "IMG_OVER_KB": {
         "severity": "warning",
         "source": "SF:Images:Over X KB",

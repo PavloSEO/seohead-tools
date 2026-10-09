@@ -1533,6 +1533,7 @@ def _audit_crawl_result(
 
         audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
         ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
+        ctx.scan_con = stored_scan.con if stored_scan is not None else None
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
