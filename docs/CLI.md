@@ -273,8 +273,8 @@ seohead mcp uninstall --client codex --yes --json
 seohead mcp backups --json
 ```
 
-State is in `$SEOHEAD_CONFIG_DIR/mcp.json` when explicitly configured, otherwise
-`$XDG_CONFIG_HOME/seohead/mcp.json` (default `~/.config/seohead/mcp.json`). Missing
+State is in `$SEOHEAD_CONFIG_DIR/mcp-state.json` when explicitly configured, otherwise
+`$XDG_CONFIG_HOME/seohead/mcp-state.json` (default `~/.config/seohead/mcp-state.json`). Missing
 state preserves enabled/full compatibility. Invalid state fails closed. Each
 switch records actor, UTC timestamp and history; Desktop uses `--actor "SEOHEAD
 Desktop"`. Disable rejects startup and subsequent tool calls on running servers.

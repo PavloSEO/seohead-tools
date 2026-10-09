@@ -28,11 +28,11 @@ DISABLED = "MCP выключен пользователем (MCP disabled by the
 def state_path() -> Path:
     root = os.environ.get("SEOHEAD_CONFIG_DIR")
     return (
-        Path(root) / "mcp.json"
+        Path(root) / "mcp-state.json"
         if root
         else Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
         / "seohead"
-        / "mcp.json"
+        / "mcp-state.json"
     )
 
 
