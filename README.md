@@ -3,25 +3,30 @@
 
 
 <p align="center">
-<a href="https://seohead.tech/seotools">Website</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/CLI.md">CLI overview</a> · <a href="docs/examples/README.md">Examples</a> · <a href="docs/COMPARISON.md">Scope and trade-offs</a>
+<img src="https://img.shields.io/badge/macOS%20·%20Windows%20·%20Linux-desktop%20app-1565C0">
+<img src="https://img.shields.io/badge/Python-3.10%2B-0B4A94">
+<img src="https://img.shields.io/badge/MCP-local%20stdio-151A25">
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1565C0"></a>
 </p>
 
-[![CI](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml)
-![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1565C0)
-![MCP](https://img.shields.io/badge/MCP-local%20stdio-151A25)
-[![MIT License](https://img.shields.io/badge/code-MIT-1565C0)](LICENSE)
+<p align="center">
+<a href="https://seohead.tech/seotools"><b>Website</b></a> &nbsp;·&nbsp;
+<a href="docs/README.md"><b>Documentation</b></a> &nbsp;·&nbsp;
+<a href="docs/CLI.md"><b>CLI</b></a> &nbsp;·&nbsp;
+<a href="docs/examples/README.md"><b>Examples</b></a> &nbsp;·&nbsp;
+<a href="docs/COMPARISON.md"><b>Scope and trade-offs</b></a>
+</p>
 
-SEOHEAD turns a project goal into repeatable technical-SEO work: crawl or import evidence, keep it
-in a retained SQLite scan, analyse it offline, compare releases, hand prioritized tasks to
-developers, recheck their fixes and build reports. Everything runs on your machine through one
-Python core, with a native desktop app, a CLI and a local MCP server on top. There is no hosted
-account and no web dashboard.
+**SEOHEAD Tools is a working environment for an SEO specialist and their AI agent.** Crawl a site,
+keep every scan, find and prioritise issues, hand tasks to developers, recheck the fixes and report —
+all on your own machine, in a native desktop app, in the terminal or through Claude over MCP.
 
-**Contents:** [Three ways to use it](#three-ways-to-use-it) · [Install](#install) ·
-[Quick start](#quick-start) · [Desktop app](#desktop-app) · [What it can do](#what-it-can-do) ·
-[MCP](#mcp-server-for-claude-and-other-agents) · [Projects](#projects-and-agent-handoff) ·
-[Honest results](#what-is-measured-and-what-is-not) · [Repository map](#repository-map) ·
-[Development](#development)
+- **One core, three faces.** The desktop app, the `seohead` CLI and the MCP server share the same
+  Python core, projects and retained SQLite scans.
+- **Projects, not one-off crawls.** Scans, tasks, sources (Search Console, Metrika, Webmaster, GA4)
+  and history live together, so the next audit starts where the last one ended.
+- **Local-first.** No hosted account and no web dashboard; paid providers run only with your key and
+  your confirmation.
 
 ## Three ways to use it
 
