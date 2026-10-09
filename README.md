@@ -1,10 +1,12 @@
-<p align="center"><img src="docs/assets/logo.svg" alt="SEOHEAD logo: a spider web inside a magnifying glass with a black widow spider" width="96" height="96"></p>
+<p align="center"><img src="docs/assets/readme-hero.svg" alt="SEOHEAD Tools: local-first SEO crawler, audit toolkit and desktop app — CLI, MCP and Desktop" width="100%"></p>
 
-# SEOHEAD Tools
+<h1 align="center">SEOHEAD Tools</h1>
 
-**A headless, local-first SEO crawler and audit toolkit for SEO engineers and the AI agents they work with.**
+<p align="center"><b>A local-first SEO crawler and audit toolkit for SEO engineers and the AI agents they work with.</b></p>
 
-[Website](https://seohead.tech/seotools) · [Documentation](docs/README.md) · [CLI overview](docs/CLI.md) · [Examples](docs/examples/README.md) · [Scope and trade-offs](docs/COMPARISON.md)
+<p align="center">
+<a href="https://seohead.tech/seotools">Website</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/CLI.md">CLI overview</a> · <a href="docs/examples/README.md">Examples</a> · <a href="docs/COMPARISON.md">Scope and trade-offs</a>
+</p>
 
 [![CI](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/PavloSEO/seohead-tools/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1565C0)
@@ -12,19 +14,30 @@
 [![MIT License](https://img.shields.io/badge/code-MIT-1565C0)](LICENSE)
 
 SEOHEAD turns a project goal into repeatable technical-SEO work: crawl or import evidence, keep it
-in a retained SQLite scan, analyse and re-analyse it offline, compare releases, hand prioritized
-tasks to developers, recheck their fixes and build reports. Everything runs on your machine
-through one Python core with two equal interfaces: the `seohead` CLI and a local stdio MCP server
-for Claude and other agent clients. There is no hosted account and no web dashboard.
+in a retained SQLite scan, analyse it offline, compare releases, hand prioritized tasks to
+developers, recheck their fixes and build reports. Everything runs on your machine through one
+Python core. There is no hosted account and no web dashboard.
 
-<p align="center"><img src="docs/assets/cli-crawl.png" alt="seohead crawl-site crawling a local QA fixture: rate-limited progress lines followed by the audit summary" width="820"></p>
+**Contents:** [Three ways to use it](#three-ways-to-use-it) · [Install](#install) ·
+[Quick start](#quick-start) · [Desktop app](#desktop-app) · [What it can do](#what-it-can-do) ·
+[MCP](#mcp-server-for-claude-and-other-agents) · [Projects](#projects-and-agent-handoff) ·
+[Honest results](#what-is-measured-and-what-is-not) · [Repository map](#repository-map) ·
+[Development](#development)
 
-**Contents:** [Install](#install) · [Quick start](#quick-start) · [What it can do](#what-it-can-do) ·
-[CLI](#cli-overview) · [MCP for Claude](#mcp-server-for-claude-and-other-agents) ·
-[Projects and agents](#projects-and-agent-handoff) · [Desktop app](#desktop-app) ·
-[Honest results](#what-is-measured-and-what-is-not) · [Development](#development)
+## Three ways to use it
+
+| Interface | For | Start with |
+|---|---|---|
+| **CLI** — `seohead` | Scripts, CI and terminal work | `seohead crawl-site --url https://example.com --max-urls 500 --scan-out ./scans/audit.sqlite` |
+| **MCP** — local stdio server | Claude and other agent clients | `claude mcp add seohead -- /absolute/path/to/seohead-tools/.venv/bin/seohead mcp` |
+| **Desktop** — SEOHEAD Desktop | Browsing scans, URLs, issues and project work in a native window | `seohead-desktop --project ./shop` |
+
+All three call the same shared handlers (`crawl-site` in the CLI is `seo_crawl_site` over MCP) and
+work on the same local projects and retained scans.
 
 ## Install
+
+### Core toolkit (CLI and MCP)
 
 Python 3.10 or newer. Clone the repository and install it into a virtual environment:
 
@@ -47,23 +60,24 @@ virtual environment with `.venv\Scripts\Activate.ps1`.
 The repository is named `seohead-tools`; the Python distribution is `seohead-seotools` and the
 installed command and import package are `seohead`.
 
-`all` installs every optional Python dependency. Smaller environments can pick extras:
-
-| Extra | Enables |
-|---|---|
-| `mcp` | The local stdio MCP server |
-| `render` | Raw-versus-rendered DOM checks and JavaScript crawling (install a Playwright browser separately) |
-| `reports` | XLSX and DOCX output |
-| `pdf` | PDF reports (also needs a local Chrome, Edge or Chromium) |
-| `cluster` | Keyword clustering |
-| `gsc` | The Google Search Console OAuth client |
-| `sitemap` | Optional sitemap helpers |
-| `tui` | The `watch` observer and the interactive terminal shell |
-| `remote` | The optional authenticated remote job API ([REMOTE_API.md](docs/REMOTE_API.md)) |
+`all` installs every optional dependency; smaller extras (`mcp`, `render`, `reports`, `pdf`, `cluster`,
+`gsc`, `sitemap`, `tui`, `remote`) are listed in [SETUP.md](docs/SETUP.md).
 
 Provider credentials and browser binaries are separate and never required for the core crawl.
 [Setup from zero](docs/SETUP.md) covers versions, environment variables, Docker
 ([CONTAINERS.md](docs/CONTAINERS.md)) and headless Linux servers ([LINUX_VPS.md](docs/LINUX_VPS.md)).
+
+### SEOHEAD Desktop
+
+The app lives in `desktop/` and installs next to the core in the same environment:
+
+```bash
+python -m pip install -e ".[all]" -e desktop
+seohead-desktop --project /path/to/existing/project
+```
+
+Packaging (PyInstaller bundles with the core and the `seohead` CLI) and the source install are
+described in `desktop/docs/`.
 
 ## Quick start
 
@@ -101,8 +115,6 @@ reproduction steps, DOM positions and fixes. A separately installed, licensed SF
 driven directly with `sf run --crawl`. Other crawlers' CSV exports are not drop-in compatible; they
 are read through a versioned manifest ([THIRD_PARTY_CRAWL_IMPORT.md](docs/THIRD_PARTY_CRAWL_IMPORT.md)).
 
-<p align="center"><img src="docs/assets/cli-sf-audit.png" alt="seohead sf run on the synthetic export fixture, followed by the first prioritized tasks in tasks.md" width="820"></p>
-
 ### 3. Run it as a project with an agent
 
 ```bash
@@ -121,6 +133,44 @@ The agent starts from the [control](.claude/skills/control/SKILL.md) skill, reco
 crawl policy in the project, reuses retained evidence and follows the
 [developer handoff](docs/scenarios/deliverable.md) scenario. See
 [Projects and agent handoff](#projects-and-agent-handoff).
+
+## Desktop app
+
+SEOHEAD Desktop is a native PyQt5 application for macOS, Windows and Linux. It is a presentation
+layer over the same core: it opens the same local projects and retained scans as the CLI and MCP
+server, so a crawl started in the terminal or by an agent shows up in the window and the other
+way round.
+
+- **Crawler** — enter a URL and press Start, no project needed; save the result as a project later.
+- **Project work** — goal, tasks, inbox and run history in a *With agent* display, or the same
+  projects, scans and reports without AI features in a *Simple* display.
+- **URLs, issues, link graph, compare** — browse retained evidence, rechecks and before/after scans.
+- **Methods and reports** — the core's method skills and report builders behind ready-made screens.
+- **MCP switch** — one shared state with the CLI (`seohead mcp status`); the app registers the
+  server in Claude Code, Claude Desktop, Codex or Cursor only after a permission dialog that lists
+  the files and lines it will change, with backups.
+- **Installers** — macOS `.pkg`, Windows setup and Linux tarball put the app and the `seohead`
+  command on the machine together. Light, dark and high-contrast themes; English and Russian.
+
+<p align="center"><img src="docs/assets/screenshots/desktop-quick-scan.png" alt="SEOHEAD Desktop: a running crawl with the internal URL table and the scan overview panel" width="100%"></p>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/screenshots/desktop-main.png" alt="URL table with filters, the selected URL's details and provenance" width="100%"><br><sub><b>URLs</b> — filterable table with per-URL details and provenance</sub></td>
+<td width="50%"><img src="docs/assets/screenshots/desktop-issues.png" alt="Issue list with affected URLs, evidence and recheck states" width="100%"><br><sub><b>Issues</b> — findings with evidence and recheck status</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/desktop-project.png" alt="Project goal, approved tasks, priorities and next steps" width="100%"><br><sub><b>Project work</b> — goal, tasks, next steps and history</sub></td>
+<td><img src="docs/assets/screenshots/desktop-compare.png" alt="Before and after comparison of two scans by segment" width="100%"><br><sub><b>Compare</b> — before/after scans from saved data</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/desktop-link-graph.png" alt="Internal link graph coloured by section with graph filters" width="100%"><br><sub><b>Link graph</b> — internal links by section, orphans and paths</sub></td>
+<td><img src="docs/assets/screenshots/desktop-set-sources.png" alt="Data source settings: Search Console, Analytics, Yandex, Topvisor, DataForSEO and more" width="100%"><br><sub><b>Data sources</b> — connected services and their status</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/assets/screenshots/desktop-proj-sources.png" alt="Project data sources: linking Search Console, GA4 and other properties to a project" width="100%"><br><sub><b>Project sources</b> — properties linked to one project, mirrored by <code>seohead</code> CLI commands</sub></td>
+</tr>
+</table>
 
 ## What it can do
 
@@ -144,30 +194,6 @@ Each area links to the page that documents its method, inputs and limits. The
 | **Search and analytics providers** | Search Console, GA4, Yandex Metrika and Webmaster, CrUX, IndexNow, Wordstat/Arsenkin, DataForSEO, Topvisor, Miratext; local history, joins and spend journal | [PROVIDERS](docs/PROVIDERS.md), [provider workflow](docs/scenarios/provider-evidence.md), [GOTCHAS](docs/GOTCHAS.md) |
 | **Method skills** | Packaged playbooks and end-to-end scenarios an agent can load (`skill-show`, `scenario-show`) | [SKILLS](docs/SKILLS.md), [scenarios](docs/scenarios/README.md) |
 | **Operations** | Optional authenticated remote job API, durable jobs, Docker image, VPS install | [REMOTE_API](docs/REMOTE_API.md), [REMOTE_JOBS](docs/REMOTE_JOBS.md), [CONTAINERS](docs/CONTAINERS.md), [LINUX_VPS](docs/LINUX_VPS.md) |
-
-## CLI overview
-
-Every capability is a shared handler with a CLI command and an MCP tool of the same name
-(`crawl-site` ↔ `seo_crawl_site`). Use `seohead <command> --help` for syntax.
-
-| Job | Commands | Full list |
-|---|---|---|
-| Collect a site | `crawl-site`, `crawl-diagnose`, `crawl-import`, `crawl-enrich`, `sitemap-crawl`, `site-audit`, `inspect-url` | [Collect](docs/CLI.md#collect-a-site) |
-| Work with saved scans | `scan list`, `scan inspect`, `scan url-detail`, `scan content-search`, `scan extract`, `scan export`, `scan reanalyze` | [Saved scans](docs/CLI.md#saved-scans-offline) |
-| Check pages and infrastructure | `parse`, `robots-check`, `headers-check`, `schema-check`, `render-check`, `domain-profile`, `security-check`, `log-analyze` | [Pages](docs/CLI.md#page-and-url-checks), [Infra](docs/CLI.md#infrastructure-security-and-recon) |
-| Content, AI search, assets | `duplicate-check`, `boilerplate-report`, `citability-check`, `llms-txt-check`, `images-optimize`, `redirects-generate` | [Content](docs/CLI.md#content-semantics-and-assets), [GEO](docs/CLI.md#ai-search-readiness-geoaeo) |
-| Compare and remediate | `compare-crawls`, `segment-diff`, `verify-fixes`, `remediation-*` | [Compare](docs/CLI.md#compare-verify-and-remediate) |
-| Report | `report-build`, `sf tasks`, `findings-view`, `facts-export`, `bi-*` | [Reports](docs/CLI.md#reports-views-and-bi) |
-| Projects and agents | `project-*`, `workflow-*`, `audit-workflow`, `monitor-*`, `watch` | [Projects](docs/CLI.md#projects-and-agent-handoff), [Monitoring](docs/CLI.md#monitoring) |
-| Providers | `provider-*`, `sources-*`, `gsc-*`, `metrika-*`, keyword and SERP tools, `spend-report` | [Providers](docs/CLI.md#search-analytics-and-demand-providers) |
-| Discover | `tool-catalog`, `skill-list`, `skill-show`, `scenario-show` | [Catalogue](docs/CLI.md#catalogue-and-diagnostics) |
-| Screaming Frog | `sf run`, `sf tasks`, `sf doctor`, `sf save-config` | [Entry points](docs/CLI.md#entry-points-that-are-not-single-tools) |
-
-<p align="center"><img src="docs/assets/cli-help.png" alt="seohead --help listing commands and the grouped scan, project, skill, scenario, sf, mcp, tui and watch entry points" width="720"></p>
-
-[TOOLS.md](docs/TOOLS.md) explains network use and side effects by layer; the generated
-[tool reference](docs/TOOL_REFERENCE.md) is authoritative for arguments, defaults, idempotency
-and provider spend; [INPUTS.md](docs/INPUTS.md) lists what each command accepts.
 
 ## MCP server for Claude and other agents
 
@@ -195,7 +221,8 @@ Claude Code when the virtual environment is active.
 ```
 
 `--profile full` exposes every tool; `audit`, `infra`, `quick-check` and `router` expose smaller
-schema sets for focused sessions. Progress notifications are sent only when the client supplies
+schema sets for focused sessions. `seohead mcp status` shows the shared on/off state that the
+desktop app uses too. Progress notifications are sent only when the client supplies
 a progress token. See [MCP profiles and progress](docs/MCP_PROFILES.md).
 
 An agent discovers routes with `seo_tool_catalog`, loads a method with `seo_skill_show` and an
@@ -206,32 +233,12 @@ execute it. The CLI shows the same catalogue:
 seohead tool-catalog --query redirect --limit 5
 ```
 
-<p align="center"><img src="docs/assets/cli-tool-catalog.png" alt="seohead tool-catalog returning tools with their network, writes, idempotent and paid annotations" width="820"></p>
-
-For example, these `tools/call` parameters run an offline duplicate check on a retained scan:
-
-```json
-{
-  "name": "seo_duplicate_check",
-  "arguments": {"scan": "./scans/audit.sqlite"}
-}
-```
-
 ## Projects and agent handoff
 
 A project directory keeps the site, agreed scope, crawl policy, checklist coverage, retained scans,
 saved finding views and run history, so a new agent continues from the saved project instead of
-chat history:
-
-1. **Define why:** record the site, the agreed URL/template population and priorities.
-2. **Choose what and how:** save crawl scope, rendering, extraction and resource settings.
-3. **Collect once, analyse again:** reuse retained evidence; partial, skipped and unavailable
-   work is recorded explicitly.
-4. **Compare and act:** review changes, create developer tasks, track repairs in the
-   remediation ledger.
-5. **Report and improve:** choose report views and formats, then refine the next run.
-
-<p align="center"><img src="docs/assets/cli-project-progress.png" alt="seohead project progress showing checklist counts, task states and the next actions for a local project" width="720"></p>
+chat history: define the goal and scope, collect once and analyse again, compare, create developer
+tasks, track repairs and report.
 
 `seohead watch --project DIRECTORY` opens an optional terminal observer beside the chat
 ([TERMINAL.md](docs/TERMINAL.md)). The inbox stores the specialist's notes and proposed goals;
@@ -240,14 +247,6 @@ exactly where the first stopped ([WORKFLOWS.md](docs/WORKFLOWS.md)). Task comple
 health stay separate: a prepared project or a completed task is not proof that a site error was
 fixed. Details: [Projects](docs/PROJECTS.md), [project-control scenario](docs/scenarios/project-control.md),
 [remediation ledger](docs/LEDGER.md).
-
-## Desktop app
-
-SEOHEAD Desktop (PyQt5) is a native companion application over the same local core: it opens an
-existing project, browses retained scans and URL evidence, starts explicitly confirmed native
-crawls and shows their progress through the local MCP connection. It lives in `desktop/` (coming
-via a separate pull request); this README will link its documentation once it lands. The CLI and
-MCP server remain the reference interfaces.
 
 ## What is measured and what is not
 
@@ -263,17 +262,12 @@ health scores are withheld or marked not comparable when coverage is low. Native
 Screaming Frog are different collectors and may discover different URL populations; compare them
 only with compatible scope, configuration and provenance.
 
-Known limits:
-
-- Native crawl and browser results are lab evidence, not field Core Web Vitals. `crux-report`
-  exists but is credential-gated, and its live access is not claimed as verified
-  ([SETUP.md](docs/SETUP.md)).
-- `site-audit` is a bounded sitemap-based pass, not a link-graph crawl and not a run of every tool.
-- There is no web-scale backlink index (`backlinks-check` verifies a list of donor pages you
-  supply), no hosted multi-user dashboard and no general content strategy.
-- Full feature and performance parity with commercial crawlers, including on very large or
-  JavaScript-heavy sites, is a development direction, not a verified release claim
-  ([COMPARISON.md](docs/COMPARISON.md), [MILLION_CRAWL_ACCEPTANCE.md](docs/MILLION_CRAWL_ACCEPTANCE.md)).
+Known limits: native crawl and browser results are lab evidence, not field Core Web Vitals
+(`crux-report` is credential-gated); `site-audit` is a bounded sitemap pass, not a link-graph
+crawl; `backlinks-check` verifies donor pages you supply rather than a web-scale index; full
+parity with commercial crawlers on very large or JavaScript-heavy sites is a direction, not a
+verified claim ([COMPARISON.md](docs/COMPARISON.md),
+[MILLION_CRAWL_ACCEPTANCE.md](docs/MILLION_CRAWL_ACCEPTANCE.md)).
 
 Safety boundaries: network tools block private targets unless explicitly allowed; file mutation,
 service-path probes, bot DNS verification, provider production mode and paid calls require
@@ -281,6 +275,25 @@ explicit inputs. DataForSEO defaults to sandbox, and paid calls are journalled f
 Image optimization writes to a separate directory unless in-place mode is requested, which keeps
 backups. Secrets and client crawl data never belong in this repository or a client report.
 See [the audit guideline](docs/GUIDELINE.md) and [GOTCHAS.md](docs/GOTCHAS.md).
+
+## Repository map
+
+| Path | What it holds |
+|---|---|
+| `seohead/cli/` | The `seohead` command line over the shared handlers |
+| `seohead/mcp/` | Shared handlers and the local stdio MCP server |
+| `seohead/crawl/` | Native evidence collection: fetching and parsing, no verdicts |
+| `seohead/checks/`, `seohead/audit/` | Audit checks and the audit pipeline over collected evidence |
+| `seohead/core/`, `seohead/storage/` | Shared contracts, retained scans and read-only access |
+| `seohead/projects/` | Portable local project workspaces |
+| `seohead/reports/` | XLSX, DOCX, CSV, Markdown, JSON and PDF output |
+| `seohead/recon/`, `seohead/data_sources/` | Domain/infrastructure recon and external providers |
+| `seohead/sf/` | Screaming Frog export analysis |
+| `seohead/skills/`, `seohead/data/` | Method skills and versioned reference data |
+| `seohead/tui/`, `seohead/integrations/` | Optional terminal shell, remote job API and other integrations |
+| `desktop/` | SEOHEAD Desktop (PyQt5, GPL-3.0-or-later) with its own toolchain and tests |
+| `docs/` | Documentation, scenarios, examples and images |
+| `tests/` | Offline test suite for the core |
 
 ## Development
 
@@ -301,7 +314,12 @@ changes. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
 
 ## Licence and provenance
 
-The Python implementation and documentation are released under the [MIT License](LICENSE). The
+The core toolkit and documentation are released under the [MIT License](LICENSE). SEOHEAD Desktop
+in `desktop/` is GPL-3.0-or-later, as required by PyQt5 (see `desktop/LICENSE`). The
 bundled Schema.org vocabulary keeps its original CC BY-SA terms. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [PROVENANCE.md](docs/legal/PROVENANCE.md),
 [TRADEMARKS.md](docs/legal/TRADEMARKS.md) and [CITATION.cff](CITATION.cff).
+
+---
+
+<p align="center"><sub><img src="docs/assets/seohead-spider.svg" alt="" width="20" height="20" align="absmiddle"> Made with SEOHEAD Tools</sub></p>
