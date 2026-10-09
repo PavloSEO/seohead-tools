@@ -168,6 +168,9 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `project-prepare` | Prepare an existing project with a bounded native crawl and saved sitemap coverage. | network, writes |
 | `project-open` | Open a local project workspace without executing template references. | offline, read-only |
 | `project-status` | Show project scan history and named pending checklist/preparation states. | offline, read-only |
+| `project-sources-link` | Bind a provider resource ID to a project in `sources.json`; no provider call. | writes |
+| `project-sources-unlink` | Remove one resource binding from `sources.json`; no provider call. | writes |
+| `project-sources-list` | List resource bindings of a project. | offline, read-only |
 | `project-progress` | Show a compact, paginated project checklist view and its next actions. | offline, read-only |
 | `project-observe` | Read the bounded project observer snapshot: tasks, methods, competitors, retained scan state and the execution-log tail. | offline, read-only |
 | `project-activity` | Read lightweight current activity for a local project and its sites. | offline, read-only |

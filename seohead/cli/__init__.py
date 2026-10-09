@@ -121,6 +121,9 @@ COMMANDS = (
     "project-open",
     "project-status",
     "project-progress",
+    "project-sources-link",
+    "project-sources-unlink",
+    "project-sources-list",
     "remediation-summary",
     "remediation-cases",
     "remediation-transition",
@@ -677,6 +680,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["approve_large_crawl"] = True
         if getattr(args, "producer_build", None):
             kw["producer_build"] = args.producer_build
+    elif cmd.startswith("project-sources-"):
+        for name in ("directory", "service", "resource", "label"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
     elif cmd.startswith("project-inbox-"):
         for name in (
             "directory",
@@ -2135,6 +2143,15 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--label", help="human project label")
     if cmd in {"project-open", "project-status", "project-progress"}:
         _source_flag(sub, "--directory", help="project directory")
+    if cmd.startswith("project-sources-"):
+        _source_flag(sub, "--directory", help="validated local project workspace")
+        if cmd != "project-sources-list":
+            sub.add_argument(
+                "--service", help="gsc, ga4, gtm, metrika, webmaster, bing or topvisor"
+            )
+            sub.add_argument("--resource", help="provider resource ID, e.g. a GSC property")
+        if cmd == "project-sources-link":
+            sub.add_argument("--label", help="human label for the resource")
     if cmd == "project-observe":
         _source_flag(sub, "--directory", help="validated local project workspace")
         sub.add_argument("--consumer", help="stable local agent/session consumer id")
@@ -2711,6 +2728,9 @@ def build_parser() -> argparse.ArgumentParser:
         "policy",
         "prepare",
         "start",
+        "sources-link",
+        "sources-unlink",
+        "sources-list",
     ):
         cmd = "project-" + action
         sp = project_subs.add_parser(action, help=f"run {cmd}")

@@ -1605,6 +1605,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_sources_link(
+        directory: str, service: str, resource: str, label: str | None = None
+    ) -> dict[str, Any]:
+        """Bind a provider resource ID to a local project; no provider call or discovery runs."""
+        return _checked(
+            handlers.project_sources_link(
+                directory=directory, service=service, resource=resource, label=label
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_project_sources_unlink(directory: str, service: str, resource: str) -> dict[str, Any]:
+        """Remove one resource binding from a local project; no provider call runs."""
+        return _checked(
+            handlers.project_sources_unlink(directory=directory, service=service, resource=resource)
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_sources_list(directory: str) -> dict[str, Any]:
+        """List the resource bindings of a local project; reads sources.json only."""
+        return _checked(handlers.project_sources_list(directory=directory))
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
         """Show project scan history and named pending checklist/preparation states.

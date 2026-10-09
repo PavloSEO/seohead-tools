@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**164 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 173 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1348,6 +1348,47 @@ Create a local project workspace; no crawl, checklist execution, or network work
 | `profile_references` | `list[str] | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-sources-link`
+
+MCP name: `seo_project_sources_link`
+
+Bind a provider resource ID to a local project; no provider call or discovery runs.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `service` | `str` | `required` |
+| `resource` | `str` | `required` |
+| `label` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `project-sources-unlink`
+
+MCP name: `seo_project_sources_unlink`
+
+Remove one resource binding from a local project; no provider call runs.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `service` | `str` | `required` |
+| `resource` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+### `project-sources-list`
+
+MCP name: `seo_project_sources_list`
+
+List the resource bindings of a local project; reads sources.json only.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 ### `project-status`
 
