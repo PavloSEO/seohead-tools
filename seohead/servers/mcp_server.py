@@ -2927,6 +2927,39 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_url_query(
+        input_path: str,
+        filters: list[dict[str, Any]] | None = None,
+        sort: str | None = None,
+        direction: str = "asc",
+        columns: list[str] | None = None,
+        offset: int = 0,
+        limit: int = 200,
+        count_timeout_seconds: float = 1.0,
+        max_bytes: int = 1_048_576,
+    ) -> dict[str, Any]:
+        """Filter, sort and paginate the page table of one saved scan across the whole scan.
+
+        Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
+        non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
+        sort_not_indexed). Returns total, filtered_total (null with state capped when the count
+        exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+        """
+        return _checked(
+            handlers.scan_url_query(
+                input_path=input_path,
+                filters=filters,
+                sort=sort,
+                direction=direction,
+                columns=columns,
+                offset=offset,
+                limit=limit,
+                count_timeout_seconds=count_timeout_seconds,
+                max_bytes=max_bytes,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_link_inspect(
         input_path: str,
         view: str = "path",

@@ -105,6 +105,7 @@ COMMANDS = (
     "scan-list",
     "scan-inspect",
     "scan-url-detail",
+    "scan-url-query",
     "scan-link-inspect",
     "scan-status",
     "scan-rendered-routes",
@@ -238,6 +239,7 @@ _SCAN_PATH_COMMANDS = frozenset(
     {
         "scan-inspect",
         "scan-url-detail",
+        "scan-url-query",
         "scan-link-inspect",
         "scan-status",
         "scan-rendered-routes",
@@ -327,6 +329,16 @@ def _stdin_has_data() -> bool:
 # its first iteration: regular-file stdin is always reported as ready, so the command consumes every
 # unread URL and the loop processes only one.
 #
+def _json_list(text: str) -> list[Any]:
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"not valid JSON: {exc}") from exc
+    if not isinstance(value, list):
+        raise argparse.ArgumentTypeError("expected a JSON list")
+    return value
+
+
 def _source_flag(sub: argparse.ArgumentParser, *args: str, **kwargs: Any) -> argparse.Action:
     """Add a flag whose value alone supplies a command's complete input (a URL, a file path, a
     search phrase, a counter ID, ...) and register it on that command's parser. Keeping the
@@ -436,6 +448,20 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = True
     elif cmd == "scan-content-search-page":
         for name in ("package", "offset", "limit"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "scan-url-query":
+        for name in (
+            "input_path",
+            "filters",
+            "sort",
+            "direction",
+            "columns",
+            "offset",
+            "limit",
+            "count_timeout_seconds",
+            "max_bytes",
+        ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "scan-url-detail":
@@ -2010,6 +2036,15 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--table")
         sub.add_argument("--offset", type=int)
         sub.add_argument("--limit", type=int)
+        sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+    if cmd == "scan-url-query":
+        sub.add_argument("--filters", type=_json_list, help="JSON list of {column, op, value}")
+        sub.add_argument("--sort")
+        sub.add_argument("--direction", choices=("asc", "desc"))
+        sub.add_argument("--columns", type=lambda v: v.split(","), help="comma-separated columns")
+        sub.add_argument("--offset", type=int)
+        sub.add_argument("--limit", type=int)
+        sub.add_argument("--count-timeout-seconds", dest="count_timeout_seconds", type=float)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")

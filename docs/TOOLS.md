@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 160 commands and 165 callable tools,
+The current registry has 161 commands and 166 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -51,10 +51,10 @@ and inputs remain in the nearby route sections and generated tool reference.
 `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
 `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
 `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
-`scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` · `semantic-inputs` ·
-`semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` · `skill-show` ·
-`social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status` ·
-`sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
+`scan-url-query` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
+`semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` ·
+`skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status`
+· `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
 `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` ·
 `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
@@ -393,6 +393,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-list` | Validates and lists metadata for `*.sqlite` files in one existing directory without reading retained body BLOBs. It stops at 10,000 files and 64 MiB of metadata, and reports unreadable candidates under `errors` rather than treating them as scans. | — |
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
 | `scan-url-detail` | Reads one exact native URL's bounded retained page, redacted request/response headers, redirect chain and forms. Query values and sensitive headers are redacted; HTML body bytes are not returned. Legacy and Screaming Frog sources name this evidence as unavailable. | — |
+| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. Failures carry a machine-readable `reason_code`. | — |
 | `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, or one retained document's per-link placement/heading context. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. The scan is accepted by a light header/schema check and the response carries `validation: "light"`; `full_validation: true` (or earlier full validation of the same bytes) reports `"full"`. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
@@ -729,7 +730,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(160 + 5):
+(161 + 5):
 
 ```bash
 seohead mcp        # stdio
