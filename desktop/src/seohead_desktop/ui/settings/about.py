@@ -5,10 +5,8 @@ from __future__ import annotations
 import os
 import platform
 from importlib import metadata
-from pathlib import Path
 
 from PyQt5.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, QLocale, QTimeZone
-from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -19,7 +17,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ... import theming
+from ... import brand, theming
 from ...i18n import trf
 from ..icons import material_icon
 from .actions import Columns, action_button, button_row, format_size, key_values, meta_label
@@ -29,7 +27,6 @@ ID, ICON, TITLE = "about", "info", "О программе"
 HINT = "Версии, лицензии и сведения для обращения в поддержку"
 SCHEMA = ()
 
-LOGO = Path(__file__).resolve().parents[2] / "assets/app/seohead-128.png"
 
 LICENSES = (
     ("SEOHEAD Desktop", "GPL v3+"),
@@ -88,15 +85,12 @@ def _header(version):
     layout.setContentsMargins(0, 10, 0, 6)
     layout.setSpacing(18)
     logo = QLabel()
-    pixmap = QPixmap(str(LOGO)).scaled(128, 128)
-    pixmap.setDevicePixelRatio(2)
-    logo.setPixmap(pixmap)
-    logo.setFixedSize(64, 64)
+    logo.setPixmap(brand.render(brand.lockup_path(), 240))  # brandbook: About = lockup (mark + name) + version
     logo.setAccessibleName("SEOHEAD")
     layout.addWidget(logo)
     text = QVBoxLayout()
     text.setSpacing(2)
-    title = QLabel("SEOHEAD Desktop")
+    title = QLabel("Desktop")
     title.setProperty("brand", "title")
     sub = meta_label(trf("{version} · открытый исходный код · © 2026 Павел Борушко", version=version))
     sub.setContentsMargins(0, 0, 0, 0)

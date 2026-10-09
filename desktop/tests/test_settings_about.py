@@ -36,8 +36,16 @@ class AboutSectionTests(unittest.TestCase):
         for name in names:
             self.assertIn(name, text)
 
-    def test_logo_exists(self):
-        self.assertTrue(about.LOGO.is_file())
+    def test_brandbook_assets_exist_and_render(self):
+        from pathlib import Path
+
+        from seohead_desktop import brand
+
+        for path in (brand.logo_path(), brand.spider_path(), brand.lockup_path()):
+            self.assertTrue(Path(path).is_file(), path)
+            self.assertFalse(brand.render(path, 32).isNull(), path)
+        self.assertFalse(brand.spider_icon(16).isNull())
+        self.assertFalse(brand.app_icon().isNull())
 
     def test_copy_info_goes_to_clipboard(self):
         _store, _dialog, page = make("about", SettingsContext(app_version="4.5.6"))

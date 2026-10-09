@@ -16,7 +16,7 @@ from PyQt5.QtCore import (
     QVariantAnimation,
     pyqtSignal,
 )
-from PyQt5.QtGui import QFontDatabase, QIcon, QKeySequence, QPainter
+from PyQt5.QtGui import QFontDatabase, QKeySequence, QPainter
 from PyQt5.QtSvg import QSvgGenerator
 from PyQt5.QtWidgets import (
     QActionGroup,
@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from . import i18n, qt, theming
+from . import brand, i18n, qt, theming
 from .agent import AgentMixin
 from .chrome import ChromeMixin
 from .commands import CommandsMixin
@@ -75,9 +75,7 @@ def load_theme(app, theme=None):
     if theme:
         theming.set_active_theme(theme)
     tokens = theme_tokens()
-    app_icon = ROOT / "assets/app/seohead.svg"
-    if app_icon.is_file():
-        app.setWindowIcon(QIcon(str(app_icon)))
+    app.setWindowIcon(brand.app_icon())  # brandbook: the medium logo is the application / Dock icon
     for font in sorted((ROOT / "assets/fonts").glob("*.ttf")):
         QFontDatabase.addApplicationFont(str(font))
     app.setStyleSheet(theming.stylesheet() + component_stylesheet(tokens))
