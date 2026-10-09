@@ -482,7 +482,7 @@ class DialogTests(DialogCase):
         self.assertFalse(self.start(dialog).isEnabled())
         waiting = [b for b in dialog.list_block.findChildren(QPushButton) if b.text().startswith("Взять 4xx")]
         self.assertTrue(waiting and not waiting[0].isEnabled())
-        self.assertIn("#927", waiting[0].toolTip())
+        self.assertIn("в этой версии ядра", waiting[0].toolTip())
         self.assertEqual(self.calls, [])
 
     def test_a_very_long_list_is_counted_when_typing_pauses(self):
@@ -513,7 +513,7 @@ class DialogTests(DialogCase):
     def test_unmeasurable_numbers_are_waiting_and_none_is_invented(self):
         dialog = self.open()
         rows = {k: label.text() for k, (_name, label) in dialog.plan_values.items()}
-        self.assertEqual(rows["estimate"], "оценка ждёт #931")
+        self.assertEqual(rows["estimate"], "оценка недоступна в этой версии ядра")
         self.assertEqual(rows["speed"], "до 2 запросов/с на хост · потоков 1")
         self.assertEqual(rows["urls"], "1 500")
         self.assertEqual(rows["requests"], "без лимита")
@@ -525,7 +525,7 @@ class DialogTests(DialogCase):
         self.assertIn("Сохранить как профиль", texts)
         profile = dialog.findChild(QPushButton, "scanSaveProfile")
         self.assertFalse(profile.isEnabled())
-        self.assertIn("#941", profile.toolTip())
+        self.assertIn("в этой версии ядра", profile.toolTip())
 
     def test_descriptor_states_loading_error_and_arrival(self):
         self.window.crawl_descriptor = None
@@ -710,11 +710,11 @@ class SettingsTests(DialogCase):
             for row in page.findChildren(SettingRow):
                 if row.property("waiting"):
                     waiting.append((page_id, row))
-                    self.assertRegex(row.later_badge.text(), r"^ждёт #\d{3}$")
+                    self.assertRegex(row.later_badge.text(), r"^Недоступно в этой версии ядра$")
                     self.assertFalse(row.control.isEnabled(), (page_id, row.title.text()))
         self.assertGreaterEqual(len(waiting), 15)
-        issues = {row.later_badge.text() for _page, row in waiting}
-        self.assertTrue({"ждёт #925", "ждёт #950", f"ждёт #{ISSUE_EXTRACT}"} <= issues)
+        issues = {row.later_badge.property("waiting_issue") for _page, row in waiting}
+        self.assertTrue({925, 950, ISSUE_EXTRACT} <= issues)
         extract = settings.pages["extract"][1]
         self.assertTrue(any(f.property("note") == "info" for f in extract.findChildren(QFrame)))
 
@@ -750,7 +750,7 @@ class SettingsTests(DialogCase):
         label = settings.findChild(QLabel, "scanDiskFree")
         self.assertRegex(label.text(), r"Свободно на диске проекта: [\d ]+ ГБ из [\d ]+ ГБ")
         page_text = " ".join(w.text() for w in settings.pages["storage"][1].findChildren(type(label)))
-        self.assertIn("оценка ждёт #931", page_text)
+        self.assertIn("оценка недоступна в этой версии ядра", page_text)
 
     def test_profiles_page_lists_only_what_core_and_project_store(self):
         dialog = self.open()
@@ -766,7 +766,7 @@ class SettingsTests(DialogCase):
         self.assertEqual(rows, {"limits.max_urls": "50", "speed.concurrency": "2"})
         disabled = [b for b in page.findChildren(QPushButton) if b.text() in ("Дублировать", "Удалить", "Импорт JSON…", "Экспорт JSON")]
         self.assertEqual(len(disabled), 4)
-        self.assertTrue(all(not b.isEnabled() and "#941" in b.toolTip() for b in disabled))
+        self.assertTrue(all(not b.isEnabled() and "в этой версии ядра" in b.toolTip() for b in disabled))
         page.findChild(QPushButton, "profileApply").click()
         self.assertEqual(settings.draft.value("speed.concurrency"), 2)
         page.findChild(QToolButton, "profile_core").click()
@@ -781,7 +781,7 @@ class SettingsTests(DialogCase):
         self.assertEqual(settings.changed_label.text(), "Изменено полей: 0")
         type_into(settings.findChild(QLineEdit, "scanConcurrency"), "3")
         self.assertEqual(settings.changed_label.text(), "Изменено полей: 1")
-        self.assertIn("не подключены (#954)", [label.text() for label in settings.findChildren(QLabel)])
+        self.assertIn("не подключены (недоступно в этой версии ядра)", [label.text() for label in settings.findChildren(QLabel)])
 
     def test_english_pages_have_no_russian_left(self):
         i18n.set_language("en")

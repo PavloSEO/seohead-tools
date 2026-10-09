@@ -74,10 +74,10 @@ class WorkScreenTests(unittest.TestCase):
         self.assertEqual((numbers["remaining"], numbers["complete"], numbers["total"]), (276, 0, 276))
         self.assertEqual(self.kpi(0).number.text(), "276")
         self.assertEqual(self.kpi(1).number.text(), "0")
-        self.assertIn("#946", self.kpi(1).sub.text())  # no audit plan: no denominator
+        self.assertIn("в этой версии ядра", self.kpi(1).sub.text())  # no audit plan: no denominator
         self.assertEqual(self.kpi(2).number.text(), "Нет данных")  # not 0
         self.assertTrue(self.kpi(2).number.property("na"))
-        self.assertIn("#946", self.kpi(2).sub.text())
+        self.assertIn("в этой версии ядра", self.kpi(2).sub.text())
         self.assertEqual(self.kpi(3).number.text(), "Нет")  # no active run observed
 
     def test_a_measured_plan_gives_the_denominator_and_bar(self):
@@ -145,7 +145,7 @@ class WorkScreenTests(unittest.TestCase):
         self.window.data_changed.emit("tasks")
         detail = "\n".join(texts(self.screen.detail))
         self.assertIn("not attempted", detail)
-        self.assertIn("#922", detail)  # assignee / description / comments: the core has no such fields yet
+        self.assertIn("в этой версии ядра", detail)  # assignee / description / comments: the core has no such fields yet
         self.assertIn("Записей в истории нет", detail)
 
     def test_the_first_row_is_selected_without_a_second_detail_request(self):
@@ -188,7 +188,7 @@ class WorkScreenTests(unittest.TestCase):
         self.assertEqual(self.screen.goal_title.text(), "Убрать технические ошибки каталога")
         self.assertEqual(self.screen.eyebrow.text(), "Принятая цель")
         self.assertFalse(self.screen.goal_waiting.isHidden())
-        self.assertIn("#946", self.screen.goal_waiting.text())
+        self.assertIn("в этой версии ядра", self.screen.goal_waiting.text())
         rows = self.window.inbox_model.rows
         proposed = dict(rows[1], goal_state="proposed")
         self.window.inbox_model.replace([rows[0], proposed])
@@ -221,7 +221,7 @@ class WorkScreenTests(unittest.TestCase):
         self.window.data_changed.emit("observer")
         self.assertEqual(self.screen.tabs.tabText(1), "Запуски · 1")
         self.assertEqual(self.screen.runs.index(0, 3).data(), "20")
-        self.assertIn("#923", self.screen.tabs.tabToolTip(2))
+        self.assertIn("в этой версии ядра", self.screen.tabs.tabToolTip(2))
 
     def test_navigation_buttons(self):
         open_qa(self.window)

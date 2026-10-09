@@ -26,7 +26,7 @@ from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel
 from ..ui.icons import material_icon as icon
 from ..ui.presentation import ElidedLabel
-from .new_scan_draft import ISSUE_ESTIMATE, grouped
+from .new_scan_draft import grouped
 from .new_scan_pages import PAGES
 
 
@@ -141,7 +141,7 @@ class ScanSettingsDialog(QDialog):
         self.load = QLabel()
         self.load.setObjectName("scanLoadBounds")
         self.load.setWordWrap(True)
-        later = QLabel(trf("Длительность и размер: оценка ждёт #{n}", n=ISSUE_ESTIMATE))
+        later = QLabel(tr("Длительность и размер: оценка недоступна в этой версии ядра"))
         later.setProperty("text_style", "meta")
         later.setWordWrap(True)
         for widget in (caption, self.load, later):

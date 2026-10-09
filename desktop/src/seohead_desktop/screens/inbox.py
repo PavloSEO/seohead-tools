@@ -106,7 +106,7 @@ class StageChain(QWidget):
             text.setProperty("text_style", "meta")
             text.setWordWrap(True)
             row.addWidget(text, 1)
-            cell.setToolTip(tr("Стадия подтверждена ядром") if done else tr("Ядро не различает получателей записи: чтение агентом не измеряется") + " · #944" if not measurable else tr("Ядро не записало этой стадии"))
+            cell.setToolTip(tr("Стадия подтверждена ядром") if done else tr("Ядро не различает получателей записи: чтение агентом не измеряется") + " · " + tr("Недоступно в этой версии ядра") if not measurable else tr("Ядро не записало этой стадии"))
             layout.addWidget(cell, index // 2, index % 2)
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
@@ -171,7 +171,7 @@ class Composer(QFrame):
         self.question.setIcon(material_icon("help"))
         self.question.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.question.setEnabled(False)
-        self.question.setToolTip(tr("Ядро пока принимает только заметки и цели") + " · #944")
+        self.question.setToolTip(tr("Ядро пока принимает только заметки и цели") + " · " + tr("Недоступно в этой версии ядра"))
         top.addWidget(self.question)
         top.addStretch(1)
         layout.addLayout(top)
@@ -479,7 +479,7 @@ class InboxScreen(Screen):
         if len(self.all_rows) >= 100:
             text += " · " + tr("показаны последние 100 записей")
         self.status.setText(text)
-        self.status.setToolTip(tr("Считает ядро по получателю этого окна; чтение записи агентом оно пока не различает") + " · #944")
+        self.status.setToolTip(tr("Считает ядро по получателю этого окна; чтение записи агентом оно пока не различает") + " · " + tr("Недоступно в этой версии ядра"))
         self.composer.show_error(host.screen_errors.get("inbox-submit"))
         self.table.setColumnHidden(2, self.table.viewport().width() < 460)
 

@@ -123,18 +123,18 @@ class InboxScreenTests(unittest.TestCase):
         self.assertIn("agent/local", detail)
         self.assertIn("Не относится к целям проекта", detail)
         self.assertIn("Отклонено", detail)
-        self.assertIn("#944", detail)  # the agent's text reply is not in the core yet
+        self.assertIn("в этой версии ядра", detail)  # the agent's text reply is not in the core yet
         self.assertIn("Сохранено", detail)
 
     def test_the_read_stage_is_never_claimed_without_a_receipt(self):
         open_qa(self.window)
         self.screen.table.selectRow(0)
         self.assertFalse(stages(self.screen.model.rows[0])[1][0])
-        self.assertTrue(any("#944" in text for text in texts(self.screen.detail)))
+        self.assertTrue(any("в этой версии ядра" in text for text in texts(self.screen.detail)))
 
     def test_question_is_disabled_with_the_core_issue(self):
         self.assertFalse(self.composer.question.isEnabled())
-        self.assertIn("#944", self.composer.question.toolTip())
+        self.assertIn("в этой версии ядра", self.composer.question.toolTip())
         self.assertFalse(self.composer.question.isCheckable())
 
     def test_typing_never_writes_only_the_button_does(self):

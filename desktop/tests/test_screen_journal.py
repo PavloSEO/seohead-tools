@@ -94,15 +94,15 @@ class JournalTests(unittest.TestCase):
         for key in ("agent", "me", "app"):
             self.assertFalse(pills[key].isEnabled())
             self.assertIn("Источник не указан", pills[key].toolTip())
-            self.assertIn("#923", pills[key].toolTip())
+            self.assertIn("в этой версии ядра", pills[key].toolTip())
         pills["scan"].click()
         self.assertEqual(self.screen.filter, "scan")
         self.assertEqual(self.screen.model.rowCount(), 4)  # every event of the core is a run event
 
     def test_footer_says_the_paged_journal_waits_for_the_core(self):
         self.feed([run()])
-        waiting = [label.text() for label in self.screen.findChildren(QLabel) if label.text().startswith("ждёт")]
-        self.assertEqual(waiting, ["ждёт #923"])
+        waiting = [label.text() for label in self.screen.findChildren(QLabel) if label.text().startswith("Недоступно")]
+        self.assertEqual(waiting, ["Недоступно в этой версии ядра"])
         self.assertIn("постраничное чтение журнала", self.screen.foot_text.text())
 
     def test_search_filters_the_loaded_events_and_offers_a_reset(self):
@@ -137,7 +137,7 @@ class JournalTests(unittest.TestCase):
         texts = [label.text() for label in self.screen.findChildren(QLabel)] + [b.text() for b in self.screen.findChildren(QPushButton)]
         texts += [self.screen.model.index(r, c).data() for r in range(self.screen.model.rowCount()) for c in (1, 2)]
         texts += [self.screen.model.headerData(c, Qt.Horizontal) for c in range(4)] + [p.text() for p in self.screen.pills.values()]
-        self.assertEqual([t for t in texts if t and re.search("[Ѐ-ӿ]", t) and not t.startswith("ждёт #")], [])
+        self.assertEqual([t for t in texts if t and re.search("[Ѐ-ӿ]", t) and not t.startswith("Недоступно")], [])
 
 
 class WindowTests(unittest.TestCase):

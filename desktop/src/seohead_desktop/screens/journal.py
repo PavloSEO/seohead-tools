@@ -146,7 +146,7 @@ class JournalScreen(Screen):
                 pill.clicked.connect(lambda _checked=False, value=key: self.set_filter(value))
             else:
                 pill.setEnabled(False)
-                pill.setToolTip(tr("Источник не указан: ядро не записывает действия агента, ваши действия и события приложения в журнал (ждёт #923)"))
+                pill.setToolTip(tr("Источник не указан: ядро не записывает действия агента, ваши действия и события приложения в журнал. Недоступно в этой версии ядра"))
             self.pills[key] = pill
             bar_layout.addWidget(pill)
         bar_layout.addStretch(1)

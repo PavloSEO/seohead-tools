@@ -120,7 +120,7 @@
 | [#929](https://github.com/PavloSEO/seohead-tools/issues/929) | seohead mcp status|enable|disable: общее состояние MCP для приложения и CLI | 11 | blocker | 5, 7, 8, 9 |
 | [#930](https://github.com/PavloSEO/seohead-tools/issues/930) | Цепочки редиректов и canonical по URL; срабатывание REDIRECT_CHAIN/LOOP | 11 | blocker | 5, 6, 8, 9 |
 | [#931](https://github.com/PavloSEO/seohead-tools/issues/931) | Лёгкий путь чтения скана: без полной валидации при каждом открытии | 10 | blocker | 5, 6, 8, 9 |
-| [#932](https://github.com/PavloSEO/seohead-tools/issues/932) | Находки: постраничное чтение audit-v2 без полной материализации | 10 | blocker | 5, 6, 8, 9 |
+| [#980](https://github.com/PavloSEO/seohead-tools/issues/980) | Находки: постраничное чтение audit-v2 без полной материализации | 10 | blocker | 5, 6, 8, 9 |
 | [#933](https://github.com/PavloSEO/seohead-tools/issues/933) | Таблицы «как в SF»: вкладки, колонки, агрегаты, total для scan-inspect | 10 | blocker | 5, 6, 7, 8, 9 |
 | [#935](https://github.com/PavloSEO/seohead-tools/issues/935) | Ресурсы страницы (картинки, CSS, JS): вес, статус, тип | 8 | blocker | 5, 6, 7, 8 |
 | [#936](https://github.com/PavloSEO/seohead-tools/issues/936) | Чтение HTML-тела страницы (scan-url-detail / отдельный читатель) | 8 | blocker | 5, 6, 8 |
@@ -135,7 +135,7 @@
 | [#924](https://github.com/PavloSEO/seohead-tools/issues/924) | Исходящие и входящие ссылки по URL: rel, HTTP цели, внутр./внешняя, lookup по URL | 19 | high | 5, 6, 7, 8, 9 |
 | [#925](https://github.com/PavloSEO/seohead-tools/issues/925) | Поля листов настройки скана без соответствующей настройки ядра; метаданные настроек (диапазоны, перечисления, группы) | 17 | high | 5, 6, 7, 8 |
 | [#934](https://github.com/PavloSEO/seohead-tools/issues/934) | Источники данных: реестр (Topvisor, DataForSEO, SF), проверка доступа, даты и срок токена | 9 | high | 7, 8 |
-| [#937](https://github.com/PavloSEO/seohead-tools/issues/937) | Версия и совместимость ядра: core-info, seohead doctor, handshake контракта | 7 | high | 5, 7, 8, 9 |
+| [#979](https://github.com/PavloSEO/seohead-tools/issues/979) | Версия и совместимость ядра: core-info, seohead doctor, handshake контракта | 7 | high | 5, 7, 8, 9 |
 | [#939](https://github.com/PavloSEO/seohead-tools/issues/939) | Поиск в HTML: прогресс, отмена, regex, несколько сниппетов, чтение пакета без лишних документов | 6 | high | 8, 9 |
 | [#940](https://github.com/PavloSEO/seohead-tools/issues/940) | Расписание проекта: день недели/время, запуск по расписанию | 5 | high | 5, 7, 8 |
 | [#941](https://github.com/PavloSEO/seohead-tools/issues/941) | Профили скана в ядре (сохранение, выбор, умолчания проекта) | 5 | high | 5, 7 |
@@ -167,7 +167,7 @@
 | [#925](https://github.com/PavloSEO/seohead-tools/issues/925) | Поля листов настройки скана без соответствующей настройки ядра; метаданные настроек (диапазоны, перечисления, группы) | 4 | 0 |
 | [#923](https://github.com/PavloSEO/seohead-tools/issues/923) | Журнал проекта: структурированные события (источник, актор, текст) с постраничным чтением | 2 | 0 |
 | [#931](https://github.com/PavloSEO/seohead-tools/issues/931) | Лёгкий путь чтения скана: без полной валидации при каждом открытии | 2 | 0 |
-| [#932](https://github.com/PavloSEO/seohead-tools/issues/932) | Находки: постраничное чтение audit-v2 без полной материализации | 1 | 0 |
+| [#980](https://github.com/PavloSEO/seohead-tools/issues/980) | Находки: постраничное чтение audit-v2 без полной материализации | 1 | 0 |
 | [#940](https://github.com/PavloSEO/seohead-tools/issues/940) | Расписание проекта: день недели/время, запуск по расписанию | 1 | 0 |
 | [#921](https://github.com/PavloSEO/seohead-tools/issues/921) | Живой прогресс скана: найдено/ошибки/ETA/процент, пауза, остановка по id | 1 | 0 |
 | [#943](https://github.com/PavloSEO/seohead-tools/issues/943) | Сохранённые виды: удаление, переименование, выразительные фильтры | 1 | 0 |
@@ -190,7 +190,7 @@
 | [#924](https://github.com/PavloSEO/seohead-tools/issues/924) | Исходящие и входящие ссылки по URL: rel, HTTP цели, внутр./внешняя, lookup по URL | 1 | 0 |
 | [#936](https://github.com/PavloSEO/seohead-tools/issues/936) | Чтение HTML-тела страницы (scan-url-detail / отдельный читатель) | 1 | 0 |
 | [#930](https://github.com/PavloSEO/seohead-tools/issues/930) | Цепочки редиректов и canonical по URL; срабатывание REDIRECT_CHAIN/LOOP | 1 | 0 |
-| [#932](https://github.com/PavloSEO/seohead-tools/issues/932) | Находки: постраничное чтение audit-v2 без полной материализации | 1 | 0 |
+| [#980](https://github.com/PavloSEO/seohead-tools/issues/980) | Находки: постраничное чтение audit-v2 без полной материализации | 1 | 0 |
 
 ### Шаг 7 · MCP, источники, установщик
 
@@ -216,7 +216,7 @@
 |---|---|---|---|
 | [#927](https://github.com/PavloSEO/seohead-tools/issues/927) | scan-url-query: фильтр, сортировка и total по всей базе скана | 8 | 3 |
 | [#931](https://github.com/PavloSEO/seohead-tools/issues/931) | Лёгкий путь чтения скана: без полной валидации при каждом открытии | 3 | 3 |
-| [#932](https://github.com/PavloSEO/seohead-tools/issues/932) | Находки: постраничное чтение audit-v2 без полной материализации | 6 | 2 |
+| [#980](https://github.com/PavloSEO/seohead-tools/issues/980) | Находки: постраничное чтение audit-v2 без полной материализации | 6 | 2 |
 | [#926](https://github.com/PavloSEO/seohead-tools/issues/926) | Remediation-ledger из CLI/MCP: создание, ingest скана, связь находка → задача → проверка | 5 | 2 |
 | [#922](https://github.com/PavloSEO/seohead-tools/issues/922) | Модель задач: исполнитель, описание, комментарии, актор в истории, сортировка и фильтры | 6 | 1 |
 | [#930](https://github.com/PavloSEO/seohead-tools/issues/930) | Цепочки редиректов и canonical по URL; срабатывание REDIRECT_CHAIN/LOOP | 4 | 1 |
@@ -228,7 +228,7 @@
 | [#924](https://github.com/PavloSEO/seohead-tools/issues/924) | Исходящие и входящие ссылки по URL: rel, HTTP цели, внутр./внешняя, lookup по URL | 10 | 0 |
 | [#921](https://github.com/PavloSEO/seohead-tools/issues/921) | Живой прогресс скана: найдено/ошибки/ETA/процент, пауза, остановка по id | 3 | 0 |
 | [#939](https://github.com/PavloSEO/seohead-tools/issues/939) | Поиск в HTML: прогресс, отмена, regex, несколько сниппетов, чтение пакета без лишних документов | 3 | 0 |
-| [#937](https://github.com/PavloSEO/seohead-tools/issues/937) | Версия и совместимость ядра: core-info, seohead doctor, handshake контракта | 2 | 0 |
+| [#979](https://github.com/PavloSEO/seohead-tools/issues/979) | Версия и совместимость ядра: core-info, seohead doctor, handshake контракта | 2 | 0 |
 | [#940](https://github.com/PavloSEO/seohead-tools/issues/940) | Расписание проекта: день недели/время, запуск по расписанию | 1 | 0 |
 | [#923](https://github.com/PavloSEO/seohead-tools/issues/923) | Журнал проекта: структурированные события (источник, актор, текст) с постраничным чтением | 1 | 0 |
 | [#943](https://github.com/PavloSEO/seohead-tools/issues/943) | Сохранённые виды: удаление, переименование, выразительные фильтры | 1 | 0 |
@@ -244,7 +244,7 @@
 |---|---|---|---|
 | [#931](https://github.com/PavloSEO/seohead-tools/issues/931) | Лёгкий путь чтения скана: без полной валидации при каждом открытии | 4 | 4 |
 | [#927](https://github.com/PavloSEO/seohead-tools/issues/927) | scan-url-query: фильтр, сортировка и total по всей базе скана | 3 | 3 |
-| [#932](https://github.com/PavloSEO/seohead-tools/issues/932) | Находки: постраничное чтение audit-v2 без полной материализации | 3 | 2 |
+| [#980](https://github.com/PavloSEO/seohead-tools/issues/980) | Находки: постраничное чтение audit-v2 без полной материализации | 3 | 2 |
 | [#930](https://github.com/PavloSEO/seohead-tools/issues/930) | Цепочки редиректов и canonical по URL; срабатывание REDIRECT_CHAIN/LOOP | 2 | 1 |
 | [#933](https://github.com/PavloSEO/seohead-tools/issues/933) | Таблицы «как в SF»: вкладки, колонки, агрегаты, total для scan-inspect | 2 | 1 |
 | [#922](https://github.com/PavloSEO/seohead-tools/issues/922) | Модель задач: исполнитель, описание, комментарии, актор в истории, сортировка и фильтры | 1 | 1 |
@@ -263,9 +263,9 @@
 
 **4. Краулер без проекта и настройка скана (шаг 6)**: [#942](https://github.com/PavloSEO/seohead-tools/issues/942), [#925](https://github.com/PavloSEO/seohead-tools/issues/925), [#941](https://github.com/PavloSEO/seohead-tools/issues/941), [#950](https://github.com/PavloSEO/seohead-tools/issues/950), [#954](https://github.com/PavloSEO/seohead-tools/issues/954)
 
-**5. MCP, источники, установка (шаг 7)**: [#929](https://github.com/PavloSEO/seohead-tools/issues/929), [#937](https://github.com/PavloSEO/seohead-tools/issues/937), [#934](https://github.com/PavloSEO/seohead-tools/issues/934), [#949](https://github.com/PavloSEO/seohead-tools/issues/949), [#945](https://github.com/PavloSEO/seohead-tools/issues/945), [#951](https://github.com/PavloSEO/seohead-tools/issues/951)
+**5. MCP, источники, установка (шаг 7)**: [#929](https://github.com/PavloSEO/seohead-tools/issues/929), [#979](https://github.com/PavloSEO/seohead-tools/issues/979), [#934](https://github.com/PavloSEO/seohead-tools/issues/934), [#949](https://github.com/PavloSEO/seohead-tools/issues/949), [#945](https://github.com/PavloSEO/seohead-tools/issues/945), [#951](https://github.com/PavloSEO/seohead-tools/issues/951)
 
-**6. Отчёты, сравнение, расписание (шаг 8)**: [#932](https://github.com/PavloSEO/seohead-tools/issues/932), [#938](https://github.com/PavloSEO/seohead-tools/issues/938), [#928](https://github.com/PavloSEO/seohead-tools/issues/928), [#940](https://github.com/PavloSEO/seohead-tools/issues/940), [#955](https://github.com/PavloSEO/seohead-tools/issues/955), [#943](https://github.com/PavloSEO/seohead-tools/issues/943), [#947](https://github.com/PavloSEO/seohead-tools/issues/947), [#939](https://github.com/PavloSEO/seohead-tools/issues/939), [#920](https://github.com/PavloSEO/seohead-tools/issues/920)
+**6. Отчёты, сравнение, расписание (шаг 8)**: [#980](https://github.com/PavloSEO/seohead-tools/issues/980), [#938](https://github.com/PavloSEO/seohead-tools/issues/938), [#928](https://github.com/PavloSEO/seohead-tools/issues/928), [#940](https://github.com/PavloSEO/seohead-tools/issues/940), [#955](https://github.com/PavloSEO/seohead-tools/issues/955), [#943](https://github.com/PavloSEO/seohead-tools/issues/943), [#947](https://github.com/PavloSEO/seohead-tools/issues/947), [#939](https://github.com/PavloSEO/seohead-tools/issues/939), [#920](https://github.com/PavloSEO/seohead-tools/issues/920)
 
 ## Известные расхождения листов с ядром (поправить в канвасе)
 

@@ -25,7 +25,7 @@ HEAD = """# Настройки: что уже работает, что зара�
 def render():
     lines = [HEAD.rstrip("\n")]
     for key, step, reason in wiring.table(full_schema()):
-        lines.append(f"| `{key}` | {'работает' if step is None else 'только сохраняется'} | {step or '—'} | {reason or '—'} |")
+        lines.append(f"| `{key}` | {'работает' if step is None else 'только сохраняется'} | {step or '—'} | {(reason + (f' (#{wiring.ISSUES[key]})' if key in wiring.ISSUES else '')) if reason else '—'} |")
     return "\n".join(lines) + "\n"
 
 

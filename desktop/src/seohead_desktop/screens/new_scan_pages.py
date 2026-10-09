@@ -281,12 +281,14 @@ def row(page, title, description, control, key_tip=""):
 
 
 def waiting_row(page, title, description, issue, reason, preview=None):
-    """A field of the sheet that has no core setting: visible, disabled, with the reason and the issue it waits for."""
+    """A field of the sheet that has no core setting: visible, disabled, with the reason and the neutral unavailable badge."""
     if preview is not None:
         preview.setEnabled(False)
     item = SettingRow(tr(title), trf("{text} · {reason}", text=tr(description), reason=tr(reason)) if description else tr(reason), preview)
-    item.later_badge.setText(f"{tr('ждёт')} #{issue}")
-    item.later_badge.setToolTip(tr("Функция ждёт доработки ядра") + f" · #{issue}")
+    item.later_badge.setText(tr("Недоступно в этой версии ядра"))
+    item.later_badge.setProperty("waiting_issue", issue)
+    item.later_badge.setMinimumWidth(1)
+    item.later_badge.setToolTip(tr("Появится") + ": " + tr(description or title))
     item.later_badge.show()
     item.setProperty("waiting", True)
     page.add(item)
@@ -301,7 +303,7 @@ def segmented_row(page, draft, path, title, description, options, disabled=None,
     for value, issue in (disabled or {}).items():
         button = seg._buttons[value]
         button.setEnabled(False)
-        button.setToolTip(f"{tr('ждёт')} #{issue}")
+        button.setToolTip(tr("Недоступно в этой версии ядра"))
     seg.changed.connect(lambda value: draft.set_value(path, value))
 
     def sync(_problems):
@@ -663,10 +665,10 @@ def render_page(draft, host):
     page = Page(tr("JS-рендеринг"), tr("Исполнять JavaScript перед разбором страницы · браузер на этом компьютере"))
     segmented_row(page, draft, "rendering.mode", "Режим", "«Авто» ждёт ядра: критерия «мало текста» в нём нет",
                   [("raw", tr("Выкл")), ("auto", tr("Авто")), ("js", tr("Всегда"))], disabled={"auto": ISSUE_RENDER})
-    note = Note("warn", tr("Рендер медленнее обычной загрузки и нагружает сайт."), tr("Точную оценку времени ядро не даёт (ждёт #931)."))
+    note = Note("warn", tr("Рендер медленнее обычной загрузки и нагружает сайт."), tr("Точную оценку времени ядро не даёт (недоступно в этой версии ядра)."))
     page.add(note)
     page.bind(lambda _p: note.setVisible(draft.value("rendering.mode") == "js"))
-    segmented_row(page, draft, "rendering.browser.engine", "Движок", "Наличие браузера проверяется при запуске; проверка заранее ждёт #950",
+    segmented_row(page, draft, "rendering.browser.engine", "Движок", "Наличие браузера проверяется при запуске; проверка заранее недоступна в этой версии ядра",
                   [("chromium", "Chromium"), ("firefox", "Firefox"), ("webkit", "WebKit")])
     segmented_row(page, draft, "rendering.browser.viewport", "Окно просмотра", "Desktop или Mobile", [("desktop", "Desktop"), ("mobile", "Mobile")])
     segmented_row(page, draft, "rendering.browser.wait_until", "Ждать готовности", "Сигнал, после которого DOM считается готовым",
@@ -716,7 +718,7 @@ def storage_page(draft, host):
     fill = QFrame(bar)
     fill.setProperty("disk_fill", True)
     fill.setFixedHeight(10)
-    estimate = QLabel(tr("Размер этого скана: оценка ждёт #931"))
+    estimate = QLabel(tr("Размер этого скана: оценка недоступна в этой версии ядра"))
     estimate.setProperty("text_style", "meta")
     folder = ElidedLabel()
     folder.setProperty("text_style", "meta")
@@ -823,7 +825,7 @@ def profiles_page(draft, host):
     for index, text in enumerate(("Дублировать", "Удалить", "Импорт JSON…", "Экспорт JSON")):
         button = QPushButton(tr(text))
         button.setEnabled(False)
-        button.setToolTip(f"{tr('ждёт')} #{ISSUE_PROFILES}")
+        button.setToolTip(tr("Недоступно в этой версии ядра"))
         actions.addWidget(button, 1, index)
     actions.addWidget(waiting_badge(ISSUE_PROFILES), 1, 4)
     actions.setColumnStretch(5, 1)

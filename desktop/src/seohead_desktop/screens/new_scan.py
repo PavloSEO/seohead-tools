@@ -37,7 +37,6 @@ from ..ui.icons import material_icon as icon
 from ..ui.kit import StatePanel, waiting_badge
 from ..ui.presentation import ElidedLabel
 from .new_scan_draft import (
-    ISSUE_ESTIMATE,
     ISSUE_PROFILES,
     ISSUE_URL_QUERY,
     LIST_FILE_CAP,
@@ -95,7 +94,7 @@ def summary_rows(draft):
         ("robots.txt", tr(ROBOTS_NAMES.get(v.get("robots.policy"), "")) or None),
         ("JS", tr("всегда") if v.get("rendering.mode") == "js" else tr("выкл")),
         ("Тело", tr("не хранится") if v.get("storage.body_mode") == "off" else tr("сохраняется")),
-        ("Экстракторов", trf("не подключены (#{n})", n=954)),
+        ("Экстракторов", tr("не подключены (недоступно в этой версии ядра)")),
     ]
     agent = v.get("http.user_agent")
     if agent:
@@ -198,7 +197,7 @@ class NewScanDialog(QDialog):
         profile.setProperty("role", "text")
         profile.setIcon(icon("bookmark_add"))
         profile.setEnabled(False)
-        profile.setToolTip(f"{tr('ждёт')} #{ISSUE_PROFILES}: {tr('ядро не хранит именованные профили скана')}")
+        profile.setToolTip(f"{tr('Недоступно в этой версии ядра')}: {tr('ядро не хранит именованные профили скана')}")
         layout.addWidget(profile)
         layout.addWidget(waiting_badge(ISSUE_PROFILES))
         cancel = QPushButton(tr("Отмена"))
@@ -345,7 +344,7 @@ class NewScanDialog(QDialog):
         self.sitemap_edit.setPlaceholderText("https://example.test/sitemap.xml")
         self.sitemap_edit.textEdited.connect(self._sitemap_typed)
         self.sitemap_box = FieldBox(tr("Адрес sitemap"), self.sitemap_edit,
-                                    f"{tr('Состав sitemap покажет скан')} · {tr('предпросмотр без запуска')} {tr('ждёт')} #{ISSUE_ESTIMATE}")
+                                    f"{tr('Состав sitemap покажет скан')} · {tr('предпросмотр без запуска')}: {tr('Недоступно в этой версии ядра')}")
         layout.addWidget(self.sitemap_box)
         # list
         self.list_block = QWidget()
@@ -381,13 +380,13 @@ class NewScanDialog(QDialog):
             parts.append(label)
         approx = QLabel(tr("оценка приложения"))
         approx.setProperty("text_style", "meta")
-        approx.setToolTip(f"{tr('Предпросмотр списка ядро не умеет')} · {tr('ждёт')} #{ISSUE_ESTIMATE}")
+        approx.setToolTip(f"{tr('Предпросмотр списка ядро не умеет')} · {tr('Недоступно в этой версии ядра')}")
         four = QPushButton(tr("Взять 4xx из скана"))
         four.setProperty("role", "text")
         four.setEnabled(False)
-        four.setToolTip(f"{tr('ждёт')} #{ISSUE_URL_QUERY}")
+        four.setToolTip(tr('Недоступно в этой версии ядра'))
         listing.addWidget(flow(*parts, approx, four, waiting_badge(ISSUE_URL_QUERY)))
-        self.list_note = Note("warn", tr("Запуск списка URL из приложения ждёт ядра."), tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить (ждёт #920)."))
+        self.list_note = Note("warn", tr("Запуск списка URL из приложения недоступен в этой версии ядра."), tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить."))
         listing.addWidget(self.list_note)
         layout.addWidget(self.list_block)
         # Screaming Frog
@@ -757,7 +756,7 @@ class NewScanDialog(QDialog):
             "time": ("Лимит времени", trf("{n} мин", n=grouped(seconds // 60 if seconds % 60 == 0 else round(seconds / 60, 1))) if seconds else tr("без лимита")),
             "mode": ("Загрузка", tr("С рендерингом JS") if v.get("rendering.mode") == "js" else tr("Исходный HTML")),
             "html": ("HTML страниц", tr("не сохраняется") if v.get("storage.body_mode") == "off" else tr("сохраняется")),
-            "estimate": ("Длительность и диск", trf("оценка ждёт #{n}", n=ISSUE_ESTIMATE)),
+            "estimate": ("Длительность и диск", tr("оценка недоступна в этой версии ядра")),
             "paid": ("Платные провайдеры", tr("нет")),
             "impact": ("Влияние на сайт", tr("только чтение: GET-запросы")),
             "profile": ("Профиль проекта", {"ready": trf("{n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("не задан"),

@@ -70,7 +70,7 @@ class SimpleScreenTests(unittest.TestCase):
         self.assertEqual(issues_kpi.number.text(), "116")
         self.assertIn("70 предупреждений", issues_kpi.sub.text())
         self.assertEqual(fixed_kpi.number.text(), "Нет данных")
-        self.assertIn("#938", fixed_kpi.sub.text())
+        self.assertIn("в этой версии ядра", fixed_kpi.sub.text())
         self.assertEqual(tasks_kpi.number.text(), "0 / 276")
         self.assertFalse(self.screen.bar.isHidden())
 
@@ -90,7 +90,7 @@ class SimpleScreenTests(unittest.TestCase):
         self.assertEqual(self.screen.tabs.tabText(1), "Сканы · 1")
         self.assertEqual(self.screen.scans.index(0, 3).data(), "20")
         self.assertEqual(self.screen.scans.index(0, 1).data(BADGE_ROLE)[0], "warn")  # finished, corpus partial
-        self.assertIn("#922", self.screen.limits.text())
+        self.assertIn("в этой версии ядра", self.screen.limits.text())
 
     def test_picking_a_scan_row_selects_it_in_the_window(self):
         open_qa(self.window)
@@ -103,14 +103,14 @@ class SimpleScreenTests(unittest.TestCase):
         open_qa(self.window)
         recheck, report, table, crawl = self.screen.tiles
         self.assertFalse(recheck.isEnabled())
-        self.assertIn("#926", "\n".join(texts(recheck)))
+        self.assertIn("в этой версии ядра", "\n".join(texts(recheck)))
         report.clicked.emit()
         self.assertEqual(self.window.navigation.current_section(), "reports")
         table.clicked.emit()
         self.assertEqual(self.window.navigation.current_section(), "url")
         self.assertEqual(crawl.isEnabled(), self.window.can_open_crawler())
         self.assertFalse(self.screen.from_issue.isEnabled())
-        self.assertIn("#926", self.screen.from_issue.toolTip())
+        self.assertIn("в этой версии ядра", self.screen.from_issue.toolTip())
         with patch.object(self.window, "scan_preview") as preview:
             self.screen.new_scan.click()
         preview.assert_called_once()

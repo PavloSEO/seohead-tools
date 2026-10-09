@@ -149,7 +149,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn(os.path.basename(self.core), wizard.core_text.text())
         self.assertEqual(wizard.version_text.text(), "Версия и совместимость ядра — нет данных")
         texts = " ".join(label.text() for label in wizard.findChildren(QLabel))
-        self.assertIn("#937", texts)
+        self.assertIn("в этой версии ядра", texts)
         for invented in ("3.4", "3.0.0", "совместимо ", "Python 3", "200 за"):
             self.assertNotIn(invented, texts)
 
@@ -253,7 +253,7 @@ class OnboardingTests(unittest.TestCase):
             i18n.retranslate(self.window)
             texts = [label.text() for label in wizard.findChildren(QLabel)]
             texts += [button.text() for button in wizard.findChildren(__import__("PyQt5.QtWidgets", fromlist=["QPushButton"]).QPushButton)]
-            leftovers = [t for t in texts if any("Ѐ" <= ch <= "ӿ" for ch in t) and t != "Русский" and not t.startswith("ждёт #")]  # kit badges are not retranslated
+            leftovers = [t for t in texts if any("Ѐ" <= ch <= "ӿ" for ch in t) and t != "Русский" and not t.startswith("Недоступно")]  # kit badges are not retranslated
             self.assertEqual(leftovers, [], f"step {step + 1}")
         self.assertEqual(wizard.skip_button.text(), "Skip")
 

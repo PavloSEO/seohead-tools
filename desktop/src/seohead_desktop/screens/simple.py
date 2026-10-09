@@ -61,7 +61,7 @@ class LinkKpi(Kpi):
 
 
 class QuickAction(QFrame):
-    """Tile with an icon, a title and one line of help; disabled tiles name the core issue they wait for."""
+    """Tile with an icon, a title and one line of help; disabled tiles carry the neutral unavailable badge."""
 
     clicked = pyqtSignal()
 
@@ -186,7 +186,7 @@ class SimpleScreen(Screen):
             button.setAccessibleName(tr(tip))
             if issue:
                 button.setEnabled(False)
-                button.setToolTip(f"{tr(tip)} · {tr('ждёт')} #{issue}")
+                button.setToolTip(f"{tr(tip)} · {tr('Недоступно в этой версии ядра')}")
             else:
                 button.setToolTip(tr(tip))
                 button.clicked.connect(lambda _c=False: self.host.navigation.select_section("reports"))
@@ -239,7 +239,7 @@ class SimpleScreen(Screen):
         self.from_issue = QPushButton(tr("Задача из проблемы"))
         self.from_issue.setIcon(material_icon("add"))
         self.from_issue.setEnabled(False)
-        self.from_issue.setToolTip(f"{tr('Создание задач из находок')} · {tr('ждёт')} #926")
+        self.from_issue.setToolTip(f"{tr('Создание задач из находок')} · {tr('Недоступно в этой версии ядра')}")
         bar.addWidget(self.from_issue)
         layout.addLayout(bar)
         self.pages = QStackedWidget()
@@ -341,7 +341,7 @@ class SimpleScreen(Screen):
         self.tabs.setTabText(0, trf("Задачи · {n}", n=number(total) if total is not None else "—"))
         scans_total = number(len(scan_rows))
         self.tabs.setTabText(1, trf("Сканы · {n}", n=scans_total))
-        self.limits.setText(trf("Показано {shown} из {total}. Исполнитель, URL и время обновления ждут #922.", shown=len(rows), total=number(total) if total is not None else "—"))
+        self.limits.setText(trf("Показано {shown} из {total}. Исполнитель, URL и время обновления недоступны в этой версии ядра.", shown=len(rows), total=number(total) if total is not None else "—"))
         self.task_table.setColumnHidden(2, self.task_table.viewport().width() < 420)
 
     def _fill_kpis(self):
@@ -360,8 +360,8 @@ class SimpleScreen(Screen):
                 breakdown = ", ".join(f"{number(n)} {tr(SEVERITIES.get(name, name))}" for name, n in (findings.get("by_severity") or {}).items() if type(n) is int)
                 self.issues_kpi.set_value(number(total), breakdown)
             else:
-                self.issues_kpi.set_value(None, tr("Находки скана не прочитаны · ждёт #932"))
-        self.fixed_kpi.set_value(None, tr("Сравнение сканов · ждёт #938"))
+                self.issues_kpi.set_value(None, tr("Находки скана не прочитаны · недоступно в этой версии ядра"))
+        self.fixed_kpi.set_value(None, tr("Сравнение сканов · недоступно в этой версии ядра"))
         numbers = progress_numbers(host)
         if numbers["complete"] is not None and numbers["total"]:
             self.tasks_kpi.set_value(f"{number(numbers['complete'])} / {number(numbers['total'])}", tr("пунктов чек-листа выполнено"))

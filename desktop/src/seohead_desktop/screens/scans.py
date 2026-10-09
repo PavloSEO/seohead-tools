@@ -431,7 +431,7 @@ class RunAside(QFrame):
         self.live_pairs.set("Связан с задачами", None)
         self.live_events.setText(events_text(row))
         self.stop_button.setEnabled(can_stop(row))
-        self.stop_button.setToolTip("" if can_stop(row) else tr("Остановка запуска, начатого не этим окном, ждёт #921"))
+        self.stop_button.setToolTip("" if can_stop(row) else tr("Остановка запуска, начатого не этим окном: недоступно в этой версии ядра"))
         self.live_saved.setEnabled(row.scan is not None)
 
     def _fill_stale(self, row, at):
@@ -546,8 +546,7 @@ class ScansScreen(Screen):
         self.foot_text.setProperty("text_style", "meta")
         self.foot_text.setWordWrap(True)
         foot_layout.addWidget(self.foot_text, 1)
-        for issue in SORT_ISSUES:
-            foot_layout.addWidget(waiting_badge(issue))
+        foot_layout.addWidget(waiting_badge(SORT_ISSUES[0], "Сортировка и фильтры по всем сканам на стороне ядра"))
         self.foot_owned = QLabel()
         self.foot_owned.setProperty("text_style", "meta")
         foot_layout.addWidget(self.foot_owned)

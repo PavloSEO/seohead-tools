@@ -25,17 +25,50 @@ from ..i18n import tr
 from .icons import MaterialIconLabel
 
 STATE_ICONS = {"empty": "inbox", "loading": "hourglass_top", "error": "error", "partial": "incomplete_circle", "waiting": "schedule"}
-CORE_ISSUES = "https://github.com/PavloSEO/seohead-tools/issues/"
+UNAVAILABLE = "Недоступно в этой версии ядра"
+# Core issue number -> what will appear once the core gives it. Numbers live in code only; the UI shows the hint.
+ISSUE_HINTS = {
+    920: "Запуск скана списка URL из приложения и его появление в наблюдении проекта",
+    921: "Живой ход скана: скорость, ошибки, оставшееся время, пауза и остановка чужого запуска",
+    922: "Исполнитель, описание, комментарии и следующий шаг задачи",
+    923: "Журнал событий проекта: кто и что сделал (агент, вы, приложение)",
+    924: "Список ссылок страницы: источник, анкор, rel, HTTP цели",
+    926: "Создание задач из находок и перепроверка URL задач",
+    927: "Сортировка и фильтры по всем сканам на стороне ядра",
+    929: "Включение локального MCP-сервера из приложения",
+    930: "Цепочка редиректов одного URL",
+    931: "Оценка длительности и размера скана до запуска",
+    933: "Хвост сохранённых страниц с временем получения",
+    935: "Изображения, CSS и JS страницы со статусом и весом",
+    936: "Исходник сохранённой страницы",
+    938: "Сравнение сканов: что исправлено с прошлого скана",
+    939: "Точный поиск в HTML на стороне ядра: фильтр и число вхождений",
+    940: "Расписание сканов",
+    941: "Именованные профили скана",
+    944: "Вопрос агенту и его ответ во входящих",
+    946: "План аудита: знаменатель выполнения и время принятия цели",
+    947: "Настройки проекта",
+    948: "Структурированные данные страницы: JSON-LD, microdata, ошибки разметки",
+    950: "Проверка браузера для рендеринга до запуска скана",
+    954: "Редактор правил извлечения данных",
+    971: "Счётчик и список входящих ссылок страницы",
+    972: "История URL по сканам",
+    973: "Позиция ссылки на странице",
+    975: "Граф ссылок вокруг страницы",
+    979: "Версия ядра и совместимость",
+    980: "Находки скана по проверкам и по одному URL",
+    981: "Полный фильтр находок по проверке",
+}
 
 
 class StatePanel(QFrame):
     """Empty / loading / error / partial / waiting state with an optional next-step button. Never shows a number.
 
-    ``kind="waiting"`` names the core issue the feature waits for («ждёт #923»), so the state is truthful about why
-    nothing is shown instead of pretending the data is empty.
+    ``kind="waiting"`` shows the neutral «Недоступно в этой версии ядра» badge (tooltip: ``hint``), so the state is
+    truthful about why nothing is shown instead of pretending the data is empty. ``issue`` is kept for code only.
     """
 
-    def __init__(self, kind, title, text="", action=None, issue=None, parent=None, secondary=None):
+    def __init__(self, kind, title, text="", action=None, issue=None, parent=None, secondary=None, hint=""):
         super().__init__(parent)
         self.kind = kind
         self.setProperty("state_panel", kind)
@@ -57,7 +90,7 @@ class StatePanel(QFrame):
         layout.addWidget(self.text)
         self.issue_label = None
         if issue is not None:
-            self.issue_label = waiting_badge(issue)
+            self.issue_label = waiting_badge(issue, hint)
             layout.addWidget(self.issue_label, 0, Qt.AlignHCenter)
         self.action = None
         if action is not None:
@@ -102,12 +135,25 @@ class Gate(QStackedWidget):
         self.setCurrentWidget({"open": self.open_panel, "partial": self.partial_panel}.get(self._state(), self.content))
 
 
-def waiting_badge(issue):
-    """Neutral badge «ждёт #N» for functionality blocked on a core issue."""
-    label = QLabel(f"{tr('ждёт')} #{issue}")
+def waiting_badge(issue, hint=""):
+    """Neutral badge «Недоступно в этой версии ядра»; the tooltip says what will appear.
+
+    ``issue`` is the core issue number: kept for code and tests (Qt property ``waiting_issue``), never shown.
+    ``hint`` defaults to the ISSUE_HINTS entry of that issue.
+    """
+    label = QLabel(tr(UNAVAILABLE))
     label.setProperty("badge", "mut")
-    label.setToolTip(tr("Функция ждёт доработки ядра") + f" · {CORE_ISSUES}{issue}")
+    label.setProperty("waiting_issue", issue)
+    label.setMinimumWidth(1)  # long phrase: shrink (clip) in narrow rows instead of forcing horizontal scroll
+    hint = hint or ISSUE_HINTS.get(issue, "")
+    if hint:
+        label.setToolTip(tr("Появится") + ": " + tr(hint))
     return label
+
+
+def unavailable_tip(text, issue=None):
+    """Tooltip «<text> · Недоступно в этой версии ядра» (no issue number)."""
+    return f"{tr(text)} · {tr(UNAVAILABLE)}" if text else tr(UNAVAILABLE)
 
 
 class Kpi(QFrame):

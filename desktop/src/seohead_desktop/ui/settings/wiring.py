@@ -15,6 +15,9 @@ APPLIED = {"view.theme", "view.density", "view.reduce_motion", "view.rail_when_n
            "scan.rate", "scan.url_limit", "scan.depth", "scan.robots", "scan.save_html"}
 APPLIED_SHORTCUTS = {"palette", "new_scan", "settings", "stop_scan", "find_in_table", "expand_table", "copy_url", "help"}
 
+# Core issue numbers behind a reason: shown in docs/spec/settings-wiring.ru.md only, never in the UI.
+ISSUES = {"scan.default_profile": 941}
+
 # key or "prefix." -> (roadmap step, what has to exist first)
 LATER = {
     "view.zoom": (5, "масштаб при перестройке экранов"),
@@ -24,7 +27,7 @@ LATER = {
     "general.": (5, "экран «Старт · проекты», вкладки и таблицы"),
     "scan.parallel": (5, "менеджер запусков: число одновременных сканов"),
     "scan.sf_path": (5, "запуск Screaming Frog из приложения"),
-    "scan.default_profile": (5, "профили скана в ядре (#941)"),
+    "scan.default_profile": (5, "профили скана в ядре"),
     "scan.": (5, "диалог «Новый скан»"),
     "core.poll": (5, "наблюдение за сканом"),
     "core.": (8, "адаптеры ядра: версия, диагностика, логи"),

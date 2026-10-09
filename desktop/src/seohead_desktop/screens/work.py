@@ -452,8 +452,7 @@ class WorkScreen(Screen):
         titles.addWidget(self.goal_title)
         titles.addWidget(self.goal_note)
         row.addLayout(titles, 1)
-        self.goal_waiting = waiting_badge(946)
-        self.goal_waiting.setToolTip(tr("Время принятия цели ядро не хранит") + " · #946")
+        self.goal_waiting = waiting_badge(946, "Время принятия цели")
         row.addWidget(self.goal_waiting, 0, Qt.AlignTop)
         for icon, tip, issue in (("event_repeat", "Расписание сканов", 940), ("ios_share", "Экспорт и отчёты", None), ("settings", "Настройки проекта", 947)):
             button = QToolButton()
@@ -462,7 +461,7 @@ class WorkScreen(Screen):
             button.setAccessibleName(tr(tip))
             if issue:
                 button.setEnabled(False)
-                button.setToolTip(f"{tr(tip)} · {tr('ждёт')} #{issue}")
+                button.setToolTip(f"{tr(tip)} · {tr('Недоступно в этой версии ядра')}")
             else:
                 button.setToolTip(tr(tip))
                 button.clicked.connect(lambda _c=False: self.host.navigation.select_section("reports"))
@@ -634,9 +633,9 @@ class WorkScreen(Screen):
         self.tabs.setTabText(1, trf("Запуски · {n}", n=len(self.runs.rows)))
         self.tabs.setTabText(2, tr("Активность"))
         shown = len(self.all_rows)
-        self.limits.setText(trf("Показано {shown} из {total}. Исполнитель, описание, комментарии и «следующий шаг» ждут #922.",
+        self.limits.setText(trf("Показано {shown} из {total}. Исполнитель, описание, комментарии и «следующий шаг» недоступны в этой версии ядра.",
                                 shown=shown, total=number(total) if total is not None else "—"))
-        self.tabs.setTabToolTip(2, f"{tr('ждёт')} #923")
+        self.tabs.setTabToolTip(2, tr('Недоступно в этой версии ядра'))
 
     def _fill_header(self):
         host = self.host
@@ -670,7 +669,7 @@ class WorkScreen(Screen):
             done_kpi.set_value(number(done), trf("из {total} согласованных", total=number(planned)))
             self._bar(1, done, planned)
         else:
-            done_kpi.set_value(number(numbers["complete"]), tr("Знаменатель: нет плана аудита · ждёт #946"))
+            done_kpi.set_value(number(numbers["complete"]), tr("Знаменатель: нет плана аудита · недоступно в этой версии ядра"))
             self._bar(1, None, None)
         self._bar(0, None, None)
         if numbers["pages"]:
@@ -678,7 +677,7 @@ class WorkScreen(Screen):
             pages_kpi.set_value(number(covered), trf("из {total} найденных", total=number(found)))
             self._bar(2, covered, found)
         else:
-            pages_kpi.set_value(None, tr("Нет согласованного набора URL · ждёт #946"))
+            pages_kpi.set_value(None, tr("Нет согласованного набора URL · недоступно в этой версии ядра"))
             self._bar(2, None, None)
         run = active_run(self.host)
         if run is None:

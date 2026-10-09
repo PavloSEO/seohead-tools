@@ -1,7 +1,7 @@
 """Screen «Первый запуск · мастер» (sheet Onboarding.dc.html): three steps, only locally checkable facts.
 
 Step 1 the projects folder (setting general.projects_folder), step 2 the core (found or not; version and
-compatibility are not measured yet: #937), step 3 the display (С агентом / Простой) plus theme and language.
+compatibility are not measured yet: #979), step 3 the display (С агентом / Простой) plus theme and language.
 Connecting an agent and the MCP server belong to roadmap step 7 and are shown as unavailable. Disk facts are read
 by a worker, never in the UI thread.
 """
@@ -40,7 +40,7 @@ tr, trf = i18n.tr, i18n.trf
 STEPS = ("Папка проектов", "Проверка ядра", "Отображение")
 LOW_DISK = 10 * 1000 ** 3
 UNAVAILABLE = "Недоступно в этой сборке"
-CORE_VERSION_ISSUE = 937
+CORE_VERSION_ISSUE = 979
 MCP_ISSUE = 929
 
 

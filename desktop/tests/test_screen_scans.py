@@ -222,7 +222,7 @@ class ScreenTests(Base):
         self.host.calls.clear()
         self.feed(runs=[live_run()], owned=[])
         self.assertFalse(self.screen.aside.stop_button.isEnabled())
-        self.assertIn("#921", self.screen.aside.stop_button.toolTip())
+        self.assertIn("в этой версии ядра", self.screen.aside.stop_button.toolTip())
         self.screen.aside.stop_button.click()
         self.assertEqual(self.host.calls, [])
 
@@ -262,8 +262,8 @@ class ScreenTests(Base):
 
     def test_footer_says_filters_work_only_on_the_loaded_page_with_core_issues(self):
         self.feed(runs=[run()], scans=[scan()])
-        waiting = {label.text() for label in self.screen.foot.findChildren(QLabel) if "#" in label.text()}
-        self.assertEqual(waiting, {"ждёт #927", "ждёт #933"})
+        waiting = {label.property("waiting_issue") for label in self.screen.foot.findChildren(QLabel) if label.property("waiting_issue")}
+        self.assertEqual(waiting, {927})
         self.assertIn("только в загруженной странице", self.screen.foot_text.text())
         self.host.scan_manager = FakeManager()
         self.feed(runs=[run()], scans=[scan()])
@@ -291,7 +291,7 @@ class ScreenTests(Base):
         i18n.retranslate(self.screen)
         import re
 
-        leftovers = [t for t in texts(self.screen) if re.search(CYRILLIC, t) and not t.startswith("ждёт #")]
+        leftovers = [t for t in texts(self.screen) if re.search(CYRILLIC, t) and not t.startswith("Недоступно")]
         self.assertEqual(leftovers, [])
         self.assertEqual(self.screen.proxy.headerData(1, Qt.Horizontal), "Scan run")
 

@@ -17,7 +17,7 @@ from tests._screens_host import FakeHost
 
 
 def waiting(widget):
-    return sorted(label.text() for label in widget.findChildren(QLabel) if label.text().startswith("ждёт"))
+    return sorted(label.property("waiting_issue") for label in widget.findChildren(QLabel) if label.property("waiting_issue"))
 
 
 class ScanRunTests(unittest.TestCase):
@@ -67,20 +67,20 @@ class ScanRunTests(unittest.TestCase):
         self.assertTrue(page.kpi["errors"].number.property("na"))
         self.assertEqual(page.badge.text(), "Идёт")
         self.assertEqual(page.age.text(), "Наблюдение 0 с назад")
-        self.assertEqual(page.pairs.values["Осталось"].text(), "ждёт #921")  # no ETA, no percentage
+        self.assertEqual(page.pairs.values["Осталось"].text(), "Недоступно")  # no ETA, no percentage
         self.assertEqual(page.pairs.values["Прошло"].text(), "8 с")
         self.assertEqual(page.pairs.values["Охват"].text(), "лимит 60 URL")
-        self.assertIn("ждёт #921", waiting(page))
-        self.assertIn("ждёт #933", waiting(page))
+        self.assertIn(921, waiting(page))
+        self.assertIn(933, waiting(page))
 
     def test_pause_waits_for_the_core_and_the_chart_and_stream_are_not_invented(self):
         self.feed(runs=[live_run()], owned=[owned()])
         self.screen.show_monitor()
         self.assertFalse(self.page.pause.isEnabled())
-        self.assertIn("#921", self.page.pause.toolTip())
+        self.assertIn("в этой версии ядра", self.page.pause.toolTip())
         body = " ".join(label.text() for label in self.page.findChildren(QLabel))
         self.assertIn("график не рисуется", body)
-        self.assertIn("ждёт #933", waiting(self.page))
+        self.assertIn(933, waiting(self.page))
 
     def test_stop_and_banner_depend_on_who_started_the_run(self):
         self.feed(runs=[live_run()], owned=[owned()])
@@ -93,7 +93,7 @@ class ScanRunTests(unittest.TestCase):
         self.feed(runs=[live_run()], owned=[])
         self.assertFalse(self.page.stop.isEnabled())
         self.assertIn("окно можно закрыть", self.page.banner_text.text())
-        self.assertIn("#921", self.page.stop.toolTip())
+        self.assertIn("в этой версии ядра", self.page.stop.toolTip())
         self.page.stop.click()
         self.assertEqual(self.host.calls, [])
 
@@ -146,7 +146,7 @@ class ScanRunTests(unittest.TestCase):
         i18n.set_language("en")
         i18n.retranslate(self.screen)
         texts = [label.text() for label in self.page.findChildren(QLabel)] + [b.text() for b in self.page.findChildren(QPushButton)]
-        leftovers = [t for t in texts if re.search("[\u0400-\u04ff]", t) and not t.startswith("ждёт #")]  # kit badges are not retranslated
+        leftovers = [t for t in texts if re.search("[\u0400-\u04ff]", t) and not t.startswith("Недоступно")]  # kit badges are not retranslated
         self.assertEqual(leftovers, [])
 
 

@@ -220,6 +220,7 @@ class SwitchingTests(unittest.TestCase):
         i18n.retranslate(self.window)
         self.assertEqual(label.text(), "Save")
         self.assertEqual(user.text(), "Мой собственный проект")
+        self.window.core_executable = "/x/seohead"
         self.window.core_label.setText(i18n.tr("Ядро найдено"))  # built in English, must come back to Russian
         self.window.prefs.set("view.language", "ru")
         self.assertEqual(label.text(), "Сохранить")

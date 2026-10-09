@@ -48,8 +48,9 @@ class KitTests(unittest.TestCase):
 
     def test_waiting_state_names_the_core_issue_and_has_no_numbers(self):
         panel = StatePanel("waiting", "Журнал по страницам", "Показаны последние 200 событий", issue=923)
-        self.assertEqual(panel.issue_label.text(), "ждёт #923")
-        self.assertIn("/issues/923", panel.issue_label.toolTip())
+        self.assertEqual(panel.issue_label.text(), "Недоступно в этой версии ядра")
+        self.assertNotIn("923", panel.issue_label.text() + panel.issue_label.toolTip())
+        self.assertEqual(panel.issue_label.property("waiting_issue"), 923)
 
     def test_state_panel_action_is_wired(self):
         seen = []
@@ -85,7 +86,7 @@ class KitTests(unittest.TestCase):
             i18n.set_language("ru")
 
     def test_waiting_badge_text(self):
-        self.assertEqual(waiting_badge(931).text(), "ждёт #931")
+        self.assertEqual(waiting_badge(931).text(), "Недоступно в этой версии ядра")
 
 
 if __name__ == "__main__":
