@@ -11,17 +11,17 @@ from pathlib import Path
 
 from PyQt5.QtCore import QObject, Qt, QThreadPool, pyqtSignal
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.comparison import ComparisonController, comparison_page, retained_pair
 from seohead_desktop.mcp_gateway import PersistentMcpGateway
+from seohead_desktop.qt import app as qt_app
 from tests.test_scan_runner import close_window, core_cli, wait_for
 
 
 class ComparisonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         scratch = Path(__file__).resolve().parents[1] / ".build"

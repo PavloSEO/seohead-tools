@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop import project_create
 from seohead_desktop.project_create import (
@@ -20,6 +19,7 @@ from seohead_desktop.project_create import (
     suggest_directory,
     validate,
 )
+from seohead_desktop.qt import app as qt_app
 
 CORE = str(Path(sys.executable).with_name("seohead"))
 TARGET = "http://crawl.localhost:1/"  # nothing listens there: project-new must not need the network
@@ -69,7 +69,7 @@ class LocalValidationTests(unittest.TestCase):
 class CoreRunTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

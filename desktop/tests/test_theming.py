@@ -5,9 +5,10 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QtMsgType, qInstallMessageHandler
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import theming
+from seohead_desktop.qt import app as qt_app
 from tests._qt import sweep_widgets
 
 
@@ -25,7 +26,7 @@ def contrast(a, b):
 class ThemingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         sweep_widgets()

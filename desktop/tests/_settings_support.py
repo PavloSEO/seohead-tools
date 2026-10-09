@@ -4,9 +4,10 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import theming
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.controls import SettingRow
 from seohead_desktop.ui.settings import full_schema
@@ -15,7 +16,7 @@ from seohead_desktop.ui.settings.dialog import SettingsDialog
 
 
 def app():
-    qapp = QApplication.instance() or QApplication([])
+    qapp = qt_app()
     theming.set_active_theme("light")
     return qapp
 

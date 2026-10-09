@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PyQt5.QtCore import QSettings
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.workspace import (
     ActionFinder,
     keep_on_screen,
@@ -20,7 +20,7 @@ from seohead_desktop.ui.workspace import (
 class WorkspaceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         load_theme(cls.app)
         cls.scratch = Path(__file__).parents[1] / ".build/scratch"

@@ -6,8 +6,7 @@ import subprocess
 import unittest
 import uuid
 
-from PyQt5.QtWidgets import QApplication
-
+from seohead_desktop.qt import app as qt_app
 from tests.test_scan_runner import (
     close_window,
     core_cli,
@@ -21,7 +20,7 @@ from tests.test_scan_runner import (
 class ExternalObserverTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_idle_gui_observes_external_run_and_later_inbox_and_checklist_changes(self):
         core = core_cli(self)

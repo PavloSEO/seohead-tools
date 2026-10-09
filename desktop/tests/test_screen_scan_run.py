@@ -6,10 +6,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import re
 
-from PyQt5.QtWidgets import QApplication, QLabel, QProgressBar, QPushButton
+from PyQt5.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.scans import ScansScreen
 from tests._qt import sweep_widgets
 from tests._scan_fixtures import NOW, live_run, owned, run, scan, stale_run, stamp
@@ -23,7 +24,7 @@ def waiting(widget):
 class ScanRunTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

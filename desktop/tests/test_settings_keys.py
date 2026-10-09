@@ -6,10 +6,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QLabel
 
 from seohead_desktop import shortcuts, theming
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.settings import full_schema, keys
 from seohead_desktop.ui.settings.context import SettingsContext
@@ -91,7 +92,7 @@ class RegistryTests(unittest.TestCase):
 class KeysSectionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def tearDown(self):

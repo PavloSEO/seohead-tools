@@ -5,10 +5,10 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QCoreApplication, QEvent
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.simple import SimpleScreen
 from seohead_desktop.ui.icons import MaterialIconLabel
 from seohead_desktop.ui.kit import BADGE_ROLE
@@ -21,7 +21,7 @@ AGENT_WORDS = ("агент", "входящ", "заметк", "mcp", "agent", "in
 class SimpleScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

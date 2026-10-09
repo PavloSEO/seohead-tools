@@ -16,7 +16,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtCore import QCoreApplication, QEvent
 from PyQt5.QtWidgets import (
     QAbstractButton,
-    QApplication,
     QComboBox,
     QLabel,
     QLineEdit,
@@ -26,6 +25,7 @@ from PyQt5.QtWidgets import (
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from tests._qt import sweep_widgets
 from tests._screens_core import open_qa
 
@@ -68,7 +68,7 @@ class SourceTests(unittest.TestCase):
 class WindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def tearDown(self):

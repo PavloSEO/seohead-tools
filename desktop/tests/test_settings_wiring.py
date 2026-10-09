@@ -6,8 +6,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.controls import SettingRow
 from seohead_desktop.ui.settings import full_schema, wiring
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class WiringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_every_schema_key_is_classified(self):
         for key in wiring.all_keys(full_schema()):

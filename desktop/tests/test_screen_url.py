@@ -12,10 +12,10 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.url import COLUMNS, UrlScreen
 from seohead_desktop.screens.url_query import (
     count_arguments,
@@ -58,7 +58,7 @@ print(open(fixtures + "/" + out).read())
 class UrlBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

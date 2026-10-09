@@ -13,7 +13,6 @@ from PyQt5.QtCore import QCoreApplication, QEvent, QSettings
 from PyQt5.QtWidgets import (
     QAbstractButton,
     QAction,
-    QApplication,
     QComboBox,
     QGroupBox,
     QLabel,
@@ -26,6 +25,7 @@ from PyQt5.QtWidgets import (
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.settings import SECTION_IDS
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from tests._qt import sweep_widgets
@@ -147,7 +147,7 @@ class DictionaryTests(unittest.TestCase):
 class SwitchingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

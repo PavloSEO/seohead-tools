@@ -11,9 +11,9 @@ import unittest
 from pathlib import Path
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, PersistentMcpGateway
+from seohead_desktop.qt import app as qt_app
 
 PEER = r'''
 import json
@@ -96,7 +96,7 @@ def process_exists(pid):
 class McpGatewayLifecycleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         scratch = Path(__file__).resolve().parents[1] / ".build"

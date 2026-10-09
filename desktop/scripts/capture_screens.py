@@ -16,12 +16,11 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PyQt5 import sip
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QApplication
 
-from seohead_desktop import i18n, theming
+from seohead_desktop import i18n, qt, theming
 from seohead_desktop.app import load_theme
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.settings import full_schema
@@ -143,8 +142,7 @@ def main(argv=None):
     default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
     OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
     os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
-    sip.setdestroyonexit(False)
-    app = QApplication(sys.argv[:1])
+    app = qt.app(sys.argv[:1])
     app.setStyle("Fusion")
     load_theme(app, args.theme)
     store = AppSettings(schema=full_schema())

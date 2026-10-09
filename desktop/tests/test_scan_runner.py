@@ -19,6 +19,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QCheckBox, QDialog, QPushButton
 
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.scan_runner import LocalScanProcess, crawl_arguments
 
 
@@ -153,7 +154,7 @@ class LocalScanRunnerTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_raw_and_js_arguments_preserve_typed_overrides_in_real_cli(self):
         core = core_cli(self)

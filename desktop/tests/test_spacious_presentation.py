@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.content_search_panel import ContentSearchPanel
 from seohead_desktop.ui.work_monitor import WorkMonitor
 
@@ -15,7 +15,7 @@ from seohead_desktop.ui.work_monitor import WorkMonitor
 class SpaciousPresentationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_unbound_product_has_one_project_gesture_and_no_synthetic_evidence(self):
         window = MainWindow(persistent=False)

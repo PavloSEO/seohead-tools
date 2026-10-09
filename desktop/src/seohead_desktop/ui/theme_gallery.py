@@ -10,10 +10,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from PyQt5 import sip
 from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt5.QtWidgets import (
-    QApplication,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -32,7 +30,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .. import theming
+from .. import qt, theming
 from ..app import load_theme
 from .presentation import SwitchCheckBox
 
@@ -231,8 +229,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("out_dir", type=Path)
     args = parser.parse_args(argv)
-    sip.setdestroyonexit(False)
-    app = QApplication(sys.argv[:1])
+    app = qt.app(sys.argv[:1])
     app.setStyle("Fusion")
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for name in theming.THEMES:

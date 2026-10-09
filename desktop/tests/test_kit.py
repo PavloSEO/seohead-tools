@@ -5,10 +5,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QApplication, QPushButton, QTableView
+from PyQt5.QtWidgets import QPushButton, QTableView
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.kit import (
     BADGE_ROLE,
     BadgeDelegate,
@@ -37,7 +38,7 @@ class Rows(QAbstractTableModel):
 class KitTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def test_missing_value_is_not_zero(self):

@@ -6,10 +6,11 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.journal import LIMIT, JournalScreen, collect_events
 from tests._qt import sweep_widgets
 from tests._scan_fixtures import NOW, events, live_run, run
@@ -19,7 +20,7 @@ from tests._screens_host import FakeHost
 class JournalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):
@@ -155,7 +156,7 @@ class JournalTests(unittest.TestCase):
 class WindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def test_the_screen_replaces_the_journal_page(self):

@@ -7,7 +7,6 @@ from pathlib import Path
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import (
-    QApplication,
     QCheckBox,
     QDialog,
     QLineEdit,
@@ -16,6 +15,7 @@ from PyQt5.QtWidgets import (
 )
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.presentation import run_projection, theme_tokens, value_text
 from tests.test_crawl_configuration import descriptor
 
@@ -23,7 +23,7 @@ from tests.test_crawl_configuration import descriptor
 class PresentationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         load_theme(cls.app)
 

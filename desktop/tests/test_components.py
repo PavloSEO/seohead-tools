@@ -5,9 +5,10 @@ from unittest.mock import patch
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QSignalSpy, QTest
-from PyQt5.QtWidgets import QApplication, QDialog, QTableView
+from PyQt5.QtWidgets import QDialog, QTableView
 
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.components import (
     PageModel,
     TabConfigurationDialog,
@@ -54,7 +55,7 @@ TASKS = fixture("checklist_page.json")["items"][:2]
 class ComponentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         tokens = load_theme(cls.app)
         cls.app.setStyleSheet(cls.app.styleSheet() + component_stylesheet(tokens))

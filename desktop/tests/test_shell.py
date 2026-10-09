@@ -11,12 +11,13 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QDialog
+from PyQt5.QtWidgets import QDialog
 
 from seohead_desktop import bundle
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.bundle import verified_bundled_core_identity
 from seohead_desktop.mcp_gateway import TOOL_ALLOWLIST, payload
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.scan_runner import crawl_arguments, resume_arguments
 from tests._screens_core import load_url_rows
 
@@ -24,7 +25,7 @@ from tests._screens_core import load_url_rows
 class ShellTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         load_theme(cls.app)
 

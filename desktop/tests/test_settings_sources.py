@@ -3,8 +3,9 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication, QFrame, QLabel, QPushButton
+from PyQt5.QtWidgets import QFrame, QLabel, QPushButton
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.settings import SECTION_IDS, full_schema, sources
 from seohead_desktop.ui.settings.context import SettingsContext
@@ -31,7 +32,7 @@ def texts(widget):
 class SourcesSectionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def page(self, hook):
         actions = {"providers": hook} if hook else {}

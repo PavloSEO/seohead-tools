@@ -7,17 +7,17 @@ from types import SimpleNamespace
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import MainWindow
 from seohead_desktop.local_control import ControlError
+from seohead_desktop.qt import app as qt_app
 from tests.test_crawl_configuration import descriptor
 
 
 class WorkspaceContextTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

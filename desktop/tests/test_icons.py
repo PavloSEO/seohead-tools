@@ -6,8 +6,9 @@ import unittest
 from PyQt5.QtCore import QRect, QSize, Qt
 from PyQt5.QtGui import QIcon, QPainter, QPixmap
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QPushButton
+from PyQt5.QtWidgets import QPushButton
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.icons import (
     ASSET_ROOT,
     MaterialIconLabel,
@@ -20,7 +21,7 @@ from seohead_desktop.ui.presentation import theme_tokens
 class IconTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_all_assets_are_painted_at_each_physical_resolution_without_mutation(self):
         paths = sorted(ASSET_ROOT.glob("*.svg"))

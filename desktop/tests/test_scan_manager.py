@@ -5,8 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PyQt5.QtWidgets import QApplication
-
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.scan_manager import LocalScanManager, ManagedScan
 from tests.test_scan_runner import wait_for
 
@@ -14,7 +13,7 @@ from tests.test_scan_runner import wait_for
 class LocalScanManagerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         scratch = Path(__file__).resolve().parents[1] / ".build"

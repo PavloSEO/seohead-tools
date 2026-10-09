@@ -10,7 +10,6 @@ from pathlib import Path
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import (
-    QApplication,
     QCheckBox,
     QDialog,
     QLabel,
@@ -20,6 +19,7 @@ from PyQt5.QtWidgets import (
 )
 
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.scan_runner import crawl_arguments
 from tests.test_scan_runner import (
     close_window,
@@ -66,7 +66,7 @@ class _SitemapSite(BaseHTTPRequestHandler):
 class SitemapPlanTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_spider_default_and_explicit_sitemap_source_arguments(self):
         scratch = Path(__file__).resolve().parents[1] / ".build"

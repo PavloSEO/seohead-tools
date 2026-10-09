@@ -9,8 +9,9 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QSignalSpy, QTest
-from PyQt5.QtWidgets import QApplication, QDialog
+from PyQt5.QtWidgets import QDialog
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.crawl_configuration_dialog import (
     MAX_PROFILE_BYTES,
     PROFILE_SCHEMA,
@@ -56,7 +57,7 @@ def descriptor():
 class ConfigurationDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
 
     def setUp(self):

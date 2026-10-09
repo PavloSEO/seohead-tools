@@ -2,15 +2,14 @@
 
 import unittest
 
-from PyQt5.QtWidgets import QApplication
-
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 
 
 class ObserverPollTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         self.window = MainWindow(persistent=False)

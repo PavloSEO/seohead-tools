@@ -4,15 +4,15 @@ import unittest
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.content_search_panel import ContentSearchPanel
 
 
 class ContentSearchPanelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         self.panel = ContentSearchPanel()

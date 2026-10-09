@@ -9,9 +9,8 @@ import unittest
 from contextlib import closing
 from unittest.mock import patch
 
-from PyQt5.QtWidgets import QApplication
-
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 from tests.test_scan_runner import (
     close_window,
     core_cli,
@@ -27,7 +26,7 @@ from tests.test_scan_runner import (
 class RequestIdentityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         self.window = MainWindow(persistent=False, core_executable="")
@@ -131,7 +130,7 @@ class RequestIdentityTests(unittest.TestCase):
 class MultiRunAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def open_window(self, core, project):
         window = MainWindow(persistent=False, core_executable=core)

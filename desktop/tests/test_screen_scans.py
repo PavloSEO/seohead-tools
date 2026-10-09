@@ -5,10 +5,11 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QLabel, QProgressBar, QPushButton
+from PyQt5.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.scan_common import RunRow, active_scan_summary, build_rows
 from seohead_desktop.screens.scans import ROW_ROLE, ScansScreen
 from seohead_desktop.ui.kit import BADGE_ROLE
@@ -26,7 +27,7 @@ def texts(root):
 class Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):
@@ -59,7 +60,7 @@ class Base(unittest.TestCase):
 class RowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_runs_scans_and_owned_runs_are_joined_by_artifact_and_id(self):
         finished, other = run(), run("4b80b8ea140a4cdb86b529def1fc14fc", artifact="scans/20261009T082041Z_crawl.localhost_6c672516.sqlite")
@@ -299,7 +300,7 @@ class ScreenTests(Base):
 class WindowIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

@@ -7,7 +7,6 @@ import shutil
 import sys
 from pathlib import Path
 
-from PyQt5 import sip
 from PyQt5.QtCore import (
     QEasingCurve,
     QSettings,
@@ -29,7 +28,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from . import i18n, theming
+from . import i18n, qt, theming
 from .agent import AgentMixin
 from .chrome import ChromeMixin
 from .commands import CommandsMixin
@@ -326,10 +325,9 @@ def main():
     parser.add_argument("--no-settings", action="store_true")
     parser.add_argument("--agent-control", type=Path, help="Existing owned runtime directory for explicit local agent control")
     args = parser.parse_args()
-    sip.setdestroyonexit(False)  # Python must not tear Qt objects down at exit (SIGSEGV in dealloc_QApplication)
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-    app = QApplication(sys.argv[:1])
+    app = qt.app(sys.argv[:1])
     app.setStyle("Fusion")
     load_theme(app)
     window = MainWindow(persistent=not args.no_settings, core_executable=args.core_cli)

@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 from PyQt5.QtCore import QAbstractAnimation, Qt
 from PyQt5.QtTest import QSignalSpy, QTest
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.work_monitor import WorkMonitor
 
 
@@ -26,7 +26,7 @@ def observed(identity="native-run", **changes):
 class WorkMonitorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app)
 
     def setUp(self):

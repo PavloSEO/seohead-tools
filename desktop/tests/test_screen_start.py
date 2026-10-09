@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import QApplication, QDialog, QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.start import (
     StartScreen,
     initials,
@@ -50,7 +51,7 @@ def make_project(directory, label, target=TARGET):
 class StartScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
         cls.tmp = tempfile.TemporaryDirectory()
         base = Path(cls.tmp.name)
@@ -307,7 +308,7 @@ class StartScreenTests(unittest.TestCase):
 class NewProjectTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

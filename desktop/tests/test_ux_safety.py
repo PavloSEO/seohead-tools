@@ -5,9 +5,10 @@ import unittest
 from pathlib import Path
 
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QPushButton, QToolButton
+from PyQt5.QtWidgets import QCheckBox, QLabel, QLineEdit, QPushButton, QToolButton
 
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from tests.test_crawl_configuration import descriptor
 
 
@@ -41,7 +42,7 @@ class _OwnedManager:
 class UXSafetyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app)
         cls.scratch = Path(__file__).parents[1] / ".build/scratch"
         cls.scratch.mkdir(parents=True, exist_ok=True)

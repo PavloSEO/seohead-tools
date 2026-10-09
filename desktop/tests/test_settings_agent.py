@@ -3,10 +3,11 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import theming
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.controls import SettingRow, Switch
 from seohead_desktop.ui.settings import agent, full_schema
@@ -24,7 +25,7 @@ def switch_named(page, name):
 class AgentSectionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def tearDown(self):

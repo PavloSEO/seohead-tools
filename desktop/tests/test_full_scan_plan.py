@@ -8,10 +8,11 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QAbstractButton, QApplication, QCheckBox, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QAbstractButton, QCheckBox, QLineEdit, QPushButton
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.local_control import ControlError
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.panels import component_stylesheet
 from tests.test_crawl_configuration import descriptor
 from tests.test_scan_runner import (
@@ -33,7 +34,7 @@ def type_into(edit, text):
 class FullScanPlanTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         tokens = load_theme(cls.app)
         cls.app.setStyleSheet(cls.app.styleSheet() + component_stylesheet(tokens))

@@ -5,10 +5,11 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.base import SLOTS
 from seohead_desktop.screens.issues import (
     IssuesScreen,
@@ -27,7 +28,7 @@ from tests._screens_host import FakeHost
 class IssuesBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

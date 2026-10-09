@@ -12,7 +12,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtCore import QCoreApplication, QEvent, QTimer
 from PyQt5.QtWidgets import (
     QAbstractButton,
-    QApplication,
     QCheckBox,
     QFrame,
     QLabel,
@@ -27,6 +26,7 @@ from PyQt5.QtWidgets import (
 from seohead_desktop import i18n
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.mcp_gateway import PersistentMcpGateway
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.new_scan import NewScanDialog, open_new_scan
 from seohead_desktop.screens.new_scan_draft import (
     ISSUE_EXTRACT,
@@ -83,7 +83,7 @@ def type_into(edit, text):
 class DraftTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def test_defaults_come_from_settings_then_core_and_limits_are_explicit(self):
         d = draft()
@@ -262,7 +262,7 @@ class ListTests(unittest.TestCase):
 class DialogCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         load_theme(cls.app, "light")
 
@@ -816,7 +816,7 @@ class RealCoreTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         cls.app.setStyle("Fusion")
         load_theme(cls.app, "light")
 

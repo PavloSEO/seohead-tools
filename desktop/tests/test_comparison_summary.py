@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QSignalSpy, QTest
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QVBoxLayout, QWidget
 
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.comparison_summary import ComparisonSummary
 
 
@@ -30,7 +31,7 @@ def payload():
 class ComparisonSummaryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app)
 
     def setUp(self):

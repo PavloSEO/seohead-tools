@@ -14,7 +14,6 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop.control_cli import create_mcp_server
 from seohead_desktop.local_control import (
@@ -28,12 +27,13 @@ from seohead_desktop.local_control import (
     request,
     validate_arguments,
 )
+from seohead_desktop.qt import app as qt_app
 
 
 class LocalControlTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         directory = os.environ.get("SEOHEAD_DESKTOP_TEST_TMPDIR")

@@ -21,11 +21,10 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from PyQt5.QtWidgets import QApplication
-
 import seohead_desktop.app as app_module
 import seohead_desktop.commands as commands_module
 from seohead_desktop.app import MainWindow
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.scan_runner import crawl_arguments
 from tests.test_scan_runner import (
     close_window,
@@ -49,7 +48,7 @@ def file_hashes(root, pattern="**/*"):
 class DesktopControlIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def worker(self, function):
         result, failures = [], []

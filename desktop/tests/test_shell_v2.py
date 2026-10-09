@@ -6,10 +6,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QCoreApplication, QEvent
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QLabel
 
 from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
 from tests._qt import sweep_widgets
@@ -28,7 +29,7 @@ def headers(nav):
 class ShellV2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

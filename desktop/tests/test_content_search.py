@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import QObject, Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QComboBox, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QComboBox, QLineEdit, QPushButton
 
 from seohead_desktop.content_search import (
     TOOLS,
@@ -20,6 +20,7 @@ from seohead_desktop.content_search import (
     search_arguments,
 )
 from seohead_desktop.mcp_gateway import OPTIONAL_TOOLS, TOOL_ALLOWLIST
+from seohead_desktop.qt import app as qt_app
 from tests.test_scan_runner import close_window, core_cli, wait_for
 
 
@@ -36,7 +37,7 @@ class _Window(QObject):
 class ContentSearchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def setUp(self):
         scratch = Path(__file__).resolve().parents[1] / ".build"

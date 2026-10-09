@@ -6,10 +6,11 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QWidget
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.search import PAGE, SearchScreen
 from seohead_desktop.screens.search_results import rows_caption, snippet_window, summary_caption
 from tests._qt import sweep_widgets
@@ -48,7 +49,7 @@ def ready_payload(name, page="page", query="Каталог", scope="body_text", 
 class SearchScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

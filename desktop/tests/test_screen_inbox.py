@@ -5,10 +5,10 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QCoreApplication, QEvent, Qt
-from PyQt5.QtWidgets import QApplication
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.inbox import MAX_TEXT, InboxScreen, is_processed, stages
 from seohead_desktop.ui.kit import BADGE_ROLE
 from tests._qt import sweep_widgets
@@ -21,7 +21,7 @@ REJECTED_NOTE = "inbox:ee029d9c-0487-41a5-88e1-ab121307ed5b"
 class InboxScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

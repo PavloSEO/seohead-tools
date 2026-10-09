@@ -5,10 +5,11 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QCoreApplication, QEvent
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QLabel
 
 from seohead_desktop import i18n, theming
 from seohead_desktop.app import MainWindow, load_theme
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.work import (
     TASK_STATES,
     WorkScreen,
@@ -24,7 +25,7 @@ from tests._screens_core import fixture, open_qa, texts
 class WorkScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
         load_theme(cls.app, "light")
 
     def setUp(self):

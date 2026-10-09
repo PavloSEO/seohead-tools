@@ -4,15 +4,16 @@ import unittest
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QLabel, QScrollArea, QSplitter, QWidget
+from PyQt5.QtWidgets import QLabel, QScrollArea, QSplitter, QWidget
 
+from seohead_desktop.qt import app as qt_app
 from seohead_desktop.ui.help_guide import HelpGuideDialog
 
 
 class HelpGuideTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = qt_app()
 
     def guide(self, **kwargs):
         dialog = HelpGuideDialog(**kwargs)
