@@ -439,7 +439,7 @@
  "Цветные статусы в таблице": "Colored statuses in tables",
  "Плашки статусов вместо текста": "Status badges instead of plain text",
  "Тема: {name}": "Theme: {name}",
- "&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://lengidroprom.ru/catalog/nasosy-cdm/</span> &nbsp; индексируется · 1,2 с": "&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://lengidroprom.ru/catalog/nasosy-cdm/</span> &nbsp; indexable · 1.2 s",
+ "&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://shop.example.test/catalog/chair-oak/</span> &nbsp; индексируется · 1,2 с": "&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://shop.example.test/catalog/chair-oak/</span> &nbsp; indexable · 1.2 s",
  "Масштаб интерфейса": "Interface zoom",
  "Плотно": "Compact",
  "Стандарт": "Standard",

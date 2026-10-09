@@ -13,8 +13,8 @@ from seohead_desktop.ui.settings import agent, full_schema
 from seohead_desktop.ui.settings.context import SettingsContext
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 
-PROJECTS = [{"name": "lengidroprom.ru", "meta": "· фриланс · 12 сканов"}, {"name": "seohead.tech", "meta": "· своё · 8 сканов"},
-            {"name": "post-roy", "meta": "· фриланс · 1 скан"}]
+PROJECTS = [{"name": "shop.example.test", "meta": "· фриланс · 12 сканов"}, {"name": "seohead.tech", "meta": "· своё · 8 сканов"},
+            {"name": "blog.example.test", "meta": "· фриланс · 1 скан"}]
 
 
 def switch_named(page, name):
@@ -36,8 +36,8 @@ class AgentSectionTests(unittest.TestCase):
         self.context = SettingsContext(actions={
             "agent_projects": lambda: PROJECTS,
             "agent_log": lambda limit: [
-                {"time": "14:05", "text": "Запустил скан", "project": "lengidroprom.ru", "kind": "scan"},
-                {"time": "11:02", "text": "Отказано", "project": "post-roy", "kind": "deny"}][:limit],
+                {"time": "14:05", "text": "Запустил скан", "project": "shop.example.test", "kind": "scan"},
+                {"time": "11:02", "text": "Отказано", "project": "blog.example.test", "kind": "deny"}][:limit],
             "open_agent_log": lambda: self.opened.append(1),
         })
 
@@ -64,12 +64,12 @@ class AgentSectionTests(unittest.TestCase):
         self.store.set("agent.projects", "seohead.tech")
         page = agent.build_page(self.store, self.context)
         checked = {r.name: r.checkbox.isChecked() for r in page.findChildren(agent.ProjectRow)}
-        self.assertEqual(checked, {"lengidroprom.ru": False, "seohead.tech": True, "post-roy": False})
+        self.assertEqual(checked, {"shop.example.test": False, "seohead.tech": True, "blog.example.test": False})
         self.assertIn("Агент видит только отмеченные · 1 из 3", self.texts(page))
         rows = {r.name: r for r in page.findChildren(agent.ProjectRow)}
-        rows["post-roy"].checkbox.setChecked(True)
+        rows["blog.example.test"].checkbox.setChecked(True)
         rows["seohead.tech"].checkbox.setChecked(False)
-        self.assertEqual(agent.allowed(self.store), {"post-roy"})
+        self.assertEqual(agent.allowed(self.store), {"blog.example.test"})
         self.assertIn("Агент видит только отмеченные · 1 из 3", self.texts(page))
 
     def test_log_rows_and_full_log_button(self):
@@ -104,7 +104,7 @@ class AgentSectionTests(unittest.TestCase):
 
     def test_reset_section_and_search(self):
         self.store.set("agent.run_scans", True)
-        self.store.set("agent.projects", "post-roy")
+        self.store.set("agent.projects", "blog.example.test")
         dialog = SettingsDialog(self.store, self.context, section="agent")
         dialog.reset_section()
         self.assertIs(self.store.get("agent.run_scans"), False)

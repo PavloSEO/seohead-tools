@@ -93,7 +93,7 @@ def _preview(store):
         row.setFixedHeight(height + 8)
         badge = "200" if not store.get("view.status_badges") else "<b>200</b>"
         family = theming.substitution()["mono_family"] if store.get("view.mono_urls") else "Roboto"
-        row.setText(trf("&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://lengidroprom.ru/catalog/nasosy-cdm/</span>"
+        row.setText(trf("&nbsp;{badge} &nbsp; <span style=\"font-family:'{family}'\">https://shop.example.test/catalog/chair-oak/</span>"
                         " &nbsp; индексируется · 1,2 с", badge=badge, family=family))
 
     store.changed.connect(refresh)
