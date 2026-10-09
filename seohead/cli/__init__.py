@@ -2661,6 +2661,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in (
         "list",
         "inspect",
+        "url-query",
         "url-detail",
         "link-inspect",
         "status",
