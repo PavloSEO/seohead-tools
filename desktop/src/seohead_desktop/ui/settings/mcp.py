@@ -13,7 +13,7 @@ from .listing import Columns, action_button, badge, hint, list_item, mono_html, 
 ID, ICON, TITLE = "mcp", "hub", "MCP-сервер"
 HINT = "Доступ агентов к проектам через локальный MCP"
 
-PROFILES = ("full", "audit", "quick")
+PROFILES = ("full", "audit", "quick-check", "router", "infra")
 
 SCHEMA = (
     Setting("mcp.enabled", True, bool),
@@ -101,6 +101,9 @@ def _backups(context):
 
 
 def build_page(store, context):
+    if context.core_executable:
+        from ...mcp_integration import IntegrationPanel
+        return IntegrationPanel(context.core_executable, store)
     status = _status(context)
     left = [
         _server_row(store, context, status),

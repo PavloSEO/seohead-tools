@@ -10,7 +10,7 @@ from __future__ import annotations
 from ...i18n import trf
 
 # view.language is applied to the shell and the settings; the screens follow as they are rebuilt (roadmap step 5).
-APPLIED = {"view.details_position", "view.mono_urls", "view.status_badges", "view.theme", "view.density", "view.reduce_motion", "view.rail_when_narrow", "shell.display", "view.language",
+APPLIED = {"mcp.enabled", "mcp.profile", "view.details_position", "view.mono_urls", "view.status_badges", "view.theme", "view.density", "view.reduce_motion", "view.rail_when_narrow", "shell.display", "view.language",
            "shell.onboarding_done", "general.projects_folder",
            "scan.rate", "scan.url_limit", "scan.depth", "scan.robots", "scan.save_html"}
 APPLIED_SHORTCUTS = {"palette", "new_scan", "settings", "stop_scan", "find_in_table", "expand_table", "copy_url", "help"}

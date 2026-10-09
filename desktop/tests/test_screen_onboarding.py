@@ -198,14 +198,14 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(self.window.display, "agent")
         self.assertFalse(wizard.mcp_card.isHidden())
 
-    def test_agent_and_mcp_are_shown_as_unavailable_not_as_working(self):
+    def test_mcp_requires_core_status_before_controls_are_enabled(self):
         self.window.show_startup_workspace()
         wizard = self.wizard
         wizard.go(2)
         self.assertFalse(wizard.mcp_switch.isEnabled())
         self.assertFalse(wizard.mcp_switch.isChecked())
-        self.assertEqual(wizard.mcp_switch.toolTip(), "Недоступно в этой сборке")
-        self.assertIn("позже", wizard.later_note.findChildren(QLabel)[-1].text())
+        self.assertIsNone(wizard.mcp_card.state)
+        self.assertIn("разрешения", wizard.later_note.findChildren(QLabel)[-1].text())
         self.assertFalse(self.window.agent_pill.isVisibleTo(self.window))
 
     def test_theme_and_language_choices_go_to_the_preferences(self):

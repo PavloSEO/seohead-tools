@@ -55,8 +55,8 @@ class McpSettingsTests(unittest.TestCase):
     def test_controls_write_to_store(self):
         self.make()
         self.assertIsInstance(self.row("Профиль инструментов").control, Segmented)
-        self.row("Профиль инструментов").control._buttons["quick"].click()
-        self.assertEqual(self.store.get("mcp.profile"), "quick")
+        self.row("Профиль инструментов").control._buttons["quick-check"].click()
+        self.assertEqual(self.store.get("mcp.profile"), "quick-check")
         self.row("Писать журнал вызовов").control.click()
         self.assertFalse(self.store.get("mcp.journal"))
 
