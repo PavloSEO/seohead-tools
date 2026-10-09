@@ -36,7 +36,7 @@ from urllib.parse import urljoin, urlsplit
 
 FORMAT = "seohead.shop-site.v1"
 VERSIONS = ("v1", "v2", "v3")
-DEFAULT_BASE = "http://shop.localhost:18431"
+DEFAULT_BASE = "http://shop.example.test:18431"
 SLOW_SECONDS = 2.0  # above the analyzer's 1.5 s response_time_max_s
 PAGE_SIZE = 24
 # Passive literals for Search in HTML; nothing loads or initializes analytics.

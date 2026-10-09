@@ -52,18 +52,25 @@ python examples/shop-site/shop_site.py serve --version v1 --port 18431 \
   --ready-file /tmp/shop-ready.json --lifetime 1800
 ```
 
-`--port 0` picks a free port, but canonicals, hreflang and sitemaps use the absolute origin
-`http://shop.localhost:18431` (`--base` overrides it); keep one fixed port across versions so
-the three scans share one site identity. SIGTERM stops the server; `--lifetime` is a safety
-net. `*.localhost` resolves to 127.0.0.1 without editing `/etc/hosts`; `shop.example.test`
-would need a hosts entry, which this bench avoids.
+Prerequisite — map the canonical host to loopback once:
+
+```bash
+echo '127.0.0.1 shop.example.test' | sudo tee -a /etc/hosts
+```
+
+Canonicals, hreflang and sitemaps use the absolute origin `http://shop.example.test:18431`
+(`--base` overrides it), so keep one fixed port across versions: the three scans then share one
+site identity. `--port 0` picks a free port for ad-hoc use. SIGTERM stops the server;
+`--lifetime` is a safety net. Without a hosts entry use the fallback
+`--base http://shop.localhost:18431`: `*.localhost` resolves to 127.0.0.1 natively; replace the
+host in the commands below accordingly.
 
 ## Reproduce the three-scan project
 
 ```bash
-export SEOHEAD_ALLOW_PRIVATE_HOSTS=shop.localhost   # scoped private-host opt-in
+export SEOHEAD_ALLOW_PRIVATE_HOSTS=shop.example.test   # scoped private-host opt-in
 P=/path/to/shop-project
-seohead project-new --directory $P/project --target http://shop.localhost:18431/ --label "Мебельный магазин"
+seohead project-new --directory $P/project --target http://shop.example.test:18431/ --label "Мебельный магазин"
 cat > $P/crawl-config.json <<'EOF'
 {"limits": {"max_depth": -1, "max_urls": 5000, "max_query_variants_per_path": 20},
  "speed": {"min_delay_seconds": 0.02, "concurrency": 4},
