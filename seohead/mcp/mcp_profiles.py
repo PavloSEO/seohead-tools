@@ -14,7 +14,7 @@ PROFILE_LABELS = {
     "router": "Маршрутизатор",
 }
 HIGH_LEVEL_TOOLS = frozenset(
-    {"seo_inspect_url", "seo_audit_workflow", "seo_tool_catalog", "seo_tool_run"}
+    {"seo_inspect_url", "seo_audit_workflow", "seo_tool_catalog"}
 )
 _PROFILE_TOOLS = {
     "audit": frozenset(
