@@ -40,7 +40,7 @@ from ..ui.kit import (
 )
 from .base import Screen
 from .scan_common import number, parse_time
-from .url_detail import StackBar, section_label
+from .url_widgets import StackBar, section_label
 
 SEVERITIES = (("critical", "Критичные", "error", "error"), ("warning", "Важные", "warning", "warning"), ("notice", "Советы", "lightbulb", "text_2"))
 CHECK_NAMES = {
