@@ -77,16 +77,22 @@
       </div>
       <div style="flex: 1; min-height: 0; overflow: hidden; position: relative">
         <div style="position: absolute; inset: 0; display: flex; flex-direction: column">
-          <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px">
+          <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; border-bottom: 1px solid #EEF0F3">
+            <div class="seg" role="radiogroup" aria-label="Тип ссылок" style="width: 240px"><button class="{{intCls}}" onClick="{{setInt}}">Внутренние · 160</button><button class="{{extCls}}" onClick="{{setExt}}">Внешние · 7</button></div>
+            <span style="font: 400 12px Roboto, sans-serif; color: #5D6069">{{scopeNote}}</span>
+          </div>
+          <sc-if value="{{isInt}}" hint-placeholder-val="{{true}}">
+          <div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+          <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px">
             <div class="seg" style="width: 300px"><button class="{{inCls}}" onClick="{{setIn}}">Входящие · 48</button><button class="{{outCls}}" onClick="{{setOut}}">Исходящие · 112</button></div>
             <label class="fld" style="width: 260px; height: 32px; color: #6A6D76"><span class="ms s18" aria-hidden="true">filter_list</span><input aria-label="Фильтр ссылок" placeholder="Адрес или анкор содержит…"></label>
-            <span class="chip">rel: nofollow · {{nofN}}<button class="ib" aria-label="Убрать фильтр" style="width: 20px; height: 20px; color: #0D2E6E"><span class="ms s16" aria-hidden="true">close</span></button></span>
+            <span class="chip">Атрибут: nofollow · {{nofN}}<button class="ib" aria-label="Убрать фильтр" style="width: 20px; height: 20px; color: #0D2E6E"><span class="ms s16" aria-hidden="true">close</span></button></span>
             <div style="flex: 1"></div>
             <span style="font: 400 12px Roboto, sans-serif; color: #5D6069">{{caption}}</span>
             <button class="ib" aria-label="Экспорт ссылок"><span class="ms" aria-hidden="true">download</span></button>
           </div>
           <div class="thead" style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) 150px 110px 90px; border-top: 1px solid #DDE1E7">
-            <div class="th">{{colA}}</div><div class="th">Анкор</div><div class="th">rel</div><div class="th">Позиция</div><div class="th num" style="justify-content: flex-end">HTTP цели</div>
+            <div class="th">{{colA}}</div><div class="th">Анкор</div><div class="th">Атрибут</div><div class="th">Позиция</div><div class="th num" style="justify-content: flex-end">HTTP цели</div>
           </div>
           <sc-for list="{{links}}" as="l" hint-placeholder-count="6">
             <div class="{{l.cls}}" style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) 150px 110px 90px">
@@ -98,7 +104,27 @@
             </div>
           </sc-for>
           <div style="flex: 1"></div>
-          <div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; border-top: 1px solid #EEF0F3; font: 400 12px Roboto, sans-serif; color: #5D6069">Показаны 6 из {{total}} · позиция определяется по разметке nav / main / footer; без неё — «Контент».</div>
+          <div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; border-top: 1px solid #EEF0F3; font: 400 12px Roboto, sans-serif; color: #5D6069">Показаны 6 из {{total}} · позиция определяется по разметке nav / main / footer; без неё — «Контент». Атрибут: без rel — обычная ссылка.</div>
+          </div>
+          </sc-if>
+          <sc-if value="{{isExt}}" hint-placeholder-val="{{false}}">
+          <div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+            <div class="thead" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px 110px 90px">
+              <div class="th">Донор</div><div class="th">Анкор</div><div class="th">Атрибут</div><div class="th">Источники</div><div class="th">Проверка</div>
+            </div>
+            <sc-for list="{{donors}}" as="d" hint-placeholder-count="5">
+              <div class="{{d.cls}}" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px 110px 90px; height: 28px">
+                <div class="td" style="height: 28px"><span class="ms s16" aria-hidden="true" style="color: #1565C0">public</span><span class="el">{{d.dom}}</span></div>
+                <div class="td" style="height: 28px"><span class="el">{{d.anchor}}</span></div>
+                <div class="td" style="height: 28px"><span class="{{d.relCls}}">{{d.rel}}</span></div>
+                <div class="td" style="height: 28px"><span class="mut b">{{d.src}}</span></div>
+                <div class="td" style="height: 28px"><span class="{{d.stCls}}">{{d.st}}</span></div>
+              </div>
+            </sc-for>
+            <div style="flex: 1"></div>
+            <div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-top: 1px solid #EEF0F3; font: 400 12px Roboto, sans-serif; color: #5D6069">7 ссылок с 5 доменов · база проекта: Вебмастер, Bing, GSC<div style="flex: 1"></div><a href="/Backlinks.dc.html" style="font: 500 12px Roboto, sans-serif; text-decoration: none">Все внешние ссылки ›</a></div>
+          </div>
+          </sc-if>
         </div>
       </div>
     </section>
@@ -113,7 +139,7 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = Object.assign({ sel: 2 }, {"dir": "in"}); }
+  constructor(props) { super(props); this.state = Object.assign({ sel: 2 }, {"dir": "in", "scope": "int"}); }
   renderVals() {
     const s = this.state;
     const fmt = (n) => n == null ? 'Нет данных' : n.toLocaleString('ru-RU');
@@ -135,11 +161,17 @@ class Component extends DCLogic {
     const cur = rows[s.sel];
     const v = (() => { const src = s.dir === 'in' ? [["/catalog/divany/", "Диван Осло угловой", "—", "Контент", 200], ["/catalog/divany/uglovye/", "Осло", "—", "Контент", 200], ["/", "Хит продаж: Осло", "—", "Навигация", 200], ["/blog/kak-vybrat-divan/", "угловой диван Осло", "—", "Контент", 200], ["/catalog/divany/divan-oslo/?color=grey", "Серый", "nofollow", "Контент", 200], ["/old/divan-oslo.html", "[редирект 301]", "—", "—", 301]] : [["/catalog/divany/", "Диваны", "—", "Навигация", 200], ["/catalog/divany/divan-bergen/", "Похожий: Берген", "—", "Контент", 404], ["/dostavka/", "Условия доставки", "—", "Контент", 200], ["/catalog/divany/divan-oslo/#reviews", "Отзывы (27)", "—", "Контент", 200], ["https://vk.com/exampleshop", "ВКонтакте", "nofollow noopener", "Футер", 200], ["/promo/osen-2026/", "Осенняя распродажа", "—", "Навигация", 302]];
       const links = src.map(([u, a, r, p, st], i) => ({ url: (u.startsWith('http') ? '' : 'shop.example.test') + u, anchor: a, aCls: 'td' + (a.startsWith('[') ? ' na' : ''),
-        rel: r, relCls: r === '—' ? '' : 'b warn', pos: p, st, stCls: hc(st), icon: s.dir === 'in' ? 'subdirectory_arrow_right' : 'north_east', cls: 'tr' + (i % 2 ? ' alt' : '') }));
+        rel: r === '—' ? 'обычная' : r, relCls: r === '—' ? 'b mut' : r === 'sponsored' ? 'b pur' : 'b warn', pos: p, st, stCls: hc(st), icon: s.dir === 'in' ? 'subdirectory_arrow_right' : 'north_east', cls: 'tr' + (i % 2 ? ' alt' : '') }));
       return { links, inCls: s.dir === 'in' ? 'on' : '', outCls: s.dir === 'out' ? 'on' : '', setIn: () => this.setState({ dir: 'in' }), setOut: () => this.setState({ dir: 'out' }),
         colA: s.dir === 'in' ? 'Источник' : 'Цель', total: s.dir === 'in' ? '48' : '112', nofN: s.dir === 'in' ? '1' : '6',
         caption: s.dir === 'in' ? '48 входящих · 41 уникальный источник · 1 nofollow' : '112 исходящих · 94 внутренних · 18 внешних · 1 на 404' }; })() || {};
-    return Object.assign({ rows, cur }, v);
+    const RC = { 'обычная': 'b mut', nofollow: 'b warn', sponsored: 'b pur', ugc: 'b info', 'ugc nofollow': 'b warn' };
+    const donors = [['mebel-obzor.example.test', 'угловой диван Осло', 'обычная', 'ЯВ · GSC', 'живая'], ['forum.example.test', 'Осло брали, норм', 'ugc nofollow', 'Bing', 'живая'], ['katalog-mebeli.example.test', 'shop.example.test', 'sponsored', 'ЯВ', 'живая'], ['blog-interior.example.test', 'диваны Осло', 'обычная', 'GSC', 'не проверена'], ['old-links.example.test', 'купить диван', 'nofollow', 'ЯВ', 'нет ссылки']]
+      .map(([dom, anchor, rel, src, st], i) => ({ dom, anchor, rel, relCls: RC[rel], src, st, stCls: 'b ' + (st === 'живая' ? 'ok' : st === 'нет ссылки' ? 'err' : 'mut'), cls: 'tr' + (i % 2 ? ' alt' : '') }));
+    const ext = s.scope === 'ext';
+    return Object.assign({ rows, cur, donors, isInt: !ext, isExt: ext, intCls: ext ? '' : 'on', extCls: ext ? 'on' : '',
+      setInt: () => this.setState({ scope: 'int' }), setExt: () => this.setState({ scope: 'ext' }),
+      scopeNote: ext ? 'Доноры этой страницы из базы внешних ссылок проекта' : 'Ссылки внутри сайта по скану №2' }, v);
   }
 }
 </script>

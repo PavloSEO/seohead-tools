@@ -56,7 +56,7 @@
   </sc-if>
 </nav>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","graph","search","methods","tools","reports","log","crawler","none"],"default":"url"},"h":{"editor":"int","default":786},"mode":{"editor":"enum","options":["","agent","simple","crawler"],"default":""},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["work","inbox","scans","url","issues","compare","graph","backlinks","semantics","search","methods","tools","reports","log","crawler","none"],"default":"url"},"h":{"editor":"int","default":786},"mode":{"editor":"enum","options":["","agent","simple","crawler"],"default":""},"simple":{"editor":"boolean","default":false},"$preview":{"width":200,"height":786}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { menu: false }; }
   renderVals() {
@@ -65,7 +65,7 @@ class Component extends DCLogic {
     const mode = this.props.mode || (this.props.simple ? 'simple' : 'agent');
     const sm = mode === 'simple', cr = mode === 'crawler';
     const a = this.props.active ?? (cr ? 'crawler' : 'url');
-    const NEED = new Set(['work', 'inbox', 'issues', 'compare', 'search', 'methods', 'reports']);
+    const NEED = new Set(['work', 'inbox', 'issues', 'compare', 'search', 'methods', 'reports', 'semantics', 'backlinks']);
     const mk = (rows) => rows.map(([id, icon, label, href, cnt, dot]) => {
       const dis = cr && NEED.has(id);
       return { icon, label, href: dis ? '/Modals.dc.html' : href, cnt: dis ? 'нужен проект' : (cnt ?? ''), dis: dis ? 'true' : 'false',
@@ -85,6 +85,8 @@ class Component extends DCLogic {
         ['issues', 'rule', 'Проблемы', '/Issues.dc.html', '37'],
         ['compare', 'compare_arrows', 'Сравнение', '/Compare.dc.html'],
         ['graph', 'hub', 'Граф ссылок', '/LinkGraph.dc.html'],
+        ['backlinks', 'link', 'Внешние ссылки', '/Backlinks.dc.html', cr ? '' : '312'],
+        ['semantics', 'category', 'Семантика', '/Semantics.dc.html', cr ? '' : '4 812'],
         ['search', 'find_in_page', 'Поиск в HTML', '/Search.dc.html']
       ]),
       res: mk([
