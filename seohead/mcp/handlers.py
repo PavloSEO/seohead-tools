@@ -4242,6 +4242,15 @@ def scan_url_query(
     )
 
 
+def scan_url_history(project: str, url: str, limit: int = 50) -> dict[str, Any]:
+    """State of one exact URL in each retained scan of a project, newest first, read-only."""
+    from seohead.projects.workspace import _load
+    from seohead.storage.url_history import url_history as core
+
+    root, _document = _load(project)
+    return core(root / "scans", url, limit=limit)
+
+
 def scan_url_detail(
     input_path: str,
     url: str,
@@ -6067,6 +6076,7 @@ _RAW_HANDLERS = {
     "scan_inspect": scan_inspect,
     "scan_url_detail": scan_url_detail,
     "scan_url_query": scan_url_query,
+    "scan_url_history": scan_url_history,
     "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,

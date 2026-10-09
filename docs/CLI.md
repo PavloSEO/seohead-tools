@@ -56,6 +56,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-status` | Summarize frontier work and committed page outcomes from one saved scan offline. | offline, read-only |
 | `scan-inspect` | Read a bounded, paginated table view from one saved scan. | offline, read-only |
 | `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. | offline, read-only |
+| `scan-url-history` | State of one exact URL (status, indexability, title hash, canonical, redirect target, content hash) in each retained scan of a project, newest first, with absence reported as `absent` and unreadable scans as `unavailable`. | offline, read-only |
 | `scan-url-detail` | Read one exact native URL's retained headers, redirects, page fields, and forms. | offline, read-only |
 | `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's paged links offline. | offline, read-only |
 | `scan-navigation` | Read bounded observed navigation evidence from a retained local scan. | offline, read-only |

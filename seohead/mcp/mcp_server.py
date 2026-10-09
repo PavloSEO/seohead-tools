@@ -2950,6 +2950,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_url_history(project: str, url: str, limit: int = 50) -> dict[str, Any]:
+        """State of one exact URL across the retained scans of a project, newest first.
+
+        Read-only. For each of the newest ``limit`` scans returns state (present, absent or
+        unavailable), status_code, indexability, title_hash, canonical, redirect_target and
+        content_hash; ``number`` counts all scans from 1 for the oldest. Lookup is by exact
+        retained URL text through an index, not a scan of the page table.
+        """
+        return _checked(handlers.scan_url_history(project=project, url=url, limit=limit))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_url_query(
         input_path: str,
         filters: list[dict[str, Any]] | None = None,

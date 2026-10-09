@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 171 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2773,6 +2773,27 @@ Read one exact native URL's retained headers, redirects, page fields, and forms.
 The query is offline and read-only. Header and query values stay redacted,
 body bytes remain unavailable here, and legacy/Screaming Frog sources
 return named unavailable evidence instead of an empty detail record.
+
+### `scan-url-history`
+
+MCP name: `seo_scan_url_history`
+
+State of one exact URL across the retained scans of a project, newest first.
+
+| Argument | Type | Default |
+|---|---|---|
+| `project` | `str` | `required` |
+| `url` | `str` | `required` |
+| `limit` | `int` | `50` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Read-only. For each of the newest ``limit`` scans returns state (present, absent or
+unavailable), status_code, indexability, title_hash, canonical, redirect_target and
+content_hash; ``number`` counts all scans from 1 for the oldest. Lookup is by exact
+retained URL text through an index, not a scan of the page table.
 
 ### `scan-url-query`
 
