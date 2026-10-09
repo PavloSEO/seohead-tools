@@ -41,11 +41,64 @@ SECTIONS = (
     ("log", "terminal", "Журнал", "result", True, True),
 )
 # Navigation section -> view id used by workspace contexts and the page stack.
-VIEW_OF = {"work": "work", "inbox": "inbox", "scans": "scans", "url": "url", "issues": "audit",
+VIEW_OF = {"work": "work", "inbox": "inbox", "scans": "scans", "url": "url", "issues": "issues",
            "compare": "compare", "search": "content_search", "reports": "reports", "log": "journal"}
 SIMPLE_VIEW_OF = {**VIEW_OF, "work": "tasks"}  # «Работа» opens the simple task list in the Simple display
 GROUP_TITLES = {"data": "Данные", "result": "Результат"}
 ROLE_ID, ROLE_COUNT, ROLE_DOT, ROLE_HEADER = (Qt.UserRole + i for i in range(4))
+
+
+def elide_words(metrics, text, width):
+    """Shorten ``text`` to ``width`` px at a word boundary with «…»; one long word is cut by the font metrics."""
+    if metrics.horizontalAdvance(text) <= width:
+        return text
+    words = text.split(" ")
+    while len(words) > 1:
+        words.pop()
+        candidate = " ".join(words).rstrip(" ·,") + "…"
+        if metrics.horizontalAdvance(candidate) <= width:
+            return candidate
+    return metrics.elidedText(text, Qt.ElideRight, width)
+
+
+class WordElidedLabel(QLabel):
+    """Single-line label that shortens by whole words; asks for its full text width, yields down to a small minimum."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._full = ""
+        self.setTextFormat(Qt.PlainText)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
+    def setText(self, text):
+        self._full = str(text)
+        self.updateGeometry()
+        self._elide()
+
+    def text(self):
+        return self._full
+
+    def sizeHint(self):
+        size = super().sizeHint()
+        size.setWidth(self.fontMetrics().horizontalAdvance(self._full) + 2)
+        return size
+
+    def minimumSizeHint(self):
+        size = super().minimumSizeHint()
+        size.setWidth(48)
+        return size
+
+    def _elide(self):
+        super().setText(elide_words(self.fontMetrics(), self._full, max(48, self.width() - 2)))
+
+    def resizeEvent(self, event):
+        self._elide()
+        super().resizeEvent(event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (event.FontChange, event.StyleChange):
+            self._elide()
 
 
 class PickerButton(QPushButton):
@@ -65,9 +118,9 @@ class PickerButton(QPushButton):
         texts = QVBoxLayout()
         texts.setContentsMargins(0, 0, 0, 0)
         texts.setSpacing(0)
-        self.title = QLabel()
+        self.title = WordElidedLabel()
         self.title.setProperty("picker_part", "title")
-        self.subtitle = QLabel()
+        self.subtitle = WordElidedLabel()
         self.subtitle.setProperty("picker_part", "subtitle")
         for label in (self.title, self.subtitle):
             label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -76,13 +129,20 @@ class PickerButton(QPushButton):
         self._chevron = MaterialIconLabel("expand_more", 18, color="role:text_muted")
         layout.addWidget(self._chevron)
 
+    def sizeHint(self):
+        return self.layout().sizeHint()  # QPushButton would ignore the inner layout and stay at the minimum width
+
+    def minimumSizeHint(self):
+        return self.layout().minimumSize()
+
     def set_texts(self, title, subtitle=""):
         self.title.setText(title)
         self.subtitle.setText(subtitle)
-        self.subtitle.setVisible(bool(subtitle))
+        self.subtitle.setVisible(bool(subtitle) and not getattr(self, "_compact", False))
         self.setToolTip(joined("\n", [title, subtitle]) if subtitle else title)
 
     def set_compact(self, compact):
+        self._compact = bool(compact)
         self.subtitle.setVisible(not compact and bool(self.subtitle.text()))
 
 
@@ -128,7 +188,8 @@ class _NavDelegate(QStyledItemDelegate):
                                                  QIcon.Selected if selected else QIcon.Normal)
             painter.setFont(font)
             painter.setPen(ink)
-            painter.drawText(QRect(rect.left(), rect.top() + 34, rect.width(), 14), Qt.AlignHCenter | Qt.AlignTop, index.data(Qt.DisplayRole))
+            label = elide_words(painter.fontMetrics(), index.data(Qt.DisplayRole), rect.width() - 4)  # the full name is in the tooltip
+            painter.drawText(QRect(rect.left(), rect.top() + 34, rect.width(), 14), Qt.AlignHCenter | Qt.AlignTop, label)
         else:
             body = rect.adjusted(0, 0, 0, 0)
             if selected or hovered:

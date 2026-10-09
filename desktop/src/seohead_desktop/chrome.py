@@ -16,10 +16,35 @@ from PyQt5.QtWidgets import (
 )
 
 from . import theming
-from .i18n import tr
+from .i18n import tr, trf
 from .ui.icons import material_icon as icon
 from .ui.presentation import StateBadge
 from .ui.shell import PickerButton
+
+
+def scan_texts(combo, index):
+    """(title, subtitle) of one saved-scan choice: «Скан №3 · r-1a2b» and «09.10.2026 12:34 · 1 314 URL · частичный».
+
+    The number is the position among the loaded scans by creation time (the oldest is №1); r-… is the short run id.
+    """
+    row = combo.itemData(index) if index >= 0 else None
+    if not isinstance(row, dict):
+        return tr(combo.itemText(index)) if index >= 0 else "", ""
+    rows = [(i, combo.itemData(i)) for i in range(combo.count()) if isinstance(combo.itemData(i), dict)]
+    order = sorted(rows, key=lambda pair: (str(pair[1].get("created_at") or ""), -pair[0]))
+    ordinal = next((n for n, (i, _r) in enumerate(order, 1) if i == index), 1)
+    run_id = str(row.get("uuid") or "")[:4]
+    title = trf("Скан №{n} · r-{id}", n=ordinal, id=run_id) if run_id else trf("Скан №{n}", n=ordinal)
+    from .screens.scan_common import number, parse_time
+
+    stamp = parse_time(row.get("finished_at") or row.get("created_at"))
+    parts = [stamp.astimezone().strftime("%d.%m.%Y %H:%M")] if stamp else []
+    done = ((row.get("evidence") or {}).get("frontier") or {}).get("counts", {}).get("done")
+    if type(done) is int:
+        parts.append(f"{number(done)} URL")
+    if row.get("crawl_partial") is True:
+        parts.append(tr("частичный"))
+    return title, " · ".join(parts)
 
 
 class _HideWhenDisabled(QPushButton):
@@ -70,7 +95,7 @@ class ChromeMixin:
         self.scan_picker.currentIndexChanged.connect(self.select_scan_from_picker)
         self.project_button = PickerButton("workspaces", "Выбрать проект")
         self.project_button.setMinimumWidth(180)
-        self.project_button.setMaximumWidth(320)
+        self.project_button.setMaximumWidth(360)
         self.scan_button = PickerButton("manage_search", "Выбрать сохранённый запуск")
         self.scan_button.setMinimumWidth(250)
         self.scan_button.setMaximumWidth(340)
@@ -146,8 +171,11 @@ class ChromeMixin:
     def sync_picker(self, combo, button):
         """Mirror the hidden combo (current text, optional subtitle in the tooltip role, enabled) on its button."""
         index = combo.currentIndex()
-        title = tr(combo.itemText(index)) if index >= 0 else ""
-        subtitle = combo.itemData(index, Qt.ToolTipRole) if index >= 0 else ""
+        if combo is self.scan_picker:
+            title, subtitle = scan_texts(combo, index)
+        else:
+            title = tr(combo.itemText(index)) if index >= 0 else ""
+            subtitle = combo.itemData(index, Qt.ToolTipRole) if index >= 0 else ""
         button.set_texts(title, tr(subtitle) if isinstance(subtitle, str) else "")
         button.setEnabled(combo.isEnabled() and combo.count() > 0)
         if combo is self.scan_picker and hasattr(self, "scan_state_badge"):
@@ -156,7 +184,11 @@ class ChromeMixin:
     def show_picker_menu(self, combo, button):
         menu = QMenu(button)
         for index in range(combo.count()):
-            action = menu.addAction(combo.itemText(index))
+            if combo is self.scan_picker:
+                title, subtitle = scan_texts(combo, index)
+                action = menu.addAction(f"{title}  ·  {subtitle}" if subtitle else title)
+            else:
+                action = menu.addAction(combo.itemText(index))
             action.setCheckable(index != combo.count() - 1 or combo.itemData(index) != {"action": "open"})
             action.setChecked(index == combo.currentIndex())
             action.triggered.connect(lambda _checked, i=index: self._pick(combo, i))

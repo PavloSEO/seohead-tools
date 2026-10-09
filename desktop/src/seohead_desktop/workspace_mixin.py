@@ -20,13 +20,13 @@ from .common import (  # noqa: F401
 )
 from .ui.icons import material_icon as icon
 from .ui.presentation import (
-    state_text,
     theme_tokens,
 )
 from .ui.workspace import (
     LAYOUT_SCHEMA,
     LAYOUTS,
     PANEL_IDS,
+    VIEW_ALIASES,
     VIEW_IDS,
     ProjectMonitor,
     keep_on_screen,
@@ -135,7 +135,7 @@ class WorkspaceMixin:
             self.set_density(density)
         identifier = self.settings.value("workspace/layout", "url")
         self.current_layout = identifier if identifier in LAYOUTS else "url"
-        view = self.settings.value("workspace/view", "url")
+        view = VIEW_ALIASES.get(view := self.settings.value("workspace/view", "url"), view)
         if view in VIEW_IDS:
             self.navigation.setCurrentRow(VIEW_IDS.index(view))
         if self.monitor is not None:
@@ -159,10 +159,7 @@ class WorkspaceMixin:
             project_label=self.project_picker.currentText() if self.project_directory else "Новая вкладка",
             scan_uuid=self.selected_scan_uuid, view_id=VIEW_IDS[row] if 0 <= row < len(VIEW_IDS) else "work")
         label = self.project_picker.currentText() if self.project_directory else "Новая вкладка"
-        scan = next((item for item in self.scan_model.rows if item.get("uuid") == self.selected_scan_uuid), {})
-        title = label + (" · " + self.selected_scan_uuid[:8] if self.selected_scan_uuid else "")
-        if scan.get("lifecycle"):
-            title += " · " + state_text(scan["lifecycle"])
+        title = label  # the project name only: no scan id, no lifecycle
         self.workspace_tabs.update_title(self._active_workspace_id, title, icon("compare_arrows" if row == 9 else "search" if row == 10 else "folder_open"))
 
     def capture_workspace_context(self):
@@ -196,6 +193,7 @@ class WorkspaceMixin:
         if self._pending_note is not None:
             self.notice.show_error("Дождитесь подтверждения сохранения заметки перед сменой вкладки.", "inbox-submit")
             return None
+        view_id = VIEW_ALIASES.get(view_id, view_id)
         if view_id not in VIEW_IDS:
             raise ValueError("Неизвестный раздел рабочего пространства")
         values = {}
@@ -320,7 +318,7 @@ class WorkspaceMixin:
         self.project_picker.blockSignals(False)
         self.source_badge.setText("Загрузка проекта…" if context.project_root else "Новая вкладка · проект не открыт")
         self.refresh_button.setEnabled(False)
-        self.navigation.setCurrentRow(VIEW_IDS.index(context.view_id) if context.view_id in VIEW_IDS else 0)
+        self.navigation.setCurrentRow(VIEW_IDS.index(VIEW_ALIASES.get(context.view_id, context.view_id)) if VIEW_ALIASES.get(context.view_id, context.view_id) in VIEW_IDS else 0)
         self.leave_start() if context.project_root else self.show_start()
         if context.project_root:
             self.pages.setEnabled(False)
@@ -375,7 +373,7 @@ class WorkspaceMixin:
             index = combo.findData(state.get("search_" + name))
             if index >= 0:
                 combo.setCurrentIndex(index)
-        self.navigation.setCurrentRow(VIEW_IDS.index(restore["view_id"]) if restore["view_id"] in VIEW_IDS else 0)
+        self.navigation.setCurrentRow(VIEW_IDS.index(VIEW_ALIASES.get(restore["view_id"], restore["view_id"])) if VIEW_ALIASES.get(restore["view_id"], restore["view_id"]) in VIEW_IDS else 0)
         wanted = state.get("selected_url")
         table, proxy = (self.audit_workspace.panel("internal").table, self.audit_workspace.panel("internal").proxy) if self.navigation.currentRow() == 2 and self.audit_workspace.main.current_id == "internal" else (self.table, self.proxy)
         row = next((row for row in range(proxy.rowCount()) if proxy.index(row, 0).data() == wanted), None) if wanted else None

@@ -97,9 +97,11 @@ class ShellV2Tests(unittest.TestCase):
 
     def test_pickers_mirror_their_combo_boxes(self):
         self.window.scan_picker.clear()
-        self.window.scan_picker.addItem("Скан №2", {"uuid": "x"})
+        self.window.scan_picker.addItem("raw", {"uuid": "ab12cd34", "created_at": "2026-10-09T09:12:00Z", "finished_at": "2026-10-09T09:14:00Z", "crawl_partial": True})
         self.window.scan_picker.setEnabled(True)
-        self.assertEqual(self.window.scan_button.title.text(), "Скан №2")
+        self.assertEqual(self.window.scan_button.title.text(), "Скан №1 · r-ab12")
+        subtitle = self.window.scan_button.subtitle.text()
+        self.assertRegex(subtitle, r"^\d\d\.\d\d\.2026 \d\d:\d\d · частичный$")  # no seconds, no timezone, no truncation
         self.assertTrue(self.window.scan_button.isEnabled())
         self.window.scan_picker.setEnabled(False)
         self.window.show()
@@ -107,13 +109,41 @@ class ShellV2Tests(unittest.TestCase):
         self.assertFalse(self.window.scan_button.isEnabled())
 
     def test_picker_menu_choice_activates_the_combo(self):
-        self.window.scan_picker.addItem("Скан №3", {"uuid": "y"})
+        self.window.scan_picker.addItem("raw", {"uuid": "y123", "created_at": "2026-10-09T09:12:00Z"})
+        self.window.scan_picker.addItem("raw", {"uuid": "z456", "created_at": "2026-10-08T09:12:00Z"})
         self.window.scan_picker.setEnabled(True)
         seen = []
         self.window.scan_picker.activated.connect(seen.append)
         self.window._pick(self.window.scan_picker, 1)
         self.assertEqual(seen, [1])
-        self.assertEqual(self.window.scan_button.title.text(), "Скан №3")
+        self.assertEqual(self.window.scan_button.title.text(), "Скан №2 · r-y123")  # numbered by creation time, oldest first
+
+    def test_picker_title_elides_by_word_and_keeps_the_full_name_in_the_tooltip(self):
+        from seohead_desktop.ui.shell import elide_words
+
+        metrics = self.window.project_button.title.fontMetrics()
+        text = elide_words(metrics, "Мебельный магазин на Садовой", metrics.horizontalAdvance("Мебельный магазин") + 8)
+        self.assertEqual(text, "Мебельный…")
+        self.window.project_button.set_texts("Мебельный магазин на Садовой", "shop.example.test")
+        self.assertIn("Мебельный магазин на Садовой", self.window.project_button.toolTip())
+        self.assertEqual(self.window.project_button.title.text(), "Мебельный магазин на Садовой")
+
+    def test_core_status_is_never_not_found_while_the_core_answered(self):
+        self.window.core_executable = None
+        self.window.project_result = {"path": "/p"}
+        self.window.update_status_tail()
+        self.assertNotIn("не найдено", self.window.core_label.text())
+        self.window.project_result = None
+        self.window.core_executable = "/nowhere/seohead"
+        self.window.update_status_tail()
+        self.assertEqual(self.window.core_label.text(), "Ядро найдено")
+        self.window.core_executable = None
+        self.window.update_status_tail()
+        self.assertEqual(self.window.core_label.text(), "Ядро не найдено")
+        self.window.core_executable = os.path.join(os.path.dirname(__import__("sys").executable), "seohead")
+        self.window.project_result = {"path": "/p"}
+        self.window.update_status_tail()
+        self.assertRegex(self.window.core_label.text(), r"^Ядро (seohead \d+\.\d+|подключено)$")
 
     def test_profile_menu_contents_and_unavailable_actions(self):
         menu = self.window.build_profile_menu()

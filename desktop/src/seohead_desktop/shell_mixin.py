@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QPoint
+import os
+import sys
+from datetime import datetime, timezone
+from importlib import metadata
+
+from PyQt5.QtCore import QPoint, QTimer
 from PyQt5.QtGui import QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QAction,
@@ -18,13 +23,14 @@ from PyQt5.QtWidgets import (
 )
 
 from . import i18n, shortcuts, theming
+from .screens.scan_common import parse_time
 from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
 from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
 
-tr, trf = i18n.tr, i18n.trf
+tr, trf, joined = i18n.tr, i18n.trf, i18n.joined
 
 UNAVAILABLE = "Недоступно в этой сборке"
 
@@ -38,19 +44,83 @@ class ShellMixin:
         self.source_badge.setObjectName("sourceBadge")
         self.source_badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.source_badge.setMinimumWidth(240)
+        self.project_label = QLabel()
+        self.scans_label = QLabel()
         self.mode_label = QLabel()
         self.core_label = QLabel()
-        for widget in (self.source_badge, self.mode_label, self.core_label):
+        self.observed_label = QLabel()
+        for widget in (self.project_label, self.scans_label, self.mode_label, self.core_label, self.observed_label):
+            widget.setContentsMargins(8, 0, 8, 0)
+        for widget in (self.source_badge, self.project_label, self.scans_label, self.mode_label, self.core_label, self.observed_label):
             bar.addPermanentWidget(widget)
-        self.core_label.setText(tr("Ядро найдено" if self.core_executable else "Ядро не найдено"))
-        self.core_label.setToolTip(self.core_executable or tr("Команда seohead не найдена в PATH"))
+        self.data_changed.connect(lambda _kind: self.update_status_tail())
+        self._status_timer = QTimer(self)  # keeps «N с назад» honest between observations
+        self._status_timer.setInterval(5000)
+        self._status_timer.timeout.connect(self.update_status_tail)
+        self._status_timer.start()
         self.update_display_widgets()
+
+    @staticmethod
+    def installed_core_version(core_executable):
+        """«3.4» when the core executable belongs to this application's environment and its package version is known."""
+        if not core_executable or os.path.dirname(core_executable) != os.path.dirname(sys.executable):
+            return None
+        try:
+            parts = metadata.version("seohead-seotools").split(".")
+        except metadata.PackageNotFoundError:
+            return None
+        return ".".join(parts[:2]) if len(parts) >= 2 else None
+
+    def core_state(self):
+        """(text, tooltip): the real state of the core. «не найдено» only when nothing answered and no executable is known."""
+        answered = bool(self.mcp_ready or self.project_result is not None)
+        if not self.core_executable and not answered:
+            return tr("Ядро не найдено"), tr("Команда seohead не найдена в PATH")
+        version = self.installed_core_version(self.core_executable)
+        path = self.core_executable or ""
+        if version:
+            return trf("Ядро seohead {version}", version=version), path
+        return tr("Ядро подключено" if answered else "Ядро найдено"), joined("\n", [path, tr("Версию ядро пока не сообщает")]) if path else tr("Версию ядро пока не сообщает")
+
+    def update_status_tail(self):
+        """Right side (SHELL-CANON §6): project · active scans · display · core · observation age; only what the data supports."""
+        try:
+            narrow = bool(self._narrow_chrome)
+            opened = bool(self.project_directory)
+            name = self.project_picker.currentText() if opened else ""
+            self.project_label.setText(trf("Проект «{name}»", name=name) if opened and name else "")
+            self.project_label.setVisible(bool(opened and name) and not narrow)
+            self.scans_label.setVisible(opened)
+            if opened:
+                from .screens.scan_common import build_rows
+
+                self.scans_label.setText(trf("Активных сканов: {n}", n=sum(1 for row in build_rows(self) if row.active)))
+            text, tip = self.core_state()
+            key = (self.core_executable, bool(self.mcp_ready or self.project_result is not None))
+            if key != getattr(self, "_core_key", None) or "seohead" in text:  # plain texts follow the language by retranslate
+                self._core_key = key
+                self.core_label.setText(text)
+                self.core_label.setToolTip(tip)
+            self.observed_label.setVisible(opened and not narrow)
+            if opened:
+                stamp = parse_time(self.observed_at) if isinstance(self.observed_at, str) else None
+                if stamp is None:
+                    self.observed_label.setText(tr("Наблюдение: нет данных"))
+                    self.observed_label.setToolTip(tr("Недоступно в этой версии ядра"))
+                else:
+                    seconds = max(0, int((datetime.now(timezone.utc) - stamp).total_seconds()))
+                    ago = trf("{n} с", n=seconds) if seconds < 60 else trf("{n} мин", n=seconds // 60) if seconds < 3600 else trf("{n} ч", n=seconds // 3600)
+                    self.observed_label.setText(trf("Наблюдение: {ago} назад", ago=ago))
+                    self.observed_label.setToolTip("")
+        except RuntimeError:  # the window was deleted while a timer fired
+            pass
 
     def update_display_widgets(self):
         simple = self.display == "simple"
         self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
+        self.update_status_tail()
 
     def set_display(self, mode, remember=True):
         if mode not in ("agent", "simple"):

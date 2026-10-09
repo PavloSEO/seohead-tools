@@ -92,6 +92,7 @@ class ViewStateMixin:
                 picker.set_compact(narrow)
                 picker.setMinimumWidth(120 if narrow else 250 if picker is self.scan_button else 180)
             self.source_badge.setVisible(not narrow)
+            self.update_status_tail()
             self.cancel_button.setText("" if narrow else "Остановить " + self.selected_managed_run_id[:8] if self.selected_managed_run_id else "Отменить чтение")
         compact = self.centralWidget().width() < theme_tokens()["layout"]["compact_breakpoint"] and self.prefs.get("view.rail_when_narrow")
         if compact != self._compact:

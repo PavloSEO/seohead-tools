@@ -134,7 +134,7 @@ class ProjectMixin:
         self.stop_run_button.setEnabled(False)
         label = site.get("label") or site.get("host") or "Подключённый проект"
         self.remember_project(label, self.project_directory)
-        self.fill_project_picker(label)
+        self.fill_project_picker(label, site.get("host"))
         self.setWindowTitle(f"SEOHEAD · {label}")
         if self.monitor is not None:
             self.monitor.sync_context()
@@ -406,10 +406,12 @@ class ProjectMixin:
             self.settings.setValue("recent_projects", self.recent_projects)
         self.data_changed.emit("recents")
 
-    def fill_project_picker(self, label):
+    def fill_project_picker(self, label, host=None):
         self.project_picker.blockSignals(True)
         self.project_picker.clear()
         self.project_picker.addItem(label, {"path": self.project_directory})
+        if isinstance(host, str) and host and host != label:
+            self.project_picker.setItemData(0, host, Qt.ToolTipRole)  # the picker shows it as the second line
         for item in self.recent_projects:
             if item["path"] != self.project_directory:
                 self.project_picker.addItem(item["label"], dict(item))
