@@ -231,6 +231,49 @@ def decode_entity(raw: bytes, content_type: str) -> tuple[str, dict[str, str]]:
 
 def read_document(con: sqlite3.Connection, document_id: int, *, max_decoded_bytes: int) -> str:
     """Read one stored document only when its state and response lineage are complete."""
+    text, _decoder = _read_document(con, document_id, max_decoded_bytes=max_decoded_bytes)
+    return text
+
+
+MAX_WINDOW_CHARS = 64 * 1024
+
+
+def read_document_window(
+    con: sqlite3.Connection,
+    document_id: int,
+    *,
+    offset: int = 0,
+    length: int = 4096,
+    max_decoded_bytes: int,
+) -> dict[str, object]:
+    """Return a bounded character window of one verified document.
+
+    Offsets and lengths count decoded characters, so a multibyte sequence is never split.
+    ``sha256`` hashes the whole decoded text as UTF-8, not the stored bytes.
+    """
+    if type(offset) is not int or offset < 0:
+        raise ScanError("window offset must be a nonnegative integer")
+    if type(length) is not int or not 1 <= length <= MAX_WINDOW_CHARS:
+        raise ScanError(f"window length must be an integer from 1 to {MAX_WINDOW_CHARS}")
+    text, decoder = _read_document(con, document_id, max_decoded_bytes=max_decoded_bytes)
+    window = text[offset : offset + length]
+    return {
+        "document_id": document_id,
+        "offset": offset,
+        "length": len(window),
+        "total_chars": len(text),
+        "truncated": offset + len(window) < len(text),
+        "lines": len(text.splitlines()),
+        "encoding": decoder["decoder_charset"],
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "text": window,
+    }
+
+
+def _read_document(
+    con: sqlite3.Connection, document_id: int, *, max_decoded_bytes: int
+) -> tuple[str, dict[str, str]]:
+    """Read one stored document and return its text with the verified decoder metadata."""
     if type(document_id) is not int or document_id < 1:
         raise ScanError("document ID must be a positive integer")
     cursor = con.execute(
@@ -294,7 +337,7 @@ def read_document(con: sqlite3.Connection, document_id: int, *, max_decoded_byte
         raise ScanError("document fidelity is unavailable or unsupported")
     if any(document[key] != value for key, value in decoder.items()):
         raise ScanError("document decoder metadata disagrees with stored bytes")
-    return text
+    return text, decoder
 
 
 def read_document_navigation(con, document_id: int) -> dict[str, object]:
