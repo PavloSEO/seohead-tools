@@ -232,9 +232,6 @@ class ScanSettingsDialog(QDialog):
         self.nav[page_id].setChecked(True)
         self.refresh()
 
-    def current_page(self):
-        return next(page_id for page_id, button in self.nav.items() if button.isChecked())
-
     def _apply(self):
         self.original.adopt(self.draft)
         self.accept()

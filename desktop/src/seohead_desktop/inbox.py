@@ -157,5 +157,7 @@ class InboxMixin:
                 edit.clear()
         self.stash_note_drafts()
         self.update_note_controls()
+        if pending["source"] == "project" and not panel.note.toPlainText():
+            panel.submission_succeeded()  # tab-contracts: only after the core confirmed storage
         self.statusBar().showMessage("Заметка сохранена в выбранном проекте; остальные черновики сохранены")
         self.refresh_project()

@@ -650,6 +650,3 @@ class RunSummary(QFrame):
             bar.set_parts([(value, data[role]), (max(0, total - value), theming.roles()["disabled_bg"])] if type(value) is int and total else [])
         self.time_note.setText(tr("Медиана и p95 ядро не считает — числа не показываем.") if measured else tr("Подсчёт по корзинам идёт или недоступен."))
 
-
-def scan_file_name(scan):
-    return os.path.basename((scan or {}).get("path") or "")

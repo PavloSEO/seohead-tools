@@ -108,6 +108,18 @@ class UXSafetyTests(unittest.TestCase):
         self.window.note_saved({}, pending)
         self.assertEqual(self.window.note_input.text(), "newly edited text")
 
+    def test_project_panel_is_told_only_after_the_core_stored_the_note(self):
+        self.open_fake_project("A")
+        self.window.load_inbox({"revision": 1, "entries": []})
+        panel = self.window.project_panels.panel("inbox")
+        panel.note.setPlainText("sent from the panel")
+        pending = {"key": self.window.note_project_key(), "source": "project", "text": "sent from the panel", "kind": "note"}
+        self.window._pending_note = pending
+        self.assertEqual(panel.note.toPlainText(), "sent from the panel")  # nothing cleared while the write is pending
+        self.window.note_saved({}, pending)
+        self.assertEqual(panel.note.toPlainText(), "")
+        self.assertEqual(panel.note_status.text(), "Заметка сохранена ядром")
+
     def test_selected_observed_owned_run_is_the_exact_stop_target(self):
         self.window.project_directory = "/owned-project"
         self.window.current_project_uuid = "p"
