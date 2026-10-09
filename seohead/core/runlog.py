@@ -38,6 +38,13 @@ from typing import Any
 
 DEFAULT_PATH = "~/.config/seohead/runs.jsonl"
 
+# Size ceiling for the live journal. When an append would cross it, the journal is moved to
+# ``<name>.1`` (replacing the previous backup), so the on-disk total stays at most about twice
+# this value. Override with ``SEOHEAD_RUN_LOG_MAX_BYTES``; a non-positive or malformed value
+# falls back to the default.
+MAX_BYTES_ENV = "SEOHEAD_RUN_LOG_MAX_BYTES"
+DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+
 # Argument names whose values must never reach the journal. Matched as
 # substrings, lowercased, because provider clients spell them differently.
 SECRET_HINTS = ("token", "key", "secret", "password", "passwd", "auth", "credential")
@@ -152,6 +159,20 @@ def fingerprint(tool: str, arguments: dict[str, Any] | None) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def max_bytes() -> int:
+    """The live journal's size ceiling in bytes, read fresh like ``reuse_policy``."""
+    try:
+        value = int(os.environ.get(MAX_BYTES_ENV, DEFAULT_MAX_BYTES))
+    except ValueError:
+        return DEFAULT_MAX_BYTES
+    return value if value > 0 else DEFAULT_MAX_BYTES
+
+
+def backup_path(path: Path) -> Path:
+    """Where the previous generation of the journal is kept after rotation."""
+    return path.with_name(path.name + ".1")
+
+
 def record(entry: dict[str, Any]) -> dict[str, Any]:
     """Append one entry. Never raises: journaling must not break a run."""
     path = log_path()
@@ -159,8 +180,11 @@ def record(entry: dict[str, Any]) -> dict[str, Any]:
         return entry
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(entry, ensure_ascii=False, default=str) + "\n"
+        if path.exists() and path.stat().st_size + len(line.encode("utf-8")) > max_bytes():
+            os.replace(path, backup_path(path))
         with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+            handle.write(line)
     except (OSError, ValueError):
         # An unwritable journal is a degraded observation, not a failed audit.
         # ValueError as well as OSError: an invalid path (a null byte from a bad
@@ -344,12 +368,16 @@ def journaled(tool: str, function):
 def read_entries(limit: int = 100) -> list[dict[str, Any]]:
     """Most recent entries first. A missing journal is empty, not an error."""
     path = log_path()
-    if path is None or not path.exists():
+    if path is None:
         return []
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, ValueError):
-        return []
+    # The rotated generation is older, so it goes first; reuse lookups must still see it.
+    lines: list[str] = []
+    for source in (backup_path(path), path):
+        try:
+            if source.exists():
+                lines.extend(source.read_text(encoding="utf-8").splitlines())
+        except (OSError, ValueError):
+            continue
     entries: list[dict[str, Any]] = []
     for line in reversed(lines):
         if not line.strip():

@@ -1,0 +1,1 @@
+- The run journal (`runs.jsonl`) now rotates once it passes a size ceiling (5 MiB by default, `SEOHEAD_RUN_LOG_MAX_BYTES` overrides it): the previous generation is kept as `runs.jsonl.1`, and reads cover both files, so reuse lookups still see recent calls.
