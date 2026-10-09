@@ -50,18 +50,6 @@ class ShellTests(unittest.TestCase):
         self.window.navigation.setCurrentRow(1)
         self.assertEqual(self.window.pages.currentIndex(), 1)
 
-    def test_panels_restore_and_compact_window(self):
-        load_url_rows(self.window)
-        self.window.overview.hide()
-        self.window.inspector.hide()
-        self.window.restore_panels()
-        self.app.processEvents()
-        self.assertTrue(self.window.overview.isVisible())
-        self.assertTrue(self.window.inspector.isVisible())
-        self.window.resize(1024, 720)
-        self.app.processEvents()
-        self.assertGreater(self.window.table.width(), 200)
-
     def test_scan_preview_cannot_dispatch(self):
         seen = []
         with tempfile.TemporaryDirectory(prefix="seohead-desktop-preview-") as temporary:

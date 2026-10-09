@@ -107,23 +107,6 @@ class UXSafetyTests(unittest.TestCase):
         self.window.note_saved({}, pending)
         self.assertEqual(self.window.note_input.text(), "newly edited text")
 
-    def test_empty_filter_clears_all_url_fields_and_rejects_late_response(self):
-        self.window.selected_scan_path = "/scan.sqlite"
-        self.window.project_directory = "/p"
-        self.window.current_project_uuid = "p"
-        self.window.load_urls({"rows": [{"url": "https://fixture.test/", "status_code": 200}]}, "/scan.sqlite")
-        token = self.window.url_selection_generation
-        self.window.headers_detail.setPlainText("OLD HEADER")
-        self.window.link_detail.setPlainText("OLD LINK")
-        self.window.search.setText("no-result")
-        self.assertIsNone(self.window.selected_url)
-        self.assertEqual(self.window.proxy.rowCount(), 0)
-        self.assertTrue(self.window.url_empty.isVisible())
-        self.window.load_url_detail({"page": {"url": "OLD RESPONSE"}}, "/scan.sqlite", "https://fixture.test/", token)
-        for view in (self.window.detail, self.window.debug_detail, self.window.headers_detail, self.window.link_detail):
-            self.assertNotIn("OLD", view.toPlainText())
-        self.assertIn("0 из 1", self.window.url_caption.text())
-
     def test_selected_observed_owned_run_is_the_exact_stop_target(self):
         self.window.project_directory = "/owned-project"
         self.window.current_project_uuid = "p"

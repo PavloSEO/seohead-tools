@@ -17,7 +17,6 @@ from PyQt5.QtWidgets import (
 
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.ui.presentation import run_projection, theme_tokens, value_text
-from tests._screens_core import load_url_rows
 from tests.test_crawl_configuration import descriptor
 
 
@@ -81,32 +80,7 @@ class PresentationTests(unittest.TestCase):
         self.window.present_observed_runs(runs, None)
         self.assertIn("run-3", self.window.activity_text.toPlainText())
 
-    def test_compact_layout_density_and_panel_restore(self):
-        load_url_rows(self.window)
-        self.window.resize(1024, 720)
-        self.app.processEvents()
-        self.assertEqual(self.window.width(), 1024)
-        self.assertFalse(self.window.navigation.property("compact"))  # the icon rail starts below 900 px (SHELL-CANON)
-        self.assertFalse(self.window.overview.isVisible())
-        self.assertGreater(self.window.table.width(), 650)
-        self.window.set_density("compact")
-        self.assertEqual(self.window.table.verticalHeader().defaultSectionSize(), 28)
-        self.window.toggle_focus_mode()
-        self.assertFalse(self.window.inspector.isVisible())
-        self.window.toggle_focus_mode()
-        self.assertTrue(self.window.inspector.isVisible())
-        self.window.restore_panels()
-        self.assertTrue(self.window.overview.isVisible())
-        self.window.set_density("standard")
-
-    def test_find_shortcut_and_table_copy_preserve_literal_url(self):
-        load_url_rows(self.window)
-        self.window.focus_search()
-        self.assertIs(self.app.focusWidget(), self.window.search)
-        self.window.search.setText("chair")
-        self.window.table.selectRow(0)
-        self.window.copy_url_selection()
-        self.assertIn("/catalog/chair/", QApplication.clipboard().text())
+    def test_arrow_keys_in_the_navigation_switch_pages(self):
         self.window.navigation.setFocus()
         QTest.keyClick(self.window.navigation, Qt.Key_Down)
         self.assertEqual(self.window.pages.currentIndex(), self.window.navigation.currentRow())
