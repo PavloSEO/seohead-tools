@@ -4225,6 +4225,8 @@ def scan_url_query(
     limit: int = 200,
     count_timeout_seconds: float = 1.0,
     max_bytes: int = 1_048_576,
+    issue_check: str | list[str] | None = None,
+    issue_severity: str | None = None,
 ) -> dict[str, Any]:
     """Filter, sort and paginate the whole page table of one saved scan, read-only."""
     from seohead.storage.url_query import scan_url_query as core
@@ -4238,6 +4240,8 @@ def scan_url_query(
         offset=offset,
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
+        issue_check=issue_check,
+        issue_severity=issue_severity,
         max_bytes=max_bytes,
     )
 

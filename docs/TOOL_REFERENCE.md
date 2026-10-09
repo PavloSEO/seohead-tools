@@ -2791,6 +2791,8 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `limit` | `int` | `200` |
 | `count_timeout_seconds` | `float` | `1.0` |
 | `max_bytes` | `int` | `1048576` |
+| `issue_check` | `str | list[str] | None` | `None` |
+| `issue_severity` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -2800,6 +2802,9 @@ Read-only. Filters are {column, op, value} objects combined with AND; sorting by
 non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
 sort_not_indexed). Returns total, filtered_total (null with state capped when the count
 exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+issue_check (1..50 check ids) and issue_severity (critical|warning|notice) filter by
+audit issue; until the per-issue index exists they return state unavailable with
+reason_code issue_index_missing.
 
 ### `scan-link-inspect`
 
