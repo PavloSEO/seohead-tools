@@ -38,6 +38,7 @@ from .common import (  # noqa: F401
     PAGE_LIMIT,
     ROOT,
     configure_table,
+    emits,
     plain,
     scan_request_key,
 )
@@ -48,6 +49,7 @@ from .pages import PagesMixin
 from .project_io import ProjectMixin
 from .scan_control import ScanControlMixin
 from .scans_urls import ScansUrlsMixin
+from .screens import install_screens
 from .settings_store import AppSettings
 from .shell_mixin import ShellMixin
 from .ui.content_search_panel import ContentSearchPanel
@@ -88,6 +90,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
     """Desktop presentation adapter. All scanning remains owned by core CLI."""
 
     crawl_descriptor_changed = pyqtSignal()
+    data_changed = pyqtSignal(str)  # "project" | "scans" | "scan_status" | "tasks" | "inbox" | "observer" | "progress"
 
     def __init__(self, *, persistent=True, core_executable=None):
         super().__init__()
@@ -229,6 +232,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.content_search_panel.openProjectRequested.connect(self.choose_project)
         self.update_content_search_context()
         self.content_search.changed.connect(self.load_content_search)
+        install_screens(self)
         self.navigation.currentRowChanged.connect(self.navigate)
         self.navigation.setCurrentRow(1)
         self.build_status_bar()
@@ -301,6 +305,15 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
             QTimer.singleShot(0, self.restore_workspace_layout)
         QTimer.singleShot(0, lambda: keep_on_screen(self))
         self.apply_language()
+
+
+# Loaders keep updating the legacy models; screens subscribe to the change notification.
+for _name, _kind in {
+    "project_loaded": "project", "clear_workspace_presentation": "project", "load_scans": "scans",
+    "load_scan_status": "scan_status", "load_tasks": "tasks", "load_inbox": "inbox", "load_unread": "inbox",
+    "load_observer": "observer", "load_activity": "observer", "present_observed_runs": "observer", "load_progress": "progress",
+}.items():
+    setattr(MainWindow, _name, emits(_kind)(getattr(MainWindow, _name)))
 
 
 def main():

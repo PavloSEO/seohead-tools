@@ -39,3 +39,19 @@ def configure_table(table):
     table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
     table.horizontalHeader().setStretchLastSection(True)
+
+
+def emits(kind):
+    """Decorator for MainWindow loaders: after the legacy handler ran, tell the screens that ``kind`` of data changed."""
+
+    def wrap(method):
+        def run(self, *args, **kwargs):
+            result = method(self, *args, **kwargs)
+            self.data_changed.emit(kind)
+            return result
+
+        run.__name__ = method.__name__
+        run.__doc__ = method.__doc__
+        return run
+
+    return wrap
