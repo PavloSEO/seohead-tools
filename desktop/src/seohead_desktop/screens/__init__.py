@@ -9,7 +9,7 @@ from .base import SLOTS
 # slot -> "module:Class"; modules appear as screens are rebuilt from the canvas
 SCREENS = {"scans": "scans:ScansScreen", "journal": "journal:JournalScreen", "work": "work:WorkScreen", "tasks": "simple:SimpleScreen",
            "inbox": "inbox:InboxScreen", "content_search": "search:SearchScreen",
-           "issues": "issues:IssuesScreen"}
+           "issues": "issues:IssuesScreen", "url": "url:UrlScreen"}
 # name -> "module:Class"; screens outside the navigation slots (start, first-run wizard), appended after the pages
 EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScreen"}
 # top-bar widgets that a screen with ``chrome_free = True`` hides (SHELL-CANON §7)

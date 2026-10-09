@@ -21,12 +21,12 @@
 | `view.theme` | работает | — | — |
 | `view.language` | работает | — | — |
 | `view.density` | работает | — | — |
-| `view.details_position` | только сохраняется | 5 | карточка URL: детали снизу или справа |
+| `view.details_position` | работает | — | — |
 | `view.zoom` | только сохраняется | 5 | масштаб при перестройке экранов |
 | `view.reduce_motion` | работает | — | — |
-| `view.mono_urls` | только сохраняется | 5 | таблица URL |
+| `view.mono_urls` | работает | — | — |
 | `view.rail_when_narrow` | работает | — | — |
-| `view.status_badges` | только сохраняется | 5 | таблица URL: плашки статусов |
+| `view.status_badges` | работает | — | — |
 | `scan.rate` | работает | — | — |
 | `scan.url_limit` | работает | — | — |
 | `scan.depth` | работает | — | — |
