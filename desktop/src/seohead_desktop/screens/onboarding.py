@@ -416,7 +416,7 @@ class OnboardingScreen(Screen):
         texts.addWidget(title)
         texts.addWidget(sub)
         line.addLayout(texts, 1)
-        line.addWidget(waiting_badge(MCP_ISSUE))
+        line.addWidget(waiting_badge(MCP_ISSUE), 0, Qt.AlignVCenter)
         self.mcp_switch = Switch(tr("MCP-сервер"), False)
         self.mcp_switch.setEnabled(False)
         self.mcp_switch.setToolTip(tr(UNAVAILABLE))
