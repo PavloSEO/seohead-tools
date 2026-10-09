@@ -772,6 +772,14 @@
    "h": 1400,
    "title": "Источники · способы подключения",
    "is_interactive": true
+  },
+  "BrandBook.dc.html": {
+   "x": 4540,
+   "y": 15400,
+   "w": 1440,
+   "h": 1680,
+   "title": "Брендбук · знак, размеры, применение",
+   "is_interactive": false
   }
  },
  "createdOnFiles": {
@@ -966,7 +974,8 @@
   "GraphLayouts.dc.html",
   "GraphFilters.dc.html",
   "GraphDark.dc.html",
-  "GraphQt.dc.html"
+  "GraphQt.dc.html",
+  "BrandBook.dc.html"
  ],
  "pages": [],
  "title": "SEOHEAD Desktop"
