@@ -886,8 +886,6 @@
  "События запусков": "Run events",
  "событие": "event",
  "этап не указан": "stage not given",
- "Показаны последние {n} событий запусков из загруженного наблюдения: постраничное чтение журнала": "Showing the last {n} run events of the loaded observation: paged reading of the log",
- "Журнал проекта читается только как события запусков: постраничное чтение журнала": "The project log is read only as run events: paged reading of the log",
  "Откройте проект, чтобы увидеть события его запусков.": "Open a project to see the events of its runs.",
  "События запусков появятся после чтения.": "Run events will appear after reading.",
  "Событий запусков нет": "No run events",
@@ -1567,5 +1565,10 @@
  "Скан №{n} · {id}": "Scan #{n} · {id}",
  "№{n} · {id}": "#{n} · {id}",
  "№{n}": "#{n}",
- "Меньше 900 px — только иконки": "Below 900 px only icons are shown"
+ "Меньше 900 px — только иконки": "Below 900 px only icons are shown",
+ "Показаны последние {n} событий": "Showing the last {n} events",
+ "Журнал проекта читается только как события запусков": "The project log is read only as run events",
+ "встроенный краулер": "built-in crawler",
+ "карта сайта": "sitemap",
+ "Одинаковые события подряд: нажмите, чтобы развернуть": "Identical events in a row: click to expand"
 }

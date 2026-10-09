@@ -32,7 +32,7 @@ from .base import Screen
 from .scan_common import CODES, EVENT_ICONS, JOURNAL_ISSUE, PHASES, parse_time
 
 LIMIT = 200
-KIND_NAMES = {"native": "Native", "sitemap": "Sitemap", "screaming_frog": "Screaming Frog"}
+KIND_NAMES = {"native": "встроенный краулер", "sitemap": "карта сайта", "screaming_frog": "Screaming Frog"}
 ICON_ROLES = {"started": "success", "failed": "error", "finished": "success"}
 FILTERS = (("all", "apps", "Все"), ("scan", "manage_search", "Сканы"), ("agent", "smart_toy", "Агент"), ("me", "person", "Вы"), ("app", "desktop_windows", "Приложение"))
 AVAILABLE_SOURCES = {"all", "scan"}
@@ -50,7 +50,7 @@ class Event:
     @property
     def source(self):
         name = KIND_NAMES.get(self.kind)
-        return trf("Скан · {kind}", kind=name) if name else tr("Скан")
+        return trf("Скан · {kind}", kind=tr(name)) if name else tr("Скан")
 
     @property
     def text(self):
@@ -76,16 +76,65 @@ def collect_events(runs):
     return events[:LIMIT], len(events)
 
 
+def group_events(events):
+    """Fold consecutive identical events of one run («Обновление счётчиков · сбор страниц» ×42) into one group."""
+    groups = []
+    for event in events:
+        if groups and groups[-1][0].run_id == event.run_id and groups[-1][0].source == event.source and groups[-1][0].text == event.text:
+            groups[-1].append(event)
+        else:
+            groups.append([event])
+    return groups
+
+
 class EventModel(QAbstractTableModel):
+    """One row per event; a folded group shows a single head row «текст ×N, от–до» that a click unfolds."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.rows = []
+        self.rows = []  # (event, group_index, role) with role single|head|child
+        self.groups = []
+        self.open = set()
         self.today = scan_common.now().astimezone().date()
 
-    def set_rows(self, rows, today):
+    def set_rows(self, events, today):
         self.beginResetModel()
-        self.rows, self.today = list(rows), today
+        self.today = today
+        self.groups = group_events(events)
+        self.rows = []
+        for index, group in enumerate(self.groups):
+            if len(group) == 1:
+                self.rows.append((group[0], index, "single"))
+                continue
+            self.rows.append((group[0], index, "head"))
+            if self._key(group) in self.open:
+                self.rows.extend((event, index, "child") for event in group)
         self.endResetModel()
+
+    @staticmethod
+    def _key(group):
+        return (group[0].run_id, group[0].text, group[-1].at)
+
+    def toggle(self, row):
+        _event, index, role = self.rows[row]
+        if role == "child":
+            return
+        if role == "head":
+            self.open ^= {self._key(self.groups[index])}
+            self.set_rows([e for g in self.groups for e in g], self.today)
+
+    def span(self, group):
+        times = [event.at for event in group if event.at]
+        if not times:
+            return ""
+        first, last = min(times).astimezone(), max(times).astimezone()
+        return f"{first.strftime('%H:%M:%S')}–{last.strftime('%H:%M:%S')}"
+
+    def head_text(self, index):
+        group = self.groups[index]
+        mark = "▾" if self._key(group) in self.open else "▸"
+        span = self.span(group)
+        return f"{mark} {group[0].text} ×{len(group)}" + (f", {span}" if span else "")
 
     def rowCount(self, parent=None):
         return 0 if parent is not None and parent.isValid() else len(self.rows)
@@ -99,13 +148,17 @@ class EventModel(QAbstractTableModel):
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
-        event, column = self.rows[index.row()], index.column()
+        event, group, kind = self.rows[index.row()]
+        column = index.column()
         if role == Qt.DisplayRole:
-            return (event.when(self.today) or tr("Нет данных"), event.source, event.text, short_run_id(event.run_id) or tr("Нет данных"))[column]
+            text = self.head_text(group) if kind == "head" else ("    " + event.text if kind == "child" else event.text)
+            return (event.when(self.today) or tr("Нет данных"), event.source, text, short_run_id(event.run_id) or tr("Нет данных"))[column]
         if role == Qt.DecorationRole and column == 1:
             colour = theming.roles()[ICON_ROLES.get(event.code, "text_2")]
             return material_icon(EVENT_ICONS.get(event.code, "info"), colour)
         if role == Qt.ToolTipRole:
+            if kind == "head" and column == 2:
+                return tr("Одинаковые события подряд: нажмите, чтобы развернуть")
             return event.run_id if column == 3 else event.text if column == 2 else None
         if role == Qt.ForegroundRole and column in (0, 3):
             return QColor(theming.roles()["text_3"])
@@ -173,8 +226,9 @@ class JournalScreen(Screen):
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setStretchLastSection(False)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
-        for column, width in ((0, 130), (1, 180), (3, 110)):
+        for column, width in ((0, 110), (1, 236), (3, 110)):
             self.table.setColumnWidth(column, width)
+        self.table.clicked.connect(lambda index: self.model.toggle(index.row()))
         self.stack.addWidget(self.table)
         self.state = None
         foot = QFrame()
@@ -252,6 +306,6 @@ class JournalScreen(Screen):
         self.model.set_rows(shown, today)
         loaded = len(self.events)
         self.foot_text.setText(
-            trf("Показаны последние {n} событий запусков из загруженного наблюдения: постраничное чтение журнала", n=loaded) if loaded
-            else tr("Журнал проекта читается только как события запусков: постраничное чтение журнала"))
+            trf("Показаны последние {n} событий", n=loaded) if loaded
+            else tr("Журнал проекта читается только как события запусков"))
         self.open_folder.setEnabled(bool(host.project_directory))

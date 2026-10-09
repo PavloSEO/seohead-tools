@@ -61,7 +61,7 @@ class WorkTableSpaceTests(unittest.TestCase):
     def test_missing_or_invalid_start_does_not_invent_a_timestamp(self):
         for started in (None, "invalid", "2026-10-08T17:45:12", "0001-01-01T00:00:00+23:59"):
             row = run_projection({"id": "12345678abcdef", "started_at": started})
-            self.assertEqual(row["label"], "Запуск · 12345678")
+            self.assertEqual(row["label"], "Запуск · r-1234")
             self.assertIsNone(row["fetched"])
             if started == "2026-10-08T17:45:12":
                 self.assertIn(started + " · часовой пояс не задан", row["label_tooltip"])

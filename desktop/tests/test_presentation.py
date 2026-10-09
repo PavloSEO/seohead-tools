@@ -86,7 +86,7 @@ class PresentationTests(unittest.TestCase):
         self.window.resize(1024, 720)
         self.app.processEvents()
         self.assertEqual(self.window.width(), 1024)
-        self.assertTrue(self.window.navigation.property("compact"))
+        self.assertFalse(self.window.navigation.property("compact"))  # the icon rail starts below 900 px (SHELL-CANON)
         self.assertFalse(self.window.overview.isVisible())
         self.assertGreater(self.window.table.width(), 650)
         self.window.set_density("compact")

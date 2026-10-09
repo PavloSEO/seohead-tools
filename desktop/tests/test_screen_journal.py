@@ -66,9 +66,9 @@ class JournalTests(unittest.TestCase):
         self.feed([run(), live_run()])
         times = self.column(0)
         self.assertEqual(len(times), 8)
-        stamps = [event.at for event in self.screen.model.rows]
+        stamps = [event.at for event, _group, _role in self.screen.model.rows]
         self.assertEqual(stamps, sorted(stamps, reverse=True))
-        self.assertTrue(all(source.startswith("Скан · Native") for source in self.column(1)))
+        self.assertTrue(all(source.startswith("Скан · встроенный краулер") for source in self.column(1)))
         self.assertIn("Запуск принят · проверка лимитов", self.column(2))
         self.assertIn("Обновление счётчиков · сбор страниц", self.column(2))
         self.assertEqual(set(self.column(3)), {"r-" + run()["id"][:4], "r-" + live_run()["id"][:4]})
@@ -84,8 +84,20 @@ class JournalTests(unittest.TestCase):
         self.assertEqual((len(shown), total), (LIMIT, 300))
         self.assertGreater(shown[0].at, shown[-1].at)
         self.feed([many])
-        self.assertEqual(self.screen.model.rowCount(), LIMIT)
-        self.assertIn("200 событий", self.screen.foot_text.text())
+        self.assertEqual(sum(len(group) for group in self.screen.model.groups), LIMIT)
+        self.assertEqual(self.screen.foot_text.text(), "Показаны последние 200 событий")
+
+    def test_identical_events_in_a_row_fold_into_one_unfoldable_row(self):
+        many = run(event_list=[{"at": f"2026-10-09T08:00:{i:02d}Z", "code": "progress", "phase": "collection"} for i in range(42)])
+        self.feed([many])
+        self.assertEqual(self.screen.model.rowCount(), 1)
+        head = self.column(2)[0]
+        self.assertIn("Обновление счётчиков · сбор страниц ×42", head)
+        self.assertRegex(head, r"×42, \d\d:\d\d:\d\d–\d\d:\d\d:\d\d")
+        self.screen.model.toggle(0)
+        self.assertEqual(self.screen.model.rowCount(), 43)
+        self.screen.model.toggle(0)
+        self.assertEqual(self.screen.model.rowCount(), 1)
 
     def test_source_filters_without_data_are_disabled_and_explained(self):
         self.feed([run()])
@@ -103,7 +115,7 @@ class JournalTests(unittest.TestCase):
         self.feed([run()])
         waiting = [label.text() for label in self.screen.findChildren(QLabel) if label.text().startswith("Недоступно")]
         self.assertEqual(waiting, ["Недоступно в этой версии ядра"])
-        self.assertIn("постраничное чтение журнала", self.screen.foot_text.text())
+        self.assertEqual(self.screen.foot_text.text(), "Показаны последние 4 событий")
 
     def test_search_filters_the_loaded_events_and_offers_a_reset(self):
         self.feed([run(), live_run()])
@@ -112,14 +124,14 @@ class JournalTests(unittest.TestCase):
         self.screen.search.setText("завершено")
         self.assertEqual(self.column(2), ["Завершено · сохранение результата"])
         self.screen.search.setText(live_run()["id"][:8])
-        self.assertEqual(self.screen.model.rowCount(), 4)
+        self.assertEqual(sum(len(group) for group in self.screen.model.groups), 4)
         self.screen.search.setText("такого нет")
         self.assertEqual(self.screen.state, "nomatch")
         self.screen.panel = None
         self.screen.stack.widget(1).action.click()
         self.assertEqual(self.screen.search.text(), "")
         self.assertIsNone(self.screen.state)
-        self.assertEqual(self.screen.model.rowCount(), 8)
+        self.assertEqual(sum(len(group) for group in self.screen.model.groups), 8)
 
     def test_data_changes_refresh_and_open_folder_uses_the_project_directory(self):
         self.feed([run()])
