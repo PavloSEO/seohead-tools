@@ -358,11 +358,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Pages Without Internal Outlinks", "NO_INTERNAL_OUTLINKS"),
         _c("Non-Indexable Page Inlinks Only", "ONLY_NONINDEXABLE_SOURCE_INLINKS"),
-        _p(
-            "Internal Nofollow Outlinks",
-            "nofollow is recorded per edge and gates crawling; there is no page-level finding "
-            "for having them",
-        ),
+        _c("Internal Nofollow Outlinks", "INTERNAL_NOFOLLOW_OUTLINKS"),
         _c("Pages With High External Outlinks", "HIGH_EXTERNAL_OUTLINKS"),
         _c("Pages With High Internal Outlinks", "HIGH_OUTLINKS"),
         _c("Follow & Nofollow Internal Inlinks To Page", "FOLLOW_AND_NOFOLLOW_INLINKS"),

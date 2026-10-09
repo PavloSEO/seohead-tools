@@ -1806,6 +1806,12 @@ def _audit_crawl_result(
                     ctx.add(
                         "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
                     )
+                for item in link_findings.internal_nofollow_outlinks(
+                    graph.iter_links() if graph else links, crawl_host
+                ):
+                    ctx.add(
+                        "INTERNAL_NOFOLLOW_OUTLINKS", target_url=item["target_url"], details=item
+                    )
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
@@ -1828,14 +1834,14 @@ def _audit_crawl_result(
                         "link_attributes.capture is false; original href schemes were not retained",
                     )
             else:
-                ctx.skip(
-                    "FOLLOW_AND_NOFOLLOW_INLINKS",
-                    "no crawl start URL is available to identify one site's internal links",
-                )
+                no_host = "no crawl start URL is available to identify one site's internal links"
+                ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", no_host)
+                ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", no_host)
         else:
             reason = "crawl-list input retains no link-edge evidence"
             ctx.skip("OUTLINK_TO_LOCALHOST", reason)
             ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", reason)
+            ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", reason)
             ctx.skip("HTTP_LINK_ON_HTTPS", reason)
 
         if has_form_evidence:

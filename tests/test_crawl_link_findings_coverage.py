@@ -13,6 +13,7 @@ from seohead.mcp import handlers
 _LINK_FORM_CHECKS = {
     "OUTLINK_TO_LOCALHOST",
     "FOLLOW_AND_NOFOLLOW_INLINKS",
+    "INTERNAL_NOFOLLOW_OUTLINKS",
     "FORM_URL_INSECURE",
     "FORM_ON_HTTP_URL",
 }
@@ -88,11 +89,15 @@ def test_url_less_spider_result_runs_pure_link_and_form_predicates():
     assert password_form.called
     fired = {issue["check"] for issue in audit["issues"]}
     skipped = _skips(audit)
-    for check_id in _LINK_FORM_CHECKS - {"FOLLOW_AND_NOFOLLOW_INLINKS"}:
+    for check_id in _LINK_FORM_CHECKS - {
+        "FOLLOW_AND_NOFOLLOW_INLINKS",
+        "INTERNAL_NOFOLLOW_OUTLINKS",
+    }:
         assert check_id not in fired
         assert check_id not in skipped  # clean only because its predicate ran above
     assert "FOLLOW_AND_NOFOLLOW_INLINKS" in skipped
     assert "no crawl start URL" in skipped["FOLLOW_AND_NOFOLLOW_INLINKS"]
+    assert "no crawl start URL" in skipped["INTERNAL_NOFOLLOW_OUTLINKS"]
 
 
 def test_url_list_without_retained_edges_or_forms_skips_by_name():
@@ -103,6 +108,7 @@ def test_url_list_without_retained_edges_or_forms_skips_by_name():
     assert set(skipped) >= _LINK_FORM_CHECKS
     assert "no link-edge evidence" in skipped["OUTLINK_TO_LOCALHOST"]
     assert "no link-edge evidence" in skipped["FOLLOW_AND_NOFOLLOW_INLINKS"]
+    assert "no link-edge evidence" in skipped["INTERNAL_NOFOLLOW_OUTLINKS"]
     assert "no form evidence" in skipped["FORM_URL_INSECURE"]
     assert "no form evidence" in skipped["FORM_ON_HTTP_URL"]
 
@@ -132,3 +138,49 @@ def test_bare_domain_uses_the_normalized_start_host_for_follow_mix():
     fired = {issue["check"] for issue in audit["issues"]}
     assert "FOLLOW_AND_NOFOLLOW_INLINKS" in fired
     assert "FOLLOW_AND_NOFOLLOW_INLINKS" not in _skips(audit)
+
+
+def test_internal_nofollow_outlinks_fire_per_source_page_and_clean_pages_stay_silent():
+    """Mixed, nofollow-only and followed-only sources: only the two with nofollow report it."""
+    result = SpiderResult(
+        pages=[_page()],
+        links=[
+            LinkEdge(
+                source="https://example.test/mixed",
+                destination="https://example.test/a",
+                anchor="Follow",
+                nofollow=False,
+            ),
+            LinkEdge(
+                source="https://example.test/mixed",
+                destination="https://example.test/b",
+                anchor="Nofollow",
+                nofollow=True,
+            ),
+            LinkEdge(
+                source="https://example.test/only-nofollow",
+                destination="https://example.test/c",
+                anchor="Nofollow",
+                nofollow=True,
+            ),
+            LinkEdge(
+                source="https://example.test/clean",
+                destination="https://example.test/a",
+                anchor="Follow",
+                nofollow=False,
+            ),
+        ],
+    )
+
+    audit = _audit(result, url="example.test")
+
+    sources = {
+        issue["target_url"]: issue["details"]["nofollow_occurrences"]
+        for issue in audit["issues"]
+        if issue["check"] == "INTERNAL_NOFOLLOW_OUTLINKS"
+    }
+    assert sources == {
+        "https://example.test/mixed": 1,
+        "https://example.test/only-nofollow": 1,
+    }
+    assert "INTERNAL_NOFOLLOW_OUTLINKS" not in _skips(audit)

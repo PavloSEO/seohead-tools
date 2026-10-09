@@ -1116,6 +1116,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Decide deliberately whether the page should be crawl-priority or not, and "
         "make every internal link to it agree.",
     },
+    "INTERNAL_NOFOLLOW_OUTLINKS": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "The page has internal outlinks marked nofollow",
+        "fix": "Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct.",
+    },
     "HTTP_LINK_ON_HTTPS": {
         "severity": "notice",
         "source": "crawl:link_findings",

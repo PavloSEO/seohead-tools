@@ -504,7 +504,7 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 182,
+      "checks_total": 183,
       "checks_fired": 20,
       "checks_skipped": 100,
       "checks_disabled": 0,
@@ -576,8 +576,8 @@
       ],
       "coverage": 0.451
     },
-    "health_score_reason": "only 82 of 182 checks could run (45% coverage); too little evidence to score",
-    "health_score_basis": "82 of 182 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 82 of 183 checks could run (45% coverage); too little evidence to score",
+    "health_score_basis": "82 of 183 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"
