@@ -56,9 +56,32 @@ def _checked(result: Any) -> Any:
 def build_server(profile: str = "full", progress_notifications: bool = False):  # -> FastMCP
     runlog.set_interface("mcp")
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp.exceptions import ToolError
     from mcp.types import ToolAnnotations
 
-    mcp = FastMCP("SEOHEAD Tools")
+    from seohead.mcp import mcp_control
+    from seohead.mcp.mcp_profiles import profile_tools
+
+    class ControlledMCP(FastMCP):
+        async def call_tool(self, name, arguments):
+            try:
+                mcp_control.require_enabled()
+                allowed = profile_tools(mcp_control.read_state()["profile"])
+                if allowed is not None and name not in allowed:
+                    raise ValueError("tool is outside the shared MCP profile")
+            except (ValueError, OSError) as exc:
+                raise ToolError(
+                    str(exc) if isinstance(exc, ValueError) else "MCP state unavailable"
+                ) from None
+            return await super().call_tool(name, arguments)
+
+        async def list_tools(self):
+            mcp_control.require_enabled()
+            allowed = profile_tools(mcp_control.read_state()["profile"])
+            tools = await super().list_tools()
+            return tools if allowed is None else [t for t in tools if t.name in allowed]
+
+    mcp = ControlledMCP("SEOHEAD Tools")
 
     pure = ToolAnnotations(
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
@@ -3142,7 +3165,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     return mcp
 
 
-def main(profile: str = "full", progress_notifications: bool = True) -> int:
+def main(profile: str | None = None, progress_notifications: bool = True) -> int:
     """Run the stdio server; return an exit code instead of letting the caller import
     ``mcp`` itself to find out whether the server started.
 
@@ -3155,6 +3178,14 @@ def main(profile: str = "full", progress_notifications: bool = True) -> int:
     ``python -m seohead.mcp.mcp_server`` invocation advertised above give the same
     outcome.
     """
+    from seohead.mcp import mcp_control
+
+    try:
+        mcp_control.require_enabled()
+        profile = profile or mcp_control.read_state()["profile"]
+    except (OSError, ValueError) as exc:
+        print(str(exc) if isinstance(exc, ValueError) else "MCP state unavailable", file=sys.stderr)
+        return 1
     try:
         build_server(profile=profile, progress_notifications=progress_notifications).run()
     except ModuleNotFoundError:

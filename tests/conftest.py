@@ -42,3 +42,13 @@ def checks_in(result) -> set[str]:
 
 def issues_of(result, check):
     return [i for i in result.issues if i.check == check]
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_configuration(tmp_path, monkeypatch):
+    """Never inspect a developer's agent files or MCP state during offline tests."""
+    home = tmp_path / "isolated-home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CODEX_HOME", str(home / ".codex"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("SEOHEAD_CONFIG_DIR", str(home / ".config/seohead"))
