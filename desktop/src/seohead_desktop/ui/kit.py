@@ -329,3 +329,16 @@ def show_empty(holder, content, panel):
     if panel is not None:
         holder.addWidget(panel)
     content.setVisible(panel is None)
+
+
+def set_panel_state(owner, kind, panel=None):
+    """Show ``panel`` as the state of ``owner`` (its stack, state_layout, panel_state); replace it only when ``kind`` changes."""
+    if kind != owner.panel_state:
+        owner.panel_state = kind
+        while owner.state_layout.count():
+            item = owner.state_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if panel is not None:
+            owner.state_layout.addWidget(panel)
+    owner.stack.setCurrentIndex(1 if panel is not None else 0)
