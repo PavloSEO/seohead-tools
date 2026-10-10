@@ -84,11 +84,15 @@ def test_healthy_pair_reports_only_the_indexable_notice(tmp_path):
         [_desktop(), _row(AMP, canonical=DESKTOP)],
     )
     assert _found(ctx) == {"AMP_INDEXABLE"}
+    assert "AMP_NON_200" not in _found(ctx)
+    assert "AMP_MISSING_RETURN_LINK" not in _found(ctx)
+    assert "AMP_NON_INDEXABLE_CANONICAL" not in _found(ctx)
 
 
 def test_amp_page_not_200_is_reported_and_its_body_is_not_judged(tmp_path):
     ctx = _run(tmp_path, [_desktop(), _row(AMP, status=404)])
     assert _found(ctx) == {"AMP_NON_200"}
+    assert "AMP_INDEXABLE" not in _found(ctx)
 
 
 def test_missing_canonical_on_the_amp_page(tmp_path):
