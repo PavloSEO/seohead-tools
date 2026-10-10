@@ -12,6 +12,7 @@ import math
 from collections import deque
 from urllib.parse import urlsplit
 
+from PyQt5 import sip
 from PyQt5.QtCore import QPointF, Qt, QUrl, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QDesktopServices, QFont, QPainter, QPen
 from PyQt5.QtWidgets import (
@@ -421,7 +422,7 @@ class GraphPage(QWidget):
         return pos
 
     def draw(self):
-        if self.stack.currentIndex() != 0 or not self.nodes:
+        if sip.isdeleted(self) or self.stack.currentIndex() != 0 or not self.nodes:
             return
         roles = theming.roles()
         self.scene.clear()
