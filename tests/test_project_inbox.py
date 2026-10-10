@@ -492,3 +492,81 @@ def test_question_entry_is_stored_without_goal_state(tmp_path):
         set_goal_state(root, entry_id=question["id"], state="accepted")
     with pytest.raises(ValueError, match="kind must be"):
         submit(root, text="Unknown kind", kind="ticket")
+
+
+def test_accepted_goal_creates_one_checklist_task_and_keeps_it_on_retry(tmp_path):
+    from seohead.projects.inbox import goal_task_id
+
+    root = _project(tmp_path)
+    goal = submit(root, text="  Compare   the named\ncompetitor ", kind="proposed_goal")["entry"]
+    set_goal_state(root, entry_id=goal["id"], state="accepted")
+    set_goal_state(root, entry_id=goal["id"], state="accepted")
+    task_id = goal_task_id(goal["id"])
+    rows = [row for row in coverage_status(root)["items"] if row["id"] == task_id]
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Owner goal: Compare the named competitor"
+    assert rows[0]["kind"] == "custom" and rows[0]["complete"] is False
+    set_goal_state(root, entry_id=goal["id"], state="completed")
+    assert any(row["id"] == task_id for row in coverage_status(root)["items"])
+
+
+def test_goal_acceptance_is_refused_without_a_task_when_the_checklist_is_busy(tmp_path):
+    root = _project(tmp_path)
+    goal = submit(root, text="Blocked by a writer", kind="proposed_goal")["entry"]
+    (root / ".coverage.lock").write_text("")
+    with pytest.raises(ValueError, match="coverage writer is busy"):
+        set_goal_state(root, entry_id=goal["id"], state="accepted")
+    (root / ".coverage.lock").unlink()
+    assert list_entries(root, consumer="agent/session-a")["entries"][0]["goal_state"] == "proposed"
+
+
+def test_unread_owner_tasks_are_reported_until_the_agent_acknowledges_the_goal(tmp_path):
+    from seohead.mcp.project_handlers import project_basic_status
+    from seohead.projects.inbox import goal_task_id
+
+    root = _project(tmp_path)
+    goal = submit(root, text="Audit the competitor set", kind="proposed_goal")["entry"]
+    proposed = project_basic_status(str(root), consumer="agent/session-a")
+    assert proposed["owner_tasks_unread"]["count"] == 0
+
+    set_goal_state(root, entry_id=goal["id"], state="accepted")
+    status = project_basic_status(str(root), consumer="agent/session-a")
+    assert status["owner_tasks_unread"]["count"] == 1
+    assert status["owner_tasks_unread"]["items"][0]["task_id"] == goal_task_id(goal["id"])
+    assert (
+        status["owner_tasks_unread"]["items"][0]["title"] == "Owner goal: Audit the competitor set"
+    )
+
+    mark_read(root, consumer="agent/session-a", entry_ids=[goal["id"]])
+    assert (
+        project_basic_status(str(root), consumer="agent/session-a")["owner_tasks_unread"]["count"]
+        == 1
+    )
+    acknowledge(root, consumer="agent/session-a", entry_ids=[goal["id"]])
+    assert (
+        project_basic_status(str(root), consumer="agent/session-a")["owner_tasks_unread"]["count"]
+        == 0
+    )
+    assert "owner_tasks_unread" not in project_basic_status(str(root))
+
+
+def test_accepted_goal_shows_as_unread_owner_task_until_acknowledged(tmp_path):
+    from seohead.projects.inbox import acknowledge, goal_task_id, unread_goal_tasks
+
+    root = _project(tmp_path)
+    goal = submit(root, text="Check the pricing pages", kind="proposed_goal")["entry"]
+    set_goal_state(root, entry_id=goal["id"], state="accepted")
+    unread = unread_goal_tasks(root, consumer="agent/session-a")
+    assert unread["count"] == 1
+    assert unread["items"][0]["task_id"] == goal_task_id(goal["id"])
+    status = server_status(root)
+    assert status["owner_tasks_unread"]["count"] == 1
+    acknowledge(root, consumer="agent/session-a", entry_ids=[goal["id"]])
+    assert unread_goal_tasks(root, consumer="agent/session-a")["count"] == 0
+    assert unread_goal_tasks(root, consumer="agent/session-b")["count"] == 1
+
+
+def server_status(root):
+    server = build_server()
+    progress = server._tool_manager.get_tool("seo_project_progress")
+    return progress.fn(directory=str(root), consumer="agent/session-a")
