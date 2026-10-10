@@ -540,3 +540,48 @@ def test_correspondence_file_rejects_duplicate_json_keys(tmp_path):
 
     with pytest.raises(CompareError, match="repeats object key"):
         compare(_audit([], []), _audit([], []), correspondence=str(declaration))
+
+
+def test_url_sets_list_pages_present_on_one_side_only():
+    before = _audit(["https://e.com/a", "https://e.com/b"], [])
+    after = _audit(["https://e.com/b", "https://e.com/c"], [])
+    url_sets = compare(before, after)["url_sets"]
+    assert url_sets["only_in_before"] == ["https://e.com/a"]
+    assert url_sets["only_in_after"] == ["https://e.com/c"]
+    assert url_sets["counts"] == {"only_in_before": 1, "only_in_after": 1}
+    assert url_sets["unproven"] is False
+
+
+def test_url_sets_are_empty_for_identical_crawls():
+    audit = _audit(["https://e.com/a"], [])
+    url_sets = compare(audit, audit)["url_sets"]
+    assert url_sets["only_in_before"] == []
+    assert url_sets["only_in_after"] == []
+    assert url_sets["counts"] == {"only_in_before": 0, "only_in_after": 0}
+
+
+def test_url_sets_are_unproven_when_either_crawl_is_partial():
+    before = _audit(["https://e.com/a"], [], crawl_partial=True)
+    after = _audit(["https://e.com/b"], [])
+    url_sets = compare(before, after)["url_sets"]
+    assert url_sets["only_in_before"] == ["https://e.com/a"]
+    assert url_sets["unproven"] is True
+
+
+def test_url_sets_use_correspondence_mapped_before_urls(tmp_path):
+    declaration = tmp_path / "url-correspondence.json"
+    declaration.write_text(
+        json.dumps(
+            {
+                "schema_version": "url-correspondence.v1",
+                "origin_map": {"https://old.example": "https://e.com"},
+                "pairs": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = _audit(["https://old.example/a"], [])
+    after = _audit(["https://e.com/a"], [])
+    url_sets = compare(before, after, correspondence=str(declaration))["url_sets"]
+    assert url_sets["only_in_before"] == []
+    assert url_sets["only_in_after"] == []
