@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-09T18:17:15Z
+- **Generated:** 2026-10-10T10:40:41Z
 
 ## Health summary
 
-> **No health score.** only 82 of 184 checks could run (45% coverage); too little evidence to score.
+> **No health score.** only 83 of 184 checks could run (45% coverage); too little evidence to score.
 
-_82 of 184 checks could run; the score is not comparable to a run with full evidence_
+_83 of 184 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 101 skipped, 62 silent, 0 disabled (of 184 total)
+- Checks: **20 fired**, 101 skipped, 63 silent, 0 disabled (of 184 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
@@ -271,6 +271,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | No character encoding declared via Content-Type or an early <meta> tag | no Meta Charset column, so a page without a header charset cannot be distinguished from one declaring <meta charset> (needs a native seohead crawl or Custom Extraction in SF) |
 | Document lacks a modern <!DOCTYPE html> declaration, triggering quirks mode | no Doctype column (needs a native seohead crawl or Custom Extraction in SF) |
 | No <meta name=viewport> tag with width or an initial-scale of at least 1 | no Viewport column (needs a native seohead crawl or Custom Extraction in SF) |
+| A <link rel=alternate media=...> declaration names no URL | no rel=alternate media evidence (native crawl only) |
 | HTML response is served uncompressed above the size where gzip/br would help | no Content-Encoding column (needs a native seohead crawl or Custom Extraction in SF) |
 | The <title> element is outside <head> once the parser resolves the document | no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own) |
 | The meta description is outside <head> once the parser resolves the document | no element-position evidence (needs a native seohead crawl; Screaming Frog has no notion of this on its own) |
