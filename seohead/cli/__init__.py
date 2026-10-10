@@ -107,6 +107,7 @@ COMMANDS = (
     "scan-inspect",
     "scan-url-detail",
     "scan-url-query",
+    "scan-url-history",
     "scan-link-inspect",
     "scan-status",
     "scan-rendered-routes",
@@ -467,6 +468,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "count_timeout_seconds",
             "max_bytes",
         ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "scan-url-history":
+        for name in ("project", "url", "limit"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "scan-url-detail":
@@ -2096,6 +2101,10 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--count-timeout-seconds", dest="count_timeout_seconds", type=float)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+    if cmd == "scan-url-history":
+        _source_flag(sub, "--project", help="project directory whose scans/ directory is read")
+        _source_flag(sub, "--url", help="exact retained URL text")
+        sub.add_argument("--limit", type=int, help="newest scans to read (1..500, default 50)")
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
