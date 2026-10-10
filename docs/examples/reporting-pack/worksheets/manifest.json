@@ -195,7 +195,7 @@
           "bytes": 21954,
           "path": "cohorts-0001.csv",
           "rows": 30,
-          "sha256": "cb28190f39209ae5180a7fb6ef19467bbb3c6b42bb4a687b45d10ece7bbf2ff0"
+          "sha256": "ca1e7ca4cc7475ec91c1dc25f20e40ebfa8dd2a1d3609b6412a918d7a545d429"
         }
       ],
       "primary_key": [
@@ -209,7 +209,7 @@
       "state": "available"
     },
     "coverage": {
-      "bytes": 38723,
+      "bytes": 38886,
       "coverage": {},
       "fields": [
         {
@@ -278,10 +278,10 @@
       "partition_count": 1,
       "partitions": [
         {
-          "bytes": 38723,
+          "bytes": 38886,
           "path": "coverage-0001.csv",
-          "rows": 181,
-          "sha256": "5720a2f82a3479f1f32e329a9be95aaadb5313cf91c8a3f0cf3546c967c635b0"
+          "rows": 182,
+          "sha256": "c047be384baf4fa6222e7d06bc13b1a5341bd482ed2db376be346cfca92ef692"
         }
       ],
       "primary_key": [
@@ -291,7 +291,7 @@
         "population"
       ],
       "reason": null,
-      "row_count": 181,
+      "row_count": 182,
       "schema_version": "seohead.bi.coverage.v1",
       "source_population": "input artifact and declared check coverage",
       "state": "available"
@@ -557,7 +557,7 @@
           "bytes": 29360,
           "path": "findings-0001.csv",
           "rows": 25,
-          "sha256": "1d81f27a56069d990b0ef21c981a7d966bf8393d2ac145a3806fb1feb0c3e027"
+          "sha256": "0d81ff48d4eee181a83dd24bc779f9aa8dc7e2ae94ec911aadbad0c0e41c14fa"
         }
       ],
       "primary_key": [
@@ -1147,7 +1147,7 @@
           "bytes": 40469,
           "path": "metrics-0001.csv",
           "rows": 16,
-          "sha256": "0ce2e8dd3efb0c5810d157158dec0837e13e1e45effdd1a1e8bdc14f749b896b"
+          "sha256": "781bc4c61b7fd351921fa530f19e54d9f7c992bbc4a893c0b0d5cccbeafb3c50"
         }
       ],
       "primary_key": [
@@ -1590,7 +1590,7 @@
           "bytes": 12289,
           "path": "pages-0001.csv",
           "rows": 6,
-          "sha256": "c54fe17315d53243ff7cab4ac48420241c5a29c3c44cf5fd8d79089a4c5e0e5f"
+          "sha256": "589b30d88cfed4fa19e0acc9456eae47fdbe70c6ba95495382bcf367aa9c87c5"
         }
       ],
       "primary_key": [
@@ -1660,7 +1660,7 @@
           "bytes": 834,
           "path": "group-groups-0001.csv",
           "rows": 3,
-          "sha256": "0fb97b40f446e52d378ceaeb7f7869c051ce467ff9ea2b5493282983988b72a1"
+          "sha256": "cbeb41072fdafdd3a17af480265c543047d44979d0816f9e782ce95e785f51e4"
         }
       ],
       "row_count": 3
@@ -1702,22 +1702,22 @@
           "bytes": 589,
           "path": "group-members-0001.csv",
           "rows": 7,
-          "sha256": "973500c8a0d455eec7b54ddc9f320a67694dd94f6bd497236e4eab2bb601d5e7"
+          "sha256": "32250f347ef7590a4efd1ed37946b0489c478a8ee374c6abc5e38dc0c46eba48"
         }
       ],
       "row_count": 7
     },
     "publication": "local companion; not included in the six published datasets",
-    "run_id": "audit:768af4af695129b27c554783",
-    "sha256": "6c0c24175b6ff5783ae5bbd960efa23f894d1716c990aa43b9f27243b6145761",
-    "source_audit_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8"
+    "run_id": "audit:9904c3e33ff12e5ae36356b7",
+    "sha256": "78df234562fdc16ba7e30fbdbb183fc58bc6a168881fcf56a29237cc9a17dabf",
+    "source_audit_sha256": "9904c3e33ff12e5ae36356b768ccc0834ef240a66ea954f5be057e8c7f545675"
   },
   "input": {
-    "bytes": 44302,
+    "bytes": 44332,
     "kind": "sf-audit",
     "name": "audit.json",
     "schema": "2.0",
-    "sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8"
+    "sha256": "9904c3e33ff12e5ae36356b768ccc0834ef240a66ea954f5be057e8c7f545675"
   },
   "metrics_dimension_columns": {},
   "provider_sources": [
@@ -1913,7 +1913,7 @@
     "projection_index_cache_bytes": 2097152
   },
   "run": {
-    "audit_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8",
+    "audit_sha256": "9904c3e33ff12e5ae36356b768ccc0834ef240a66ea954f5be057e8c7f545675",
     "check_skips": {
       "AJAX_CRAWLING_SCHEME_META_FRAGMENT": "no <meta name=\"fragment\"> evidence (native crawl only)",
       "AJAX_CRAWLING_SCHEME_URL": "no AJAX-scheme URL evidence (native crawl only)",
@@ -2019,14 +2019,14 @@
     "crawl_reason": "audit source does not establish a completed native crawl",
     "crawl_settings": null,
     "crawl_state": "unknown",
-    "finished_at": "2026-10-09T18:17:15Z",
+    "finished_at": "2026-10-10T01:20:08Z",
     "input_mode": "parse-exports",
-    "run_id": "audit:768af4af695129b27c554783",
-    "source_bytes": 44302,
+    "run_id": "audit:9904c3e33ff12e5ae36356b7",
+    "source_bytes": 44332,
     "source_kind": "sf-audit",
     "source_name": "audit.json",
     "source_schema": "2.0",
-    "source_sha256": "768af4af695129b27c554783eda578c50c2c364a55eee0a5bf468d1fdd1763f8",
+    "source_sha256": "9904c3e33ff12e5ae36356b768ccc0834ef240a66ea954f5be057e8c7f545675",
     "started_at": null,
     "summary": {
       "by_check": {
@@ -2060,7 +2060,7 @@
         "checks_disabled": 0,
         "checks_disabled_ids": [],
         "checks_fired": 20,
-        "checks_silent": 62,
+        "checks_silent": 63,
         "checks_silent_ids": [
           "BAD_REDIRECT_TYPE",
           "BLOCKED_BY_ROBOTS",
@@ -2112,6 +2112,7 @@
           "UNLINKED_CANONICAL",
           "UNSAFE_CROSS_ORIGIN_LINK",
           "URL_CONTAINS_SPACE",
+          "URL_HAS_PARAMETERS",
           "URL_HAS_PARAMS",
           "URL_MULTIPLE_SLASHES",
           "URL_NON_ASCII",
@@ -2126,12 +2127,12 @@
           "YMYL_REVIEW_CANDIDATE"
         ],
         "checks_skipped": 100,
-        "checks_total": 182,
-        "coverage": 0.451
+        "checks_total": 183,
+        "coverage": 0.454
       },
       "health_score": null,
-      "health_score_basis": "82 of 182 checks could run; the score is not comparable to a run with full evidence",
-      "health_score_reason": "only 82 of 182 checks could run (45% coverage); too little evidence to score",
+      "health_score_basis": "83 of 183 checks could run; the score is not comparable to a run with full evidence",
+      "health_score_reason": "only 83 of 183 checks could run (45% coverage); too little evidence to score",
       "implausible_checks": [
         {
           "check": "H2_DUPLICATE",
