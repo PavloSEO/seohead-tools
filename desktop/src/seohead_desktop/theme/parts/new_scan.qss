@@ -6,7 +6,10 @@ QLabel[field_error="true"] { color: $error; background: transparent; }
 QToolButton[card="choice"]:disabled { background: $disabled_bg; border-color: $divider; color: $disabled_fg; }
 QToolButton[card="choice"] QLabel { background: transparent; }
 QFrame[disk_bar="true"] { background: $divider; border: 0; border-radius: 5px; }
-QFrame[disk_fill="true"] { background: $data_progress; border: 0; border-radius: 5px; }
+QFrame[disk_fill="true"] { background: $outline_hover; border: 0; border-radius: 5px; }
+QFrame[disk_pause="true"] { background: $data_pause; border: 0; border-radius: 5px; }
+QFrame[disk_legend="used"] { background: $outline_hover; border: 0; border-radius: 4px; }
+QFrame[disk_legend="pause"] { background: $data_pause; border: 0; border-radius: 4px; }
 QFrame[set_row="true"][waiting="true"] QLabel[text_style="control"] { color: $text_2; }
 QPlainTextEdit#scanListText { font-family: "$mono_family"; font-size: ${font_mono}px; }
 

@@ -1476,6 +1476,8 @@
  "Хранить сканы": "Keep scans",
  "Сжатие": "Compression",
  "Папка: {path}": "Folder: {path}",
+ "занято": "used",
+ "порог паузы {gb} ГБ": "pause threshold {gb} GB",
  "Только хост": "Host only",
  "Домен и поддомены": "Domain and subdomains",
  "Соблюдать": "Obey",

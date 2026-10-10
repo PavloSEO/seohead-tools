@@ -974,13 +974,35 @@ def storage_page(draft, host):
     fill = QFrame(bar)
     fill.setProperty("disk_fill", True)
     fill.setFixedHeight(10)
+    tail = QFrame(bar)  # the last bytes before the pause threshold (design «порог паузы»)
+    tail.setProperty("disk_pause", True)
+    tail.setFixedHeight(10)
+    legend = QHBoxLayout()
+    legend.setSpacing(16)
+    used_dot, pause_dot = QFrame(), QFrame()
+    for dot, kind in ((used_dot, "used"), (pause_dot, "pause")):
+        dot.setProperty("disk_legend", kind)
+        dot.setFixedSize(8, 8)
+    used_label, pause_label = QLabel(tr("занято")), QLabel()
+    for label in (used_label, pause_label):
+        label.setProperty("text_style", "meta")
+    for dot, label in ((used_dot, used_label), (pause_dot, pause_label)):
+        item = QHBoxLayout()
+        item.setSpacing(6)
+        item.addWidget(dot)
+        item.addWidget(label)
+        legend.addLayout(item)
+    legend.addStretch(1)
     estimate = QLabel(tr("Размер этого скана: оценка недоступна в этой версии ядра"))
     estimate.setProperty("text_style", "meta")
     folder = ElidedLabel()
     folder.setProperty("text_style", "meta")
     pause = Note("warn", tr("Свободного места меньше порога паузы."), tr("Скан остановится сразу после старта."))
-    for widget in (free_line, bar, estimate, folder):
-        box.addWidget(widget)
+    box.addWidget(free_line)
+    box.addWidget(bar)
+    box.addLayout(legend)
+    box.addWidget(estimate)
+    box.addWidget(folder)
     page.add(card)
     page.add(pause)
 
@@ -991,11 +1013,20 @@ def storage_page(draft, host):
         except OSError:
             free_line.setText(tr("Свободное место не измерено"))
             fill.setFixedWidth(0)
+            tail.hide()
             pause.hide()
         else:
             free_line.setText(trf("Свободно на диске проекта: {free} ГБ из {total} ГБ", free=grouped(usage.free // 1024**3), total=grouped(usage.total // 1024**3)))
-            fill.setFixedWidth(max(2, int(bar.width() * (usage.used / usage.total))) if usage.total else 0)
+            width = bar.width()
+            used_px = max(2, int(width * (usage.used / usage.total))) if usage.total else 0
+            fill.setFixedWidth(used_px)
             threshold = draft.effective("storage.min_free_bytes") or 0
+            tail_px = min(width - used_px, max(2, int(width * threshold / usage.total))) if threshold and usage.total else 0
+            tail.setVisible(tail_px > 0)
+            tail.setGeometry(width - tail_px, 0, tail_px, 10)
+            pause_dot.setVisible(bool(threshold))
+            pause_label.setVisible(bool(threshold))
+            pause_label.setText(trf("порог паузы {gb} ГБ", gb=grouped(threshold // 1024**3)))
             pause.setVisible(bool(threshold) and usage.free < threshold)
         folder.setText(trf("Папка: {path}", path=str(directory / "scans")))
 
