@@ -140,7 +140,7 @@ class ShellMixin:
         """(text, tooltip): the real state of the core. «не найдено» only when nothing answered and no executable is known."""
         answered = bool(self.mcp_ready or self.project_result is not None)
         if not self.core_executable and not answered:
-            return tr("Ядро не найдено"), tr("Команда seohead не найдена в PATH")
+            return tr("Ядро не найдено"), tr("Ядро seohead не найдено ни в одном из известных мест")
         version = self.installed_core_version(self.core_executable)
         path = self.core_executable or ""
         if version:

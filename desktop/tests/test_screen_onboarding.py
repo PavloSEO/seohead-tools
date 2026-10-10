@@ -161,7 +161,7 @@ class OnboardingTests(unittest.TestCase):
         wizard.go(1)
         self.settle(lambda: wizard.core_state is not None)
         self.assertEqual(wizard.core_heading.text(), "Ядро не найдено")
-        self.assertEqual(wizard.core_text.text(), "Команда seohead не найдена в PATH")
+        self.assertEqual(wizard.core_text.text(), "Ядро seohead не найдено ни в одном из известных мест")
         self.assertTrue(wizard.version_line.isHidden())
         with patch("seohead_desktop.screens.onboarding.shutil.which", return_value=self.core):
             wizard.recheck_button.click()

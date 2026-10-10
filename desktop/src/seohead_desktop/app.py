@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
@@ -43,6 +42,7 @@ from .common import (  # noqa: F401
 )
 from .comparison import ComparisonController
 from .content_search import ContentSearchController
+from .core_discovery import discover_core
 from .inbox import InboxMixin
 from .pages import PagesMixin
 from .project_io import ProjectMixin
@@ -99,7 +99,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.prefs = AppSettings(self.settings, full_schema())
         i18n.set_language(self.prefs.get("view.language"))
         self.display = self.prefs.get("shell.display")
-        self.core_executable = core_executable or shutil.which("seohead")
+        self.core_executable = core_executable or discover_core(self.prefs)
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(4)
         self.read_generation = 0

@@ -338,7 +338,7 @@
  "Язык · {name}": "Language · {name}",
  "Ядро найдено": "Core found",
  "Ядро не найдено": "Core not found",
- "Команда seohead не найдена в PATH": "The seohead command was not found in PATH",
+ "Ядро seohead не найдено ни в одном из известных мест": "The seohead core was not found in any known location",
  "Простой режим · агент и MCP выключены": "Simple mode · agent and MCP off",
  "Простой": "Simple",
  "CLI ядра seohead не найден": "The seohead core CLI was not found",
