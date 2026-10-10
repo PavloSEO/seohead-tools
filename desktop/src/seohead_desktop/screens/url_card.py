@@ -743,10 +743,6 @@ class FactsPage(QWidget):
         rows = []
         if self.tab == "res":
             rows = [("Изображений на странице", number(page.get("images_total"))), ("Изображений без alt", number(page.get("images_missing_alt_attr")))]
-        elif self.tab == "schema":
-            hreflang = page.get("hreflang_json")
-            rows = [("Блоков JSON-LD найдено", number(page.get("jsonld_blocks_found"))), ("Блоков JSON-LD разобрано", number(page.get("jsonld_blocks_parsed"))),
-                    ("Записей hreflang", number(len(hreflang)) if isinstance(hreflang, list) else None)]
         elif self.tab == "html":
             size = response.get("reported_size_bytes")
             sha = response.get("body_sha256")
@@ -757,6 +753,52 @@ class FactsPage(QWidget):
             for key, value in rows:
                 pairs.set(key, value)
             self.facts.addWidget(pairs)
+
+
+class SchemaPage(QWidget):
+    """Structured data tab in the canvas layout: blocks | block tree | checks. The core gives only the JSON-LD block counts
+    per URL, so the three columns are honest waiting states; the counts and hreflang facts stay real."""
+
+    def __init__(self, ctx, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        title, text, issue = UNAVAILABLE["schema"]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(10)
+        head = QHBoxLayout()
+        head.addWidget(section_label(title))
+        head.addWidget(waiting_badge(issue))
+        head.addStretch(1)
+        layout.addLayout(head)
+        layout.addWidget(label_row(text))
+        self.count = label_row("")
+        self.count.setProperty("text_style", "meta")
+        layout.addWidget(self.count)
+        columns = QHBoxLayout()
+        columns.setSpacing(12)
+        self.blocks = StatePanel("waiting", "Блоки не перечислены", "Названия, позиции и статус каждого блока ядро по URL не отдаёт.")
+        self.tree = StatePanel("waiting", "Содержимое блока не получено", "Дерево свойств появится, когда ядро отдаст разобранный блок.")
+        self.checks = StatePanel("waiting", "Проверка не выполнена", "Ошибки разбора и предупреждения появятся вместе с содержимым блока.")
+        for panel, stretch in ((self.blocks, 3), (self.tree, 5), (self.checks, 3)):
+            columns.addWidget(panel, stretch)
+        layout.addLayout(columns)
+        self.facts_box = QWidget()
+        self.facts = QVBoxLayout(self.facts_box)
+        self.facts.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.facts_box)
+
+    def activate(self):
+        clear(self.facts)
+        page = self.ctx.page
+        found, parsed = number(page.get("jsonld_blocks_found")), number(page.get("jsonld_blocks_parsed"))
+        self.count.setText(joined(" · ", [tr("Найдено блоков JSON-LD"), found or tr("Нет данных"), tr("разобрано") + " " + (parsed or tr("Нет данных"))]))
+        hreflang = page.get("hreflang_json")
+        rows = [("Записей hreflang", number(len(hreflang)) if isinstance(hreflang, list) else None)]
+        pairs = Pairs(tuple(key for key, _v in rows))
+        for key, value in rows:
+            pairs.set(key, value)
+        self.facts.addWidget(pairs)
 
 
 class UrlCard(QFrame):
@@ -817,7 +859,7 @@ class UrlCard(QFrame):
         self.links = LinksPage(self.ctx)
         self.redirects = RedirectsPage(self.ctx)
         self.snippet = SnippetPage()
-        self.facts = {tab: FactsPage(tab, self.ctx) for tab in UNAVAILABLE}
+        self.facts = {tab: SchemaPage(self.ctx) if tab == "schema" else FactsPage(tab, self.ctx) for tab in UNAVAILABLE}
         self.index = {}
         widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "redir": scrolled(self.redirects),
                    "snip": self.snippet, **{tab: scrolled(page) for tab, page in self.facts.items()}}
