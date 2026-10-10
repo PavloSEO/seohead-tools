@@ -46,6 +46,7 @@ from .new_scan_draft import (
     ScanDraft,
     grouped,
     list_from_file_text,
+    request_project_policy,
 )
 from .new_scan_pages import ChoiceCard, FormRow, HelpIcon, Stepper, flow, number_edit
 
@@ -297,7 +298,7 @@ class NewScanDialog(QDialog):
         layout.addWidget(scroll, 1)
         layout.addWidget(self._aside())
         draft.changed.connect(self._refresh)
-        self._request_policy()
+        request_project_policy(self.host, self.draft)
         self._refresh()
         self.cards[draft.source if draft.source != "sf" else "site"].setFocus()
 
@@ -608,28 +609,6 @@ class NewScanDialog(QDialog):
         editor = ScanSettingsDialog(self.draft, self.host, self, page)
         editor.exec_()
         editor.deleteLater()
-
-    def _request_policy(self):
-        host, draft = self.host, self.draft
-        if draft.policy_state != "unknown" or not hasattr(host, "request_scan_policy"):
-            return
-        draft.policy_state = "loading"
-
-        def arrived(overrides):
-            try:
-                draft.apply_project_policy(overrides)
-            except RuntimeError:
-                pass
-
-        def failed(_text):
-            try:
-                draft.policy_state = "unavailable"
-                draft.emit_changed()
-            except RuntimeError:
-                pass
-
-        if not host.request_scan_policy(arrived, failed):
-            draft.policy_state = "unavailable"
 
     def _accept_plan(self):
         draft = self.draft

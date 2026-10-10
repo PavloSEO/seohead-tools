@@ -47,7 +47,7 @@ from .. import i18n, theming
 from ..project_create import ProjectCreator, normalize_target, suggest_directory, validate
 from ..ui.controls import Note, Switch, polish
 from ..ui.icons import material_icon
-from ..ui.kit import StatePanel
+from ..ui.kit import UNAVAILABLE, StatePanel
 from .base import Screen
 
 tr, trf = i18n.tr, i18n.trf
@@ -56,7 +56,6 @@ ROW_HEIGHT = 64
 ROW_ROLE = Qt.UserRole + 1
 SEARCH_ROLE = Qt.UserRole + 2
 AVATAR_KINDS = ("info", "ok", "warn", "goal", "mut")
-UNAVAILABLE = "Недоступно в этой сборке"
 BANNER_LIMIT = 3
 
 
@@ -175,7 +174,16 @@ class ProjectDelegate(QStyledItemDelegate):
     """Paints avatar, name, «host · path», status badge, last-opened time and a chevron; no widget per row."""
 
     STATUS = {"missing": ("mut", "folder_off", "Папка не найдена"), "not_project": ("warn", "warning", "Нет project.json"),
-              "open": ("info", "check_circle", "Открыт сейчас")}
+              "open": ("info", "check_circle", "Открыт сейчас"),
+              # the core has no per-project status yet (issue #1224): neutral pill, no invented state
+              "waiting": ("mut", "", UNAVAILABLE)}
+
+    @classmethod
+    def badge_key(cls, row):
+        """Which badge a row shows: the open project, the core gap for a healthy folder, or the probe result."""
+        if row.get("current"):
+            return "open"
+        return "waiting" if row["status"] == "ok" else row["status"]
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width(), ROW_HEIGHT)
@@ -224,22 +232,24 @@ class ProjectDelegate(QStyledItemDelegate):
             painter.drawText(QRect(right, rect.top(), 120, rect.height()), Qt.AlignVCenter | Qt.AlignLeft,
                              painter.fontMetrics().elidedText(when, Qt.ElideRight, 120))
             right -= 14
-        status = "open" if row.get("current") else row["status"]
+        status = self.badge_key(row)
         if status in self.STATUS:
             kind, icon_name, text = self.STATUS[status]
             text = tr(text)
+            inset = 24 if icon_name else 8
             badge_font = QFont(small)
             badge_font.setWeight(QFont.Medium)
             painter.setFont(badge_font)
-            width = min(painter.fontMetrics().horizontalAdvance(text) + 36, max(60, right - rect.left() - 200))
+            width = min(painter.fontMetrics().horizontalAdvance(text) + inset + 12, max(60, right - rect.left() - 200))
             badge = QRectF(right - width, rect.center().y() - 11, width, 22)
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(badges[kind][0]))
             painter.drawRoundedRect(badge, 6, 6)
-            material_icon(icon_name, badges[kind][1]).paint(painter, QRect(int(badge.left()) + 6, int(badge.center().y()) - 7, 14, 14))
+            if icon_name:
+                material_icon(icon_name, badges[kind][1]).paint(painter, QRect(int(badge.left()) + 6, int(badge.center().y()) - 7, 14, 14))
             painter.setPen(QColor(badges[kind][1]))
-            painter.drawText(QRectF(badge.left() + 24, badge.top(), badge.width() - 28, 22), Qt.AlignVCenter | Qt.AlignLeft,
-                             painter.fontMetrics().elidedText(text, Qt.ElideRight, int(badge.width()) - 28))
+            painter.drawText(QRectF(badge.left() + inset, badge.top(), badge.width() - inset - 4, 22), Qt.AlignVCenter | Qt.AlignLeft,
+                             painter.fontMetrics().elidedText(text, Qt.ElideRight, int(badge.width()) - inset - 4))
             right = int(badge.left()) - 14
         # texts
         left = rect.left() + 70
@@ -475,7 +485,7 @@ class StartScreen(Screen):
         page.setObjectName("startPage")
         scroll.setWidget(page)
         row = QHBoxLayout(page)
-        row.setContentsMargins(24, 32, 24, 32)
+        row.setContentsMargins(24, 48, 24, 48)
         row.addStretch(1)
         column = QWidget()
         column.setProperty("plain", True)

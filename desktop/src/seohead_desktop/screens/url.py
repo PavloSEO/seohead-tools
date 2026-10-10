@@ -45,12 +45,13 @@ from ..ui.kit import (
     BadgeDelegate,
     StatePanel,
     no_project_panel,
+    set_panel_state,
     style_table,
     unavailable_tip,
 )
 from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
-from .scan_common import number
+from .scan_common import number, selected_scan
 from .url_card import UrlCard
 from .url_detail import RunSummary, UrlSideDetail
 from .url_query import (
@@ -177,10 +178,6 @@ def _skeleton_bar(width=None):
         bar.setFixedWidth(width)
     return bar
 
-
-def selected_scan(host):
-    path = getattr(host, "selected_scan_path", None)
-    return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
 
 
 class UrlPageModel(QAbstractTableModel):
@@ -804,17 +801,6 @@ class UrlScreen(Screen):
         self._apply_columns()
 
     # ---- state ---------------------------------------------------------------------------------------------------
-    def _set_state(self, kind, panel=None):
-        if kind != self.panel_state:
-            self.panel_state = kind
-            while self.state_layout.count():
-                item = self.state_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            if panel is not None:
-                self.state_layout.addWidget(panel)
-        self.stack.setCurrentIndex(1 if panel is not None else 0)
-
     def _set_table_state(self, panel=None):
         while self.table_state_layout.count():
             item = self.table_state_layout.takeAt(0)
@@ -830,17 +816,17 @@ class UrlScreen(Screen):
         if not host.project_directory:
             self._stop_jobs()
             self.scan_path = None
-            return self._set_state("none", no_project_panel(host, "Откройте проект, чтобы увидеть URL его сканов."))
+            return set_panel_state(self, "none", no_project_panel(host, "Откройте проект, чтобы увидеть URL его сканов."))
         if scan is None:
             self._stop_jobs()
             self.scan_path = None
             if host._project_loading:
-                return self._set_state("loading", StatePanel("loading", "Чтение проекта", "URL появятся после чтения сканов."))
+                return set_panel_state(self, "loading", StatePanel("loading", "Чтение проекта", "URL появятся после чтения сканов."))
             panel = StatePanel("empty", "В проекте ещё нет сканов",
                                "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical. Запустите первый скан — данные появятся по мере обхода.",
                                action=("Новый скан", host.scan_preview), secondary=("Сканы проекта", lambda: host.navigation.select_section("scans")))
-            return self._set_state("noscan", panel)
-        self._set_state(None)
+            return set_panel_state(self, "noscan", panel)
+        set_panel_state(self, None)
         self.model.project_host = scan.get("host") or urlsplit(scan.get("start_url") or "").hostname
         self.summary.set_scan(scan)
         self.bottom.summary.set_scan(scan)

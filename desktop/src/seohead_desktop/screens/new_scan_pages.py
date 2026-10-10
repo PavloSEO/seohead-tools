@@ -10,7 +10,8 @@ import re
 import shutil
 from pathlib import Path
 
-from PyQt5.QtCore import QAbstractTableModel, QPoint, QRect, QSize, Qt
+from PyQt5.QtCore import QAbstractTableModel, QPoint, QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -29,6 +30,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .. import theming
 from ..i18n import tr, trf
 from ..ui.controls import Note, Segmented, SettingRow, Switch, polish
 from ..ui.icons import MaterialIconLabel, material_icon
@@ -531,6 +533,60 @@ def number_row(page, draft, key, title, description, unit="", width=90, key_tip=
     return item
 
 
+class RateSlider(QWidget):
+    """Design `.slider`: a 4 px track, a 16 px thumb, one position per preset; the thumb moves by drag or arrow keys."""
+
+    changed = pyqtSignal(int)
+
+    def __init__(self, steps, accessible_name="", parent=None):
+        super().__init__(parent)
+        self.steps, self.index = len(steps), 0
+        self.setFixedSize(100, 16)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAccessibleName(accessible_name)
+
+    def _x(self, index):
+        return 8 + (self.width() - 16) * index / max(1, self.steps - 1)
+
+    def set_index(self, index):
+        self.index = index
+        self.update()
+
+    def paintEvent(self, _event):
+        roles = theming.roles()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        mid, x = self.height() / 2, self._x(self.index)
+        painter.setBrush(QColor(roles["selected"]))
+        painter.drawRoundedRect(QRectF(8, mid - 2, self.width() - 16, 4), 2, 2)
+        painter.setBrush(QColor(roles["primary"]))
+        painter.drawRoundedRect(QRectF(8, mid - 2, x - 8, 4), 2, 2)
+        painter.drawEllipse(QPointF(x, mid), 8, 8)
+        painter.end()
+
+    def _pick(self, x):
+        steps = [self._x(i) for i in range(self.steps)]
+        index = min(range(self.steps), key=lambda i: abs(steps[i] - x))
+        if index != self.index:
+            self.index = index
+            self.update()
+            self.changed.emit(index)
+
+    def mousePressEvent(self, event):
+        self._pick(event.x())
+
+    def mouseMoveEvent(self, event):
+        self._pick(event.x())
+
+    def keyPressEvent(self, event):
+        step = {Qt.Key_Left: -1, Qt.Key_Right: 1}.get(event.key(), 0)
+        if step:
+            self._pick(self._x(min(max(self.index + step, 0), self.steps - 1)))
+        else:
+            super().keyPressEvent(event)
+
+
 def checkbox(text):
     box = QCheckBox(text)
     box.setAccessibleName(text)
@@ -541,9 +597,14 @@ def checkbox(text):
 def speed_page(draft, host):
     page = Page(tr("Скорость и лимиты"), tr("Нагрузка на сайт и границы скана"))
     edit, sync_edit = number_edit(draft, "rps", tr("Запросов в секунду на хост"), 80, "scanRequestRate")
-    presets = Segmented([(n, str(n)) for n in (1, 2, 3, 5, 10)], None, tr("Быстрые значения"))
+    rates = (1, 2, 3, 5, 10)
+    presets = Segmented([(n, str(n)) for n in rates], None, tr("Быстрые значения"))
     presets.changed.connect(lambda n: draft.set_text("rps", str(n)))
-    rps_row = row(page, "Запросов в секунду на хост", "Боевым сайтам — не больше 2. Выше — только для своего стенда", holder(edit, presets), "speed.min_delay_seconds = 1 / запросов в секунду")
+    # design `.slider`: the position of the preset, the same five values as the segmented control
+    rate_slider = RateSlider(rates, tr("Запросов в секунду на хост"))
+    rate_slider.setObjectName("scanRateSlider")
+    rate_slider.changed.connect(lambda i: draft.set_text("rps", str(rates[i])))
+    rps_row = row(page, "Запросов в секунду на хост", "Боевым сайтам — не больше 2. Выше — только для своего стенда", holder(edit, rate_slider, presets), "speed.min_delay_seconds = 1 / запросов в секунду")
     warn = Note("warn", tr("Выше безопасного для боевого сайта."), tr("Разрешено, потому что адрес локальный: возможны 429/503 и блокировка IP на чужом сайте."))
     page.add(warn)
 
@@ -555,8 +616,10 @@ def speed_page(draft, host):
         polish(edit)
         rate = draft.rps()
         warn.setVisible(draft.local and rate is not None and rate > RPS_SAFE and "rps" not in problems)
-        match = next((n for n in (1, 2, 3, 5, 10) if rate is not None and abs(rate - n) < 1e-6), None)
+        match = next((n for n in rates if rate is not None and abs(rate - n) < 1e-6), None)
         presets.setValue(match) if match is not None else clear_segmented(presets)
+        if rate is not None:  # nearest preset when the value is not one of them
+            rate_slider.set_index(min(range(len(rates)), key=lambda i: abs(rates[i] - rate)))
 
     page.bind(sync_rps)
     thread_edit, sync_threads = number_edit(draft, "threads", tr("Параллельных соединений"), 80, "scanConcurrency")
@@ -597,7 +660,7 @@ def speed_page(draft, host):
     def arrange(wide):
         columns = 4 if wide else 2
         for index, key in enumerate(("limit", "depth", "requests", "minutes")):
-            grid.addWidget(boxes[key], index // columns, index % columns)
+            grid.addWidget(boxes[key], index // columns, index % columns, Qt.AlignTop)  # captions and fields share one top line
         for column in range(4):
             grid.setColumnStretch(column, 1 if column < columns else 0)
 
@@ -764,7 +827,7 @@ def scope_page(draft, host):
     arrange_columns(True)
     waiting_row(page, "GET-параметры", "Оставлять / удалять отмеченные / игнорировать все", ISSUE_SETTINGS, "в ядре нет нормализации параметров",
                 Segmented([("k", tr("Оставлять")), ("s", tr("Удалять отмеченные")), ("i", tr("Игнорировать все"))], "k", tr("GET-параметры")))
-    page.caption(tr("Не обходить файлы типов"))
+    page.caption(tr("Типы файлов"))
     boxes = {}
     flow = QGridLayout()
     flow.setHorizontalSpacing(24)

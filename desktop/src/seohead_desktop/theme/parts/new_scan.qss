@@ -9,6 +9,7 @@ QFrame[disk_bar="true"] { background: $divider; border: 0; border-radius: 5px; }
 QFrame[disk_fill="true"] { background: $data_progress; border: 0; border-radius: 5px; }
 QFrame[set_row="true"][waiting="true"] QLabel[text_style="control"] { color: $text_2; }
 QPlainTextEdit#scanListText { font-family: "$mono_family"; font-size: ${font_mono}px; }
+QTableView#scanRulesTable { border: 1px solid $divider; border-radius: 10px; }
 
 /* dense layout (ScanDialog sheet): 40 px source buttons, 32 px fields, 28 px summary rows */
 QToolButton[card="choice"][compact="true"] { padding: 0 10px; border-radius: ${radius_control}px; }

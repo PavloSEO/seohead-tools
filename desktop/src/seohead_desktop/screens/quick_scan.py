@@ -30,8 +30,8 @@ from ..ui.controls import Switch
 from ..ui.icons import MaterialIconLabel
 from ..ui.icons import material_icon as icon
 from ..ui.kit import waiting_badge
-from ..ui.presentation import ElidedLabel, run_projection, short_run_id
-from .new_scan_draft import ISSUE_OTHER, PlanError, ScanDraft, grouped
+from ..ui.presentation import ElidedLabel, run_projection, short_run_id, state_text
+from .new_scan_draft import ISSUE_OTHER, PlanError, ScanDraft, grouped, request_project_policy
 from .new_scan_pages import HelpIcon, Stepper, number_edit
 from .scan_common import RunRow, StatusBadge, number, now
 
@@ -252,30 +252,8 @@ class QuickScanBar(QFrame):
             self._rps_edit, self._sync_rps = number_edit(draft, "rps", tr("Запросов в секунду"), 0, "quickScanRate")
             self._limit_edit, self._sync_limit = number_edit(draft, "limit", tr("Лимит URL"), 0, "quickScanLimit")
             draft.changed.connect(self.refresh)
-            self._request_policy()
+            request_project_policy(self.host, self.draft)
         self.refresh()
-
-    def _request_policy(self):
-        host, draft = self.host, self.draft
-        if draft.policy_state != "unknown" or not hasattr(host, "request_scan_policy"):
-            return
-        draft.policy_state = "loading"
-
-        def arrived(overrides):
-            try:
-                draft.apply_project_policy(overrides)
-            except RuntimeError:
-                pass
-
-        def failed(_text):
-            try:
-                draft.policy_state = "unavailable"
-                draft.emit_changed()
-            except RuntimeError:
-                pass
-
-        if not host.request_scan_policy(arrived, failed):
-            draft.policy_state = "unavailable"
 
     def set_mode(self, mode):
         if mode not in ("site", "sitemap") or self.draft is None:

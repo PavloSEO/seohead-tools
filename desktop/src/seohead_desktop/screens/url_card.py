@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
 
 from .. import i18n, theming
 from ..i18n import joined, tr, trf
+from ..ui.controls import Segmented
 from ..ui.icons import material_icon
 from ..ui.kit import (
     BADGE_ROLE,
@@ -69,7 +70,6 @@ TAB_LABELS = {"info": "Обзор", "hdr": "Заголовки", "links": "Сс�
               "schema": "Schema", "graph": "Граф", "snip": "Сниппет", "checks": "Проверки"}
 # tab -> (title, text, core issue) of the tabs whose data the core does not give yet
 UNAVAILABLE = {
-    "html": ("Исходник страницы", "Читатель сохранённого тела страницы (исходного и после рендеринга) ещё не доступен; ниже — что известно о теле.", 936),
     "res": ("Ресурсы страницы", "Изображения, CSS, JS и шрифты страницы со статусом и весом ядро по одному URL не отдаёт; ниже — счётчики со страницы.", 935),
     "hist": ("История URL по сканам", "Статус и поля URL по всем сканам проекта («был 404») ядро одним запросом не отдаёт.", 972),
     "schema": ("Структурированные данные", "Содержимое блоков JSON-LD, microdata и ошибки разметки по URL ядро не отдаёт; ниже — что найдено на странице.", 948),
@@ -738,8 +738,7 @@ class FactsPage(QWidget):
 
     def activate(self):
         clear(self.facts)
-        page, detail = self.ctx.page, self.ctx.detail
-        response = first_response(detail)
+        page = self.ctx.page
         rows = []
         if self.tab == "res":
             rows = [("Изображений на странице", number(page.get("images_total"))), ("Изображений без alt", number(page.get("images_missing_alt_attr")))]
@@ -747,16 +746,67 @@ class FactsPage(QWidget):
             hreflang = page.get("hreflang_json")
             rows = [("Блоков JSON-LD найдено", number(page.get("jsonld_blocks_found"))), ("Блоков JSON-LD разобрано", number(page.get("jsonld_blocks_parsed"))),
                     ("Записей hreflang", number(len(hreflang)) if isinstance(hreflang, list) else None)]
-        elif self.tab == "html":
-            size = response.get("reported_size_bytes")
-            sha = response.get("body_sha256")
-            rows = [("Тело сохранено", {"complete": tr("Полностью"), "partial": tr("Частично")}.get(response.get("body_state"), clean(response.get("body_state")))), ("Размер, байт", number(size)), ("SHA-256", f"{sha[:8]}…{sha[-4:]}" if isinstance(sha, str) and len(sha) > 12 else None),
-                    ("Представление", source_text({"source_kind": (detail or {}).get("source", {}).get("source_kind")}, page))]
         if rows:
             pairs = Pairs(tuple(key for key, _v in rows))
             for key, value in rows:
                 pairs.set(key, value)
             self.facts.addWidget(pairs)
+
+
+class HtmlPage(QWidget):
+    """HTML tab in the canvas layout: source toolbar, source area and a facts column with the saved body's real fields.
+
+    The core does not give a saved page body per URL yet (issue 936, merged into 980), so the source area is the
+    neutral waiting state and the toolbar controls stay disabled. Only the response record is shown as facts.
+    """
+
+    def __init__(self, ctx, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        bar = QHBoxLayout()
+        bar.setContentsMargins(20, 8, 12, 8)
+        bar.setSpacing(10)
+        self.mode = Segmented((("raw", tr("Исходный")), ("rendered", tr("После рендеринга JS"))), value="raw", accessible_name=tr("Представление HTML"))
+        self.mode.setEnabled(False)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(tr("Поиск в HTML"))
+        self.search.setEnabled(False)
+        self.search.setFixedWidth(240)
+        bar.addWidget(self.mode)
+        bar.addStretch(1)
+        bar.addWidget(self.search)
+        outer.addLayout(bar)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        self.source = StatePanel("waiting", "Исходник страницы недоступен",
+                                 "Сохранённое тело страницы ядро по одному URL пока не отдаёт: строки, подсветка и поиск появятся после этого.",
+                                 issue=936)
+        body.addWidget(self.source, 1)
+        side = QFrame()
+        side.setFixedWidth(300)
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(16, 12, 16, 12)
+        side_layout.setSpacing(12)
+        side_layout.addWidget(section_label("Сохранённое тело"))
+        self.facts = Pairs(("Тело сохранено", "Размер, байт", "SHA-256", "Представление"), mono=("SHA-256",))
+        side_layout.addWidget(self.facts)
+        side_layout.addStretch(1)
+        body.addWidget(side)
+        outer.addLayout(body, 1)
+
+    def activate(self):
+        page, detail = self.ctx.page, self.ctx.detail
+        response = first_response(detail)
+        sha = response.get("body_sha256")
+        state = response.get("body_state")
+        self.facts.set("Тело сохранено", {"complete": tr("Полностью"), "partial": tr("Частично")}.get(state, clean(state)))
+        self.facts.set("Размер, байт", number(response.get("reported_size_bytes")))
+        self.facts.set("SHA-256", f"{sha[:8]}…{sha[-4:]}" if isinstance(sha, str) and len(sha) > 12 else None)
+        self.facts.set("Представление", source_text({"source_kind": (detail or {}).get("source", {}).get("source_kind")}, page))
 
 
 class UrlCard(QFrame):
@@ -819,7 +869,7 @@ class UrlCard(QFrame):
         self.graph.table_requested.connect(lambda: self.select_tab("links"))
         self.redirects = RedirectsPage(self.ctx)
         self.snippet = SnippetPage()
-        self.facts = {tab: FactsPage(tab, self.ctx) for tab in UNAVAILABLE}
+        self.facts = {tab: HtmlPage(self.ctx) if tab == "html" else FactsPage(tab, self.ctx) for tab in ("html", *UNAVAILABLE)}
         self.index = {}
         widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "graph": self.graph, "redir": scrolled(self.redirects),
                    "snip": self.snippet, **{tab: scrolled(page) for tab, page in self.facts.items()}}

@@ -36,12 +36,15 @@ from ..ui.kit import (
     BadgeDelegate,
     Kpi,
     StatePanel,
+    clear_layout,
     no_project_panel,
+    show_empty,
     style_table,
     waiting_badge,
 )
 from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
+from .scan_common import number
 
 TASK_STATES = {  # core display_state -> (badge kind, label, icon)
     "completed": ("ok", "Выполнена", "check_circle"),
@@ -76,11 +79,6 @@ def local_stamp(value, with_time=False):
     return stamp.strftime("%d.%m.%Y %H:%M" if with_time else "%d.%m.%Y")
 
 
-def number(value):
-    """Core counter as text with a thin grouping space; None (not measured) stays None."""
-    return f"{value:,}".replace(",", " ") if type(value) is int else None
-
-
 def scrolled(widget):
     """Vertical scroll container so a short window scrolls instead of squeezing cards."""
     area = QScrollArea()
@@ -89,17 +87,6 @@ def scrolled(widget):
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
     area.setWidget(widget)
     return area
-
-
-def clear_layout(layout):
-    while layout.count():
-        item = layout.takeAt(0)
-        widget = item.widget()
-        if widget is not None:
-            widget.setParent(None)
-            widget.deleteLater()
-        elif item.layout() is not None:
-            clear_layout(item.layout())
 
 
 class RowsModel(QAbstractTableModel):
@@ -618,24 +605,16 @@ class WorkScreen(Screen):
         self.task_table.setColumnHidden(4, self.task_table.viewport().width() < 700)
         self.task_table.setColumnHidden(3, self.task_table.viewport().width() < 560)
 
-    def _show_empty(self, panel):
-        clear_layout(self.empty_holder)
-        margin = 24 if panel is not None else 0
-        self.empty_holder.setContentsMargins(margin, margin, margin, margin)
-        if panel is not None:
-            self.empty_holder.addWidget(panel)
-        self.content.setVisible(panel is None)
-
     def refresh(self):
         host = self.host
         status, _text = project_state(host)
         if status == "none":
-            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть цель и задачи"))
+            show_empty(self.empty_holder, self.content, no_project_panel(host, "Откройте проект, чтобы увидеть цель и задачи"))
             return
         if status == "loading":
-            self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
+            show_empty(self.empty_holder, self.content, StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
             return
-        self._show_empty(None)
+        show_empty(self.empty_holder, self.content, None)
         self._layout_kpis(force=True)
         self._fill_header()
         self._fill_kpis()

@@ -135,6 +135,12 @@ class ComparisonSummary(QWidget):
         delta_layout.addWidget(self.raw_summary, 1, 0, 1, 3)
         delta_layout.setColumnStretch(0, 1)
         layout.addWidget(self.delta)
+        self.state_line = QLabel()
+        self.state_line.setObjectName("comparisonStep")
+        self.state_line.setWordWrap(True)
+        self.state_line.setTextFormat(Qt.PlainText)
+        self.state_line.hide()
+        layout.addWidget(self.state_line)
         self.page_scope = QLabel()
         self.page_scope.setObjectName("comparisonStep")
         self.page_scope.setWordWrap(True)
@@ -250,6 +256,9 @@ class ComparisonSummary(QWidget):
         if other:
             self.page_scope.setText(self.page_scope.text() + f" · Другие статусы: {_number(other)}")
         self.set_active_filter("all")
+        reason = str(payload.get("reason") or "").strip()[:800]
+        self.state_line.setText(reason)
+        self.state_line.setVisible(not ready and bool(reason))
         warnings = [str(item)[:800] for item in (payload.get("warnings") or [])[:20]] if ready else []
         compatibility = payload.get("compatibility") or [] if ready else []
         partial = warnings or any(source.get("crawl_partial") or source.get("corpus_partial") for source in (before, after))

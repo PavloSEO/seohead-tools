@@ -9,7 +9,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtCore import Qt, QCoreApplication, QEvent, QTimer
+from PyQt5.QtCore import QCoreApplication, QEvent, Qt, QTimer
+from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import (
     QAbstractButton,
     QCheckBox,
@@ -36,7 +37,7 @@ from seohead_desktop.screens.new_scan_draft import (
     list_from_file_text,
     normalize_list,
 )
-from seohead_desktop.screens.new_scan_pages import PAGES
+from seohead_desktop.screens.new_scan_pages import PAGES, RateSlider
 from seohead_desktop.screens.new_scan_settings import ScanSettingsDialog
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.controls import SettingRow
@@ -707,6 +708,17 @@ class SettingsTests(DialogCase):
         self.assertEqual(dialog.draft.value("speed.concurrency"), 4)
         self.assertEqual(dialog.findChild(QLineEdit, "scanConcurrency").text(), "4")
         self.assertIn("speed.concurrency", dialog.draft.edited_paths())
+
+    def test_rate_slider_steps_through_presets_and_writes_the_rate(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "speed")
+        self.addCleanup(settings.deleteLater)
+        slider = settings.findChild(RateSlider, "scanRateSlider")
+        self.assertEqual(slider.index, 1)  # the draft default is 2 requests per second
+        QTest.keyClick(slider, Qt.Key_Right)
+        self.assertEqual(slider.index, 2)
+        self.assertAlmostEqual(settings.draft.rps(), 3, places=3)  # the core pause is rounded to 1e-6 s
+        self.assertEqual(settings.findChild(QLineEdit, "scanRequestRate").text(), "3")
 
     def test_invalid_depth_is_red_with_text_and_apply_is_closed(self):
         dialog = self.open()

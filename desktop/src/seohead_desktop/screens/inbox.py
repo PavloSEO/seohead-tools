@@ -34,7 +34,7 @@ from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.controls import Note
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import BADGE_ROLE, StatePanel, no_project_panel, waiting_badge
+from ..ui.kit import BADGE_ROLE, StatePanel, no_project_panel, show_empty, waiting_badge
 from .base import Screen
 from .work import RowsModel, build_table, clear_layout, local_stamp, number, project_state
 
@@ -517,24 +517,16 @@ class InboxScreen(Screen):
             self.selected_id = None
         self._fill_detail()
 
-    def _show_empty(self, panel):
-        clear_layout(self.empty_holder)
-        margin = 24 if panel is not None else 0
-        self.empty_holder.setContentsMargins(margin, margin, margin, margin)
-        if panel is not None:
-            self.empty_holder.addWidget(panel)
-        self.content.setVisible(panel is None)
-
     def refresh(self):
         host = self.host
         status, _text = project_state(host, errors=("observer",))
         if status == "none":
-            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть входящие и писать заметки"))
+            show_empty(self.empty_holder, self.content, no_project_panel(host, "Откройте проект, чтобы увидеть входящие и писать заметки"))
             return
         if status == "loading":
-            self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
+            show_empty(self.empty_holder, self.content, StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
             return
-        self._show_empty(None)
+        show_empty(self.empty_holder, self.content, None)
         self.all_rows = list(host.inbox_model.rows)
         self._label_tabs()
         clear_layout(self.list_state)

@@ -66,6 +66,7 @@ ISSUE_HINTS = {
     1163: "Результат проверки целостности базы скана и точка восстановления без полного открытия",
     992: "Глубина кликов от главной: сейчас ядро считает от стартовых адресов, а адреса из sitemap стартовые",
     999: "Профиль внешних ссылок проекта: ссылающиеся домены, ссылки и анкоры из подключённых источников",
+    1213: "Размер сканов каждого проекта на диске",
 }
 
 
@@ -311,3 +312,37 @@ def style_table(table, density="standard"):
     header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     header.setFixedHeight(theming.metrics()["row"]["header"])
     return table
+
+
+def clear_layout(layout):
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+        elif item.layout() is not None:
+            clear_layout(item.layout())
+
+
+def show_empty(holder, content, panel):
+    """Put ``panel`` into the empty holder and hide ``content``; with no panel, hide the holder instead."""
+    clear_layout(holder)
+    margin = 24 if panel is not None else 0
+    holder.setContentsMargins(margin, margin, margin, margin)
+    if panel is not None:
+        holder.addWidget(panel)
+    content.setVisible(panel is None)
+
+
+def set_panel_state(owner, kind, panel=None):
+    """Show ``panel`` as the state of ``owner`` (its stack, state_layout, panel_state); replace it only when ``kind`` changes."""
+    if kind != owner.panel_state:
+        owner.panel_state = kind
+        while owner.state_layout.count():
+            item = owner.state_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if panel is not None:
+            owner.state_layout.addWidget(panel)
+    owner.stack.setCurrentIndex(1 if panel is not None else 0)

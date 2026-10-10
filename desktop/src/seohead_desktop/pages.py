@@ -531,3 +531,9 @@ class PagesMixin:
         from .screens.quick_scan import open_quick_scan
 
         return open_quick_scan(self)
+
+    def images_tool(self):
+        """«Картинки» (design ToolImages): compress a folder with the core and build the 301 rules; starts nothing on its own."""
+        from .screens.images import open_images
+
+        return open_images(self)
