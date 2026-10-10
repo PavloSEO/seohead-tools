@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 from seohead.storage import ScanError
-from seohead.storage.bodies import decode_entity, encode_body, read_body, read_document
+from seohead.storage.bodies import (
+    MAX_WINDOW_CHARS,
+    decode_entity,
+    encode_body,
+    read_body,
+    read_document,
+    read_document_window,
+)
 
 
 def _con() -> sqlite3.Connection:
@@ -260,3 +267,60 @@ def test_http_entity_cannot_be_relabelled_as_a_rendered_dom():
     )
     with pytest.raises(ScanError, match=r"representation.*fidelity"):
         read_document(con, 1, max_decoded_bytes=100)
+
+
+def test_document_window_counts_characters_and_keeps_multibyte_whole():
+    con = _con()
+    raw = "café 🙂\nsecond line\n".encode()
+    sha = _body(con, raw)
+    _response(con, sha)
+    con.execute("UPDATE responses SET content_type='text/html; charset=utf-8' WHERE response_id=1")
+    _document(con, sha, decoder_charset="utf-8")
+    text = raw.decode()
+
+    window = read_document_window(con, 1, offset=3, length=3, max_decoded_bytes=100)
+
+    assert window["text"] == "é 🙂"
+    assert window["offset"] == 3 and window["length"] == 3
+    assert window["total_chars"] == len(text)
+    assert window["truncated"] is True
+    assert window["lines"] == 2
+    assert window["encoding"] == "utf-8"
+    assert window["sha256"] == hashlib.sha256(text.encode()).hexdigest()
+
+
+def test_document_window_full_read_and_empty_body():
+    con = _con()
+    sha = _body(con, b"caf\xe9")
+    _response(con, sha)
+    _document(con, sha)
+    full = read_document_window(con, 1, length=1000, max_decoded_bytes=100)
+    assert full["text"] == "café"
+    assert full["truncated"] is False
+    assert full["encoding"] == "iso8859-1"
+
+    empty_sha = _body(con, b"")
+    con.execute("UPDATE responses SET body_sha256=? WHERE response_id=1", (empty_sha,))
+    con.execute("UPDATE documents SET body_sha256=? WHERE document_id=1", (empty_sha,))
+    empty = read_document_window(con, 1, max_decoded_bytes=100)
+    assert empty["text"] == ""
+    assert empty["total_chars"] == 0
+    assert empty["lines"] == 0
+    assert empty["truncated"] is False
+
+
+def test_document_window_rejects_invalid_bounds_and_respects_byte_limit():
+    con = _con()
+    sha = _body(con, b"caf\xe9")
+    _response(con, sha)
+    _document(con, sha)
+    for kwargs in (
+        {"offset": -1},
+        {"offset": True},
+        {"length": 0},
+        {"length": MAX_WINDOW_CHARS + 1},
+    ):
+        with pytest.raises(ScanError, match="window"):
+            read_document_window(con, 1, max_decoded_bytes=100, **kwargs)
+    with pytest.raises(ScanError, match="decoded byte limit"):
+        read_document_window(con, 1, max_decoded_bytes=2)
