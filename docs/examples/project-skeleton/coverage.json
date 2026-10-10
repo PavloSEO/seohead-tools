@@ -8509,7 +8509,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "6658da6804091f4951f909e984e38ebb4e5a05db18922e1112b64e10de202f4e",
+        "source_hash": "eb3e2eb29eda278a65997946c26ef69ec781424cb2f10a909c60c28770d9857e",
         "title": "Scenario 22 \u2014 Duplicate and near-duplicate content: which pages are the same page"
       },
       "definitions": [
@@ -8529,7 +8529,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "6658da6804091f4951f909e984e38ebb4e5a05db18922e1112b64e10de202f4e",
+            "source_hash": "eb3e2eb29eda278a65997946c26ef69ec781424cb2f10a909c60c28770d9857e",
             "title": "Scenario 22 \u2014 Duplicate and near-duplicate content: which pages are the same page"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -8641,7 +8641,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "f0582a21262de020480ded099fad3a34bf7143dfa0804820dd9851f9bfbf84b0",
+        "source_hash": "1a5d6d3ae6c2672db49000f211d51adfe4e145eeec6e4f17bb74b70b7d2b417b",
         "title": "Scenario 20 \u2014 Heading hierarchy: the outline nobody can see from a crawl column"
       },
       "definitions": [
@@ -8661,7 +8661,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "f0582a21262de020480ded099fad3a34bf7143dfa0804820dd9851f9bfbf84b0",
+            "source_hash": "1a5d6d3ae6c2672db49000f211d51adfe4e145eeec6e4f17bb74b70b7d2b417b",
             "title": "Scenario 20 \u2014 Heading hierarchy: the outline nobody can see from a crawl column"
           },
           "observed_at": "2026-09-09T00:00:00Z"
