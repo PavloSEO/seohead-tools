@@ -49,6 +49,9 @@ def isolated_user_configuration(tmp_path, monkeypatch):
     """Isolate shared MCP state; client tests additionally provide a temporary HOME."""
     home = tmp_path / "isolated-home"
     monkeypatch.setenv("SEOHEAD_CONFIG_DIR", str(home / ".config/seohead"))
+    # The run journal ignores SEOHEAD_CONFIG_DIR; without this every test that calls a
+    # journaled handler would append to the real ~/.config/seohead/runs.jsonl.
+    monkeypatch.setenv("SEOHEAD_RUN_LOG", "off")
 
 
 @pytest.fixture
