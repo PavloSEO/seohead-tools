@@ -130,3 +130,48 @@ def check_soft404(url: str, timeout: float = 20.0) -> dict[str, Any]:
         "probes": probes,
         "findings": [findings],
     }
+
+
+# Stored-body classifier (issue #988, slice S1). Pure function: no network, no DB.
+# ponytail: thin text = whitespace word count, no tokenizer | ceiling: CJK text without spaces counts as one word | upgrade: reuse checks.duplicate._tokenize
+THIN_TEXT_WORDS = 50
+TEMPLATE_HAMMING_MAX = 3  # bits out of 64 that may differ between a page and the 404 template
+ERROR_PHRASES = (
+    "страница не найдена",
+    "ничего не найдено",
+    "товар не найден",
+    "page not found",
+    "nothing found",
+    "404 not found",
+)
+
+
+def classify_stored_soft404(
+    *,
+    status: int,
+    text: str,
+    template_simhash: int | None,
+    page_simhash: int | None,
+) -> dict[str, str]:
+    """Classify a stored 200 body as a soft 404, using only the saved text and simhashes.
+
+    Verdicts reuse the ``classify_soft404`` vocabulary: ``warning`` marks a soft 404 and
+    ``pass`` means no soft-404 signal. Non-200 responses are never soft 404s here.
+    """
+    from seohead.checks.duplicate import hamming
+
+    if status != 200:
+        return {"verdict": "pass", "reason": "none"}
+    words = len(text.split())
+    if (
+        template_simhash is not None
+        and page_simhash is not None
+        and hamming(page_simhash, template_simhash) <= TEMPLATE_HAMMING_MAX
+    ):
+        return {"verdict": "warning", "reason": "template_match"}
+    if words == 0:
+        return {"verdict": "warning", "reason": "thin_text"}
+    lowered = text.lower()
+    if words < THIN_TEXT_WORDS and any(phrase in lowered for phrase in ERROR_PHRASES):
+        return {"verdict": "warning", "reason": "error_phrase"}
+    return {"verdict": "pass", "reason": "none"}

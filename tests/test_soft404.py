@@ -156,3 +156,55 @@ def test_check_soft404_records_a_guard_refusal_without_requesting_the_target(mon
         assert probe["blocked_by_guard"] is True
         assert probe["status"] == 301
         assert probe["final_url"] == "http://169.254.169.254/"
+
+
+# Stored-body classifier (issue #988, S1): pure, no network.
+_FULL_PRODUCT = " ".join(
+    ["Centrifugal pump with full specifications, price and delivery terms"] * 10
+)
+
+
+def test_stored_soft404_flags_empty_200_body():
+    r = S.classify_stored_soft404(status=200, text="", template_simhash=None, page_simhash=None)
+    assert r == {"verdict": "warning", "reason": "thin_text"}
+
+
+def test_stored_soft404_flags_thin_text_with_error_phrase():
+    r = S.classify_stored_soft404(
+        status=200,
+        text="Страница не найдена. Вернуться на главную.",
+        template_simhash=None,
+        page_simhash=None,
+    )
+    assert r == {"verdict": "warning", "reason": "error_phrase"}
+
+
+def test_stored_soft404_does_not_flag_full_product_page():
+    r = S.classify_stored_soft404(
+        status=200, text=_FULL_PRODUCT, template_simhash=None, page_simhash=None
+    )
+    assert r == {"verdict": "pass", "reason": "none"}
+
+
+def test_stored_soft404_never_flags_non_200_status():
+    r = S.classify_stored_soft404(
+        status=404, text="page not found", template_simhash=None, page_simhash=None
+    )
+    assert r == {"verdict": "pass", "reason": "none"}
+
+
+def test_stored_soft404_matches_error_template_by_simhash():
+    from seohead.checks.duplicate import simhash
+
+    template = simhash(_FULL_PRODUCT)
+    r = S.classify_stored_soft404(
+        status=200, text=_FULL_PRODUCT, template_simhash=template, page_simhash=template
+    )
+    assert r == {"verdict": "warning", "reason": "template_match"}
+
+
+def test_stored_soft404_survives_missing_template_simhash():
+    r = S.classify_stored_soft404(
+        status=200, text=_FULL_PRODUCT, template_simhash=None, page_simhash=12345
+    )
+    assert r == {"verdict": "pass", "reason": "none"}
