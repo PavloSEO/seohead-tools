@@ -2142,5 +2142,10 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "Результат временный:": "Temporary result:",
+ "без проекта нет истории, задач и сравнения сканов. Сохраните как проект, чтобы перепроверять исправления.": "without a project there is no history, tasks or scan comparison. Save as a project to recheck fixes.",
+ "Без проекта · данные во временной папке до закрытия окна": "No project · data in a temporary folder until the window closes",
+ "Выбрано: {url}": "Selected: {url}",
+ "Ещё действия": "More actions"
 }
