@@ -84,6 +84,8 @@ COLUMNS = (
 COLUMN_WIDTHS = {1: 68, 2: 74, 3: 132, 5: 112, 6: 88, 7: 66, 8: 92, 9: 82}
 TITLE_WIDTH = 180
 DROP_ORDER = (9, 6, 8, 2, 7, 5, 4)   # columns that give way first when the table is narrow
+COMPACT_COLUMNS = (0, 1, 3)           # canvas Compact (800x800): address, HTTP, indexability only
+COMPACT_WINDOW = 900                  # the same breakpoint at which the navigation becomes a rail
 URL_MIN = 340
 SIDE_COLUMNS = (0, 1, 7, 6, 9)        # MainB: address, HTTP, words, inlinks, issues
 # group id, label, core filters (None: the core cannot filter it), hint issue, tooltip
@@ -668,6 +670,8 @@ class UrlScreen(Screen):
         self.speed.setVisible(self.table.width() >= 640)
         side = self.side_layout
         wanted = [c for c in range(len(COLUMNS)) if c not in self.user_hidden and (not side or c in SIDE_COLUMNS)]
+        if self.window().width() < COMPACT_WINDOW:
+            wanted = [c for c in wanted if c in COMPACT_COLUMNS]
         width = self.table.viewport().width() or self.width()
         used = URL_MIN + sum(COLUMN_WIDTHS.get(c, TITLE_WIDTH) for c in wanted if c != 0)
         for column in DROP_ORDER:
