@@ -63,7 +63,7 @@ no daemon. The MCP server is a stdio child process, not a network service.
 | Destination | Reached by | What is sent | Optional? |
 |---|---|---|---|
 | Operator-supplied target websites | `crawl-site`, `parse`, `headers-check`, `robots-check`, `sitemap-crawl`, `links-check`, `hreflang-check`, `redirects-check`, `asset-weight-check`, `images-download`, `render-check`, `soft404-check`, `security-check`, `mirror-check`, `backlinks-check`, `tech-detect`, `llms-txt-check`, `citability-check`, `site-audit`, `sf run --crawl` (via the installed Screaming Frog binary) | HTTP(S) requests with the SEOHEAD user agent; optional host-bound credential headers. `crawl-site` sub-resource fetches stay within the crawl start origin; URL-list tools such as `images-download` and `backlinks-check` fetch each supplied URL on whatever public hosts the operator lists | Every call is operator-invoked |
-| DNS-over-HTTPS resolvers `cloudflare-dns.com`, `dns.google`; the OS resolver | `domain-profile`, `cdn-check`, `regions-check`, `ai-bots-check --verify-bots`, every target fetch | The names being looked up | Operator-invoked; `--verify-bots` is an explicit flag |
+| DNS-over-HTTPS resolvers `cloudflare-dns.com`, `dns.google`; the OS resolver | `domain-profile`, `cdn-check`, `regions-check`, `log-analyze --verify-bots`, every target fetch | The names being looked up | Operator-invoked; `--verify-bots` is an explicit flag |
 | RDAP `rdap.org` and the registry it delegates to; WHOIS servers via the system `whois` binary (incl. `whois.tcinet.ru` for .ru/.su and the Cyrillic .rf zone in punycode) | `domain-profile` | The queried domain | Operator-invoked |
 | Direct TLS handshake to the target host | `domain-profile` certificate check | TLS ClientHello with the target hostname | Operator-invoked |
 | `api.dataforseo.com` / `sandbox.dataforseo.com` | `google-keywords`, `google-serp`, `provider-collect dataforseo_backlinks` | Keywords/queries plus the provider credential | Paid; sandbox is the default, `DATAFORSEO_ENV=prod` is explicit |
@@ -89,8 +89,8 @@ request at all.
 
 ## Local/remote boundary
 
-- The toolkit opens no inbound port and ships no hosted control plane; the two
-  interfaces are the `seohead` CLI and the stdio MCP server.
+- The toolkit opens no inbound port and ships no hosted control plane; the local
+  interfaces are the `seohead` CLI, the stdio MCP server and the optional `seohead watch` terminal observer.
 - User-controlled URL requests resolve once, refuse private and non-public
   targets, and connect to the vetted address while retaining the original
   hostname for SNI and certificate verification. Private targets require
@@ -134,7 +134,7 @@ are local files and nothing transmits them.
 ## Security reporting and maintenance
 
 - Report suspected vulnerabilities privately through GitHub:
-  <https://github.com/PavloSEO/seotools/security/advisories/new> — details and
+  <https://github.com/PavloSEO/seohead-tools/security/advisories/new> — details and
   the out-of-scope list are in [SECURITY.md](../SECURITY.md).
 - Maintenance status: security fixes target the latest `3.x` release and
   `main`; versions older than `3.0.0` are not supported. This is a current

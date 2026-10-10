@@ -29,7 +29,7 @@ or publication. `seohead tui` opens the command reference without a project.
 The terminal remains keyboard-driven. Mouse reporting is not enabled, so normal
 terminal text selection remains available. Use `--no-color` or `NO_COLOR` for
 plain presentation. A compact layout replaces the sidebar in narrow windows;
-windows smaller than 60 columns by 18 rows show a resize notice.
+windows narrower than 56 columns or shorter than 16 rows show a resize notice.
 
 ## Notes and proposed goals
 

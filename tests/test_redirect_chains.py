@@ -223,3 +223,62 @@ def test_a_native_crawl_resolves_its_own_chains_without_screaming_frog():
     loop_urls = {i.target_url for i in ctx.issues if i.check == "REDIRECT_LOOP"}
     assert chain_urls == {"https://example.com/a"}
     assert loop_urls == {"https://example.com/loop1", "https://example.com/loop2"}
+
+
+# -- hop path evidence ----------------------------------------------------
+
+from seohead.sf.core.redirect_chains import redirect_hop_path  # noqa: E402
+
+
+def test_hop_path_lists_every_hop_of_a_chain():
+    redirect_map = {"https://x/a": "https://x/b", "https://x/b": "https://x/c"}
+    assert redirect_hop_path(redirect_map, "https://x/a") == [
+        "https://x/a",
+        "https://x/b",
+        "https://x/c",
+    ]
+
+
+def test_hop_path_closes_a_loop_on_the_repeated_url():
+    redirect_map = {"https://x/a": "https://x/b", "https://x/b": "https://x/a"}
+    assert redirect_hop_path(redirect_map, "https://x/a") == [
+        "https://x/a",
+        "https://x/b",
+        "https://x/a",
+    ]
+
+
+def test_hop_path_self_redirect_stops_after_one_repeat():
+    assert redirect_hop_path({"https://x/a": "https://x/a"}, "https://x/a") == [
+        "https://x/a",
+        "https://x/a",
+    ]
+
+
+def test_hop_path_is_bounded_by_the_cap():
+    redirect_map = {f"https://x/{i}": f"https://x/{i + 1}" for i in range(100)}
+    path = redirect_hop_path(redirect_map, "https://x/0", hop_cap=3)
+    assert len(path) <= 4
+
+
+def test_chain_finding_carries_the_full_hop_path(tmp_path):
+    rows = [
+        _row("https://example.com/a", 301, "https://example.com/b"),
+        _row("https://example.com/b", 301, "https://example.com/c"),
+        _row("https://example.com/c", 200),
+    ]
+    exports_dir = _write_internal_all(tmp_path, rows)
+    result = json.loads(
+        json.dumps(
+            run_audit(
+                input_mode="parse-exports", exports_dir=exports_dir, log=lambda m: None
+            ).to_json()
+        )
+    )
+    chain = [i for i in result["issues"] if i["check"] == "REDIRECT_CHAIN"]
+    assert len(chain) == 1
+    assert chain[0]["details"]["path"] == [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+    ]

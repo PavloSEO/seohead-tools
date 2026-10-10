@@ -96,7 +96,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             "action",
             "grant_file",
             "confirm",
-            note="GSC private grant import/status/refresh; confirmed disconnect or remote revoke. No secret values returned.",
+            note="GSC private grant import/status/refresh; cancel a pending browser flow; confirmed disconnect or remote revoke. No secret values returned.",
         ),
     ),
     _command(
@@ -1113,7 +1113,7 @@ SF_CONTRACTS: tuple[CommandContract, ...] = (
     _command(
         "sf tasks",
         None,
-        _form("audit_document", "audit_json"),
+        _form("audit_document", "audit_json", note="Audit JSON or a retained scan.v1 artifact."),
         _form("local_config", "config"),
         _form("local_directory", "out", note="Local task output directory."),
     ),
