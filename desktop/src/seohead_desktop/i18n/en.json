@@ -2142,5 +2142,6 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "Граф строится вокруг URL, выбранного на экране URL.": "The graph is built around the URL selected on the URL screen."
 }

@@ -163,13 +163,21 @@ class ShellV2Tests(unittest.TestCase):
     def test_new_sections_open_the_placeholder_without_numbers(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("methods", "graph"):
-            self.assertTrue(self.window.navigation.select_section(section))
-            page = self.window.pages.currentWidget()
-            self.assertIn(page, self.window.placeholder_pages.values())
-            panel = page.findChild(StatePanel)
-            self.assertEqual(panel.title.text(), "Раздел готовится")
-            self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+        self.assertTrue(self.window.navigation.select_section("methods"))
+        page = self.window.pages.currentWidget()
+        self.assertIn(page, self.window.placeholder_pages.values())
+        panel = page.findChild(StatePanel)
+        self.assertEqual(panel.title.text(), "Раздел готовится")
+        self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+
+        # «Граф ссылок» is the real local graph; without a project it shows the honest empty state, no numbers
+        from seohead_desktop.screens.url_graph import LinkGraphScreen
+
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, LinkGraphScreen)
+        self.assertIs(page.stack.currentWidget(), page.empty)
+        self.assertNotRegex(page.empty.text.text() + page.empty.title.text(), r"#\d")
 
         self.assertTrue(self.window.navigation.select_section("crawler"))
         page = self.window.pages.currentWidget()

@@ -41,7 +41,7 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler, Methods and Link graph have no screen yet: an honest placeholder, no numbers, no invented data."""
+        """Methods has no screen yet: an honest placeholder, no numbers, no invented data. Link graph is built from the saved scan."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
 
@@ -53,10 +53,13 @@ class ShellMixin:
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
         from .screens.crawler import CrawlerScreen
+        from .screens.url_graph import LinkGraphScreen
 
         for view in ("crawler", "methods", "graph"):
             if view == "crawler":
                 page = CrawlerScreen()
+            elif view == "graph":
+                page = LinkGraphScreen(self)
             else:
                 page = QWidget()
                 layout = QVBoxLayout(page)
