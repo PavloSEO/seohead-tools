@@ -188,6 +188,24 @@ class ShellV2Tests(unittest.TestCase):
         self.assertIsInstance(page, GraphScreen)
         self.assertNotRegex(" ".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
 
+    def test_graph_section_shows_waiting_state_without_invented_counts(self):
+        from seohead_desktop.screens.graph import GraphScreen
+        from seohead_desktop.ui.kit import StatePanel
+
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, GraphScreen)
+        self.assertEqual([kpi.number.text() for kpi in page.kpis], ["Нет данных"] * 3)
+        self.assertEqual(page.gate.currentWidget(), page.gate.open_panel)  # no project open: nothing drawn
+        self.window.project_directory = "/p"
+        page.gate.refresh()
+        panel = page.gate.content.findChild(StatePanel)
+        self.assertEqual(page.gate.currentWidget(), page.gate.content)
+        self.assertEqual(panel.kind, "waiting")
+        self.assertIsNotNone(panel.issue_label)
+        self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+        self.window.project_directory = ""
+
     def test_items_that_need_a_project_are_locked_until_one_is_open(self):
         from seohead_desktop.ui.shell import ROLE_LOCKED
 

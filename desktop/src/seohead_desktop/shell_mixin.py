@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import i18n, shortcuts, theming
+from .screens.graph import GraphScreen
 from .screens.scan_common import parse_time
 from .source_service import SourceService
 from .ui.controls import Segmented
@@ -41,7 +42,7 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler and Methods have no screen yet: an honest placeholder. Link graph has its screen (waiting for the core)."""
+        """Crawler and Methods have no screen yet (honest placeholder); Link graph shows its waiting state (GraphScreen)."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
 
@@ -71,9 +72,9 @@ class ShellMixin:
             self.placeholder_pages[VIEW_IDS.index(view)] = page
         from .screens.graph import GraphScreen
 
-        graph = GraphScreen(self)
-        self.pages.addWidget(graph)
-        self.placeholder_pages[VIEW_IDS.index("graph")] = graph
+        self.graph_page = GraphScreen(self)
+        self.pages.addWidget(self.graph_page)
+        self.placeholder_pages[VIEW_IDS.index("graph")] = self.graph_page
 
     def sync_scans_placeholder(self):
         """Show the placeholder for «Сканы» while no project is open and bring the screen back when one is."""

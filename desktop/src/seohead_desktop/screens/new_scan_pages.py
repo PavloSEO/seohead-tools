@@ -829,6 +829,7 @@ def request_page(draft, host):
             seg.setValue(name) if name else clear_segmented(seg)
             line.setText(agent or tr("По умолчанию ядра"))
             line.setProperty("mono", True)
+            polish(line)
 
         page.bind(sync)
         row(page, "User-Agent", "Как ядро представляется сайту. Свой текст ждёт доработки.", seg, "http.user_agent")
@@ -837,7 +838,7 @@ def request_page(draft, host):
     waiting_row(page, "Свой User-Agent", "", ISSUE_SETTINGS, "ядро принимает строку, но в приложении она не подключена", QLineEdit())
     page.caption(tr("Заголовки, доступ, прокси"))
     columns = QGridLayout()
-    columns.setHorizontalSpacing(20)
+    columns.setHorizontalSpacing(18)  # design .sc grid gap
     columns.setVerticalSpacing(0)
     left, right = QVBoxLayout(), QVBoxLayout()
     for side in (left, right):
