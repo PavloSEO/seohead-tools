@@ -37,9 +37,13 @@ def _with_inbox_notice(
     """Add only this project's unread summary without consuming it."""
     if consumer is None:
         return result
-    from seohead.projects.inbox import unread_summary
+    from seohead.projects.inbox import unread_goal_tasks, unread_summary
 
-    return {**result, "inbox_unread": unread_summary(directory, consumer=consumer)}
+    return {
+        **result,
+        "inbox_unread": unread_summary(directory, consumer=consumer),
+        "owner_tasks_unread": unread_goal_tasks(directory, consumer=consumer),
+    }
 
 
 def project_basic_status(directory: str, consumer: str | None = None) -> dict[str, Any]:

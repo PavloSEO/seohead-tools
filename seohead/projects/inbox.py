@@ -424,10 +424,19 @@ def acknowledge(
         }
 
 
+def goal_task_id(entry_id: str) -> str:
+    """The checklist task that an accepted goal creates; one per goal, derived from its id."""
+    return "custom:goal-" + entry_id.removeprefix("inbox:")
+
+
+def _goal_task_title(text: str) -> str:
+    return ("Owner goal: " + " ".join(text.split()))[:512]
+
+
 def set_goal_state(
     directory: str | Path, *, entry_id: str, state: str, expected_revision: int | None = None
 ) -> dict[str, Any]:
-    """Accept or complete a proposed goal without treating delivery as execution."""
+    """Accept or complete a proposed goal; acceptance creates its checklist task once."""
     if state not in {"accepted", "completed"}:
         raise ValueError("goal state must be accepted or completed")
     with _transaction(directory, expected_revision) as (_, document):
@@ -438,6 +447,15 @@ def set_goal_state(
             raise ValueError("entry is not a proposed goal")
         if state == "completed" and entry["goal_state"] != "accepted":
             raise ValueError("a proposed goal must be accepted before completion")
+        if state == "accepted":
+            from .coverage import ensure_goal_task, initialize_coverage
+
+            initialize_coverage(directory)
+            ensure_goal_task(
+                directory,
+                item_id=goal_task_id(entry["id"]),
+                title=_goal_task_title(entry["text"]),
+            )
         changed = entry["goal_state"] != state
         entry["goal_state"] = state
         if changed:
@@ -544,6 +562,34 @@ def unread_summary(directory: str | Path, *, consumer: str, limit: int = 10) -> 
         "count": len(unread),
         "entries": [
             {"id": entry["id"], "kind": entry["kind"], "references": entry["references"]}
+            for entry in unread[:limit]
+        ],
+        "truncated": len(unread) > limit,
+    }
+
+
+def unread_goal_tasks(directory: str | Path, *, consumer: str, limit: int = 10) -> dict[str, Any]:
+    """Accepted goals whose checklist task this consumer has not acknowledged yet."""
+    consumer = _consumer(consumer)
+    if type(limit) is not int or not 1 <= limit <= MAX_PAGE:
+        raise ValueError("limit must be from 1 to 100")
+    _, document = _read_document(directory)
+    unread = [
+        entry
+        for entry in document["entries"]
+        if entry["kind"] == "proposed_goal"
+        and entry["goal_state"] == "accepted"
+        and not entry["delivery"].get(consumer, {}).get("acknowledged_at")
+    ]
+    return {
+        "count": len(unread),
+        "items": [
+            {
+                "entry_id": entry["id"],
+                "task_id": goal_task_id(entry["id"]),
+                "title": _goal_task_title(entry["text"]),
+                "accepted_at": entry["accepted_at"],
+            }
             for entry in unread[:limit]
         ],
         "truncated": len(unread) > limit,
