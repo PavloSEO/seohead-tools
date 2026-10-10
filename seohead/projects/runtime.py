@@ -431,14 +431,15 @@ def prepare_project(
                 "reason": "saved sitemap coverage; unavailable checks remain explicit",
                 "unavailable": sitemap_skips,
             }
-            from .coverage import record_execution
+            from .crawl_evidence import record_scan
 
+            evidence = record_scan(root, source)
             executed = set(coverage.get("checks_silent_ids", []))
             executed.update(fired)
             unavailable = {
                 row.get("id"): row.get("reason") for row in run.get("checks_skipped", [])
             }
-            recording_errors = []
+            recording_errors = list(evidence.get("refused", []))
             for item in coverage_status(root)["items"]:
                 if item["kind"] != "check" or item["complete"] or not item["enabled"]:
                     continue
