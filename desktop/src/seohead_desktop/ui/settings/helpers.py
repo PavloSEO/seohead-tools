@@ -119,6 +119,18 @@ def two_columns(left, right):
     return _Columns(left, right)
 
 
+def column_stack(*columns):
+    """Rows of every column in one vertical stack: design v2 settings sheets are single-column, max 760 px."""
+    holder = QWidget()
+    layout = QVBoxLayout(holder)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    for column in columns:
+        for widget in column:
+            layout.addWidget(widget)
+    return holder
+
+
 def page(*widgets):
     holder = QWidget()
     layout = QVBoxLayout(holder)

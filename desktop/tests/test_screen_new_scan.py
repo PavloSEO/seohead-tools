@@ -503,7 +503,7 @@ class DialogTests(DialogCase):
         edit.setPlainText("\n".join(f"https://shop.example.test/page-{n}" for n in range(3000)))
         self.assertTrue(dialog._list_timer.isActive())
         dialog._list_timer.timeout.emit()
-        self.assertEqual(dialog.counter_labels["ready"].text(), "3 000 готовы")
+        self.assertEqual(dialog.counter_labels["ready"].text(), "3\u00a0000 готовы")
 
     def test_list_file_loads_into_the_editor(self):
         path = self.root / "urls.csv"
@@ -531,7 +531,7 @@ class DialogTests(DialogCase):
             self.assertTrue(badge.text().startswith("Недоступно"), badge.text())
             self.assertNotRegex(badge.text(), r"\d")
         self.assertEqual(rows["speed"], "2 запр/с · 1 пот.")
-        self.assertEqual(rows["urls"], "1 500")
+        self.assertEqual(rows["urls"], "1\u00a0500")
         self.assertEqual(rows["requests"], "без лимита")
         self.assertEqual(rows["paid"], "нет")
         self.assertEqual(rows["impact"], "только чтение")
@@ -753,7 +753,8 @@ class SettingsTests(DialogCase):
                 if row.property("waiting"):
                     waiting.append((page_id, row))
                     self.assertRegex(row.later_badge.text(), r"^Недоступно в этой версии ядра$")
-                    self.assertFalse(row.control.isEnabled(), (page_id, row.title.text()))
+                    if row.control is not None:  # the sitemap list is a disabled table under its row, not a control
+                        self.assertFalse(row.control.isEnabled(), (page_id, row.title.text()))
         self.assertGreaterEqual(len(waiting), 15)
         issues = {row.later_badge.property("waiting_issue") for _page, row in waiting}
         self.assertTrue({925, 950, ISSUE_EXTRACT} <= issues)

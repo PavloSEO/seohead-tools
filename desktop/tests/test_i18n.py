@@ -41,6 +41,7 @@ SCOPE = [
     PACKAGE / "screens/new_scan.py", PACKAGE / "screens/new_scan_draft.py", PACKAGE / "screens/new_scan_pages.py", PACKAGE / "screens/new_scan_settings.py", PACKAGE / "screens/quick_scan.py",
     PACKAGE / "screens/issues.py",
     PACKAGE / "screens/graph_layouts.py",
+    PACKAGE / "screens/logs_bots.py",
     PACKAGE / "screens/url.py", PACKAGE / "screens/url_detail.py", PACKAGE / "screens/url_query.py", PACKAGE / "screens/url_widgets.py", PACKAGE / "screens/url_card.py",
     PACKAGE / "screens/search.py", PACKAGE / "screens/search_results.py",
     PACKAGE / "screens/project_sources.py", PACKAGE / "screens/project_sources_page.py", PACKAGE / "screens/project_schedule_page.py",
@@ -157,7 +158,7 @@ class SwitchingTests(unittest.TestCase):
         sweep_widgets()
         i18n.set_language("ru")
         self._dialog = None
-        patcher = patch("seohead_desktop.app.shutil.which", return_value=None)
+        patcher = patch("seohead_desktop.app.discover_core", return_value=None)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.window = MainWindow(persistent=False)

@@ -23,7 +23,7 @@ from ... import shortcuts, theming
 from ...i18n import tr, trf
 from ..controls import SettingRow, polish
 from ..icons import MaterialIconLabel, material_icon
-from .helpers import group_label, two_columns
+from .helpers import group_label, column_stack
 
 ID, ICON, TITLE = "keys", "keyboard", "Горячие клавиши"
 HINT = "Сочетания по группам; конфликты подсвечиваются"

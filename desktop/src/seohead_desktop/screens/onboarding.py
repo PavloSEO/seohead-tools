@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
 from .. import i18n, theming
 from ..cli_install import InstallCLIButton
 from ..common import ROOT
+from ..core_discovery import discover_core
 from ..mcp_integration import PermissionDialog
 from ..ui.controls import Note, Segmented, polish
 from ..ui.icons import MaterialIconLabel, material_icon
@@ -382,12 +383,12 @@ class OnboardingScreen(Screen):
         elif self.host.core_executable:
             self.core_text.setText(trf("Команда ядра не запускается: {path}", path=tilde(self.host.core_executable)))
         else:
-            self.core_text.setText(tr("Команда seohead не найдена в PATH"))
+            self.core_text.setText(tr("Ядро seohead не найдено ни в одном из известных мест"))
         self.version_line.setVisible(found)
 
     def recheck_core(self):
-        if not self.host.core_executable:
-            found = shutil.which("seohead")
+        if not self.host.core_executable or self.host.prefs.get("core.custom"):
+            found = discover_core(self.host.prefs)
             if found:
                 self.host.core_executable = found
                 self.host.core_label.setText(tr("Ядро найдено"))

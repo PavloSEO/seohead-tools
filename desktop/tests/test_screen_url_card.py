@@ -123,7 +123,7 @@ class CardTests(CardBase):
     def test_tabs_without_core_data_say_so_and_show_known_facts(self):
         card = self.open_tab("res")
         badges = [w for w in card.facts["res"].findChildren(type(card.scan_caption)) if w.property("waiting_issue")]
-        self.assertEqual(badges[0].property("waiting_issue"), 935)
+        self.assertEqual(badges[0].property("waiting_issue"), 974)
         self.assertIn("Недоступно", badges[0].toolTip())
         for tab, issue in (("html", 936), ("schema", 948)):
             card.select_tab(tab)
