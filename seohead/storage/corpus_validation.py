@@ -12,9 +12,10 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 
+from seohead.crawl.capture import SENSITIVE_HEADER_NAMES
+
 from . import ScanError
 
-_SENSITIVE_HEADERS = {"authorization", "cookie", "set-cookie", "proxy-authorization"}
 _OMITTED = {
     "not_enabled",
     "cache_control_no_store",
@@ -66,7 +67,7 @@ def _headers(value: Any, label: str) -> None:
             not isinstance(pair, list)
             or len(pair) != 2
             or any(type(part) is not str for part in pair)
-            or pair[0].lower() in _SENSITIVE_HEADERS
+            or pair[0].lower() in SENSITIVE_HEADER_NAMES
         ):
             raise ScanError(f"{label} contains an unredacted or malformed header")
 

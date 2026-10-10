@@ -117,3 +117,11 @@ def test_corpus_rejects_resource_refs_without_document_provenance():
     )
     with pytest.raises(ScanError, match="provenance"):
         validate_corpus(con, _scan(), _captured_policy())
+
+
+@pytest.mark.parametrize("name", ["X-API-Key", "x-auth-token", "Set-Cookie"])
+def test_corpus_rejects_unredacted_credential_header_names(name):
+    from seohead.storage.corpus_validation import _headers
+
+    with pytest.raises(ScanError, match="unredacted or malformed header"):
+        _headers(f'[["{name}", "redacted"]]', "request headers")
