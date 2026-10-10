@@ -54,3 +54,36 @@ def diff_elements(
             kind = "changed"
         diffs.append({"field": field, "kind": kind, "raw": before, "rendered": after})
     return diffs
+
+
+ElementRule = Literal[
+    "noindex_nofollow_raw_only",
+    "canonical_mismatch",
+    "canonical_only_after_render",
+    "element_changed_by_js",
+]
+
+_ROBOTS_DIRECTIVES = ("noindex", "nofollow")
+_JS_SENSITIVE_FIELDS = ("title", "description", "h1")
+
+
+def classify_diffs(diffs: list[ElementDiff]) -> list[tuple[ElementRule, ElementDiff]]:
+    """Map element diffs onto the crawl finding rules of #1014.
+
+    A diff that matches no rule is dropped: it is measured but not a finding. The
+    result is pure data; severity and presentation belong to the caller.
+    """
+    out: list[tuple[ElementRule, ElementDiff]] = []
+    for diff in diffs:
+        field, kind = diff["field"], diff["kind"]
+        if field == "meta_robots" and kind == "raw_only":
+            if any(token in diff["raw"].lower() for token in _ROBOTS_DIRECTIVES):
+                out.append(("noindex_nofollow_raw_only", diff))
+        elif field == "canonical":
+            if kind == "changed":
+                out.append(("canonical_mismatch", diff))
+            elif kind == "rendered_only":
+                out.append(("canonical_only_after_render", diff))
+        elif field in _JS_SENSITIVE_FIELDS and kind in ("rendered_only", "changed"):
+            out.append(("element_changed_by_js", diff))
+    return out
