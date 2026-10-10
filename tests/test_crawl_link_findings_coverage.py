@@ -184,3 +184,43 @@ def test_internal_nofollow_outlinks_fire_per_source_page_and_clean_pages_stay_si
         "https://example.test/only-nofollow": 1,
     }
     assert "INTERNAL_NOFOLLOW_OUTLINKS" not in _skips(audit)
+
+
+def _audit_with_rel_capture(result, *, url):
+    return handlers._audit_crawl_result(
+        result,
+        settings=load(overrides={"speed.min_delay_seconds": 0, "link_attributes.capture": True}),
+        url=url,
+        sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
+        discovery={"mode": "list"},
+        offline=True,
+    )[1]
+
+
+def test_internal_sponsored_or_ugc_link_fires_only_when_rel_is_captured():
+    """INTERNAL_LINK_SPONSORED_UGC fires on a same-host ugc/sponsored link, not on a plain one."""
+    result = SpiderResult(
+        pages=[_page()],
+        links=[
+            LinkEdge(
+                source="https://example.test/",
+                destination="https://example.test/comments",
+                anchor="Comments",
+                nofollow=True,
+                rel=("ugc", "nofollow"),
+            ),
+            LinkEdge(
+                source="https://example.test/",
+                destination="https://example.test/about",
+                anchor="About",
+                nofollow=False,
+                rel=(),
+            ),
+        ],
+    )
+
+    audit = _audit_with_rel_capture(result, url="https://example.test/")
+
+    findings = [i for i in audit["issues"] if i["check"] == "INTERNAL_LINK_SPONSORED_UGC"]
+    assert [i["target_url"] for i in findings] == ["https://example.test/"]
+    assert "INTERNAL_LINK_SPONSORED_UGC" not in _skips(audit)
