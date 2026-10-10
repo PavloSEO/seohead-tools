@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**164 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 173 in total.
+**165 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 174 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2868,6 +2868,7 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `limit` | `int` | `200` |
 | `count_timeout_seconds` | `float` | `1.0` |
 | `max_bytes` | `int` | `1048576` |
+| `facets` | `list[str] | str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -2876,7 +2877,9 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
 non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
 sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+exceeds count_timeout_seconds) and at most 200 rows of the requested columns. facets
+(a list of group ids, or "all") adds facets: {group: count} over the same filters, with
+facets_state exact or capped.
 
 ### `scan-link-inspect`
 
