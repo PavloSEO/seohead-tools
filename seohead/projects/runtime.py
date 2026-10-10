@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -212,14 +213,43 @@ def admission(directory: str, settings: dict, *, approved: bool = False) -> dict
     }
 
 
+_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+_STEP = re.compile(r"^(?:#{2,6}\s+|\*\*)(\d+)\.\s+(.+?)\.?\*{0,2}\s*$")
+
+
+def playbook_outline(content: str) -> dict:
+    """Headings and numbered steps of a packaged playbook, read without running anything.
+
+    Lines inside fenced code blocks are skipped, so a shell comment is never a heading.
+    """
+    headings: list[dict] = []
+    steps: list[str] = []
+    fenced = False
+    for line in content.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        heading = _HEADING.match(line)
+        if heading:
+            headings.append({"level": len(heading.group(1)), "title": heading.group(2)})
+        step = _STEP.match(line)
+        if step:
+            steps.append(step.group(2).replace("*", "").strip())
+    return {"headings": headings, "steps": steps}
+
+
 def playbook_list(kind: str | None = None) -> dict:
     if kind not in {None, "skill", "scenario"}:
         raise ValueError("kind must be skill or scenario")
-    entries = [
-        {key: value for key, value in row.items() if key != "content"}
-        for row in load_catalogue().values()
-        if row["kind"] in ({kind} if kind else {"skill", "scenario"})
-    ]
+    entries = []
+    for row in load_catalogue().values():
+        if row["kind"] not in ({kind} if kind else {"skill", "scenario"}):
+            continue
+        entry = {key: value for key, value in row.items() if key != "content"}
+        entry["steps"] = playbook_outline(row["content"])["steps"]
+        entries.append(entry)
     return {"ok": True, "items": entries}
 
 
@@ -234,7 +264,7 @@ def playbook_show(name: str, kind: str = "skill") -> dict:
     ]
     if len(matches) != 1:
         raise ValueError("playbook name is missing or ambiguous; use its full catalogue ID")
-    return {"ok": True, **matches[0]}
+    return {"ok": True, **matches[0], **playbook_outline(matches[0]["content"])}
 
 
 def preparation_status(directory: str) -> dict:

@@ -293,8 +293,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Unavailable_After", "UNAVAILABLE_AFTER"),
         _c("NoSnippet", "NOSNIPPET"),
-        _o("NoODP", "the directive was retired with the Open Directory Project in 2017"),
-        _o("NoYDIR", "the directive was retired with the Yahoo Directory"),
+        _c("NoODP", "NOODP"),
+        _c("NoYDIR", "NOYDIR"),
         _c("NoTranslate", "NOTRANSLATE"),
     ],
     "Hreflang": [
@@ -333,12 +333,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _t("H1 Only in Rendered HTML", "render-check"),
         _t("H1 Updated by JavaScript", "render-check"),
         _t("Canonical Only in Rendered HTML", "render-check"),
-        _t(
-            "Pages With JavaScript Errors",
-            "crawl-site",
-            note="browser console errors are captured per URL when "
-            "rendering.artifacts.console_errors is on",
-        ),
+        _c("Pages With JavaScript Errors", "JS_CONSOLE_ERRORS"),
     ],
     "Links": [
         _c("Outlinks To Localhost", "OUTLINK_TO_LOCALHOST"),
@@ -358,11 +353,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Pages Without Internal Outlinks", "NO_INTERNAL_OUTLINKS"),
         _c("Non-Indexable Page Inlinks Only", "ONLY_NONINDEXABLE_SOURCE_INLINKS"),
-        _p(
-            "Internal Nofollow Outlinks",
-            "nofollow is recorded per edge and gates crawling; there is no page-level finding "
-            "for having them",
-        ),
+        _c("Internal Nofollow Outlinks", "INTERNAL_NOFOLLOW_OUTLINKS"),
         _c("Pages With High External Outlinks", "HIGH_EXTERNAL_OUTLINKS"),
         _c("Pages With High Internal Outlinks", "HIGH_OUTLINKS"),
         _c("Follow & Nofollow Internal Inlinks To Page", "FOLLOW_AND_NOFOLLOW_INLINKS"),

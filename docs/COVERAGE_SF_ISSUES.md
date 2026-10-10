@@ -198,8 +198,8 @@ having, because the alternative is an absence nobody has noticed.
 | None | check | `NOINDEX` `NOFOLLOW_PAGE` | 'none' is expanded to noindex+nofollow when directives are parsed |
 | Unavailable_After | check | `UNAVAILABLE_AFTER` |  |
 | NoSnippet | check | `NOSNIPPET` |  |
-| NoODP | out of scope | — | the directive was retired with the Open Directory Project in 2017 |
-| NoYDIR | out of scope | — | the directive was retired with the Yahoo Directory |
+| NoODP | check | `NOODP` |  |
+| NoYDIR | check | `NOYDIR` |  |
 | NoTranslate | check | `NOTRANSLATE` |  |
 
 ## Hreflang
@@ -238,7 +238,7 @@ having, because the alternative is an absence nobody has noticed.
 | H1 Only in Rendered HTML | tool | `render-check` |  |
 | H1 Updated by JavaScript | tool | `render-check` |  |
 | Canonical Only in Rendered HTML | tool | `render-check` |  |
-| Pages With JavaScript Errors | tool | `crawl-site` | browser console errors are captured per URL when rendering.artifacts.console_errors is on |
+| Pages With JavaScript Errors | check | `JS_CONSOLE_ERRORS` |  |
 
 ## Links
 
@@ -248,7 +248,7 @@ having, because the alternative is an absence nobody has noticed.
 | Pages With Uncrawlable Internal Outlinks | partial | — | attribution is possible -- the exclusion map holds the reason and the link graph holds the source -- but every reason a crawl records for an internal destination is a property of the run's own scope configuration (exclude/include patterns, segments_only, depth and query-variant budgets), not of the site, so a finding built on them would report the operator's settings back as defects. The two site-caused reasons already have their own checks from the destination side (BLOCKED_BY_ROBOTS, IMPORTANT_URL_BLOCKED_BY_ROBOTS) and a link to a robots-disallowed cart or search URL is ordinary, not a defect. This needs a reason the crawler does not record today -- a destination that is unfetchable in itself, e.g. a malformed href, which the parser discards before the crawl ever sees it |
 | Pages Without Internal Outlinks | check | `NO_INTERNAL_OUTLINKS` |  |
 | Non-Indexable Page Inlinks Only | check | `ONLY_NONINDEXABLE_SOURCE_INLINKS` |  |
-| Internal Nofollow Outlinks | partial | — | nofollow is recorded per edge and gates crawling; there is no page-level finding for having them |
+| Internal Nofollow Outlinks | check | `INTERNAL_NOFOLLOW_OUTLINKS` |  |
 | Pages With High External Outlinks | check | `HIGH_EXTERNAL_OUTLINKS` |  |
 | Pages With High Internal Outlinks | check | `HIGH_OUTLINKS` |  |
 | Follow & Nofollow Internal Inlinks To Page | check | `FOLLOW_AND_NOFOLLOW_INLINKS` |  |

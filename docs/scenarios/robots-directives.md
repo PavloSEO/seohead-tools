@@ -12,7 +12,7 @@ under version control.
 
 ## Covers
 
-- **Directives** — NoImageIndex · Nofollow · None · NoSnippet · NoTranslate · Unavailable_After · Outside <head>
+- **Directives** — NoImageIndex · Nofollow · None · NoSnippet · NoTranslate · Unavailable_After · Outside <head> · NoODP · NoYDIR
 
 ## The chain
 

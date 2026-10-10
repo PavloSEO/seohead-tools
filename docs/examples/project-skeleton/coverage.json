@@ -3961,6 +3961,50 @@
       ],
       "records": []
     },
+    "check:INTERNAL_NOFOLLOW_OUTLINKS": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "automatic",
+        "id": "check:INTERNAL_NOFOLLOW_OUTLINKS",
+        "kind": "check",
+        "operation": "check:INTERNAL_NOFOLLOW_OUTLINKS",
+        "order": 89,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "c9aadd4c9d82614b3fa0a5497e1d44bec6db67f8f77509bf7c3bc2f393bdeae1",
+        "title": "The page has internal outlinks marked nofollow"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "automatic",
+            "id": "check:INTERNAL_NOFOLLOW_OUTLINKS",
+            "kind": "check",
+            "operation": "check:INTERNAL_NOFOLLOW_OUTLINKS",
+            "order": 89,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "c9aadd4c9d82614b3fa0a5497e1d44bec6db67f8f77509bf7c3bc2f393bdeae1",
+            "title": "The page has internal outlinks marked nofollow"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
     "check:INVALID_HEAD_ELEMENT": {
       "definition": {
         "dependencies": [],
@@ -3999,6 +4043,50 @@
             },
             "source_hash": "c43228e6e4f1affe8cdb510197d5755720b191dcf342c25dbb99b685584f96d3",
             "title": "An element the head content model does not allow is written inside <head>"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
+    "check:JS_CONSOLE_ERRORS": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "automatic",
+        "id": "check:JS_CONSOLE_ERRORS",
+        "kind": "check",
+        "operation": "check:JS_CONSOLE_ERRORS",
+        "order": 91,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "bdfb675f6f99b528e8a14c5532ddddbd184a15414364f1b25bed97138c46f400",
+        "title": "The page's browser console logged errors while it was rendered"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "automatic",
+            "id": "check:JS_CONSOLE_ERRORS",
+            "kind": "check",
+            "operation": "check:JS_CONSOLE_ERRORS",
+            "order": 91,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "bdfb675f6f99b528e8a14c5532ddddbd184a15414364f1b25bed97138c46f400",
+            "title": "The page's browser console logged errors while it was rendered"
           },
           "observed_at": "2026-09-09T00:00:00Z"
         }
@@ -5017,6 +5105,50 @@
       ],
       "records": []
     },
+    "check:NOODP": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "automatic",
+        "id": "check:NOODP",
+        "kind": "check",
+        "operation": "check:NOODP",
+        "order": 115,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "adcc68d2559026ff43b9714f047cee0d8a740a50d3319a7bddec361cd01b0b0f",
+        "title": "Page contains a legacy noodp directive"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "automatic",
+            "id": "check:NOODP",
+            "kind": "check",
+            "operation": "check:NOODP",
+            "order": 115,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "adcc68d2559026ff43b9714f047cee0d8a740a50d3319a7bddec361cd01b0b0f",
+            "title": "Page contains a legacy noodp directive"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
     "check:NOSNIPPET": {
       "definition": {
         "dependencies": [],
@@ -5099,6 +5231,50 @@
             },
             "source_hash": "15f9c9755c4ccbb318b69ac0f9a463b8765d7475cd6af34ef6e6e6b42c921204",
             "title": "Page contains a notranslate directive"
+          },
+          "observed_at": "2026-09-09T00:00:00Z"
+        }
+      ],
+      "records": []
+    },
+    "check:NOYDIR": {
+      "definition": {
+        "dependencies": [],
+        "enabled": true,
+        "execution_kind": "automatic",
+        "id": "check:NOYDIR",
+        "kind": "check",
+        "operation": "check:NOYDIR",
+        "order": 118,
+        "priority": "P1",
+        "priority_origin": "default",
+        "scope": {
+          "site": "https://example.test/",
+          "template": null,
+          "urls": []
+        },
+        "source_hash": "d9b2bcc639a0aa885628a1d8843795962544522427619279e871e3d494e2fee2",
+        "title": "Page contains a legacy noydir directive"
+      },
+      "definitions": [
+        {
+          "definition": {
+            "dependencies": [],
+            "enabled": true,
+            "execution_kind": "automatic",
+            "id": "check:NOYDIR",
+            "kind": "check",
+            "operation": "check:NOYDIR",
+            "order": 118,
+            "priority": "P1",
+            "priority_origin": "default",
+            "scope": {
+              "site": "https://example.test/",
+              "template": null,
+              "urls": []
+            },
+            "source_hash": "d9b2bcc639a0aa885628a1d8843795962544522427619279e871e3d494e2fee2",
+            "title": "Page contains a legacy noydir directive"
           },
           "observed_at": "2026-09-09T00:00:00Z"
         }
@@ -8113,7 +8289,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "578479146e82c644a5d4731e72b93c0a2682b4b0b5b39e38317cd2349fe364bb",
+        "source_hash": "16f3cb5ac20229b7160c002cc81d3e742df19be17f35ca7860b2a2a00b4cb53f",
         "title": "Scenario 28 \u2014 Anchor text and inlink composition: who links here, and what they call it"
       },
       "definitions": [
@@ -8133,7 +8309,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "578479146e82c644a5d4731e72b93c0a2682b4b0b5b39e38317cd2349fe364bb",
+            "source_hash": "16f3cb5ac20229b7160c002cc81d3e742df19be17f35ca7860b2a2a00b4cb53f",
             "title": "Scenario 28 \u2014 Anchor text and inlink composition: who links here, and what they call it"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9081,7 +9257,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "dc3eed540249addd9c429911d390b69fe6a311afca8710ac6b2e4112b77d5256",
+        "source_hash": "d8de4ad7707d3fbb54ddb642213074a399f6f490878112cb9302436f9cb5b8ad",
         "title": "Scenario 39 \u2014 The canonical only rendering reveals: an indexing signal a script decides"
       },
       "definitions": [
@@ -9101,7 +9277,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "dc3eed540249addd9c429911d390b69fe6a311afca8710ac6b2e4112b77d5256",
+            "source_hash": "d8de4ad7707d3fbb54ddb642213074a399f6f490878112cb9302436f9cb5b8ad",
             "title": "Scenario 39 \u2014 The canonical only rendering reveals: an indexing signal a script decides"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9125,7 +9301,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "aa3ec23d5bb08d0259a71b65a3c24e3c47ede15e4778b67315d080ca3020648b",
+        "source_hash": "b30fd15f646061c965eb8c0b3aa394b490cc026373fe140ade071b241d61e5d9",
         "title": "Scenario 36 \u2014 Content only JavaScript produces: what a non-rendering crawler receives"
       },
       "definitions": [
@@ -9145,7 +9321,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "aa3ec23d5bb08d0259a71b65a3c24e3c47ede15e4778b67315d080ca3020648b",
+            "source_hash": "b30fd15f646061c965eb8c0b3aa394b490cc026373fe140ade071b241d61e5d9",
             "title": "Scenario 36 \u2014 Content only JavaScript produces: what a non-rendering crawler receives"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9213,7 +9389,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "f88b5b4f2f6ba809cfbb110d2acfc6361fdae285418d2ace24872266f824f0bb",
+        "source_hash": "73f56aaf62d9887eea4da9c3dee20b03d21391f4fbe708aa03fb4b6a0257b9c2",
         "title": "Scenario 42 \u2014 JavaScript errors: the exception that stops a page halfway through building"
       },
       "definitions": [
@@ -9233,7 +9409,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "f88b5b4f2f6ba809cfbb110d2acfc6361fdae285418d2ace24872266f824f0bb",
+            "source_hash": "73f56aaf62d9887eea4da9c3dee20b03d21391f4fbe708aa03fb4b6a0257b9c2",
             "title": "Scenario 42 \u2014 JavaScript errors: the exception that stops a page halfway through building"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9257,7 +9433,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "aba6873e0dca034152ff7a29abaf8d0e09ef0454583ea655659c81bb45dcfc3d",
+        "source_hash": "53b30003d0a9385da3137b78168f69c210b126b4130740ce99717a2fbc3d5396",
         "title": "Scenario 41 \u2014 The old AJAX crawling scheme: a site still answering a retired contract"
       },
       "definitions": [
@@ -9277,7 +9453,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "aba6873e0dca034152ff7a29abaf8d0e09ef0454583ea655659c81bb45dcfc3d",
+            "source_hash": "53b30003d0a9385da3137b78168f69c210b126b4130740ce99717a2fbc3d5396",
             "title": "Scenario 41 \u2014 The old AJAX crawling scheme: a site still answering a retired contract"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9389,7 +9565,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "9185fe8aeb7daec30ffe295a0798b6d7d3c59a4cfe66b75f19db0f5d0091c820",
+        "source_hash": "647476a0e9998c978628119229bbcbffcc8ad10040043403c0200e5f445060d8",
         "title": "Scenario 19 \u2014 Meta descriptions: the cheapest column on the site, and the one nobody owns"
       },
       "definitions": [
@@ -9409,7 +9585,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "9185fe8aeb7daec30ffe295a0798b6d7d3c59a4cfe66b75f19db0f5d0091c820",
+            "source_hash": "647476a0e9998c978628119229bbcbffcc8ad10040043403c0200e5f445060d8",
             "title": "Scenario 19 \u2014 Meta descriptions: the cheapest column on the site, and the one nobody owns"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -9917,7 +10093,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "1c783d187a3a69010da11ae4629e91fc899837a3b00cd1748bb0c4b823281a8a",
+        "source_hash": "6677eeb2e733e8a5d6e66394a6ce8794cc867965bb8ca1e231e458b4f599f648",
         "title": "Scenario 13 \u2014 Robots directives: what the site is currently asking search engines to do"
       },
       "definitions": [
@@ -9937,7 +10113,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "1c783d187a3a69010da11ae4629e91fc899837a3b00cd1748bb0c4b823281a8a",
+            "source_hash": "6677eeb2e733e8a5d6e66394a6ce8794cc867965bb8ca1e231e458b4f599f648",
             "title": "Scenario 13 \u2014 Robots directives: what the site is currently asking search engines to do"
           },
           "observed_at": "2026-09-09T00:00:00Z"

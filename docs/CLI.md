@@ -138,6 +138,8 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `compare-crawls` | Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the… | writes |
 | `segment-diff` | Cross-segment counterpart diff: which pages in a source segment (for example `en`) have a counterpart in a target segment (for example `pl`), and which do not. | offline, read-only |
 | `verify-fixes` | Recheck selected baseline findings in an explicit, bounded URL subset. | network, writes |
+| `remediation-create` | Create one new empty remediation ledger bound to a validated local project; an existing path is refused. | writes |
+| `remediation-ingest` | Ingest one retained saved audit into a ledger as baseline/history without rerunning a crawl; re-ingest is idempotent. | writes |
 | `remediation-summary` | Read explicit remediation and recheck coverage from retained local evidence. | offline, read-only |
 | `remediation-cases` | Read a bounded page of exact remediation cases and decision history. | offline, read-only |
 | `remediation-transition` | Append one revision-safe, evidence-bound lifecycle decision. | writes |
@@ -256,6 +258,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `tool-catalog` | Search complete source-derived tool metadata and load argument details only on request. | offline, read-only |
 | `skill-list` | List the packaged, source-derived method playbooks without executing them. | offline, read-only |
 | `skill-show` | Return a packaged skill's exact text and definition identity. | offline, read-only |
+| `scenario-list` | List the packaged workflow scenarios with their ordered steps, without running them. | offline, read-only |
 | `scenario-show` | Return a packaged workflow scenario's text without running its commands. | offline, read-only |
 | `log-scan` | Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to… | offline, read-only |
 

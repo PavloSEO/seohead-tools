@@ -1793,6 +1793,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.remediation_summary(ledger=ledger))
 
     @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_remediation_create(path: str, project_dir: str, producer_build: str) -> dict[str, Any]:
+        """Create one new empty remediation ledger bound to a validated local project.
+
+        producer_build must be the full lowercase 40-character Git SHA of the
+        build that writes the ledger. An existing path is refused; ledgers never
+        overwrite.
+        """
+        return _checked(
+            handlers.remediation_create(
+                path=path, project_dir=project_dir, producer_build=producer_build
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_ingest(ledger: str, scan: str) -> dict[str, Any]:
+        """Ingest one retained saved audit into a local ledger without rerunning a crawl.
+
+        The scan is opened read-only. Re-ingesting the same revision is idempotent;
+        a new revision appends observation history.
+        """
+        return _checked(handlers.remediation_ingest(ledger=ledger, scan=scan))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_start(
         directory: str,
         scenario_id: str,
@@ -2363,6 +2386,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_skill_show(name: str) -> dict[str, Any]:
         """Return a packaged skill's exact text and definition identity."""
         return _checked(handlers.skill_show(name))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scenario_list() -> dict[str, Any]:
+        """List the packaged workflow scenarios with their ordered steps, without running them."""
+        return _checked(handlers.scenario_list())
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scenario_show(name: str) -> dict[str, Any]:

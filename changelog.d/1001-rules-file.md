@@ -1,0 +1,1 @@
+- Rich-result eligibility rules moved out of Python source into `seohead/data/rich_results_rules.json`, a versioned data file bundled with the package. The file's `version` is the value stamped as `rules_version` on every rich-result verdict, so changing a rule means changing data, not code.

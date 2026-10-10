@@ -15,7 +15,7 @@ from seohead.crawl.evidence import _indexability
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
 from seohead.sf.core.loader import load_exports
-from seohead.sf.core.rules import check_canonical_directives
+from seohead.sf.core.rules import check_canonical_directives, check_directives_extra
 
 
 # --- directive parsing ------------------------------------------------------
@@ -122,6 +122,49 @@ def test_noindex_check_fires_on_none(tmp_path):
     ctx = AuditContext(load_exports(str(tmp_path)), load_config(None))
     check_canonical_directives(ctx)
     assert any(issue.check == "NOINDEX" for issue in ctx.issues)
+
+
+def _fired_directives(tmp_path, meta="", x_robots=""):
+    path = tmp_path / "internal_all.csv"
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                "Address",
+                "Content Type",
+                "Status Code",
+                "Indexability",
+                "Meta Robots 1",
+                "X-Robots-Tag 1",
+            ]
+        )
+        writer.writerow(["https://example.com/p", "text/html", "200", "Indexable", meta, x_robots])
+    ctx = AuditContext(load_exports(str(tmp_path)), load_config(None))
+    check_canonical_directives(ctx)
+    check_directives_extra(ctx)
+    fired: dict[str, set[str]] = {}
+    for issue in ctx.issues:
+        fired.setdefault(issue.check, set()).add(issue.target_url)
+    return fired
+
+
+def test_x_robots_tag_none_fires_noindex(tmp_path):
+    # "none" expands to noindex+nofollow; NOINDEX supersedes NOFOLLOW_PAGE (elif in rules).
+    fired = _fired_directives(tmp_path, x_robots="none")
+    assert "https://example.com/p" in fired.get("NOINDEX", set())
+    assert "https://example.com/p" not in fired.get("NOFOLLOW_PAGE", set())
+
+
+def test_legacy_noodp_and_noydir_fire_notices(tmp_path):
+    fired = _fired_directives(tmp_path, meta="noodp, noydir")
+    assert "https://example.com/p" in fired.get("NOODP", set())
+    assert "https://example.com/p" in fired.get("NOYDIR", set())
+
+
+def test_legacy_directives_are_absent_when_not_present(tmp_path):
+    fired = _fired_directives(tmp_path, meta="index, follow")
+    assert "https://example.com/p" not in fired.get("NOODP", set())
+    assert "https://example.com/p" not in fired.get("NOYDIR", set())
 
 
 # --- document title ---------------------------------------------------------

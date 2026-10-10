@@ -151,6 +151,11 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         ) as spy_follow_mix,
         patch.object(
             link_findings,
+            "internal_nofollow_outlinks",
+            wraps=link_findings.internal_nofollow_outlinks,
+        ) as spy_internal_nofollow,
+        patch.object(
+            link_findings,
             "form_url_insecure",
             wraps=link_findings.form_url_insecure,
         ) as spy_insecure_form,
@@ -188,6 +193,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         "eeat": spy_eeat,
         "OUTLINK_TO_LOCALHOST": spy_localhost,
         "FOLLOW_AND_NOFOLLOW_INLINKS": spy_follow_mix,
+        "INTERNAL_NOFOLLOW_OUTLINKS": spy_internal_nofollow,
         "FORM_URL_INSECURE": spy_insecure_form,
         "FORM_ON_HTTP_URL": spy_http_password_form,
     }

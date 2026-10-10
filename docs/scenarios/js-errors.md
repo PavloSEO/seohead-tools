@@ -40,9 +40,10 @@ page, the other writes a full-page PNG per URL to disk.
 seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./run
 ```
 
-Every error-level console message is captured per rendered URL while the page is open, and each
-screenshot is written to `render_artifacts/` under the run directory, named by a hash of the URL
-so two URLs cannot collide.
+Error-level console messages are captured per rendered URL, up to 100; anything beyond that is
+counted in `console_errors_omitted`. Each message is truncated and has secrets redacted. Each
+screenshot is written to `render_artifacts/` under the run directory, named by a truncated hash of
+the URL plus a random suffix, so two URLs cannot collide and reruns never overwrite a file.
 
 **4. Look at the pages that rendered short.** The audit's own thin-content and low-text-ratio
 checks, read against pages whose `representation` is `rendered`, are the shortlist: a rendered
@@ -66,7 +67,7 @@ Per rendered URL, during the run:
   "ok": true,
   "url": "https://example.com/page",
   "console_errors": ["TypeError: Cannot read properties of undefined (reading 'sku')"],
-  "screenshot_path": "./run/render_artifacts/9f2c1a7b04e6d3f581bc2ad0.png"
+  "screenshot_path": "./run/render_artifacts/9f2c1a7b04e6d3f581bc2ad0-k3x8q1zv.png"
 }
 ```
 

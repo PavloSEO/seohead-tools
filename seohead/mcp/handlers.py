@@ -1825,6 +1825,12 @@ def _audit_crawl_result(
                     ctx.add(
                         "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
                     )
+                for item in link_findings.internal_nofollow_outlinks(
+                    graph.iter_links() if graph else links, crawl_host
+                ):
+                    ctx.add(
+                        "INTERNAL_NOFOLLOW_OUTLINKS", target_url=item["target_url"], details=item
+                    )
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
@@ -1847,14 +1853,14 @@ def _audit_crawl_result(
                         "link_attributes.capture is false; original href schemes were not retained",
                     )
             else:
-                ctx.skip(
-                    "FOLLOW_AND_NOFOLLOW_INLINKS",
-                    "no crawl start URL is available to identify one site's internal links",
-                )
+                no_host = "no crawl start URL is available to identify one site's internal links"
+                ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", no_host)
+                ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", no_host)
         else:
             reason = "crawl-list input retains no link-edge evidence"
             ctx.skip("OUTLINK_TO_LOCALHOST", reason)
             ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", reason)
+            ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", reason)
             ctx.skip("HTTP_LINK_ON_HTTPS", reason)
 
         if has_form_evidence:
@@ -1888,6 +1894,38 @@ def _audit_crawl_result(
                 else link_findings.protocol_relative_links(links)
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
+
+    # Pages With JavaScript Errors (#1015): read from the retained render console sidecars,
+    # never re-rendered here. Unreadable evidence is a stated skip, not a clean page.
+    if stored_scan is not None and not stored_list and hasattr(stored_scan, "path"):
+        from seohead.storage import browser_artifacts
+
+        console = browser_artifacts.console_error_pages(stored_scan.con, stored_scan.path)
+        # A skip is retracted by any sibling add(), so an unreadable record only becomes
+        # the stated reason when no readable page produced a finding.
+        if console["unreadable"] and not console["pages"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                f"{console['unreadable']} retained browser console record(s) could not be read",
+            )
+        elif not console["captured"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                "no browser console was retained; enable rendering.artifacts.console_errors",
+            )
+        for item in console["pages"]:
+            ctx.add(
+                "JS_CONSOLE_ERRORS",
+                target_url=item["target_url"],
+                details={"error_count": item["error_count"], "errors": item["errors"]},
+            )
+    else:
+        # The legacy graph path keeps no render sidecars, so it states the same
+        # skip the stored-scan path states for an uncaptured console (keeps parity).
+        ctx.skip(
+            "JS_CONSOLE_ERRORS",
+            "no browser console was retained; enable rendering.artifacts.console_errors",
+        )
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
@@ -4517,6 +4555,21 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
     return core(ledger)
 
 
+def remediation_create(path: str, project_dir: str, producer_build: str) -> dict[str, Any]:
+    """Create one new empty ledger bound to a project; existing files are refused."""
+    from seohead.storage.ledger import create_ledger, ledger_summary
+
+    out = create_ledger(path, project_dir=project_dir, producer_build=producer_build)
+    return {"ledger": str(out), "summary": ledger_summary(out)}
+
+
+def remediation_ingest(ledger: str, scan: str) -> dict[str, Any]:
+    """Ingest one saved audit into a ledger as baseline/history; re-ingest is idempotent."""
+    from seohead.storage.ledger import ingest_scan
+
+    return ingest_scan(ledger, scan)
+
+
 def workflow_start(
     directory: str,
     scenario_id: str,
@@ -5084,6 +5137,12 @@ def skill_show(name: str) -> dict[str, Any]:
     from seohead.projects.runtime import playbook_show
 
     return playbook_show(name, "skill")
+
+
+def scenario_list() -> dict[str, Any]:
+    from seohead.projects.runtime import playbook_list
+
+    return playbook_list("scenario")
 
 
 def scenario_show(name: str) -> dict[str, Any]:
@@ -6255,6 +6314,8 @@ _RAW_HANDLERS = {
     "project_sources_list": project_sources_list,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
+    "remediation_create": remediation_create,
+    "remediation_ingest": remediation_ingest,
     "workflow_start": workflow_start,
     "workflow_checkpoint": workflow_checkpoint,
     "workflow_status": workflow_status,
@@ -6296,6 +6357,7 @@ _RAW_HANDLERS = {
     "project_start": project_start,
     "skill_list": skill_list,
     "skill_show": skill_show,
+    "scenario_list": scenario_list,
     "scenario_show": scenario_show,
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,

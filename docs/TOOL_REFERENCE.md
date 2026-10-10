@@ -1580,6 +1580,44 @@ The result keeps verified original cases, resolved, persisting,
 regressed, false-positive-reviewed and unverifiable states separate.
 It does not run a crawl or infer that omitted evidence is clean.
 
+### `remediation-create`
+
+MCP name: `seo_remediation_create`
+
+Create one new empty remediation ledger bound to a validated local project.
+
+| Argument | Type | Default |
+|---|---|---|
+| `path` | `str` | `required` |
+| `project_dir` | `str` | `required` |
+| `producer_build` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+producer_build must be the full lowercase 40-character Git SHA of the
+build that writes the ledger. An existing path is refused; ledgers never
+overwrite.
+
+### `remediation-ingest`
+
+MCP name: `seo_remediation_ingest`
+
+Ingest one retained saved audit into a local ledger without rerunning a crawl.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `scan` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+The scan is opened read-only. Re-ingesting the same revision is idempotent;
+a new revision appends observation history.
+
 ### `workflow-start`
 
 MCP name: `seo_workflow_start`
@@ -2151,6 +2189,16 @@ Return a packaged skill's exact text and definition identity.
 | Argument | Type | Default |
 |---|---|---|
 | `name` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scenario-list`
+
+MCP name: `seo_scenario_list`
+
+List the packaged workflow scenarios with their ordered steps, without running them.
+
+Takes no arguments.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

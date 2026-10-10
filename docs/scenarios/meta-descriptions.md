@@ -42,6 +42,8 @@ export never carries a count of occurrences, only the one value it kept.
 `DESC_MULTIPLE` is purely additive evidence about *how many* live tags there are, not a change
 in *which* one the rest of this chain reads.
 
+`Below 400 Pixels` is carried from an export and not judged: the pixel width is never computed here.
+
 The character thresholds are configuration. The published catalogue names 155 characters as the
 upper bound; this toolkit's default is **160**, and 70 for the lower bound. If a report is going
 to quote a threshold, quote the one that ran.

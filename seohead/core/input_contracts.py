@@ -574,6 +574,19 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("project_directory", "directory"),
         _form("selector", "consumer", "limit"),
     ),
+    _command(
+        "remediation-create",
+        "remediation_create",
+        _form("local_file", "path", note="New ledger path; an existing file is refused."),
+        _form("project_directory", "project_dir"),
+        _form("selector", "producer_build", note="Full lowercase 40-character Git SHA."),
+    ),
+    _command(
+        "remediation-ingest",
+        "remediation_ingest",
+        _form("local_file", "ledger"),
+        _form("local_file", "scan", note="Read-only saved scan.v1 SQLite artifact."),
+    ),
     _command("remediation-summary", "remediation_summary", _form("local_file", "ledger")),
     _command(
         "remediation-cases",
@@ -726,6 +739,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("skill-list", "skill_list", _form("no_input")),
     _command("skill-show", "skill_show", _form("selector", "name")),
+    _command("scenario-list", "scenario_list", _form("no_input")),
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
     _command(

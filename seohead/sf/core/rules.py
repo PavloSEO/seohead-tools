@@ -231,6 +231,8 @@ _BODY_DERIVED_HTML_CHECKS = (
     "NOSNIPPET",
     "NOIMAGEINDEX",
     "NOTRANSLATE",
+    "NOODP",
+    "NOYDIR",
     "UNAVAILABLE_AFTER",
     "HREFLANG_OUTSIDE_HEAD",
     "META_REFRESH_REDIRECT",
@@ -1333,6 +1335,10 @@ def check_directives_extra(ctx: AuditContext) -> None:
             ctx.add("NOIMAGEINDEX", target_url=page.url)
         if "notranslate" in robots:
             ctx.add("NOTRANSLATE", target_url=page.url)
+        if "noodp" in robots:
+            ctx.add("NOODP", target_url=page.url)
+        if "noydir" in robots:
+            ctx.add("NOYDIR", target_url=page.url)
         unavailable_after = next((t for t in robots if t.startswith("unavailable_after")), None)
         if unavailable_after:
             ctx.add(
