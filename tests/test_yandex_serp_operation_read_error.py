@@ -119,3 +119,24 @@ def test_operation_read_error_survives_the_handler_boundary_and_is_not_billed_as
 
     journal_entry = spend.read_all()[0]
     assert journal_entry["extra"]["operation_ids"] == {"synthetic query": "op-5"}
+
+
+def test_retry_backoff_sleeps_only_between_attempts(monkeypatch):
+    import io
+    import time
+    import urllib.error
+
+    from seohead.data_sources import yandex_cloud
+
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+
+    def always_429(request, timeout=None, context=None):
+        raise urllib.error.HTTPError(request.full_url, 429, "Too Many", {}, io.BytesIO(b"{}"))
+
+    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", always_429)
+    client = yandex_cloud._Base(api_key="k", folder_id="f", rps=1000)
+    status, _ = client._request("https://example.test/op", retries=3)
+    assert status == 429
+    backoff = [s for s in sleeps if s >= 1]  # rate-limiter waits are sub-second
+    assert backoff == [2, 3]

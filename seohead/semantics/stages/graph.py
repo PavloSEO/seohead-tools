@@ -11,6 +11,7 @@ Writes ``anomalies.md`` before any paid exact frequency is bought.
 from __future__ import annotations
 
 import collections
+import threading
 from pathlib import Path
 
 from seohead.semantics.norm import Filters
@@ -121,7 +122,15 @@ def candidate_clusters(phrase_tokens, top_df_drop=8):
     return sorted([c for c in comps.values() if len(c) >= 2], key=len, reverse=True)
 
 
+_RUN_LOCK = threading.Lock()  # _STOP is module state; one graph run at a time
+
+
 def run(store, cfg, out_dir):
+    with _RUN_LOCK:
+        return _run(store, cfg, out_dir)
+
+
+def _run(store, cfg, out_dir):
     global _STOP
     _STOP = set(GRAMMATICAL) | set(cfg.get("anchor_words") or [])
     f = Filters.from_config(cfg)

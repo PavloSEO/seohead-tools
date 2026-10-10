@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -332,6 +333,7 @@ def url_queries(
                     except urllib.error.HTTPError as exc:
                         if attempt == 2 or (exc.code != 429 and not 500 <= exc.code <= 599):
                             raise
+                        time.sleep(2**attempt + 1)
                 chunk = (
                     parsed.get("text_indicator_to_statistics") if isinstance(parsed, dict) else None
                 )

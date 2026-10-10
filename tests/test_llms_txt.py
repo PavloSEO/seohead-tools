@@ -200,3 +200,16 @@ def test_network_failure_still_reports_not_measured(monkeypatch):
     r = llms_txt.check_llms_txt("https://example.com/")
     assert r["ok"] is False and "error" in r
     assert "exists" not in r
+
+
+def test_keyword_checks_match_words_not_substrings():
+    """'api' in 'rapid', 'case' in 'Showcase' and 'tool' in 'Toolbar' are not hits."""
+    content = (
+        "# Acme\n\n## A\n## B\n## C\n"
+        "[Toolbar](https://example.com/toolbar) [Showcase](https://example.com/showcase) "
+        "[rapid](https://example.com/rapid)\n"
+    )
+    r = llms_txt.score_llms_txt(content, brand="Acme")
+    assert r["checks"][4]["passed"] is False  # category
+    assert r["checks"][6]["passed"] is False  # proof
+    assert r["checks"][7]["passed"] is False  # docs

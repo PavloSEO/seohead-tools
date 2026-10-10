@@ -452,8 +452,8 @@ def check_trust_pages(ctx: AuditContext) -> None:
                 destination = rec.get("destination_url")
                 if not anchor or anchor not in cfg["anchors"] or not destination:
                     continue
-                host = urllib.parse.urlparse(destination).hostname or ""
-                if host.lower() != site_host:
+                host = urllib.parse.urlparse(destination).netloc.lower()
+                if host != site_host:
                     continue
                 key = norm_url(destination)
                 page = ctx.page_by_norm.get(key)
@@ -538,8 +538,8 @@ def check_citations(ctx: AuditContext) -> None:
             source, destination = rec.get("source_url"), rec.get("destination_url")
             if not source or not destination:
                 continue
-            host = urllib.parse.urlparse(destination).hostname or ""
-            if host.lower() and host.lower() != site_host:
+            host = urllib.parse.urlparse(destination).netloc.lower()
+            if host and host != site_host:
                 external_by_source.setdefault(norm_url(source), []).append(rec)
     applicable = unmeasured = cited = 0
     for page in ctx.indexable_html_pages():

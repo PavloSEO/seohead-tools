@@ -98,10 +98,6 @@ class LedgerError(ScanError):
 
 
 def _runtime() -> None:
-    if sqlite3 is None:
-        raise LedgerError(
-            "ledger.v1 requires a Python installation with the sqlite3 standard-library module"
-        )
     if sqlite3.sqlite_version_info < (3, 31, 0):
         raise LedgerError(
             f"ledger.v1 requires SQLite >= 3.31; this Python uses {sqlite3.sqlite_version}"
