@@ -1,7 +1,7 @@
 {
   "schema": "seohead.headless-capabilities.v1",
   "inventory_source": "seohead.crawl.settings.describe_settings",
-  "inventory_sha256": "2cddfa22579ca3c790bfc400e54739d0856f271cf09f008554acb6a8635e46a6",
+  "inventory_sha256": "1dfd0e5831ae9c8066bdf0348fd16359216be8c233c8fc8e0b61cad94392b32f",
   "settings_count": 114,
   "settings": [
     {
@@ -1349,7 +1349,7 @@
       "type": "str",
       "default": "sampled",
       "results_affecting": true,
-      "description": "Sample template patterns or render every eligible URL within the independent URL/time budgets.",
+      "description": "sampled: probe template patterns and escalate those that diverge; full: render every eligible URL within the independent URL/time budgets; auto: sampled, and also escalate patterns whose raw page carries little text (the desktop Auto mode).",
       "family": "rendering",
       "implementation": "seohead/crawl/sqlite_render.py",
       "cli": "crawl-site --set path=value or --config; inventory: --config-help",
