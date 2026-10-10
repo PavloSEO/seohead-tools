@@ -29,10 +29,18 @@ class GraphScreenTests(unittest.TestCase):
         i18n.set_language("ru")
 
     def test_open_project_shows_the_waiting_state_for_the_core_issue(self):
-        screen = GraphScreen(FakeHost())
+        host = FakeHost()
+        host.scan_model.rows = [{"path": "/scan/1"}]
+        host.selected_scan_path = "/scan/1"
+        screen = GraphScreen(host)
         self.assertIs(screen.states.currentWidget(), screen.waiting)
         self.assertIsInstance(screen.waiting, StatePanel)
         self.assertEqual(screen.waiting.issue_label.property("waiting_issue"), GRAPH_ISSUE)
+
+    def test_without_a_saved_scan_it_offers_a_new_scan_and_no_graph(self):
+        screen = GraphScreen(FakeHost())
+        self.assertIs(screen.states.currentWidget(), screen.no_scan)
+        self.assertEqual(screen.no_scan.action.text(), "Новый скан")
 
     def test_no_project_asks_to_open_one(self):
         screen = GraphScreen(FakeHost(project=None))

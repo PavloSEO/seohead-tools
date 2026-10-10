@@ -26,6 +26,7 @@ from ..ui.controls import Segmented, polish
 from ..ui.icons import material_icon
 from ..ui.kit import PageHeader, StatePanel, no_project_panel
 from .base import Screen
+from .issues import selected_scan
 
 GRAPH_ISSUE = 975
 INCLUDE = (("head", "Шапка и меню", False), ("content", "Контент", True), ("foot", "Подвал", False),
@@ -88,7 +89,11 @@ class GraphScreen(Screen):
         self.waiting = StatePanel("waiting", "Граф ссылок ждёт данных ядра",
                                   "Ядро пока отдаёт граф только вокруг одной страницы или раздела; общий граф скана появится вместе с фильтрами.",
                                   issue=GRAPH_ISSUE)
+        self.no_scan = StatePanel("empty", "Графа пока нет",
+                                  "Граф строится из таблицы ссылок сохранённого скана. В проекте ещё нет скана: запустите краул или импортируйте выгрузку Screaming Frog.",
+                                  action=("Новый скан", host.scan_preview))
         self.states.addWidget(self.no_project)
+        self.states.addWidget(self.no_scan)
         self.states.addWidget(self.waiting)
         canvas_layout.addWidget(self.states)
         body.addWidget(self.canvas, 1)
@@ -151,4 +156,9 @@ class GraphScreen(Screen):
             polish(box)
 
     def refresh(self):
-        self.states.setCurrentWidget(self.waiting if self.project_open else self.no_project)
+        if not self.project_open:
+            self.states.setCurrentWidget(self.no_project)
+        elif selected_scan(self.host) is None:
+            self.states.setCurrentWidget(self.no_scan)
+        else:
+            self.states.setCurrentWidget(self.waiting)
