@@ -574,6 +574,25 @@ def build_report(
     lang: str = "en",
     pdf_policy: str | None = None,
 ) -> dict[str, Any]:
+    result = _build_report(data, fmt, path, project, view, offset, lang, pdf_policy)
+    if project is not None and result.get("ok"):
+        from seohead.projects.journal import note
+
+        target = result.get("path") or result.get("outputs") or path or ""
+        note(project, source="agent", actor="agent", text=f"report {fmt} built: {target}")
+    return result
+
+
+def _build_report(
+    data: Any,
+    fmt: str = "xlsx",
+    path: str | None = None,
+    project: str | None = None,
+    view: str | None = None,
+    offset: int = 0,
+    lang: str = "en",
+    pdf_policy: str | None = None,
+) -> dict[str, Any]:
     """Render an audit document in the requested report format.
 
     ``data`` is either the audit mapping itself or the path to its JSON file.
