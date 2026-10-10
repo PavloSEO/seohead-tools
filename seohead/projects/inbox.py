@@ -14,13 +14,14 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import atomic_write_bytes
 
 from .workspace import _load
 
@@ -236,18 +237,7 @@ def _write(root: Path, document: dict[str, Any]) -> None:
     )
     if len(payload.encode()) > MAX_BYTES:
         raise ValueError("project inbox exceeds its byte limit")
-    fd, stage = tempfile.mkstemp(prefix=".inbox-", dir=root)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(stage, root / "inbox.json")
-        from seohead.core.filesystem import fsync_directory
-
-        fsync_directory(root)
-    finally:
-        Path(stage).unlink(missing_ok=True)
+    atomic_write_bytes(root / "inbox.json", payload.encode("utf-8"))
 
 
 def _read_document(directory: str | Path) -> tuple[Path, dict[str, Any]]:

@@ -14,13 +14,14 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import atomic_write_bytes
 
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
@@ -617,18 +618,7 @@ def _artifact(root: Path, relative: str, payload: bytes) -> tuple[str, str]:
         or not path.parent.resolve().is_relative_to(root.resolve())
     ):
         raise ValueError("monitor artifact path is unsafe")
-    descriptor, staged = tempfile.mkstemp(prefix=".monitor-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(staged, path)
-        from seohead.core.filesystem import fsync_directory
-
-        fsync_directory(path.parent)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    atomic_write_bytes(path, payload)
     from .evidence import _digest
 
     digest = _digest(path, max_bytes=len(payload), deadline=time.monotonic() + 5)

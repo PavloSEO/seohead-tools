@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import tempfile
 from pathlib import Path
 
 _WINDOWS = os.name == "nt"
@@ -80,3 +81,24 @@ def fsync_directory(path: str | Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def atomic_write_bytes(path: str | Path, data: bytes, *, mode: int = 0o600) -> None:
+    """Publish ``data`` at ``path`` through a unique temp file in the same directory.
+
+    The temp file is fsynced before ``os.replace`` and the directory is fsynced after,
+    so readers see either the previous or the complete new content. The temp file is
+    removed when publication fails.
+    """
+    target = Path(path)
+    descriptor, staged = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(staged, mode)
+        os.replace(staged, target)
+        fsync_directory(target.parent)
+    finally:
+        Path(staged).unlink(missing_ok=True)
