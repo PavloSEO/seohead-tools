@@ -9,10 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-#: Views the shell can be in. ``palette`` is the command list, ``detail`` the
-#: selected command's read-only page, ``help`` the key reference.
-VIEWS = ("palette", "detail", "help", "watch", "note", "watch_filter", "watch_detail", "watch_help")
-
 WATCH_SECTIONS = (
     "overview",
     "tasks",
@@ -27,6 +23,9 @@ WATCH_SECTIONS = (
     "schema",
     "sites",
 )
+
+#: Watch sections whose rows narrow with ``f`` and reset with ``c``.
+FILTERABLE_SECTIONS = frozenset({"findings", "tasks", "methods", "schema"})
 
 #: Commands offered next to the flat tool list. Grouped namespaces keep their
 #: own subcommands in the CLI; the palette lists them as single entries whose
@@ -137,6 +136,20 @@ class ShellState:
             self.index = 0
             return True
         return False
+
+    def _scroll_detail(self, key: str, exit_view: str) -> None:
+        """Scroll a read-only page; Esc, Enter or Ctrl-C leave it for ``exit_view``."""
+        if key in {"down", "page_down"}:
+            self.watch_detail_offset += 1 if key == "down" else 10
+        elif key in {"up", "page_up"}:
+            self.watch_detail_offset = max(0, self.watch_detail_offset - (1 if key == "up" else 10))
+        elif key == "home":
+            self.watch_detail_offset = 0
+        elif key == "end":
+            self.watch_detail_offset = 10**9
+        if key in {"escape", "enter", "ctrl_c"}:
+            self.view = exit_view
+            self.quit_requested = key == "ctrl_c"
 
     def handle_key(self, key: str) -> None:
         """Apply one symbolic key name (see :mod:`seohead.tui.keys`)."""
@@ -252,19 +265,7 @@ class ShellState:
                     self.watch_view_offset = self.watch_view_next
                 self.watch_detail_offset = 0
                 return
-            if key in {"down", "page_down"}:
-                self.watch_detail_offset += 1 if key == "down" else 10
-            elif key in {"up", "page_up"}:
-                self.watch_detail_offset = max(
-                    0, self.watch_detail_offset - (1 if key == "up" else 10)
-                )
-            elif key == "home":
-                self.watch_detail_offset = 0
-            elif key == "end":
-                self.watch_detail_offset = 10**9
-            if key in {"escape", "enter", "ctrl_c"}:
-                self.view = "watch"
-                self.quit_requested = key == "ctrl_c"
+            self._scroll_detail(key, "watch")
             return
         if self.view == "watch":
             if key == "char:m":
@@ -337,20 +338,10 @@ class ShellState:
                         else self.watch_offset + self.watch_page_size
                     )
                     self.watch_index = 0
-            elif key == "char:f" and self.watch_section in {
-                "findings",
-                "tasks",
-                "methods",
-                "schema",
-            }:
+            elif key == "char:f" and self.watch_section in FILTERABLE_SECTIONS:
                 self.filter_draft = self.watch_query
                 self.view = "watch_filter"
-            elif key == "char:c" and self.watch_section in {
-                "findings",
-                "tasks",
-                "methods",
-                "schema",
-            }:
+            elif key == "char:c" and self.watch_section in FILTERABLE_SECTIONS:
                 self.watch_query = ""
                 self.watch_offset = 0
                 self.watch_index = 0
@@ -386,19 +377,7 @@ class ShellState:
                 self.quit_requested = True
             return
         if self.view in ("detail", "help"):
-            if key in {"down", "page_down"}:
-                self.watch_detail_offset += 1 if key == "down" else 10
-            elif key in {"up", "page_up"}:
-                self.watch_detail_offset = max(
-                    0, self.watch_detail_offset - (1 if key == "up" else 10)
-                )
-            elif key == "home":
-                self.watch_detail_offset = 0
-            elif key == "end":
-                self.watch_detail_offset = 10**9
-            if key in ("escape", "enter", "ctrl_c"):
-                self.view = "palette"
-                self.quit_requested = key == "ctrl_c"
+            self._scroll_detail(key, "palette")
             return
         if key == "up":
             self.move(-1)

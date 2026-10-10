@@ -87,9 +87,3 @@ def badge(kind: str, label: str, palette: Palette) -> str:
     if not palette.color:
         return f"{_STATUS_ASCII[kind]} {label}"
     return f"[{_STATUS_STYLE[kind]}]{_STATUS_GLYPH[kind]} {label}[/]"
-
-
-def rule(palette: Palette, width: int) -> str:
-    """A horizontal separator; styled when color is on, plain dashes otherwise."""
-    line = "─" * max(width, 1)
-    return f"[{palette.muted}]{line}[/]" if palette.color else line

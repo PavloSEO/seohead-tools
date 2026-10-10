@@ -16,10 +16,9 @@ from seohead.tui.app import run
 
 
 @pytest.fixture(autouse=True)
-def language_reset():
-    original = localization.LANGUAGE
-    yield
-    localization.LANGUAGE = original
+def language_reset(monkeypatch):
+    # run() sets localization.LANGUAGE globally; monkeypatch restores it after each test.
+    monkeypatch.setattr(localization, "LANGUAGE", localization.LANGUAGE)
 
 
 def test_flags_and_locale(monkeypatch):
@@ -77,7 +76,7 @@ def test_compact_uses_real_counts_and_does_not_invent_unknowns(monkeypatch):
 
 
 def test_russian_numbers_run_label_and_finished_scan(monkeypatch):
-    localization.LANGUAGE = "ru"
+    monkeypatch.setattr(localization, "LANGUAGE", "ru")
     assert localization.number(1330) == "1 330"
     assert scan_now.run_label("ad994e4a90084c7eae15a8ab564b55f9") == "r-ad99"
     snapshot = {
