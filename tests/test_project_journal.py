@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from seohead.projects import journal, run_observation
-from seohead.projects.coverage import coverage_status, initialize_coverage, load_catalogue, record_execution
+from seohead.projects.coverage import (
+    coverage_status,
+    initialize_coverage,
+    load_catalogue,
+    record_execution,
+)
 from seohead.projects.event_log import FILE
 from seohead.projects.workspace import create_project
 
@@ -26,7 +31,11 @@ def _events(root: Path) -> list[dict]:
 
 
 def _log_bullets(root: Path) -> list[str]:
-    return [line for line in (root / "log.md").read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
+    return [
+        line
+        for line in (root / "log.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("- ")
+    ]
 
 
 def test_record_writes_event_and_mirrors_bullet_to_log(project):
@@ -97,7 +106,9 @@ def test_report_build_is_journaled_for_project_reports(project, monkeypatch):
 def test_failed_report_build_is_not_journaled(project, monkeypatch):
     from seohead import reports
 
-    monkeypatch.setattr(reports, "_build_report", lambda *args, **kwargs: {"ok": False, "error": "x"})
+    monkeypatch.setattr(
+        reports, "_build_report", lambda *args, **kwargs: {"ok": False, "error": "x"}
+    )
 
     reports.build_report({}, "xlsx", project=str(project))
 
