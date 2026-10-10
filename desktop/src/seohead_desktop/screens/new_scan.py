@@ -702,6 +702,7 @@ class NewScanDialog(QDialog):
         self.limit_stepper.set_enabled_value(draft.limit_enabled)
         saving = draft.value("storage.body_mode") != "off"
         self.html_state.setText(tr("для поиска и сравнений") if saving else tr("только метаданные"))
+        self.html_state.setToolTip(tr("Нужно для поиска в HTML и сравнений"))  # ElidedLabel.setText overwrites the tooltip
         for switch, state in ((self.limit_switch, draft.limit_enabled), (self.html_switch, saving)):
             if switch.isChecked() != state:
                 switch.blockSignals(True)

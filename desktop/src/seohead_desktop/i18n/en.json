@@ -2195,5 +2195,6 @@
  "без проекта нет истории, задач и сравнения сканов. Сохраните как проект, чтобы перепроверять исправления.": "without a project there is no history, tasks or scan comparison. Save as a project to recheck fixes.",
  "Без проекта · данные во временной папке до закрытия окна": "No project · data in a temporary folder until the window closes",
  "Выбрано: {url}": "Selected: {url}",
- "Ещё действия": "More actions"
+ "Ещё действия": "More actions",
+ "Проверка обновлений, загрузка по запросу и журнал изменений приложения и ядра": "Update checks, on-demand download and the app and core change log"
 }
