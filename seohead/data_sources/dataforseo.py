@@ -192,7 +192,13 @@ class DataForSEOClient:
                     label,
                     cost=0.0,
                     unit="usd",
-                    extra={"attempt_failed": "network_error", "detail": str(exc)},
+                    extra={
+                        "attempt_failed": "network_error",
+                        "detail": str(exc),
+                        # The response was lost, so the charge is unknown, not a measured zero.
+                        "charge_status": "unknown",
+                        "cost_unknown": True,
+                    },
                 )
                 raise DataForSEOError(
                     0, f"network error, response lost; task may already be billed: {exc}"
