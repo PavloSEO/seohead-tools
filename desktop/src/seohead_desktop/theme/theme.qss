@@ -57,6 +57,11 @@ QToolButton[card="choice"] { border: 1px solid $divider; border-radius: ${radius
 QToolButton[card="choice"]:hover { background: $raised; }
 QToolButton[card="choice"]:checked { border: 2px solid $primary; background: $choice_bg; color: $text; padding: 11px; }
 
+/* task board («Доска»): columns on raised surface, cards on base with a divider border */
+QFrame[card="column"] { background: $raised; border-radius: ${radius_card}px; }
+QFrame[card="task"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
+QFrame[card="task"]:hover { border: 1px solid $outline_hover; }
+
 /* segmented control */
 QFrame[segmented="true"] { background: $raised; border-radius: ${radius_control}px; }
 QToolButton[segment="true"] { height: 28px; padding: 0 12px; border-radius: 6px; font-weight: 500; color: $text_2; }
