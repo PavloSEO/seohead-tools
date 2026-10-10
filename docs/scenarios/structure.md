@@ -48,7 +48,7 @@ seohead redirects-check --url https://example.com/old
 ```
 
 On one live blog, 1450 of 3387 crawled URLs were 301s and 1448 of those were a plain missing
-trailing slash: 42% of the crawl budget spent on one template's link format.
+trailing slash: 43% of the crawl budget spent on one template's link format.
 
 **5. Scan the run before reporting it.**
 
@@ -61,7 +61,7 @@ seohead log-scan --run ./run
 ```json
 "sitemap": {
   "urls_in_sitemap": 124,
-  "urls_reached_by_links": 121,
+  "urls_reached_by_links": 124,
   "in_sitemap_not_linked": ["https://example.com/services/legacy"],
   "linked_not_in_sitemap": ["https://example.com/services/new"]
 }

@@ -44,14 +44,15 @@ seohead log-scan --run ./run
 ```json
 "sitemap": {
   "urls_in_sitemap": 124,
-  "urls_reached_by_links": 118,
+  "urls_reached_by_links": 124,
   "in_sitemap_not_linked": ["https://example.com/services/legacy"],
   "linked_not_in_sitemap": ["https://example.com/services/new"]
 }
 ```
 
 `SITEMAP_ORPHAN` names a declared URL that no internal link reaches, and `ORPHAN_PAGE` names any
-indexable page with no inlinks at all. `URL_NOT_IN_SITEMAP` names a real, indexable page the
+indexable page with no inlinks at all, except the home page; it comes only from `seohead sf run` over an
+export with an Inlinks column, not from `crawl-site`. `URL_NOT_IN_SITEMAP` names a real, indexable page the
 sitemap never declared. One needs a link; the other needs a sitemap entry.
 
 **5. Hand over one list per fix.**
