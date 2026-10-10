@@ -322,6 +322,10 @@ class StoredGraph:
         for edge in self.iter_links():
             yield from link_findings.protocol_relative_links([edge])
 
+    def iter_internal_sponsored_ugc(self, host: str) -> Iterator[dict[str, Any]]:
+        for edge in self.iter_links():
+            yield from link_findings.internal_sponsored_ugc_links([edge], host)
+
     def iter_insecure_forms(self) -> Iterator[dict[str, Any]]:
         for form in self.iter_forms():
             yield from link_findings.form_url_insecure([form])

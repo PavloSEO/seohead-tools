@@ -105,6 +105,37 @@ def protocol_relative_links(links: list[LinkEdge]) -> list[dict[str, Any]]:
     return out
 
 
+# Hint tokens that describe a link leaving the site (paid placement, user-submitted content).
+# On a same-site link they describe nothing true.
+_OUTBOUND_HINT_REL = {"sponsored", "ugc"}
+
+
+def internal_sponsored_ugc_links(links: Iterable[LinkEdge], host: str) -> list[dict[str, Any]]:
+    """Same-host links that carry ``rel="sponsored"`` or ``rel="ugc"``.
+
+    Those tokens say a link leads to paid or user-generated content outside the editor's
+    control. On an internal link they are mislabelled and tell crawlers to discount a page
+    of the site's own. Needs ``capture_attributes``: without captured rel an edge never
+    matches, which is the "not measured" outcome, not a clean one.
+    """
+    host = host.lower()
+    findings = []
+    for edge in links:
+        if (urlsplit(edge.destination).hostname or "").lower() != host:
+            continue
+        tokens = {token.lower() for token in edge.rel}
+        if not tokens & _OUTBOUND_HINT_REL:
+            continue
+        findings.append(
+            {
+                "target_url": edge.source,
+                "destination": edge.destination,
+                "rel": sorted(tokens),
+            }
+        )
+    return findings
+
+
 def http_links_on_https_pages(
     links: Iterable[LinkEdge], host: str, safely_upgraded: set[str]
 ) -> list[dict[str, Any]]:

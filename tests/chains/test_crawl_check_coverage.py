@@ -61,6 +61,9 @@ _NOT_WIRED_INTO_CRAWL = frozenset({"INLINK_BOILERPLATE_ONLY"})
 # "this pipeline never runs" is gone and only the three settings-gated ids remain.
 _NOT_WIRED_INTO_CRAWL |= {"UNSAFE_CROSS_ORIGIN_LINK", "PROTOCOL_RELATIVE_LINK"}
 
+# INTERNAL_LINK_SPONSORED_UGC reads captured rel (link_attributes.capture), so the same gate applies.
+_NOT_WIRED_INTO_CRAWL |= {"INTERNAL_LINK_SPONSORED_UGC"}
+
 # SITEMAP_ORPHAN and URL_NOT_IN_SITEMAP are the two sitemap-sourced ids
 # crawl_site answers itself, from its own link-graph reconciliation
 # (reconcile_sitemap), never through sitemap_coverage.run_sitemap -- the same
@@ -213,6 +216,7 @@ def test_the_excluded_set_names_only_checks_actually_absent_from_the_registry():
         "INLINK_BOILERPLATE_ONLY",
         "UNSAFE_CROSS_ORIGIN_LINK",
         "PROTOCOL_RELATIVE_LINK",
+        "INTERNAL_LINK_SPONSORED_UGC",
     } == _NOT_WIRED_INTO_CRAWL
 
 

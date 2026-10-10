@@ -132,3 +132,43 @@ def test_bare_domain_uses_the_normalized_start_host_for_follow_mix():
     fired = {issue["check"] for issue in audit["issues"]}
     assert "FOLLOW_AND_NOFOLLOW_INLINKS" in fired
     assert "FOLLOW_AND_NOFOLLOW_INLINKS" not in _skips(audit)
+
+
+def _audit_with_rel_capture(result, *, url):
+    return handlers._audit_crawl_result(
+        result,
+        settings=load(overrides={"speed.min_delay_seconds": 0, "link_attributes.capture": True}),
+        url=url,
+        sitemap_seed={"sitemap_url": None, "sitemap_urls": [], "declared": []},
+        discovery={"mode": "list"},
+        offline=True,
+    )[1]
+
+
+def test_internal_sponsored_or_ugc_link_fires_only_when_rel_is_captured():
+    """INTERNAL_LINK_SPONSORED_UGC fires on a same-host ugc/sponsored link, not on a plain one."""
+    result = SpiderResult(
+        pages=[_page()],
+        links=[
+            LinkEdge(
+                source="https://example.test/",
+                destination="https://example.test/comments",
+                anchor="Comments",
+                nofollow=True,
+                rel=("ugc", "nofollow"),
+            ),
+            LinkEdge(
+                source="https://example.test/",
+                destination="https://example.test/about",
+                anchor="About",
+                nofollow=False,
+                rel=(),
+            ),
+        ],
+    )
+
+    audit = _audit_with_rel_capture(result, url="https://example.test/")
+
+    findings = [i for i in audit["issues"] if i["check"] == "INTERNAL_LINK_SPONSORED_UGC"]
+    assert [i["target_url"] for i in findings] == ["https://example.test/"]
+    assert "INTERNAL_LINK_SPONSORED_UGC" not in _skips(audit)
