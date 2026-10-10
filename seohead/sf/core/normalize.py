@@ -165,6 +165,8 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     "lorem_ipsum_count": ["Lorem Ipsum Occurrences"],
     # Native-crawl only (#385): legacy plugin-dependent elements.
     "plugin_elements": ["Unsupported Plugin Elements"],
+    # Native-crawl only (#1016): rel=alternate media declarations with no href.
+    "mobile_alternate_broken": ["Mobile Alternate Broken"],
     # Native-crawl only (#386): the deprecated AJAX crawling scheme -- the
     # page-wide <meta name="fragment"> opt-in, and how many of the page's own
     # outlinks are written as "#!"/"?_escaped_fragment_=" URLs.
@@ -287,6 +289,7 @@ INT_FIELDS = frozenset(
         "images_max_alt_length",
         "lorem_ipsum_count",
         "plugin_elements",
+        "mobile_alternate_broken",
         "ajax_scheme_outlinks",
     }
 )
