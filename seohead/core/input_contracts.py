@@ -322,6 +322,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "batch_size"),
     ),
     _command(
+        "ai-column",
+        "ai_column",
+        _form("inline_corpus", "items", note="Dry-run needs only supplied normalized page text."),
+        _form("scan_artifact", "scan", note="Uses retained normalized page content offline."),
+        _form("inline_text", "prompt", note="Required instruction, at most 2000 characters."),
+        _form(
+            "inline_json",
+            "urls",
+            "rows",
+            note="Optional URL selection and caller-supplied values; no provider call.",
+        ),
+        _form("local_file", "csv_path", note="Formula-safe CSV of the column values."),
+        _form("selector", "column", "max_pages"),
+    ),
+    _command(
         "social-meta-check",
         "social_meta_check",
         _form("live_url", "url"),

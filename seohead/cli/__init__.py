@@ -71,6 +71,7 @@ COMMANDS = (
     "semantic-inputs",
     "semantic-similarity",
     "meta-description-drafts",
+    "ai-column",
     "social-meta-check",
     "soft404-check",
     "log-analyze",
@@ -854,6 +855,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 if value is not None:
                     kw[name] = value
         # items[]/pages[] and content_area are intentionally accepted through --input JSON.
+    elif cmd == "ai-column":
+        if getattr(args, "scan", None):
+            kw["scan"] = args.scan
+        for name in ("prompt", "column", "max_pages", "csv_path"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        # items[], urls[] and rows[] are accepted through --input JSON, like the drafts command.
     elif cmd == "log-analyze":
         if args.path:
             kw["path"] = args.path
@@ -2687,6 +2696,14 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--csv-path", help="local formula-safe CSV review artifact (requires --json-path)"
         )
+    if cmd == "ai-column":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument(
+            "--prompt", help="instruction applied to each selected page (max 2000 chars)"
+        )
+        sub.add_argument("--column", help="custom column name (default ai_column)")
+        sub.add_argument("--max-pages", type=int, help="selection limit (default 100, max 500)")
+        sub.add_argument("--csv-path", help="local formula-safe CSV of the column values")
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")
 
