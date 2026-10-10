@@ -238,7 +238,7 @@ having, because the alternative is an absence nobody has noticed.
 | H1 Only in Rendered HTML | tool | `render-check` |  |
 | H1 Updated by JavaScript | tool | `render-check` |  |
 | Canonical Only in Rendered HTML | tool | `render-check` |  |
-| Pages With JavaScript Errors | tool | `crawl-site` | browser console errors are captured per URL when rendering.artifacts.console_errors is on |
+| Pages With JavaScript Errors | check | `JS_CONSOLE_ERRORS` |  |
 
 ## Links
 

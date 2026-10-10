@@ -78,7 +78,7 @@ The priority list below is therefore a backlog, not a product-capability claim.
 | 1.7 | Page weight (total) | Total page weight with resources, not HTML only (`LARGE_HTML` covers markup alone) | medium | A/live | id `HEAVY_PAGE_WEIGHT` |
 
 **Context.** `SLOW_RESPONSE` already catches a slow server, but it is no
-substitute for real CWV. None of the 182 crawl-registry checks measures field
+substitute for real CWV. None of the 183 crawl-registry checks measures field
 CWV directly. The opt-in CrUX path added in #822 assesses current-window p75
 with URL/origin, form factor and period provenance; missing field data stays
 unavailable. A one-run `render-check` result remains lab evidence.

@@ -1121,6 +1121,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "A link points at a loopback address (localhost, 127.0.0.1, ::1, ...)",
         "fix": "Replace the development/staging reference with the production URL.",
     },
+    "JS_CONSOLE_ERRORS": {
+        "severity": "warning",
+        "source": "crawl:browser_artifacts",
+        "message": "The page's browser console logged errors while it was rendered",
+        "fix": "Fix the script error the console reports; an uncaught exception can stop "
+        "the page's content, links or metadata from being built in the browser.",
+    },
     "FOLLOW_AND_NOFOLLOW_INLINKS": {
         "severity": "notice",
         "source": "crawl:link_findings",

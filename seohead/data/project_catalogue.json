@@ -631,6 +631,13 @@
       "title": "An element the head content model does not allow is written inside <head>"
     },
     {
+      "definition_hash": "bdfb675f6f99b528e8a14c5532ddddbd184a15414364f1b25bed97138c46f400",
+      "id": "check:JS_CONSOLE_ERRORS",
+      "kind": "check",
+      "source": "runtime:CHECKS",
+      "title": "The page's browser console logged errors while it was rendered"
+    },
+    {
       "definition_hash": "d6ea0aefce3e6b9d2e5a5a7bdc492e0b0cc365f8f781f5ea3c636670889be61d",
       "id": "check:LARGE_HTML",
       "kind": "check",

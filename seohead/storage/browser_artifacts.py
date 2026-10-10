@@ -298,3 +298,55 @@ def validate_context(con: Any, item: dict[str, Any], payload: Any) -> None:
     )
     if item["completeness"] != expected or item["reason"] != expected_reason:
         raise ScanError("browser artifact context completeness disagrees with its evidence")
+
+
+def console_error_pages(con: Any, scan_path: str | Path) -> dict[str, Any]:
+    """Pages whose retained render console recorded at least one error.
+
+    Reads the context items and their content-addressed console sidecars. Evidence
+    that is present but unreadable is counted, never treated as a clean page.
+    """
+    rows = con.execute(
+        "SELECT payload_json FROM context_items WHERE kind=? ORDER BY item_key", (KIND,)
+    ).fetchall()
+    pages: list[dict[str, Any]] = []
+    captured = 0
+    unreadable = 0
+    for (payload_json,) in rows:
+        try:
+            payload = json.loads(payload_json)
+            console = payload["console"]
+            ref = console.get("ref")
+            if console["state"] not in {"stored", "partial"} or not isinstance(ref, dict):
+                continue
+            digest = ref["sha256"]
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise ValueError("digest")
+            sidecar = _root(scan_path) / "console" / f"{digest}.json"
+            if sidecar.is_symlink() or not sidecar.is_file():
+                raise ValueError("sidecar")
+            errors = json.loads(sidecar.read_text(encoding="utf-8"))["errors"]
+            if not isinstance(errors, list) or not all(isinstance(e, str) for e in errors):
+                raise ValueError("errors")
+            url_row = con.execute(
+                "SELECT urls.url FROM documents JOIN urls ON urls.url_id=documents.url_id "
+                "WHERE documents.document_id=?",
+                (payload["document_id"],),
+            ).fetchone()
+            if url_row is None:
+                raise ValueError("url")
+        except (KeyError, TypeError, ValueError, OSError):
+            unreadable += 1
+            continue
+        captured += 1
+        omitted = ref.get("omitted", 0)
+        omitted = omitted if type(omitted) is int and omitted >= 0 else 0
+        if errors or omitted:
+            pages.append(
+                {
+                    "target_url": url_row[0],
+                    "error_count": len(errors) + omitted,
+                    "errors": errors[:5],
+                }
+            )
+    return {"pages": pages, "captured": captured, "unreadable": unreadable}
