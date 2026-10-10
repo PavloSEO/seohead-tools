@@ -1659,6 +1659,8 @@
  "Недоступно в этой версии ядра": "Unavailable in this core version",
  "Недоступно": "Not available",
  "Появится": "Will appear",
+ "Агент: когда был на связи и подключён ли сейчас": "Agent: when it was last seen and whether it is connected now",
+ "Недоступно в этой версии ядра\nПоявится: Агент: когда был на связи и подключён ли сейчас": "Unavailable in this core version\nWill appear: Agent: when it was last seen and whether it is connected now",
  "Источник не указан: ядро не записывает действия агента, ваши действия и события приложения в журнал. Недоступно в этой версии ядра": "Source not given: the core does not record agent actions, your actions or app events in the log. Unavailable in this core version",
  "Исполнитель, описание, комментарии и «следующий шаг» недоступны в этой версии ядра.": "Assignee, description, comments and the next step are unavailable in this core version.",
  "Исполнитель, URL и время обновления недоступны в этой версии ядра.": "Assignee, URL and update time are unavailable in this core version.",
