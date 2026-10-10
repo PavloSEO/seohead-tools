@@ -136,7 +136,12 @@ def test_explicit_unlimited_project_pacer_does_not_reserve_a_hidden_two_per_seco
     assert not pacer.path.exists()
 
 
-def test_project_origin_pacer_reserves_one_shared_host_schedule(tmp_path):
+def test_project_origin_pacer_reserves_one_shared_host_schedule(tmp_path, monkeypatch):
+    from seohead.projects import origin_pacing
+
+    # Fixed wall clock: the schedule is then exact (0, 0.05, 0.10) regardless of
+    # how late the threads get scheduled on a loaded CI runner.
+    monkeypatch.setattr(origin_pacing.time, "time", lambda: 1_000_000.0)
     project = _project(tmp_path)
     barrier = threading.Barrier(3)
     waits: list[float] = []
