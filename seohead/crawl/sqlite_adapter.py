@@ -735,8 +735,8 @@ def crawl_to_scan(
             if limit and counts["pages"] >= limit:
                 emit_event("budget", {"kind": "urls", "limit": limit, "used": counts["pages"]})
                 if counts["queued"] or counts["inflight"]:
-                    partial, finish_reason = True, "url_limit"
-                    scan.interrupt(f"url limit reached ({limit})")
+                    partial, finish_reason = True, "stopped_by_budget"
+                    scan.stop_by_budget(f"url limit reached ({limit})")
                 break
             if (
                 settings["limits"]["max_crawl_seconds"]

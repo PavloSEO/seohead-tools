@@ -1369,6 +1369,7 @@ class NativeScan:
             raise ScanError("native scan frontier depth cannot be negative")
         if (
             scan["lifecycle"] == "finished"
+            and scan["finish_reason"] != "stopped_by_budget"
             and scan["source_kind"] == "native"
             and con.execute(
                 "SELECT 1 FROM frontier WHERE state IN ('queued','inflight') LIMIT 1"
@@ -3186,6 +3187,22 @@ class NativeScan:
             self._rollback()
             raise
 
+    def stop_by_budget(self, reason: str) -> None:
+        """Record a deliberate URL-budget stop; finish_capture then finalizes it as finished."""
+        self._assert_mutable()
+        self._begin(enforce_wal_bound=False)
+        try:
+            self.con.execute(
+                "UPDATE scan SET lifecycle='interrupted', finish_reason='stopped_by_budget', "
+                "crawl_partial=1 WHERE singleton=1"
+            )
+            self._event("stop", {"reason": reason})
+            self._event_coverage()
+            self.con.commit()
+        except BaseException:
+            self._rollback()
+            raise
+
     def _finalize_checkpoint(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds
         prior_timeout = self.con.execute("PRAGMA busy_timeout").fetchone()[0]
@@ -3348,9 +3365,16 @@ class NativeScan:
             # error circuit -- keeps its interrupted lifecycle even when nothing
             # is left in the queue. Only a checkpoint that merely ran out of
             # deadline may retry into finished.
-            stopped = prior[0] == "interrupted" and prior[1] != "finalization_blocked"
-            finished = ready and pending is None and not stopped
+            budget_stop = prior[1] == "stopped_by_budget"
+            stopped = prior[0] == "interrupted" and prior[1] not in {
+                "finalization_blocked",
+                "stopped_by_budget",
+            }
+            # A URL-budget stop leaves queued work by design; it is a finished capture.
+            finished = ready and (pending is None or budget_stop) and not stopped
             lifecycle = "finished" if finished else "interrupted"
+            if budget_stop:
+                reason = "stopped_by_budget"
             # A blocked checkpoint records why finalization could not run, but
             # must not erase an explicit stop: keeping its reason prevents a
             # later retry from stamping a false finished_at (#712).

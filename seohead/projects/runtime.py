@@ -278,9 +278,23 @@ def preparation_status(directory: str) -> dict:
     return state
 
 
+def _candidate_url(value: str) -> str:
+    """Validate a competitor URL like a target, but keep its host as entered (www included)."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    _target(value)
+    parts = urlsplit(value.strip())
+    port = f":{parts.port}" if parts.port else ""
+    return urlunsplit((parts.scheme.lower(), parts.hostname + port, parts.path or "/", "", ""))
+
+
 def _candidate(value: Any) -> dict:
     if isinstance(value, str):
-        return {"url": _target(value), "source": "operator supplied candidate", "observed_at": None}
+        return {
+            "url": _candidate_url(value),
+            "source": "operator supplied candidate",
+            "observed_at": None,
+        }
     if not isinstance(value, dict) or set(value) != {"url", "source", "observed_at"}:
         raise ValueError("competitor candidates require url, source and observed_at")
     if (
@@ -289,7 +303,7 @@ def _candidate(value: Any) -> dict:
         or len(value["source"]) > 512
     ):
         raise ValueError("competitor source is required")
-    return {**value, "url": _target(value["url"])}
+    return {**value, "url": _candidate_url(value["url"])}
 
 
 def prepare_project(
@@ -324,7 +338,7 @@ def prepare_project(
         raise ValueError("saved competitor candidate list exceeds the current project limit")
     if len({row["url"] for row in candidates}) != len(candidates):
         raise ValueError("duplicate competitor candidates")
-    if any(row["url"] == project["site"]["target"] for row in candidates):
+    if any(_target(row["url"]) == project["site"]["target"] for row in candidates):
         raise ValueError("the primary site cannot be its own competitor candidate")
     lock = root / ".prepare.lock"
     try:
