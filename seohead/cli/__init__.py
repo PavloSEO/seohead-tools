@@ -1387,6 +1387,8 @@ def _print_effective_rate(kwargs: dict[str, Any]) -> None:
     rate = crawl_config.effective_request_rate(resolved)
     shown = "unbounded" if rate == float("inf") else f"{rate:.2f} req/s"
     print(f"crawl-site: effective worst-case request rate to one host: {shown}", file=sys.stderr)
+    for message in crawl_config.rate_warnings(resolved):
+        print(f"crawl-site: warning: {message}", file=sys.stderr)
 
 
 # Stops the crawl chose because it was told to, not ones a resume can get past: the
