@@ -465,7 +465,7 @@ def build_schema(
     is low. The result includes the inferred type and its evidence, the connected
     graph proposal, and additions or corrections for existing markup.
     """
-    target = _resolve_target(url, html)
+    target = _resolve_target(url, html, timeout)
     if target is None:
         return {"ok": False, "error": f"No valid URL or HTML was provided: {url!r}"}
 
@@ -537,7 +537,7 @@ def build_schema(
     }
 
 
-def _resolve_target(url: str | None, html: str | None) -> dict[str, Any] | None:
+def _resolve_target(url: str | None, html: str | None, timeout: float) -> dict[str, Any] | None:
     """Use supplied HTML offline, otherwise fetch through the shared HTTP layer."""
     if html is not None:
         if not url:
@@ -553,7 +553,7 @@ def _resolve_target(url: str | None, html: str | None) -> dict[str, Any] | None:
     try:
         from seohead.recon.net import http_client
 
-        client, _ = http_client(25.0)
+        client, _ = http_client(timeout)
     except ImportError:
         return {"url": target, "html": None}
     try:

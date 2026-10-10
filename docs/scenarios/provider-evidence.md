@@ -40,8 +40,8 @@ to an arbitrary requested property, host, counter, or site. Unknown scopes and q
 **4. Collect one bounded operation.**
 
 Call `provider_collect(provider, operation, request, artifact_dir=...)`. It produces a
-`seohead.provider-evidence.v1` envelope with a status of `complete`, `partial`, `failed`, or
-`skipped`. GSC analytics is locally row-bounded; URL Inspection is a declared sample, never an
+`seohead.provider-evidence.v1` envelope with a status of `complete`, `partial`, `failed`, `skipped`,
+`no_field_data` or `not_configured`; a status outside that set is mapped to `complete` or `failed`. GSC analytics is locally row-bounded; URL Inspection is a declared sample, never an
 index census; PSI is a bounded mobile-first lab sample; CrUX History is field data; GA4 sessions
 are not search clicks; Metrika raw Logs have no route. A supplied `artifact_dir` keeps raw rows and
 identifiers in a restricted local artifact. The public envelope has a null target reference and

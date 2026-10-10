@@ -89,10 +89,9 @@ number, from a `page`/`paged`/`pg` token and nothing else — a bare number in a
 or a product id as often as a page index. It reports a break in a run that increments by one
 somewhere and then does not: 1, 2, 3, 7 leaves pages 4 to 6 in nobody's chain.
 
-What it deliberately does not report: a series starting at a number other than one (a crawl of
-a subsection looks exactly like that), a series with a stride such as `?page=0,10,20`, a series
-of only two pages, a series that cycles (`PAGINATION_LOOP` owns that one), and any series where
-one URL does not state its number at all. Each of those is left unevaluated rather than reported
+What it deliberately does not report: a series that does not step by one at all, such as a
+stride `?page=0,10,20` (an offset scheme looks exactly like that); a series of only two pages; a series that cycles
+(`PAGINATION_LOOP` owns that one); and any series where one URL does not state its number at all. Each of those is left unevaluated rather than reported
 against a numbering that would have had to be invented.
 
 Each is also counted and named separately, per series rather than per run, because those causes

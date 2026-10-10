@@ -118,6 +118,24 @@ def test_export_is_formula_safe_and_no_cms_write(tmp_path):
     assert row["proposed_description"].startswith("'=")
 
 
+def test_tab_and_cr_leading_drafts_are_neutralised_in_csv(tmp_path):
+    plan = prepare_draft_plan(_pages()[:1], {"min_chars": 1})
+    page = plan["batches"][0][0]
+    result = run_draft_plan(
+        plan,
+        SuppliedDraftExecutor(
+            [_draft(page, "\tcmd|' /C calc'!A0"), _draft(page, "\r=HYPERLINK(1)")]
+        ),
+        DraftCheckpoint(tmp_path / "drafts.sqlite"),
+    )
+    json_path, csv_path = tmp_path / "review.json", tmp_path / "review.csv"
+    export_draft_review(result, json_path, csv_path)
+
+    with csv_path.open() as source:
+        values = [row["proposed_description"] for row in csv.DictReader(source)]
+    assert values and all(value.startswith("'") for value in values)
+
+
 def test_executor_interruption_is_checkpointed_and_a_later_run_resumes_completed_work(tmp_path):
     plan = prepare_draft_plan(_pages()[:2], {"min_chars": 1}, batch_size=1)
     first, second = (batch[0] for batch in plan["batches"])

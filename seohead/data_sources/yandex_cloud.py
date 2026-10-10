@@ -126,7 +126,8 @@ class _Base:
             except urllib.error.HTTPError as exc:
                 raw = exc.read().decode("utf-8", "replace")
                 if exc.code in (429, 500, 503):  # Quota or transient failure: back off and retry.
-                    time.sleep(2**attempt + 1)
+                    if attempt + 1 < retries:
+                        time.sleep(2**attempt + 1)
                     last = (exc.code, raw)
                     continue
                 return exc.code, _maybe_json(raw)
@@ -142,7 +143,8 @@ class _Base:
                     raise NetworkAmbiguousError(
                         f"{operation or url}: response lost; request may already be billed: {exc}"
                     ) from None
-                time.sleep(2**attempt + 1)
+                if attempt + 1 < retries:
+                    time.sleep(2**attempt + 1)
                 last = (0, f"network: {exc}")
                 continue
         return last
