@@ -1,9 +1,8 @@
-"""«Источники данных проекта» (sheet ProjSources) and its host dialog «Настройки проекта».
+"""«Источники данных проекта» (sheet ProjSources) and the «Настройки проекта» container (sheet ProjSettings).
 
 The page shows, per service of the sheet, the access the core reports (provider-readiness, local, no network).
 Choosing a resource, the sync time, "link" / "unlink" and «Сохранить связи» need the project↔resource storage the core
 does not have yet: they are shown as the neutral «Недоступно в этой версии ядра» state. Nothing is written or faked.
-The ProjSettings container with its other tabs (Основное / Расписание / Экспорт) is not built, so the dialog hosts this one page.
 """
 
 from __future__ import annotations
@@ -14,6 +13,8 @@ from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -265,10 +266,16 @@ class ProjectSourcesPage(QWidget):
 
 
 class ProjectSettingsDialog(QDialog):
-    """«Настройки проекта»: the connections page until the full project settings container exists."""
+    """«Настройки проекта» (sheet ProjSettings): the container with its four tabs.
+
+    Only «Источники» (the core's readiness) and the read-only «Основное» (name, host, folder from the open project) show
+    real data. Default profile, goals and deletion need core storage that does not exist yet: they are neutral «Недоступно»
+    badges, never samples. «Расписание» and «Экспорт» are waiting states until the core provides them.
+    """
 
     def __init__(self, host, parent=None):
         super().__init__(parent)
+        self.host = host
         self.setWindowTitle(tr("Настройки проекта"))
         self.setModal(True)
         self.resize(940, 800)
@@ -276,23 +283,82 @@ class ProjectSettingsDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        root.addLayout(self._header())
+        self.page = ProjectSourcesPage(host)
+        self.nav = QListWidget()
+        self.nav.setObjectName("navView")
+        self.nav.setFixedWidth(200)
+        self.pages = QStackedWidget()
+        tabs = (
+            ("settings", "Основное", self._main_page()),
+            ("dns", "Источники", _scrolled(self.page)),
+            ("event_repeat", "Расписание", StatePanel("waiting", "Расписание сканов", "Расписание появится, когда ядро начнёт его хранить", issue=940)),
+            ("ios_share", "Экспорт", StatePanel("waiting", "Экспорт и отчёты", "Экспорт настроек проекта появится позже")),
+        )
+        for icon_name, title, widget in tabs:
+            item = QListWidgetItem(material_icon(icon_name, "role:text_2"), tr(title))
+            self.nav.addItem(item)
+            self.pages.addWidget(widget)
+        self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.nav.setCurrentRow(0)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        body.addWidget(self.nav)
+        body.addWidget(self.pages, 1)
+        root.addLayout(body, 1)
+        root.addWidget(self._footer())
+        i18n.retranslate(self)
+
+    def _header(self):
         head = QHBoxLayout()
-        head.setContentsMargins(24, 12, 24, 0)
+        head.setContentsMargins(24, 16, 24, 12)
+        icon_label = QLabel()
+        icon_label.setPixmap(material_icon("settings", "role:text").pixmap(24, 24))
+        head.addWidget(icon_label)
+        texts = QVBoxLayout()
+        texts.setSpacing(2)
         title = QLabel(tr("Настройки проекта"))
         title.setProperty("text_style", "dialog")
-        head.addWidget(title)
+        label, host_name = project_names(self.host)
+        meta = QLabel(joined(" · ", [part for part in (label, host_name) if part] + [tr("проект хранится локально")]))
+        meta.setProperty("text_style", "meta")
+        texts.addWidget(title)
+        texts.addWidget(meta)
+        head.addSpacing(8)
+        head.addLayout(texts)
         head.addStretch(1)
-        root.addLayout(head)
-        self.page = ProjectSourcesPage(host)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        holder = QWidget()
-        holder_layout = QVBoxLayout(holder)
-        holder_layout.setContentsMargins(24, 4, 24, 16)
-        holder_layout.addWidget(self.page)
-        scroll.setWidget(holder)
-        root.addWidget(scroll, 1)
+        return head
+
+    def _main_page(self):
+        label, host_name = project_names(self.host)
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(16)
+        general = _card("Основное")
+        general.layout().addWidget(_field("Название проекта", _value(label)))
+        general.layout().addWidget(_field("Хост сайта", _value(host_name)))
+        general.layout().addWidget(_field("Профиль скана по умолчанию", waiting_badge(941, "Именованные профили скана и профиль по умолчанию в ядре")))
+        general.layout().addWidget(_field("Папка проекта", _value(self.host.project_directory, mono=True)))
+        layout.addWidget(general)
+        goals = _card("Цели проекта")
+        goals.layout().addWidget(waiting_badge(976, "Цели проекта ядро пока не хранит"), 0, Qt.AlignLeft)
+        layout.addWidget(goals)
+        members = _card("Участники")
+        members.layout().addWidget(_text(tr("Проект локальный: участников нет.")))
+        layout.addWidget(members)
+        danger = _card("Опасная зона")
+        danger.layout().addWidget(waiting_badge(976, "Удаление проекта из приложения, с сохранением файлов в Корзине"), 0, Qt.AlignLeft)
+        delete = QPushButton(tr("Удалить проект"))
+        delete.setEnabled(False)
+        delete.setToolTip(tr(UNAVAILABLE))
+        danger.layout().addWidget(delete, 0, Qt.AlignLeft)
+        layout.addWidget(danger)
+        layout.addStretch(1)
+        return _scrolled(page)
+
+    def _footer(self):
         footer = QFrame()
         footer.setObjectName("dialogFooter")
         footer_layout = QHBoxLayout(footer)
@@ -300,13 +366,70 @@ class ProjectSettingsDialog(QDialog):
         hint = QLabel(tr("Ключи и токены задаются в настройках приложения · здесь их значения не показываются"))
         hint.setProperty("text_style", "meta")
         footer_layout.addWidget(hint, 1)
-        close = QPushButton(tr("Закрыть"))
-        close.setProperty("size", "lg")
-        close.setDefault(True)
-        close.clicked.connect(self.accept)
-        footer_layout.addWidget(close)
-        root.addWidget(footer)
-        i18n.retranslate(self)
+        cancel = QPushButton(tr("Отмена"))
+        cancel.clicked.connect(self.reject)
+        footer_layout.addWidget(cancel)
+        save = QPushButton(tr("Сохранить"))
+        save.setProperty("role", "primary")
+        save.setEnabled(False)
+        save.setToolTip(tr(UNAVAILABLE))
+        footer_layout.addWidget(save)
+        return footer
+
+
+def _scrolled(widget):
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    holder = QWidget()
+    holder_layout = QVBoxLayout(holder)
+    holder_layout.setContentsMargins(24, 4, 24, 16)
+    holder_layout.addWidget(widget)
+    scroll.setWidget(holder)
+    return scroll
+
+
+def _card(title):
+    card = QFrame()
+    card.setProperty("card", "panel")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 14, 16, 14)
+    layout.setSpacing(10)
+    caption = QLabel(tr(title))
+    caption.setProperty("text_style", "section")
+    layout.addWidget(caption)
+    return card
+
+
+def _field(caption, value):
+    field = QWidget()
+    layout = QVBoxLayout(field)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(4)
+    name = QLabel(tr(caption))
+    name.setProperty("text_style", "meta")
+    layout.addWidget(name)
+    layout.addWidget(value, 0, Qt.AlignLeft)
+    return field
+
+
+def _value(text, mono=False):
+    if not text:
+        label = QLabel(tr("Нет данных"))
+        label.setProperty("na", True)
+        return label
+    label = QLabel(text)
+    label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    if mono:
+        label.setProperty("text_style", "mono")
+    return label
+
+
+def _text(text):
+    label = QLabel(text)
+    label.setProperty("text_style", "meta")
+    label.setWordWrap(True)
+    return label
 
 
 def open_project_settings(window):

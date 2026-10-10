@@ -146,6 +146,8 @@ def build(name, width, height, store, theme="light", lang="ru"):
             open_project(window, OPTIONS["project"])
         if arg and arg != "simple":
             window.navigation.select_section(arg)
+        if arg == "issues" and OPTIONS.get("check"):  # --check CODE: open one check's evidence table
+            window.screens["issues"]._select(OPTIONS["check"])
         return window
     if kind in ("newscan", "scanset", "quickscan"):
         from capture_scan_dialog import Job
@@ -180,9 +182,10 @@ def main(argv=None):
     parser.add_argument("--project", type=Path, help="existing project directory to open through the core (read-only)")
     parser.add_argument("--core", help="seohead CLI executable (default: .venv-desktop/bin/seohead next to the repo)")
     parser.add_argument("--display", choices=("agent", "simple"), default="agent")
+    parser.add_argument("--check", help="shell:issues only: select this finding check (e.g. DESC_MISSING) before the capture")
     args = parser.parse_args(argv)
     default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
-    OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
+    OPTIONS.update(project=args.project, display=args.display, check=args.check, core=args.core or (str(default_core) if default_core.exists() else None))
     os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
     app = qt.app(sys.argv[:1])
     app.setStyle("Fusion")
