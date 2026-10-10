@@ -180,7 +180,7 @@ QLabel[text_style="control"] { font-size: ${font_control}px; font-weight: 500; }
 QFrame[segmented="true"] { background: $raised; border-radius: 10px; border: 0; }
 QToolButton[segment="true"] { height: 30px; padding: 0 12px; border-radius: ${radius_control}px; background: transparent; color: $text_2; font-weight: 500; border: 1px solid transparent; }
 QToolButton[segment="true"]:hover { color: $text; background: transparent; }
-QToolButton[segment="true"]:checked { background: $base; color: $on_selected; border: 1px solid $divider; }
+QToolButton[segment="true"]:checked { background: $base; color: $segment_checked_fg; border: 1px solid $segment_checked_border; }
 
 /* settings dialog */
 QFrame#settingsNav { background: $raised; border: 0; border-right: 1px solid $divider; }

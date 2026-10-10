@@ -2142,5 +2142,7 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "X-Robots-Tag и meta robots": "X-Robots-Tag and meta robots",
+ "Читать оба источника; при конфликте строже побеждает": "Read both sources; on conflict the stricter one wins"
 }
