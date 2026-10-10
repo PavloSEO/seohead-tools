@@ -892,10 +892,12 @@ class AuditContext:
             return
         ordered = sorted(urls)
         group = self.add_group(check_id, None, ordered)
+        # ``occurrences`` is per page; the group keeps the total so sums over findings stay true.
+        total = len(ordered) if occurrences is None else occurrences * len(ordered)
         self.add(
             check_id,
             target_url=ordered[0],
-            occurrences_count=len(ordered),
+            occurrences_count=total,
             group_id=group.group_id if group else None,
             details={**details, "page_count": len(ordered), "sample_urls": ordered[:5]},
         )

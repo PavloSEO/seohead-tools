@@ -246,3 +246,25 @@ def test_a_repeated_link_on_one_page_keeps_its_own_row():
     assert [i.target_url for i in dup] == ["https://e.test/only"]
     assert dup[0].group_id is None
     assert dup[0].occurrences_count == 4
+
+
+def test_site_wide_repeated_link_group_keeps_the_total_surplus_across_pages():
+    from seohead.core.graph import DuplicateLinkGroup
+    from seohead.sf.core.inlinks import _emit_duplicate_links
+
+    rows = [_page(f"https://e.test/{n}") for n in range(3)]
+    ctx = _ctx(rows)
+    groups = [
+        DuplicateLinkGroup(
+            f"https://e.test/{n}",
+            2,
+            [{"destination": "https://e.test/shop", "anchor": "Shop", "count": 3}],
+        )
+        for n in range(3)
+    ]
+    surplus = _emit_duplicate_links(ctx, groups)
+    dup = [i for i in ctx.issues if i.check == "DUPLICATE_INTERNAL_LINK"]
+    assert surplus == 6
+    assert len(dup) == 1
+    assert dup[0].occurrences_count == 6
+    assert dup[0].details["surplus_links"] == 2
