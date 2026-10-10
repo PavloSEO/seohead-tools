@@ -3253,6 +3253,44 @@ def meta_description_drafts(
     return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
 
 
+def ai_column(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    prompt: str = "",
+    urls: list[str] | None = None,
+    column: str = "ai_column",
+    max_pages: int = 100,
+    rows: list[dict] | None = None,
+    csv_path: str | None = None,
+) -> dict[str, Any]:
+    """Plan a per-URL AI column over retained page evidence, then validate caller-supplied values."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    from seohead.checks import ai_column as core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        source_items = corpus["items"]
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        source_items = items
+        public = {}
+    plan = core.prepare_ai_column_plan(
+        source_items, prompt, urls=urls, column=column, max_pages=max_pages
+    )
+    if rows is None:
+        return {"ok": True, "plan": plan, **public}
+    result = core.apply_ai_column_results(plan, rows)
+    if csv_path:
+        core.export_ai_column_csv(result, csv_path)
+    return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
+
+
 def social_meta_check(
     url: str | None = None, og: dict[str, str] | None = None, twitter: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -4319,6 +4357,7 @@ def scan_url_query(
     limit: int = 200,
     count_timeout_seconds: float = 1.0,
     max_bytes: int = 1_048_576,
+    facets: list[str] | str | None = None,
 ) -> dict[str, Any]:
     """Filter, sort and paginate the whole page table of one saved scan, read-only."""
     from seohead.storage.url_query import scan_url_query as core
@@ -4333,6 +4372,7 @@ def scan_url_query(
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
         max_bytes=max_bytes,
+        facets=facets,
     )
 
 
@@ -6256,6 +6296,7 @@ _RAW_HANDLERS = {
     "semantic_inputs": semantic_inputs,
     "semantic_similarity": semantic_similarity,
     "meta_description_drafts": meta_description_drafts,
+    "ai_column": ai_column,
     "log_scan": log_scan,
     "crawl_diagnose": crawl_diagnose,
     "crawl_diagnose_export": crawl_diagnose_export,

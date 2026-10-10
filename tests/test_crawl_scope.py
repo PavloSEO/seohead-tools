@@ -10,7 +10,7 @@ import pytest
 
 from seohead.crawl.settings import ConfigError, load, validate
 from seohead.crawl.spider import Scope, crawl_site
-from tests.test_crawl_spider import FakeResponse, _fetcher, page
+from tests._crawl_fakes import FakeResponse, _fetcher, page
 
 SITE = {
     "https://example.com/robots.txt": FakeResponse(

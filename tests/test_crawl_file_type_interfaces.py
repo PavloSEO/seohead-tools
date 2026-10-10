@@ -10,7 +10,7 @@ import pytest
 
 from seohead import cli
 from seohead.crawl import spider
-from tests.test_crawl_spider import FakeResponse, page
+from tests._crawl_fakes import FakeResponse, page
 
 START = "https://example.test/"
 TARGET = "https://example.test/manual.html"

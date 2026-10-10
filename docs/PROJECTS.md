@@ -70,7 +70,15 @@ human narrative.
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.
 Existing project directories are never overwritten. Move the entire directory to
-preserve the relative artifact references. The `ledger.v1` remediation ledger
+preserve the relative artifact references.
+
+Local portability: the project archive action writes one zip (a manifest with SHA-256 and size for
+each member, plus project.json, log.md, scans/, reports/ and the top-level SQLite stores, which are
+snapshotted through the SQLite backup API). A dry-run reports the file list, skipped entries and a
+size estimate without writing. Credential-like file names are never archived. The restore action
+verifies every member against the manifest, validates the project, and publishes it at a new path
+only; it never replaces an existing directory. Raw HTML bodies pruning, event journal, bindings and
+core version compatibility are not part of this first slice (#996). The `ledger.v1` remediation ledger
 ([LEDGER.md](LEDGER.md)) binds to this project UUID and normalized site target: it
 tracks the project's findings and their observation history in a separate artifact,
 never inside a scan.

@@ -78,10 +78,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Internal Redirection (3XX)", "INTERNAL_LINK_TO_REDIRECT", "BAD_REDIRECT_TYPE"),
         _c("Internal Redirection (Meta Refresh)", "META_REFRESH_REDIRECT"),
         _c("Internal Redirection (HTTP Refresh)", "HTTP_REFRESH_REDIRECT"),
-        _g(
+        _p(
             "Internal Redirection (JavaScript)",
-            "needs rendering plus navigation tracking; render mode reports the DOM, not "
-            "location changes",
+            "navigation is observed on rendered scans (`scan-navigation`, cause "
+            "`script_navigation`), but no finding reports a script-initiated location change "
+            "as a redirect yet, and the SF-export and legacy paths never see one",
         ),
         _t("External No Response", "links-check"),
         _c("External Client Error (4XX)", "BROKEN_EXTERNAL_LINK"),

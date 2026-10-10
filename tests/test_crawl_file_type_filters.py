@@ -9,7 +9,7 @@ import pytest
 from seohead.crawl.collect import fetch_one
 from seohead.crawl.settings import ConfigError, fingerprint, load
 from seohead.crawl.spider import Scope, crawl_site
-from tests.test_crawl_spider import FakeResponse, _fetcher, page
+from tests._crawl_fakes import FakeResponse, _fetcher, page
 
 START = "https://example.test/"
 

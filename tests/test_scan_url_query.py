@@ -231,6 +231,10 @@ def test_limit_boundary(scan_path):
         ({"filters": "status_code=404"}, "invalid_filter"),
         ({"filters": [{"column": "url", "op": "eq", "value": "x"}] * 21}, "invalid_filter"),
         ({"count_timeout_seconds": 0}, "invalid_count_timeout"),
+        ({"facets": ["status_9xx"]}, "invalid_facet"),
+        ({"facets": ["title_missing", "title_missing"]}, "invalid_facet"),
+        ({"facets": "status_2xx"}, "invalid_facet"),
+        ({"facets": [3]}, "invalid_facet"),
     ],
 )
 def test_rejections_carry_reason_codes(scan_path, kw, code):
@@ -378,3 +382,95 @@ def test_a_sorted_set_cut_short_is_a_timeout_not_a_guess(scan_path, monkeypatch)
     filters = [{"column": "status_code", "op": "eq", "value": 200}]
     got = _q(scan_path, filters=filters, sort="word_count")
     assert got["ok"] is False and got["reason_code"] == "query_timeout"
+
+
+# Independent ground truth: plain SQL run by the test itself, not by the code under test.
+FACET_TRUTH = {
+    "all": "1",
+    "status_2xx": "status_code BETWEEN 200 AND 299",
+    "status_3xx": "status_code BETWEEN 300 AND 399",
+    "status_4xx": "status_code BETWEEN 400 AND 499",
+    "status_5xx": "status_code BETWEEN 500 AND 599",
+    "title_missing": "title IS NULL OR title = ''",
+    "canonical_missing": "canonical IS NULL OR canonical = ''",
+    "directives_noindex": "lower(coalesce(meta_robots,'')||' '||coalesce(x_robots,'')) LIKE '%noindex%'",
+    "directives_nofollow": "lower(coalesce(meta_robots,'')||' '||coalesce(x_robots,'')) LIKE '%nofollow%'",
+    "with_outlinks": "outlinks > 0",
+}
+
+
+def _truth(path):
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return {
+            g: con.execute(f"SELECT COUNT(*) FROM pages WHERE ({expr})").fetchone()[0]
+            for g, expr in FACET_TRUTH.items()
+        }
+    finally:
+        con.close()
+
+
+def test_facets_match_independent_counts(scan_path):
+    got = _q(scan_path, facets="all")
+    assert got["ok"] is True and got["facets_state"] == "exact"
+    assert got["facets"] == _truth(scan_path)
+    assert got["facets"]["all"] == got["total"]
+    listed = _q(scan_path, facets=["status_4xx", "title_missing"])
+    assert listed["facets"] == {
+        "status_4xx": got["facets"]["status_4xx"],
+        "title_missing": got["facets"]["title_missing"],
+    }
+
+
+def test_facets_follow_the_same_filters(scan_path):
+    filters = [{"column": "url", "op": "contains", "value": "blog"}]
+    got = _q(scan_path, filters=filters, facets="all")
+    assert got["facets"]["all"] == got["filtered_total"]
+    con = sqlite3.connect(f"file:{scan_path}?mode=ro", uri=True)
+    try:
+        expected_all = con.execute(
+            "SELECT COUNT(*) FROM pages p JOIN urls u ON u.url_id=p.url_id "
+            "WHERE instr(lower(u.url),'blog')>0"
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert got["facets"]["all"] == expected_all
+    narrowed = _q(
+        scan_path,
+        filters=[{"column": "status_class", "op": "in", "value": ["4xx"]}],
+        facets=["status_2xx", "status_4xx"],
+    )
+    assert narrowed["facets"]["status_2xx"] == 0
+    assert narrowed["facets"]["status_4xx"] == narrowed["filtered_total"]
+
+
+def test_facets_absent_unless_requested(scan_path):
+    assert "facets" not in _q(scan_path)
+    assert "facets" not in _q(scan_path, facets=[])
+
+
+def test_capped_facets_are_null_and_state_named(scan_path, monkeypatch):
+    real = url_query._Budget.start
+
+    def instant(self, seconds):
+        real(self, 0 if seconds < 5 else seconds)
+
+    monkeypatch.setattr(url_query._Budget, "start", instant)
+    monkeypatch.setattr(url_query, "PROGRESS_OPS", 1)
+    got = _q(scan_path, facets=["status_4xx", "title_missing"])
+    assert got["ok"] is True
+    assert got["facets"] == {"status_4xx": None, "title_missing": None}
+    assert got["facets_state"] == "capped"
+
+
+def test_cli_and_mcp_pass_facets(scan_path, capsys):
+    code = cli.main(
+        ["scan-url-query", "--scan", str(scan_path), "--facets", "status_4xx,title_missing"]
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and set(out["facets"]) == {"status_4xx", "title_missing"}
+    code = cli.main(["scan-url-query", "--scan", str(scan_path), "--facets", "all"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and set(out["facets"]) == set(url_query.FACET_GROUPS)
+    tool = build_server()._tool_manager.get_tool("seo_scan_url_query")
+    assert "facets" in tool.parameters["properties"]

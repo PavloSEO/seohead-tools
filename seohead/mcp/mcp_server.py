@@ -721,6 +721,41 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_ai_column(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        prompt: str = "",
+        urls: list[str] | None = None,
+        column: str = "ai_column",
+        max_pages: int = 100,
+        rows: list[dict] | None = None,
+        csv_path: str = "",
+    ) -> dict[str, Any]:
+        """Plan a per-URL AI custom column over retained page evidence, then validate its values.
+
+        With no rows this is a dry-run plan: a prompt, the selected URLs' title,
+        headings and text excerpt from a retained scan.v1 or supplied items, a
+        character-based size estimate with no price applied, and the consent scope.
+        With rows, each value must echo the page's source hash and is validated
+        for presence, staleness and length; missing or failed pages are reported,
+        never filled. The calling or delegated agent owns the prompt run and the
+        transfer of data; this tool has no model key and makes no provider call.
+        Optional csv_path writes a formula-safe local CSV and never writes back to
+        a site or CMS."""
+        return _checked(
+            handlers.ai_column(
+                items=items,
+                scan=scan,
+                prompt=prompt,
+                urls=urls,
+                column=column,
+                max_pages=max_pages,
+                rows=rows,
+                csv_path=csv_path or None,
+            )
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
         url: str = "", og: dict | None = None, twitter: dict | None = None
@@ -3064,13 +3099,16 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         limit: int = 200,
         count_timeout_seconds: float = 1.0,
         max_bytes: int = 1_048_576,
+        facets: list[str] | str | None = None,
     ) -> dict[str, Any]:
         """Filter, sort and paginate the page table of one saved scan across the whole scan.
 
         Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
         non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
         sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-        exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+        exceeds count_timeout_seconds) and at most 200 rows of the requested columns. facets
+        (a list of group ids, or "all") adds facets: {group: count} over the same filters, with
+        facets_state exact or capped.
         """
         return _checked(
             handlers.scan_url_query(
@@ -3083,6 +3121,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 limit=limit,
                 count_timeout_seconds=count_timeout_seconds,
                 max_bytes=max_bytes,
+                facets=facets,
             )
         )
 

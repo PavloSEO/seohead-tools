@@ -16,6 +16,7 @@ import argparse
 import contextlib
 import json
 import sys
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -70,6 +71,7 @@ COMMANDS = (
     "semantic-inputs",
     "semantic-similarity",
     "meta-description-drafts",
+    "ai-column",
     "social-meta-check",
     "soft404-check",
     "log-analyze",
@@ -472,6 +474,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "limit",
             "count_timeout_seconds",
             "max_bytes",
+            "facets",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -864,6 +867,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 if value is not None:
                     kw[name] = value
         # items[]/pages[] and content_area are intentionally accepted through --input JSON.
+    elif cmd == "ai-column":
+        if getattr(args, "scan", None):
+            kw["scan"] = args.scan
+        for name in ("prompt", "column", "max_pages", "csv_path"):
+            value = getattr(args, name, None)
+            if value is not None:
+                kw[name] = value
+        # items[], urls[] and rows[] are accepted through --input JSON, like the drafts command.
     elif cmd == "log-analyze":
         if args.path:
             kw["path"] = args.path
@@ -2139,6 +2150,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--count-timeout-seconds", dest="count_timeout_seconds", type=float)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+        sub.add_argument(
+            "--facets",
+            type=lambda v: v if v == "all" else v.split(","),
+            help="comma-separated facet groups, or 'all': counts per group over the same filters",
+        )
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
@@ -2741,6 +2757,14 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--csv-path", help="local formula-safe CSV review artifact (requires --json-path)"
         )
+    if cmd == "ai-column":
+        _source_flag(sub, "--scan", help="validated scan.v1 SQLite artifact to read offline")
+        sub.add_argument(
+            "--prompt", help="instruction applied to each selected page (max 2000 chars)"
+        )
+        sub.add_argument("--column", help="custom column name (default ai_column)")
+        sub.add_argument("--max-pages", type=int, help="selection limit (default 100, max 500)")
+        sub.add_argument("--csv-path", help="local formula-safe CSV of the column values")
     if cmd == "llms-txt-check":
         sub.add_argument("--brand", help="brand name that llms.txt should mention")
 
@@ -2833,6 +2857,19 @@ def build_parser() -> argparse.ArgumentParser:
         cmd = "project-" + action
         sp = project_subs.add_parser(action, help=f"run {cmd}")
         _add_flags(sp, cmd)
+    project_archive = project_subs.add_parser(
+        "archive", help="write a portable project archive zip (no credentials)"
+    )
+    project_archive.add_argument("--project", dest="project_dir", required=True)
+    project_archive.add_argument("--out", required=True, help="new archive file path")
+    project_archive.add_argument(
+        "--dry-run", action="store_true", help="report files and size estimate; write nothing"
+    )
+    project_restore = project_subs.add_parser(
+        "restore", help="restore a project archive into a new directory"
+    )
+    project_restore.add_argument("archive_file", metavar="ARCHIVE")
+    project_restore.add_argument("--to", dest="to_dir", required=True, help="new project path")
     skill = subs.add_parser("skill", help="packaged method playbooks")
     skill_actions = skill.add_subparsers(dest="skill_command", required=True)
     for action in ("list", "show"):
@@ -2997,6 +3034,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile is None and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
+    if cmd == "project-archive":
+        from seohead.projects.archive import archive_project
+
+        try:
+            result = archive_project(args.project_dir, args.out, dry_run=args.dry_run)
+        except ValueError as exc:
+            result = {"ok": False, "error": str(exc)}
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
+    if cmd == "project-restore":
+        from seohead.projects.archive import restore_project
+
+        try:
+            result = restore_project(args.archive_file, args.to_dir)
+        except (ValueError, OSError, zipfile.BadZipFile, KeyError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
     if cmd in INTERACTIVE_COMMANDS:
         try:
             from seohead.tui.app import run as tui_run

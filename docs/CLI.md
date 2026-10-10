@@ -126,6 +126,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `semantic-inputs` | Build the reproducible normalized-input manifest for semantic analysis over retained page content. | offline, read-only |
 | `semantic-similarity` | Group topical and internal-link review candidates from supplied vectors. | writes |
 | `meta-description-drafts` | Prepare or validate a resumable, page-grounded meta-description batch. | writes |
+| `ai-column` | Plan or validate a per-URL AI custom column over retained page evidence; no model call. | writes |
 | `marketing-inventory` | Inventory supplied CTA/form DOM occurrences without fetching or submitting forms. | writes |
 | `keywords-cluster` | Cluster keywords into topic groups (K-Means, DBSCAN, Agglomerative). | offline, read-only |
 | `images-download` | Download images from a URL list, setting the correct extension by content-type and skipping already-downloaded files. | network, writes |

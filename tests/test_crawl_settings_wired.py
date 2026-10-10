@@ -25,7 +25,7 @@ from seohead.crawl.collect import CrawlResult, collect_urls, fetch_one
 from seohead.crawl.settings import DEFAULTS, _flatten
 from seohead.crawl.spider import SpiderResult, crawl_site
 from seohead.crawl.throttle import MAX_DELAY_S, Throttle
-from tests.test_crawl_spider import FakeResponse, _fetcher, page
+from tests._crawl_fakes import FakeResponse, _fetcher, page
 
 
 def _crawl(mapping, **kw):

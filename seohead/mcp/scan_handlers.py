@@ -925,6 +925,9 @@ def _sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
+# ponytail: not on the CLI/MCP path (those call reanalysis_handlers.reanalyze_scan);
+# kept only for the #382 unmeasurable-check contract. | upgrade: merge into the live
+# reanalysis once that contract ships there (epic #975 child 1, Pavel decides which wins).
 def reanalyze_scan(
     scan_in: str,
     *,

@@ -46,7 +46,7 @@ having, because the alternative is an absence nobody has noticed.
 | Internal Redirection (3XX) | check | `INTERNAL_LINK_TO_REDIRECT` `BAD_REDIRECT_TYPE` |  |
 | Internal Redirection (Meta Refresh) | check | `META_REFRESH_REDIRECT` |  |
 | Internal Redirection (HTTP Refresh) | check | `HTTP_REFRESH_REDIRECT` |  |
-| Internal Redirection (JavaScript) | gap | — | needs rendering plus navigation tracking; render mode reports the DOM, not location changes |
+| Internal Redirection (JavaScript) | partial | — | navigation is observed on rendered scans (`scan-navigation`, cause `script_navigation`), but no finding reports a script-initiated location change as a redirect yet, and the SF-export and legacy paths never see one |
 | External No Response | tool | `links-check` |  |
 | External Client Error (4XX) | check | `BROKEN_EXTERNAL_LINK` |  |
 | External Server Error (5XX) | check | `BROKEN_EXTERNAL_LINK` |  |

@@ -24,7 +24,7 @@ import pytest
 
 from seohead.crawl.spider import crawl_site
 from seohead.crawl.throttle import Throttle
-from tests.test_crawl_spider import SITE, FakeResponse, _fetcher, page
+from tests._crawl_fakes import SITE, FakeResponse, _fetcher, page
 
 
 def _pages_without_timing(pages) -> list[dict]:
