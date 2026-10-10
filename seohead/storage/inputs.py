@@ -11,6 +11,7 @@ from typing import Any
 from . import MAX_JSON_BYTES, _loads, open_scan
 
 SQLITE_MAGIC = b"SQLite format 3\x00"
+AUDIT_V2_SIDECAR_SUFFIX = ".audit-v2.sqlite"  # see audit_v2.audit_v2_path
 
 
 def is_sqlite_input(value: Any) -> bool:
@@ -73,6 +74,18 @@ def resolve_audit_source(value: Any) -> tuple[Any, list[dict[str, str]]]:
     if isinstance(value, dict):
         return value, []
     path = Path(str(value))
+    if path.name.endswith(AUDIT_V2_SIDECAR_SUFFIX):
+        # A companion is not a scan: read the native scan it belongs to, and say so.
+        scan = path.with_name(path.name.removesuffix(AUDIT_V2_SIDECAR_SUFFIX))
+        if not is_sqlite_input(scan):
+            raise ValueError(f"{path.name} is an audit.v2 companion without its native scan")
+        source, notices = resolve_audit_source(scan)
+        notice = {
+            "code": "audit_v2_sidecar",
+            "path": path.name,
+            "message": "Used the native scan this audit.v2 companion belongs to.",
+        }
+        return source, [notice, *notices]
     if not is_sqlite_input(path):
         return json.loads(path.read_text(encoding="utf-8")), []
     from .audit_v2 import AuditV2Reader, audit_v2_path
