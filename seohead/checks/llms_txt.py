@@ -47,6 +47,16 @@ _CATEGORY_HINTS = (
 )
 
 
+def _mentions(text_low: str, words: tuple[str, ...]) -> bool:
+    """ASCII keywords match whole words (optional plural ``s``); Cyrillic stems match as substrings."""
+    return any(
+        re.search(rf"\b{re.escape(word)}s?\b", text_low) is not None
+        if word.isascii()
+        else word in text_low
+        for word in words
+    )
+
+
 def score_llms_txt(content: str, brand: str | None = None) -> dict[str, Any]:
     """Score ``llms.txt`` content against nine checks without network access.
 
@@ -81,17 +91,17 @@ def score_llms_txt(content: str, brand: str | None = None) -> dict[str, Any]:
     links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text)
 
     mentions_brand = bool(brand) and brand.lower() in text_low
-    mentions_category = any(h in text_low for h in _CATEGORY_HINTS)
+    mentions_category = _mentions(text_low, _CATEGORY_HINTS)
 
     link_text_low = " ".join(anchor for anchor, _ in links).lower() + " " + text_low
-    has_product = any(k in link_text_low for k in ("product", "pricing", "продукт", "тариф", "цен"))
-    has_proof = any(
-        k in link_text_low
-        for k in ("case", "testimonial", "review", "customer", "кейс", "отзыв", "клиент")
+    has_product = _mentions(link_text_low, ("product", "pricing", "продукт", "тариф", "цен"))
+    has_proof = _mentions(
+        link_text_low,
+        ("case", "testimonial", "review", "customer", "кейс", "отзыв", "клиент"),
     )
-    has_docs = any(
-        k in link_text_low
-        for k in ("docs", "documentation", "api", "guide", "документац", "руководств")
+    has_docs = _mentions(
+        link_text_low,
+        ("docs", "documentation", "api", "guide", "документац", "руководств"),
     )
 
     size_ok = len(content.encode("utf-8")) <= _MAX_BYTES
