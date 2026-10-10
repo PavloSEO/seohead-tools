@@ -10,11 +10,85 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sqlite3
+import uuid
 from collections.abc import Callable, Iterable
+from contextlib import closing
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from seohead.integrations.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
+
+class DeliveryUnavailable(ValueError):
+    """A request cannot safely be delivered and must not claim success."""
+
+
+class DeliveryReceipts:
+    """Small private receipt store that survives adapter restart and retry."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if self.path.exists() and self.path.stat().st_mode & 0o077:
+            raise ValueError("delivery receipt store must be private")
+        with closing(sqlite3.connect(self.path)) as con, con:
+            con.execute(
+                """CREATE TABLE IF NOT EXISTS deliveries (
+                    job_id TEXT NOT NULL, artifact_id TEXT NOT NULL, destination TEXT NOT NULL,
+                    receipt TEXT NOT NULL, state TEXT NOT NULL,
+                    PRIMARY KEY(job_id, artifact_id, destination)
+                )"""
+            )
+        os.chmod(self.path, 0o600)
+
+    def reserve(self, job_id: str, artifact_id: str, destination: str) -> tuple[str, str]:
+        """Claim one delivery; a concurrent caller receives ``in_progress``."""
+        with closing(sqlite3.connect(self.path, isolation_level=None)) as con:
+            con.execute("BEGIN IMMEDIATE")
+            existing = con.execute(
+                "SELECT receipt,state FROM deliveries WHERE job_id=? AND artifact_id=? AND destination=?",
+                (job_id, artifact_id, destination),
+            ).fetchone()
+            if existing is not None:
+                if existing[1] == "delivered":
+                    con.commit()
+                    return existing[0], "delivered"
+                if existing[1] == "sending":
+                    con.commit()
+                    return existing[0], "in_progress"
+                con.execute(
+                    "UPDATE deliveries SET state='sending' WHERE job_id=? AND artifact_id=? AND destination=?",
+                    (job_id, artifact_id, destination),
+                )
+                con.commit()
+                return existing[0], "claimed"
+            receipt = uuid.uuid4().hex
+            con.execute(
+                "INSERT INTO deliveries VALUES(?,?,?,?,?)",
+                (job_id, artifact_id, destination, receipt, "sending"),
+            )
+            con.commit()
+            return receipt, "claimed"
+
+    def retry(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
+        """Release a failed claim so an explicit later attempt can retry it."""
+        with closing(sqlite3.connect(self.path)) as con, con:
+            con.execute(
+                """UPDATE deliveries SET state='pending' WHERE job_id=? AND artifact_id=?
+                   AND destination=? AND receipt=? AND state='sending'""",
+                (job_id, artifact_id, destination, receipt),
+            )
+
+    def delivered(self, job_id: str, artifact_id: str, destination: str, receipt: str) -> None:
+        with closing(sqlite3.connect(self.path)) as con, con:
+            changed = con.execute(
+                """UPDATE deliveries SET state='delivered' WHERE job_id=? AND artifact_id=?
+                   AND destination=? AND receipt=?""",
+                (job_id, artifact_id, destination, receipt),
+            ).rowcount
+        if changed != 1:
+            raise DeliveryUnavailable("delivery receipt changed while sending")
 
 
 def _canonical(value: Any) -> str:
