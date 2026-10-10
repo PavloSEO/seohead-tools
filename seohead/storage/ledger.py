@@ -41,6 +41,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from seohead.core.sqlite import open_readonly
+
 from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
@@ -441,12 +443,15 @@ def _validate(con) -> None:
 
 
 def _reader(path: Path) -> sqlite3.Connection:
-    con = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA trusted_schema=OFF")
-    con.execute("PRAGMA query_only=ON")
-    con.execute("PRAGMA foreign_keys=ON")
-    return con
+    return open_readonly(
+        path.resolve(),
+        row_factory=sqlite3.Row,
+        pragmas=(
+            "PRAGMA trusted_schema=OFF",
+            "PRAGMA query_only=ON",
+            "PRAGMA foreign_keys=ON",
+        ),
+    )
 
 
 def _writer(path: Path) -> sqlite3.Connection:

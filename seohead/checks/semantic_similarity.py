@@ -16,10 +16,13 @@ import sqlite3
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence, Sized
+from contextlib import closing
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
 from typing import Any, Protocol
+
+from seohead.core.sqlite import open_writer
 
 MAX_DOCUMENTS = 10_000
 MAX_CANDIDATE_COMPARISONS = 250_000
@@ -181,7 +184,7 @@ class EmbeddingCache:
         deadline = time.monotonic() + 5
         while True:
             try:
-                with self._connect() as con:
+                with closing(self._connect()) as con, con:
                     con.execute("PRAGMA journal_mode=WAL")
                     con.execute(
                         "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
@@ -195,12 +198,10 @@ class EmbeddingCache:
                 time.sleep(0.01)
 
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=5)
-        con.execute("PRAGMA busy_timeout=5000")
-        return con
+        return open_writer(self.path, pragmas=("PRAGMA busy_timeout=5000",))
 
     def get(self, key: str) -> list[float] | None:
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             row = con.execute(
                 "SELECT vector_json FROM semantic_embeddings WHERE cache_key=?", (key,)
             ).fetchone()
@@ -217,7 +218,7 @@ class EmbeddingCache:
         self, key: str, source_sha256: str, identity: dict[str, Any], vector: Sequence[float]
     ) -> None:
         encoded = _canonical(_vector(vector))
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "INSERT OR REPLACE INTO semantic_embeddings "

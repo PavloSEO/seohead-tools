@@ -15,6 +15,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from seohead.core.sqlite import open_readonly, open_writer
+
 SCHEMA_VERSION = 2
 SEARCH_TYPES = ("web", "image", "video", "news", "discover", "googleNews")
 MAX_TRANSIENT_ATTEMPTS = 3
@@ -101,7 +103,7 @@ class Archive:
         self._lock = None
         # The lock lifetime intentionally matches this archive object, not a single method.
         if read_only:
-            self.db = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True, timeout=30)
+            self.db = open_readonly(self.path, timeout=30)
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self._lock = open(str(self.path) + ".lock", "a+b")  # noqa: SIM115
@@ -130,7 +132,7 @@ class Archive:
                 bootstrap.close()
                 existed = True
             try:
-                self.db = sqlite3.connect(self.path, timeout=30)
+                self.db = open_writer(self.path, timeout=30)
             except sqlite3.Error:
                 self._lock.close()
                 raise

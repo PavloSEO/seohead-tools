@@ -935,20 +935,22 @@ def open_scan_mode(
     _runtime()
     con = None
     try:
+        from ..core.sqlite import open_readonly
         from .read_budget import ReadConnection
 
-        con = sqlite3.connect(
-            Path(path).resolve().as_uri() + "?mode=ro",
-            uri=True,
+        con = open_readonly(
+            Path(path).resolve(),
             timeout=5,
             factory=ReadConnection if query_timeout_seconds is not None else sqlite3.Connection,
+            row_factory=sqlite3.Row,
+            pragmas=(
+                "PRAGMA trusted_schema=OFF",
+                "PRAGMA query_only=ON",
+                "PRAGMA foreign_keys=ON",
+                "PRAGMA cache_size=-8192",
+                "PRAGMA temp_store=FILE",
+            ),
         )
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        con.execute("PRAGMA foreign_keys=ON")
-        con.execute("PRAGMA cache_size=-8192")
-        con.execute("PRAGMA temp_store=FILE")
         before = _file_state(Path(path).resolve())
         deadline = time.monotonic() + _read_deadline_seconds(Path(path))
         con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
@@ -1068,8 +1070,9 @@ def import_run(
         fd, name = tempfile.mkstemp(prefix=".scan-import-", suffix=".sqlite", dir=out.parent)
         os.close(fd)
         temporary = Path(name)
-        con = sqlite3.connect(temporary)
-        con.row_factory = sqlite3.Row
+        from ..core.sqlite import open_writer
+
+        con = open_writer(temporary, row_factory=sqlite3.Row)
         con.executescript(_schema())
         con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA synchronous=FULL")

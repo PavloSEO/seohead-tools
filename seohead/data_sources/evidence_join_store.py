@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from seohead.core.sqlite import open_readonly, open_writer
 from seohead.data_sources.evidence_import import NORMALIZED_FORMAT
 from seohead.data_sources.evidence_join import _evidence_header, _key_fn, _row_join_key
 from seohead.storage import open_scan
@@ -69,11 +70,11 @@ def _open_read(value: str | Path) -> sqlite3.Connection:
     if path.is_symlink() or not path.is_file():
         raise EvidenceJoinStoreError("evidence join store must be a regular non-symlink file")
     try:
-        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        return con
+        return open_readonly(
+            path,
+            row_factory=sqlite3.Row,
+            pragmas=("PRAGMA trusted_schema=OFF", "PRAGMA query_only=ON"),
+        )
     except sqlite3.Error as exc:
         raise EvidenceJoinStoreError(f"cannot open evidence join store: {exc}") from exc
 
@@ -265,7 +266,7 @@ def write(
     os.close(descriptor)
     staged: Path | None = Path(temporary)
     try:
-        con = sqlite3.connect(staged)
+        con = open_writer(staged)
         try:
             con.executescript(
                 """

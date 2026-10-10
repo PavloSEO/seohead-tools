@@ -14,6 +14,7 @@ import json
 import re
 import sqlite3
 from collections.abc import Iterable, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -21,6 +22,7 @@ from typing import Any, Protocol
 from bs4 import BeautifulSoup
 
 from seohead.checks.text_normalize import normalize_document
+from seohead.core.sqlite import open_writer
 
 CONTRACT_VERSION = "meta_description_drafts.v1"
 DEFAULT_MIN_CHARS = 120
@@ -287,7 +289,7 @@ class DraftCheckpoint:
 
     def __init__(self, path: str | Path):
         self.path = str(path)
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             con.execute(
                 "CREATE TABLE IF NOT EXISTS meta_description_drafts ("
                 "draft_key TEXT PRIMARY KEY, record_json TEXT NOT NULL, updated_at TEXT NOT NULL "
@@ -295,12 +297,10 @@ class DraftCheckpoint:
             )
 
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=5)
-        con.execute("PRAGMA journal_mode=WAL")
-        return con
+        return open_writer(self.path, pragmas=("PRAGMA journal_mode=WAL",))
 
     def get(self, key: str) -> dict[str, Any] | None:
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             row = con.execute(
                 "SELECT record_json FROM meta_description_drafts WHERE draft_key=?", (key,)
             ).fetchone()
@@ -313,7 +313,7 @@ class DraftCheckpoint:
         return value if isinstance(value, dict) else None
 
     def put(self, key: str, record: dict[str, Any]) -> None:
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             con.execute(
                 "INSERT OR REPLACE INTO meta_description_drafts (draft_key, record_json) VALUES (?, ?)",
                 (key, _canonical(record)),
