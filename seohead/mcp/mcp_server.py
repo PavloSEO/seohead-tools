@@ -721,6 +721,41 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_ai_column(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        prompt: str = "",
+        urls: list[str] | None = None,
+        column: str = "ai_column",
+        max_pages: int = 100,
+        rows: list[dict] | None = None,
+        csv_path: str = "",
+    ) -> dict[str, Any]:
+        """Plan a per-URL AI custom column over retained page evidence, then validate its values.
+
+        With no rows this is a dry-run plan: a prompt, the selected URLs' title,
+        headings and text excerpt from a retained scan.v1 or supplied items, a
+        character-based size estimate with no price applied, and the consent scope.
+        With rows, each value must echo the page's source hash and is validated
+        for presence, staleness and length; missing or failed pages are reported,
+        never filled. The calling or delegated agent owns the prompt run and the
+        transfer of data; this tool has no model key and makes no provider call.
+        Optional csv_path writes a formula-safe local CSV and never writes back to
+        a site or CMS."""
+        return _checked(
+            handlers.ai_column(
+                items=items,
+                scan=scan,
+                prompt=prompt,
+                urls=urls,
+                column=column,
+                max_pages=max_pages,
+                rows=rows,
+                csv_path=csv_path or None,
+            )
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
         url: str = "", og: dict | None = None, twitter: dict | None = None

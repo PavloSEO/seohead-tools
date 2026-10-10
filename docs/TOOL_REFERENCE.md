@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 171 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -623,6 +623,37 @@ has no model key or provider call. executor declares its versioned
 contract and runtime kind, while checkpoint_path enables resume. Optional
 json_path and csv_path export a review artifact; neither path writes a
 CMS or metadata.
+
+### `ai-column`
+
+MCP name: `seo_ai_column`
+
+Plan a per-URL AI custom column over retained page evidence, then validate its values.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `prompt` | `str` | `''` |
+| `urls` | `list[str] | None` | `None` |
+| `column` | `str` | `'ai_column'` |
+| `max_pages` | `int` | `100` |
+| `rows` | `list[dict] | None` | `None` |
+| `csv_path` | `str` | `''` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With no rows this is a dry-run plan: a prompt, the selected URLs' title,
+headings and text excerpt from a retained scan.v1 or supplied items, a
+character-based size estimate with no price applied, and the consent scope.
+With rows, each value must echo the page's source hash and is validated
+for presence, staleness and length; missing or failed pages are reported,
+never filled. The calling or delegated agent owns the prompt run and the
+transfer of data; this tool has no model key and makes no provider call.
+Optional csv_path writes a formula-safe local CSV and never writes back to
+a site or CMS.
 
 ### `social-meta-check`
 
