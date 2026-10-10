@@ -440,7 +440,7 @@ def dense_text():
 
 def dense(item):
     """Settings rows of the scan window are 48 px, not 60 (design `.sc .set-row{padding:10px 0}`)."""
-    item.layout().setContentsMargins(0, 8, 0, 8)
+    item.layout().setContentsMargins(0, 10, 0, 10)
     item.title.setWordWrap(False)
     return item
 
@@ -908,7 +908,10 @@ def render_page(draft, host):
     waiting_row(page, "Дополнительная пауза", "После сигнала готовности, мс", ISSUE_RENDER, "в ядре нет отдельной паузы", QLineEdit())
     segmented_row(page, draft, "rendering.browser.page_concurrency", "Одновременных вкладок", "Отдельно от потоков HTTP",
                   [(n, str(n)) for n in (1, 2, 4, 8, 16)])
-    waiting_row(page, "Блокировать ресурсы", "Изображения, шрифты, медиа, аналитика", ISSUE_RENDER, "в ядре нет блокировки ресурсов при рендере", checkbox(tr("Изображения")))
+    blocked = [checkbox(tr(name)) for name in ("Изображения", "Шрифты", "Медиа", "Аналитика")]
+    for box in blocked:
+        box.setEnabled(False)
+    waiting_row(page, "Блокировать ресурсы", "Изображения, шрифты, медиа, аналитика", ISSUE_RENDER, "в ядре нет блокировки ресурсов при рендере", holder(*blocked, spacing=16))
     switch_row(page, draft, "rendering.artifacts.screenshots", "Скриншот страницы целиком", "Только при включённом JS; первый экран ядро не умеет")
     note_raw = QLabel(tr("Настройки рендера уходят в команду только при режиме «Всегда»."))
     note_raw.setProperty("text_style", "meta")
