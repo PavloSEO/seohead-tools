@@ -12,6 +12,7 @@ import math
 import os
 from typing import Any
 
+from seohead.recon.net import UA
 from seohead.sf.export_manifest import profile_exports
 
 # The only severities the schema and the scoring weights know about (issue
@@ -120,7 +121,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "live_recheck": {
         "enabled": False,
         "use": "auto",  # auto | advertools | stdlib
-        "user_agent": "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)",
+        "user_agent": UA,
         "max_urls": 5000,
         "timeout_s": 10,
     },

@@ -23,7 +23,7 @@ from typing import Any
 from defusedxml import ElementTree as ET
 
 from seohead.checks.sitemap import normalize_url
-from seohead.recon.net import http_client, validate_url
+from seohead.recon.net import UA, http_client, validate_url
 
 from .context import AuditContext
 from .normalize import find_column, normalize_value
@@ -449,9 +449,7 @@ def run_sitemap(
     """
     summary: dict[str, Any] = {}
     cfg_live = ctx.config.get("live_recheck", {})
-    ua = cfg_live.get(
-        "user_agent", "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
-    )
+    ua = cfg_live.get("user_agent", UA)
     timeout = cfg_live.get("timeout_s", 10)
 
     # --- 1. SF native Sitemaps:* exports ---------------------------------
