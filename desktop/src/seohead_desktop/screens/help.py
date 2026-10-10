@@ -166,7 +166,15 @@ class HelpScreen(Screen):
             layout.addWidget(badge, 0, Qt.AlignLeft)
             layout.addWidget(_label(text, "meta"))
         layout.addStretch()
-        return aside
+        # the states column is taller than a 900px window: scroll it instead of clipping the explanations
+        scroll = QScrollArea()
+        scroll.setObjectName("helpAsideScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFixedWidth(ASIDE_WIDTH)
+        scroll.setWidget(aside)
+        return scroll
 
     # --- behaviour ----------------------------------------------------------
     def resizeEvent(self, event):
