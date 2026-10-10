@@ -11,7 +11,7 @@ is in [SELF_HOSTED_SERVICE_PROFILE.md](SELF_HOSTED_SERVICE_PROFILE.md).
 
 Install the adapter only where needed with `python -m pip install '.[remote]'`. Importing the
 contract models does not require that extra; calling `create_app` without FastAPI installed gives
-an actionable install error. A worker backend and target policy must still be supplied explicitly.
+an actionable install error. A durable job backend and bearer authenticator are required. A target policy is required for submissions; without one, submit returns 503 and enqueues nothing.
 
 ## Endpoints
 

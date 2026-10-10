@@ -1,7 +1,7 @@
 # Target safety for queued remote scans
 
-`seohead.recon.remote_policy.RemoteEgressPolicy` is the security boundary for a
-future authenticated scan service. It does not start a service or a worker. The
+`seohead.recon.remote_policy.RemoteEgressPolicy` is the security boundary for the optional remote scan service
+(`seohead/integrations/remote_api`, see REMOTE_API.md and REMOTE_JOBS.md). It does not start a service or a worker. The
 service must construct one policy from trusted, project-owned configuration,
 inject `policy.authorize_submission` into its submit boundary, and reject a
 missing policy. Before invoking the existing crawl handler, the worker must use
@@ -27,10 +27,9 @@ service operator.
 client bound to one policy. Each physical HTTP attempt spends a slot, including
 redirects, retries, sitemap children, resource fetches and browser HTTP routes.
 The policy also rejects crawl settings with an unbounded request limit or a
-concurrency/URL limit above the trusted policy, or a delay below its configured
+request-count, URL-count or concurrency budget above the trusted policy; URL count is capped by `max_total_requests`, or a delay below its configured
 floor. Budget exhaustion has a named
-error and is never reported as a clean measurement. The future worker must
-translate that error into partial/failed job evidence and preserve the scan's
+error and is never reported as a clean measurement. The worker (`SQLiteJobBackend.run_one`) must translate that error into partial/failed job evidence and preserve the scan's
 actual finish reason.
 
 Queued remote jobs reject proxy routing, persistent profiles and alternate
@@ -50,5 +49,4 @@ Use a job ID and the safe `RemoteTargetError.code`/message for operational
 events. Retained scan evidence is protected by project authorization and its
 existing redaction/retention policy; a service must not treat it as an
 operational log. API authentication, project authorization, queue isolation,
-artifact access and worker lifecycle are provided by the adjacent remote
-service issues, not by this policy object alone.
+artifact access and worker lifecycle are provided by `seohead/integrations/remote_api` (see REMOTE_API.md and REMOTE_JOBS.md); this policy object does not provide them alone.
