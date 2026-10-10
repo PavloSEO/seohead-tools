@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from PyQt5.QtCore import QThreadPool
-from PyQt5.QtWidgets import QPushButton
+from PyQt5.QtWidgets import QPushButton, QWidget
 
 from seohead_desktop.ui.settings import data
 from seohead_desktop.ui.settings.context import SettingsContext
@@ -79,6 +79,17 @@ class DataSectionTests(unittest.TestCase):
             self.assertIn(f"{logs} · 3,0 МБ", text)
             self.assertIn(" ГБ из ", text)
             self.assertNotIn(f"{Path(tmp, 'missing')} ·", text)
+
+    def test_per_project_sizes_are_waiting_badge_not_numbers(self):
+        _store, _dialog, page = make("data")
+        badges = [w for w in page.findChildren(QWidget) if w.property("waiting_issue") == 1213]
+        self.assertEqual(len(badges), 1)
+        self.assertNotIn("ГБ", all_text(page))
+
+    def test_reset_all_panels_is_not_clipped_in_its_own_row(self):
+        _store, _dialog, page = make("data")
+        button = next(b for b in page.findChildren(QPushButton) if b.text() == "Сбросить все панели")
+        self.assertEqual(button.parentWidget().layout().count(), 2)  # button + stretch, alone in its row
 
     def test_format_size(self):
         from seohead_desktop.ui.settings.actions import format_size
