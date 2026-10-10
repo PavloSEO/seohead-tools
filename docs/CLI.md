@@ -23,13 +23,16 @@ is `project-progress`.
 | `sf tasks` | Build `tasks.json`/`tasks.md` from an existing `audit.json` or scan artifact. |
 | `sf doctor` | Diagnose SF CLI discovery and optional dependencies. |
 | `sf save-config` | Copy the most recent SF crawl configuration into a reusable base config file. |
+| `semantics <stage>` | Accumulating semantic core in its own SQLite database: `init`, `import`, `collect`, `clean`, `graph`, `exact`, `cluster`, `competitors`, `synonyms`, `report`, `excel`, `mine`, `sitematch`, `relevance`, `status`, `export`, each with `--project DIR`. `collect`, `synonyms`, `cluster` and `exact` are paid; see [SEMANTICS.md](SEMANTICS.md). |
 | `mcp` | Start the local stdio MCP server; `--profile` selects `full`, `audit`, `infra`, `quick-check` or `router` ([MCP profiles](MCP_PROFILES.md)). |
 | `watch` | Optional Rich terminal observer for one project beside an AI chat ([terminal observer](TERMINAL.md)). Needs the `tui` extra. |
 | `tui` | Interactive terminal shell over the same handlers ([TERMINAL.md](TERMINAL.md)). Needs the `tui` extra. |
 | `scan`, `project`, `skill`, `scenario` | Grouped aliases for the `scan-*`, `project-*`, `skill-*` and `scenario-*` commands below. |
 
 The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf_audit_tasks`,
-`sf_list_exports`) expose the Screaming Frog analyzer to agents.
+`sf_list_exports`) expose the Screaming Frog analyzer to agents. The `seo_semantics_*` MCP tools
+(`seo_semantics_status`, `seo_semantics_run`, `seo_semantics_mine`, `seo_semantics_paid`) expose
+`seohead semantics`; the paid one refuses to run without `confirm_paid=true`.
 
 ## Collect a site
 
@@ -251,3 +254,79 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `skill-show` | Return a packaged skill's exact text and definition identity. | offline, read-only |
 | `scenario-show` | Return a packaged workflow scenario's text without running its commands. | offline, read-only |
 | `log-scan` | Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to… | offline, read-only |
+
+## Shared MCP state and client registration
+
+`seohead mcp` starts the local stdio server. It defaults to the shared profile;
+`--profile full|audit|infra|quick-check|router` can further restrict a process.
+`seohead mcp status --json` reports enabled state, profile, actual registry count,
+last actor/time (`by_label`: a Russian caption with the actor and the local day and
+time of the last switch, or the Russian for "default" before any switch), every
+profile as `profiles` (`id`, Russian `label`, tool count taken from the registry), and whether each supported client
+has a SEOHEAD entry. It never
+reports foreign keys, tokens, connection activity, or configuration contents.
+
+```bash
+seohead mcp status --json
+seohead mcp disable --json
+seohead mcp enable --profile router --json
+seohead mcp install --client codex --dry-run --json
+seohead mcp install --client codex --yes --json
+seohead mcp uninstall --client codex --yes --json
+seohead mcp backups --json
+```
+
+State is in `$SEOHEAD_CONFIG_DIR/mcp-state.json` when explicitly configured, otherwise
+`$XDG_CONFIG_HOME/seohead/mcp-state.json` (default `~/.config/seohead/mcp-state.json`). Missing
+state preserves enabled/full compatibility. Invalid state fails closed. Each
+switch records actor, UTC timestamp and history; Desktop uses `--actor "SEOHEAD
+Desktop"`. Disable rejects startup and subsequent tool calls on running servers.
+A call already executing is not cancelled. A narrower shared profile immediately
+blocks excluded tools; restart clients to advertise newly enabled tools.
+
+Client paths: Claude Code `~/.claude.json`; Claude Desktop's platform application
+configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`
+on macOS); Codex `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`); Cursor
+`~/.cursor/mcp.json`. JSON uses `mcpServers.seohead`; Codex uses
+`mcp_servers.seohead`. Registration uses the current Python interpreter with
+`-m seohead mcp`, or the frozen core executable with `mcp`. An optional absolute
+`--command` selects the executable explicitly.
+
+Dry-run returns only the file, exact SEOHEAD block, adjacent timestamped
+backup path and original SHA-256. It creates no files. Pass `--backup PATH` from
+the reviewed plan to use exactly that destination. Writing requires `--yes`;
+`--expected-sha256 HASH` additionally rejects a configuration changed after preview.
+An existing SEOHEAD entry is updated only after explicit approval, without
+printing its previous values; its backup can restore that entry.
+Writes are locked, backed up with a SHA-256 receipt, atomically replaced and parsed
+again. JSON foreign values and TOML comments/keys are preserved. Symlinks,
+hardlinks, invalid documents and oversized files are refused. Backups are private
+and may contain foreign secrets: retain them locally.
+
+Uninstall verifies the latest backup/receipt and the installed SEOHEAD entry.
+When the whole configuration is unchanged it restores original bytes; otherwise
+it restores only SEOHEAD's entry and preserves subsequent foreign changes.
+Backups remain available. Installation does not enable MCP implicitly.
+`seohead mcp backups [--client NAME] [--json]` lists SEOHEAD's adjacent backups,
+newest first: client, path, UTC time, reason (`install`), the backup's current
+SHA-256 and whether it still matches its receipt. Files without a SEOHEAD receipt
+are not listed. Call journaling is not implemented yet (#977).
+
+## Localized terminal observer
+
+`seohead watch --project DIR` and `seohead tui --project DIR` accept `--lang ru|en`
+(default from LC_ALL/LC_MESSAGES/LANG), `--scan RUN` and `--compact`. A retained
+report directory containing `project/project.json` is accepted as a project entry.
+The current-scan block uses retained counters; a missing denominator, queue or
+error measurement is shown as unavailable. Discovery progress is not whole-site
+completion. A run is shown by a short id (`r-` plus four hex digits) and its mode;
+the full hash stays in JSON. Russian output groups thousands with a space (`1 330`). Status colours follow SEOHEAD brand roles. Evidence text is preserved.
+`--scan` selects a run id or saved scan UUID present in the bounded observation;
+a missing id is an error, never a silent substitution. The compact mode shows one
+status line for tmux; when piped it emits one snapshot and exits. It does not start
+scans or update the project. Notes/goals still require their explicit editor action.
+
+```bash
+seohead watch --project workspace/site --lang ru --compact
+seohead tui --project workspace/site --lang en --compact
+```

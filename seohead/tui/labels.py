@@ -1,5 +1,7 @@
 """Human labels for terminal presentation; persisted API identifiers stay unchanged."""
 
+from seohead.tui.localization import ui
+
 LABELS = {
     "not_run": "Not started",
     "not_agreed": "Outside agreed scope",
@@ -38,9 +40,9 @@ LABELS = {
 
 def label(value: object) -> str:
     if value is None or value == "":
-        return "Not recorded"
+        return ui("Not recorded")
     text = str(value)
-    return LABELS.get(text, text.replace("_", " ").capitalize())
+    return ui(LABELS.get(text, text.replace("_", " ").capitalize()))
 
 
 def title(value: str) -> str:

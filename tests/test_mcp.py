@@ -29,9 +29,9 @@ def test_all_mcp_tools_have_structured_schemas_and_safety_annotations():
     tools = {tool.name: tool for tool in build_server()._tool_manager.list_tools()}
 
     from seohead.cli import COMMANDS
-    from seohead.mcp.tool_reference import load_sf_tools
+    from seohead.mcp.tool_reference import load_semantics_tools, load_sf_tools
 
-    assert len(tools) == len(COMMANDS) + len(load_sf_tools())
+    assert len(tools) == len(COMMANDS) + len(load_sf_tools()) + len(load_semantics_tools())
     assert all(tool.fn_metadata.output_schema for tool in tools.values())
     assert all(tool.annotations is not None for tool in tools.values())
 
@@ -96,7 +96,12 @@ def test_report_build_accepts_an_audit_document_or_json_path(monkeypatch):
 
 async def _call_over_stdio(tool: str, arguments: dict) -> object:
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "seohead.mcp.mcp_server"], cwd=ROOT
+        command=sys.executable,
+        args=["-m", "seohead.mcp.mcp_server"],
+        cwd=ROOT,
+        # The SDK's default child environment drops SEOHEAD_CONFIG_DIR, so the server
+        # would read the developer's real shared MCP state instead of the isolated one.
+        env=dict(os.environ),
     )
     async with (
         stdio_client(params) as (read, write),
@@ -129,7 +134,12 @@ def _payload(r):
 
 async def _drive(exports_dir: str, out_dir: str) -> dict:
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "seohead.mcp.mcp_server"], cwd=ROOT
+        command=sys.executable,
+        args=["-m", "seohead.mcp.mcp_server"],
+        cwd=ROOT,
+        # The SDK's default child environment drops SEOHEAD_CONFIG_DIR, so the server
+        # would read the developer's real shared MCP state instead of the isolated one.
+        env=dict(os.environ),
     )
     async with (
         stdio_client(params) as (read, write),

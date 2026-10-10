@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 166 callable tools,
+The current registry has 161 commands and 170 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -687,6 +687,29 @@ belongs to the caller's project dataset, not to a provider transport client.
 
 ---
 
+## Semantic core (`seohead/semantics/`)
+
+`seohead semantics <stage> --project DIR` grows one accumulating keyword pool per project in its
+own SQLite database (`sya.db`, named by `db:` in `project.yaml`); a SEOHEAD project workspace keeps
+it under `semantics/`. Nothing is deleted: stages change a phrase's status and record why. Louvain
+clustering (`cluster --method louvain`) needs the `semantics` extra
+(`pip install 'seohead-seotools[semantics]'`); every other stage works on the base install. Method,
+order and cost rules: [SEMANTICS.md](SEMANTICS.md) and the packaged `semantic-core` skill.
+
+| Stage | What it does | Money |
+|---|---|---|
+| `init`, `import`, `status`, `export` | Create the project, load a CSV, read counters, write `pool.csv`/`pool.json` | free |
+| `clean`, `graph`, `sitematch`, `relevance` | Filters, homonyms, catalog match and SERP red flags; statuses only | free |
+| `competitors`, `report`, `excel` | Competitor domains and title candidates from cached SERP, Markdown/CSV report, XLSX | free |
+| `mine` | Headings of top competitor pages become candidate phrases | public web fetch |
+| `collect`, `synonyms` | Yandex Wordstat expansion and candidate checks | paid; journaled |
+| `cluster` | One cached Yandex SERP per phrase, then union-find or Louvain clusters | paid for uncached phrases |
+| `exact` | Exact `!W` frequency through Arsenkin, once per lemma group | Arsenkin limits; `--yes` above the gate |
+
+MCP: `seo_semantics_status` (read-only), `seo_semantics_run` (free stages), `seo_semantics_mine`
+(public pages) and `seo_semantics_paid` (needs `confirm_paid=true`). Charges land in the shared
+spend journal, tagged with the semantic project and stage.
+
 ## Screaming Frog crawl audit (`seohead/sf/`)
 
 A subcommand with its own argument parser:
@@ -740,8 +763,8 @@ echo '{"url":"https://example.com"}' | seohead parse
 `security-check` and the sitemap live-recheck are off by default: a recon
 tool must not knock where it was not asked to.
 
-**MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(161 + 5):
+**MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
+`seo_semantics_*` tools (161 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio

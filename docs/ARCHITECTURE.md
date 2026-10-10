@@ -48,11 +48,8 @@ seohead/
                       the audit tools onto the same MCP server
   skills/             content skills shipped as package-data
   data/               packaged JSON data (e.g. the Schema.org vocabulary)
-  bot/                the versioned guided-scan conversation contract and
-                      wizard (docs/GUIDED_SCAN_ADAPTER.md) — an offline
-                      core-side contract for the approved adapter roadmap,
-                      not a third interface; adapters bind it and submit
-                      through the JobSubmitter protocol into the shared queue
+  semantics/          optional semantic-core pipeline (own SQLite DB per
+                      project, extra `semantics`); docs/SEMANTICS.md
 ```
 
 ## The main invariant
@@ -157,7 +154,8 @@ numpy scalars and no `inf`/`NaN`.
 
 **CLI and local MCP stay independent of the optional remote contract.** The authenticated HTTP
 adapter needs an injected durable backend and egress policy; it starts no service by itself. A
-GUI, desktop app, hosted account, and public MCP endpoint are outside the current boundary.
+SEOHEAD Desktop (`desktop/`, PyQt5) is a native presentation adapter over the same core. A hosted account,
+web dashboard and public MCP endpoint are outside the current boundary.
 Report files (xlsx/docx) are output, not an interface.
 
 **MIT project code with compatible dependencies.** Prefer permissive dependencies and review any

@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 PROFILES = frozenset({"full", "audit", "infra", "quick-check", "router"})
+#: Russian captions for clients (SEOHEAD Desktop) so they keep no profile list of their own.
+PROFILE_LABELS = {
+    "full": "Полный",
+    "audit": "Аудит",
+    "quick-check": "Быстрая проверка",
+    "infra": "Инфраструктура",
+    "router": "Маршрутизатор",
+}
 HIGH_LEVEL_TOOLS = frozenset(
     {"seo_inspect_url", "seo_audit_workflow", "seo_tool_catalog", "seo_tool_run"}
 )

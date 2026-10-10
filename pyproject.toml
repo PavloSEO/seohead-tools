@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seohead-seotools"
 version = "3.0.0"
-description = "Local-first Python SEO crawler and scan-analysis toolkit: native website crawling, retained scans and offline reanalysis, Screaming Frog export analysis, structured audits and reports via CLI and local MCP."
+description = "Local-first Python SEO crawler and scan-analysis toolkit: native website crawling, retained scans and offline reanalysis, Screaming Frog export analysis, structured audits and reports via CLI, local MCP and a native desktop app."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -28,6 +28,8 @@ classifiers = [
 # Core dependencies install in one step. Extras contain only genuinely heavy or
 # optional capabilities.
 dependencies = [
+    # Preserve foreign TOML configuration comments and keys during MCP registration.
+    "tomlkit>=0.13,<1",
     "pandas>=2.0,<4",
     "openpyxl>=3.1,<4",
     "lxml>=4.9,<7",
@@ -56,6 +58,8 @@ reports = ["openpyxl>=3.1,<4", "python-docx>=1.1,<2"]
 pdf = ["pypdf>=5,<7"]
 cluster = ["scikit-learn>=1.4,<2", "numpy>=1.26,<3", "snowballstemmer>=2.2,<4"]
 gsc = ["google-auth[requests]>=2.0,<3"]
+# Louvain clustering for `seohead semantics cluster --method louvain`.
+semantics = ["networkx>=3.2,<4", "python-louvain>=0.16,<1"]
 dev = [
     "build>=1.2,<2",
     "cryptography>=44,<51",
@@ -77,6 +81,7 @@ all = [
     "google-auth[requests]>=2.0,<3",
     "openpyxl>=3.1,<4", "python-docx>=1.1,<2",
     "pypdf>=5,<7",
+    "networkx>=3.2,<4", "python-louvain>=0.16,<1",
 ]
 
 [project.scripts]
@@ -116,6 +121,9 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
+# The semantic core works on Russian search phrases: Cyrillic literals are data, not confusables.
+"seohead/semantics/*" = ["RUF001"]
+"tests/test_semantics_*" = ["RUF001"]
 "seohead/integrations/remote_api/app.py" = ["B008"]  # FastAPI's Depends is an intentional route default.
 
 # Type checking is being rolled out module by module (issue #31), not enabled

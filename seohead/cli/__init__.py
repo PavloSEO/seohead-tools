@@ -202,7 +202,7 @@ INTERACTIVE_COMMANDS = ("tui", "watch")
 # unknown spelling without pretending every entry point is an MCP tool.  The
 # namespace entries own subcommand parsers; ``mcp`` and the interactive shell
 # own process/session behavior rather than a shared handler.
-DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
+DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "semantics", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
 
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
@@ -2661,6 +2661,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in (
         "list",
         "inspect",
+        "url-query",
         "url-detail",
         "link-inspect",
         "status",
@@ -2731,26 +2732,71 @@ def build_parser() -> argparse.ArgumentParser:
     sf.add_argument(
         "sf_args", nargs=argparse.REMAINDER, help="arguments forwarded to the sf-analyzer CLI"
     )
+    semantics = subs.add_parser(
+        "semantics",
+        help="accumulating semantic core (seohead semantics <stage> --project DIR)",
+    )
+    semantics.add_argument(
+        "semantics_args", nargs=argparse.REMAINDER, help="stage and its arguments"
+    )
     reanalyze = scan_subs.add_parser("reanalyze", help="reanalyze retained inputs without network")
     _add_flags(reanalyze, "scan-reanalyze")
     mcp = subs.add_parser("mcp", help="run the MCP server (stdio)")
     mcp.add_argument(
-        "--profile", choices=("full", "audit", "infra", "quick-check", "router"), default="full"
+        "--profile", choices=("full", "audit", "infra", "quick-check", "router"), default=None
     )
     mcp.add_argument(
         "--no-progress", action="store_true", help="disable optional MCP progress notifications"
+    )
+    mcp.add_argument(
+        "action",
+        nargs="?",
+        choices=("status", "enable", "disable", "install", "uninstall", "backups"),
+    )
+    mcp.add_argument(
+        "--json", action="store_true", help="return only SEOHEAD state or its registration plan"
+    )
+    mcp.add_argument("--actor", choices=("CLI", "SEOHEAD Desktop"), default="CLI")
+    mcp.add_argument("--client", choices=("claude-code", "claude-desktop", "codex", "cursor"))
+    mcp.add_argument("--backup", help="adjacent backup path from the reviewed plan")
+    mcp.add_argument("--dry-run", action="store_true", help="preview registration without writes")
+    mcp.add_argument(
+        "--yes", action="store_true", help="explicitly allow client configuration mutation"
+    )
+    mcp.add_argument(
+        "--command", dest="install_command", help="absolute core executable for client registration"
+    )
+    mcp.add_argument(
+        "--expected-sha256", help="refuse installation if configuration changed since preview"
     )
     tui = subs.add_parser("tui", help="interactive terminal shell (needs the optional 'tui' extra)")
     tui.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
     watch = subs.add_parser("watch", help="observe a local project beside an AI chat")
     watch.add_argument("--project", required=True, help="validated local project workspace")
     watch.add_argument("--no-color", action="store_true", help="force the plain, unstyled shell")
+    for terminal in (tui, watch):
+        terminal.add_argument(
+            "--lang", choices=("ru", "en"), help="label language (default: locale)"
+        )
+        terminal.add_argument("--scan", help="follow one retained scan/run UUID or id")
+        terminal.add_argument(
+            "--compact",
+            action="store_true",
+            help="one-line read-only status for tmux; prints once when piped",
+        )
+    tui.add_argument("--project", help="local project workspace")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_streams()
     runlog.set_interface("cli")
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw[:1] == ["semantics"]:
+        # The semantic-core pipeline owns its parser, including its own --help.
+        from seohead.semantics.cli import main as semantics_main
+
+        return semantics_main(raw[1:])
     argv, warnings = _rewrite_deprecated_scan_flags(argv)
     args = build_parser().parse_args(argv)
     for warning in warnings:
@@ -2773,12 +2819,65 @@ def main(argv: list[str] | None = None) -> int:
 
         return sf_main(args.sf_args)
     if cmd == "mcp":
+        if args.action:
+            from seohead.mcp import mcp_control
+
+            try:
+                if args.action == "status":
+                    result = mcp_control.status()
+                elif args.action == "backups":
+                    result = mcp_control.backups(args.client)
+                elif args.action in {"enable", "disable"}:
+                    mcp_control.set_state(
+                        args.action == "enable", profile=args.profile, actor=args.actor
+                    )
+                    result = mcp_control.status()
+                elif not args.client:
+                    raise ValueError("--client is required")
+                elif args.action == "install":
+                    result = mcp_control.install(
+                        args.client,
+                        dry_run=args.dry_run,
+                        yes=args.yes,
+                        command=args.install_command,
+                        expected_sha256=args.expected_sha256,
+                        backup_path=args.backup,
+                    )
+                else:
+                    result = mcp_control.uninstall(args.client, yes=args.yes)
+            except (OSError, ValueError) as exc:
+                result = {
+                    "ok": False,
+                    "error": str(exc)
+                    if isinstance(exc, ValueError)
+                    else "configuration I/O failed",
+                }
+            if args.json or args.action in {"install", "uninstall"} or not result["ok"]:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif args.action == "backups":
+                for item in result["backups"]:
+                    print(
+                        f"{item['client']} | {item['created_at']} | {item['reason']} | "
+                        f"{item['sha256'][:12]}{'' if item['verified'] else ' (hash mismatch)'} | {item['path']}"
+                    )
+                if not result["backups"]:
+                    print("No SEOHEAD configuration backups")
+            else:
+                print(
+                    f"MCP: {'enabled' if result['enabled'] else 'disabled'} | profile {result['profile']} | {result['tools']} tools"
+                )
+                print(f"Changed by: {result['by_label']}")
+                print(
+                    "Clients: "
+                    + ", ".join(c for c, info in result["clients"].items() if info["registered"])
+                )
+            return 0 if result["ok"] else 1
         from seohead.mcp.mcp_server import main as mcp_main
 
         # mcp_main() itself catches a missing optional SDK and returns 1 after a stderr
         # diagnostic (#366), so the direct `python -m seohead.mcp.mcp_server` entry
         # point advertised in that module's docstring gives the same outcome as this one.
-        if args.profile == "full" and not args.no_progress:
+        if args.profile is None and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
     if cmd in INTERACTIVE_COMMANDS:
@@ -2794,6 +2893,9 @@ def main(argv: list[str] | None = None) -> int:
             no_color=args.no_color,
             project=getattr(args, "project", None),
             commands=COMMANDS,
+            lang=args.lang,
+            scan=args.scan,
+            compact=args.compact,
         )
     from seohead.cli.terminal_progress import show_banner
 

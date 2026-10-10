@@ -4,8 +4,8 @@ SEOHEAD Tools is a headless, local-first evidence and audit-automation layer for
 and tool-calling agents. The `seohead` CLI and one local stdio MCP server remain the default
 interfaces. An optional, authenticated remote scan API may reuse the same core only with an
 explicit job backend and target/egress policy; it must never expose anonymous submission or
-silently enable a listener. A GUI, desktop shell, hosted account, and remote MCP endpoint remain
-outside this repository's current delivery boundary.
+silently enable a listener. SEOHEAD Desktop (`desktop/`, PyQt5) is a native presentation adapter over the same core. A hosted account, web dashboard and remote MCP endpoint
+remain outside this repository's current delivery boundary.
 
 ## Product model
 
@@ -50,10 +50,7 @@ seohead/
   reports/        XLSX, DOCX, CSV, Markdown, and JSON formatting
   data_sources/   optional demand, SERP, and traffic providers
   servers/        shared handlers and MCP registration
-  bot/            versioned guided-scan conversation contract and wizard for the
-                  approved adapter roadmap (docs/GUIDED_SCAN_ADAPTER.md); it is a core-side
-                  contract, not a third interface — adapters submit through the
-                  JobSubmitter protocol
+  semantics/      optional semantic-core pipeline with its own SQLite DB (extra `semantics`)
   skills/         packaged SEO workflow playbooks
 ```
 
