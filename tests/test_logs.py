@@ -275,6 +275,13 @@ def test_max_lines_does_not_consume_the_rest_of_the_file():
                 self.iterated += 1
                 yield line
 
+        def read(self, _size: int = -1) -> bytes:
+            # The gzip-magic probe reads raw bytes first; a synthetic text file has none.
+            return b""
+
+        def close(self) -> None:
+            return None
+
         def __enter__(self):
             return self
 
@@ -346,3 +353,29 @@ def test_verify_bot_rdns_real_mismatch_still_flags(monkeypatch):
     result = verify_bot_rdns("1.2.3.4", GOOGLE)
     assert result["verified"] is False
     assert "does not resolve back to" in result["reason"]
+
+
+def test_gzip_log_is_read_by_content_not_extension(tmp_path):
+    """Rotated archives keep their .gz name only sometimes; the gzip header is the signal."""
+    import gzip
+
+    plain = tmp_path / "access.log.1"
+    plain.write_bytes(gzip.compress(COMBINED.encode("utf-8")))
+    renamed = tmp_path / "access.log"
+    renamed.write_bytes(gzip.compress(COMBINED.encode("utf-8")))
+    for path in (plain, renamed):
+        r = analyze_log(str(path))
+        assert r["ok"] and r["format"] == "combined"
+        assert r["lines"]["parsed"] == 5
+        assert "googlebot" in r["by_family"]
+
+
+def test_truncated_gzip_is_an_error_not_a_partial_result(tmp_path):
+    import gzip
+
+    data = gzip.compress((COMBINED * 200).encode("utf-8"))
+    path = tmp_path / "access.log.2.gz"
+    path.write_bytes(data[: len(data) // 2])
+    r = analyze_log(str(path))
+    assert r["ok"] is False
+    assert "Cannot read log" in r["error"]

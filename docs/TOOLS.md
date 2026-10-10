@@ -267,7 +267,7 @@ because the rules could not be read, so the command never claims crawling is all
 
 | Command | What it does | Side effects |
 |---|---|---|
-| `log-analyze` | Web server log analysis (Apache Common/Combined, IIS W3C): which bots crawl, where, which codes they get, how much budget is wasted. `--verify-bots` checks authenticity via forward-confirmed reverse DNS | reads a file |
+| `log-analyze` | Web server log analysis (Apache Common/Combined, IIS W3C; `.gz` read directly): which bots crawl, where, which codes they get, how much budget is wasted. `--verify-bots` checks authenticity via forward-confirmed reverse DNS | reads a file |
 | `log-scan` | Reads a finished run's own artifacts (`audit.json`, `pages.jsonl`, an `images-download` directory) and reports claims that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit — only contradictions, each naming both values | reads files |
 | `images-download` | Download a list of images into a directory | writes files |
 | `images-optimize` | Recompress, resize, or convert raster images and conservatively minify SVG | requires `--output-dir`; source mutation needs explicit `--in-place` and backs up by default |
