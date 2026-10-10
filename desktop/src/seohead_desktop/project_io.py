@@ -19,6 +19,7 @@ from .common import (  # noqa: F401
     CONSUMER_ID,
     PAGE_LIMIT,
     ROOT,
+    TASK_PAGE_LIMIT,
     configure_table,
     plain,
     scan_request_key,
@@ -189,8 +190,8 @@ class ProjectMixin:
         self.start_command(
             "tasks",
             "seo_project_checklist_page",
-            {"directory": directory, "limit": PAGE_LIMIT},
-            self.load_tasks,
+            {"directory": directory, "limit": TASK_PAGE_LIMIT},
+            self.load_task_page,
         )
         self.load_crawl_descriptor()
 
@@ -224,7 +225,7 @@ class ProjectMixin:
         self.update_run_history_controls()
         self._work_progress = progress
         if progress.get("revision") != previous_progress_revision and "tasks" not in self.active_commands:
-            self.start_command("tasks", "seo_project_checklist_page", {"directory": self.project_directory, "limit": PAGE_LIMIT}, self.load_tasks)
+            self.start_command("tasks", "seo_project_checklist_page", {"directory": self.project_directory, "limit": TASK_PAGE_LIMIT}, self.load_task_page)
         self.present_observed_runs(runs, result.get("observed_at"))
         self.load_progress(result.get("progress") or {})
         self.load_activity({"observed_at": result.get("observed_at"), "sites": result.get("sites") or {}})

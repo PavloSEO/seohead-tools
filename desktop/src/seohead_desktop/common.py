@@ -12,6 +12,7 @@ from .ui.presentation import theme_tokens
 ROOT = Path(__file__).resolve().parent
 CONSUMER_ID = "desktop/gui"
 PAGE_LIMIT = 50
+TASK_PAGE_LIMIT = 100  # the core's largest checklist page; the Work list reads every page
 
 
 def plain(text=""):
