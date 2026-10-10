@@ -69,12 +69,12 @@ The priority list below is therefore a backlog, not a product-capability claim.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 1.1 | Real Core Web Vitals (LCP/INP/CLS) | Field p75 vs official thresholds (LCP 2.5/4 s, INP 200/500 ms, CLS 0.1/0.25) | **high** | **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check | `data_sources/crux.py` + `cwv.py` (#822) |
+| 1.1 | Real Core Web Vitals (LCP/INP/CLS) | Field p75 vs official thresholds (LCP 2.5/4 s, INP 200/500 ms, CLS 0.1/0.25) | **high** | **partially DONE**: opt-in CrUX current record via `crux-report` and supplied `site-audit` evidence; no automatic crawl-registry check | `data_sources/crux.py` + `seohead/data_sources/cwv.py` (#822) |
 | 1.2 | TTFB separate from `response_time` | Time to first byte as its own metric (800/1800 ms), not overall response time | medium | **PARTIAL** — `render-check` exposes lab `ttfb_ms`; no dedicated threshold finding or field-data coverage | extend `check_url_and_perf`, id `SLOW_TTFB` |
 | 1.3 | FCP / render speed | First Contentful Paint (1.8/3 s) | medium | **PARTIAL** — `render-check` exposes lab `first_contentful_paint_ms`; no dedicated threshold finding or field-data coverage | `cwv.py` / PSI |
 | 1.4 | Response compression (Brotli/gzip) | content-encoding on text responses | medium | **partially DONE** in the live `asset-weight-check` (CSS/JS only; the HTML response itself is still open) | id `NO_COMPRESSION` |
 | 1.5 | Cache-Control / cacheability | Presence and sanity of cache headers on static resources | medium | **partially DONE** in `asset-weight-check` (CSS/JS only; images/fonts still open) | id `WEAK_CACHE_POLICY` |
-| 1.6 | Render-blocking resources | CSS/JS in `<head>` blocking first paint | medium | **DONE** in the live `asset-weight-check` (no registry id) | id `RENDER_BLOCKING` |
+| 1.6 | Render-blocking resources | CSS/JS in `<head>` blocking first paint | medium | **DONE** in the live `asset-weight-check` (no registry id) | live `asset-weight-check` only |
 | 1.7 | Page weight (total) | Total page weight with resources, not HTML only (`LARGE_HTML` covers markup alone) | medium | A/live | id `HEAVY_PAGE_WEIGHT` |
 
 **Context.** `SLOW_RESPONSE` already catches a slow server, but it is no
@@ -89,12 +89,12 @@ unavailable. A one-run `render-check` result remains lab evidence.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 2.1 | Authorship (byline) | Observed author/byline markup on scoped content pages | **high** | **DONE** — `NO_AUTHOR_BYLINE`; no author-quality verdict | `eeat.py` |
-| 2.2 | Publish/update dates | Observed publication/update markup | **high** | **DONE** — `NO_CONTENT_DATES`; freshness remains unjudged | `eeat.py` |
-| 2.3 | About / Contact pages | Discovered/indexable state of about/contact routes | **high** | **DONE** — `MISSING_ABOUT_PAGE` / `MISSING_CONTACT_PAGE` | `eeat.py` |
-| 2.4 | Privacy Policy / Terms | Discovered/indexable legal-page state | medium | **DONE** — `MISSING_PRIVACY_POLICY` / `MISSING_TERMS_PAGE` | `eeat.py` |
-| 2.5 | Outbound citations | Observable body-positioned outbound references | medium | **DONE** — `FEW_CITATIONS`; authority is not inferred | `eeat.py` |
-| 2.6 | YMYL detection | Deterministic review candidate by path/title vocabulary | **high** | **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification | `eeat.py` |
+| 2.1 | Authorship (byline) | Observed author/byline markup on scoped content pages | **high** | **DONE** — `NO_AUTHOR_BYLINE`; no author-quality verdict | `seohead/sf/core/eeat.py` |
+| 2.2 | Publish/update dates | Observed publication/update markup | **high** | **DONE** — `NO_CONTENT_DATES`; freshness remains unjudged | `seohead/sf/core/eeat.py` |
+| 2.3 | About / Contact pages | Discovered/indexable state of about/contact routes | **high** | **DONE** — `MISSING_ABOUT_PAGE` / `MISSING_CONTACT_PAGE` | `seohead/sf/core/eeat.py` |
+| 2.4 | Privacy Policy / Terms | Discovered/indexable legal-page state | medium | **DONE** — `MISSING_PRIVACY_POLICY` / `MISSING_TERMS_PAGE` | `seohead/sf/core/eeat.py` |
+| 2.5 | Outbound citations | Observable body-positioned outbound references | medium | **DONE** — `FEW_CITATIONS`; authority is not inferred | `seohead/sf/core/eeat.py` |
+| 2.6 | YMYL detection | Deterministic review candidate by path/title vocabulary | **high** | **Partial** — `YMYL_REVIEW_CANDIDATE`, never a classification | `seohead/sf/core/eeat.py` |
 | 2.7 | Trust signals / disclaimers | Disclaimer / editorial-policy markers | low | Missing | — |
 
 **Context.** Rows 2.1–2.5 measure observed markup and discovered routes.
@@ -222,8 +222,8 @@ graph checks land in `inlinks.py` with almost no new math.
 
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
-| 9.1 | "no alt" vs "empty alt" | Attribute missing vs `alt=""` (the latter often deliberate for decorative images) | medium | **DONE** — `IMG_MISSING_ALT_ATTRIBUTE` | `tools/parser.py`, `crawl/collect.py`, `sf/core/rules.py` |
-| 9.2 | Long alt (>100 chars) | Overly long alt text | low | **DONE** — `IMG_ALT_TOO_LONG` | `tools/parser.py`, `crawl/collect.py`, `sf/core/rules.py` |
+| 9.1 | "no alt" vs "empty alt" | Attribute missing vs `alt=""` (the latter often deliberate for decorative images) | medium | **DONE** — `IMG_MISSING_ALT_ATTRIBUTE` | `seohead/checks/parser.py`, `seohead/crawl/collect.py`, `seohead/sf/core/rules.py` |
+| 9.2 | Long alt (>100 chars) | Overly long alt text | low | **DONE** — `IMG_ALT_TOO_LONG` | `seohead/checks/parser.py`, `seohead/crawl/collect.py`, `seohead/sf/core/rules.py` |
 | 9.3 | `<picture>` without `<img>` | Lost fallback inside picture | low | A (HTML) | id `PICTURE_NO_IMG` |
 | 9.4 | Modern format (WebP/AVIF) | Legacy formats where WebP/AVIF fits | medium | B+ / A | id `IMG_LEGACY_FORMAT` |
 | 9.5 | Responsiveness (srcset) | No `srcset`/`sizes` on large images | low | A (HTML) | id `IMG_NOT_RESPONSIVE` |
@@ -265,7 +265,7 @@ graph checks land in `inlinks.py` with almost no new math.
 | 12.1 | Invalid rel=next/prev | The `href` does not parse as a URL | medium | B (Internal:All: rel_next/rel_prev) | extend `check_pagination`, id `PAGINATION_BROKEN` |
 | 12.2 | Canonical chain on pagination | The whole series canonicalizes to page one — the tail is lost | medium | B (canonical x rel_next graph) | id `PAGINATION_CANONICAL_CHAIN` |
 | 12.3 | Pagination loop | rel=next forms a cycle | medium | B (graph) | id `PAGINATION_LOOP` |
-| 12.4 | Sequence gap | `/page/2` without `/page/3` while `/page/4` exists | low | **DONE** (issue #385) — `PAGINATION_SEQUENCE_ERROR`, over the `rel="next"` graph rather than over URL numbers alone; a series with a stride, or one whose URLs do not state a page number, is named as unjudged instead of reported | `check_pagination_sequence` |
+| 12.4 | Sequence gap | `/page/2` without `/page/3` while `/page/4` exists | low | **partial** (issue #385) — `PAGINATION_SEQUENCE_ERROR`, over the `rel="next"` graph rather than over URL numbers alone; the gap is the series with a stride or whose URLs do not state a page number, which are named as unjudged instead of reported | `check_pagination_sequence` |
 | 12.5 | Pagination orphan | A pagination page without internal inlinks | medium | B (Inlinks x rel_next) | id `PAGINATION_ORPHAN` |
 
 ---
@@ -331,7 +331,7 @@ are formally not SEO but expected in a technical audit.
 | # | Name | Checks | Value | Mode | Home |
 |---|---|---|---|---|---|
 | 17.1 | AI bots: training vs retrieval | Separate accounting of blocked training bots (GPTBot, ClaudeBot…) and retrieval bots (OAI-SearchBot, PerplexityBot…) | medium | **DONE** as the live `ai-bots-check` (per-bot role: training/retrieval/user) | registry ids if needed |
-| 17.2 | Semantic structure / citability | `<article>`, section headings, LLM-parseable blocks | medium | **DONE** as the live `citability-check` (4x25 scoring) | `geo.py`, id `WEAK_SEMANTIC_STRUCTURE` |
+| 17.2 | Semantic structure / citability | `<article>`, section headings, LLM-parseable blocks | medium | **DONE** as the live `citability-check` (4x25 scoring) | `seohead/checks/citability.py`, id `WEAK_SEMANTIC_STRUCTURE` |
 
 ---
 
