@@ -706,6 +706,17 @@ def _shell_finding(shell: str) -> str:
     )
 
 
+def little_text(snapshot: dict[str, Any]) -> bool:
+    """Whether a raw snapshot is too thin to stand on its own without JavaScript.
+
+    Feeds ``rendering.escalation.policy: "auto"`` (the desktop Auto mode): a
+    pattern whose sampled raw page is below ``EMPTY_BODY_WORDS`` is escalated even
+    when raw and rendered agree, because the raw page carries too little text to
+    trust as the whole picture.
+    """
+    return int(snapshot.get("words", 0) or 0) < EMPTY_BODY_WORDS
+
+
 def compare(
     raw: dict[str, Any], rendered: dict[str, Any], raw_html: str = "", shell: str | None = None
 ) -> list[str]:

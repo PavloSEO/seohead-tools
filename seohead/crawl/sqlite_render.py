@@ -570,9 +570,12 @@ def run_render_escalation(
             rendered = render_tool._snapshot(rendered_html, final_url)
             shell = render_tool.detect_empty_shell(str(raw_html or ""))
             findings = render_tool.compare(raw, rendered, str(raw_html or ""), shell)
+            needs = findings != [render_tool.ALL_CLEAR]
+            if settings["rendering"]["escalation"].get("policy") == "auto":
+                needs = needs or render_tool.little_text(raw)
             return {
                 "ok": True,
-                "needs_escalation": findings != [render_tool.ALL_CLEAR],
+                "needs_escalation": needs,
                 "empty_shell": shell,
             }
 
