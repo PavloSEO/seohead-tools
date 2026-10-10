@@ -126,6 +126,43 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+def url_card(tab, path, theme, lang):
+    """URL screen with a saved URL of the --project scan opened on a card tab.
+
+    Spec ``url:<tab>[:<path>]``: the row whose path matches (e.g. ``url:schema:/broken/structured``), else the first row.
+    """
+    import time
+
+    from seohead_desktop.app import MainWindow
+
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    window.show_startup_workspace()
+    if OPTIONS.get("project"):
+        open_project(window, OPTIONS["project"])
+    window.navigation.select_section("url")
+    screen = window.screens["url"]
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not screen.rows:
+        QApplication.processEvents()
+        time.sleep(0.05)
+    if screen.rows:
+        from urllib.parse import urlsplit
+
+        index = next((i for i, row in enumerate(screen.rows) if path and urlsplit(row.get("url", "")).path == path), 0)
+        screen.table.selectRow(index)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and (screen.current_url is None or screen.detail_data is None):
+        QApplication.processEvents()
+        time.sleep(0.05)
+    screen._open_tab(tab)
+    for _ in range(60):  # let the card's core reads land
+        QApplication.processEvents()
+        time.sleep(0.05)
+    return window
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -147,6 +184,9 @@ def build(name, width, height, store, theme="light", lang="ru"):
         if arg and arg != "simple":
             window.navigation.select_section(arg)
         return window
+    if kind == "url":
+        tab, _, path = arg.partition(":")
+        return url_card(tab or "info", path, theme, lang)
     if kind in ("newscan", "scanset", "quickscan"):
         from capture_scan_dialog import Job
 
@@ -194,13 +234,13 @@ def main(argv=None):
             width, height = (int(v) for v in size.split("x"))
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
-            path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
+            path = args.out_dir / f"{name.replace(':', '-').replace('/', '_')}-{args.theme}-{size}{suffix}.png"
             if name.startswith(("settings", "projsources", "sources")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
                 widget.render_image(width, height, args.theme, args.lang).save(str(path))
-            elif name.startswith("shell"):
+            elif name.startswith(("shell", "url")):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)
