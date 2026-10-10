@@ -1683,6 +1683,36 @@ def _audit_crawl_result(
             ctx.add("SITEMAP_ORPHAN", target_url=orphan_url, details={"in_sitemap": True})
         for extra_url in reconciled["linked_not_in_sitemap"]:
             ctx.add("URL_NOT_IN_SITEMAP", target_url=extra_url)
+        # The declared URLs' own status, indexability and canonical, judged from the pages this
+        # crawl fetched (issue #986). A stored scan keeps no per-URL page list in memory, so it
+        # says so by name instead of reporting a clean sitemap it never checked.
+        status_checks = ("SITEMAP_URL_3XX", "SITEMAP_URL_4XX_5XX", "SITEMAP_URL_NON_INDEXABLE")
+        if stored_scan is None:
+            from urllib.parse import urlsplit as _sitemap_split
+
+            from seohead.crawl.sitemap_findings import sitemap_url_problems
+
+            sitemap_host = _sitemap_split(start_norm).hostname or "" if url else ""
+            for item in sitemap_url_problems(
+                sitemap_seed["declared"],
+                getattr(result, "pages", []) or [],
+                getattr(result, "robots_blocked", None) or [],
+                sitemap_host,
+            ):
+                ctx.add(
+                    item["check"],
+                    target_url=item["target_url"],
+                    details={
+                        "status_code": item["status_code"],
+                        "reasons": item["reasons"],
+                    },
+                )
+        else:
+            for check in status_checks:
+                ctx.skip(
+                    check,
+                    "stored scan keeps no per-URL page evidence for the sitemap's declared URLs",
+                )
         # The site-level verdict belongs to whichever module did the comparison,
         # and here that is this one -- run_sitemap was told to skip it by name
         # (compare_with_crawl above) precisely so the two never answer the same
