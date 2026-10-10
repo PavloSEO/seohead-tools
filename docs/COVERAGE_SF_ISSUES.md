@@ -17,7 +17,7 @@ here is written about *our own* behaviour.
 |---|---:|---|
 | check | 128 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
-| partial | 18 | we find part of it; the missing part is stated |
+| partial | 17 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
 | out of scope | 134 | a decision, with its reason |
 | **total** | **320** | |
@@ -248,7 +248,7 @@ having, because the alternative is an absence nobody has noticed.
 | Pages With Uncrawlable Internal Outlinks | partial | — | attribution is possible -- the exclusion map holds the reason and the link graph holds the source -- but every reason a crawl records for an internal destination is a property of the run's own scope configuration (exclude/include patterns, segments_only, depth and query-variant budgets), not of the site, so a finding built on them would report the operator's settings back as defects. The two site-caused reasons already have their own checks from the destination side (BLOCKED_BY_ROBOTS, IMPORTANT_URL_BLOCKED_BY_ROBOTS) and a link to a robots-disallowed cart or search URL is ordinary, not a defect. This needs a reason the crawler does not record today -- a destination that is unfetchable in itself, e.g. a malformed href, which the parser discards before the crawl ever sees it |
 | Pages Without Internal Outlinks | check | `NO_INTERNAL_OUTLINKS` |  |
 | Non-Indexable Page Inlinks Only | check | `ONLY_NONINDEXABLE_SOURCE_INLINKS` |  |
-| Internal Nofollow Outlinks | partial | — | nofollow is recorded per edge and gates crawling; there is no page-level finding for having them |
+| Internal Nofollow Outlinks | check | `INTERNAL_NOFOLLOW_OUTLINKS` |  |
 | Pages With High External Outlinks | check | `HIGH_EXTERNAL_OUTLINKS` |  |
 | Pages With High Internal Outlinks | check | `HIGH_OUTLINKS` |  |
 | Follow & Nofollow Internal Inlinks To Page | check | `FOLLOW_AND_NOFOLLOW_INLINKS` |  |

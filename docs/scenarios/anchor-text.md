@@ -35,6 +35,10 @@ header, sidebar or footer, and never from body copy. A page reachable only throu
 is not linked the way a page in the content graph is linked, and no inlink count will tell you
 that.
 
+The same crawl also produces `INTERNAL_NOFOLLOW_OUTLINKS`, the page-level counterpart to the
+inlink checks: a source page with one or more internal `nofollow` outlinks, with the count and a
+bounded sample of destinations. It reads the same per-edge flag, so it needs no extra capture.
+
 The same crawl also produces `FOLLOW_AND_NOFOLLOW_INLINKS` — a page reached one way from some
 source and the other way from another — without needing `link_position.classify` at all: it
 reads only each edge's destination and `nofollow`, which every crawl already records (issue
@@ -129,9 +133,10 @@ One URL, two contradictory signals about whether it should be crawled and ranked
 - **Which pages have empty anchors.** Empty anchor text is recorded per edge, but there is no
   page-level finding for the absence of anchor text — only `GENERIC_ANCHOR_TEXT` for the
   wording. Treat "no anchor text" as a stated partial rather than a clean result.
-- **Which pages emit `nofollow` outlinks.** `rel="nofollow"` is recorded per edge and gates
-  whether the crawl follows it (`discovery.follow_nofollow` overrides that). There is no
-  page-level finding for a page *having* them, only for a page whose every inlink is one.
+- **Why a page's `nofollow` outlinks are there.** `INTERNAL_NOFOLLOW_OUTLINKS` names every
+  source page that carries an internal `nofollow` outlink and counts them. It cannot tell an
+  editorial choice from `rel="sponsored"` or `rel="ugc"`: the crawl records one `nofollow`
+  flag per edge, and `discovery.follow_nofollow` decides whether the crawl followed it at all.
 - **Whether the anchor text is good.** "Industrial pumps" is descriptive and may still be the
   wrong description. Every check here is structural; wording is a person's judgement.
 - **Anchors written by JavaScript.** The edge list is built from served HTML. See
