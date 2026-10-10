@@ -13,6 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from ..core.filesystem import file_sha256
 from . import APPLICATION_ID, ScanError, open_scan
 from .history import _hold_writer_lock, _regular
 from .native_scan import NativeScan, _utc
@@ -28,14 +29,6 @@ _WHERE_FIELDS = {
     "page_ordinal": "p.page_ordinal",
 }
 _WHERE = re.compile(r"\s*([a-z_]+)\s*(=|!=|<=|>=|<|>)\s*(.+?)\s*\Z")
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _predicate(where: str) -> tuple[str, list[Any], list[dict[str, Any]]]:
@@ -232,7 +225,7 @@ def _backup(path: Path, backup_path: Path) -> str:
     finally:
         con.close()
     _validate_copy(backup_path)
-    return _sha256(backup_path)
+    return file_sha256(backup_path)
 
 
 def upgrade_to_v2(con: sqlite3.Connection) -> None:
