@@ -15,17 +15,17 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
+| check | 127 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
-| gap | 7 | we should find it and do not |
+| gap | 6 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **159 are found today**, 18 are
-found in part, 7 are gaps worth closing, and
+remaining 212 issues, **160 are found today**, 18 are
+found in part, 6 are gaps worth closing, and
 28 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
@@ -312,7 +312,7 @@ having, because the alternative is an absence nobody has noticed.
 | Illegible Font Size | out of scope | — | needs computed styles from a rendered page |
 | Contains Unsupported Plugins | check | `UNSUPPORTED_PLUGIN` | <object>/<embed>/<applet> are counted, excluding an <object> whose type declares an image (an SVG or raster fallback, not plugin content) |
 | Target Size | out of scope | — | needs rendered hit-box geometry |
-| Mobile Alternate Link | gap | — | rel=alternate media annotations are not read |
+| Mobile Alternate Link | check | `MOBILE_ALTERNATE_LINK` | only a media-qualified rel=alternate with no href is flagged; the reciprocal canonical on the mobile URL is not checked |
 
 ## Analytics
 
