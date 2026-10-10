@@ -615,6 +615,23 @@ def _segment_counts(
     return counts
 
 
+def _record_crawl_evidence(project_root: Path, scan: str | Path) -> dict[str, Any]:
+    """Attach a finished project crawl to its automatic checklist items; never fails the crawl."""
+    from seohead.projects.crawl_evidence import record_scan
+
+    try:
+        return record_scan(project_root, Path(scan))
+    except (OSError, ValueError) as exc:
+        return {"error": str(exc)}
+
+
+def _record_crawl_failure(project_root: Path, reason: str) -> None:
+    from seohead.projects.crawl_evidence import record_failure
+
+    with contextlib.suppress(OSError, ValueError):
+        record_failure(project_root, reason)
+
+
 def crawl_site(
     url: str | None = None,
     urls: list[str] | None = None,
@@ -787,6 +804,7 @@ def crawl_site(
                             reason=type(exc).__name__,
                             counters=reporter.counters(),
                         )
+                    _record_crawl_failure(project_root, type(exc).__name__)
                     raise
                 with contextlib.suppress(OSError, ValueError):
                     finish(
@@ -808,6 +826,7 @@ def crawl_site(
                     **result,
                     **rate_fields(resume_data["settings"]),
                     "observer_run_id": observed["id"],
+                    "checklist_evidence": _record_crawl_evidence(project_root, resume),
                 }
         from seohead.crawl.settings import rate_fields
         from seohead.mcp.scan_handlers import resume_inputs
@@ -1117,6 +1136,7 @@ def crawl_site(
                         reason=type(exc).__name__,
                         counters=reporter.counters(),
                     )
+                _record_crawl_failure(project_root, type(exc).__name__)
             raise
         if observed is not None and reporter is not None:
             from seohead.projects.run_observation import finish
@@ -1141,6 +1161,7 @@ def crawl_site(
                 **result,
                 **crawl_config.rate_fields(settings),
                 "observer_run_id": observed["id"],
+                "checklist_evidence": _record_crawl_evidence(project_root, scan_out),
             }
         return {**result, **crawl_config.rate_fields(settings)}
     dispatch_gate = None

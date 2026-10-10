@@ -431,37 +431,11 @@ def prepare_project(
                 "reason": "saved sitemap coverage; unavailable checks remain explicit",
                 "unavailable": sitemap_skips,
             }
-            from .coverage import record_execution
+            from .crawl_evidence import record_scan
 
-            executed = set(
-                audit.get("summary", {}).get("check_coverage", {}).get("checks_silent_ids", [])
-            )
-            executed.update(row.get("check") for row in audit.get("issues", []))
-            unavailable = {
-                row.get("id"): row.get("reason")
-                for row in audit.get("run", {}).get("checks_skipped", [])
-            }
-            recording_errors = []
-            for item in coverage_status(root)["items"]:
-                if item["kind"] != "check" or item["complete"] or not item["enabled"]:
-                    continue
-                check_id = item["id"].removeprefix("check:")
-                if check_id in executed:
-                    entry = {
-                        "status": "succeeded",
-                        "reason": "Executed in the bounded preparation scan; see recorded measurement scope",
-                        "artifact": relative,
-                    }
-                elif check_id in unavailable:
-                    entry = {"status": "unavailable", "reason": str(unavailable[check_id])}
-                else:
-                    continue
-                try:
-                    record_execution(root, item["id"], entry, coverage_status(root)["revision"])
-                except ValueError as exc:
-                    recording_errors.append({"id": item["id"], "reason": str(exc)})
-            if recording_errors:
-                state["steps"]["crawl"]["recording_gaps"] = recording_errors
+            evidence = record_scan(root, source)
+            if evidence.get("refused"):
+                state["steps"]["crawl"]["recording_gaps"] = evidence["refused"]
         except (ValueError, OSError) as exc:
             state["steps"]["crawl"] = {"state": "not_run", "reason": str(exc)}
             state["steps"]["sitemap"] = {
