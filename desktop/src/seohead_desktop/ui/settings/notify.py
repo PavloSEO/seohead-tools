@@ -11,7 +11,7 @@ from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch, polish
 from ..icons import material_icon
-from .helpers import keyed, page, switch_row, column_stack
+from .helpers import keyed, page, switch_row, two_columns
 
 ID, ICON, TITLE = "notify", "notifications", "Уведомления"
 HINT = "Тосты в окне, системные уведомления и звук"
@@ -154,4 +154,4 @@ def build_page(store, context):
         Note("info", "Что это меняет.", "Окно в фоне.<br>Тосты видны только в открытом окне; когда оно свёрнуто, срабатывают системные уведомления macOS."),
         preview_row,
     ]
-    return page(_header(), *(_event_row(store, i, t, d) for i, t, d, _default in EVENTS), column_stack(left, right))
+    return page(_header(), *(_event_row(store, i, t, d) for i, t, d, _default in EVENTS), two_columns(left, right))

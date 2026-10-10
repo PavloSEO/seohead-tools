@@ -157,7 +157,7 @@ class ShellMixin:
         """(text, tooltip): the real state of the core. «не найдено» only when nothing answered and no executable is known."""
         answered = bool(self.mcp_ready or self.project_result is not None)
         if not self.core_executable and not answered:
-            return tr("Ядро не найдено"), tr("Ядро seohead не найдено ни в одном из известных мест")
+            return tr("Ядро не найдено"), tr("Команда seohead не найдена в PATH")
         version = self.installed_core_version(self.core_executable)
         path = self.core_executable or ""
         if version:
@@ -334,32 +334,6 @@ class ShellMixin:
                 handlers[index](value)
             except RuntimeError:
                 pass  # the settings dialog was closed before the answer arrived
-
-    def request_semantics_import(self, path, callback, on_error):
-        """Project menu → Import phrases into the core: the core's offline init, then the CSV import, one MCP call at a time."""
-        self._semimport_handlers = (callback, on_error)
-        if not self.core_executable:
-            on_error(tr("CLI ядра seohead не найден"))
-            return
-        if not self.project_directory:
-            on_error(tr("Проект не открыт"))
-            return
-        project = str(self.project_directory)
-        self.start_command("semimport", "seo_semantics_run", {"stage": "init", "project": project},
-                           lambda _result: self.start_command("semimport", "seo_semantics_run",
-                                                              {"stage": "import", "project": project, "file": path},
-                                                              self._semimport_loaded))
-
-    def _semimport_loaded(self, result):
-        self._deliver_semimport(0, result)
-
-    def semimport_failed(self, text):
-        self._deliver_semimport(1, text)
-
-    def _deliver_semimport(self, index, value):
-        handlers = getattr(self, "_semimport_handlers", None)
-        if handlers:
-            handlers[index](value)
 
     def request_sources(self, operation, callback, on_error, owner, **kwargs):
         """Settings → Источники данных: allowlisted read-only core calls on a worker (source_service); answers for a closed page are dropped."""

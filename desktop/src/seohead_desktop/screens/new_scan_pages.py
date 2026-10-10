@@ -25,8 +25,6 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QTableView,
-    QTableWidget,
-    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -941,7 +939,7 @@ def robots_page(draft, host):
                   [("respect", tr("Соблюдать")), ("report_only", tr("Отчёт")), ("ignore", tr("Игнорировать"))])
     warn = Note("warn", tr("Игнорировать robots.txt на чужом боевом сайте нельзя."), tr("Только для своего стенда."))
     page.add(warn)
-    page.bind(lambda p: warn.setVisible(draft.value("robots.policy") != "respect"))
+    page.bind(lambda p: warn.setVisible(draft.value("robots.policy") == "ignore"))
     if draft.has("discovery.follow_nofollow"):
         follow = Segmented([(True, tr("Ходить")), (False, tr("Не ходить"))], bool(draft.value("discovery.follow_nofollow")), tr("Ссылки с nofollow"))
         follow.changed.connect(lambda value: draft.set_value("discovery.follow_nofollow", value))
@@ -952,25 +950,10 @@ def robots_page(draft, host):
     waiting_row(page, "Страницы с noindex", "Брать ссылки со страниц с noindex", ISSUE_OTHER, "в ядре нет такой настройки", Switch(tr("Брать ссылки с noindex")))
     waiting_row(page, "Переходить по canonical", "Добавлять канонические URL в очередь", ISSUE_SETTINGS, "в ядре нет такой настройки для обхода сайта", Switch(tr("Canonical")))
     waiting_row(page, "Переходить по hreflang", "Альтернативы на других языках и доменах", ISSUE_SETTINGS, "в ядре нет такой настройки", Switch(tr("hreflang")))
-    waiting_row(page, "X-Robots-Tag и meta robots", "Читать оба источника; при конфликте строже побеждает", ISSUE_SETTINGS, "в ядре нет такой настройки", Switch(tr("X-Robots-Tag и meta robots")))
     page.caption(tr("Sitemap"))
     switch_row(page, draft, "sitemaps.auto_discover", "Искать sitemap автоматически", "robots.txt и /sitemap.xml. Умолчание ядра — выключено")
-    waiting_row(page, "Список sitemap", "Автоматические и добавленные вручную с числом URL", ISSUE_OTHER, "ядро принимает один sitemap, число URL известно после чтения")
-    page.add(sitemap_list_table())
+    waiting_row(page, "Список sitemap", "Автоматические и добавленные вручную с числом URL", ISSUE_OTHER, "ядро принимает один sitemap, число URL известно после чтения", QLineEdit())
     return page
-
-
-def sitemap_list_table():
-    """The sitemap list has no core source yet: an empty, disabled table with the columns the list will have."""
-    table = QTableWidget(1, 3)
-    table.setObjectName("sitemapListTable")
-    table.setHorizontalHeaderLabels([tr("Sitemap"), tr("Источник"), tr("URL")])
-    style_table(table, "compact")
-    table.setSpan(0, 0, 1, 3)
-    table.setItem(0, 0, QTableWidgetItem(tr("Нет данных")))
-    table.setFixedHeight(table.horizontalHeader().height() + 2 * table.verticalHeader().defaultSectionSize() + 6)
-    table.setEnabled(False)
-    return table
 
 
 # ---------------------------------------------------------------------------------------------------------------------

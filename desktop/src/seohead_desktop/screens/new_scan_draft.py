@@ -87,7 +87,7 @@ def is_local_host(host):
 
 
 def grouped(number):
-    return f"{number:,}".replace(",", "\u00a0")
+    return f"{number:,}".replace(",", " ")
 
 
 def _plain(value):

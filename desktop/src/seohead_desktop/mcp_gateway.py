@@ -37,11 +37,10 @@ TOOL_ALLOWLIST = frozenset(
         "seo_scan_navigation",
         "seo_scan_status",
         "seo_provider_readiness",
-        "seo_semantics_run",
     }
 )
 OPTIONAL_TOOLS = frozenset({"seo_scan_content_search", "seo_scan_content_search_page"})
-_WRITE_TOOLS = frozenset({"seo_project_inbox_submit", "seo_compare_crawls", "seo_verify_fixes", "seo_semantics_run"})
+_WRITE_TOOLS = frozenset({"seo_project_inbox_submit", "seo_compare_crawls", "seo_verify_fixes"})
 
 _DIRECTORY_TOOLS = frozenset(
     {
@@ -223,20 +222,6 @@ class PersistentMcpGateway(QRunnable):
             scans = (scope / "scans").resolve()
             if not Path(scan).resolve().is_relative_to(scans):
                 raise ValueError("MCP scan request is outside the selected local project")
-
-        if tool == "seo_semantics_run":
-            # Offline core stages only: init, and import of one CSV file the user picked; no paid or export stages.
-            stage = arguments.get("stage")
-            if stage not in ("init", "import") or set(arguments) - {"stage", "project", "file"}:
-                raise ValueError("semantic run in Desktop allows only the init and import stages")
-            if not isinstance(arguments.get("project"), str) or Path(arguments["project"]).resolve() != scope:
-                raise ValueError("semantic run is outside the selected local project")
-            if stage == "init" and "file" in arguments:
-                raise ValueError("semantic init takes no file")
-            if stage == "import":
-                source = arguments.get("file")
-                if not isinstance(source, str) or Path(source).suffix.lower() != ".csv" or not Path(source).is_file():
-                    raise ValueError("semantic import needs a readable CSV file")
 
         if tool in {"seo_compare_crawls", "seo_verify_fixes"}:
             before = arguments.get("before" if tool == "seo_compare_crawls" else "baseline")

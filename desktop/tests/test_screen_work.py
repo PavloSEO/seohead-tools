@@ -255,33 +255,5 @@ class WorkScreenTests(unittest.TestCase):
         self.assertTrue(labels)
 
 
-    def test_board_groups_core_rows_by_display_state(self):
-        open_qa(self.window)
-        board = self.screen.task_board
-        self.screen.view_switch.setValue("board")
-        self.screen.view_switch.changed.emit("board")
-        self.assertEqual([column.count.text() for column in board.columns], ["3", "0", "0", "0"])
-        first, second, third = (dict(row) for row in self.window.task_model.rows[:3])
-        self.window.task_model.replace([first, dict(second, state="blocked"), dict(third, state="completed")])
-        self.window.data_changed.emit("tasks")
-        self.assertEqual([column.count.text() for column in board.columns], ["1", "1", "0", "1"])
-        self.assertIn("Заблокирована", texts(board.columns[1]))
-
-    def test_board_card_opens_the_task_in_the_list_and_widens_the_filter(self):
-        open_qa(self.window)
-        done_id = dict(self.window.task_model.rows[0], state="completed")
-        self.window.task_model.replace([done_id, self.window.task_model.rows[1]])
-        self.window.data_changed.emit("tasks")
-        self.screen.view_switch.setValue("board")
-        self.screen.view_switch.changed.emit("board")
-        self.assertEqual(self.screen.filter, "open")
-        with patch.object(self.window, "select_project_task") as select:
-            self.screen.task_board.card_picked.emit(done_id["id"])
-        self.assertEqual(self.screen.filter, "all")
-        self.assertEqual(self.screen.view_switch.value(), "list")
-        self.assertEqual(self.screen.selected_id, done_id["id"])
-        select.assert_called_once_with(done_id["id"])
-
-
 if __name__ == "__main__":
     unittest.main()

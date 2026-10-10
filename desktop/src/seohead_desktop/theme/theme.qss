@@ -57,11 +57,6 @@ QToolButton[card="choice"] { border: 1px solid $divider; border-radius: ${radius
 QToolButton[card="choice"]:hover { background: $raised; }
 QToolButton[card="choice"]:checked { border: 2px solid $primary; background: $choice_bg; color: $text; padding: 11px; }
 
-/* task board («Доска»): columns on raised surface, cards on base with a divider border */
-QFrame[card="column"] { background: $raised; border-radius: ${radius_card}px; }
-QFrame[card="task"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
-QFrame[card="task"]:hover { border: 1px solid $outline_hover; }
-
 /* segmented control */
 QFrame[segmented="true"] { background: $raised; border-radius: ${radius_control}px; }
 QToolButton[segment="true"] { height: 28px; padding: 0 12px; border-radius: 6px; font-weight: 500; color: $text_2; }
@@ -189,7 +184,7 @@ QLabel[text_style="control"] { font-size: ${font_control}px; font-weight: 500; }
 QFrame[segmented="true"] { background: $raised; border-radius: 10px; border: 0; }
 QToolButton[segment="true"] { height: 30px; padding: 0 12px; border-radius: ${radius_control}px; background: transparent; color: $text_2; font-weight: 500; border: 1px solid transparent; }
 QToolButton[segment="true"]:hover { color: $text; background: transparent; }
-QToolButton[segment="true"]:checked { background: $base; color: $segment_checked_fg; border: 1px solid $segment_checked_border; }
+QToolButton[segment="true"]:checked { background: $base; color: $on_selected; border: 1px solid $divider; }
 
 /* settings dialog */
 QFrame#settingsNav { background: $raised; border: 0; border-right: 1px solid $divider; }

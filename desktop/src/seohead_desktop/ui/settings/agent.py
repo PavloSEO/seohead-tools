@@ -26,7 +26,7 @@ from ...screens.scan_common import StatusBadge
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch
 from ..icons import material_icon
-from .helpers import group_label, page, switch_row, column_stack
+from .helpers import group_label, page, switch_row, two_columns
 
 ID, ICON, TITLE = "agent", "smart_toy", "Агент"
 HINT = "Что агент видит и что может делать через MCP"
@@ -220,4 +220,4 @@ def build_page(store, context):
         Note("info", "Что это меняет.", "Границы агента.<br>Права работают в ядре, а не в окне: CLI и любой MCP-клиент получают те же ограничения."),
     ]
     right[-1].setContentsMargins(0, 14, 0, 0)
-    return page(column_stack(left, right))
+    return page(two_columns(left, right))
