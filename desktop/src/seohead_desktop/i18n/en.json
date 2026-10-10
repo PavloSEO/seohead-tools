@@ -83,6 +83,8 @@
  "Внутренние": "Internal",
  "Страницы своего сайта": "Pages of the site itself",
  "Внешние": "External",
+ "Внешние ссылки доноров": "External donor links",
+ "База внешних ссылок проекта (Вебмастер, Bing, GSC) ещё не подключена к ядру.": "The project's external link base (Webmaster, Bing, GSC) is not connected to the core yet.",
  "Страницы чужих сайтов": "Pages of other sites",
  "Ответы": "Responses",
  "Ответ не 2xx: редиректы, ошибки, без ответа": "Not a 2xx response: redirects, errors, no response",
