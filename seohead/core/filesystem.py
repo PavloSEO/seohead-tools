@@ -144,6 +144,8 @@ def atomic_write_bytes(
         Path(staged).unlink(missing_ok=True)
     if durable:
         fsync_directory(target.parent)
+
+
 def file_sha256(path: str | Path) -> str:
     """Return the SHA-256 hex digest of a regular file, streamed in 1 MiB chunks."""
     digest = hashlib.sha256()

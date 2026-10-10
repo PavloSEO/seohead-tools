@@ -49,7 +49,6 @@ _DEFAULTS = {
 _DEFAULT_LEASE_SECONDS = 300
 
 
-
 def _expiry(stamp: str, seconds: int) -> str:
     parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     return (parsed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")

@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**172 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 181 in total.
+**175 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 184 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2149,6 +2149,46 @@ Filters are closed severity/check/URL/segment selections. Sorting and column pro
 use registered fields only; no SQL, code, or regular expressions are accepted. This
 changes project view configuration only; it does not edit scans or affect scores/tasks.
 
+### `project-view-delete`
+
+MCP name: `seo_project_view_delete`
+
+Delete one saved finding view using the current project view-config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+Changes project view configuration only; it does not edit scans or affect scores/tasks.
+
+### `project-view-rename`
+
+MCP name: `seo_project_view_rename`
+
+Rename one saved finding view using the current project view-config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+| `new_name` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Keeps the view definition; the new name must be unused. Changes project view configuration
+only; it does not edit scans or affect scores/tasks.
+
 ### `findings-view`
 
 MCP name: `seo_findings_view`
@@ -2980,6 +3020,27 @@ The query is offline and read-only. Header and query values stay redacted,
 body bytes remain unavailable here, and legacy/Screaming Frog sources
 return named unavailable evidence instead of an empty detail record.
 
+### `scan-url-history`
+
+MCP name: `seo_scan_url_history`
+
+State of one exact URL across the retained scans of a project, newest first.
+
+| Argument | Type | Default |
+|---|---|---|
+| `project` | `str` | `required` |
+| `url` | `str` | `required` |
+| `limit` | `int` | `50` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Read-only. For each of the newest ``limit`` scans returns state (present, absent or
+unavailable), status_code, indexability, title_hash, canonical, redirect_target and
+content_hash; ``number`` counts all scans from 1 for the oldest. Lookup is by exact
+retained URL text through an index, not a scan of the page table.
+
 ### `scan-url-query`
 
 MCP name: `seo_scan_url_query`
@@ -2999,6 +3060,8 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `max_bytes` | `int` | `1048576` |
 | `preset` | `str | None` | `None` |
 | `facets` | `list[str] | str | None` | `None` |
+| `issue_check` | `str | list[str] | None` | `None` |
+| `issue_severity` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -3010,7 +3073,9 @@ that is combined with them. Sorting by a non-indexed column needs a filter that 
 most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
 with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
 requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
-the same filters, with facets_state exact or capped.
+the same filters, with facets_state exact or capped. issue_check (1..50 check ids) and
+issue_severity (critical|warning|notice) filter by audit issue; until the per-issue index
+exists they return state unavailable with reason_code issue_index_missing.
 
 ### `scan-link-inspect`
 

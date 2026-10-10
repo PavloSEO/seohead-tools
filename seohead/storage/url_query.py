@@ -489,6 +489,8 @@ def _facet_counts(
             raise
         return {g: None for g in ids}, "capped"
     return dict(zip(ids, row, strict=True)), "exact"
+
+
 def _issue_filter_set(check: Any, severity: Any) -> bool:
     """Validate the issue filter arguments; True when one of them is set."""
     if check is not None:

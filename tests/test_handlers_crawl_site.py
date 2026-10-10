@@ -1082,6 +1082,8 @@ def test_list_mode_observer_run_is_failed_when_the_collector_raises(tmp_path, mo
     run = run_observation.status(root)["items"][0]
     assert run["state"] == "failed"
     assert run["finish_reason"] == "RuntimeError"
+
+
 def test_crawl_site_result_reports_the_rate_and_warns_above_two(monkeypatch, tmp_path):
     monkeypatch.setattr(spider_mod, "crawl_site", lambda *a, **k: SpiderResult())
 

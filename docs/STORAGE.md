@@ -605,6 +605,7 @@ value. The documentation test compares this table to `_LATE_PAGE_FIELDS`.
 | `ajax_scheme_outlinks` | `ajax_scheme_outlinks` |
 | `og_url` | `og_url` |
 | `amphtml` | `amphtml` |
+| `mobile_alternate_broken` | `mobile_alternate_broken` |
 
 `NULL` means the field was absent from an older crawl record; it never means a
 measured empty value or zero count. Current imports validate and store actual

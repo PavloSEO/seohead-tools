@@ -222,7 +222,7 @@ def check_robots(
 ) -> RobotsCheckResult:
     robots_url = _robots_url(url)
     try:
-        options = {"follow_redirects": True}
+        options: dict[str, Any] = {"follow_redirects": True}
         if request_gate is not None:
             options["event_hooks"] = {"request": [lambda _request: request_gate()]}
         client, _http2_capable = http_client(

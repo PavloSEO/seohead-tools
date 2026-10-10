@@ -474,6 +474,8 @@ def test_cli_and_mcp_pass_facets(scan_path, capsys):
     assert code == 0 and set(out["facets"]) == set(url_query.FACET_GROUPS)
     tool = build_server()._tool_manager.get_tool("seo_scan_url_query")
     assert "facets" in tool.parameters["properties"]
+
+
 @pytest.mark.parametrize(
     "kw",
     [
