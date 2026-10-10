@@ -82,6 +82,18 @@ class AgentSectionTests(unittest.TestCase):
         button.click()
         self.assertEqual(self.opened, [1])
 
+    def test_configure_button_is_visible_but_unavailable(self):
+        page = agent.build_page(self.store, self.context)
+        button = next(b for b in page.findChildren(QPushButton) if b.text() == "Что агент может настраивать")
+        self.assertFalse(button.isEnabled())
+        self.assertEqual(button.toolTip(), "Недоступно в этой сборке")
+
+    def test_log_badges_carry_an_icon(self):
+        page = agent.build_page(self.store, self.context)
+        chips = [w for w in page.findChildren(QLabel) if w.property("badge")]
+        self.assertEqual([chip.icon.name for chip in chips], ["progress_activity", "block"])
+        self.assertEqual([c.property("badge") for c in chips], ["info", "err"])
+
     def test_no_backend_says_no_data_and_disables_actions(self):
         page = agent.build_page(self.store, SettingsContext())
         texts = self.texts(page)
