@@ -188,3 +188,15 @@ QToolButton#settingsNavItem { height: ${control_nav_item}px; padding: 0 12px; bo
 QToolButton#settingsNavItem:hover { background: $nav_hover; color: $text; }
 QToolButton#settingsNavItem:checked { background: $selected; color: $on_selected; }
 QFrame#dialogFooter { background: $base; border: 0; border-top: 1px solid $divider; }
+
+/* design-v2 modal frame (ui/modal.py): icon tile by tone, footer, filled destructive action */
+QFrame#modalIcon { border: 0; border-radius: 20px; }
+QFrame#modalIcon[tone="primary"] { background: $badge_info_bg; }
+QFrame#modalIcon[tone="agent"] { background: $badge_goal_bg; }
+QFrame#modalIcon[tone="warning"] { background: $badge_warn_bg; }
+QFrame#modalIcon[tone="error"] { background: $badge_err_bg; }
+QFrame#modalIcon[tone="neutral"] { background: $badge_mut_bg; }
+QFrame#modalIcon[tone="success"] { background: $badge_ok_bg; }
+QFrame#modalFooter { background: $base; border: 0; border-top: 1px solid $divider_inner; }
+QPushButton[role="destructive"] { background: $error; border-color: $error; color: $on_primary; }
+QPushButton[role="destructive"]:hover { background: $error_hover; border-color: $error_hover; }
