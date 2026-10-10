@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from seohead.checks.custom_extract import DEFAULT_TIMEOUT_SECONDS, _run_with_budget
 from seohead.checks.custom_search import _target_text, _validate_selector_syntax
 
 from . import READ_TIMEOUT_SECONDS, ScanError, open_scan
@@ -30,6 +31,7 @@ MAX_SNIPPET_CHARS = 320
 _SCOPES = {"raw_html", "head_markup", "body_text", "selector_markup"}
 _REPRESENTATIONS = {"static", "rendered"}
 _MODES = {"contains", "not_contains"}
+_KINDS = {"literal", "regex"}
 
 
 def _arguments(
@@ -38,15 +40,25 @@ def _arguments(
     mode: str,
     representations: Iterable[str],
     selector: str | None,
+    kind: str = "literal",
 ) -> tuple[tuple[str, ...], str]:
     if type(query) is not str or not query.strip():
-        raise ValueError("content search query must be a nonempty literal string")
+        raise ValueError("content search query must be a nonempty string")
     if len(query) > MAX_QUERY_CHARS:
         raise ValueError(f"content search query exceeds {MAX_QUERY_CHARS} characters")
     if scope not in _SCOPES:
         raise ValueError(f"unknown content search scope {scope!r}")
     if mode not in _MODES:
         raise ValueError(f"unknown content search mode {mode!r}")
+    if kind not in _KINDS:
+        raise ValueError(f"unknown content search kind {kind!r}")
+    if kind == "regex":
+        # Syntax is checked once here; a runtime failure per document is a
+        # budget or decode problem, never a silent "no match".
+        try:
+            re.compile(query)
+        except re.error as exc:
+            raise ValueError(f"invalid regex {query!r}: {exc}") from exc
     if isinstance(representations, str):
         raise ValueError("representations must be an explicit iterable, not a string")
     values = tuple(representations)
@@ -62,15 +74,29 @@ def _arguments(
     return values, selector
 
 
-def _snippet(target: str, query: str, *, case_sensitive: bool) -> str:
-    """Return a bounded match excerpt without commonly shaped credential values."""
-    haystack = target if case_sensitive else target.lower()
-    needle = query if case_sensitive else query.lower()
-    start = haystack.find(needle)
-    if start < 0:
-        return ""
+def _snippet(
+    target: str,
+    query: str,
+    *,
+    case_sensitive: bool,
+    span: tuple[int, int] | None = None,
+) -> str:
+    """Return a bounded match excerpt without commonly shaped credential values.
+
+    ``span`` is the match position for regex searches; literal searches locate
+    the marker themselves.
+    """
+    if span is None:
+        haystack = target if case_sensitive else target.lower()
+        needle = query if case_sensitive else query.lower()
+        start = haystack.find(needle)
+        if start < 0:
+            return ""
+        end = start + len(query)
+    else:
+        start, end = span
     left = max(0, start - MAX_SNIPPET_CHARS // 3)
-    right = min(len(target), start + len(query) + MAX_SNIPPET_CHARS * 2 // 3)
+    right = min(len(target), end + MAX_SNIPPET_CHARS * 2 // 3)
     value = " ".join(target[left:right].split())
     # The result is evidence for a literal marker, never a credential dump.
     value = re.sub(
@@ -149,21 +175,28 @@ def search_scan(
     allow_active: bool = False,
     include_snippets: bool = False,
     on_record: Callable[[dict[str, Any]], None] | None = None,
+    kind: str = "literal",
 ) -> dict[str, Any]:
     """Search a closed retained scan without materializing its corpus.
+
+    ``kind="regex"`` treats ``query`` as a Python regular expression, run per
+    document under the custom-extraction wall-clock budget. A document that
+    exceeds the budget is unavailable (``regex_budget_exceeded``), never an
+    absence.
 
     ``absence_confirmed`` is true only when every selected HTML observation is
     readable, the marker is absent from all of them, and the source scan itself
     is complete.  Non-HTML, failed, unretained, and corrupt bodies remain
     named unavailable evidence.
     """
-    selected, selector = _arguments(query, scope, mode, representations, selector)
+    selected, selector = _arguments(query, scope, mode, representations, selector, kind)
     if (
         type(case_sensitive) is not bool
         or type(allow_active) is not bool
         or type(include_snippets) is not bool
     ):
         raise ValueError("case_sensitive, allow_active, and include_snippets must be boolean")
+    pattern = re.compile(query, 0 if case_sensitive else re.IGNORECASE) if kind == "regex" else None
     scan_path = Path(scan)
     if not scan_path.is_file():
         raise ValueError(f"scan does not exist: {scan_path}")
@@ -190,6 +223,7 @@ def search_scan(
             },
             "scope": scope,
             "mode": mode,
+            "kind": kind,
             "representations": list(selected),
             "coverage": {
                 "state": "unavailable",
@@ -270,7 +304,16 @@ def search_scan(
                         }[scope],
                         selector,
                     )
-                    found = query in target if case_sensitive else query.lower() in target.lower()
+                    if pattern is None:
+                        match, timed_out = None, False
+                        found = (
+                            query in target if case_sensitive else query.lower() in target.lower()
+                        )
+                    else:
+                        match, timed_out = _run_with_budget(
+                            pattern.search, target, timeout_seconds=DEFAULT_TIMEOUT_SECONDS
+                        )
+                        found = match is not None
                     # A replacement character or legacy re-encoded body can
                     # prove a positive marker, never a clean site-wide absence.
                     uncertain_absence = not found and (
@@ -278,7 +321,10 @@ def search_scan(
                         or item["decoder_errors"] == "unknown"
                         or "\ufffd" in html
                     )
-                    if uncertain_absence:
+                    if timed_out:
+                        unavailable += 1
+                        record["reason"] = "regex_budget_exceeded"
+                    elif uncertain_absence:
                         unavailable += 1
                         record["reason"] = "decode_fidelity_unavailable_for_absence"
                     else:
@@ -294,7 +340,10 @@ def search_scan(
                             filter_matches += 1
                             if found and include_snippets:
                                 record["snippet"] = _snippet(
-                                    target, query, case_sensitive=case_sensitive
+                                    target,
+                                    query,
+                                    case_sensitive=case_sensitive,
+                                    span=match.span() if match is not None else None,
                                 )
                 except ScanError as exc:
                     unavailable += 1
@@ -329,6 +378,7 @@ def search_scan(
         "source": source,
         "scope": scope,
         "mode": mode,
+        "kind": kind,
         "representations": list(selected),
         "coverage": {
             "state": coverage,

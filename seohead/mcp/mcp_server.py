@@ -2774,6 +2774,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         selector: str | None = None,
         case_sensitive: bool = False,
         include_snippets: bool = False,
+        kind: Literal["literal", "regex"] = "literal",
     ) -> dict[str, Any]:
         """Search one closed retained scan offline and create an indexed local NDJSON package.
 
@@ -2781,6 +2782,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         separate requests; a missing body remains unavailable rather than an
         absence. It returns only source identity, counts and output paths.
         ``include_snippets`` is opt-in and redacts common credential-shaped values.
+        ``kind="regex"`` treats ``query`` as a regular expression; a document
+        that exceeds the per-document regex budget is unavailable, not absent.
         """
         return _checked(
             handlers.scan_content_search(
@@ -2793,6 +2796,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 selector=selector,
                 case_sensitive=case_sensitive,
                 include_snippets=include_snippets,
+                kind=kind,
             )
         )
 

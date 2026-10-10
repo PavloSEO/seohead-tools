@@ -5724,6 +5724,7 @@ def scan_content_search(
     include_snippets: bool = False,
     *,
     progress: Callable[[int], None] | None = None,
+    kind: str = "literal",
 ) -> dict[str, Any]:
     """Search one finished retained scan and write a complete local NDJSON package.
 
@@ -5786,6 +5787,7 @@ def scan_content_search(
                 case_sensitive=case_sensitive,
                 include_snippets=include_snippets,
                 on_record=emit,
+                kind=kind,
             )
         manifest = {
             "format": "seohead.retained-content-search.v1",
@@ -5793,6 +5795,7 @@ def scan_content_search(
             "source": summary["source"],
             "scope": summary["scope"],
             "mode": summary["mode"],
+            "kind": summary["kind"],
             "representations": summary["representations"],
             "coverage": summary["coverage"],
             "absence_confirmed": summary["absence_confirmed"],

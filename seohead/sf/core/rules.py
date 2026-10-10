@@ -2792,21 +2792,27 @@ def check_redirect_chains(ctx: AuditContext) -> None:
             ctx.skip("REDIRECT_CHAIN", "no redirect data (Internal:All has no Redirect URL column)")
             ctx.skip("REDIRECT_LOOP", "no redirect data (Internal:All has no Redirect URL column)")
             return
-        from .redirect_chains import DEFAULT_HOP_CAP, resolve_redirect_chains
+        from .redirect_chains import DEFAULT_HOP_CAP, redirect_hop_path, resolve_redirect_chains
 
         hop_cap = ctx.thresholds.get("redirect_hop_cap", DEFAULT_HOP_CAP)
         for start, outcome in resolve_redirect_chains(ctx.redirect_map, hop_cap).items():
+            # The full walk, so a finding names each hop to replace, not just a count.
+            path = redirect_hop_path(ctx.redirect_map, start, hop_cap)
             if outcome["kind"] == "loop":
                 ctx.add(
                     "REDIRECT_LOOP",
                     target_url=start,
-                    details={"hops": outcome["hops"], "final_url": None},
+                    details={"hops": outcome["hops"], "final_url": None, "path": path},
                 )
             elif outcome["kind"] == "chain":
                 ctx.add(
                     "REDIRECT_CHAIN",
                     target_url=start,
-                    details={"hops": outcome["hops"], "final_url": outcome["final_url"]},
+                    details={
+                        "hops": outcome["hops"],
+                        "final_url": outcome["final_url"],
+                        "path": path,
+                    },
                 )
             elif outcome["kind"] == "unresolved":
                 # The walk hit hop_cap without proving either a clean terminus or a
@@ -2820,6 +2826,7 @@ def check_redirect_chains(ctx: AuditContext) -> None:
                         "hops": outcome["hops"],
                         "final_url": outcome["final_url"],
                         "unresolved": True,
+                        "path": path,
                     },
                 )
         return
