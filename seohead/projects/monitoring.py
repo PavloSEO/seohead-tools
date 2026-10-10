@@ -683,12 +683,12 @@ def _source_artifacts(
         ).encode("utf-8")
     ).hexdigest()
     body_ref = body_hash = None
-    from seohead.crawl.cache import _parse_cache_control
+    from seohead.crawl.cache import parse_cache_control
 
     retain_body = (
         isinstance(body, str)
         and transport.get("status_code") in {200, 304}
-        and "no-store" not in _parse_cache_control(transport.get("cache_control") or "")
+        and "no-store" not in parse_cache_control(transport.get("cache_control") or "")
         and not transport.get("set_cookie")
     )
     if retain_body:

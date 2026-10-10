@@ -111,9 +111,9 @@ def whois_record_is_about(text: str, domain: str) -> bool:
     than no answer: age decides whether a site's authority is treated as an
     asset worth preserving.
     """
-    from seohead.recon.net import _whois_field
+    from seohead.recon.net import whois_field
 
-    stated = _whois_field(text, _WHOIS_IDENTITY_KEYS)
+    stated = whois_field(text, _WHOIS_IDENTITY_KEYS)
     if not stated:
         return False
     stated = stated.strip().rstrip(".").lower()
