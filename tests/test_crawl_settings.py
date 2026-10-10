@@ -601,3 +601,25 @@ def test_the_render_extras_are_cost_only_and_off_the_manifest():
     first = cfg.manifest(cfg.load(overrides={"rendering.artifacts.screenshots": True}))
     second = cfg.manifest(cfg.load(overrides={"rendering.artifacts.screenshots": False}))
     assert first == second
+
+
+# ── rate warnings (#925) ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("delay", "warns"),
+    [(0.5, False), (1.0, False), (0.4, True), (0.25, True), (0, True)],
+)
+def test_a_rate_above_two_requests_per_second_warns_and_two_does_not(delay, warns):
+    warnings = cfg.rate_warnings(cfg.load(overrides={"speed.min_delay_seconds": delay}))
+    assert bool(warnings) is warns
+
+
+def test_the_rate_fields_report_the_number_or_unbounded_with_its_warning():
+    fast = cfg.rate_fields(cfg.load(overrides={"speed.min_delay_seconds": 0.25}))
+    assert fast["effective_max_requests_per_second"] == pytest.approx(4.0)
+    assert "above 2 req/s" in fast["warnings"][0]
+    unbounded = cfg.rate_fields(cfg.load(overrides={"speed.min_delay_seconds": 0}))
+    assert unbounded["effective_max_requests_per_second"] == "unbounded"
+    default = cfg.rate_fields(cfg.load())
+    assert default == {"effective_max_requests_per_second": 2.0, "warnings": []}

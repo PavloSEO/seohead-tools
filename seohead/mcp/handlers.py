@@ -741,7 +741,7 @@ def crawl_site(
             if within_project:
                 from math import isfinite
 
-                from seohead.crawl.settings import effective_request_rate
+                from seohead.crawl.settings import effective_request_rate, rate_fields
                 from seohead.projects.origin_pacing import ProjectOriginPacer
 
                 rate = effective_request_rate(resume_data["settings"])
@@ -803,8 +803,16 @@ def crawl_site(
                         ),
                         counters=reporter.counters(),
                     )
-                return {**result, "observer_run_id": observed["id"]}
-        return resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+                return {
+                    **result,
+                    **rate_fields(resume_data["settings"]),
+                    "observer_run_id": observed["id"],
+                }
+        from seohead.crawl.settings import rate_fields
+        from seohead.mcp.scan_handlers import resume_inputs
+
+        resumed = resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+        return {**resumed, **rate_fields(resume_inputs(resume)["settings"])}
 
     import os
 
@@ -963,7 +971,7 @@ def crawl_site(
         from seohead.mcp.scan_handlers import crawl_list_scan
 
         directory = settings["output"]["dir"] or None
-        return crawl_list_scan(
+        listed = crawl_list_scan(
             urls,
             scan_out=scan_out or str(Path(directory) / ".list.seohead"),
             settings=settings,
@@ -971,6 +979,7 @@ def crawl_site(
             out_dir=directory,
             proxy_route=proxy_route,
         )
+        return {**listed, **crawl_config.rate_fields(settings)}
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -1064,8 +1073,12 @@ def crawl_site(
                     ),
                     counters=reporter.counters(),
                 )
-            return {**result, "observer_run_id": observed["id"]}
-        return result
+            return {
+                **result,
+                **crawl_config.rate_fields(settings),
+                "observer_run_id": observed["id"],
+            }
+        return {**result, **crawl_config.rate_fields(settings)}
     dispatch_gate = None
     if url:
         from seohead.crawl.throttle import DispatchGate, Throttle
@@ -1336,7 +1349,7 @@ def crawl_site(
     if url and result.spooled_evidence and result.finish_reason == "finished":
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(out_dir, ".forms_resume.jsonl"))
-    return response
+    return {**response, **crawl_config.rate_fields(settings)}
 
 
 def _audit_crawl_result(
