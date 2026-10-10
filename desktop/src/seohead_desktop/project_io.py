@@ -228,6 +228,9 @@ class ProjectMixin:
         self.present_observed_runs(runs, result.get("observed_at"))
         self.load_progress(result.get("progress") or {})
         self.load_activity({"observed_at": result.get("observed_at"), "sites": result.get("sites") or {}})
+        self.observed_sites = (result.get("sites") or {}).get("items") or []
+        self.observed_policy = (result.get("policy") or {}).get("policy")
+        self.data_changed.emit("competitors")
         self.load_scans(result.get("scans") or {})
         self.load_inbox(result.get("inbox") or {})
         self.load_unread(result.get("inbox_unread") or {})

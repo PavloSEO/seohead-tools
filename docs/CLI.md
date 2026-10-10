@@ -164,6 +164,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | Command | What it does | Effects |
 |---|---|---|
 | `project-new` | Create a local project workspace; no crawl, checklist execution, or network work starts. | writes |
+| `project-competitors-add` | Record supplied competitor candidates as separate local workspaces; no crawl runs. | writes |
 | `project-start` | Create and prepare a new bounded project; failures leave inspectable pending work. | network, writes |
 | `project-prepare` | Prepare an existing project with a bounded native crawl and saved sitemap coverage. | network, writes |
 | `project-open` | Open a local project workspace without executing template references. | offline, read-only |

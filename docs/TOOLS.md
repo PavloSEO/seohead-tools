@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 170 callable tools,
+The current registry has 162 commands and 171 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -38,7 +38,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
 `monitor-run` · `monitor-schedule` · `monitor-status` · `parse` · `project-activity` ·
 `project-checklist-init` · `project-checklist-page` · `project-checklist-record` · `project-checklist-update`
-· `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
+· `project-competitors-add` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
 `project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
 `project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
 `project-priorities` · `project-progress` · `project-scans` · `project-start` · `project-status` ·
@@ -151,6 +151,7 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-priorities` | Preview saved-fact work order; an explicit expected-revision apply preserves operator decisions and never changes technical severity | no |
 | `project-policy` | Preview or explicitly save the bounded crawl/admission policy; applying it requires the current policy revision | no |
 | `project-prepare` | Runs the declared bounded preparation path: checklist initialization, a policy-bounded crawl, supplied competitor workspace setup, and an inspectable initial plan | yes |
+| `project-competitors-add` | Records supplied competitor candidates as separate local workspaces, without crawling | yes |
 | `project-start` | Creates a new local project then enters the same bounded preparation path | yes |
 
 The nested aliases are `seohead project new`, `seohead project open`,
@@ -764,7 +765,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (161 + 5 + 4):
+`seo_semantics_*` tools (162 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio
