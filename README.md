@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/readme-hero.svg" alt="SpiderHead: SEO crawler and audit toolkit — CLI, MCP and Desktop" width="100%"></p>
+<p align="center"><img src="docs/assets/spiderhead-hero.svg" alt="SpiderHead: SEO crawler and audit toolkit — CLI, MCP and Desktop" width="100%"></p>
 
 
 
