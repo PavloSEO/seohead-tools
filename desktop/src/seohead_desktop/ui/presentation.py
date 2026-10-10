@@ -258,9 +258,10 @@ def short_run_id(value):
 
 class ElidedLabel(QLabel):
     """Single-line context stays readable without widening the window."""
-    def __init__(self, text="", parent=None):
+    def __init__(self, text="", parent=None, elide=Qt.ElideMiddle):
         super().__init__(parent)
         self._full_text = ""
+        self._elide_mode = elide
         self.setTextFormat(Qt.PlainText)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.setMinimumWidth(40)
@@ -276,7 +277,7 @@ class ElidedLabel(QLabel):
         return self._full_text
 
     def _elide(self):
-        super().setText(self.fontMetrics().elidedText(self._full_text, Qt.ElideMiddle, max(40, self.width() - 8)))
+        super().setText(self.fontMetrics().elidedText(self._full_text, self._elide_mode, max(40, self.width() - 8)))
 
     def resizeEvent(self, event):
         self._elide()
