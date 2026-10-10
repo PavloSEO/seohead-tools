@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from typing import Any
 
@@ -116,19 +115,3 @@ def timeline(con: sqlite3.Connection, *, limit: int = 1_000) -> dict[str, Any]:
         else {"state": "unknown", "captured": len(events), "dropped": "unknown", "cap": "unknown"}
     )
     return {"format": "seohead.crawl-timeline.v1", "events": events, "coverage": coverage}
-
-
-def read_timeline(path: str, *, limit: int = 1_000) -> dict[str, Any]:
-    """Open an existing SQLite artifact read-only and return its bounded event timeline."""
-    if not isinstance(path, str) or not path:
-        raise ValueError("timeline path is required")
-    if os.path.islink(path) or not os.path.isfile(path):
-        raise ScanError("timeline path must be an existing non-symlink SQLite artifact")
-    from seohead.storage import open_scan
-
-    con = open_scan(path, require_audit=False)
-    try:
-        con.execute("PRAGMA query_only=ON")
-        return timeline(con, limit=limit)
-    finally:
-        con.close()

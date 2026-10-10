@@ -80,31 +80,6 @@ def neutralize_formula(value: Any) -> Any:
     return value
 
 
-def format_locations(locations: Any) -> str:
-    """Flatten a finding's ``locations`` list into one reviewable cell.
-
-    xlsx and csv are the tabular "working output" the broken-pages scenario
-    hands to a developer (docs/scenarios/broken-pages.md), so each source
-    page, its anchor, its position on the page and its XPath must survive
-    into one column rather than requiring the reader to open the raw
-    audit.json (#220).
-    """
-    if not isinstance(locations, list):
-        return ""
-    rows = []
-    for loc in locations:
-        if not isinstance(loc, dict):
-            continue
-        bits = [
-            str(loc[key])
-            for key in ("source_url", "anchor", "link_position", "link_path")
-            if loc.get(key)
-        ]
-        if bits:
-            rows.append(" · ".join(bits))
-    return "; ".join(rows)
-
-
 def checks_completed_display(summary: dict[str, Any]) -> int | str:
     """Return the "checks completed" value for a normalized report summary.
 

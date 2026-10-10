@@ -245,18 +245,6 @@ def _extract(html: str, final_url: str) -> _DocEvidence:
     return evidence
 
 
-@dataclass
-class _Lane:
-    """One (page, representation) evaluation lane."""
-
-    page_ordinal: int
-    url: str
-    url_id: int
-    representation: str
-    document: dict[str, Any] | None
-    is_html: bool
-
-
 def _document_rows(con: sqlite3.Connection) -> dict[tuple[int, str], dict[str, Any]]:
     """The active retained document per (url_id, representation).
 

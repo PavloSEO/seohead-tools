@@ -20,22 +20,6 @@ def ensure_schema(con: Any) -> None:
     )
 
 
-def check_item(ordinal: int, payload: dict[str, Any]) -> dict[str, str]:
-    if type(ordinal) is not int or not 0 <= ordinal < MAX_EXTERNAL_CHECKS:
-        raise ScanError("external check ordinal is outside the retained bound")
-    item = {
-        "kind": "external_check",
-        "item_key": str(ordinal),
-        "payload_version": "scan_context.v1",
-        "payload_json": _dump(payload),
-        "completeness": "complete",
-        "reason": "",
-    }
-    if len(item["payload_json"].encode("utf-8")) > MAX_RECORD_BYTES:
-        raise ScanError("external check exceeds the retained record bound")
-    return item
-
-
 def summary_item(summary: dict[str, Any]) -> dict[str, str]:
     item = {
         "kind": "external_checks_summary",

@@ -234,10 +234,6 @@ def _credential_details(provider: str) -> tuple[dict[str, bool], dict[str, dict[
     return components, details
 
 
-def _credential_components(provider: str) -> dict[str, bool]:
-    return _credential_details(provider)[0]
-
-
 def _readiness_state(
     provider: str, components: dict[str, bool], details: dict[str, dict[str, Any]]
 ) -> str:

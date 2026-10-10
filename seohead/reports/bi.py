@@ -758,14 +758,6 @@ class _ObservationStream:
         return self.count
 
 
-def _state_value(
-    value: Any, *, reason: str = "source field is null"
-) -> tuple[Any, str, str | None]:
-    if value is None:
-        return None, "unavailable", reason
-    return value, "measured", None
-
-
 def _audit_kind(document: dict[str, Any]) -> str:
     from seohead.reports import _detect_kind
 
@@ -1317,14 +1309,6 @@ def _page_key(url: str | None) -> tuple[str | None, str, str | None]:
     if key is None:
         return None, "unkeyable", "URL is not a valid absolute HTTP(S) join key"
     return key, "keyed", None
-
-
-def _measure(value: Any, state: str, reason: str | None = None) -> tuple[Any, str, str | None]:
-    if state == "unavailable":
-        return None, state, reason or "source value unavailable"
-    if value is None:
-        return None, "unavailable", reason or "source value is null"
-    return value, state, reason
 
 
 def _audit_metric(page: dict[str, Any], name: str, kind: str) -> Any:
