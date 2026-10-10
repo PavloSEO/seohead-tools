@@ -1025,7 +1025,11 @@ def _resolve_redirect_destination(
     current = record.redirect_url
     chain: list[dict[str, Any]] = []
     record.redirect_chain = chain
-    while current and current not in visited and len(chain) < MAX_REDIRECT_CHAIN_HOPS:
+    while current and len(chain) < MAX_REDIRECT_CHAIN_HOPS:
+        if current in visited:
+            # A repeated URL closes a loop: mark the closing step, do not fetch it again.
+            chain.append({"url": current, "loop": True})
+            break
         visited.add(current)
         hop, _ = fetch_one(
             current,
@@ -1059,8 +1063,9 @@ def _resolve_redirect_destination(
             break
         current = hop.redirect_url
     record.redirect_chain = chain
-    if chain:
-        record.final_url = chain[-1]["url"]
+    fetched = [hop for hop in chain if not hop.get("loop")]
+    if fetched:
+        record.final_url = fetched[-1]["url"]
 
 
 def _resolve_canonical_destination(
