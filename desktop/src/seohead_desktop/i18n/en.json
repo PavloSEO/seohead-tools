@@ -104,7 +104,7 @@
  "Колонки": "Columns",
  "Экспорт отфильтрованных строк": "Export filtered rows",
  "Не удалось прочитать данные скана": "Could not read the scan data",
- "Данные на диске не тронуты — повторите чтение.": "Data on disk is untouched — try reading again.",
+ "Ядро seohead вернуло ошибку при чтении скана. Данные на диске не тронуты — повторите чтение или откройте диагностику окружения.": "The seohead core returned an error while reading the scan. Data on disk is untouched — try reading again or open environment diagnostics.",
  "Убрать условие": "Remove condition",
  "Адрес содержит…": "Address contains…",
  "Поиск по адресу": "Search by address",
@@ -112,7 +112,7 @@
  "Таблица показывает по 200 строк. Фильтры, сортировка и числа считает ядро по всему скану, а не по загруженной странице. Сортировка по колонке без индекса доступна, когда фильтр оставляет не больше 100 000 строк.": "The table shows 200 rows at a time. Filters, sorting and numbers are computed by the core over the whole scan, not over the loaded page. Sorting by an unindexed column works when the filter leaves at most 100,000 rows.",
  "URL запуска": "URLs of the run",
  "В проекте ещё нет сканов": "The project has no scans yet",
- "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical. Запустите первый скан — данные появятся по мере обхода.": "The URL inspector shows every page of the site: response, indexation, title, canonical. Start the first scan — data appears as the crawl goes.",
+ "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical, ссылки. Запустите первый скан — данные появятся по мере обхода.": "The URL inspector shows every page of the site: response, indexation, title, canonical, links. Start the first scan — data appears as the crawl goes.",
  "страница за {s} с · в памяти {n} строк": "page in {s} s · {n} rows in memory",
  "Раздел сайта: путь начинается с…": "Site section: path starts with…",
  "Раздел сайта": "Site section",
@@ -2095,5 +2095,6 @@
  "добавить {key}": "add {key}",
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
- "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed."
+ "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
+ "Импорт экспорта SF": "Import SF export"
 }
