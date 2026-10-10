@@ -35,6 +35,7 @@ from seohead.checks import (
     robots as robots_core,
 )
 from seohead.core import runlog
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.core.models import ParseManyResult, RobotsCheckResult
 
 LARGE_EVIDENCE_JOIN_SCAN_PAGES = 100_000
@@ -741,7 +742,7 @@ def crawl_site(
             if within_project:
                 from math import isfinite
 
-                from seohead.crawl.settings import effective_request_rate
+                from seohead.crawl.settings import effective_request_rate, rate_fields
                 from seohead.projects.origin_pacing import ProjectOriginPacer
 
                 rate = effective_request_rate(resume_data["settings"])
@@ -803,8 +804,18 @@ def crawl_site(
                         ),
                         counters=reporter.counters(),
                     )
-                return {**result, "observer_run_id": observed["id"]}
-        return resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+                return {
+                    **result,
+                    **rate_fields(resume_data["settings"]),
+                    "observer_run_id": observed["id"],
+                }
+        from seohead.crawl.settings import rate_fields
+        from seohead.mcp.scan_handlers import resume_inputs
+
+        # Read the settings before resuming: the scan is finished once resume_scan returns.
+        rate = rate_fields(resume_inputs(resume)["settings"])
+        resumed = resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+        return {**resumed, **rate}
 
     import os
 
@@ -1005,7 +1016,7 @@ def crawl_site(
                     finish(project_root, observed["id"], state="failed", reason=type(exc).__name__)
             raise
         if observed is None:
-            return result
+            return {**result, **crawl_config.rate_fields(settings)}
         unavailable = result.get("audit_available") is False
         with contextlib.suppress(OSError, ValueError):
             finish(
@@ -1018,7 +1029,7 @@ def crawl_site(
                     else str(result.get("finish_reason") or "finished")
                 ),
             )
-        return {**result, "observer_run_id": observed["id"]}
+        return {**result, **crawl_config.rate_fields(settings), "observer_run_id": observed["id"]}
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -1112,8 +1123,12 @@ def crawl_site(
                     ),
                     counters=reporter.counters(),
                 )
-            return {**result, "observer_run_id": observed["id"]}
-        return result
+            return {
+                **result,
+                **crawl_config.rate_fields(settings),
+                "observer_run_id": observed["id"],
+            }
+        return {**result, **crawl_config.rate_fields(settings)}
     dispatch_gate = None
     if url:
         from seohead.crawl.throttle import DispatchGate, Throttle
@@ -1384,7 +1399,7 @@ def crawl_site(
     if url and result.spooled_evidence and result.finish_reason == "finished":
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(out_dir, ".forms_resume.jsonl"))
-    return response
+    return {**response, **crawl_config.rate_fields(settings)}
 
 
 def _audit_crawl_result(
@@ -1982,6 +1997,28 @@ def _audit_crawl_result(
             "JS_CONSOLE_ERRORS",
             "no browser console was retained; enable rendering.artifacts.console_errors",
         )
+    # Per-URL security headers (#1013): the final response of each HTML page, judged from the
+    # retained scan. Without a stored scan there is no per-URL header evidence to judge.
+    from seohead.crawl import security_headers
+
+    if stored_scan is not None:
+        header_evidence = security_headers.evaluate(stored_scan.con)
+        for check_id, items in header_evidence["findings"].items():
+            for item in items:
+                ctx.add(check_id, target_url=item["target_url"], details=item)
+            if items:
+                continue
+            if header_evidence["pages_unmeasured"]:
+                ctx.skip(
+                    check_id,
+                    f"{header_evidence['pages_unmeasured']} HTML pages have no parseable "
+                    "stored response headers",
+                )
+            elif not header_evidence["pages_measured"]:
+                ctx.skip(check_id, "no HTML page with a 2xx response was stored")
+    else:
+        for check_id in security_headers.HEADER_CHECKS:
+            ctx.skip(check_id, "crawl was not stored; per-URL response headers are not retained")
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
@@ -2731,9 +2768,6 @@ def crawl_enrich(
     """
     if not external_csv:
         raise ValueError("external_csv required")
-    import contextlib
-    import os
-    import tempfile
     from pathlib import Path
 
     from seohead.checks.analytics_findings import analytics_findings
@@ -2774,15 +2808,7 @@ def crawl_enrich(
             raise ValueError("cannot write an orphan list from a partial crawl")
         target = Path(out_urls)
         target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=target.parent, prefix=".crawl-enrich-")
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.writelines(f"{url}\n" for url in candidates)
-            os.replace(temporary, target)
-        except BaseException:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temporary)
-            raise
+        atomic_write_bytes(target, "".join(f"{url}\n" for url in candidates).encode("utf-8"))
     result: dict[str, Any] = {
         "schema_version": "crawl_enrich.v1",
         "join": joined,
@@ -3805,11 +3831,7 @@ TRAFFIC_REPORT_BASENAME = "metrika-traffic"
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    import os
-
-    partial = path.with_name(f".{path.name}.partial")
-    partial.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(partial, path)
+    atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def metrika_traffic_pdf(

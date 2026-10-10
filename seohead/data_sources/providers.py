@@ -10,12 +10,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from seohead.checks.external_join import join_external_data, orphan_urls
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.data_sources import credentials
 from seohead.data_sources.yandex_webmaster import OPERATIONS as _WEBMASTER_OPERATIONS
 
@@ -444,16 +444,9 @@ def _save_local_artifact(directory: str | Path, value: dict[str, Any]) -> str:
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     digest = hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
     destination = root / f"provider-{digest[:16]}.json"
-    descriptor, staged = tempfile.mkstemp(prefix=".provider-", dir=root)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(staged, 0o600)
-        os.replace(staged, destination)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    atomic_write_bytes(
+        destination, json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    )
     return f"local-artifact:{digest}"
 
 

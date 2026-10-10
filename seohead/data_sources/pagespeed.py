@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.data_sources.http import open_no_redirect
 
 HOST = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
@@ -98,15 +97,7 @@ def _cache_path(cache_dir: str | Path, url: str, strategy: str) -> Path:
 
 def _write_cache(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    descriptor, staged = tempfile.mkstemp(prefix=".psi-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(staged, path)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    atomic_write_bytes(path, json.dumps(value, sort_keys=True).encode("utf-8"), prefix=".psi-")
 
 
 def _parse(body: dict[str, Any], url: str, strategy: str) -> dict[str, Any] | None:

@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import stage_bytes
 
 CONFIG_ROOT = Path(os.path.expanduser("~/.config"))
 
@@ -84,13 +85,8 @@ def write_secret(path: str, value: str, *, replace: bool = False) -> None:
         raise FileNotFoundError(f"no existing credential to replace at {path}")
     if not replace and target.exists():
         raise FileExistsError(f"credential already exists at {path}; use replace")
-    descriptor, staged = tempfile.mkstemp(prefix=".credential-", dir=target.parent)
+    staged = stage_bytes(target.parent, ".credential-", value.encode("utf-8"), mode=0o600)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(value)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(staged, 0o600)
         if replace:
             os.replace(staged, target)
         else:

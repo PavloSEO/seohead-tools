@@ -27,7 +27,7 @@ Counts shown in `docs/TOOLS.md` and `docs/CHECKS.md` are checked against source 
 
 - 172 shared handlers exposed through the CLI and `seo_*` MCP tools;
 - five Screaming Frog-specific `sf_*` MCP tools;
-- 194 audit checks in the crawl registry;
+- 198 audit checks in the crawl registry;
 - 25 technical workflow skills plus eight packaged SEO playbooks;
 - About 7,400 offline tests collected by pytest in the current suite.
 

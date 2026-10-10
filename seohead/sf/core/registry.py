@@ -1177,6 +1177,30 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Write an explicit https:// href; a protocol-relative one silently follows "
         "whatever scheme served the current page, including a plain-HTTP embed.",
     },
+    "MISSING_CSP": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no Content-Security-Policy header",
+        "fix": "Send a Content-Security-Policy header that names the script and style sources the page uses.",
+    },
+    "MISSING_X_CONTENT_TYPE_OPTIONS": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no X-Content-Type-Options header",
+        "fix": "Send X-Content-Type-Options: nosniff so browsers do not sniff the response into another type.",
+    },
+    "MISSING_X_FRAME_OPTIONS": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has neither X-Frame-Options nor a CSP frame-ancestors directive",
+        "fix": "Send X-Frame-Options: SAMEORIGIN or a Content-Security-Policy frame-ancestors directive.",
+    },
+    "MISSING_REFERRER_POLICY": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no Referrer-Policy header",
+        "fix": "Send a Referrer-Policy header, for example strict-origin-when-cross-origin.",
+    },
     "OUTLINK_TO_LOCALHOST": {
         "severity": "warning",
         "source": "crawl:link_findings",
