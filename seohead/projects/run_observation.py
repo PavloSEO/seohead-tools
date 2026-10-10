@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .coverage import _now
 from .runtime import read_document, write_document
 from .workspace import _load as _load_workspace
 
@@ -34,10 +35,6 @@ _KINDS = {"native", "screaming_frog", "sitemap"}
 _MODES = {"spider", "list", "sf_live", "sf_exports", "sitemap"}
 _STATES = {"running", "finished", "partial", "failed", "cancelled"}
 _PHASES = {"admission", "collection", "render", "external", "analysis", "finalizing"}
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _text(value: Any, name: str, maximum: int) -> str:

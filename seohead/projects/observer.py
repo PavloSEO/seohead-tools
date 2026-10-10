@@ -80,22 +80,37 @@ def _evidence_cache_key(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _cache_get(key: tuple[Any, ...]) -> dict[str, Any] | None:
-    with _EVIDENCE_CACHE_LOCK:
-        value = _EVIDENCE_CACHE.get(key)
+def _lru_get(
+    cache: OrderedDict[tuple[Any, ...], Any],
+    lock: RLock,
+    key: tuple[Any, ...],
+    *,
+    copy_value: bool,
+) -> Any | None:
+    """Return a cached value; copy on the way out when the cache owns mutable state."""
+    with lock:
+        value = cache.get(key)
         if value is None:
             return None
-        _EVIDENCE_CACHE.move_to_end(key)
-        return copy.deepcopy(value)
+        cache.move_to_end(key)
+        return copy.deepcopy(value) if copy_value else value
 
 
-def _cache_put(key: tuple[Any, ...], value: dict[str, Any]) -> dict[str, Any]:
-    with _EVIDENCE_CACHE_LOCK:
-        _EVIDENCE_CACHE[key] = copy.deepcopy(value)
-        _EVIDENCE_CACHE.move_to_end(key)
-        while len(_EVIDENCE_CACHE) > _EVIDENCE_CACHE_LIMIT:
-            _EVIDENCE_CACHE.popitem(last=False)
-    return copy.deepcopy(value)
+def _lru_put(
+    cache: OrderedDict[tuple[Any, ...], Any],
+    lock: RLock,
+    limit: int,
+    key: tuple[Any, ...],
+    value: Any,
+    *,
+    copy_value: bool,
+) -> None:
+    """Store a value, evicting least recently used entries beyond the limit."""
+    with lock:
+        cache[key] = copy.deepcopy(value) if copy_value else value
+        cache.move_to_end(key)
+        while len(cache) > limit:
+            cache.popitem(last=False)
 
 
 def _read_retained_findings(row: dict[str, Any]) -> dict[str, Any]:
@@ -130,27 +145,10 @@ def _read_retained_findings(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _findings_cache_get(key: tuple[Any, ...]) -> dict[str, Any] | None:
-    with _FINDINGS_CACHE_LOCK:
-        value = _FINDINGS_CACHE.get(key)
-        if value is None:
-            return None
-        _FINDINGS_CACHE.move_to_end(key)
-        return value
-
-
-def _findings_cache_put(key: tuple[Any, ...], value: dict[str, Any]) -> None:
-    with _FINDINGS_CACHE_LOCK:
-        _FINDINGS_CACHE[key] = value
-        _FINDINGS_CACHE.move_to_end(key)
-        while len(_FINDINGS_CACHE) > _FINDINGS_CACHE_LIMIT:
-            _FINDINGS_CACHE.popitem(last=False)
-
-
 def _retained_findings(row: dict[str, Any]) -> dict[str, Any]:
     """Reuse bounded finding rows while source, audit and retained state match."""
     key = _evidence_cache_key(row)
-    cached = _findings_cache_get(key)
+    cached = _lru_get(_FINDINGS_CACHE, _FINDINGS_CACHE_LOCK, key, copy_value=False)
     if cached is not None:
         return cached
     findings = _read_retained_findings(row)
@@ -161,7 +159,14 @@ def _retained_findings(row: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         return findings
     if size <= _FINDINGS_CACHE_MAX_BYTES:
-        _findings_cache_put(key, findings)
+        _lru_put(
+            _FINDINGS_CACHE,
+            _FINDINGS_CACHE_LOCK,
+            _FINDINGS_CACHE_LIMIT,
+            key,
+            findings,
+            copy_value=False,
+        )
     return findings
 
 
@@ -322,7 +327,7 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
     reusing one.  Failures remain uncached so recovery is visible immediately.
     """
     key = _evidence_cache_key(row)
-    cached = _cache_get(key)
+    cached = _lru_get(_EVIDENCE_CACHE, _EVIDENCE_CACHE_LOCK, key, copy_value=True)
     if cached is not None:
         return cached
     evidence = _read_scan_evidence(row)
@@ -332,7 +337,15 @@ def _scan_evidence(row: dict[str, Any]) -> dict[str, Any]:
     # The following refresh will read the stable state instead.
     if _evidence_cache_key(row) != key:
         return evidence
-    return _cache_put(key, evidence)
+    _lru_put(
+        _EVIDENCE_CACHE,
+        _EVIDENCE_CACHE_LOCK,
+        _EVIDENCE_CACHE_LIMIT,
+        key,
+        evidence,
+        copy_value=True,
+    )
+    return copy.deepcopy(evidence)
 
 
 def _relative_artifact(root: Path, path: str) -> str | None:
