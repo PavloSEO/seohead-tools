@@ -1525,7 +1525,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "links-check":
         sub.add_argument("--internal-only", action="store_true", help="check internal links only")
     if cmd == "log-analyze":
-        _source_flag(sub, "--path", help="web server access-log file (Apache, Nginx, or IIS)")
+        _source_flag(
+            sub,
+            "--path",
+            help="web server access-log file (Apache, Nginx, or IIS; gzip-compressed allowed)",
+        )
         sub.add_argument(
             "--verify-bots",
             action="store_true",

@@ -10,7 +10,7 @@ It detects the format from sample lines. IIS column positions come from each
 rearrange or change fields during a file.
 
 Files are processed line by line so a multi-gigabyte log does not require matching
-memory. High-cardinality accumulators are capped to bound memory use.
+memory. Gzip-compressed logs are detected by content and read the same way. High-cardinality accumulators are capped to bound memory use.
 
 Bot verification
 ----------------
@@ -32,6 +32,7 @@ an authenticity verdict.
 
 from __future__ import annotations
 
+import gzip
 import ipaddress
 import itertools
 import re
@@ -382,10 +383,41 @@ def analyze_log(
 ) -> dict[str, Any]:
     """Parse a log and calculate aggregates; only bot verification uses the network."""
     try:
-        handle = open(path, encoding="utf-8", errors="replace")  # noqa: SIM115 - report open errors
+        handle = _open_log(path)
     except OSError as exc:
         return {"ok": False, "path": path, "error": str(exc)}
 
+    try:
+        return _analyze_handle(
+            handle, path, verify_bots=verify_bots, max_lines=max_lines, sample_size=sample_size
+        )
+    except (OSError, EOFError) as exc:
+        # A truncated or corrupt .gz raises mid-stream. Report it as data: partial counts
+        # from a broken archive must not be presented as a complete analysis.
+        return {"ok": False, "path": path, "error": f"Cannot read log: {exc}"}
+    finally:
+        handle.close()
+
+
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _open_log(path: str):
+    """Open a log as text, transparently decompressing gzip by content, not by file name.
+
+    Rotated logs (``access.log.1.gz``) and renamed archives both carry the gzip magic
+    bytes, so detection reads the header rather than trusting the extension.
+    """
+    with open(path, "rb") as probe:
+        magic = probe.read(2)
+    if magic == _GZIP_MAGIC:
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return open(path, encoding="utf-8", errors="replace")
+
+
+def _analyze_handle(
+    handle, path: str, *, verify_bots: bool, max_lines: int, sample_size: int
+) -> dict[str, Any]:
     with handle:
         sample = []
         for _ in range(sample_size):
