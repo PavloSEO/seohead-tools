@@ -2100,7 +2100,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--url", help="URL whose links to page (view=links)")
         sub.add_argument("--direction", choices=("out", "in"))
         sub.add_argument("--link-type", dest="link_type", choices=("all", "internal", "external"))
-        sub.add_argument("--follow", choices=("all", "follow", "nofollow"))
+        sub.add_argument("--follow", choices=("all", "follow", "nofollow", "sponsored", "ugc"))
         sub.add_argument(
             "--status-class",
             dest="status_class",
