@@ -647,6 +647,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Page contains a notranslate directive",
         "fix": "Confirm that opting out of translation-related Google Search features is intentional.",
     },
+    "NOODP": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Page contains a legacy noodp directive",
+        "fix": "Remove the retired noodp directive; the Open Directory Project closed in 2017 and the directive has no effect.",
+    },
+    "NOYDIR": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Page contains a legacy noydir directive",
+        "fix": "Remove the retired noydir directive; the Yahoo Directory closed and the directive has no effect.",
+    },
     "UNAVAILABLE_AFTER": {
         "severity": "warning",
         "source": "SF-derived",

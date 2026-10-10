@@ -293,8 +293,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Unavailable_After", "UNAVAILABLE_AFTER"),
         _c("NoSnippet", "NOSNIPPET"),
-        _o("NoODP", "the directive was retired with the Open Directory Project in 2017"),
-        _o("NoYDIR", "the directive was retired with the Yahoo Directory"),
+        _c("NoODP", "NOODP"),
+        _c("NoYDIR", "NOYDIR"),
         _c("NoTranslate", "NOTRANSLATE"),
     ],
     "Hreflang": [

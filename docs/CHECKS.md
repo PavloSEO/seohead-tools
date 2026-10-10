@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**184 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -183,6 +183,8 @@ python scripts/generate_checks_reference.py
 | `META_REFRESH_REDIRECT` | warning | SF:Directives:Refresh | Redirect is implemented with meta refresh | Replace meta refresh with a server-side 301 redirect when the move is permanent. |
 | `HTTP_REFRESH_REDIRECT` | warning | crawl:http_refresh | Redirect is implemented with an HTTP Refresh response header | Replace it with a server-side 301/302 redirect (Location header); a search engine treats Refresh the same as a meta refresh -- an unreliable, delayed signal compared to a real HTTP redirect status code. |
 | `NOTRANSLATE` | notice | SF-derived | Page contains a notranslate directive | Confirm that opting out of translation-related Google Search features is intentional. |
+| `NOODP` | notice | SF-derived | Page contains a legacy noodp directive | Remove the retired noodp directive; the Open Directory Project closed in 2017 and the directive has no effect. |
+| `NOYDIR` | notice | SF-derived | Page contains a legacy noydir directive | Remove the retired noydir directive; the Yahoo Directory closed and the directive has no effect. |
 | `UNAVAILABLE_AFTER` | warning | SF-derived | Page carries an unavailable_after directive with a deindex date | Confirm the date is intentional and in the future; once it passes, the page is removed from the index automatically. |
 
 ## --- extension: canonicals ---
