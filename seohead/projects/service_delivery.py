@@ -32,6 +32,8 @@ class DeliveryReceipts:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_mode & 0o077:
             raise ValueError("delivery receipt store must be private")
+        # Create the file private before SQLite does, so it never exists with wider modes.
+        os.close(os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600))
         with closing(sqlite3.connect(self.path)) as con, con:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS deliveries (

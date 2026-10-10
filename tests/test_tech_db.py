@@ -237,3 +237,9 @@ def test_ant_design_marker_is_specific_enough():
         assert marker not in "important-note gigant-banner restaurant-menu", (
             f"marker {marker!r} is too broad and matches ordinary CSS classes"
         )
+
+
+def test_a_negated_implication_implies_nothing():
+    # ["not", X] means "X is absent"; it must not add X or the literal "not"
+    assert tech_db._implied_names(["not", "WordPress"]) == []
+    assert tech_db._implied_names(["WordPress", ["not", "Joomla"]]) == ["WordPress"]

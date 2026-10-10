@@ -82,6 +82,17 @@ def test_a_chain_longer_than_the_hop_cap_is_left_unresolved_not_asserted():
     assert outcome["https://x/0"]["final_url"] is None
 
 
+def test_a_chain_of_exactly_the_hop_cap_resolves_not_unresolved():
+    redirect_map = {"https://x/0": "https://x/1", "https://x/1": "https://x/2"}
+    outcome = resolve_redirect_chains(redirect_map, hop_cap=2)
+    assert outcome["https://x/0"] == {"kind": "chain", "hops": 2, "final_url": "https://x/2"}
+    assert redirect_hop_path(redirect_map, "https://x/0", hop_cap=2) == [
+        "https://x/0",
+        "https://x/1",
+        "https://x/2",
+    ]
+
+
 def test_unrelated_chains_are_resolved_independently():
     redirect_map = {
         "https://x/a": "https://x/b",
@@ -169,13 +180,14 @@ def test_a_threshold_change_costs_no_requests_and_changes_the_result(tmp_path):
     # the walk from "a" needs 2 hops to resolve; a cap of 1 cannot prove either a clean
     # terminus or a loop -- but that is not "no chain here" (#447): it must still surface
     # as evidence, flagged unresolved rather than silently dropped.
-    assert chain_urls == {"https://example.com/a", "https://example.com/b"}
+    # "b" is a single hop to a clean terminus, so it is not a chain at any cap.
+    assert chain_urls == {"https://example.com/a"}
     unresolved = {
         i["target_url"]
         for i in result["issues"]
         if i["check"] == "REDIRECT_CHAIN" and i["details"].get("unresolved")
     }
-    assert unresolved == {"https://example.com/a", "https://example.com/b"}
+    assert unresolved == {"https://example.com/a"}
 
 
 # -- wired into a native seohead crawl (list mode), no Screaming Frog at all --

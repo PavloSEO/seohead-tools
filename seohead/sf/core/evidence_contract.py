@@ -414,7 +414,11 @@ def _language_observations(
         if not isinstance(item_key, str) or not isinstance(declarations, list):
             continue
         if not declarations:
-            state = payload.get("state") if isinstance(payload.get("state"), str) else "unknown"
+            state = (
+                payload.get("state")
+                if isinstance(payload, dict) and isinstance(payload.get("state"), str)
+                else "unknown"
+            )
             output.append(
                 {
                     "state": "measured",

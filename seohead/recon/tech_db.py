@@ -273,6 +273,8 @@ def _implied_names(imp: Any) -> list[str]:
         return [imp.split("\\;")[0]]  # strip optional tags
     if isinstance(imp, list):
         head = imp[0] if imp else None
+        if head == "not":  # a negated condition implies nothing
+            return []
         if head in ("or", "and"):  # noqa: SIM108 — documents the implicit-AND branch
             rest = imp[1:]
         else:
