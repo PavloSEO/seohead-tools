@@ -118,9 +118,9 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # 62 -> 63 when HTML_OVER_2MB joined the registry: it needs a native HTML
     # body above 2 MB, which the SF-export fixture never carries, so it is
     # a named silent check rather than a manufactured finding.
-    assert (
-        coverage["checks_silent"] <= 67
-    )  # provisional: 66 (batch-4) + 1 (HTML_OVER_2MB), verify by test run
+    # 66 -> 67 (HTML_OVER_2MB) -> 68 (INTERNAL_LINK_SPONSORED_UGC, #1143): reads native rel hints
+    # that the SF-export fixture never produces, so it runs silent.
+    assert coverage["checks_silent"] <= 68
 
 
 def test_a_disabled_check_is_its_own_bucket_never_silent_or_clean(tmp_path):

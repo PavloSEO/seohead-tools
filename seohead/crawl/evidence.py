@@ -250,6 +250,8 @@ def _row(
         # Native-crawl only (#385): legacy plugin-dependent elements
         # (<object>/<embed>/<applet>) that are not a benign image fallback.
         "Unsupported Plugin Elements": record.plugin_elements,
+        # Native-crawl only (#1016): media-qualified rel=alternate with no href.
+        "Mobile Alternate Broken": record.mobile_alternate_broken,
         # Native-crawl only (#386): the deprecated AJAX crawling scheme, in its
         # two shapes -- the page-wide <meta name="fragment"> opt-in, and how many
         # of the page's own outlinks are written as "#!"/"?_escaped_fragment_="

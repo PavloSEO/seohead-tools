@@ -112,6 +112,8 @@ class PageRecord:
     # Legacy plugin-dependent elements (<object>/<embed>/<applet>) that are not
     # a benign image fallback (#385).
     plugin_elements: int = 0
+    # rel=alternate declarations with a media attribute and no href (#1016).
+    mobile_alternate_broken: int = 0
     # The page's own <meta name="fragment"> content attribute, as written (#386):
     # the page-wide opt-in to Google's deprecated AJAX crawling scheme. "" when
     # the page declares none. seohead.checks.render already read this tag to pick a
@@ -312,6 +314,7 @@ def _record_from_parsed(parsed: dict) -> dict[str, Any]:
         "images_missing_alt_attr": len(images) - len(images_with_alt),
         "images_max_alt_length": max((i.get("alt_length", 0) for i in images_with_alt), default=0),
         "plugin_elements": int(parsed.get("plugin_elements_count") or 0),
+        "mobile_alternate_broken": int(parsed.get("mobile_alternate_broken") or 0),
         "meta_fragment": _text_of(parsed.get("meta_fragment")),
         # Read off the resolved hrefs the parser already produced, not re-parsed
         # from markup: an href is only a scheme URL once it is a URL (#386).

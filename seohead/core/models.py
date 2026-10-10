@@ -320,6 +320,8 @@ class ParsedPage(_ParsedPageOptional):
     # key the parser returns but this model does not declare is a contract
     # the typed-handler gate refuses.
     plugin_elements_count: int
+    # rel=alternate declarations with a media attribute and no href (#1016).
+    mobile_alternate_broken: int
     # Per-image alt facts -- see ImageInfo. Empty when the page has no images.
     images: list[ImageInfo]
     # Runs of boilerplate placeholder prose found in the content area.

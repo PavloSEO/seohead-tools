@@ -963,14 +963,62 @@ def crawl_site(
         from seohead.mcp.scan_handlers import crawl_list_scan
 
         directory = settings["output"]["dir"] or None
-        return crawl_list_scan(
-            urls,
-            scan_out=scan_out or str(Path(directory) / ".list.seohead"),
-            settings=settings,
-            producer_build=producer_build,
-            out_dir=directory,
-            proxy_route=proxy_route,
-        )
+        list_scan_out = scan_out or str(Path(directory) / ".list.seohead")
+        observed = None
+        if project_root is not None:
+            from seohead.projects.run_observation import finish, start
+
+            try:
+                within_project = (
+                    Path(list_scan_out).resolve().is_relative_to(project_root.resolve())
+                )
+            except OSError:
+                within_project = False
+            if within_project:
+                from math import isfinite
+
+                rate = crawl_config.effective_request_rate(settings)
+                observed = start(
+                    project_root,
+                    kind="native",
+                    mode="list",
+                    max_urls=settings["limits"]["max_urls"],
+                    max_requests=settings["limits"]["max_requests"],
+                    max_crawl_seconds=settings["limits"]["max_crawl_seconds"],
+                    max_requests_per_second=float(rate) if isfinite(rate) else None,
+                    config_fingerprint=crawl_config.fingerprint(settings),
+                    artifact=list_scan_out,
+                    run_id=observer_run_id,
+                )
+        try:
+            result = crawl_list_scan(
+                urls,
+                scan_out=list_scan_out,
+                settings=settings,
+                producer_build=producer_build,
+                out_dir=directory,
+                proxy_route=proxy_route,
+            )
+        except BaseException as exc:
+            if observed is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    finish(project_root, observed["id"], state="failed", reason=type(exc).__name__)
+            raise
+        if observed is None:
+            return result
+        unavailable = result.get("audit_available") is False
+        with contextlib.suppress(OSError, ValueError):
+            finish(
+                project_root,
+                observed["id"],
+                state="partial" if result.get("partial") or unavailable else "finished",
+                reason=(
+                    str(result.get("audit_reason") or "audit_unavailable")
+                    if unavailable
+                    else str(result.get("finish_reason") or "finished")
+                ),
+            )
+        return {**result, "observer_run_id": observed["id"]}
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -1895,6 +1943,13 @@ def _audit_crawl_result(
                 else link_findings.protocol_relative_links(links)
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
+            site_host = urlsplit(start_norm).hostname or ""
+            for item in (
+                graph.iter_internal_sponsored_ugc(site_host)
+                if graph
+                else link_findings.internal_sponsored_ugc_links(links, site_host)
+            ):
+                ctx.add("INTERNAL_LINK_SPONSORED_UGC", target_url=item["target_url"], details=item)
 
     # Pages With JavaScript Errors (#1015): read from the retained render console sidecars,
     # never re-rendered here. Unreadable evidence is a stated skip, not a clean page.
@@ -4362,6 +4417,8 @@ def scan_url_query(
     export: str | None = None,
     export_format: str = "csv",
     export_max_rows: int | None = None,
+    issue_check: str | list[str] | None = None,
+    issue_severity: str | None = None,
 ) -> dict[str, Any]:
     """Filter, sort and paginate the whole page table of one saved scan, read-only.
 
@@ -4389,6 +4446,8 @@ def scan_url_query(
         offset=offset,
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
+        issue_check=issue_check,
+        issue_severity=issue_severity,
         max_bytes=max_bytes,
         facets=facets,
         preset=preset,

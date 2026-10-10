@@ -481,6 +481,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "export",
             "export_format",
             "export_max_rows",
+            "issue_check",
+            "issue_severity",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2186,6 +2188,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--export-format", dest="export_format", choices=("csv", "xlsx"))
         sub.add_argument("--export-max-rows", dest="export_max_rows", type=int)
+        sub.add_argument(
+            "--issue-check",
+            dest="issue_check",
+            action="append",
+            help="audit check id to filter by (repeatable, 1..50)",
+        )
+        sub.add_argument(
+            "--issue-severity",
+            dest="issue_severity",
+            choices=("critical", "warning", "notice"),
+        )
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)

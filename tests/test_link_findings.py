@@ -7,6 +7,7 @@ from seohead.crawl.link_findings import (
     forms_on_http_pages_with_password,
     http_links_on_https_pages,
     internal_nofollow_outlinks,
+    internal_sponsored_ugc_links,
     outlinks_to_localhost,
     protocol_relative_links,
     unsafe_cross_origin_links,
@@ -227,7 +228,46 @@ def test_unmeasured_raw_href_is_not_a_false_positive():
     assert protocol_relative_links(links) == []
 
 
-# ── follow_and_nofollow_inlinks ───────────────────────────────────────────────
+# ── internal_sponsored_ugc_links ──────────────────────────────────────────────
+
+
+def test_internal_sponsored_or_ugc_link_is_flagged():
+    links = [
+        edge("https://example.com/", "https://example.com/a", rel=("ugc", "nofollow")),
+        edge("https://example.com/", "https://example.com/b", rel=("Sponsored",)),
+    ]
+    found = internal_sponsored_ugc_links(links, "example.com")
+    assert [item["destination"] for item in found] == [
+        "https://example.com/a",
+        "https://example.com/b",
+    ]
+    assert found[0]["rel"] == ["nofollow", "ugc"]
+
+
+def test_external_sponsored_link_is_not_an_internal_finding():
+    links = [edge("https://example.com/", "https://partner.example/", rel=("sponsored",))]
+    assert internal_sponsored_ugc_links(links, "example.com") == []
+
+
+def test_internal_link_without_hint_tokens_is_silent():
+    links = [
+        edge("https://example.com/", "https://example.com/a", rel=("nofollow",)),
+        edge("https://example.com/", "https://example.com/b"),
+    ]
+    assert internal_sponsored_ugc_links(links, "example.com") == []
+
+
+def test_unmeasured_rel_is_not_a_false_positive():
+    links = [edge("https://example.com/", "https://example.com/a")]
+    assert internal_sponsored_ugc_links(links, "example.com") == []
+
+
+def test_hint_token_match_is_exact_not_substring():
+    links = [edge("https://example.com/", "https://example.com/a", rel=("ugcx", "sponsoredish"))]
+    assert internal_sponsored_ugc_links(links, "example.com") == []
+
+
+# ── follow_and_nofollow_inlinks ---────────────────────────────────────────────
 
 
 def test_page_linked_both_follow_and_nofollow_is_flagged():

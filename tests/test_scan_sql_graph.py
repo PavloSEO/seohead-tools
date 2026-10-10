@@ -226,6 +226,9 @@ def test_streamed_link_and_form_predicates_match_existing_pure_functions(tmp_pat
     ) == link_findings.follow_and_nofollow_inlinks(edges, "example.test")
     assert list(graph.iter_unsafe_cross_origin()) == link_findings.unsafe_cross_origin_links(edges)
     assert list(graph.iter_protocol_relative()) == link_findings.protocol_relative_links(edges)
+    assert list(
+        graph.iter_internal_sponsored_ugc("example.test")
+    ) == link_findings.internal_sponsored_ugc_links(edges, "example.test")
     assert list(graph.iter_insecure_forms()) == link_findings.form_url_insecure(forms)
     assert list(
         graph.iter_password_forms_on_http()

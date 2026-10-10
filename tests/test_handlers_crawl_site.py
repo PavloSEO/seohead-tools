@@ -1038,3 +1038,47 @@ def test_list_mode_inside_a_project_defaults_to_the_project_scans_dir(tmp_path, 
 def test_list_mode_without_a_project_still_needs_an_explicit_output(tmp_path):
     with pytest.raises(ValueError, match="list mode has no default SQLite artifact"):
         handlers.crawl_site(urls=["https://example.com/a"])
+
+
+def test_list_mode_inside_a_project_registers_an_observer_run(tmp_path, monkeypatch):
+    from seohead.projects import run_observation
+    from seohead.projects.workspace import create_project
+
+    root = tmp_path / "proj"
+    create_project(root, "https://owner.example.test/")
+
+    def fake(urls, **kwargs):
+        return {"partial": False, "finish_reason": "finished", "audit_available": True}
+
+    monkeypatch.setattr("seohead.mcp.scan_handlers.crawl_list_scan", fake)
+    out = handlers.crawl_site(
+        project=str(root), urls=["https://example.com/a"], approve_large_crawl=True
+    )
+
+    run = run_observation.status(root)["items"][0]
+    assert out["observer_run_id"] == run["id"]
+    assert run["kind"] == "native"
+    assert run["collector"]["mode"] == "list"
+    assert run["state"] == "finished"
+    assert run["artifact"].startswith("scans/")
+
+
+def test_list_mode_observer_run_is_failed_when_the_collector_raises(tmp_path, monkeypatch):
+    from seohead.projects import run_observation
+    from seohead.projects.workspace import create_project
+
+    root = tmp_path / "proj"
+    create_project(root, "https://owner.example.test/")
+
+    def boom(urls, **kwargs):
+        raise RuntimeError("collector down")
+
+    monkeypatch.setattr("seohead.mcp.scan_handlers.crawl_list_scan", boom)
+    with pytest.raises(RuntimeError):
+        handlers.crawl_site(
+            project=str(root), urls=["https://example.com/a"], approve_large_crawl=True
+        )
+
+    run = run_observation.status(root)["items"][0]
+    assert run["state"] == "failed"
+    assert run["finish_reason"] == "RuntimeError"

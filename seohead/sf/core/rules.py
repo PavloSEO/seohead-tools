@@ -2420,6 +2420,24 @@ _INITIAL_SCALE_RE = re.compile(r"initial-scale\s*=\s*([0-9.]+)", re.IGNORECASE)
 _VIEWPORT_WIDTH_RE = re.compile(r"\bwidth\s*=", re.IGNORECASE)
 
 
+def check_mobile_alternate(ctx: AuditContext) -> None:
+    """MOBILE_ALTERNATE_LINK: a media-qualified rel=alternate that names no URL (#1016)."""
+    if not _has_column(ctx, "mobile_alternate_broken"):
+        ctx.skip("MOBILE_ALTERNATE_LINK", "no rel=alternate media evidence (native crawl only)")
+        return
+    for page in ctx.html_pages():
+        rec = _rec(page)
+        if _body_unavailable(rec):
+            continue
+        count = rec.get("mobile_alternate_broken") or 0
+        if count > 0:
+            ctx.add(
+                "MOBILE_ALTERNATE_LINK",
+                target_url=page.url,
+                details={"occurrences": count, "reason": "rel=alternate with media has no href"},
+            )
+
+
 def check_viewport(ctx: AuditContext) -> None:
     """Lighthouse `viewport` (now `viewport-insight`): see lighthouse.LIGHTHOUSE_MAP."""
     pages = ctx.html_pages()
@@ -3137,6 +3155,7 @@ ALL_CHECKS = [
     check_charset,
     check_doctype,
     check_viewport,
+    check_mobile_alternate,
     check_compression,
     check_element_position,
     check_document_skeleton,

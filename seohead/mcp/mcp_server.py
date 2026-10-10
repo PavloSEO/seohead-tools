@@ -3146,6 +3146,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         max_bytes: int = 1_048_576,
         preset: str | None = None,
         facets: list[str] | str | None = None,
+        issue_check: str | list[str] | None = None,
+        issue_severity: str | None = None,
     ) -> dict[str, Any]:
         """Filter, sort and paginate the page table of one saved scan across the whole scan.
 
@@ -3155,7 +3157,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
         with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
         requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
-        the same filters, with facets_state exact or capped.
+        the same filters, with facets_state exact or capped. issue_check (1..50 check ids) and
+        issue_severity (critical|warning|notice) filter by audit issue; until the per-issue index
+        exists they return state unavailable with reason_code issue_index_missing.
         """
         return _checked(
             handlers.scan_url_query(
@@ -3170,6 +3174,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_bytes=max_bytes,
                 facets=facets,
                 preset=preset,
+                issue_check=issue_check,
+                issue_severity=issue_severity,
             )
         )
 

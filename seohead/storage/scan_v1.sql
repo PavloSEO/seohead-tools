@@ -113,6 +113,9 @@ CREATE TABLE pages (
   -- that declares none -- and check_og names "og:url" missing from what it reads
   -- here, so the two must stay distinguishable.
   og_url TEXT,
+  -- Count of <link rel="alternate" media=...> tags without an href. Nullable: a crawl
+  -- written before this check never read them, which is not the same as zero.
+  mobile_alternate_broken INTEGER,
   word_count INTEGER NOT NULL,
   text_ratio REAL,
   content_frames INTEGER,

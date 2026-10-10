@@ -172,9 +172,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _t(
             "Non-sequential",
-            "heading-outline",
-            note="the full H1-H6 order is built by the heading-outline skill, not by the "
-            "crawl registry",
+            "parse",
+            note="the full H1-H6 order is the heading_outline field of parse, not a crawl-registry check",
         ),
         _c("Duplicate", "H1_DUPLICATE"),
         _c("Over 70 Characters", "H1_TOO_LONG"),
@@ -187,7 +186,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "defensible count past which they stop being normal; we record them without "
             "judging the count",
         ),
-        _t("Non-sequential", "heading-outline"),
+        _t("Non-sequential", "parse"),
         _c("Duplicate", "H2_DUPLICATE"),
         _c("Over 70 Characters", "H2_TOO_LONG"),
     ],
@@ -442,7 +441,12 @@ CATEGORIES: dict[str, list[Entry]] = {
             "declares an image (an SVG or raster fallback, not plugin content)",
         ),
         _o("Target Size", "needs rendered hit-box geometry"),
-        _g("Mobile Alternate Link", "rel=alternate media annotations are not read"),
+        _c(
+            "Mobile Alternate Link",
+            "MOBILE_ALTERNATE_LINK",
+            note="only a media-qualified rel=alternate with no href is flagged; the "
+            "reciprocal canonical on the mobile URL is not checked",
+        ),
     ],
     "Accessibility": [],  # filled below: one decision, 92 entries
     "Analytics": [

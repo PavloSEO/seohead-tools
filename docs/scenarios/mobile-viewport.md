@@ -11,7 +11,7 @@ print templates, landing pages built outside the CMS, a checkout that predates t
 
 ## Covers
 
-- **Mobile** — Viewport Not Set · Contains Unsupported Plugins
+- **Mobile** — Viewport Not Set · Contains Unsupported Plugins · Mobile Alternate Link
 
 ## The chain
 

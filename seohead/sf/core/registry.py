@@ -967,6 +967,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "No <meta name=viewport> tag with width or an initial-scale of at least 1",
         "fix": 'Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to the document head.',
     },
+    "MOBILE_ALTERNATE_LINK": {
+        "severity": "warning",
+        "source": "crawl:mobile_alternate",
+        "message": "A <link rel=alternate media=...> declaration names no URL",
+        "fix": "Give the mobile alternate link an `href` pointing at the mobile URL, or remove "
+        'the `<link rel="alternate" media=...>` tag.',
+    },
     "UNSUPPORTED_PLUGIN": {
         "severity": "warning",
         "source": "crawl:plugin_elements",
@@ -1189,6 +1196,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "source": "crawl:link_findings",
         "message": "The page has internal outlinks marked nofollow",
         "fix": "Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct.",
+    },
+    "INTERNAL_LINK_SPONSORED_UGC": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "An internal link carries rel=sponsored or rel=ugc",
+        "fix": "Remove sponsored and ugc from links to pages of this site. Keep them only on "
+        "links that really lead to paid placements or user-submitted content.",
     },
     "HTTP_LINK_ON_HTTPS": {
         "severity": "notice",

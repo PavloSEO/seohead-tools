@@ -867,6 +867,27 @@ def unsupported_plugin_count(soup: BeautifulSoup) -> int:
     return count
 
 
+def mobile_alternate_broken_count(soup: BeautifulSoup) -> int:
+    """Count of ``<link rel="alternate" media="...">`` declarations that name no URL.
+
+    A media-qualified alternate points a device class at a separate URL. One with an
+    empty or missing href points at nothing a crawler or a browser can follow (#1016).
+    """
+    count = 0
+    for tag in soup.find_all("link"):
+        if not tag.get("media"):
+            continue
+        rel_attr: str | list[str] = tag.get("rel") or []
+        rel_tokens = rel_attr.split() if isinstance(rel_attr, str) else list(rel_attr)
+        if not any(isinstance(t, str) and t.lower() == "alternate" for t in rel_tokens):
+            continue
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        if not (cast("str | None", tag.get("href")) or "").strip():
+            count += 1
+    return count
+
+
 # The canonical placeholder passage (Cicero's "de Finibus", corrupted into English filler
 # since the 1500s). Matched as a phrase, not a single common word, so an incidental mention
 # of "lorem" or "ipsum" alone -- a product named Lorem, a Latin-teaching page discussing the
@@ -2193,6 +2214,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)
     result["plugin_elements_count"] = unsupported_plugin_count(soup)
+    result["mobile_alternate_broken"] = mobile_alternate_broken_count(soup)
     # Same reasoning once more: one <meta> lookup on the already-built tree, and
     # the page-wide opt-in to the deprecated AJAX crawling scheme (#386).
     result["meta_fragment"] = meta_fragment_content(soup)
