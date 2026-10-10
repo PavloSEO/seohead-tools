@@ -102,8 +102,8 @@ class SourceRow(QFrame):
         super().mouseReleaseEvent(event)
 
 
-def back_header(title, back_text, on_back, subtitle="", pid=None, actions=()):
-    """«← Все источники» + (tile) + title/subtitle + right-aligned actions."""
+def back_header(title, back_text, on_back, subtitle="", pid=None, actions=(), paid=""):
+    """«← Все источники» + (tile) + title (+ paid badge) / subtitle + right-aligned actions."""
     box = QWidget()
     outer = QVBoxLayout(box)
     outer.setContentsMargins(0, 0, 0, 8)
@@ -120,7 +120,13 @@ def back_header(title, back_text, on_back, subtitle="", pid=None, actions=()):
     texts.setSpacing(2)
     head = QLabel(title)
     head.setProperty("text_style", "section")
-    texts.addWidget(head)
+    heading = QHBoxLayout()
+    heading.setSpacing(8)
+    heading.addWidget(head)
+    if paid:
+        heading.addWidget(badge("warn", tr("платный" if paid == "paid" else "платный по желанию"), "payments"), 0, Qt.AlignVCenter)
+    heading.addStretch(1)
+    texts.addLayout(heading)
     if subtitle:
         meta = QLabel(subtitle)
         meta.setProperty("text_style", "meta")
