@@ -136,3 +136,6 @@ stays open until the decision is recorded here as accepted or rejected.
 - Network access during actions stays inside the existing pinned route guard.
 - Who may run actions depends on the agent permission model (#977). Until #977 is decided, the
   contract is recorded without permissions.
+- Implementation status: `seohead.checks.page_actions` validates the closed set above (`click`,
+  `scroll`, `wait_for_selector`, `wait_ms`) with a static time budget. It is not wired into rendering,
+  and `extract` and raw JavaScript are still undecided. Behavior is unchanged.
