@@ -175,7 +175,7 @@ class AddressTests(UrlBase):
         from PyQt5.QtWidgets import QApplication
 
         self.screen.table.selectRow(1)
-        self.screen._copy_row()
+        self.screen.copy_row()
         self.assertEqual(QApplication.clipboard().text(), self.screen.rows[1]["url"])
         self.assertEqual(self.screen.model.headerData(5, Qt.Horizontal), "Глубина обхода")
         self.assertIn("sitemap", self.screen.model.headerData(5, Qt.Horizontal, Qt.ToolTipRole))
