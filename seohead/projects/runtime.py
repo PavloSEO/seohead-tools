@@ -8,10 +8,11 @@ import hashlib
 import json
 import math
 import os
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import atomic_write_bytes
 
 from .catalogue import load_catalogue
 from .coverage import _now, coverage_status, initialize_coverage, update_item
@@ -53,7 +54,6 @@ def write_document(
     except FileExistsError as exc:
         raise ValueError(f"another writer owns {name}") from exc
     os.close(fd)
-    staged = None
     try:
         previous = read_document(root, name)
         revision = previous.get("revision", 0) if previous else 0
@@ -72,18 +72,8 @@ def write_document(
                 stream.write((root / name).read_bytes())
                 stream.flush()
                 os.fsync(stream.fileno())
-        descriptor, staged = tempfile.mkstemp(prefix=".project-", dir=root)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(staged, root / name)
-        from seohead.core.filesystem import fsync_directory
-
-        fsync_directory(root)
+        atomic_write_bytes(root / name, content.encode("utf-8"))
     finally:
-        if staged:
-            Path(staged).unlink(missing_ok=True)
         lock.unlink(missing_ok=True)
 
 

@@ -114,10 +114,10 @@ def stage_bytes(
 
 
 def atomic_write_bytes(
-    path: Path,
+    path: str | Path,
     data: bytes,
     *,
-    prefix: str = ".",
+    prefix: str | None = None,
     suffix: str = "",
     mode: int | None = None,
     durable: bool = True,
@@ -128,10 +128,18 @@ def atomic_write_bytes(
     replace survives a crash on POSIX. ``durable=False`` keeps atomicity but skips both
     fsyncs, for caches where losing the newest entry on power loss is acceptable.
     """
-    staged = stage_bytes(path.parent, prefix, data, suffix=suffix, mode=mode, durable=durable)
+    target = Path(path)
+    staged = stage_bytes(
+        target.parent,
+        prefix or f".{target.name}.",
+        data,
+        suffix=suffix,
+        mode=mode,
+        durable=durable,
+    )
     try:
-        os.replace(staged, path)
+        os.replace(staged, target)
     finally:
         Path(staged).unlink(missing_ok=True)
     if durable:
-        fsync_directory(path.parent)
+        fsync_directory(target.parent)
