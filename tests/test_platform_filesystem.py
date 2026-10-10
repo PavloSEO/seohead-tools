@@ -68,3 +68,16 @@ def test_lock_rejects_hardlink_alias(tmp_path):
     os.link(path, alias)
     with pytest.raises(OSError, match="unaliased"):
         filesystem.open_lock(alias)
+
+
+def test_file_sha256_streams_across_chunk_boundaries(tmp_path):
+    import hashlib
+
+    payload = b"a" * (1 << 20) + b"tail"
+    path = tmp_path / "payload.bin"
+    path.write_bytes(payload)
+
+    assert filesystem.file_sha256(path) == hashlib.sha256(payload).hexdigest()
+    assert filesystem.file_sha256(str(path)) == hashlib.sha256(payload).hexdigest()
+    with pytest.raises(OSError):
+        filesystem.file_sha256(tmp_path / "missing.bin")
