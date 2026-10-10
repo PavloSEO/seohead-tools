@@ -134,7 +134,7 @@ def test_retry_backoff_sleeps_only_between_attempts(monkeypatch):
     def always_429(request, timeout=None, context=None):
         raise urllib.error.HTTPError(request.full_url, 429, "Too Many", {}, io.BytesIO(b"{}"))
 
-    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", always_429)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", always_429)
     client = yandex_cloud._Base(api_key="k", folder_id="f", rps=1000)
     status, _ = client._request("https://example.test/op", retries=3)
     assert status == 429

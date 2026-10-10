@@ -52,7 +52,7 @@ def test_transient_http_error_backs_off_then_succeeds(monkeypatch, sleeps, clien
             raise reply
         return reply
 
-    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     assert client._request("https://x", method="GET") == (200, {"done": True})
     assert sleeps == [2]
@@ -65,7 +65,7 @@ def test_permanent_http_error_is_returned_not_retried(monkeypatch, sleeps, clien
         calls.append(request)
         raise _http_error(400, '{"message": "bad request"}')
 
-    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     status, payload = client._request("https://x", method="GET")
 
@@ -82,7 +82,7 @@ def test_billed_network_error_is_not_resent(monkeypatch, sleeps, client):
         calls.append(request)
         raise urllib.error.URLError("reset")
 
-    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     with pytest.raises(yandex_cloud.NetworkAmbiguousError):
         client._request("https://x", body={"q": 1}, billed=True)
@@ -98,11 +98,11 @@ def test_unbilled_network_error_retries_until_exhausted(monkeypatch, sleeps, cli
         calls.append(request)
         raise urllib.error.URLError("timed out")
 
-    monkeypatch.setattr(yandex_cloud.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     status, message = client._request("https://x", method="GET", retries=3)
 
     assert status == 0
     assert message.startswith("network:")
     assert len(calls) == 3
-    assert sleeps == [2, 3, 5]
+    assert sleeps == [2, 3]  # backoff only between the three attempts

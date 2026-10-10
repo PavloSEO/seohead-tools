@@ -54,7 +54,7 @@ def test_http_429_backs_off_then_succeeds(monkeypatch, sleeps, client):
             raise reply
         return reply
 
-    monkeypatch.setattr(arsenkin.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     assert client._post("ping", {}) == {"ok": 1}
     assert len(seen) == 3
@@ -67,7 +67,7 @@ def test_429_inside_json_body_is_retried(monkeypatch, sleeps, client):
     def fake_urlopen(request, timeout):
         return _OkResponse(bodies.pop(0).encode())
 
-    monkeypatch.setattr(arsenkin.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     assert client._post("ping", {}) == {"code": "OK"}
     assert sleeps == [2]
@@ -80,7 +80,7 @@ def test_billed_network_error_is_not_resent(monkeypatch, sleeps, journal_path, c
         calls.append(request)
         raise urllib.error.URLError("connection reset")
 
-    monkeypatch.setattr(arsenkin.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     with pytest.raises(arsenkin.ArsenkinError) as exc:
         client._post("set", {}, billed=True)
@@ -97,7 +97,7 @@ def test_unbilled_network_error_retries_until_exhausted(monkeypatch, sleeps, cli
         calls.append(request)
         raise urllib.error.URLError("timed out")
 
-    monkeypatch.setattr(arsenkin.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     with pytest.raises(arsenkin.ArsenkinError) as exc:
         client._post("ping", {}, retries=3)
