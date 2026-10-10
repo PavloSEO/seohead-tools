@@ -354,7 +354,7 @@ class ProfileButton(QPushButton):
         texts.setSpacing(0)
         self.name = QLabel(user.capitalize())
         self.name.setProperty("picker_part", "title")
-        self.mode_line = QLabel()
+        self.mode_line = WordElidedLabel()
         self.mode_line.setProperty("picker_part", "subtitle")
         for label in (self.name, self.mode_line):
             label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -368,6 +368,7 @@ class ProfileButton(QPushButton):
 
     def set_mode_line(self, text):
         self.mode_line.setText(text)
+        self.setToolTip(text)  # the subtitle elides on narrow widths; the full line stays one hover away
 
     def set_rail(self, rail):
         self._texts.setVisible(not rail)
@@ -473,7 +474,7 @@ class NavPanel(QFrame):
         current = self.list.current_section()
         self.simple = bool(simple)
         self.list.rebuild(self.simple, current)
-        self.profile.set_mode_line(tr("Простой режим" if self.simple else "С агентом"))
+        self.profile.set_mode_line(tr("Простой режим · MCP выкл." if self.simple else "С агентом · MCP вкл."))
         if current in self.list._items:
             self.currentRowChanged.emit(self.currentRow())
 

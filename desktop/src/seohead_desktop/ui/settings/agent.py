@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 
 from ... import theming
 from ...i18n import tr, trf
+from ...screens.scan_common import StatusBadge
 from ...settings_store import Setting
 from ..controls import Note, SettingRow, Switch
 from ..icons import material_icon
@@ -38,8 +39,10 @@ SCHEMA = (
 )
 LOG_LIMIT = 5
 UNAVAILABLE = "Недоступно в этой сборке"
-KINDS = {"scan": ("info", "скан"), "tasks": ("goal", "задачи"), "wait": ("warn", "ждёт вас"),
-         "task": ("ok", "задача"), "deny": ("err", "отказ")}
+# kind -> (badge tone, label, icon); tones and icons follow the SetAgent canvas status tokens.
+KINDS = {"scan": ("info", "скан", "progress_activity"), "tasks": ("goal", "задачи", "smart_toy"),
+         "wait": ("warn", "ждёт вас", "rate_review"), "task": ("ok", "задача", "verified"),
+         "deny": ("err", "отказ", "block")}
 
 
 def allowed(store):
@@ -139,7 +142,7 @@ def _no_data(text):
 
 
 def _log_row(entry):
-    badge, label = KINDS.get(entry.get("kind"), ("mut", str(entry.get("kind", ""))))
+    badge, label, icon = KINDS.get(entry.get("kind"), ("mut", str(entry.get("kind", "")), "help"))
     row = QFrame()
     row.setProperty("list_row", True)
     layout = QHBoxLayout(row)
@@ -158,8 +161,8 @@ def _log_row(entry):
     text.addWidget(main)
     text.addWidget(sub)
     layout.addLayout(text, 1)
-    chip = QLabel(label)
-    chip.setProperty("badge", badge)
+    chip = StatusBadge()
+    chip.set_state(badge, label, icon)
     layout.addWidget(chip, 0, Qt.AlignVCenter)
     return row
 
@@ -185,9 +188,16 @@ def _log_block(context):
     else:
         full.setEnabled(False)
         full.setToolTip(UNAVAILABLE)
+    # The configuration sheet (SetAgentConfig) has no screen in this build yet: shown disabled, not hidden.
+    configure = QPushButton("Что агент может настраивать")
+    configure.setIcon(material_icon("tune"))
+    configure.setEnabled(False)
+    configure.setToolTip(UNAVAILABLE)
     footer = QHBoxLayout()
     footer.setContentsMargins(0, 8, 0, 0)
+    footer.setSpacing(8)
     footer.addWidget(full)
+    footer.addWidget(configure)
     footer.addStretch(1)
     layout.addLayout(footer)
     return box

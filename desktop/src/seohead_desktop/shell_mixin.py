@@ -106,6 +106,7 @@ class ShellMixin:
                 if findings.get("state") == "available" and findings.get("truncated") is False:  # the sample is complete: its checks are all of them
                     checks = {item.get("check") for item in findings.get("items") or [] if isinstance(item, dict) and item.get("check")}
                     issues = len(checks) or None
+            self.navigation.set_count("scans", len(self.scan_model.rows) if opened else None)  # real project scans, no number without a project
             self.navigation.set_count("url", url_total)
             self.navigation.set_count("issues", issues)
         except RuntimeError:  # the window was deleted while a timer fired
@@ -193,6 +194,7 @@ class ShellMixin:
         self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
+        self.agent_gap.setVisible(not simple)
         self.update_status_tail()
 
     def set_display(self, mode, remember=True):

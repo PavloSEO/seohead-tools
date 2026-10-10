@@ -353,9 +353,37 @@ class LinksPage(QWidget):
         self.job.failed.connect(self._failed)
         self.counter = CoreJob(ctx.host_ref, self)
         self.counter.done.connect(self._counted)
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        scope_row = QHBoxLayout()
+        scope_row.setContentsMargins(12, 6, 12, 0)
+        scope_row.setSpacing(8)
+        self.scope_buttons = {}
+        for key, label in (("int", "Внутренние"), ("ext", "Внешние")):
+            button = QToolButton()
+            button.setProperty("pill", "group")
+            button.setCheckable(True)
+            button.setChecked(key == "int")
+            button.setText(tr(label))
+            button.clicked.connect(lambda _c=False, k=key: self.set_scope(k))
+            self.scope_buttons[key] = button
+            scope_row.addWidget(button)
+        scope_row.addStretch(1)
+        root.addLayout(scope_row)
+        self.internal = QWidget()
+        layout = QVBoxLayout(self.internal)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        root.addWidget(self.internal, 1)
+        external_body = QWidget()
+        external_layout = QVBoxLayout(external_body)
+        external_layout.setContentsMargins(24, 14, 24, 14)
+        external_layout.addWidget(StatePanel("waiting", "Внешние ссылки доноров", "База внешних ссылок проекта (Вебмастер, Bing, GSC) ещё не подключена к ядру.", issue=999))
+        external_layout.addStretch(1)
+        self.external = scrolled(external_body)
+        self.external.hide()
+        root.addWidget(self.external, 1)
         bar = QHBoxLayout()
         bar.setContentsMargins(12, 6, 12, 6)
         bar.setSpacing(8)
@@ -430,7 +458,18 @@ class LinksPage(QWidget):
 
     def retranslate(self):
         self.search.setPlaceholderText(tr("Адрес или анкор содержит…"))
+        for key, label in (("int", "Внутренние"), ("ext", "Внешние")):
+            self.scope_buttons[key].setText(tr(label))
         self._labels()
+
+    def set_scope(self, key):
+        """«Внутренние» are the core's links; «Внешние» (donors from the project's backlink base) wait for issue 999."""
+        for name, button in self.scope_buttons.items():
+            button.setChecked(name == key)
+        self.internal.setVisible(key == "int")
+        self.external.setVisible(key == "ext")
+        if key == "int":
+            self.activate()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -451,6 +490,10 @@ class LinksPage(QWidget):
             widget.blockSignals(True)
             reset()
             widget.blockSignals(False)
+        for name, button in self.scope_buttons.items():
+            button.setChecked(name == "int")
+        self.internal.show()
+        self.external.hide()
         self.totals = {"in": None, "out": None}
         self.loaded_for = None
         self.offset = 0

@@ -449,7 +449,13 @@ class IssuesScreen(Screen):
             return set_panel_state(self, "partial", StatePanel("partial", "Находки недоступны", f"{reason}. {tr('Это не «0 проблем».')}"))
         if findings.get("total") == 0:
             skipped = (scan.get("evidence") or {}).get("skipped_checks") or []
-            panel = StatePanel("empty", "Проблем не найдено", trf("Находок нет по выбранному скану. Это измеренный ноль; проверки, которые не запускались: {n}.", n=len(skipped)))
+            skipped = (scan.get("evidence") or {}).get("skipped_checks") or []
+            panel = StatePanel("empty", "Проблем не найдено", "Находок нет по выбранному скану. Это измеренный ноль: проверки, которые не запускались, перечислены отдельно.")
+            panel.findChild(MaterialIconLabel).set_material_icon("verified", "role:success")
+            if skipped:  # the count of checks that did not run is measured data, shown as a neutral badge (never as «0 проблем»)
+                badge = QLabel(trf("{n} не измерялось", n=len(skipped)))
+                badge.setProperty("badge", "mut")
+                panel.layout().addWidget(badge, 0, Qt.AlignHCenter)
             return set_panel_state(self, "zero", panel)
         set_panel_state(self, None)
         signature = (scan.get("path"), findings.get("total"), tuple((findings.get("by_severity") or {}).items()), scan.get("crawl_partial"))

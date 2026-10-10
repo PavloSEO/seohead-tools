@@ -154,7 +154,11 @@ class IssuesTests(IssuesBase):
     def test_measured_zero_is_a_good_outcome(self):
         self.scan["evidence"]["findings"] = {"state": "available", "total": 0, "by_severity": {}, "items": []}
         self.screen.refresh()
-        self.assertEqual(self.screen.state_holder.findChild(StatePanel).title.text(), "Проблем не найдено")
+        panel = self.screen.state_holder.findChild(StatePanel)
+        self.assertEqual(panel.title.text(), "Проблем не найдено")
+        skipped = len(self.scan["evidence"].get("skipped_checks") or [])
+        badges = [label.text() for label in panel.findChildren(QLabel) if label.property("badge") == "mut"]
+        self.assertEqual(badges, [f"{skipped} не измерялось"])  # measured count of checks that did not run, never «0 проблем»
 
     def test_no_project_and_no_scan(self):
         self.host.project_directory = None
