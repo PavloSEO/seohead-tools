@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
+NAME: settings:<section id> | start[:banner] (Start, no project open; banner = one missing recent folder) | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 ``shell:graph`` needs a QA project with a saved scan: --project DIR, or the SEOHEAD_QA_PROJECT environment variable.
@@ -167,6 +167,20 @@ def build(name, width, height, store, theme="light", lang="ru"):
         dialog = SettingsDialog(store, SettingsContext(), section=arg or "general")
         dialog.resize(width, height)
         return dialog
+    if kind == "start":
+        # Start («Проекты») before any project is open. Without recent projects the first-run wizard shows instead
+        # (screens.show_start) until it is passed, so the plain state sets shell.onboarding_done: the empty list.
+        # "banner" = one recent folder that no longer exists (the relocate/forget banner).
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        window.prefs.set("view.language", lang)
+        window.prefs.set("shell.onboarding_done", True)
+        if arg == "banner":
+            window.recent_projects = [{"label": "Старый блог", "path": "/nonexistent/old-blog", "opened_at": "2026-10-10T09:00+03:00"}]
+        window.show_startup_workspace()
+        return window
     if kind == "shell":
         from seohead_desktop.app import MainWindow
 
@@ -240,7 +254,7 @@ def main(argv=None):
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
                 widget.render_image(width, height, args.theme, args.lang).save(str(path))
-            elif name.startswith("shell"):
+            elif name.startswith(("shell", "start")):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)
