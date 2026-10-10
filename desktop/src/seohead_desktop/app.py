@@ -52,6 +52,7 @@ from .screens import install_screens
 from .settings_store import AppSettings
 from .shell_mixin import ShellMixin
 from .ui.content_search_panel import ContentSearchPanel
+from .ui.menus import entry, fill_menu, unavailable
 from .ui.panels import component_stylesheet
 from .ui.popup_style import install_popup_style
 from .ui.presentation import (
@@ -238,10 +239,15 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.connect_preferences()
         file_menu = self.menuBar().addMenu("Проект")
         file_menu.addAction("Открыть проект…", self.choose_project, QKeySequence.Open)
-        agent_menu = self.menuBar().addMenu("Агент")
-        agent_menu.addAction("Подключить агента…", self.show_agent_connection)
-        help_menu = self.menuBar().addMenu("Справка")
-        self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
+        fill_menu(self.menuBar().addMenu("Правка"), [
+            unavailable("undo", "Отменить", "⌘Z"),
+            None,
+            entry("content_copy", "Копировать URL", lambda: self.screens["url"].copy_row(), "⌘C"),
+            entry("table_rows", "Копировать как TSV", lambda: self.screens["url"].copy_tsv(), "⌘⇧C"),
+            entry("select_all", "Выделить видимые строки", lambda: self.screens["url"].table.selectAll(), "⌘A"),
+            None,
+            entry("search", "Найти в таблице", self.focus_search, "⌘F"),
+        ])
         view_menu = self.menuBar().addMenu("Вид")
         self.panel_actions = {}
         for name, widget in [("Навигация", self.navigation), ("Сводка", self.overview), ("Инспектор URL", self.inspector)]:
@@ -277,6 +283,31 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         motion_action.setEnabled(not self.system_reduced_motion)
         motion_action.setToolTip("Системное уменьшение движения имеет приоритет" if self.system_reduced_motion else "Отключить плавное сворачивание навигации")
         motion_action.toggled.connect(self.set_reduced_motion)
+        fill_menu(self.menuBar().addMenu("Скан"), [
+            entry("play_arrow", "Новый скан…", self.scan_preview, "⌘N"),
+            unavailable("format_list_bulleted", "Скан по списку URL…"),
+            None,
+            entry("stop_circle", "Запросить остановку", self.stop_selected_run, "⌘."),
+            entry("resume", "Продолжить запуск", self.resume_selected_scan),
+            None,
+            entry("compare_arrows", "Сравнить запуски…", lambda: self.navigation.select_section("compare")),
+            unavailable("download", "Экспорт…", "⌘E"),
+        ])
+        fill_menu(self.menuBar().addMenu("Агент"), [
+            entry("smart_toy", "Подключение агента…", self.show_agent_connection),
+            entry("inbox", "Входящие", lambda: self.navigation.select_section("inbox"), "⌘2"),
+            unavailable("edit_note", "Новая заметка агенту", "⌘⇧N"),
+            None,
+            entry("terminal", "Журнал действий", lambda: self.navigation.select_section("log")),
+        ])
+        fill_menu(self.menuBar().addMenu("Окно"), [
+            entry("minimize", "Свернуть", self.showMinimized, "⌘M"),
+            entry("open_in_full", "Масштаб", lambda: self.showNormal() if self.isMaximized() else self.showMaximized()),
+            None,
+            entry("sensors", "Наблюдение в отдельном окне", self.open_monitor_window),
+        ])
+        help_menu = self.menuBar().addMenu("Справка")
+        self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
         self.find_shortcut = QShortcut(QKeySequence.Find, self)
         self.find_shortcut.activated.connect(self.focus_search)
         self.region_shortcut = QShortcut("F6", self)

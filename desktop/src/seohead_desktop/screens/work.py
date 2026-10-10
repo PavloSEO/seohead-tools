@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -39,6 +40,7 @@ from ..ui.kit import (
     style_table,
     waiting_badge,
 )
+from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
 
 TASK_STATES = {  # core display_state -> (badge kind, label, icon)
@@ -513,6 +515,8 @@ class WorkScreen(Screen):
         tasks_layout.addLayout(self.task_state)
         self.task_table = build_table(self.tasks, fixed={1: 132, 2: 88, 3: 112, 4: 180}, stretch=0)
         self.task_table.selectionModel().currentRowChanged.connect(self._row_changed)
+        self.task_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.task_table.customContextMenuRequested.connect(self._task_menu)
         tasks_layout.addWidget(self.task_table, 1)
         self.limits = QLabel()
         self.limits.setProperty("text_style", "meta")
@@ -537,6 +541,23 @@ class WorkScreen(Screen):
     def _set_filter(self, value):
         self.filter = value
         self._fill_tasks()
+
+    def _task_menu(self, point):
+        index = self.task_table.indexAt(point)
+        if not index.isValid():
+            return
+        self.task_table.selectRow(index.row())
+        menu = QMenu(self.task_table)
+        menu.addSection(tr("Состояние"))
+        fill_menu(menu, [
+            unavailable("rate_review", "На проверке"),
+            unavailable("check_circle", "Выполнено"),
+            entry("verified", "Подтверждено", None, "", False, "Только перепроверкой"),
+            None,
+            unavailable("person_add", "Назначить исполнителя"),
+            unavailable("replay", "Перепроверить URL задачи"),
+        ])
+        menu.exec_(self.task_table.viewport().mapToGlobal(point))
 
     def _row_changed(self, current, _previous):
         if not current.isValid() or current.row() >= len(self.tasks.rows):

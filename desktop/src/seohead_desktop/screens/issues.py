@@ -11,12 +11,14 @@ import re
 
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -28,6 +30,7 @@ from PyQt5.QtWidgets import (
 
 from .. import i18n, theming
 from ..i18n import tr, trf
+from ..ui import menus
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import (
     BADGE_ROLE,
@@ -518,6 +521,8 @@ class IssuesScreen(Screen):
             button.setSizePolicy(button.sizePolicy().Expanding, button.sizePolicy().Fixed)
             button.setMinimumHeight(36)
             button.clicked.connect(lambda _c=False, c=check: self._select(c))
+            button.setContextMenuPolicy(Qt.CustomContextMenu)
+            button.customContextMenuRequested.connect(lambda point, c=check, b=button: self._finding_menu(c, b, point))
             self.list_layout.insertWidget(self.list_layout.count() - 1, button)
             self.row_buttons[check] = button
         if not self.row_buttons:
@@ -525,6 +530,20 @@ class IssuesScreen(Screen):
             empty.setProperty("text_style", "meta")
             empty.setWordWrap(True)
             self.list_layout.insertWidget(0, empty)
+
+    def _finding_menu(self, check, button, point):
+        menu = menus.fill_menu(QMenu(button), [
+            menus.entry("open_in_new", "Открыть проверку", lambda: self._select(check) if self.selected != check else None),
+            menus.entry("content_copy", "Копировать код проверки", lambda: QApplication.clipboard().setText(check)),
+            None,
+            menus.unavailable("table_view", "Показать URL проверки"),
+            menus.unavailable("assignment_add", "Создать задачу"),
+            menus.unavailable("smart_toy", "Спросить агента"),
+            None,
+            menus.unavailable("visibility_off", "Скрыть: не применимо"),
+            menus.unavailable("download", "Экспорт CSV"),
+        ])
+        menu.exec_(button.mapToGlobal(point))
 
     def _select(self, check):
         self.selected = None if check == self.selected else check

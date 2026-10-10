@@ -11,8 +11,8 @@ from __future__ import annotations
 import math
 from urllib.parse import urlsplit
 
-from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QKeySequence
+from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, QUrl, pyqtSignal
+from PyQt5.QtGui import QColor, QDesktopServices, QFont, QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -48,6 +48,7 @@ from ..ui.kit import (
     style_table,
     unavailable_tip,
 )
+from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
 from .scan_common import number
 from .url_card import UrlCard
@@ -448,7 +449,7 @@ class UrlScreen(Screen):
         self.card_expanded = False
         copy = QShortcut(QKeySequence.Copy, self.table)
         copy.setContext(Qt.WidgetShortcut)
-        copy.activated.connect(self._copy_row)
+        copy.activated.connect(self.copy_row)
 
     def _build_groups(self):
         bar = QFrame()
@@ -554,6 +555,8 @@ class UrlScreen(Screen):
         header.setSortIndicatorShown(True)
         header.setSortIndicator(-1, Qt.AscendingOrder)
         header.sectionClicked.connect(self._sort_clicked)
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._header_menu)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.Interactive)
         self.table.setColumnWidth(4, TITLE_WIDTH)
@@ -648,11 +651,62 @@ class UrlScreen(Screen):
         if not index.isValid():
             return
         self.table.selectRow(index.row())
-        menu = QMenu(self.table)
-        menu.addAction(tr("Открыть карточку"), lambda: self._open_tab("info"))
-        menu.addAction(tr("Развернуть карточку"), lambda: (self._open_tab("info"), self.bottom.set_expanded(True, emit=True)))
-        menu.addAction(tr("Копировать URL"), self._copy_row)
+        url = self._row_url(index.row())
+        web = urlsplit(url).scheme in ("http", "https")   # crawled addresses are data: only web links leave the app
+        menu = fill_menu(QMenu(self.table), [
+            entry("info", "Подробности", lambda: self._open_tab("info"), "↵"),
+            entry("open_in_new", "Открыть сайт в браузере", lambda: QDesktopServices.openUrl(QUrl(url)), enabled=web),
+            entry("expand", "Развернуть карточку", lambda: (self._open_tab("info"), self.bottom.set_expanded(True, emit=True))),
+            unavailable("tab", "В новой вкладке", "⌘↵"),
+            None,
+            entry("content_copy", "Копировать URL", self.copy_row, "⌘C"),
+            entry("table_rows", "Копировать строку TSV", self.copy_tsv),
+            None,
+            unavailable("edit_note", "Заметка агенту"),
+            unavailable("replay", "Перепроверить выбранные"),
+        ])
+        menu.setMinimumWidth(250)  # canvas Menus.dc.html: row menu width
         menu.exec_(self.table.viewport().mapToGlobal(point))
+
+    def _header_menu(self, point):
+        header = self.table.horizontalHeader()
+        column = header.logicalIndexAt(point)
+        if column < 0:
+            return
+        core = COLUMNS[column][3]
+        menu = fill_menu(QMenu(header), [
+            entry("arrow_upward", "По возрастанию", lambda: self._sort_by(column, "asc"), enabled=core is not None, tip=unavailable_tip(COLUMNS[column][1]) if core is None else ""),
+            entry("arrow_downward", "По убыванию", lambda: self._sort_by(column, "desc"), enabled=core is not None, tip=unavailable_tip(COLUMNS[column][1]) if core is None else ""),
+            None,
+            unavailable("filter_list", "Фильтр по колонке…"),
+            unavailable("push_pin", "Закрепить слева"),
+            entry("fit_width", "Ширина по содержимому", lambda: self.table.resizeColumnToContents(column)),
+            entry("visibility_off", "Скрыть колонку", lambda: self._toggle_column(column, False), enabled=column != 0),
+            None,
+            entry("view_column", "Все колонки…", self._show_columns),
+        ])
+        menu.setMinimumWidth(240)  # canvas Menus.dc.html: header menu width
+        menu.exec_(header.mapToGlobal(point))
+
+    def _sort_by(self, column, direction):
+        core = COLUMNS[column][3]
+        if core is None:
+            return
+        self.sort = (core, direction)
+        self.table.horizontalHeader().setSortIndicator(*self._indicator())
+        self._reload()
+
+    def _row_url(self, row):
+        return (self.rows[row].get("url") or "") if 0 <= row < len(self.rows) else ""
+
+    def copy_tsv(self):
+        index = self.table.currentIndex()
+        if not index.isValid():
+            return
+        QApplication.clipboard().setText("\t".join(
+            str(index.sibling(index.row(), column).data() or "")
+            for column in range(len(COLUMNS)) if not self.table.isColumnHidden(column)
+        ))
 
     def _set_summary_visible(self, visible):
         self.summary_hidden = not visible
@@ -1109,7 +1163,7 @@ class UrlScreen(Screen):
             self._render_detail("loading")
             self._load_detail()
 
-    def _copy_row(self):
+    def copy_row(self):
         index = self.table.currentIndex()
         if index.isValid() and index.row() < len(self.rows):
             QApplication.clipboard().setText(self.rows[index.row()].get("url") or "")
