@@ -1952,6 +1952,28 @@ def _audit_crawl_result(
             "JS_CONSOLE_ERRORS",
             "no browser console was retained; enable rendering.artifacts.console_errors",
         )
+    # Per-URL security headers (#1013): the final response of each HTML page, judged from the
+    # retained scan. Without a stored scan there is no per-URL header evidence to judge.
+    from seohead.crawl import security_headers
+
+    if stored_scan is not None:
+        header_evidence = security_headers.evaluate(stored_scan.con)
+        for check_id, items in header_evidence["findings"].items():
+            for item in items:
+                ctx.add(check_id, target_url=item["target_url"], details=item)
+            if items:
+                continue
+            if header_evidence["pages_unmeasured"]:
+                ctx.skip(
+                    check_id,
+                    f"{header_evidence['pages_unmeasured']} HTML pages have no parseable "
+                    "stored response headers",
+                )
+            elif not header_evidence["pages_measured"]:
+                ctx.skip(check_id, "no HTML page with a 2xx response was stored")
+    else:
+        for check_id in security_headers.HEADER_CHECKS:
+            ctx.skip(check_id, "crawl was not stored; per-URL response headers are not retained")
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps

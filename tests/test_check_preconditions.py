@@ -92,6 +92,10 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # (issue #124): they need a live sitemap parse rather than an export
     # frame, so on an export-only fixture they run clean, exactly as
     # SITEMAP_ORPHAN and URL_NOT_IN_SITEMAP already do.
+    # Raised from 62 to 66 when the four security-header checks were added (issue #1013):
+    # they read each page's stored response headers, which only a retained native crawl
+    # carries, so this SF-export fixture runs them silent by the same construction as the
+    # link-security checks above.
     # 62 -> 58, and the number is measured after the merge rather than
     # reconciled by hand: two changes moved it in opposite directions.
     # run_sitemap gained explicit skips for its network-only checks (#165),
