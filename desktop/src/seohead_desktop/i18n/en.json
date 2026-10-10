@@ -2095,5 +2095,21 @@
  "добавить {key}": "add {key}",
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
- "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed."
+ "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
+ "Нет исполняемого seohead. Сканы и проекты целы — оболочке не с чем работать.": "No runnable seohead. Scans and projects are intact — the shell has nothing to work with.",
+ "seohead не найден в PATH": "seohead is not found in PATH",
+ "Свободно {free} — меньше порога {limit}. Данные проекта не удаляются автоматически.": "Free {free} — below the {limit} threshold. Project data is not deleted automatically.",
+ "Диск заполнен": "Disk is full",
+ "Нет прав на папку": "No access to the folder",
+ "Нельзя записать в папку проекта. Обычно macOS не выдала доступ к этой папке.": "Cannot write to the project folder. Usually macOS has not granted access to this folder.",
+ "Совместимость ядра и база скана": "Core compatibility and scan database",
+ "Версию ядра и целостность баз сканов приложение пока не получает. Эти состояния не показаны, пока ядро их не сообщит.": "The app does not receive the core version or scan database integrity yet. These states stay hidden until the core reports them.",
+ "Целостность базы скана": "Scan database integrity",
+ "Фатальные состояния": "Fatal states",
+ "Окно не может работать с данными. Каждое состояние говорит, что случилось и что сделать — без потери сканов.": "The window cannot work with data. Each state says what happened and what to do — without losing scans.",
+ "Мастер установки": "Setup wizard",
+ "Фатальных состояний нет": "No fatal states",
+ "Ядро найдено, папка проекта доступна для записи и на диске хватает места.": "The core is found, the project folder is writable and there is enough disk space.",
+ "Состояние папки проекта появится после открытия проекта.": "The project folder state appears after a project is opened.",
+ "Результат проверки целостности базы скана и точка восстановления без полного открытия": "Scan database integrity result and a restore point without a full open"
 }
