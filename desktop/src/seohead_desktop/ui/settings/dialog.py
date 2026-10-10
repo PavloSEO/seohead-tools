@@ -85,6 +85,7 @@ class SettingsDialog(QDialog):
         self.section_title.setProperty("text_style", "title")
         self.section_hint = QLabel()
         self.section_hint.setProperty("text_style", "meta")
+        self.section_hint.setWordWrap(True)
         titles.addWidget(self.section_title)
         titles.addWidget(self.section_hint)
         header.addLayout(titles, 1)

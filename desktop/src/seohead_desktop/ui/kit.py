@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .. import theming
-from ..i18n import tr
+from ..i18n import tr, trf
 from .icons import MaterialIconLabel
 
 STATE_ICONS = {"empty": "inbox", "loading": "hourglass_top", "error": "error", "partial": "incomplete_circle", "waiting": "schedule"}
@@ -65,6 +65,8 @@ ISSUE_HINTS = {
     991: "Количество страниц в каждой группе одним запросом",
     1163: "Результат проверки целостности базы скана и точка восстановления без полного открытия",
     992: "Глубина кликов от главной: сейчас ядро считает от стартовых адресов, а адреса из sitemap стартовые",
+    1208: "Состояние стадий ядра, смета платных стадий и журнал запусков семантики проекта",
+    1220: "Проверка обновлений, загрузка по запросу и журнал изменений приложения и ядра",
     999: "Профиль внешних ссылок проекта: ссылающиеся домены, ссылки и анкоры из подключённых источников",
     1213: "Размер сканов каждого проекта на диске",
     1205: "Импорт и экспорт ядра: разбор файла и превью, сопоставление колонок, сводка дублей до записи, выгрузка со счётчиками",
@@ -188,7 +190,7 @@ def waiting_badge(issue, hint=""):
     label = UnavailableBadge()
     label.setProperty("waiting_issue", issue)
     hint = hint or ISSUE_HINTS.get(issue, "")
-    label.setToolTip(tr(UNAVAILABLE) + (f"\n{tr('Появится')}: {tr(hint)}" if hint else ""))
+    label.setToolTip(trf("{state}\n{soon}: {hint}", state=UNAVAILABLE, soon="Появится", hint=hint) if hint else tr(UNAVAILABLE))
     return label
 
 

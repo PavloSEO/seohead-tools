@@ -132,7 +132,7 @@ def detail_view(page, pid):
               ("Доступ", ACCESS.get(reg.get("access"))), ("Квота", reg.get("quota_mode") or None),
               ("Данные", PRIVACY.get(reg.get("privacy_class"), reg.get("privacy_class") or None))]
     howto = HOWTO.get(pid)
-    parts = [back_header(name_of(pid), "Все источники", page.show_list, sub, pid=pid, actions=[verify]),
+    parts = [back_header(name_of(pid), "Все источники", page.show_list, sub, pid=pid, actions=[verify], paid=paid_kind(reg)),
              key_values(status), group_label("Способы доступа"), *credential_rows(pid, reg, entry)]
     entry_key = row_widget(action_button("Ввести ключ…", icon="key", enabled=False, tooltip="Недоступно в этой версии ядра"),
                            waiting_badge(KEY_GAP, "Сохранение ключа источника из приложения"), stacked=True)

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
+NAME: settings:<section id> | start[:banner] (Start, no project open; banner = one missing recent folder) | tabsettings | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
+``shell:graph`` needs a QA project with a saved scan: --project DIR, or the SEOHEAD_QA_PROJECT environment variable.
 """
 
 from __future__ import annotations
@@ -126,6 +127,39 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+def wait_until(predicate, timeout=60):
+    """Run the event loop (core answers arrive on worker threads) until ``predicate`` holds or the timeout passes."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not predicate():
+        QApplication.processEvents()
+        time.sleep(0.05)
+    QApplication.processEvents()
+
+
+def sourcekey_dialog(pid, theme, lang):
+    """Settings → Источники данных → one provider, answered by the real core CLI (read-only; the project is optional)."""
+    from seohead_desktop.app import MainWindow
+
+    if OPTIONS.get("core"):  # the status bar and the core service look the CLI up on PATH when the window is built
+        os.environ["PATH"] = os.pathsep.join([str(Path(OPTIONS["core"]).parent), os.environ.get("PATH", "")])
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    window.core_executable = OPTIONS.get("core") or window.core_executable
+    if OPTIONS.get("project"):
+        open_project(window, OPTIONS["project"])
+    dialog = SettingsDialog(window.prefs, window.settings_context(), None, "sources")
+    dialog._owner_window = window  # keeps the window (and its core service) alive while the dialog is captured
+    page = dialog._pages["sources"][1]
+    wait_until(lambda: page.loaded)
+    page.show_detail(pid)
+    wait_until(lambda: not page._busy and page.verified.get(pid) != "running")
+    dialog.capture_max = (1000, 760)
+    return dialog
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -133,6 +167,27 @@ def build(name, width, height, store, theme="light", lang="ru"):
         dialog = SettingsDialog(store, SettingsContext(), section=arg or "general")
         dialog.resize(width, height)
         return dialog
+    if kind in ("start", "tabsettings"):
+        # Start («Проекты») before any project is open. Without recent projects the first-run wizard shows instead
+        # (screens.show_start) until it is passed, so the plain state sets shell.onboarding_done: the empty list.
+        # "banner" = one recent folder that no longer exists (the relocate/forget banner).
+        # «Вкладки и панели» opened the way a user does it: the tune button at the right of the tab strip.
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        window.prefs.set("view.language", lang)
+        if kind == "tabsettings":
+            window.show_startup_workspace()
+            if OPTIONS.get("project"):
+                open_project(window, OPTIONS["project"])
+            window.workspace_tabs.overflow_button.click()
+            return window.tab_settings
+        window.prefs.set("shell.onboarding_done", True)
+        if arg == "banner":
+            window.recent_projects = [{"label": "Старый блог", "path": "/nonexistent/old-blog", "opened_at": "2026-10-10T09:00+03:00"}]
+        window.show_startup_workspace()
+        return window
     if kind == "shell":
         from seohead_desktop.app import MainWindow
 
@@ -157,6 +212,8 @@ def build(name, width, height, store, theme="light", lang="ru"):
         from capture_sources import dialog
 
         return dialog(arg or "list")
+    if kind == "sourcekey":
+        return sourcekey_dialog(arg or "arsenkin", theme, lang)
     if kind == "menu":
         from seohead_desktop.app import MainWindow
 
@@ -181,6 +238,10 @@ def main(argv=None):
     parser.add_argument("--core", help="seohead CLI executable (default: .venv-desktop/bin/seohead next to the repo)")
     parser.add_argument("--display", choices=("agent", "simple"), default="agent")
     args = parser.parse_args(argv)
+    if args.project is None and os.environ.get("SEOHEAD_QA_PROJECT"):
+        args.project = Path(os.environ["SEOHEAD_QA_PROJECT"])
+    if any(name.startswith("shell:graph") for name in args.names) and args.project is None:
+        parser.error("shell:graph needs a QA project with a saved scan: pass --project DIR or set SEOHEAD_QA_PROJECT")
     default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
     OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
     os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
@@ -195,12 +256,12 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith(("settings", "projsources", "sources")):
+            if name.startswith(("settings", "tabsettings", "projsources", "sources", "sourcekey")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
                 widget.render_image(width, height, args.theme, args.lang).save(str(path))
-            elif name.startswith("shell"):
+            elif name.startswith(("shell", "start")):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)

@@ -1,6 +1,6 @@
 import unittest
 
-from PyQt5.QtWidgets import QPushButton
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop.ui.settings.context import SettingsContext
 from tests._settings_support import all_text, app, make, row
@@ -46,6 +46,12 @@ class UpdatesSectionTests(unittest.TestCase):
         button = next(b for b in page.findChildren(QPushButton) if b.text() == "Проверить сейчас")
         self.assertFalse(button.isEnabled())
         self.assertEqual(button.toolTip(), "Недоступно в этой сборке")
+
+    def test_changelog_waits_for_core_contract(self):
+        _store, _dialog, page = make("updates")
+        badges = [w for w in page.findChildren(QLabel) if w.property("waiting_issue") == 1220]
+        self.assertEqual(len(badges), 1)
+        self.assertIn("журнал", badges[0].toolTip().lower())
 
     def test_installed_version_comes_from_context(self):
         _store, _dialog, page = make("updates", SettingsContext(app_version="9.8.7"))

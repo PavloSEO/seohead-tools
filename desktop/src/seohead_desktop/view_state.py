@@ -21,6 +21,7 @@ from .common import (  # noqa: F401
     plain,
     scan_request_key,
 )
+from .ui.tab_settings import TabSettingsDialog
 from .ui.presentation import (
     content_spacing,
     short_run_id,
@@ -29,6 +30,14 @@ from .ui.presentation import (
 
 
 class ViewStateMixin:
+    def open_tab_settings(self):
+        """«Вкладки и панели»: the open project's audit decks, or none (catalogue only) before a project is open."""
+        audit = getattr(self, "audit_workspace", None)
+        decks = {} if audit is None else {"main": audit.main, "detail": audit.detail, "right": audit.right}
+        self.tab_settings = TabSettingsDialog(decks, self._density, self.set_density, self)
+        self.tab_settings.open()
+        return self.tab_settings
+
     def set_reduced_motion(self, enabled):
         self.reduced_motion = bool(enabled) or self.system_reduced_motion
         self.work_monitor.set_reduced_motion(self.reduced_motion)

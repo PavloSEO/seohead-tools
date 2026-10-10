@@ -823,7 +823,7 @@ class UrlScreen(Screen):
             if host._project_loading:
                 return set_panel_state(self, "loading", StatePanel("loading", "Чтение проекта", "URL появятся после чтения сканов."))
             panel = StatePanel("empty", "В проекте ещё нет сканов",
-                               "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical. Запустите первый скан — данные появятся по мере обхода.",
+                               "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical, ссылки. Запустите первый скан — данные появятся по мере обхода.",
                                action=("Новый скан", host.scan_preview), secondary=("Сканы проекта", lambda: host.navigation.select_section("scans")))
             return set_panel_state(self, "noscan", panel)
         set_panel_state(self, None)
@@ -933,7 +933,7 @@ class UrlScreen(Screen):
     def _show_error(self, text, payload=None):
         self.model.set_rows([])
         self.rows = []
-        panel = StatePanel("error", "Не удалось прочитать данные скана", "Данные на диске не тронуты — повторите чтение.",
+        panel = StatePanel("error", "Не удалось прочитать данные скана", "Ядро seohead вернуло ошибку при чтении скана. Данные на диске не тронуты — повторите чтение или откройте диагностику окружения.",
                            action=("Повторить", lambda: self._reload(keep_page=True)),
                            secondary=("Диагностика", lambda: self.host.open_settings("core")))
         panel.layout().setContentsMargins(24, 6, 24, 6)

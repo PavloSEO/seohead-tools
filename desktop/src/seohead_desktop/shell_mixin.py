@@ -56,6 +56,7 @@ class ShellMixin:
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
         from .screens.crawler import CrawlerScreen
+        from .screens.graph_layouts import GraphLayoutsScreen
 
         # The link graph screen is kept for its own tests; the graph section is GraphScreen (below)
         self.link_graph_screen = LinkGraphScreen(self)
@@ -63,6 +64,8 @@ class ShellMixin:
         for view in ("crawler", "methods"):
             if view == "crawler":
                 page = CrawlerScreen()
+            elif view == "graph":
+                page = GraphLayoutsScreen()
             else:
                 page = QWidget()
                 layout = QVBoxLayout(page)
@@ -116,6 +119,7 @@ class ShellMixin:
         """26 px bar: transient messages on the left, source / display mode / core on the right."""
         bar = self.statusBar()
         bar.setSizeGripEnabled(False)
+        bar.setContentsMargins(0, 0, 8, 0)  # keep the right-hand core/source text 8 px off the window edge in every theme
         self.source_badge = ElidedLabel("Проект не открыт")
         self.source_badge.setObjectName("sourceBadge")
         self.source_badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
