@@ -1617,7 +1617,7 @@ def run(
     compact: bool = False,
 ) -> int:
     """Launch the interactive shell; returns a process exit code."""
-    localization.LANGUAGE = localization.resolve_language(lang)
+    localization.set_language(localization.resolve_language(lang))
     project = scan_now.project_directory(project) if project else None
     if (scan or compact) and not project:
         print("--scan and --compact require --project", file=sys.stderr)

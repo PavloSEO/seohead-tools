@@ -8,6 +8,14 @@ import locale
 import os
 
 LANGUAGE = "en"
+
+
+def set_language(code: str) -> None:
+    """Select the UI language for this process; tests should monkeypatch LANGUAGE instead."""
+    global LANGUAGE
+    LANGUAGE = code
+
+
 RU = {
     "Finalizing": "Завершение",
     "Spider": "Сайт целиком",
