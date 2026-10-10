@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
+NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery | modal:<id> (one per modal of the Modals board: settings, project-settings, help, action-finder, tab-config, new-project, crawl-config, permission, new-scan, scan-settings, quick-scan) (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QDialog
 
 from seohead_desktop import i18n, qt, theming
 from seohead_desktop.app import load_theme
@@ -126,9 +126,64 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+# modal:<id> — one capture per modal dialog of the Modals board; scan modals reuse the scan captures.
+MODAL_SCREENS = {"new-scan": "newscan", "scan-settings": "scanset:speed", "quick-scan": "quickscan"}
+MODAL_DIALOGS = ("settings", "project-settings", "help", "action-finder", "tab-config", "new-project", "crawl-config", "permission")
+
+
+def modal_dialog(arg, width, height, theme, lang):
+    """A real dialog of the app over a window; crawl-config takes the saved core descriptor (tests/core_fixtures)."""
+    from seohead_desktop.app import MainWindow
+
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    window.show_startup_workspace()
+    if OPTIONS.get("project"):
+        open_project(window, OPTIONS["project"])
+    if arg == "help":
+        from seohead_desktop.ui.help_guide import HelpGuideDialog
+
+        return HelpGuideDialog(window)
+    if arg == "action-finder":
+        from seohead_desktop.ui.workspace import ActionFinder
+
+        return ActionFinder(window.action_registry(), window)
+    if arg == "tab-config":
+        from seohead_desktop.ui.components import TabConfigurationDialog
+        from seohead_desktop.ui.tabcatalogue import MAIN_TABS
+
+        return TabConfigurationDialog(MAIN_TABS, [spec.id for spec in MAIN_TABS], window)
+    if arg == "new-project":
+        from seohead_desktop.screens.start import NewProjectDialog
+
+        return NewProjectDialog(window, window)
+    if arg == "permission":
+        from seohead_desktop.mcp_integration import PermissionDialog
+
+        return PermissionDialog(OPTIONS.get("core") or "seohead", ("claude-code",), window)
+    if arg == "crawl-config":
+        from seohead_desktop.ui.crawl_configuration_dialog import CrawlConfigurationDialog
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from tests._screens_core import fixture
+
+        return CrawlConfigurationDialog(fixture("crawl_describe_settings.json"), window)
+    raise SystemExit(f"unknown modal: {arg}")
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
+    if kind == "modal":
+        if arg in MODAL_SCREENS:
+            return build(MODAL_SCREENS[arg], width, height, store, theme, lang)
+        if arg == "settings":
+            return build("settings:general", width, height, store, theme, lang)
+        if arg == "project-settings":
+            return projsources_dialog("ready", theme, lang)
+        if arg in MODAL_DIALOGS:
+            return modal_dialog(arg, width, height, theme, lang)
+        raise SystemExit(f"unknown modal: {arg}")
     if kind == "settings":
         dialog = SettingsDialog(store, SettingsContext(), section=arg or "general")
         dialog.resize(width, height)
@@ -195,7 +250,7 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith(("settings", "projsources", "sources")):
+            if isinstance(widget, QDialog):  # settings, sources, project settings and every modal:<id> dialog
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):

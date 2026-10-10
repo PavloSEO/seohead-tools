@@ -142,7 +142,10 @@ class Job:
         from seohead_desktop.screens.new_scan_draft import ScanDraft
 
         site = ((window.project_result or {}).get("project") or {}).get("site") or {}
-        return ScanDraft(window.crawl_descriptor, target=site.get("target") or "", host=site.get("host") or "",
+        descriptor = window.crawl_descriptor
+        if descriptor is None:  # no project: the saved core answer for the settings descriptor (tests/core_fixtures)
+            descriptor = json.loads((FIXTURES / "crawl_describe_settings.json").read_text(encoding="utf-8"))
+        return ScanDraft(descriptor, target=site.get("target") or "", host=site.get("host") or "",
                          project_directory=window.project_directory or "", prefs=window.prefs)
 
     # ---- «Быстрый запуск» -----------------------------------------------------------------------------------------
