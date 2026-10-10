@@ -208,7 +208,15 @@ INTERACTIVE_COMMANDS = ("tui", "watch")
 # unknown spelling without pretending every entry point is an MCP tool.  The
 # namespace entries own subcommand parsers; ``mcp`` and the interactive shell
 # own process/session behavior rather than a shared handler.
-DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "semantics", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
+DOCUMENTED_CLI_ENTRYPOINTS = (
+    "sf",
+    "semantics",
+    "mcp",
+    "scan",
+    "project",
+    "crawl-profile",
+    *INTERACTIVE_COMMANDS,
+)
 
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
@@ -2827,6 +2835,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reanalyze = scan_subs.add_parser("reanalyze", help="reanalyze retained inputs without network")
     _add_flags(reanalyze, "scan-reanalyze")
+    crawl_profile = subs.add_parser("crawl-profile", help="list or delete saved crawl profiles")
+    crawl_profile_subs = crawl_profile.add_subparsers(
+        dest="crawl_profile_command", metavar="<action>", required=True
+    )
+    crawl_profile_subs.add_parser("list", help="list saved crawl profile names")
+    crawl_profile_subs.add_parser("delete", help="delete a saved crawl profile").add_argument(
+        "name", metavar="NAME"
+    )
     mcp = subs.add_parser("mcp", help="run the MCP server (stdio)")
     mcp.add_argument(
         "--profile", choices=("full", "audit", "infra", "quick-check", "router"), default=None
@@ -2986,6 +3002,19 @@ def main(argv: list[str] | None = None) -> int:
     from seohead.cli.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))
+    if cmd == "crawl-profile":
+        from seohead.crawl import profiles
+
+        try:
+            if args.crawl_profile_command == "list":
+                print(json.dumps({"profiles": profiles.saved_names()}, ensure_ascii=False))
+            else:
+                profiles.delete(args.name)
+                print(json.dumps({"profile": args.name, "deleted": True}, ensure_ascii=False))
+        except profiles.ProfileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
     if cmd == "crawl-site" and getattr(args, "config_help", False):
         _print_config_help()
         return 0

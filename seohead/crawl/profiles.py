@@ -54,6 +54,15 @@ def path_for(name: str) -> str:
     return str(target)
 
 
+def delete(name: str) -> None:
+    """Remove the stored profile ``name``."""
+    target = _file_for(name)
+    if not target.is_file():
+        known = ", ".join(saved_names()) or "none"
+        raise ProfileError(f"no crawl profile {name!r}; saved profiles: {known}")
+    target.unlink()
+
+
 def save(name: str, config_file: str) -> str:
     """Validate ``config_file`` and store it as profile ``name``; returns the stored path."""
     target = _file_for(name)

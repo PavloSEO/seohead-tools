@@ -24,6 +24,7 @@ is `project-progress`.
 | `sf doctor` | Diagnose SF CLI discovery and optional dependencies. |
 | `sf save-config` | Copy the most recent SF crawl configuration into a reusable base config file. |
 | `semantics <stage>` | Accumulating semantic core in its own SQLite database: `init`, `import`, `collect`, `clean`, `graph`, `exact`, `cluster`, `competitors`, `synonyms`, `report`, `excel`, `mine`, `sitematch`, `relevance`, `status`, `export`, each with `--project DIR`. `collect`, `synonyms`, `cluster` and `exact` are paid; see [SEMANTICS.md](SEMANTICS.md). |
+| `crawl-profile list` / `crawl-profile delete NAME` | List or delete named crawl profiles saved with `crawl-site --save-profile`; selected with `crawl-site --profile`. |
 | `mcp` | Start the local stdio MCP server; `--profile` selects `full`, `audit`, `infra`, `quick-check` or `router` ([MCP profiles](MCP_PROFILES.md)). |
 | `watch` | Optional Rich terminal observer for one project beside an AI chat ([terminal observer](TERMINAL.md)). Needs the `tui` extra. |
 | `tui` | Interactive terminal shell over the same handlers ([TERMINAL.md](TERMINAL.md)). Needs the `tui` extra. |
