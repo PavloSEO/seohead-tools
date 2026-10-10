@@ -28,6 +28,7 @@ from ..competitors import (
     candidate_arguments,
     competitor_rows,
     parse_candidates,
+    scan_budget,
     valid_url_cap,
 )
 from ..crawl_configuration import preview_configuration
@@ -178,7 +179,7 @@ class CompetitorsScreen(Screen):
             if item.get("state") in ACTIVE_RUN_STATES and item.get("project")
         }
         try:
-            draft = {"limits.max_urls": cap, "limits.max_requests": 0, "limits.max_crawl_seconds": 0, "rendering.mode": "raw"}
+            draft = {"limits.max_urls": cap, **scan_budget(cap), "rendering.mode": "raw"}
             overrides = tuple(preview_configuration(host.crawl_descriptor, draft)["overrides"].items())
         except ValueError as exc:
             self.status.setText(tr("Конфигурация скана отклонена ядром") + ": " + str(exc))

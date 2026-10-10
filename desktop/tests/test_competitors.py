@@ -6,6 +6,7 @@ from seohead_desktop.competitors import (
     candidate_arguments,
     competitor_rows,
     parse_candidates,
+    scan_budget,
     valid_url_cap,
 )
 
@@ -55,6 +56,12 @@ class ParseCandidatesTests(unittest.TestCase):
         self.assertEqual(parsed["accepted"], [])
         self.assertEqual(parsed["refused"][0][1], "already in the list")
 
+    def test_www_form_of_a_listed_site_is_the_same_site(self):
+        parsed = parse_candidates("www.one.example.test", existing=["https://one.example.test/"])
+
+        self.assertEqual(parsed["accepted"], [])
+        self.assertEqual(parsed["refused"][0][1], "already in the list")
+
     def test_non_text_and_oversized_input_are_refused_whole(self):
         self.assertEqual(parse_candidates(None)["accepted"], [])
         self.assertEqual(parse_candidates("a.example.test " * 20000)["accepted"], [])
@@ -92,6 +99,15 @@ class UrlCapTests(unittest.TestCase):
         self.assertEqual(valid_url_cap(1000), 1000)
         for value in (0, 1001, -3, 2.5, True, "50", None):
             self.assertIsNone(valid_url_cap(value), value)
+
+    def test_scan_budget_is_explicit_and_inside_the_core_default_thresholds(self):
+        # Core defaults: requests 3000, seconds 600. Zero is unbounded and would be refused without approval.
+        self.assertEqual(scan_budget(50), {"limits.max_requests": 150, "limits.max_crawl_seconds": 600})
+        for cap in (1, 50, 1000):
+            budget = scan_budget(cap)
+            self.assertGreater(budget["limits.max_requests"], 0)
+            self.assertLessEqual(budget["limits.max_requests"], 3000)
+            self.assertLessEqual(budget["limits.max_crawl_seconds"], 600)
 
 
 def _site(url, directory, *scans, state="candidate; audit not run"):

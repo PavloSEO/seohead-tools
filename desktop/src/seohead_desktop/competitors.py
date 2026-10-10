@@ -14,6 +14,10 @@ MAX_TEXT = 64 * 1024
 MAX_URL = 2048
 DEFAULT_URL_CAP = 50
 MAX_URL_CAP = 1000  # above this the core asks for explicit approval of a large crawl; Desktop does not ask for it
+# Core default approval thresholds (pages 1000, requests 3000, seconds 600). A competitor scan stays inside them, so it
+# starts without approval. Zero would mean unbounded, and the core refuses an unbounded request as a large crawl.
+REQUESTS_PER_PAGE = 3
+MAX_CRAWL_SECONDS = 600
 _SPLIT = re.compile(r"[\s,;]+")
 _FINISHED = {"finished"}
 
@@ -46,9 +50,10 @@ def parse_candidates(text: str, *, existing=(), limit: int = 5) -> dict:
 
 
 def _key(url: str) -> tuple:
-    """Identity of a site address: the core stores the same URL with a trailing slash."""
+    """Identity of a site address: the core stores the same URL with a trailing slash and without ``www``."""
     parsed = urlsplit(url)
-    return parsed.scheme, (parsed.hostname or "").lower(), parsed.path.rstrip("/") or "/", parsed.query
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    return parsed.scheme, host, parsed.path.rstrip("/") or "/", parsed.query
 
 
 def _normalize(token: str) -> tuple[str | None, str | None]:
@@ -76,6 +81,11 @@ def candidate_arguments(directory: str, urls, *, source: str, observed_at: str, 
         "competitors": [{"url": url, "source": source, "observed_at": observed_at} for url in urls],
         "consumer": consumer,
     }
+
+
+def scan_budget(cap: int) -> dict:
+    """Explicit request and time budgets for one competitor scan, inside the core default thresholds."""
+    return {"limits.max_requests": cap * REQUESTS_PER_PAGE, "limits.max_crawl_seconds": MAX_CRAWL_SECONDS}
 
 
 def valid_url_cap(value) -> int | None:

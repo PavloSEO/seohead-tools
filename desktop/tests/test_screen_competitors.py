@@ -160,6 +160,8 @@ class CompetitorsScreenTests(unittest.TestCase):
             screen.start_scans()
 
         self.assertEqual(configured.call_args.args[1]["limits.max_urls"], 120)
+        self.assertEqual(configured.call_args.args[1]["limits.max_requests"], 360)
+        self.assertEqual(configured.call_args.args[1]["limits.max_crawl_seconds"], 600)
         self.assertEqual(len(host.manager.submitted), 1)
         submitted = host.manager.submitted[0]
         self.assertTrue(submitted["project"].endswith("/owner/competitors/a"))
