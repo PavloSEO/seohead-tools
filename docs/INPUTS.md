@@ -28,7 +28,7 @@ and this decision makes no backend migration.
 | `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state`) | — |
 | `project-task-detail` | Project directory (`directory`)<br>Selector (`item_id`) | — |
 | `project-scans` | Project directory (`directory`)<br>Selector (`offset, limit`) | — |
-| `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; confirmed disconnect or remote revoke. No secret values returned. |
+| `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; cancel a pending browser flow; confirmed disconnect or remote revoke. No secret values returned. |
 | `provider-replay` | Scan artifact (`input_path`); requires `evidence_file, out_dir` | Offline join with a private saved provider envelope; raw joins remain in restricted output. |
 | `parse` | Live URL (`url`)<br>URL list (`urls`) | — |
 | `crawl-site` | Live URL (`url`)<br>URL list (`urls`)<br>Local file (`urls_file`)<br>Scan artifact (`resume`)<br>Local configuration (`config`)<br>Project directory (`project`) | TXT, CSV, XLSX, or XML URL input; Resumes retained crawl evidence and continues network collection.; Defaults the target and scans/ path; explicit paths, legacy output and resume keep their route. |

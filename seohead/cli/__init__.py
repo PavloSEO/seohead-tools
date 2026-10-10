@@ -2385,7 +2385,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "provider-auth":
         _source_flag(sub, "--provider", help="OAuth provider (gsc)")
         sub.add_argument(
-            "--action", choices=("status", "connect", "refresh", "disconnect", "revoke")
+            "--action", choices=("status", "connect", "refresh", "cancel", "disconnect", "revoke")
         )
         _source_flag(
             sub, "--grant-file", help="private bounded JSON grant obtained through provider consent"

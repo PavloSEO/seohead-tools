@@ -8,9 +8,11 @@ import tempfile
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.data_sources import oauth_flow
 from seohead.data_sources.credentials import CONFIG_ROOT, MissingCredential, is_private_mode
 from seohead.data_sources.http import open_no_redirect
 
@@ -22,6 +24,10 @@ def _path(provider: str) -> Path:
     if provider != "gsc":
         raise ValueError("unsupported OAuth provider")
     return CONFIG_ROOT / provider / "oauth.json"
+
+
+def _flow_path(provider: str) -> Path:
+    return _path(provider).with_name("oauth-flow.json")
 
 
 def save_grant(provider: str, grant: dict[str, Any]) -> None:
@@ -130,7 +136,27 @@ def manage_grant(
     """
     path = _path(provider)
     if action == "status":
-        return {"ok": True, "configured": grant_available(provider), "access_verified": False}
+        result: dict[str, Any] = {
+            "ok": True,
+            "configured": grant_available(provider),
+            "access_verified": False,
+        }
+        flow = oauth_flow.load_flow(_flow_path(provider))
+        if flow is not None:
+            result["flow"] = {
+                "flow_id": flow["flow_id"],
+                "status": oauth_flow.effective_status(flow, datetime.now(timezone.utc)),
+                "expires_at": flow["expires_at"],
+            }
+        return result
+    if action == "cancel":
+        # Local and reversible: only the pending flow record changes, never a grant.
+        flow = oauth_flow.cancel_flow(_flow_path(provider), datetime.now(timezone.utc))
+        if flow is None:
+            return {"ok": False, "error": "no_active_flow"}
+        if flow["status"] in {"connected", "revoked"}:
+            return {"ok": False, "error": "flow_not_waiting"}
+        return {"ok": True, "flow": {"flow_id": flow["flow_id"], "status": flow["status"]}}
     if action == "connect":
         if not isinstance(grant_file, str):
             raise ValueError("connect requires a private grant_file")
@@ -181,4 +207,4 @@ def manage_grant(
             "remote_revoked": action == "revoke",
             "scope": "stored OAuth grant only; environment bearers and service accounts are unchanged",
         }
-    raise ValueError("action must be status, connect, refresh, disconnect, or revoke")
+    raise ValueError("action must be status, connect, refresh, cancel, disconnect, or revoke")

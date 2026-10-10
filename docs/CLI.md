@@ -214,7 +214,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 |---|---|---|
 | `provider-registry` | List provider operations, credential components, quota and privacy boundaries. | offline, read-only |
 | `provider-readiness` | Inspect configured credential sources and declared operation routes offline. | offline, read-only |
-| `provider-auth` | Manage GSC read-only OAuth grants: import private file, refresh, or explicitly revoke. | network, writes |
+| `provider-auth` | Manage GSC read-only OAuth grants: import private file, refresh, cancel a pending flow, or explicitly revoke. | network, writes |
 | `provider-verify` | Explicitly verify bounded read-only account/target access; present credentials are not verification. | network |
 | `provider-collect` | Collect a declared provider operation with versioned redacted evidence. | network, writes, paid |
 | `provider-replay` | Join a saved private provider collection to a saved scan with no network; retain raw rows locally and return counts. | writes |
