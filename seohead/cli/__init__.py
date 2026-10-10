@@ -784,6 +784,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "query",
             "kind",
             "state",
+            "sort",
+            "descending",
+            "states",
             "input_path",
             "document_id",
             "package",
@@ -2480,6 +2483,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--kind", choices=("method", "schema", "check", "skill", "scenario", "custom")
         )
         sub.add_argument("--state", help="exact displayed checklist state")
+        sub.add_argument(
+            "--sort", choices=("id", "priority", "state", "updated"), help="sort field (default id)"
+        )
+        sub.add_argument("--desc", dest="descending", action="store_true", help="reverse order")
+        sub.add_argument(
+            "--states", type=_split_list, help="comma-separated displayed states (up to 8)"
+        )
     if cmd == "scan-navigation":
         _source_flag(sub, "--scan", dest="input_path", help="retained local scan artifact")
         sub.add_argument("--document-id", type=int, help="exact retained document identifier")

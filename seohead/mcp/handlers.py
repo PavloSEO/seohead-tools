@@ -5509,12 +5509,23 @@ def project_checklist_page(
     query: str = "",
     kind: str | None = None,
     state: str | None = None,
+    sort: str = "id",
+    descending: bool = False,
+    states: list[str] | None = None,
 ) -> dict[str, Any]:
     """Read a bounded searchable page of project checklist evidence."""
     from seohead.projects.observer import checklist_page as core
 
     return core(
-        directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+        directory=directory,
+        offset=offset,
+        limit=limit,
+        query=query,
+        kind=kind,
+        state=state,
+        sort=sort,
+        descending=descending,
+        states=states,
     )
 
 

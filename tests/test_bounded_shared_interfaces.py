@@ -118,6 +118,7 @@ def test_observer_cli_mcp_readers_preserve_project_and_page_contract(tmp_path):
             ],
             {
                 "directory": "project",
+                "descending": False,
                 "query": "title",
                 "kind": "check",
                 "state": "failed",
