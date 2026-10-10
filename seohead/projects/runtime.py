@@ -16,7 +16,7 @@ from typing import Any
 from seohead.core.filesystem import atomic_write_bytes
 
 from .catalogue import load_catalogue
-from .coverage import _now, coverage_status, initialize_coverage, update_item
+from .coverage import _now, coverage_status, initialize_coverage, record_execution, update_item
 from .workspace import _load, _target
 
 POLICY_FORMAT = "seohead.project-crawl-policy.v1"
