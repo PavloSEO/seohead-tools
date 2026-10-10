@@ -15,6 +15,8 @@ from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
 from seohead.projects.workspace import create_project
 from seohead.storage.native_scan import NativeScan
 
@@ -88,6 +90,7 @@ def _run(command: list[str], *, root: Path) -> subprocess.Popen[str]:
     )
 
 
+@pytest.mark.skipif(os.name == "nt", reason="uses POSIX signals and process groups")
 def test_cli_sigint_keeps_a_project_scan_and_resume_finishes_without_refetching(tmp_path):
     root = Path(__file__).parents[1]
     project = tmp_path / "project"
