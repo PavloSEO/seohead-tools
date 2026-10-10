@@ -195,7 +195,7 @@
           "bytes": 21954,
           "path": "cohorts-0001.csv",
           "rows": 30,
-          "sha256": "5fd34a1e664aa2551cd9642c2e308ec17d49a49422ead7be96952118501ef2e6"
+          "sha256": "137c8e2385c8ddcbd82671dc04ab878b6334328f6c128937e70a829424c015db"
         }
       ],
       "primary_key": [
@@ -209,7 +209,7 @@
       "state": "available"
     },
     "coverage": {
-      "bytes": 41820,
+      "bytes": 42400,
       "coverage": {},
       "fields": [
         {
@@ -278,10 +278,10 @@
       "partition_count": 1,
       "partitions": [
         {
-          "bytes": 41820,
+          "bytes": 42400,
           "path": "coverage-0001.csv",
-          "rows": 197,
-          "sha256": "490c297498aeb9d6c3e1080f36423ddcaf099215414bb1fc8b642853e8e90d05"
+          "rows": 200,
+          "sha256": "87003a9f6f95646ac9cee7bbff6055aa5c528b473210b12c4bf7748fe9e8583e"
         }
       ],
       "primary_key": [
@@ -291,7 +291,7 @@
         "population"
       ],
       "reason": null,
-      "row_count": 197,
+      "row_count": 200,
       "schema_version": "seohead.bi.coverage.v1",
       "source_population": "input artifact and declared check coverage",
       "state": "available"
@@ -557,7 +557,7 @@
           "bytes": 29360,
           "path": "findings-0001.csv",
           "rows": 25,
-          "sha256": "0997b22987aa9cbc09062220433f186ce148c6d01892d4a6d9d2155289b5b82c"
+          "sha256": "cc68b32afa75f5df5abf39431549d7631018152764a2e679a6f2ffbbef33205f"
         }
       ],
       "primary_key": [
@@ -1147,7 +1147,7 @@
           "bytes": 40469,
           "path": "metrics-0001.csv",
           "rows": 16,
-          "sha256": "8440921dd7322c43b6b48bc724a64e609aa8d7846c601ad1dddb541004cb48e3"
+          "sha256": "b2ab8e0ac0750f9ed71998c87853ed62993ba8587efc956e2affdea81e5c34e0"
         }
       ],
       "primary_key": [
@@ -1590,7 +1590,7 @@
           "bytes": 12289,
           "path": "pages-0001.csv",
           "rows": 6,
-          "sha256": "c1cfcd879b2388dbac4ec6c3401e152c3aa0de60fe93cc3efee48d9007bb7f2e"
+          "sha256": "bb88275e2503dc6fda82ce06bce0f00901bd101a2066942f7b00ad17d03319d9"
         }
       ],
       "primary_key": [
@@ -1660,7 +1660,7 @@
           "bytes": 834,
           "path": "group-groups-0001.csv",
           "rows": 3,
-          "sha256": "532a20705833580538acdcb8d8d0fee115805d9af991f5ba1e0b1344b196c88e"
+          "sha256": "ef4c0d7d49e8bb269371fa7652e4ca4ee81d83586bd95af2d6b5be4edcd180d1"
         }
       ],
       "row_count": 3
@@ -1702,22 +1702,22 @@
           "bytes": 589,
           "path": "group-members-0001.csv",
           "rows": 7,
-          "sha256": "b2f1a6effcc16851e6361c5022abee98b51e27ca390fba5f828ba9958fc76500"
+          "sha256": "a8f6e5317883810f372cc8cfb085ee18427f13ba4b9b38ca7487bb53392a26f5"
         }
       ],
       "row_count": 7
     },
     "publication": "local companion; not included in the six published datasets",
-    "run_id": "audit:b76197e14a32e523f0fa0123",
-    "sha256": "1f67e2ee5adeb3eb92936abe85ac5006448b8589ebf156d97b0ea0ff1b88b2be",
-    "source_audit_sha256": "b76197e14a32e523f0fa0123238400e99bd7af1c4c408496ca5d82535f7f7e6c"
+    "run_id": "audit:7d04558fd9d5e39995f723d9",
+    "sha256": "08a7fb1d1b84153efde4c29d4bde62fe8cb121b69ee2f51f5a30072edc07020b",
+    "source_audit_sha256": "7d04558fd9d5e39995f723d903fc8c89bc208c46bebb19f4ecea82edfdea6110"
   },
   "input": {
-    "bytes": 45456,
+    "bytes": 45654,
     "kind": "sf-audit",
     "name": "audit.json",
     "schema": "2.0",
-    "sha256": "b76197e14a32e523f0fa0123238400e99bd7af1c4c408496ca5d82535f7f7e6c"
+    "sha256": "7d04558fd9d5e39995f723d903fc8c89bc208c46bebb19f4ecea82edfdea6110"
   },
   "metrics_dimension_columns": {},
   "provider_sources": [
@@ -1913,7 +1913,7 @@
     "projection_index_cache_bytes": 2097152
   },
   "run": {
-    "audit_sha256": "b76197e14a32e523f0fa0123238400e99bd7af1c4c408496ca5d82535f7f7e6c",
+    "audit_sha256": "7d04558fd9d5e39995f723d903fc8c89bc208c46bebb19f4ecea82edfdea6110",
     "check_skips": {
       "AJAX_CRAWLING_SCHEME_META_FRAGMENT": "no <meta name=\"fragment\"> evidence (native crawl only)",
       "AJAX_CRAWLING_SCHEME_URL": "no AJAX-scheme URL evidence (native crawl only)",
@@ -1986,6 +1986,7 @@
       "MISSING_DOCTYPE": "no Doctype column (needs a native seohead crawl or Custom Extraction in SF)",
       "MISSING_HSTS": "missing export: security_hsts",
       "MIXED_CONTENT": "missing export: security_mixed",
+      "MOBILE_ALTERNATE_LINK": "no rel=alternate media evidence (native crawl only)",
       "NEAR_DUPLICATE": "no stored HTML (input.html_store_dir not set)",
       "NO_AUTHOR_BYLINE": "no Trust Signals column (native crawl or a same-named custom extraction) -- no author markup evidence at all",
       "NO_COMPRESSION": "no Content-Encoding column (needs a native seohead crawl or Custom Extraction in SF)",
@@ -2026,14 +2027,14 @@
     "crawl_reason": "audit source does not establish a completed native crawl",
     "crawl_settings": null,
     "crawl_state": "unknown",
-    "finished_at": "2026-10-10T13:00:10Z",
+    "finished_at": "2026-10-10T19:12:52Z",
     "input_mode": "parse-exports",
-    "run_id": "audit:b76197e14a32e523f0fa0123",
-    "source_bytes": 45456,
+    "run_id": "audit:7d04558fd9d5e39995f723d9",
+    "source_bytes": 45654,
     "source_kind": "sf-audit",
     "source_name": "audit.json",
     "source_schema": "2.0",
-    "source_sha256": "b76197e14a32e523f0fa0123238400e99bd7af1c4c408496ca5d82535f7f7e6c",
+    "source_sha256": "7d04558fd9d5e39995f723d903fc8c89bc208c46bebb19f4ecea82edfdea6110",
     "started_at": null,
     "summary": {
       "by_check": {
@@ -2067,7 +2068,7 @@
         "checks_disabled": 0,
         "checks_disabled_ids": [],
         "checks_fired": 20,
-        "checks_silent": 71,
+        "checks_silent": 73,
         "checks_silent_ids": [
           "BAD_REDIRECT_TYPE",
           "BLOCKED_BY_ROBOTS",
@@ -2097,6 +2098,7 @@
           "HTTP_URL",
           "IMPORTANT_URL_BLOCKED_BY_ROBOTS",
           "INLINK_BOILERPLATE_ONLY",
+          "INTERNAL_LINK_SPONSORED_UGC",
           "INTERNAL_NOFOLLOW_OUTLINKS",
           "JS_CONSOLE_ERRORS",
           "META_REFRESH_REDIRECT",
@@ -2128,6 +2130,7 @@
           "UNLINKED_CANONICAL",
           "UNSAFE_CROSS_ORIGIN_LINK",
           "URL_CONTAINS_SPACE",
+          "URL_HAS_PARAMETERS",
           "URL_HAS_PARAMS",
           "URL_MULTIPLE_SLASHES",
           "URL_NON_ASCII",
@@ -2141,13 +2144,13 @@
           "URL_UPPERCASE",
           "YMYL_REVIEW_CANDIDATE"
         ],
-        "checks_skipped": 107,
-        "checks_total": 198,
-        "coverage": 0.46
+        "checks_skipped": 108,
+        "checks_total": 201,
+        "coverage": 0.463
       },
       "health_score": null,
-      "health_score_basis": "91 of 201 checks could run; the score is not comparable to a run with full evidence",
-      "health_score_reason": "only 91 of 201 checks could run (46% coverage); too little evidence to score",
+      "health_score_basis": "93 of 201 checks could run; the score is not comparable to a run with full evidence",
+      "health_score_reason": "only 93 of 201 checks could run (46% coverage); too little evidence to score",
       "implausible_checks": [
         {
           "check": "H2_DUPLICATE",

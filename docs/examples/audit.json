@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-10T13:00:10Z",
+    "generated_at": "2026-10-10T19:12:52Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -261,6 +261,10 @@
       {
         "id": "VIEWPORT_MISSING",
         "reason": "no Viewport column (needs a native seohead crawl or Custom Extraction in SF)"
+      },
+      {
+        "id": "MOBILE_ALTERNATE_LINK",
+        "reason": "no rel=alternate media evidence (native crawl only)"
       },
       {
         "id": "NO_COMPRESSION",
@@ -532,12 +536,12 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 198,
+      "checks_total": 201,
       "checks_fired": 20,
-      "checks_skipped": 107,
+      "checks_skipped": 108,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 71,
+      "checks_silent": 73,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
@@ -567,6 +571,7 @@
         "HTTP_URL",
         "IMPORTANT_URL_BLOCKED_BY_ROBOTS",
         "INLINK_BOILERPLATE_ONLY",
+        "INTERNAL_LINK_SPONSORED_UGC",
         "INTERNAL_NOFOLLOW_OUTLINKS",
         "JS_CONSOLE_ERRORS",
         "META_REFRESH_REDIRECT",
@@ -598,6 +603,7 @@
         "UNLINKED_CANONICAL",
         "UNSAFE_CROSS_ORIGIN_LINK",
         "URL_CONTAINS_SPACE",
+        "URL_HAS_PARAMETERS",
         "URL_HAS_PARAMS",
         "URL_MULTIPLE_SLASHES",
         "URL_NON_ASCII",
@@ -611,10 +617,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.46
+      "coverage": 0.463
     },
-    "health_score_reason": "only 91 of 201 checks could run (46% coverage); too little evidence to score",
-    "health_score_basis": "91 of 201 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 93 of 201 checks could run (46% coverage); too little evidence to score",
+    "health_score_basis": "93 of 201 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

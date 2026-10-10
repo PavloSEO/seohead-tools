@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 
 from seohead import cli
+from seohead.cli import COMMANDS
 from seohead.core import core_info as core_info_module
 from seohead.core.core_info import CORE_INFO_FORMAT, core_info
 
 
 def test_core_info_shape_and_types():
-    info = core_info()
+    info = core_info(COMMANDS)
     assert info["format"] == CORE_INFO_FORMAT
     assert isinstance(info["package_version"], str) and info["package_version"]
     assert info["revision"] is None or len(info["revision"]) == 40
@@ -28,7 +29,7 @@ def test_core_info_shape_and_types():
 
 
 def test_core_info_has_no_absolute_paths():
-    text = json.dumps(core_info())
+    text = json.dumps(core_info(COMMANDS))
     assert "/Users/" not in text and "/home/" not in text and "C:\\" not in text
 
 

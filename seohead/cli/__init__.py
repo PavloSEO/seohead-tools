@@ -3088,7 +3088,7 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "version":
         from seohead.core.core_info import core_info
 
-        info = core_info()
+        info = core_info(COMMANDS)
         if args.json:
             print(json.dumps(info, ensure_ascii=False, indent=2))
         else:
