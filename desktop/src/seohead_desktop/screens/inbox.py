@@ -7,12 +7,14 @@ switch (host stash/restore_note_drafts). «Вопрос» and the agent's reply 
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QFont, QPainter
 from PyQt5.QtWidgets import (
     QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMenu,
     QPlainTextEdit,
@@ -20,17 +22,19 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QShortcut,
     QSplitter,
+    QStyle,
+    QStyledItemDelegate,
     QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from .. import i18n
+from .. import i18n, theming
 from ..i18n import tr, trf
 from ..ui.controls import Note
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import StatePanel, no_project_panel, waiting_badge
+from ..ui.kit import BADGE_ROLE, StatePanel, no_project_panel, waiting_badge
 from .base import Screen
 from .work import RowsModel, build_table, clear_layout, local_stamp, number, project_state
 
@@ -76,6 +80,71 @@ def entry_columns():
         ("Запись", lambda e: first_line(e.get("text")), None, lambda e: e.get("text") or ""),
         ("Стадия", lambda e: tr(outcome(e) or "Сохранено"), None, None),
     )
+
+
+class EntryDelegate(QStyledItemDelegate):
+    """One canvas message row: kind badge and title, the time on the right, the four stages below.
+
+    Painted by the delegate, never a widget per row. Column 0 carries the kind (BADGE_ROLE); the title is column 1's text.
+    """
+
+    ROW_HEIGHT = 64
+
+    def sizeHint(self, option, index):
+        return QSize(0, self.ROW_HEIGHT)
+
+    def paint(self, painter, option, index):
+        palette = theming.roles()
+        entry = index.model().rows[index.row()]
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        fill = palette["selected"] if option.state & QStyle.State_Selected else palette["hover_row"] if option.state & QStyle.State_MouseOver else palette["base"]
+        painter.fillRect(option.rect, QColor(fill))
+        painter.setPen(QColor(palette["divider_inner"]))
+        painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
+        rect = option.rect.adjusted(16, 10, -16, -8)
+
+        kind, label = index.data(BADGE_ROLE) or ("mut", "")
+        background, ink = theming.theme()["badges"].get(kind) or theming.theme()["badges"]["mut"]
+        badge_font = QFont(option.font)
+        badge_font.setPixelSize(12)
+        badge_font.setWeight(QFont.Medium)
+        painter.setFont(badge_font)
+        badge = QRectF(rect.left(), rect.top(), painter.fontMetrics().horizontalAdvance(label) + 16, 20)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(background))
+        painter.drawRoundedRect(badge, 6, 6)
+        painter.setPen(QColor(ink))
+        painter.drawText(badge, Qt.AlignCenter, label)
+
+        stamp = local_stamp(entry.get("created_at"), True) or ""
+        stamp_font = QFont(option.font)
+        stamp_font.setPixelSize(12)
+        painter.setFont(stamp_font)
+        stamp_width = painter.fontMetrics().horizontalAdvance(stamp)
+        painter.setPen(QColor(palette["text_3"]))
+        painter.drawText(QRectF(rect.right() - stamp_width, rect.top(), stamp_width, 20), Qt.AlignVCenter | Qt.AlignRight, stamp)
+
+        title_font = QFont(option.font)
+        title_font.setPixelSize(13)
+        title_font.setWeight(QFont.Medium)
+        painter.setFont(title_font)
+        title_left = badge.right() + 8
+        title = painter.fontMetrics().elidedText(index.model().index(index.row(), 1).data() or "", Qt.ElideRight, int(rect.right() - stamp_width - 8 - title_left))
+        painter.setPen(QColor(palette["text"]))
+        painter.drawText(QRectF(title_left, rect.top(), rect.right() - title_left - stamp_width - 8, 20), Qt.AlignVCenter | Qt.AlignLeft, title)
+
+        stage_font = QFont(option.font)
+        stage_font.setPixelSize(11)
+        painter.setFont(stage_font)
+        x = rect.left()
+        y = rect.top() + 28
+        for done, _icon, text in stages(entry):
+            painter.setPen(QColor(palette["success"] if done else palette["text_muted"]))
+            width = painter.fontMetrics().horizontalAdvance(tr(text))
+            painter.drawText(QRectF(x, y, width, 16), Qt.AlignVCenter | Qt.AlignLeft, tr(text))
+            x += width + 12
+        painter.restore()
 
 
 class ListPane(QWidget):
@@ -364,7 +433,12 @@ class InboxScreen(Screen):
         layout.addWidget(self.tabs)
         self.list_state = QVBoxLayout()
         layout.addLayout(self.list_state)
-        self.table = build_table(self.model, badge_column=0, stretch=1, fixed={0: 110, 2: 150})
+        self.table = build_table(self.model, badge_column=None, stretch=0)
+        self.table.setItemDelegateForColumn(0, EntryDelegate(self.table))
+        self.table.horizontalHeader().hide()
+        self.table.setColumnHidden(1, True)
+        self.table.setColumnHidden(2, True)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # the delegate's sizeHint sets the row; the density setting does not override it
         self.table.selectionModel().currentRowChanged.connect(self._row_changed)
         layout.addWidget(self.table, 1)
         self.status = QLabel()
@@ -481,11 +555,6 @@ class InboxScreen(Screen):
         self.status.setText(text)
         self.status.setToolTip(tr("Считает ядро по получателю этого окна; чтение записи агентом оно пока не различает") + " · " + tr("Недоступно в этой версии ядра"))
         self.composer.show_error(host.screen_errors.get("inbox-submit"))
-        self.table.setColumnHidden(2, self.table.viewport().width() < 460)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.table.setColumnHidden(2, self.table.viewport().width() < 460)
 
     # ---- detail -------------------------------------------------------------------------------------------------
     def _fill_detail(self):
