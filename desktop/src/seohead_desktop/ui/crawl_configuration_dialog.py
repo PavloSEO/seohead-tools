@@ -189,6 +189,7 @@ class CrawlConfigurationDialog(QDialog):
         )
         self.apply_button = self.buttons.button(QDialogButtonBox.Apply)
         self.apply_button.setText("Применить")
+        self.buttons.button(QDialogButtonBox.Cancel).setText("Отмена")
         self.apply_button.setObjectName("configurationApplyButton")
         self.apply_button.setAutoDefault(False)
         self.apply_button.clicked.connect(self.accept)
