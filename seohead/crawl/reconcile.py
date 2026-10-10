@@ -18,29 +18,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from seohead.checks.sitemap import normalize_url
+from seohead.checks.sitemap import _normalized_index
 
 __all__ = ["reconcile_sitemap"]
-
-
-def _normalized_index(urls: Iterable[str]) -> dict[str, str]:
-    """Normalised key -> the URL as it was actually written, first occurrence wins.
-
-    Comparison has to happen on the normalised key, or a canonical written without a trailing
-    slash would never match the page that has one. Reporting has to happen on the original,
-    or a finding names a URL that appears nowhere in the crawl — which is both unactionable
-    and indistinguishable, to a reader or to the anomaly scanner, from a finding about a page
-    that was never fetched.
-    """
-    out: dict[str, str] = {}
-    for url in urls:
-        if not url:
-            continue
-        try:
-            out.setdefault(normalize_url(url), url)
-        except ValueError:
-            continue  # not an absolute URL; cannot be compared, so it is dropped
-    return out
 
 
 def reconcile_sitemap(
