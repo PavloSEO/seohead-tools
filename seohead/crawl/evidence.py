@@ -181,6 +181,8 @@ def _row(
         "Trust Signals": record.trust_signals,
         "Duplicate IDs": record.duplicate_ids,
         "Canonical Link Element 1": record.canonical,
+        # Native-crawl only (#1020): the AMP target a page declares, resolved.
+        "AMP HTML": record.amphtml,
         "Meta Robots 1": record.meta_robots,
         "X-Robots-Tag 1": record.x_robots,
         # Evidence for the static Lighthouse checks (seohead/sf/core/lighthouse.py):

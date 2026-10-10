@@ -493,7 +493,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "the rating adds a model, not a measurement",
         ),
     ],
-    "AMP": [],  # filled below: one decision, 16 entries
+    "AMP": [],  # filled below: six pairing checks, ten declined
 }
 
 # Two categories are a single decision rather than 108 separate ones. Listing each row would
@@ -506,8 +506,8 @@ _ACCESSIBILITY_NOTE = (
 )
 _AMP_NOTE = (
     "AMP is effectively retired: Google dropped the Top Stories carousel requirement in 2021 "
-    "and the format is in maintenance. Building sixteen checks for it now would be work aimed "
-    "at the last decade."
+    "and the format is in maintenance. The AMP validator's document model is a separate "
+    "project, so these ten rules stay declined; only the pairing rules are checked."
 )
 
 
@@ -612,27 +612,34 @@ ACCESSIBILITY_RULES = [
     "WCAG 2.0 AAA - Links With Same Accessible Name",
 ]
 
+# The six pairing rules are read from the crawl (#1020); the rest need the AMP
+# validator's document model and stay declined.
+AMP_PAIRING_RULES = {
+    "Non-200 Response": "AMP_NON_200",
+    "Missing Non-AMP Return Link": "AMP_MISSING_RETURN_LINK",
+    "Missing Canonical to Non-AMP": "AMP_MISSING_RETURN_LINK",
+    "Non-Indexable Canonical": "AMP_NON_INDEXABLE_CANONICAL",
+    "Missing Canonical": "AMP_MISSING_CANONICAL",
+    "Indexable": "AMP_INDEXABLE",
+}
 AMP_RULES = [
-    "Non-200 Response",
-    "Missing Non-AMP Return Link",
-    "Missing Canonical to Non-AMP",
-    "Non-Indexable Canonical",
     "Missing <html amp> Tag",
     "Missing/Invalid Doctype HTML Tag",
     "Missing Head Tag",
     "Missing Body Tag",
-    "Missing Canonical",
     "Missing/Invalid Meta Charset Tag",
     "Missing/Invalid Meta Viewport Tag",
     "Missing/Invalid AMP Script",
     "Missing/Invalid AMP Boilerplate",
     "Contains Disallowed HTML",
     "Other Validation Errors",
-    "Indexable",
 ]
 
 CATEGORIES["Accessibility"] = _bulk(ACCESSIBILITY_RULES, _ACCESSIBILITY_NOTE)
-CATEGORIES["AMP"] = _bulk(AMP_RULES, _AMP_NOTE)
+CATEGORIES["AMP"] = [
+    _c(name, code, note="pairing read from the AMP target the crawl captured (#1020)")
+    for name, code in AMP_PAIRING_RULES.items()
+] + _bulk(AMP_RULES, _AMP_NOTE)
 
 
 def entries() -> list[tuple[str, Entry]]:
