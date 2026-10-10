@@ -112,6 +112,8 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# desktop/ is the PyQt5 app with its own toolchain; linted separately.
+extend-exclude = ["desktop"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

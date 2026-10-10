@@ -1,0 +1,5 @@
+/* Project <-> resources connections (screens/project_sources_page.py): 50 px rows, divider under each */
+QFrame[source_row="item"] { background: transparent; border: 0; border-bottom: 1px solid $divider_inner; }
+QFrame[source_row="item"]:hover { background: $hover_row; }
+QFrame[source_row="head"] { background: $raised; border: 0; border-bottom: 1px solid $divider; }
+QWidget[rowbg="clear"] { background: transparent; }

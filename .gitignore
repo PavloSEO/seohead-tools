@@ -51,3 +51,9 @@ sf spider parsing/
 # Agent worktrees: full checkouts of this repository, created under it.
 # Untracked and unignored, a single "git add -A" would commit every copy.
 .claude/worktrees/
+
+# SEOHEAD Desktop local env and builds
+.venv-desktop/
+desktop/dist/
+desktop/build/
+desktop/.build/
