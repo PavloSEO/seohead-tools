@@ -9,7 +9,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtCore import QCoreApplication, QEvent, QTimer
+from PyQt5.QtCore import Qt, QCoreApplication, QEvent, QTimer
 from PyQt5.QtWidgets import (
     QAbstractButton,
     QCheckBox,
@@ -685,6 +685,14 @@ class SettingsTests(DialogCase):
         boxes = {c.text(): c for c in settings.findChildren(QCheckBox) if c.text() in {"Изображения", "Шрифты", "Медиа", "Аналитика"}}
         self.assertEqual(set(boxes), {"Изображения", "Шрифты", "Медиа", "Аналитика"})
         self.assertFalse(any(box.isEnabled() for box in boxes.values()))
+    def test_profile_diff_keeps_parameter_column_at_design_width(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "profiles")
+        self.addCleanup(settings.deleteLater)
+        settings.show()
+        table = settings.findChild(QTableView, "scanProfileDiff")
+        self.assertEqual(table.horizontalHeader().sectionSize(0), 220)
+        self.assertEqual(table.model().headerData(1, Qt.Horizontal, Qt.DisplayRole), "Умолчание ядра")
 
     def test_apply_copies_back_and_reset_restores_defaults(self):
         dialog = self.open()

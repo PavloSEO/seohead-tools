@@ -173,6 +173,48 @@ class FindingModel(QAbstractTableModel):
         return None
 
 
+class LaneStrip(QWidget):
+    """Path of a finding: found → task → fixed → confirmed (canvas «lane»). The core reports only the first step, so the rest stay pending."""
+
+    STEPS = ("Найдена в скане", "Задача программисту", "Исправлено по словам исполнителя", "Подтверждено перепроверкой")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        self.chips = []
+        for number, text in enumerate(self.STEPS, 1):
+            if number > 1:
+                rule = QFrame()
+                rule.setFixedSize(24, 1)
+                layout.addWidget(rule)
+            chip = QLabel()
+            chip.setFixedSize(22, 22)
+            chip.setAlignment(Qt.AlignCenter)
+            caption = QLabel(tr(text))
+            caption.setProperty("text_style", "meta")
+            layout.addWidget(chip)
+            layout.addWidget(caption)
+            self.chips.append((number, chip, caption, rule if number > 1 else None))
+        layout.addStretch(1)
+        self.refresh()
+
+    def refresh(self):
+        roles = theming.roles()
+        for number, chip, caption, rule in self.chips:
+            if rule is not None:
+                rule.setStyleSheet(f"background: {roles['outline']};")
+            if number == 1:  # the only step the core reports
+                chip.setPixmap(material_icon("check", roles["on_primary"]).pixmap(16, 16))
+                chip.setStyleSheet(f"background: {roles['success']}; border-radius: 11px;")
+                caption.setStyleSheet(f"color: {roles['success']}; font-weight: 500;")
+            else:
+                chip.setText(str(number))
+                chip.setStyleSheet(f"background: {roles['disabled_bg']}; color: {roles['text_muted']}; border-radius: 11px;")
+                caption.setStyleSheet(f"color: {roles['text_muted']};")
+
+
 class IssuesScreen(Screen):
     slot = "issues"
     watches = ("project", "scans", "scan_status")
@@ -278,9 +320,7 @@ class IssuesScreen(Screen):
         self.desc = QLabel()
         self.desc.setWordWrap(True)
         head_layout.addWidget(self.desc)
-        self.lane_found = QLabel()
-        self.lane_found.setWordWrap(True)
-        self.lane_found.setProperty("text_style", "meta")
+        self.lane_found = LaneStrip()
         head_layout.addWidget(self.lane_found)
         lane = QHBoxLayout()
         lane.setSpacing(8)
@@ -301,6 +341,7 @@ class IssuesScreen(Screen):
         self.table = style_table(QTableView())
         self.table.setModel(self.model)
         self.table.setItemDelegateForColumn(3, BadgeDelegate(self.table))
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.setFrameShape(QFrame.NoFrame)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
@@ -519,7 +560,7 @@ class IssuesScreen(Screen):
             button.setText(f"{name}  ·  {len(entry['items'])}")
             button.setToolTip(f"{check} · {tr('число находок этой проверки в выборке')}")
             button.setSizePolicy(button.sizePolicy().Expanding, button.sizePolicy().Fixed)
-            button.setMinimumHeight(36)
+            button.setMinimumHeight(40)
             button.clicked.connect(lambda _c=False, c=check: self._select(c))
             button.setContextMenuPolicy(Qt.CustomContextMenu)
             button.customContextMenuRequested.connect(lambda point, c=check, b=button: self._finding_menu(c, b, point))
@@ -559,7 +600,7 @@ class IssuesScreen(Screen):
             self.title.setText(tr("Проблемы скана"))
             self.icon.set_material_icon("rule", "role:text_2")
             self.desc.setText(tr("Выберите проверку слева: в списке проверки из первых находок скана."))
-            self.lane_found.setText(self._lane(scan))
+            self.lane_found.refresh()
             self.open_url.setEnabled(False)
             self.open_url.setToolTip(tr("Выберите проверку"))
             self.foot.setText("")
@@ -574,17 +615,12 @@ class IssuesScreen(Screen):
         self.icon.set_material_icon(icon, f"role:{colour}")
         self.desc.setText(message_ru(entry["message"]))
         self._sync_raw()
-        self.lane_found.setText(self._lane(scan))
+        self.lane_found.refresh()
         self.model.set_rows(entry["items"])
         urls = [i.get("target_url") for i in entry["items"] if i.get("target_url")]
         self.open_url.setEnabled(bool(urls))
         self.open_url.setToolTip(trf("Откроет URL из выборки находок этой проверки ({n}). Фильтр по проверке для всего скана пока недоступен", n=len(urls)))
         self.foot.setText(trf("{n} URL в выборке находок этой проверки. Полный список по всему скану пока недоступен.", n=len(entry["items"])))
-
-    @staticmethod
-    def _lane(scan):
-        steps = [tr("Найдена в скане"), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой")]
-        return "  →  ".join([f"1 {steps[0]}", *(f"{n} {text}" for n, text in enumerate(steps[1:], 2))])
 
     # ---- actions ---------------------------------------------------------------------------------------------
     def _open_in_url(self):

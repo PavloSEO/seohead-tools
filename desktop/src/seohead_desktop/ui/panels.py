@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
 
 from .comparison_summary import ComparisonSummary
 from .components import PAGE_LIMIT, TabDeck, TablePanel, display_value, material_icon
+from .kit import waiting_badge
 from .presentation import WorkspaceSplitter, content_spacing
 from .tabcatalogue import DETAIL_TABS, MAIN_TABS, PROJECT_TABS, RIGHT_TABS, TAB_BY_ID
 
@@ -249,12 +250,18 @@ class ComparePanel(TablePanel):
         self.pair_toggle.toggled.connect(self.sync_pair_controls)
         chooser = QGridLayout()
         chooser.setColumnStretch(0, 1)
-        chooser.setColumnStretch(1, 1)
-        for column, text, combo in ((0, "ДО · исходное состояние", self.before), (1, "ПОСЛЕ · новое наблюдение", self.after)):
+        chooser.setColumnStretch(2, 1)
+        for column, text, combo in ((0, "Было", self.before), (2, "Стало", self.after)):
             label = QLabel(text)
             label.setObjectName("comparisonStep")
             chooser.addWidget(label, 0, column)
             chooser.addWidget(combo, 1, column)
+        self.swap = QToolButton()
+        self.swap.setIcon(material_icon("swap_horiz"))
+        self.swap.setToolTip("Поменять местами: было и стало")
+        self.swap.setAccessibleName("Поменять местами: было и стало")
+        self.swap.clicked.connect(self._swap_pair)
+        chooser.addWidget(self.swap, 1, 1)
         pair_layout.addLayout(chooser)
         controls = QHBoxLayout()
         self.comparison_status = QLabel("Выберите два разных скана")
@@ -271,6 +278,12 @@ class ComparePanel(TablePanel):
         self.warning_text = self.comparison_summary.details
         self.comparison_summary.filterRequested.connect(self.apply_status_filter)
         header_layout.addWidget(self.comparison_summary)
+        gaps = QHBoxLayout()
+        gap_label = QLabel("По сегментам сайта и KPI до/после")
+        gap_label.setObjectName("metadata")
+        gaps.addWidget(gap_label, 1)
+        gaps.addWidget(waiting_badge(938))
+        header_layout.addLayout(gaps)
         self.filter.currentIndexChanged.disconnect()
         self.filter.clear()
         for label, state in (("Все на странице", "all"), ("Исправлено", "resolved"), ("Сохранилось", "persisting"), ("Изменилось", "changed"), ("Нельзя подтвердить", "not_verifiable"), ("Новые", "new")):
@@ -291,6 +304,12 @@ class ComparePanel(TablePanel):
         self.table.setColumnWidth(2, 190)
         for column in range(3, self.model.columnCount()):
             self.table.setColumnWidth(column, 240)
+
+    def _swap_pair(self):
+        """Exchange before/after; both choosers list the same retained scans, so indexes map 1:1."""
+        before, after = self.before.currentIndex(), self.after.currentIndex()
+        self.before.setCurrentIndex(after)
+        self.after.setCurrentIndex(before)
 
     def sync_pair_controls(self, *_args):
         if not hasattr(self, "pair_controls"):

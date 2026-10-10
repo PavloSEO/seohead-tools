@@ -417,6 +417,11 @@ class OnboardingScreen(Screen):
         title = QLabel(tr("Подключить агента"))
         title.setProperty("text_style", "control")
         line.addWidget(title, 1)
+        link = QPushButton(tr("Подробнее о MCP и подключении Claude"))
+        link.setProperty("role", "text")
+        link.setCursor(Qt.PointingHandCursor)
+        link.clicked.connect(lambda: self.host.open_settings("mcp"))
+        line.addWidget(link)
         self.connect_button = QPushButton(tr("Прописать…"))
         self.connect_button.setProperty("role", "tonal")
         self.connect_button.setEnabled(bool(self.host.core_executable))
@@ -427,24 +432,19 @@ class OnboardingScreen(Screen):
         self.later_note = Note("info", "Агента можно подключить позже.", "Подключение — в Настройках → MCP-сервер. Запись в конфиг требует разрешения.")
         layout.insertWidget(layout.count() - 1, self.later_note)
 
-        look = QGridLayout()
-        look.setHorizontalSpacing(16)
-        look.setVerticalSpacing(8)
+        look = QHBoxLayout()
+        look.setSpacing(8)
         self.theme_choice = Segmented([("light", tr("Светлая")), ("dark", tr("Тёмная")), ("system", tr("Как в системе"))],
                                       self.host.prefs.get("view.theme"), tr("Тема"))
         self.language_choice = Segmented([("ru", "Русский"), ("en", "English")], self.host.prefs.get("view.language"), tr("Язык"))
         self.theme_choice.changed.connect(lambda value: self.host.prefs.set("view.theme", value))
         self.language_choice.changed.connect(lambda value: self.host.prefs.set("view.language", value))
-        for number, (caption, control) in enumerate(((tr("Тема"), self.theme_choice), (tr("Язык"), self.language_choice))):
-            look.addWidget(QLabel(caption), number, 0)
-            look.addWidget(control, number, 1, Qt.AlignLeft)
-        look.setColumnStretch(2, 1)
+        for caption, control in ((tr("Тема"), self.theme_choice), (tr("Язык"), self.language_choice)):
+            look.addWidget(QLabel(caption))
+            look.addWidget(control)
+            look.addSpacing(16)
+        look.addStretch(1)
         layout.insertLayout(layout.count() - 1, look)
-        link = QPushButton(tr("Подробнее о MCP и подключении Claude"))
-        link.setProperty("role", "text")
-        link.setCursor(Qt.PointingHandCursor)
-        link.clicked.connect(lambda: self.host.open_settings("mcp"))
-        layout.insertWidget(layout.count() - 1, link, 0, Qt.AlignLeft)
         self.sync_display()
         return page
 

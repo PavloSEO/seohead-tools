@@ -12,6 +12,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QFrame
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
@@ -131,6 +132,17 @@ class UrlTests(UrlBase):
         self.assertIn("1 314", self.screen.foot_text.text().replace(" ", " ").replace("\xa0", " "))
         self.assertEqual(self.screen.page_label.text(), "1 / 7")
         self.assertFalse(self.screen.prev.isEnabled())
+
+    def test_first_page_read_shows_placeholder_rows_and_no_data(self):
+        self.screen.total = None
+        self.screen._reload()
+        self.assertEqual(self.screen.table_stack.currentIndex(), 1)
+        placeholder = self.screen.table_state_layout.itemAt(0).widget()
+        self.assertEqual(len([w for w in placeholder.findChildren(QFrame) if w.property("skeleton") == "row"]), 12)
+        self.assertEqual(self.screen.foot_text.text(), "Читаю первую страницу · 200 строк")
+        self.wait()
+        self.assertEqual(self.screen.table_stack.currentIndex(), 0)
+        self.assertIn("1 314", self.screen.foot_text.text().replace("\u202f", " "))
 
     def test_next_page_asks_the_core_for_the_next_offset(self):
         self.screen.next.click()

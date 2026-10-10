@@ -146,6 +146,38 @@ def drop(widget):
     widget.deleteLater()
 
 
+def skeleton_table():
+    """Placeholder rows while the first page is read: grey bars in the table's shape, never data (canvas Loading.dc.html)."""
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    for k in range(12):
+        row = QFrame()
+        row.setProperty("skeleton", "row")
+        row.setFixedHeight(30)
+        line = QHBoxLayout(row)
+        line.setContentsMargins(12, 0, 12, 0)
+        width = 40 + (k * 23) % 45
+        line.addWidget(_skeleton_bar(), width)
+        line.addStretch(100 - width)
+        line.addWidget(_skeleton_bar(34))
+        line.addSpacing(10)
+        line.addWidget(_skeleton_bar(80))
+        layout.addWidget(row)
+    layout.addStretch(1)
+    return box
+
+
+def _skeleton_bar(width=None):
+    bar = QFrame()
+    bar.setProperty("skeleton", "bar")
+    bar.setFixedHeight(10)
+    if width is not None:
+        bar.setFixedWidth(width)
+    return bar
+
+
 def selected_scan(host):
     path = getattr(host, "selected_scan_path", None)
     return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
@@ -858,7 +890,10 @@ class UrlScreen(Screen):
         if not keep_page:
             self.offset = 0
         self.revision += 1
-        self._set_table_state(StatePanel("loading", "Читаю скан…", "Первая страница · 200 строк") if self.total is None else None)
+        loading = self.total is None
+        self._set_table_state(skeleton_table() if loading else None)
+        if loading:
+            self.foot_text.setText(tr("Читаю первую страницу · 200 строк"))
         self.note.setText(note or "")
         self.note.setVisible(bool(note))
         try:

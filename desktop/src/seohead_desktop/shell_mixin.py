@@ -41,7 +41,7 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler and Methods have no screen yet: an honest placeholder; Link graph has its screen with an honest state."""
+        """Crawler and Methods have no screen yet: an honest placeholder. Link graph has its screen (waiting for the core)."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
 
@@ -56,9 +56,9 @@ class ShellMixin:
         self.pages.addWidget(self.scans_placeholder)
         from .screens.crawler import CrawlerScreen
 
+        # The link graph screen is kept for its own tests; the graph section is GraphScreen (below)
         self.link_graph_screen = LinkGraphScreen(self)
-        self.pages.addWidget(self.link_graph_screen)
-        self.placeholder_pages[VIEW_IDS.index("graph")] = self.link_graph_screen
+        self.link_graph_screen.hide()
         for view in ("crawler", "methods"):
             if view == "crawler":
                 page = CrawlerScreen()
@@ -69,6 +69,11 @@ class ShellMixin:
                 layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
+        from .screens.graph import GraphScreen
+
+        graph = GraphScreen(self)
+        self.pages.addWidget(graph)
+        self.placeholder_pages[VIEW_IDS.index("graph")] = graph
 
     def sync_scans_placeholder(self):
         """Show the placeholder for «Сканы» while no project is open and bring the screen back when one is."""
