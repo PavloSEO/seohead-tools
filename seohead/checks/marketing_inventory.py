@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
+from seohead.core.tabular import neutralize_formula
+
 MAX_DOCUMENTS = 500
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_OCCURRENCES = 10_000
@@ -24,8 +26,7 @@ def _text(value: Any) -> str:
 
 
 def _safe_cell(value: Any) -> str:
-    text = "" if value is None else str(value)
-    return "'" + text if text[:1] in {"=", "+", "-", "@"} else text
+    return neutralize_formula("" if value is None else str(value))
 
 
 def _selector(value: Any, fallback: str, name: str) -> str:

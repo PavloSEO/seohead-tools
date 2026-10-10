@@ -53,6 +53,23 @@ def test_formula_like_labels_are_safe_in_csv_and_iframes_are_not_inspected(tmp_p
     assert "never fetched or inspected" in result["notes"][1]
 
 
+def test_tab_and_cr_leading_identifiers_are_neutralised_in_csv(tmp_path):
+    result = inventory(
+        [
+            {
+                "url": "https://example.com/",
+                "html": '<form action="/send?form_id=%09=SUM(A1)"></form>'
+                '<form action="/send?form_id=%0D=SUM(A2)"></form>',
+            }
+        ],
+        out_dir=str(tmp_path / "inventory"),
+    )
+    assert result["occurrences"] or result["form_groups"]
+    with (tmp_path / "inventory" / "marketing-occurrences.csv").open() as stream:
+        identifiers = [row["identifier"] for row in csv.DictReader(stream)]
+    assert identifiers and all(value.startswith("'") for value in identifiers if value)
+
+
 def test_raw_and_rendered_occurrences_remain_distinct_evidence_rows():
     result = inventory(
         [
