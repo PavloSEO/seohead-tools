@@ -156,6 +156,29 @@ def test_copy_link_refuses_missing_template_and_incomplete_source_mapping():
         )
 
 
+@pytest.mark.parametrize(
+    ("index", "changes", "message"),
+    [
+        (0, {"kind": "csv"}, "kind must be"),
+        (0, {"spreadsheet_id": "short"}, "Sheets mapping"),
+        (0, {"dataset": "unknown"}, "unsupported BI dataset"),
+        (2, {"project_id": "Bad_Project"}, "BigQuery mapping"),
+        (4, {"billing_project_id": "X"}, "billing project ID is invalid"),
+    ],
+)
+def test_copy_link_refuses_each_invalid_source_mapping(index, changes, message):
+    sources = _sources()
+    sources[index].update(changes)
+    with pytest.raises(LookerLinkError, match=message):
+        build_looker_copy_link(
+            blueprint=load_blueprint(PACK_DIR / "looker-studio-blueprint.json"),
+            original_report_id="synthetic-report-836",
+            original_report_confirmed=True,
+            report_name="Synthetic reporting pack",
+            data_sources=sources,
+        )
+
+
 def test_copy_link_deduplicates_the_alias_used_in_url_parameters():
     sources = _sources()
     sources[1]["alias"] = " coverage_sheet "

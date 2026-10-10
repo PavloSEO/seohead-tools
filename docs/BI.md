@@ -104,6 +104,31 @@ memory. Domain totals are never allocated across URLs; missing, partial, and amb
 keep their declared availability and grain. This implementation does not demonstrate a copyable
 Looker Studio template.
 
+### Looker Studio copy-link (local builder)
+
+`seohead.reports.looker_link.build_looker_copy_link` turns the synthetic blueprint
+(`docs/examples/reporting-pack/looker-studio-blueprint.json`) and explicit data-source
+mappings into a Looker Studio copy URL. It is a local, offline function: `network` and
+`writes` are always `false` in its result. There is no CLI or MCP command for it.
+
+- Required: a real original five-page report ID (syntax only; blank or default templates
+  are refused) and `original_report_confirmed=True` set by the operator.
+- Required: exactly one mapping per BI dataset (six in total). Each alias is a closed
+  identifier and appears once. Kinds: `sheets` (spreadsheet ID + worksheet ID/title) or
+  `bigquery` (project, dataset, table; optional billing project).
+- Output state is `operator_confirmed_original_report_id_unverified_locally`. The report
+  is not checked over the network, so the result does not prove that the template exists
+  or that the viewer can open it. The native report remains a separate, user-authorized
+  Google step (see "Native Looker report status" below).
+
+Refusals raise `LookerLinkError`; no partial link is returned.
+
+### Native Looker report status
+
+The copy-link path is documentation and tests only. A native Looker Studio report is not
+verified by this repository until a fresh copy is opened and its alias view confirms the
+six mappings. Until then this section is the single status statement.
+
 ## Explicit Google destinations
 
 `bi-destination-apply` is a separate, opt-in transport. It accepts only a complete
