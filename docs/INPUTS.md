@@ -135,7 +135,7 @@ and this decision makes no backend migration.
 | `project-facts` | Project directory (`directory`)<br>Inline JSON (`facts`) | detect fetches the project's own target once after robots.txt; it is never implicit.; Operator-entered facts; preview by default, recorded with apply. |
 | `project-checklist-init` | Project directory (`directory`)<br>Inline JSON (`template`)<br>Inline JSON (`plan`) | Optional reusable data-only checklist template.; Optional agreed scope plan fixing the URL-population and task denominators. |
 | `project-checklist-update` | Project directory (`directory`)<br>Inline JSON (`item`) | Requires expected_revision for optimistic concurrency. |
-| `project-checklist-record` | Project directory (`directory`)<br>Selector (`item_id`)<br>Inline JSON (`record`) | Requires expected_revision; records supplied evidence only; not_applicable needs reason, reviewer and an evidence basis. |
+| `project-checklist-record` | Project directory (`directory`)<br>Selector (`item_id`)<br>Inline JSON (`record`) | Requires expected_revision; records supplied evidence only. Automatic checks take status succeeded, reason and a saved scan artifact; manual items take a reviewer with signoff or an approved reviewed artifact; not_applicable needs reason, reviewer and an evidence basis. |
 | `project-view-list` | Project directory (`directory`) | — |
 | `project-view-show` | Project directory (`directory`)<br>Selector (`name`) | — |
 | `project-view-save` | Project directory (`directory`)<br>Inline JSON (`view`)<br>Selector (`expected_revision`) | Required; use 0 for the first saved view. |
