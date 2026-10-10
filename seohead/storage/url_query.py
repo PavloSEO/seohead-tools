@@ -17,6 +17,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from seohead.core.sqlite import open_readonly
+
 from . import APPLICATION_ID, click_depth
 
 FORMAT = "seohead.scan-url-query.v1"
@@ -30,6 +32,9 @@ SORT_ROW_CAP = 100_000
 PAGE_BUDGET_SECONDS = 5.0
 DEFAULT_COUNT_BUDGET_SECONDS = 1.0
 PROGRESS_OPS = 1000  # SQLite VM steps between deadline checks
+ISSUE_SEVERITIES = ("critical", "warning", "notice")
+MAX_ISSUE_CHECKS = 50
+_ISSUE_CHECK = re.compile(r"[a-z0-9][a-z0-9_.-]{0,99}")
 
 
 class QueryError(Exception):
@@ -360,12 +365,16 @@ def _open(path: str) -> tuple[sqlite3.Connection, dict[str, Any], bool]:
         raise QueryError("cannot_open", "scan file does not exist", "unavailable")
     con = None
     try:
-        con = sqlite3.connect(file.absolute().as_uri() + "?mode=ro", uri=True, timeout=5)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        con.execute("PRAGMA cache_size=-65536")
-        con.execute("PRAGMA temp_store=FILE")
+        con = open_readonly(
+            file.absolute(),
+            row_factory=sqlite3.Row,
+            pragmas=(
+                "PRAGMA trusted_schema=OFF",
+                "PRAGMA query_only=ON",
+                "PRAGMA cache_size=-65536",
+                "PRAGMA temp_store=FILE",
+            ),
+        )
         con.execute("BEGIN")
         if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise QueryError("not_a_scan", "file is not a SEOHEAD scan", "unavailable")
@@ -482,6 +491,25 @@ def _facet_counts(
     return dict(zip(ids, row, strict=True)), "exact"
 
 
+def _issue_filter_set(check: Any, severity: Any) -> bool:
+    """Validate the issue filter arguments; True when one of them is set."""
+    if check is not None:
+        checks = [check] if isinstance(check, str) else check
+        if (
+            type(checks) is not list
+            or not 1 <= len(checks) <= MAX_ISSUE_CHECKS
+            or not all(isinstance(c, str) and _ISSUE_CHECK.fullmatch(c) for c in checks)
+        ):
+            raise QueryError(
+                "invalid_issue_filter", f"issue_check needs 1..{MAX_ISSUE_CHECKS} check ids"
+            )
+    if severity is not None and severity not in ISSUE_SEVERITIES:
+        raise QueryError(
+            "invalid_issue_filter", "issue_severity must be one of: " + ", ".join(ISSUE_SEVERITIES)
+        )
+    return check is not None or severity is not None
+
+
 def _int(value: Any, name: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise QueryError("invalid_" + name, f"{name} must be an integer {low}..{high}")
@@ -501,6 +529,8 @@ def scan_url_query(
     max_bytes: int = 1_048_576,
     preset: str | None = None,
     facets: list[str] | str | None = None,
+    issue_check: str | list[str] | None = None,
+    issue_severity: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -517,6 +547,8 @@ def scan_url_query(
             started,
             preset,
             facets,
+            issue_check,
+            issue_severity,
         )
     except QueryError as exc:
         return {
@@ -552,6 +584,8 @@ def _query(
     started: float,
     preset: Any = None,
     facets: Any = None,
+    issue_check: Any = None,
+    issue_severity: Any = None,
 ) -> dict[str, Any]:
     if not isinstance(input_path, str) or not input_path:
         raise QueryError("invalid_input", "input_path is required")
@@ -585,10 +619,25 @@ def _query(
         raise QueryError("unknown_column", "sort names an unavailable column")
     if sort == "status_class":
         sort = "status_code"
+    issue_filtered = _issue_filter_set(issue_check, issue_severity)
     conditions, params, needs_url = _where(filters)
     where = (" WHERE " + conditions) if conditions else ""
     join = " JOIN urls u ON u.url_id=p.url_id" if needs_url else ""
     facet_ids = _facet_ids(facets)
+    if issue_filtered:
+        # No per-issue URL index is written yet, so the filter cannot be answered from this scan.
+        return {
+            "ok": True,
+            "state": "unavailable",
+            "format": FORMAT,
+            "reason_code": "issue_index_missing",
+            "reason": "this scan has no per-issue URL index; the issue filter is not applied",
+            "columns": columns,
+            "rows": [],
+            "total": None,
+            "filtered_total": None,
+            "filters": filters,
+        }
     if input_path.lower().endswith(".json"):
         return {
             "ok": True,

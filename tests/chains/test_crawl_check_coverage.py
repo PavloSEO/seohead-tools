@@ -31,7 +31,7 @@ from unittest.mock import patch
 
 import pytest
 
-from seohead.crawl import link_findings
+from seohead.crawl import link_findings, security_headers
 from seohead.mcp import handlers
 from seohead.sf.core import eeat as eeat_module
 from seohead.sf.core import heuristics as heuristics_module
@@ -60,6 +60,9 @@ _NOT_WIRED_INTO_CRAWL = frozenset({"INLINK_BOILERPLATE_ONLY"})
 # was called from a crawl at all. Issue #165 wired both in, so the exclusion that stood for
 # "this pipeline never runs" is gone and only the three settings-gated ids remain.
 _NOT_WIRED_INTO_CRAWL |= {"UNSAFE_CROSS_ORIGIN_LINK", "PROTOCOL_RELATIVE_LINK"}
+
+# INTERNAL_LINK_SPONSORED_UGC reads captured rel (link_attributes.capture), so the same gate applies.
+_NOT_WIRED_INTO_CRAWL |= {"INTERNAL_LINK_SPONSORED_UGC"}
 
 # SITEMAP_ORPHAN and URL_NOT_IN_SITEMAP are the two sitemap-sourced ids
 # crawl_site answers itself, from its own link-graph reconciliation
@@ -96,6 +99,8 @@ def _owning_spy(check_id: str, source: str, spies: dict[str, object]):
         return spies["sitemap"]
     if source == "crawl:link_findings":
         return spies[check_id]
+    if source == "crawl:security_headers":
+        return spies["security_headers"]
     return spies["rules"]
 
 
@@ -164,6 +169,9 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
             "forms_on_http_pages_with_password",
             wraps=link_findings.forms_on_http_pages_with_password,
         ) as spy_http_password_form,
+        patch.object(
+            security_headers, "evaluate", wraps=security_headers.evaluate
+        ) as spy_security_headers,
     ):
         result = handlers.crawl_site(
             url=f"{site}/",
@@ -196,6 +204,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         "INTERNAL_NOFOLLOW_OUTLINKS": spy_internal_nofollow,
         "FORM_URL_INSECURE": spy_insecure_form,
         "FORM_ON_HTTP_URL": spy_http_password_form,
+        "security_headers": spy_security_headers,
     }
     in_scope = set(CHECKS) - _NOT_WIRED_INTO_CRAWL
     for check_id in sorted(in_scope):
@@ -219,6 +228,7 @@ def test_the_excluded_set_names_only_checks_actually_absent_from_the_registry():
         "INLINK_BOILERPLATE_ONLY",
         "UNSAFE_CROSS_ORIGIN_LINK",
         "PROTOCOL_RELATIVE_LINK",
+        "INTERNAL_LINK_SPONSORED_UGC",
     } == _NOT_WIRED_INTO_CRAWL
 
 

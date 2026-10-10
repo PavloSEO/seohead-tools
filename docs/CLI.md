@@ -57,6 +57,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-inspect` | Read a bounded, paginated table view from one saved scan. | offline, read-only |
 | `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. `--preset` applies a ready-made view; `--export PATH` writes all matching rows to a new CSV or XLSX file. | offline, read-only |
 | `scan-url-detail` | Read one exact native URL's retained headers, redirects, page fields, and forms. | offline, read-only |
+| `scan-url-history` | Read one exact URL's state across the newest saved scans of a project (`--limit` 1..500, default 50). | offline, read-only |
 | `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's paged links offline. | offline, read-only |
 | `scan-navigation` | Read bounded observed navigation evidence from a retained local scan. | offline, read-only |
 | `scan-rendered-routes` | Read stored static/rendered route evidence without fetching routes. | offline, read-only |
@@ -191,7 +192,9 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `project-view-list` | List saved declarative finding views and the current project view-config revision. | offline, read-only |
 | `project-view-show` | Read one saved finding view with its stable identity, schema version and revision. | offline, read-only |
 | `project-view-save` | Create or revise a bounded declarative finding view using an expected config revision. | writes |
-| `project-inbox-submit` | Persist a specialist note or proposed goal without starting any work. | writes |
+| `project-view-delete` | Delete a saved declarative finding view by name. | writes |
+| `project-view-rename` | Rename a saved declarative finding view. | writes |
+| `project-inbox-submit` | Persist a specialist note, proposed goal or question without starting any work. | writes |
 | `project-inbox-list` | List a bounded project inbox page without consuming any entries. | offline, read-only |
 | `project-inbox-read` | Record an agent's explicit inspection; acknowledgment remains separate. | writes |
 | `project-inbox-acknowledge` | Explicitly acknowledge entries. | writes |

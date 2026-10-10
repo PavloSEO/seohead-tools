@@ -11,7 +11,7 @@ print templates, landing pages built outside the CMS, a checkout that predates t
 
 ## Covers
 
-- **Mobile** — Viewport Not Set · Contains Unsupported Plugins
+- **Mobile** — Viewport Not Set · Contains Unsupported Plugins · Mobile Alternate Link
 
 ## The chain
 
@@ -57,8 +57,8 @@ declaration; whether the page then works is something you have to look at.
 
 **6. Check for plugin-dependent content while you're here.** `UNSUPPORTED_PLUGIN` fires when a
 page contains an `<object>`, `<embed>` or `<applet>` element that is not a benign image
-fallback (an `<object type="image/...">` used for an inline SVG or PDF is excluded — that
-renders in every browser, mobile included). No phone runs a plugin, so content behind one of
+fallback (an `<object>` whose `type` is `image/...` or `application/pdf`, used for an inline SVG,
+raster image or PDF, is excluded — that renders in every browser, mobile included). No phone runs a plugin, so content behind one of
 these tags is not degraded on mobile, it is simply absent.
 
 **7. Group it by template before reporting it.** Findings on 200 URLs are usually four

@@ -16,7 +16,6 @@ from urllib.parse import urlparse, urlsplit
 from seohead.core.models import ParsedRobots, RobotsCheckResult, RobotsGroup
 from seohead.recon.net import ProxyRoute, crawl_transport_options, http_client
 
-_UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 _REQUEST_RATE = re.compile(r"^([1-9][0-9]*)/([1-9][0-9]*)$")
 
 
@@ -223,7 +222,7 @@ def check_robots(
 ) -> RobotsCheckResult:
     robots_url = _robots_url(url)
     try:
-        options = {"follow_redirects": True, "headers": {"User-Agent": _UA}}
+        options: dict[str, Any] = {"follow_redirects": True}
         if request_gate is not None:
             options["event_hooks"] = {"request": [lambda _request: request_gate()]}
         client, _http2_capable = http_client(

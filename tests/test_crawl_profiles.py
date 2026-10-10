@@ -114,3 +114,32 @@ def test_cli_profile_selects_the_stored_file_as_the_config(store, tmp_path, monk
     rc = cli.main(["crawl-site", "--url", "https://example.com", "--profile", "fast", "-q"])
     assert rc == 0
     assert seen["config"] == str(store / "fast.json")
+
+
+def test_delete_removes_the_stored_profile(store, tmp_path):
+    profiles.save("old", _write(tmp_path / "a.json", {}))
+    profiles.delete("old")
+    assert profiles.saved_names() == []
+
+
+def test_deleting_an_unknown_profile_names_the_saved_ones(store, tmp_path):
+    profiles.save("alpha", _write(tmp_path / "a.json", {}))
+    with pytest.raises(profiles.ProfileError, match="saved profiles: alpha"):
+        profiles.delete("beta")
+    assert profiles.saved_names() == ["alpha"]
+
+
+def test_cli_lists_and_deletes_profiles(store, tmp_path, capsys):
+    profiles.save("beta", _write(tmp_path / "b.json", {}))
+    profiles.save("alpha", _write(tmp_path / "a.json", {}))
+    assert cli.main(["crawl-profile", "list"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"profiles": ["alpha", "beta"]}
+    assert cli.main(["crawl-profile", "delete", "alpha"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"profile": "alpha", "deleted": True}
+    assert profiles.saved_names() == ["beta"]
+
+
+def test_cli_delete_of_an_unknown_profile_fails(store, capsys):
+    rc = cli.main(["crawl-profile", "delete", "ghost"])
+    assert rc == 1
+    assert "no crawl profile 'ghost'" in capsys.readouterr().err

@@ -165,6 +165,8 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     "lorem_ipsum_count": ["Lorem Ipsum Occurrences"],
     # Native-crawl only (#385): legacy plugin-dependent elements.
     "plugin_elements": ["Unsupported Plugin Elements"],
+    # Native-crawl only (#1016): rel=alternate media declarations with no href.
+    "mobile_alternate_broken": ["Mobile Alternate Broken"],
     # Native-crawl only (#386): the deprecated AJAX crawling scheme -- the
     # page-wide <meta name="fragment"> opt-in, and how many of the page's own
     # outlinks are written as "#!"/"?_escaped_fragment_=" URLs.
@@ -215,18 +217,8 @@ def normalize_value(value: Any) -> Any:
 
 
 def to_int(value: Any) -> int | None:
-    value = normalize_value(value)
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = _comma_to_dot(value)
-    try:
-        f = float(value)
-    except (ValueError, TypeError):
-        return None
-    if not math.isfinite(f):  # inf/-inf/nan would crash int() or poison JSON
-        return None
-    return int(f)
+    f = to_float(value)
+    return None if f is None else int(f)
 
 
 def to_float(value: Any) -> float | None:
@@ -287,6 +279,7 @@ INT_FIELDS = frozenset(
         "images_max_alt_length",
         "lorem_ipsum_count",
         "plugin_elements",
+        "mobile_alternate_broken",
         "ajax_scheme_outlinks",
     }
 )

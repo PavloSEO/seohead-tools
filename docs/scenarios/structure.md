@@ -8,6 +8,7 @@
 
 - **Sitemaps** — URLs Not In Sitemap · Orphan URLs
 - **Links** — Pages With High Crawl Depth · Pages Without Internal Outlinks
+- **Analytics** — Orphan URLs · Bounce Rate Above 70% · No GA Data · Non-Indexable with GA Data
 - **Response Codes** — Internal Redirection (3XX)
 
 ## The chain
@@ -56,6 +57,17 @@ trailing slash: 43% of the crawl budget spent on one template's link format.
 seohead log-scan --run ./run
 ```
 
+**6. Join traffic to the crawl, if you have a URL-keyed export.** Use one row per URL with a
+visits column and a bounce column (for example `url,visits,bounce`):
+
+```bash
+seohead crawl-enrich --audit ./run/audit.json --external-csv ./analytics.csv --visits-column visits --bounce-column bounce
+```
+
+It reports pages with traffic that nothing links to, pages with no analytics row, non-indexable
+pages with visits, and matched pages with a bounce rate above 70%. A named column that is missing
+from the CSV is refused by name, and an unreadable value is counted rather than read as zero.
+
 ## What comes out
 
 ```json
@@ -79,6 +91,8 @@ One request per page plus the sitemap. Nothing paid.
 - **Why a page is orphaned.** The tool says nothing links to it; whether that is a broken menu
   or a deliberate unlisting is a person's call.
 - **Anything about links added by JavaScript.** See the [rendering scenario](rendering.md).
+- **Live analytics.** The join reads an offline CSV you supply; it does not fetch Metrika or GA4
+  data (#990, #984).
 - **Orphan status on a partial crawl.** "Nothing links here" is unprovable when the crawl
   stopped early, so those findings are withheld rather than guessed — check
   `run.crawl_partial`.

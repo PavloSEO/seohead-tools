@@ -1,4 +1,8 @@
-"""Project-local cross-process origin pacing for explicit native captures."""
+"""Cross-process origin pacing for explicit native captures.
+
+The store lives in the project when one is given, otherwise in the user state directory
+(``SEOHEAD_CONFIG_DIR``, else ``~/.config/seohead``), so a projectless crawl shares the same per-host ceiling across processes.
+"""
 
 from __future__ import annotations
 
@@ -25,18 +29,33 @@ def _origin(target: str) -> str:
     return host
 
 
+def _user_state_dir() -> Path:
+    # Same resolution as the MCP control state: SEOHEAD_CONFIG_DIR, then XDG, then ~/.config.
+    raw = os.environ.get("SEOHEAD_CONFIG_DIR")
+    root = (
+        Path(raw)
+        if raw
+        else Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "seohead"
+    )
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return root
+
+
 class ProjectOriginPacer:
-    """Reserve one request turn across local processes for one project host."""
+    """Reserve one request turn across local processes for one host.
+
+    ``directory=None`` stores the schedule in the user state directory instead of a project.
+    """
 
     def __init__(
         self,
-        directory: str | Path,
+        directory: str | Path | None,
         target: str,
         *,
         minimum_delay_seconds: float,
         max_requests_per_second: float = PUBLIC_PROJECT_MAX_REQUESTS_PER_SECOND,
     ) -> None:
-        root, _project = _load(directory)
+        root = _user_state_dir() if directory is None else _load(directory)[0]
         if (
             not isinstance(minimum_delay_seconds, (int, float))
             or not math.isfinite(minimum_delay_seconds)

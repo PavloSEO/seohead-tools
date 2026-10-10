@@ -203,7 +203,9 @@ def test_resume_accepts_the_same_scan_out_path_it_was_given(tmp_path, monkeypatc
         lambda url, **kwargs: seen.update(url=url, **kwargs) or {"ok": True},
     )
 
-    assert handlers.crawl_site(resume=scan, scan_out=scan, producer_build=BUILD) == {"ok": True}
+    result = handlers.crawl_site(resume=scan, scan_out=scan, producer_build=BUILD)
+    assert result["ok"] is True
+    assert "effective_max_requests_per_second" in result
     assert seen["url"] == START
     assert seen["scan_out"] == scan
     assert seen["producer_build"] == BUILD

@@ -240,17 +240,35 @@ def show_view(directory: str | Path, name: str) -> dict[str, Any]:
     }
 
 
-def save_view(
-    directory: str | Path, view: dict[str, Any], *, expected_revision: int
-) -> dict[str, Any]:
-    """Create or update one named view using an expected config revision."""
+def _checked_store(
+    directory: str | Path, expected_revision: int
+) -> tuple[Path, dict[str, Any], dict[str, Any] | None, int]:
     if type(expected_revision) is not int or expected_revision < 0:
         raise ValueError("expected_revision must be a non-negative integer")
-    definition = validate_definition(view)
     root, project, current = _read(directory)
     revision = current["revision"] if current else 0
     if expected_revision != revision:
         raise ValueError(f"finding view revision conflict: current revision is {revision}")
+    return root, project, current, revision
+
+
+def _write_views(root: Path, project: dict[str, Any], views: dict[str, Any], revision: int) -> None:
+    document = {
+        "format": FORMAT,
+        "version": VERSION,
+        "project_uuid": project["project_uuid"],
+        "revision": revision + 1,
+        "views": views,
+    }
+    write_document(root, "finding-views.json", document, expected_revision=revision)
+
+
+def save_view(
+    directory: str | Path, view: dict[str, Any], *, expected_revision: int
+) -> dict[str, Any]:
+    """Create or update one named view using an expected config revision."""
+    definition = validate_definition(view)
+    root, project, current, revision = _checked_store(directory, expected_revision)
     views = copy.deepcopy(current["views"]) if current else {}
     previous = views.get(definition["name"])
     if previous is None and len(views) >= MAX_VIEWS:
@@ -261,15 +279,49 @@ def save_view(
         "revision": previous["revision"] + 1 if previous else 1,
         "definition": definition,
     }
-    document = {
-        "format": FORMAT,
-        "version": VERSION,
-        "project_uuid": project["project_uuid"],
-        "revision": revision + 1,
-        "views": views,
-    }
-    write_document(root, "finding-views.json", document, expected_revision=revision)
+    _write_views(root, project, views, revision)
     return show_view(directory, definition["name"])
+
+
+def delete_view(directory: str | Path, name: str, *, expected_revision: int) -> dict[str, Any]:
+    """Remove one named view; the expected config revision guards against stale clients."""
+    view_name = _name(name)
+    root, project, current, revision = _checked_store(directory, expected_revision)
+    views = copy.deepcopy(current["views"]) if current else {}
+    if view_name not in views:
+        raise ValueError(f"finding view {view_name!r} does not exist")
+    del views[view_name]
+    _write_views(root, project, views, revision)
+    return {
+        "ok": True,
+        "project_uuid": project["project_uuid"],
+        "config_revision": revision + 1,
+        "deleted": view_name,
+    }
+
+
+def rename_view(
+    directory: str | Path, name: str, new_name: str, *, expected_revision: int
+) -> dict[str, Any]:
+    """Rename one named view, keeping its definition; identity follows the new name."""
+    old_name = _name(name)
+    target = _name(new_name)
+    root, project, current, revision = _checked_store(directory, expected_revision)
+    views = copy.deepcopy(current["views"]) if current else {}
+    entry = views.get(old_name)
+    if entry is None:
+        raise ValueError(f"finding view {old_name!r} does not exist")
+    if target in views:
+        raise ValueError(f"finding view {target!r} already exists")
+    del views[old_name]
+    views[target] = {
+        "id": _identity(project["project_uuid"], target),
+        "schema_version": 1,
+        "revision": entry["revision"] + 1,
+        "definition": {**entry["definition"], "name": target},
+    }
+    _write_views(root, project, views, revision)
+    return show_view(directory, target)
 
 
 def _field(finding: dict[str, Any], field: str) -> Any:

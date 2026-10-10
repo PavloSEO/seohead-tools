@@ -5,9 +5,9 @@ from __future__ import annotations
 import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 
+from seohead.core.common import utc_iso_z as now_utc
 from seohead.storage.bodies import decode_entity
 
 _ALLOW = frozenset(
@@ -182,10 +182,6 @@ def bounded_entity_chunks(chunks: Iterable[bytes], content_encoding: str, limit:
         return bytes(out)
     except zlib.error as exc:
         raise EntityDecodeError("compressed entity is invalid") from exc
-
-
-def now_utc() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 __all__ = [

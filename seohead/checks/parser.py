@@ -30,6 +30,7 @@ from urllib.parse import parse_qsl, urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 from seohead.checks.content_area import TEXT_EXCLUDED_TAGS, extract_area_text, resolve_content_area
+from seohead.checks.text_normalize import declared_language
 from seohead.core.models import (
     DocumentPosition,
     DuplicateId,
@@ -247,6 +248,12 @@ def document_doctype(html: str) -> str | None:
     """The raw ``<!DOCTYPE ...>`` declaration text, if the document has one."""
     match = _DOCTYPE_RE.search(html[:_DOCTYPE_WINDOW_CHARS])
     return match.group(0).strip() if match else None
+
+
+def document_html_amp(soup: BeautifulSoup) -> bool:
+    """True when the root ``<html>`` tag carries an AMP marker: ``amp`` or ``⚡``."""
+    root = soup.find("html")
+    return root is not None and any(name in root.attrs for name in ("amp", "⚡"))
 
 
 def _first_meta_tag(soup: BeautifulSoup, *, name: str) -> Any:
@@ -863,6 +870,27 @@ def unsupported_plugin_count(soup: BeautifulSoup) -> int:
                 mime_essence = type_attr.split(";", 1)[0].strip()
                 if mime_essence.startswith("image/") or mime_essence == "application/pdf":
                     continue  # an SVG/raster/PDF fallback, not plugin content
+            count += 1
+    return count
+
+
+def mobile_alternate_broken_count(soup: BeautifulSoup) -> int:
+    """Count of ``<link rel="alternate" media="...">`` declarations that name no URL.
+
+    A media-qualified alternate points a device class at a separate URL. One with an
+    empty or missing href points at nothing a crawler or a browser can follow (#1016).
+    """
+    count = 0
+    for tag in soup.find_all("link"):
+        if not tag.get("media"):
+            continue
+        rel_attr: str | list[str] = tag.get("rel") or []
+        rel_tokens = rel_attr.split() if isinstance(rel_attr, str) else list(rel_attr)
+        if not any(isinstance(t, str) and t.lower() == "alternate" for t in rel_tokens):
+            continue
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue
+        if not (cast("str | None", tag.get("href")) or "").strip():
             count += 1
     return count
 
@@ -2007,6 +2035,8 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = document_doctype(html)
         result["viewport"] = _meta_content(soup, name="viewport")
         result["meta_refresh"] = meta_refresh_content(soup)
+        # AMP attribute on <html>: data only, no finding reads it yet (#1021 slice 1).
+        result["html_amp"] = document_html_amp(soup)
     else:
         result["title"] = None
         result["meta_description"] = None
@@ -2018,6 +2048,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = None
         result["viewport"] = None
         result["meta_refresh"] = ""
+        result["html_amp"] = False
 
     if opts["canonical"]:
         canonical_tag = _canonical_tag(soup)
@@ -2192,7 +2223,10 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # Same reasoning again: <img> alt-attribute evidence and legacy plugin
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)
+    # The document's own <html lang> claim, read from the same tree (epic #1002).
+    result["html_lang"] = declared_language(soup)
     result["plugin_elements_count"] = unsupported_plugin_count(soup)
+    result["mobile_alternate_broken"] = mobile_alternate_broken_count(soup)
     # Same reasoning once more: one <meta> lookup on the already-built tree, and
     # the page-wide opt-in to the deprecated AJAX crawling scheme (#386).
     result["meta_fragment"] = meta_fragment_content(soup)

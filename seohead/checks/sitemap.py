@@ -31,7 +31,7 @@ import io
 import re
 import sqlite3
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, nullcontext
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -60,7 +60,6 @@ MAX_XML_BYTES = 12 * 1024 * 1024
 TIMEOUT_S = 25.0
 MAX_REDIRECTS = 8
 
-_USER_AGENT = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 _GZIP_MAGIC = b"\x1f\x8b"
 _GUNZIP_CHUNK = 64 * 1024  # read granularity for the bounded gunzip loop below
 # One message for "too large", raised whichever stage (compressed or decompressed) catches
@@ -147,6 +146,26 @@ def normalize_url(url_str: str) -> str:
 
     # Fragment intentionally dropped; query preserved.
     return urlunsplit((scheme, netloc, path, parts.query, ""))
+
+
+def _normalized_index(urls: Iterable[str]) -> dict[str, str]:
+    """Normalised key -> the URL as it was actually written, first occurrence wins.
+
+    Comparison has to happen on the normalised key, or a canonical written without a trailing
+    slash would never match the page that has one. Reporting has to happen on the original,
+    or a finding names a URL that appears nowhere in the crawl — which is both unactionable
+    and indistinguishable, to a reader or to the anomaly scanner, from a finding about a page
+    that was never fetched.
+    """
+    out: dict[str, str] = {}
+    for url in urls:
+        if not url:
+            continue
+        try:
+            out.setdefault(normalize_url(url), url)
+        except ValueError:
+            continue  # not an absolute URL; cannot be compared, so it is dropped
+    return out
 
 
 def classify_url_type(url_str: str) -> str:
@@ -403,10 +422,7 @@ def _fetch(client: httpx.Client, url: str) -> bytes:
     """
     resp = client.get(
         url,
-        headers={
-            "User-Agent": _USER_AGENT,
-            "Accept": "application/xml,text/xml,application/gzip,*/*",
-        },
+        headers={"Accept": "application/xml,text/xml,application/gzip,*/*"},
     )
     resp.raise_for_status()
     body = resp.content

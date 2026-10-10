@@ -96,10 +96,10 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Missing HSTS Header", "MISSING_HSTS"),
         _c("Unsafe Cross Origin Links", "UNSAFE_CROSS_ORIGIN_LINK"),
         _c("Protocol-Relative Resource Links", "PROTOCOL_RELATIVE_LINK"),
-        _t("Missing Content-Security-Policy Header", "security-check"),
-        _t("Missing X-Content-Type-Options Header", "security-check"),
-        _t("Missing X-Frames-Options Header", "security-check"),
-        _t("Missing Secure Referrer-Policy Header", "security-check"),
+        _c("Missing Content-Security-Policy Header", "MISSING_CSP"),
+        _c("Missing X-Content-Type-Options Header", "MISSING_X_CONTENT_TYPE_OPTIONS"),
+        _c("Missing X-Frames-Options Header", "MISSING_X_FRAME_OPTIONS"),
+        _c("Missing Secure Referrer-Policy Header", "MISSING_REFERRER_POLICY"),
         _p(
             "Bad Content Type",
             "content type is recorded and drives HTML detection, but a mismatch between the "
@@ -172,9 +172,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _t(
             "Non-sequential",
-            "heading-outline",
-            note="the full H1-H6 order is built by the heading-outline skill, not by the "
-            "crawl registry",
+            "parse",
+            note="the full H1-H6 order is the heading_outline field of parse, not a crawl-registry check",
         ),
         _c("Duplicate", "H1_DUPLICATE"),
         _c("Over 70 Characters", "H1_TOO_LONG"),
@@ -187,7 +186,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "defensible count past which they stop being normal; we record them without "
             "judging the count",
         ),
-        _t("Non-sequential", "heading-outline"),
+        _t("Non-sequential", "parse"),
         _c("Duplicate", "H2_DUPLICATE"),
         _c("Over 70 Characters", "H2_TOO_LONG"),
     ],
@@ -275,10 +274,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Pagination Loop", "PAGINATION_LOOP"),
         _p(
             "Sequence Error",
-            "only a run that increments by one somewhere is judged: a series with a stride, "
-            "or one whose URLs do not state a page number, is left unevaluated rather than "
-            "reported against a numbering we would have had to invent -- and is then named, "
-            "with the reason true of that series, among the run's skipped checks",
+            "a run that increments by one, or a stride that one step covers most of, is "
+            "judged; an irregular offset scheme, or one whose URLs do not state a page number, "
+            "is left unevaluated rather than reported against a numbering we would have had to "
+            "invent -- and is then named, with the reason true of that series, among the run's "
+            "skipped checks",
             "PAGINATION_SEQUENCE_ERROR",
         ),
         _c("Non-Indexable", "PAGINATION_NONINDEXABLE"),
@@ -442,14 +442,38 @@ CATEGORIES: dict[str, list[Entry]] = {
             "declares an image (an SVG or raster fallback, not plugin content)",
         ),
         _o("Target Size", "needs rendered hit-box geometry"),
-        _g("Mobile Alternate Link", "rel=alternate media annotations are not read"),
+        _c(
+            "Mobile Alternate Link",
+            "MOBILE_ALTERNATE_LINK",
+            note="only a media-qualified rel=alternate with no href is flagged; the "
+            "reciprocal canonical on the mobile URL is not checked",
+        ),
     ],
     "Accessibility": [],  # filled below: one decision, 92 entries
     "Analytics": [
-        _o("Orphan URLs", "needs Google Analytics data; see the free-sources issue (#97)"),
-        _o("Bounce Rate Above 70%", "needs Google Analytics data"),
-        _o("No GA Data", "needs Google Analytics data"),
-        _o("Non-Indexable with GA Data", "needs Google Analytics data"),
+        _t(
+            "Orphan URLs",
+            "crawl-enrich",
+            note="found from an offline analytics CSV joined to the crawl, not by sf run; "
+            "a withheld result on a partial crawl; live per-URL sourcing needs #990",
+        ),
+        _t(
+            "Bounce Rate Above 70%",
+            "crawl-enrich",
+            note="found from an offline per-URL bounce column (--bounce-column), not by sf run; "
+            "live per-URL sourcing needs #990 and #984",
+        ),
+        _t(
+            "No GA Data",
+            "crawl-enrich",
+            note="found from an offline analytics CSV joined to the crawl, not by sf run; "
+            "skipped for an empty analytics file",
+        ),
+        _t(
+            "Non-Indexable with GA Data",
+            "crawl-enrich",
+            note="found from an offline visits column (--visits-column), not by sf run",
+        ),
     ],
     "Search Console": [
         _o("Page is Not Mobile Friendly", "needs Search Console; see #97"),

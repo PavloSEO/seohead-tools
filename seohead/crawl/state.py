@@ -17,7 +17,10 @@ import json
 import os
 import stat
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import atomic_write_bytes
 
 # v2 adds forms and start_page_evidence (issue #188). v3 adds robots_blocked
 # (issue #349). v4 adds accepted_seed_urls (issue #348 extension). v5 records
@@ -190,10 +193,9 @@ def save(path: str, state: CrawlState) -> None:
         "spooled_evidence": state.spooled_evidence,
         "evidence_counts": state.evidence_counts,
     }
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-    os.replace(tmp_path, path)
+    atomic_write_bytes(
+        Path(path), json.dumps(payload, ensure_ascii=False).encode("utf-8"), prefix=".state-"
+    )
 
 
 def clear(path: str) -> None:

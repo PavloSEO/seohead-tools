@@ -963,7 +963,7 @@ _HOSTNAME_RE = re.compile(
 )
 
 
-def _whois_field(text: str, keys: tuple[str, ...]) -> str | None:
+def whois_field(text: str, keys: tuple[str, ...]) -> str | None:
     """First value of the first matching key, ignoring comment lines."""
     for line in text.splitlines():
         stripped = line.lstrip()
@@ -1016,7 +1016,7 @@ def whois_lookup(domain: str, timeout: float = 15.0) -> tuple[str | None, str | 
     if not text:
         return None, None
 
-    referral = _whois_field(text, _WHOIS_REFERRAL_KEYS)
+    referral = whois_field(text, _WHOIS_REFERRAL_KEYS)
     if referral:
         referral = referral.split("//")[-1].split("/")[0].strip().lower()
         if referral and referral != (mapped or ""):

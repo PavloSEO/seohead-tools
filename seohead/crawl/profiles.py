@@ -13,6 +13,7 @@ import os
 import pathlib
 import re
 
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.crawl import settings as crawl_settings
 
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
@@ -54,6 +55,15 @@ def path_for(name: str) -> str:
     return str(target)
 
 
+def delete(name: str) -> None:
+    """Remove the stored profile ``name``."""
+    target = _file_for(name)
+    if not target.is_file():
+        known = ", ".join(saved_names()) or "none"
+        raise ProfileError(f"no crawl profile {name!r}; saved profiles: {known}")
+    target.unlink()
+
+
 def save(name: str, config_file: str) -> str:
     """Validate ``config_file`` and store it as profile ``name``; returns the stored path."""
     target = _file_for(name)
@@ -75,7 +85,9 @@ def save(name: str, config_file: str) -> str:
             "a profile cannot store http.credential_headers; pass credentials at crawl time"
         )
     target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temp, target)
+    atomic_write_bytes(
+        target,
+        (json.dumps(body, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+        prefix=".profile-",
+    )
     return str(target)

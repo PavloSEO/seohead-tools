@@ -14,13 +14,15 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from seohead.core.common import utc_iso_z as _now
+from seohead.core.filesystem import atomic_write_bytes
 
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
@@ -45,17 +47,6 @@ _DEFAULTS = {
     "severity_threshold": "warning",
 }
 _DEFAULT_LEASE_SECONDS = 300
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _after_interval(interval_seconds: int) -> str:
-    """Return retained scheduler advice only; this module never starts a timer."""
-    current = _now()
-    parsed = datetime.fromisoformat(current.replace("Z", "+00:00"))
-    return (parsed + timedelta(seconds=interval_seconds)).isoformat().replace("+00:00", "Z")
 
 
 def _expiry(stamp: str, seconds: int) -> str:
@@ -542,7 +533,7 @@ def run(
         ),
         "next_url_offset": offset,
         "last_finished_at": retained["recorded_at"],
-        "next_due_at": _after_interval(policy["interval_seconds"]),
+        "next_due_at": _expiry(_now(), policy["interval_seconds"]),
     }
     document["revision"] += 1
     write_document(root, NAME, document, expected_revision=expected_revision)
@@ -617,18 +608,7 @@ def _artifact(root: Path, relative: str, payload: bytes) -> tuple[str, str]:
         or not path.parent.resolve().is_relative_to(root.resolve())
     ):
         raise ValueError("monitor artifact path is unsafe")
-    descriptor, staged = tempfile.mkstemp(prefix=".monitor-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(staged, path)
-        from seohead.core.filesystem import fsync_directory
-
-        fsync_directory(path.parent)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    atomic_write_bytes(path, payload)
     from .evidence import _digest
 
     digest = _digest(path, max_bytes=len(payload), deadline=time.monotonic() + 5)
@@ -685,12 +665,12 @@ def _source_artifacts(
         ).encode("utf-8")
     ).hexdigest()
     body_ref = body_hash = None
-    from seohead.crawl.cache import _parse_cache_control
+    from seohead.crawl.cache import parse_cache_control
 
     retain_body = (
         isinstance(body, str)
         and transport.get("status_code") in {200, 304}
-        and "no-store" not in _parse_cache_control(transport.get("cache_control") or "")
+        and "no-store" not in parse_cache_control(transport.get("cache_control") or "")
         and not transport.get("set_cookie")
     )
     if retain_body:

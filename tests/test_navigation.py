@@ -112,3 +112,19 @@ def test_legacy_is_unavailable_and_forged_click_is_rejected():
     item.data["events"][0]["user_click"] = False
     with pytest.raises(ValueError, match="user-click"):
         validate_navigation(item.data)
+
+
+def test_unmapped_requested_reasons_stay_valid_observations():
+    item = capture()
+    item.document({"frame": {"id": "main", "url": "https://example.test/"}})
+    for reason, path in [("pageBlockInterstitial", "blocked"), ("reload", "reloaded")]:
+        url = f"https://example.test/{path}"
+        item.requested({"frameId": "main", "url": url, "reason": reason})
+        item.document({"frame": {"id": "main", "url": url}})
+    item.finish(success=True)
+    assert [e["kind"] for e in item.data["events"]] == [
+        "initial_http_navigation",
+        "document_navigation",
+        "refresh_navigation",
+    ]
+    validate_navigation(item.data)

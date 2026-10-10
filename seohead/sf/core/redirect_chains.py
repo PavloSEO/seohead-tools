@@ -40,7 +40,7 @@ def resolve_redirect_chains(
         chain = [start]
         current = start
         outcome: tuple[str, int, str | None] | None = None
-        while len(chain) <= hop_cap:
+        while True:
             target = redirect_map.get(current)
             if target is None:
                 hops = len(chain) - 1
@@ -48,6 +48,8 @@ def resolve_redirect_chains(
                 break
             if target in chain:
                 outcome = ("loop", len(chain), None)
+                break
+            if len(chain) > hop_cap:  # hop_cap hops taken and another one is needed
                 break
             chain.append(target)
             current = target
@@ -71,12 +73,15 @@ def redirect_hop_path(
     """
     path = [start]
     seen = {start}
-    while len(path) <= hop_cap:
+    while True:
         target = redirect_map.get(path[-1])
         if target is None:
             break
-        path.append(target)
         if target in seen:
+            path.append(target)
             break
+        if len(path) > hop_cap:
+            break
+        path.append(target)
         seen.add(target)
     return path

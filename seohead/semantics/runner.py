@@ -6,6 +6,7 @@ import contextlib
 import importlib
 import io
 import json
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -168,6 +169,6 @@ def run_quiet(
     with contextlib.redirect_stdout(io.StringIO()) as logs:
         try:
             result = execute(stage, project, **options)
-        except (OSError, ValueError, RuntimeError, ImportError) as exc:
+        except (OSError, ValueError, RuntimeError, ImportError, sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc), "logs": logs.getvalue()}
     return {"ok": True, "result": result, "logs": logs.getvalue()}

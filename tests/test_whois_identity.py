@@ -108,12 +108,12 @@ def test_punycode_whois_identity_still_supplies_registration_data(monkeypatch):
 
 def test_referral_field_is_extracted():
     text = "domain: RU\nwhois: whois.tcinet.ru\n"
-    assert net._whois_field(text, net._WHOIS_REFERRAL_KEYS) == "whois.tcinet.ru"
+    assert net.whois_field(text, net._WHOIS_REFERRAL_KEYS) == "whois.tcinet.ru"
 
 
 def test_comment_lines_are_not_parsed_as_fields():
     text = "% whois: evil.example\ndomain: EXAMPLE.RU\n"
-    assert net._whois_field(text, net._WHOIS_REFERRAL_KEYS) is None
+    assert net.whois_field(text, net._WHOIS_REFERRAL_KEYS) is None
 
 
 def test_ru_is_mapped_to_the_registry_server():

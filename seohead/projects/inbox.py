@@ -14,13 +14,15 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from seohead.core.common import utc_iso_z as _now
+from seohead.core.filesystem import atomic_write_bytes
 
 from .workspace import _load
 
@@ -31,10 +33,6 @@ MAX_ENTRIES = 10_000
 MAX_PAGE = 100
 _CONSUMER = re.compile(r"[a-z][a-z0-9._/-]{0,127}\Z")
 _REFERENCE = re.compile(r"(?:goal|task|scan|finding|section):[A-Za-z0-9._/-]{1,128}\Z")
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _text(value: Any, name: str, maximum: int = MAX_TEXT) -> str:
@@ -81,6 +79,17 @@ def _references(value: Any) -> list[str]:
     return list(dict.fromkeys(value))
 
 
+def _stamp(value: Any) -> None:
+    if type(value) is not str:
+        raise ValueError("project inbox entry has an invalid timestamp")
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("project inbox entry has an invalid timestamp") from exc
+    if timestamp.tzinfo is None or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp):
+        raise ValueError("project inbox entry has an invalid timestamp")
+
+
 def _entry(value: Any) -> dict[str, Any]:
     required = {
         "id",
@@ -94,30 +103,26 @@ def _entry(value: Any) -> dict[str, Any]:
     }
     if (
         not isinstance(value, dict)
-        or set(value) - (required | {"triage"})
+        or set(value) - (required | {"triage", "accepted_at", "completed_at"})
         or not required <= set(value)
     ):
         raise ValueError("project inbox entry has an unsupported shape")
     if type(value["id"]) is not str or not value["id"].startswith("inbox:"):
         raise ValueError("project inbox entry has an invalid id")
-    if value["kind"] not in {"note", "proposed_goal"}:
+    if value["kind"] not in {"note", "proposed_goal", "question"}:
         raise ValueError("project inbox entry has an invalid kind")
     _text(value["text"], "entry text")
     _references(value["references"])
     if value["author_role"] not in {"specialist", "agent"}:
         raise ValueError("project inbox entry has an invalid author role")
-    if type(value["created_at"]) is not str:
-        raise ValueError("project inbox entry has an invalid timestamp")
-    try:
-        timestamp = datetime.fromisoformat(value["created_at"].replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("project inbox entry has an invalid timestamp") from exc
-    if timestamp.tzinfo is None or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp):
-        raise ValueError("project inbox entry has an invalid timestamp")
+    _stamp(value["created_at"])
+    for key in ("accepted_at", "completed_at"):
+        if key in value:
+            _stamp(value[key])
     if value["goal_state"] not in {None, "proposed", "accepted", "completed"}:
         raise ValueError("project inbox entry has an invalid goal state")
-    if value["kind"] == "note" and value["goal_state"] is not None:
-        raise ValueError("notes cannot have a goal state")
+    if value["kind"] != "proposed_goal" and value["goal_state"] is not None:
+        raise ValueError("only proposed goals can have a goal state")
     if value["kind"] == "proposed_goal" and value["goal_state"] is None:
         raise ValueError("proposed goals need a goal state")
     delivery = value["delivery"]
@@ -236,18 +241,7 @@ def _write(root: Path, document: dict[str, Any]) -> None:
     )
     if len(payload.encode()) > MAX_BYTES:
         raise ValueError("project inbox exceeds its byte limit")
-    fd, stage = tempfile.mkstemp(prefix=".inbox-", dir=root)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(stage, root / "inbox.json")
-        from seohead.core.filesystem import fsync_directory
-
-        fsync_directory(root)
-    finally:
-        Path(stage).unlink(missing_ok=True)
+    atomic_write_bytes(root / "inbox.json", payload.encode("utf-8"))
 
 
 def _read_document(directory: str | Path) -> tuple[Path, dict[str, Any]]:
@@ -285,6 +279,8 @@ def _public(entry: dict[str, Any], consumer: str | None = None) -> dict[str, Any
         key: entry[key]
         for key in ("id", "kind", "text", "references", "author_role", "created_at", "goal_state")
     }
+    result["accepted_at"] = entry.get("accepted_at")
+    result["completed_at"] = entry.get("completed_at")
     result["triage"] = copy.deepcopy(entry.get("triage", []))
     if consumer is not None:
         receipt = entry["delivery"].get(consumer, {})
@@ -303,8 +299,8 @@ def submit(
     expected_revision: int | None = None,
 ) -> dict[str, Any]:
     """Store a note or proposed goal without executing anything."""
-    if kind not in {"note", "proposed_goal"}:
-        raise ValueError("kind must be note or proposed_goal")
+    if kind not in {"note", "proposed_goal", "question"}:
+        raise ValueError("kind must be note, proposed_goal or question")
     if author_role not in {"specialist", "agent"}:
         raise ValueError("author_role must be specialist or agent")
     with _transaction(directory, expected_revision) as (_, document):
@@ -444,6 +440,8 @@ def set_goal_state(
             raise ValueError("a proposed goal must be accepted before completion")
         changed = entry["goal_state"] != state
         entry["goal_state"] = state
+        if changed:
+            entry[f"{state}_at"] = _now()
         return {
             "ok": True,
             "revision": document["revision"] + int(changed),

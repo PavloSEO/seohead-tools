@@ -94,6 +94,18 @@ def test_note_read_ack_and_goal_transitions_are_explicit_and_durable(tmp_path):
         set_goal_state(root, entry_id=note["id"], state="accepted")
 
 
+def test_goal_transitions_record_timestamps_once(tmp_path):
+    root = _project(tmp_path)
+    goal = submit(root, text="Ship the audit", kind="proposed_goal")["entry"]
+    assert goal["accepted_at"] is None and goal["completed_at"] is None
+    accepted = set_goal_state(root, entry_id=goal["id"], state="accepted")["entry"]
+    assert accepted["accepted_at"] and accepted["completed_at"] is None
+    again = set_goal_state(root, entry_id=goal["id"], state="accepted")["entry"]
+    assert again["accepted_at"] == accepted["accepted_at"]
+    completed = set_goal_state(root, entry_id=goal["id"], state="completed")["entry"]
+    assert completed["completed_at"] and completed["accepted_at"] == accepted["accepted_at"]
+
+
 def test_specialist_note_triage_links_existing_tasks_goals_and_competitor_suggestions(tmp_path):
     root = _project(tmp_path)
     initialized = initialize_coverage(root)
@@ -469,3 +481,14 @@ def test_task_note_namespace_does_not_admit_arbitrary_paths_or_other_namespace_u
     with pytest.raises(ValueError, match="invalid project reference"):
         submit(root, text="Rejected reference", references=[reference])
     assert _files(root) == before
+
+
+def test_question_entry_is_stored_without_goal_state(tmp_path):
+    # Issue #979: Desktop needs a "question" entry type; it carries no goal lifecycle.
+    root = _project(tmp_path)
+    question = submit(root, text="Why is the sitemap gap open?", kind="question")["entry"]
+    assert question["kind"] == "question" and question["goal_state"] is None
+    with pytest.raises(ValueError, match="proposed goal"):
+        set_goal_state(root, entry_id=question["id"], state="accepted")
+    with pytest.raises(ValueError, match="kind must be"):
+        submit(root, text="Unknown kind", kind="ticket")

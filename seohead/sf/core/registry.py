@@ -395,6 +395,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Parameterized URL has no canonical",
         "fix": "Point the canonical to the preferred parameter-free URL when the parameters do not create unique indexable content.",
     },
+    "URL_HAS_PARAMETERS": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Internal URL contains query parameters",
+        "fix": "Review whether the parameters create unique indexable content; keep internal links and sitemaps on the parameter-free URL where they do not.",
+    },
     "URL_NON_ASCII": {
         "severity": "notice",
         "source": "SF-derived",
@@ -967,6 +973,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "No <meta name=viewport> tag with width or an initial-scale of at least 1",
         "fix": 'Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to the document head.',
     },
+    "MOBILE_ALTERNATE_LINK": {
+        "severity": "warning",
+        "source": "crawl:mobile_alternate",
+        "message": "A <link rel=alternate media=...> declaration names no URL",
+        "fix": "Give the mobile alternate link an `href` pointing at the mobile URL, or remove "
+        'the `<link rel="alternate" media=...>` tag.',
+    },
     "UNSUPPORTED_PLUGIN": {
         "severity": "warning",
         "source": "crawl:plugin_elements",
@@ -1164,6 +1177,30 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Write an explicit https:// href; a protocol-relative one silently follows "
         "whatever scheme served the current page, including a plain-HTTP embed.",
     },
+    "MISSING_CSP": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no Content-Security-Policy header",
+        "fix": "Send a Content-Security-Policy header that names the script and style sources the page uses.",
+    },
+    "MISSING_X_CONTENT_TYPE_OPTIONS": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no X-Content-Type-Options header",
+        "fix": "Send X-Content-Type-Options: nosniff so browsers do not sniff the response into another type.",
+    },
+    "MISSING_X_FRAME_OPTIONS": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has neither X-Frame-Options nor a CSP frame-ancestors directive",
+        "fix": "Send X-Frame-Options: SAMEORIGIN or a Content-Security-Policy frame-ancestors directive.",
+    },
+    "MISSING_REFERRER_POLICY": {
+        "severity": "notice",
+        "source": "crawl:security_headers",
+        "message": "HTML page has no Referrer-Policy header",
+        "fix": "Send a Referrer-Policy header, for example strict-origin-when-cross-origin.",
+    },
     "OUTLINK_TO_LOCALHOST": {
         "severity": "warning",
         "source": "crawl:link_findings",
@@ -1189,6 +1226,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "source": "crawl:link_findings",
         "message": "The page has internal outlinks marked nofollow",
         "fix": "Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct.",
+    },
+    "INTERNAL_LINK_SPONSORED_UGC": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "An internal link carries rel=sponsored or rel=ugc",
+        "fix": "Remove sponsored and ugc from links to pages of this site. Keep them only on "
+        "links that really lead to paid placements or user-submitted content.",
     },
     "HTTP_LINK_ON_HTTPS": {
         "severity": "notice",

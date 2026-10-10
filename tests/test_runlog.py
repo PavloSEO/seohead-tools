@@ -318,3 +318,64 @@ def test_a_path_argument_is_still_journalled_as_its_path(journal_path, tmp_path)
     with runlog.journal("library", "sf_audit_run", {"out": tmp_path / "report"}):
         pass
     assert runlog.read_entries()[0]["arguments"]["out"] == str(tmp_path / "report")
+
+
+# ── size rotation (#977 child 1) ──────────────────────────────────────────────
+
+
+def test_the_journal_rotates_once_it_crosses_the_ceiling(journal_path, monkeypatch):
+    monkeypatch.setenv("SEOHEAD_RUN_LOG_MAX_BYTES", "600")
+    for n in range(20):
+        with runlog.journal("cli", f"t{n}", {"pad": "x" * 100}):
+            pass
+    backup = journal_path.with_name(journal_path.name + ".1")
+    assert backup.exists()
+    assert journal_path.stat().st_size <= 600
+    assert backup.stat().st_size <= 600 + 400  # one previous generation, never two
+
+
+def test_reads_still_see_entries_from_the_rotated_generation(journal_path, monkeypatch):
+    monkeypatch.setenv("SEOHEAD_RUN_LOG_MAX_BYTES", "600")
+    for n in range(20):
+        with runlog.journal("cli", f"t{n}", {"pad": "x" * 100}):
+            pass
+    tools = [e["tool"] for e in runlog.read_entries(limit=1000)]
+    assert tools[0] == "t19"
+    assert "t18" in tools  # the most recent generation before the live file
+    assert len(tools) == len(set(tools))
+
+
+def test_a_malformed_ceiling_falls_back_to_the_default(monkeypatch):
+    for bad in ("abc", "0", "-5"):
+        monkeypatch.setenv("SEOHEAD_RUN_LOG_MAX_BYTES", bad)
+        assert runlog.max_bytes() == runlog.DEFAULT_MAX_BYTES
+
+
+def test_an_under_ceiling_journal_is_never_rotated(journal_path):
+    for n in range(5):
+        with runlog.journal("cli", f"t{n}", {}):
+            pass
+    assert not journal_path.with_name(journal_path.name + ".1").exists()
+
+
+def test_an_answer_over_the_size_cap_is_measured_again_not_reused(journal_path, monkeypatch):
+    """Only answers that fit MAX_REUSABLE_RESULT_BYTES are stored; the boundary is inclusive."""
+    monkeypatch.setenv("SEOHEAD_REUSE_POLICY", json.dumps({"domain_profile": 3600}))
+    overhead = len(json.dumps({"blob": ""}, ensure_ascii=False))
+    fits = runlog.MAX_REUSABLE_RESULT_BYTES - overhead
+    calls = []
+
+    def fn(size, **kwargs):
+        calls.append(size)
+        return {"blob": "x" * size}
+
+    wrapped = runlog.journaled("domain_profile", fn)
+
+    wrapped(size=fits, domain="at-cap.example")
+    assert "reused" in wrapped(size=fits, domain="at-cap.example")
+    assert len(calls) == 1
+
+    wrapped(size=fits + 1, domain="over-cap.example")
+    again = wrapped(size=fits + 1, domain="over-cap.example")
+    assert "reused" not in again
+    assert len(calls) == 3

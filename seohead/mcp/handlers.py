@@ -35,6 +35,7 @@ from seohead.checks import (
     robots as robots_core,
 )
 from seohead.core import runlog
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.core.models import ParseManyResult, RobotsCheckResult
 
 LARGE_EVIDENCE_JOIN_SCAN_PAGES = 100_000
@@ -741,7 +742,7 @@ def crawl_site(
             if within_project:
                 from math import isfinite
 
-                from seohead.crawl.settings import effective_request_rate
+                from seohead.crawl.settings import effective_request_rate, rate_fields
                 from seohead.projects.origin_pacing import ProjectOriginPacer
 
                 rate = effective_request_rate(resume_data["settings"])
@@ -803,8 +804,18 @@ def crawl_site(
                         ),
                         counters=reporter.counters(),
                     )
-                return {**result, "observer_run_id": observed["id"]}
-        return resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+                return {
+                    **result,
+                    **rate_fields(resume_data["settings"]),
+                    "observer_run_id": observed["id"],
+                }
+        from seohead.crawl.settings import rate_fields
+        from seohead.mcp.scan_handlers import resume_inputs
+
+        # Read the settings before resuming: the scan is finished once resume_scan returns.
+        rate = rate_fields(resume_inputs(resume)["settings"])
+        resumed = resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
+        return {**resumed, **rate}
 
     import os
 
@@ -963,14 +974,62 @@ def crawl_site(
         from seohead.mcp.scan_handlers import crawl_list_scan
 
         directory = settings["output"]["dir"] or None
-        return crawl_list_scan(
-            urls,
-            scan_out=scan_out or str(Path(directory) / ".list.seohead"),
-            settings=settings,
-            producer_build=producer_build,
-            out_dir=directory,
-            proxy_route=proxy_route,
-        )
+        list_scan_out = scan_out or str(Path(directory) / ".list.seohead")
+        observed = None
+        if project_root is not None:
+            from seohead.projects.run_observation import finish, start
+
+            try:
+                within_project = (
+                    Path(list_scan_out).resolve().is_relative_to(project_root.resolve())
+                )
+            except OSError:
+                within_project = False
+            if within_project:
+                from math import isfinite
+
+                rate = crawl_config.effective_request_rate(settings)
+                observed = start(
+                    project_root,
+                    kind="native",
+                    mode="list",
+                    max_urls=settings["limits"]["max_urls"],
+                    max_requests=settings["limits"]["max_requests"],
+                    max_crawl_seconds=settings["limits"]["max_crawl_seconds"],
+                    max_requests_per_second=float(rate) if isfinite(rate) else None,
+                    config_fingerprint=crawl_config.fingerprint(settings),
+                    artifact=list_scan_out,
+                    run_id=observer_run_id,
+                )
+        try:
+            result = crawl_list_scan(
+                urls,
+                scan_out=list_scan_out,
+                settings=settings,
+                producer_build=producer_build,
+                out_dir=directory,
+                proxy_route=proxy_route,
+            )
+        except BaseException as exc:
+            if observed is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    finish(project_root, observed["id"], state="failed", reason=type(exc).__name__)
+            raise
+        if observed is None:
+            return {**result, **crawl_config.rate_fields(settings)}
+        unavailable = result.get("audit_available") is False
+        with contextlib.suppress(OSError, ValueError):
+            finish(
+                project_root,
+                observed["id"],
+                state="partial" if result.get("partial") or unavailable else "finished",
+                reason=(
+                    str(result.get("audit_reason") or "audit_unavailable")
+                    if unavailable
+                    else str(result.get("finish_reason") or "finished")
+                ),
+            )
+        return {**result, **crawl_config.rate_fields(settings), "observer_run_id": observed["id"]}
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
@@ -1018,6 +1077,20 @@ def crawl_site(
                     run_id=observer_run_id,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
+        if pacer is None:
+            # Outside a project the schedule lives in the user state directory, so
+            # concurrent crawls of one host still share one aggregate ceiling.
+            from math import isfinite
+
+            from seohead.projects.origin_pacing import ProjectOriginPacer
+
+            rate = crawl_config.effective_request_rate(settings)
+            pacer = ProjectOriginPacer(
+                None,
+                url,
+                minimum_delay_seconds=settings["speed"]["min_delay_seconds"],
+                max_requests_per_second=max(2.0, rate) if isfinite(rate) else 0.0,
+            )
         try:
             result = crawl_site_scan(
                 url,
@@ -1029,7 +1102,7 @@ def crawl_site(
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
                 progress_snapshot=reporter.observe_counts if reporter is not None else None,
-                shared_request_gate=pacer.wait_turn if pacer is not None else None,
+                shared_request_gate=pacer.wait_turn,
                 proxy_route=proxy_route,
             )
         except BaseException as exc:
@@ -1064,8 +1137,12 @@ def crawl_site(
                     ),
                     counters=reporter.counters(),
                 )
-            return {**result, "observer_run_id": observed["id"]}
-        return result
+            return {
+                **result,
+                **crawl_config.rate_fields(settings),
+                "observer_run_id": observed["id"],
+            }
+        return {**result, **crawl_config.rate_fields(settings)}
     dispatch_gate = None
     if url:
         from seohead.crawl.throttle import DispatchGate, Throttle
@@ -1336,7 +1413,7 @@ def crawl_site(
     if url and result.spooled_evidence and result.finish_reason == "finished":
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(out_dir, ".forms_resume.jsonl"))
-    return response
+    return {**response, **crawl_config.rate_fields(settings)}
 
 
 def _audit_crawl_result(
@@ -1895,6 +1972,13 @@ def _audit_crawl_result(
                 else link_findings.protocol_relative_links(links)
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
+            site_host = urlsplit(start_norm).hostname or ""
+            for item in (
+                graph.iter_internal_sponsored_ugc(site_host)
+                if graph
+                else link_findings.internal_sponsored_ugc_links(links, site_host)
+            ):
+                ctx.add("INTERNAL_LINK_SPONSORED_UGC", target_url=item["target_url"], details=item)
 
     # Pages With JavaScript Errors (#1015): read from the retained render console sidecars,
     # never re-rendered here. Unreadable evidence is a stated skip, not a clean page.
@@ -1927,6 +2011,28 @@ def _audit_crawl_result(
             "JS_CONSOLE_ERRORS",
             "no browser console was retained; enable rendering.artifacts.console_errors",
         )
+    # Per-URL security headers (#1013): the final response of each HTML page, judged from the
+    # retained scan. Without a stored scan there is no per-URL header evidence to judge.
+    from seohead.crawl import security_headers
+
+    if stored_scan is not None:
+        header_evidence = security_headers.evaluate(stored_scan.con)
+        for check_id, items in header_evidence["findings"].items():
+            for item in items:
+                ctx.add(check_id, target_url=item["target_url"], details=item)
+            if items:
+                continue
+            if header_evidence["pages_unmeasured"]:
+                ctx.skip(
+                    check_id,
+                    f"{header_evidence['pages_unmeasured']} HTML pages have no parseable "
+                    "stored response headers",
+                )
+            elif not header_evidence["pages_measured"]:
+                ctx.skip(check_id, "no HTML page with a 2xx response was stored")
+    else:
+        for check_id in security_headers.HEADER_CHECKS:
+            ctx.skip(check_id, "crawl was not stored; per-URL response headers are not retained")
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
@@ -2676,9 +2782,6 @@ def crawl_enrich(
     """
     if not external_csv:
         raise ValueError("external_csv required")
-    import contextlib
-    import os
-    import tempfile
     from pathlib import Path
 
     from seohead.checks.analytics_findings import analytics_findings
@@ -2719,15 +2822,7 @@ def crawl_enrich(
             raise ValueError("cannot write an orphan list from a partial crawl")
         target = Path(out_urls)
         target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=target.parent, prefix=".crawl-enrich-")
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.writelines(f"{url}\n" for url in candidates)
-            os.replace(temporary, target)
-        except BaseException:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temporary)
-            raise
+        atomic_write_bytes(target, "".join(f"{url}\n" for url in candidates).encode("utf-8"))
     result: dict[str, Any] = {
         "schema_version": "crawl_enrich.v1",
         "join": joined,
@@ -3750,11 +3845,7 @@ TRAFFIC_REPORT_BASENAME = "metrika-traffic"
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    import os
-
-    partial = path.with_name(f".{path.name}.partial")
-    partial.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(partial, path)
+    atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def metrika_traffic_pdf(
@@ -4190,10 +4281,14 @@ def regions_tree(save_to: str | None = None) -> dict[str, Any]:
     return regions_core.fetch_tree(save_to=save_to)
 
 
-def spend_report(since: str | None = None) -> dict[str, Any]:
-    """Summarize recorded provider charges by source, operation, and day."""
+def spend_report(since: str | None = None, csv_path: str | None = None) -> dict[str, Any]:
+    """Summarize recorded provider charges by source, operation, and day, or with csv_path
+    write one CSV row per journal entry instead and return where it went."""
     from seohead.data_sources import spend as spend_core
 
+    if csv_path:
+        count = spend_core.write_csv(csv_path, since=since)
+        return {"ok": True, "csv": str(Path(csv_path).expanduser()), "rows": count, "since": since}
     return spend_core.report(since=since)
 
 
@@ -4362,6 +4457,8 @@ def scan_url_query(
     export: str | None = None,
     export_format: str = "csv",
     export_max_rows: int | None = None,
+    issue_check: str | list[str] | None = None,
+    issue_severity: str | None = None,
 ) -> dict[str, Any]:
     """Filter, sort and paginate the whole page table of one saved scan, read-only.
 
@@ -4389,10 +4486,21 @@ def scan_url_query(
         offset=offset,
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
+        issue_check=issue_check,
+        issue_severity=issue_severity,
         max_bytes=max_bytes,
         facets=facets,
         preset=preset,
     )
+
+
+def scan_url_history(project: str, url: str, limit: int = 50) -> dict[str, Any]:
+    """State of one exact URL in each retained scan of a project, newest first, read-only."""
+    from seohead.projects.workspace import _load
+    from seohead.storage.url_history import url_history as core
+
+    root, _document = _load(project)
+    return core(root / "scans", url, limit=limit)
 
 
 def scan_url_detail(
@@ -5134,6 +5242,20 @@ def project_view_save(directory: str, view: dict, expected_revision: int) -> dic
     from seohead.mcp.project_handlers import project_view_save as core
 
     return core(directory, view, expected_revision)
+
+
+def project_view_delete(directory: str, name: str, expected_revision: int) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_delete as core
+
+    return core(directory, name, expected_revision)
+
+
+def project_view_rename(
+    directory: str, name: str, new_name: str, expected_revision: int
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_rename as core
+
+    return core(directory, name, new_name, expected_revision)
 
 
 def findings_view(directory: str, name: str, audit: Any, offset: int = 0) -> dict[str, Any]:
@@ -6391,6 +6513,7 @@ _RAW_HANDLERS = {
     "scan_inspect": scan_inspect,
     "scan_url_detail": scan_url_detail,
     "scan_url_query": scan_url_query,
+    "scan_url_history": scan_url_history,
     "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,
@@ -6452,6 +6575,8 @@ _RAW_HANDLERS = {
     "project_view_list": project_view_list,
     "project_view_show": project_view_show,
     "project_view_save": project_view_save,
+    "project_view_delete": project_view_delete,
+    "project_view_rename": project_view_rename,
     "findings_view": findings_view,
     "inspect_url": inspect_url,
     "audit_workflow": audit_workflow,

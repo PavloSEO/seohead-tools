@@ -22,8 +22,8 @@ from typing import Any
 
 from defusedxml import ElementTree as ET
 
-from seohead.checks.sitemap import normalize_url
-from seohead.recon.net import http_client, validate_url
+from seohead.checks.sitemap import _normalized_index, normalize_url
+from seohead.recon.net import UA, http_client, validate_url
 
 from .context import AuditContext
 from .normalize import find_column, normalize_value
@@ -43,32 +43,6 @@ def _host(url: str) -> str:
         return urllib.parse.urlparse(url).netloc.lower()
     except (ValueError, AttributeError):
         return ""
-
-
-def _normalized_index(urls: list[str]) -> dict[str, str]:
-    """Normalised key -> the URL as it was actually written, first occurrence wins.
-
-    Comparison has to happen on the normalised key, or a trailing-slash-only difference
-    between a sitemap's declared URL and the matching crawled page reads as two distinct
-    URLs — 100% desync where the two are actually the same page (#145). This uses
-    ``normalize_url`` from ``seohead.checks.sitemap``, the same canonicalisation
-    ``seohead.crawl.reconcile.reconcile_sitemap`` already compares on for the native crawl
-    path, rather than adding a third notion of "same URL" to the toolkit. The set-building
-    glue around it (this function) is duplicated from ``reconcile._normalized_index`` rather
-    than imported: ``seohead/crawl/__init__.py`` documents that the crawl engine may not
-    import ``seohead.sf``, and the two are kept from depending on each other's internals in
-    the other direction too — the SF-export summary already names its three desync keys to
-    match ``reconcile_sitemap``'s by convention, not by sharing code.
-    """
-    out: dict[str, str] = {}
-    for url in urls:
-        if not url:
-            continue
-        try:
-            out.setdefault(normalize_url(url), url)
-        except ValueError:
-            continue  # not an absolute URL; cannot be compared, so it is dropped
-    return out
 
 
 # --------------------------------------------------------------------------
@@ -449,9 +423,7 @@ def run_sitemap(
     """
     summary: dict[str, Any] = {}
     cfg_live = ctx.config.get("live_recheck", {})
-    ua = cfg_live.get(
-        "user_agent", "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
-    )
+    ua = cfg_live.get("user_agent", UA)
     timeout = cfg_live.get("timeout_s", 10)
 
     # --- 1. SF native Sitemaps:* exports ---------------------------------

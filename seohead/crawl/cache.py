@@ -83,13 +83,13 @@ import contextlib
 import hashlib
 import json
 import os
-import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass, field
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.crawl.state import ensure_safe_dir
 
 # v2 added size_bytes. A v1 entry cannot supply it, and defaulting it to 0 would make a
@@ -168,7 +168,7 @@ def resolve_dir() -> Path | None:
         return None
 
 
-def _parse_cache_control(value: str) -> dict[str, str | None]:
+def parse_cache_control(value: str) -> dict[str, str | None]:
     out: dict[str, str | None] = {}
     for part in (value or "").split(","):
         part = part.strip()
@@ -190,7 +190,7 @@ def freshness_lifetime(headers: dict[str, str]) -> tuple[float, bool]:
     (a validator may still save a round trip) but treat it as already stale — see the module
     docstring for why "unstated" is not read as "forever".
     """
-    directives = _parse_cache_control(headers.get("cache-control", ""))
+    directives = parse_cache_control(headers.get("cache-control", ""))
     if "no-store" in directives:
         return 0.0, True
     if "no-cache" in directives:
@@ -523,20 +523,17 @@ class ResponseCache:
         """
         path = self._entry_path(entry)
         payload = {"schema_version": SCHEMA_VERSION, **asdict(entry)}
-        tmp_path: str | None = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False)
-            os.replace(tmp_path, path)
-            tmp_path = None
+            atomic_write_bytes(
+                path,
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                prefix=path.name,
+                suffix=".tmp",
+                durable=False,
+            )
         except OSError:
             pass  # a cache that cannot write must not break the run it is trying to speed up
-        finally:
-            if tmp_path is not None:
-                with contextlib.suppress(OSError):
-                    os.remove(tmp_path)
 
     def _forget(self, entry: CacheEntry) -> None:
         with contextlib.suppress(OSError):

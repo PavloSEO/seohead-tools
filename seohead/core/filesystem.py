@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
+import tempfile
 from pathlib import Path
 
 _WINDOWS = os.name == "nt"
@@ -80,3 +82,74 @@ def fsync_directory(path: str | Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def stage_bytes(
+    directory: Path,
+    prefix: str,
+    data: bytes,
+    *,
+    suffix: str = "",
+    mode: int | None = None,
+    durable: bool = True,
+) -> str:
+    """Write ``data`` to a unique temp file in ``directory`` and return its path.
+
+    The caller publishes the returned path (``os.replace`` or ``os.link``) or removes it.
+    ``mkstemp`` guarantees no two callers share a staging name. ``durable`` fsyncs the file
+    before it is returned; a failed write removes the temp file before re-raising.
+    """
+    descriptor, staged = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            if durable:
+                os.fsync(stream.fileno())
+        if mode is not None:
+            os.chmod(staged, mode)
+    except BaseException:
+        Path(staged).unlink(missing_ok=True)
+        raise
+    return staged
+
+
+def atomic_write_bytes(
+    path: str | Path,
+    data: bytes,
+    *,
+    prefix: str | None = None,
+    suffix: str = "",
+    mode: int | None = None,
+    durable: bool = True,
+) -> None:
+    """Replace ``path`` with ``data`` so readers see the old or the new file, never a mix.
+
+    ``durable`` fsyncs the staged file and then the parent directory, so a completed
+    replace survives a crash on POSIX. ``durable=False`` keeps atomicity but skips both
+    fsyncs, for caches where losing the newest entry on power loss is acceptable.
+    """
+    target = Path(path)
+    staged = stage_bytes(
+        target.parent,
+        prefix or f".{target.name}.",
+        data,
+        suffix=suffix,
+        mode=mode,
+        durable=durable,
+    )
+    try:
+        os.replace(staged, target)
+    finally:
+        Path(staged).unlink(missing_ok=True)
+    if durable:
+        fsync_directory(target.parent)
+
+
+def file_sha256(path: str | Path) -> str:
+    """Return the SHA-256 hex digest of a regular file, streamed in 1 MiB chunks."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

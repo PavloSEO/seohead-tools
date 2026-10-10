@@ -240,16 +240,19 @@ class NavigationCapture:
             return
         destination = frame.get("url", "")
         reason = self.pending[1] if self.pending and self.pending[0] == destination else ""
-        kind = {
+        mapped = {
             "scriptInitiated": "script_navigation",
             "anchorClick": "anchor_navigation",
             "formSubmissionGet": "form_navigation",
             "formSubmissionPost": "form_navigation",
             "metaTagRefresh": "refresh_navigation",
             "httpHeaderRefresh": "refresh_navigation",
+            "reload": "refresh_navigation",
         }.get(reason)
-        kind = kind or ("document_navigation" if self.committed else "initial_http_navigation")
-        self.add(destination, kind, "cdp_requested" if reason else "cdp_frame")
+        kind = mapped or ("document_navigation" if self.committed else "initial_http_navigation")
+        # Unmapped requested reasons (e.g. pageBlockInterstitial) keep the frame observation
+        # that the validator accepts for document and initial navigations.
+        self.add(destination, kind, "cdp_requested" if mapped else "cdp_frame")
         self.committed = True
         self.pending = None
 

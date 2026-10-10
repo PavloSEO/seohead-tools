@@ -15,18 +15,18 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 137 | a registry check finds it |
+| check | 142 | a registry check finds it |
 | tool | 32 | a command outside the crawl registry finds it |
 | partial | 19 | we find part of it; the missing part is stated |
-| gap | 4 | we should find it and do not |
-| out of scope | 128 | a decision, with its reason |
+| gap | 3 | we should find it and do not |
+| out of scope | 124 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **169 are found today**, 19 are
-found in part, 4 are gaps worth closing, and
-20 need something we have decided not to build.
+remaining 212 issues, **174 are found today**, 19 are
+found in part, 3 are gaps worth closing, and
+16 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
 having, because the alternative is an absence nobody has noticed.
@@ -62,10 +62,10 @@ having, because the alternative is an absence nobody has noticed.
 | Missing HSTS Header | check | `MISSING_HSTS` |  |
 | Unsafe Cross Origin Links | check | `UNSAFE_CROSS_ORIGIN_LINK` |  |
 | Protocol-Relative Resource Links | check | `PROTOCOL_RELATIVE_LINK` |  |
-| Missing Content-Security-Policy Header | tool | `security-check` |  |
-| Missing X-Content-Type-Options Header | tool | `security-check` |  |
-| Missing X-Frames-Options Header | tool | `security-check` |  |
-| Missing Secure Referrer-Policy Header | tool | `security-check` |  |
+| Missing Content-Security-Policy Header | check | `MISSING_CSP` |  |
+| Missing X-Content-Type-Options Header | check | `MISSING_X_CONTENT_TYPE_OPTIONS` |  |
+| Missing X-Frames-Options Header | check | `MISSING_X_FRAME_OPTIONS` |  |
+| Missing Secure Referrer-Policy Header | check | `MISSING_REFERRER_POLICY` |  |
 | Bad Content Type | partial | — | content type is recorded and drives HTML detection, but a mismatch between the declared type and the body is not asserted |
 
 ## URL
@@ -118,7 +118,7 @@ having, because the alternative is an absence nobody has noticed.
 | Missing | check | `H1_MISSING` |  |
 | Multiple | check | `H1_MULTIPLE` |  |
 | Alt Text in h1 | check | `H1_ALT_TEXT_ONLY` | fires only when the H1 has no text of its own; a logo image beside real heading text is normal and is never flagged |
-| Non-sequential | tool | `heading-outline` | the full H1-H6 order is built by the heading-outline skill, not by the crawl registry |
+| Non-sequential | tool | `parse` | the full H1-H6 order is the heading_outline field of parse, not a crawl-registry check |
 | Duplicate | check | `H1_DUPLICATE` |  |
 | Over 70 Characters | check | `H1_TOO_LONG` |  |
 
@@ -128,7 +128,7 @@ having, because the alternative is an absence nobody has noticed.
 |---|---|---|---|
 | Missing | check | `H2_MISSING` |  |
 | Multiple | partial | — | multiple H2s are normal, and the issue that asked for this row supplied no defensible count past which they stop being normal; we record them without judging the count |
-| Non-sequential | tool | `heading-outline` |  |
+| Non-sequential | tool | `parse` |  |
 | Duplicate | check | `H2_DUPLICATE` |  |
 | Over 70 Characters | check | `H2_TOO_LONG` |  |
 
@@ -184,7 +184,7 @@ having, because the alternative is an absence nobody has noticed.
 | Unlinked Pagination URLs | check | `UNLINKED_PAGINATION_SERIES` |  |
 | Multiple Pagination URLs | check | `PAGINATION_MULTIPLE` |  |
 | Pagination Loop | check | `PAGINATION_LOOP` |  |
-| Sequence Error | partial | `PAGINATION_SEQUENCE_ERROR` | only a run that increments by one somewhere is judged: a series with a stride, or one whose URLs do not state a page number, is left unevaluated rather than reported against a numbering we would have had to invent -- and is then named, with the reason true of that series, among the run's skipped checks |
+| Sequence Error | partial | `PAGINATION_SEQUENCE_ERROR` | a run that increments by one, or a stride that one step covers most of, is judged; an irregular offset scheme, or one whose URLs do not state a page number, is left unevaluated rather than reported against a numbering we would have had to invent -- and is then named, with the reason true of that series, among the run's skipped checks |
 | Non-Indexable | check | `PAGINATION_NONINDEXABLE` |  |
 
 ## Directives
@@ -312,16 +312,16 @@ having, because the alternative is an absence nobody has noticed.
 | Illegible Font Size | out of scope | — | needs computed styles from a rendered page |
 | Contains Unsupported Plugins | check | `UNSUPPORTED_PLUGIN` | <object>/<embed>/<applet> are counted, excluding an <object> whose type declares an image (an SVG or raster fallback, not plugin content) |
 | Target Size | out of scope | — | needs rendered hit-box geometry |
-| Mobile Alternate Link | gap | — | rel=alternate media annotations are not read |
+| Mobile Alternate Link | check | `MOBILE_ALTERNATE_LINK` | only a media-qualified rel=alternate with no href is flagged; the reciprocal canonical on the mobile URL is not checked |
 
 ## Analytics
 
 | Issue | Status | Found by | Note |
 |---|---|---|---|
-| Orphan URLs | out of scope | — | needs Google Analytics data; see the free-sources issue (#97) |
-| Bounce Rate Above 70% | out of scope | — | needs Google Analytics data |
-| No GA Data | out of scope | — | needs Google Analytics data |
-| Non-Indexable with GA Data | out of scope | — | needs Google Analytics data |
+| Orphan URLs | tool | `crawl-enrich` | found from an offline analytics CSV joined to the crawl, not by sf run; a withheld result on a partial crawl; live per-URL sourcing needs #990 |
+| Bounce Rate Above 70% | tool | `crawl-enrich` | found from an offline per-URL bounce column (--bounce-column), not by sf run; live per-URL sourcing needs #990 and #984 |
+| No GA Data | tool | `crawl-enrich` | found from an offline analytics CSV joined to the crawl, not by sf run; skipped for an empty analytics file |
+| Non-Indexable with GA Data | tool | `crawl-enrich` | found from an offline visits column (--visits-column), not by sf run |
 
 ## Search Console
 

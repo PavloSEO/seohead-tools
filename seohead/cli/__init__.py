@@ -110,6 +110,7 @@ COMMANDS = (
     "scan-inspect",
     "scan-url-detail",
     "scan-url-query",
+    "scan-url-history",
     "scan-link-inspect",
     "scan-status",
     "scan-rendered-routes",
@@ -164,6 +165,8 @@ COMMANDS = (
     "project-view-list",
     "project-view-show",
     "project-view-save",
+    "project-view-delete",
+    "project-view-rename",
     "findings-view",
     "project-policy",
     "project-prepare",
@@ -214,7 +217,15 @@ INTERACTIVE_COMMANDS = ("tui", "watch")
 # unknown spelling without pretending every entry point is an MCP tool.  The
 # namespace entries own subcommand parsers; ``mcp`` and the interactive shell
 # own process/session behavior rather than a shared handler.
-DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "semantics", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
+DOCUMENTED_CLI_ENTRYPOINTS = (
+    "sf",
+    "semantics",
+    "mcp",
+    "scan",
+    "project",
+    "crawl-profile",
+    *INTERACTIVE_COMMANDS,
+)
 
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
@@ -481,7 +492,13 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "export",
             "export_format",
             "export_max_rows",
+            "issue_check",
+            "issue_severity",
         ):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "scan-url-history":
+        for name in ("project", "url", "limit"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "scan-url-detail":
@@ -948,6 +965,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         for name in ("directory", "expected_revision"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
+    elif cmd in {"project-view-delete", "project-view-rename"}:
+        for name in ("directory", "name", "new_name", "expected_revision"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
     elif cmd == "findings-view":
         for name in ("directory", "name", "audit", "offset"):
             if getattr(args, name, None) is not None:
@@ -1301,6 +1322,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         kw["save_to"] = args.save_to
     if cmd == "spend-report" and getattr(args, "since", None):
         kw["since"] = args.since
+    if cmd == "spend-report" and getattr(args, "csv", None):
+        kw["csv_path"] = args.csv
     if cmd in {"sources-sync", "sources-status", "sources-export"}:
         for name in (
             "source",
@@ -1432,6 +1455,8 @@ def _print_effective_rate(kwargs: dict[str, Any]) -> None:
     rate = crawl_config.effective_request_rate(resolved)
     shown = "unbounded" if rate == float("inf") else f"{rate:.2f} req/s"
     print(f"crawl-site: effective worst-case request rate to one host: {shown}", file=sys.stderr)
+    for message in crawl_config.rate_warnings(resolved):
+        print(f"crawl-site: warning: {message}", file=sys.stderr)
 
 
 # Stops the crawl chose because it was told to, not ones a resume can get past: the
@@ -2052,6 +2077,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--save-to", dest="save_to", help="save a flat {name: id} mapping as JSON")
     if cmd == "spend-report":
         sub.add_argument("--since", help="include charges on or after YYYY-MM-DD")
+        sub.add_argument("--csv", help="write one CSV row per journal entry to this path")
     if cmd in {"sources-sync", "sources-status", "sources-export"}:
         _source_flag(sub, "--db", help="sources SQLite database path")
         _source_flag(sub, "--project", help="project directory; uses its sources.sqlite")
@@ -2186,6 +2212,21 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--export-format", dest="export_format", choices=("csv", "xlsx"))
         sub.add_argument("--export-max-rows", dest="export_max_rows", type=int)
+        sub.add_argument(
+            "--issue-check",
+            dest="issue_check",
+            action="append",
+            help="audit check id to filter by (repeatable, 1..50)",
+        )
+        sub.add_argument(
+            "--issue-severity",
+            dest="issue_severity",
+            choices=("critical", "warning", "notice"),
+        )
+    if cmd == "scan-url-history":
+        _source_flag(sub, "--project", help="project directory whose scans/ directory is read")
+        _source_flag(sub, "--url", help="exact retained URL text")
+        sub.add_argument("--limit", type=int, help="newest scans to read (1..500, default 50)")
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
@@ -2297,9 +2338,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int, default=50, help="events per page, 1..200")
         sub.add_argument("--query", default="", help="case-insensitive text substring")
     if cmd == "project-inbox-submit":
-        _source_flag(sub, "--text", help="specialist note or proposed goal text")
+        _source_flag(sub, "--text", help="specialist note, proposed goal or question text")
         sub.add_argument(
-            "--kind", choices=("note", "proposed_goal"), help="entry kind (default: note)"
+            "--kind",
+            choices=("note", "proposed_goal", "question"),
+            help="entry kind (default: note)",
         )
         sub.add_argument(
             "--references", help="comma-separated goal/task/scan/finding/section references"
@@ -2466,10 +2509,25 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             type=int,
             help="current checklist revision required before a write",
         )
-    if cmd in {"project-view-list", "project-view-show", "project-view-save"}:
+    if cmd in {
+        "project-view-list",
+        "project-view-show",
+        "project-view-save",
+        "project-view-delete",
+        "project-view-rename",
+    }:
         _source_flag(sub, "--directory", help="validated local project workspace")
-    if cmd == "project-view-show":
+    if cmd in {"project-view-show", "project-view-delete", "project-view-rename"}:
         sub.add_argument("--name", help="saved finding view name")
+    if cmd == "project-view-rename":
+        sub.add_argument("--new-name", dest="new_name", help="new finding view name")
+    if cmd in {"project-view-delete", "project-view-rename"}:
+        sub.add_argument(
+            "--expected-revision",
+            dest="expected_revision",
+            type=int,
+            help="current project view config revision",
+        )
     if cmd == "project-view-save":
         sub.add_argument(
             "--expected-revision",
@@ -2832,6 +2890,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="seohead", description="Headless Python SEO toolkit.")
     p.add_argument("--version", action="version", version=f"seohead {__version__}")
     subs = p.add_subparsers(dest="command", metavar="<command>")
+    version = subs.add_parser("version", help="core version, formats and commands")
+    version.add_argument("--json", action="store_true", help="print machine-readable core info")
     for cmd in COMMANDS:
         epilog = (
             CRAWL_SITE_HELP_NOTE
@@ -2895,6 +2955,8 @@ def build_parser() -> argparse.ArgumentParser:
         "view-list",
         "view-show",
         "view-save",
+        "view-delete",
+        "view-rename",
         "policy",
         "prepare",
         "start",
@@ -2943,6 +3005,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reanalyze = scan_subs.add_parser("reanalyze", help="reanalyze retained inputs without network")
     _add_flags(reanalyze, "scan-reanalyze")
+    crawl_profile = subs.add_parser("crawl-profile", help="list or delete saved crawl profiles")
+    crawl_profile_subs = crawl_profile.add_subparsers(
+        dest="crawl_profile_command", metavar="<action>", required=True
+    )
+    crawl_profile_subs.add_parser("list", help="list saved crawl profile names")
+    crawl_profile_subs.add_parser("delete", help="delete a saved crawl profile").add_argument(
+        "name", metavar="NAME"
+    )
     mcp = subs.add_parser("mcp", help="run the MCP server (stdio)")
     mcp.add_argument(
         "--profile", choices=("full", "audit", "infra", "quick-check", "router"), default=None
@@ -3014,6 +3084,16 @@ def main(argv: list[str] | None = None) -> int:
         cmd = "scenario-" + args.scenario_command
     if not cmd:
         build_parser().print_help()
+        return 0
+    if cmd == "version":
+        from seohead.core.core_info import core_info
+
+        info = core_info()
+        if args.json:
+            print(json.dumps(info, ensure_ascii=False, indent=2))
+        else:
+            rev = f" ({info['revision'][:7]})" if info["revision"] else ""
+            print(f"seohead {info['package_version']}{rev}")
         return 0
     if cmd == "sf":
         # The crawl-audit subsystem owns its parser; preserve and forward its argument tail.
@@ -3120,6 +3200,19 @@ def main(argv: list[str] | None = None) -> int:
     from seohead.cli.terminal_progress import show_banner
 
     show_banner(cmd, quiet=getattr(args, "quiet", False))
+    if cmd == "crawl-profile":
+        from seohead.crawl import profiles
+
+        try:
+            if args.crawl_profile_command == "list":
+                print(json.dumps({"profiles": profiles.saved_names()}, ensure_ascii=False))
+            else:
+                profiles.delete(args.name)
+                print(json.dumps({"profile": args.name, "deleted": True}, ensure_ascii=False))
+        except profiles.ProfileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
     if cmd == "crawl-site" and getattr(args, "config_help", False):
         _print_config_help()
         return 0

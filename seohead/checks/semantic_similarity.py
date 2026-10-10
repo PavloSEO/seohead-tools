@@ -16,10 +16,14 @@ import sqlite3
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence, Sized
+from contextlib import closing
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
 from typing import Any, Protocol
+
+from seohead.core.common import canonical_json
+from seohead.core.sqlite import open_writer
 
 MAX_DOCUMENTS = 10_000
 MAX_CANDIDATE_COMPARISONS = 250_000
@@ -113,10 +117,6 @@ class DeclaredEmbeddingAdapter:
         raise ValueError("an embedding is missing from the supplied semantic input")
 
 
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
 def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
     """Return the reproducible identity that scopes a cached embedding."""
     declared = adapter.describe()
@@ -158,7 +158,7 @@ def cache_key(source_sha256: str, identity: dict[str, Any]) -> str:
     """Bind a vector to the normalized source, model and all declared settings."""
     if not isinstance(source_sha256, str) or len(source_sha256) != 64:
         raise ValueError("source_sha256 must be a SHA-256 hex digest")
-    return hashlib.sha256(f"{source_sha256}:{_canonical(identity)}".encode()).hexdigest()
+    return hashlib.sha256(f"{source_sha256}:{canonical_json(identity)}".encode()).hexdigest()
 
 
 def _vector(value: Sequence[float]) -> list[float]:
@@ -181,7 +181,7 @@ class EmbeddingCache:
         deadline = time.monotonic() + 5
         while True:
             try:
-                with self._connect() as con:
+                with closing(self._connect()) as con, con:
                     con.execute("PRAGMA journal_mode=WAL")
                     con.execute(
                         "CREATE TABLE IF NOT EXISTS semantic_embeddings ("
@@ -195,12 +195,10 @@ class EmbeddingCache:
                 time.sleep(0.01)
 
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=5)
-        con.execute("PRAGMA busy_timeout=5000")
-        return con
+        return open_writer(self.path, pragmas=("PRAGMA busy_timeout=5000",))
 
     def get(self, key: str) -> list[float] | None:
-        with self._connect() as con:
+        with closing(self._connect()) as con, con:
             row = con.execute(
                 "SELECT vector_json FROM semantic_embeddings WHERE cache_key=?", (key,)
             ).fetchone()
@@ -216,13 +214,13 @@ class EmbeddingCache:
     def put(
         self, key: str, source_sha256: str, identity: dict[str, Any], vector: Sequence[float]
     ) -> None:
-        encoded = _canonical(_vector(vector))
-        with self._connect() as con:
+        encoded = canonical_json(_vector(vector))
+        with closing(self._connect()) as con, con:
             con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "INSERT OR REPLACE INTO semantic_embeddings "
                 "(cache_key,source_sha256,identity_json,vector_json) VALUES (?,?,?,?)",
-                (key, source_sha256, _canonical(identity), encoded),
+                (key, source_sha256, canonical_json(identity), encoded),
             )
             excess = (
                 con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0]

@@ -8,7 +8,13 @@ import json
 import pytest
 
 from seohead.audit.site import SCHEMA
-from seohead.projects.finding_views import list_views, save_view, show_view
+from seohead.projects.finding_views import (
+    delete_view,
+    list_views,
+    rename_view,
+    save_view,
+    show_view,
+)
 from seohead.projects.workspace import create_project
 
 SITE = "https://example.test/"
@@ -125,6 +131,40 @@ def test_view_round_trip_identity_revisions_and_expected_revision(project):
     with pytest.raises(ValueError, match="revision conflict"):
         save_view(project, definition(name="second"), expected_revision=1)
     assert (project / "finding-views.json").read_bytes() == before
+
+
+def test_delete_and_rename_are_revision_gated_and_keep_identity_rules(project):
+    save_view(project, definition(), expected_revision=0)
+    save_view(project, definition(name="other"), expected_revision=1)
+
+    renamed = rename_view(project, "triage", "inbox", expected_revision=2)
+    assert renamed["config_revision"] == 3
+    assert renamed["view"]["name"] == "inbox"
+    assert renamed["view"]["definition"]["name"] == "inbox"
+    assert renamed["view"]["revision"] == 2
+    assert [view["name"] for view in list_views(project)["views"]] == ["inbox", "other"]
+
+    before = (project / "finding-views.json").read_bytes()
+    with pytest.raises(ValueError, match="revision conflict"):
+        delete_view(project, "other", expected_revision=2)
+    with pytest.raises(ValueError, match="already exists"):
+        rename_view(project, "inbox", "other", expected_revision=3)
+    with pytest.raises(ValueError, match="does not exist"):
+        rename_view(project, "missing", "fresh", expected_revision=3)
+    with pytest.raises(ValueError, match="does not exist"):
+        delete_view(project, "missing", expected_revision=3)
+    assert (project / "finding-views.json").read_bytes() == before
+
+    deleted = delete_view(project, "other", expected_revision=3)
+    assert deleted == {
+        "ok": True,
+        "project_uuid": deleted["project_uuid"],
+        "config_revision": 4,
+        "deleted": "other",
+    }
+    assert [view["name"] for view in list_views(project)["views"]] == ["inbox"]
+    with pytest.raises(ValueError, match="does not exist"):
+        show_view(project, "other")
 
 
 @pytest.mark.parametrize(
@@ -617,3 +657,73 @@ def test_pdf_build_uses_only_saved_view_selection(project, tmp_path, monkeypatch
     html = render_audit_pdf_html(seen["model"], lang=language)
     assert ("source audit scope" if language == "en" else "объём исходного аудита") in html
     assert "Synthetic broken URL" not in json.dumps(seen["model"])
+
+
+def test_cli_and_mcp_expose_delete_and_rename_with_the_same_arguments(monkeypatch, project):
+    from seohead import cli
+    from seohead.mcp import handlers
+    from seohead.mcp.mcp_server import build_server
+
+    args = cli.build_parser().parse_args(
+        [
+            "project",
+            "view-rename",
+            "--directory",
+            str(project),
+            "--name",
+            "triage",
+            "--new-name",
+            "inbox",
+            "--expected-revision",
+            "2",
+        ]
+    )
+    handler_name, kwargs = cli._build_kwargs("project-view-rename", args)
+    assert handler_name == "project_view_rename"
+    assert kwargs == {
+        "directory": str(project),
+        "name": "triage",
+        "new_name": "inbox",
+        "expected_revision": 2,
+    }
+
+    args = cli.build_parser().parse_args(
+        [
+            "project",
+            "view-delete",
+            "--directory",
+            str(project),
+            "--name",
+            "inbox",
+            "--expected-revision",
+            "3",
+        ]
+    )
+    handler_name, kwargs = cli._build_kwargs("project-view-delete", args)
+    assert handler_name == "project_view_delete"
+    assert kwargs == {"directory": str(project), "name": "inbox", "expected_revision": 3}
+
+    captured = {}
+
+    def capture(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    manager = build_server()._tool_manager
+    monkeypatch.setattr(handlers, "project_view_delete", capture)
+    manager.get_tool("seo_project_view_delete").fn(
+        directory=str(project), name="inbox", expected_revision=3
+    )
+    assert captured == {"directory": str(project), "name": "inbox", "expected_revision": 3}
+
+    captured.clear()
+    monkeypatch.setattr(handlers, "project_view_rename", capture)
+    manager.get_tool("seo_project_view_rename").fn(
+        directory=str(project), name="triage", new_name="inbox", expected_revision=2
+    )
+    assert captured == {
+        "directory": str(project),
+        "name": "triage",
+        "new_name": "inbox",
+        "expected_revision": 2,
+    }

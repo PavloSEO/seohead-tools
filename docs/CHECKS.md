@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**194 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**201 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -115,6 +115,7 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `URL_TOO_LONG` | notice | SF-derived | URL exceeds the configured length threshold | Shorten the URL while preserving a stable, descriptive path. |
 | `URL_HAS_PARAMS` | notice | SF-derived | Parameterized URL has no canonical | Point the canonical to the preferred parameter-free URL when the parameters do not create unique indexable content. |
+| `URL_HAS_PARAMETERS` | notice | SF-derived | Internal URL contains query parameters | Review whether the parameters create unique indexable content; keep internal links and sitemaps on the parameter-free URL where they do not. |
 | `URL_NON_ASCII` | notice | SF-derived | URL contains non-ASCII characters | Consider a consistent ASCII transliteration for human-readable URLs where appropriate. |
 | `URL_UPPERCASE` | notice | SF-derived | URL path contains uppercase characters | Normalize the path to lowercase and add a 301 redirect from the uppercase variant. |
 | `DEEP_CRAWL_DEPTH` | warning | SF-derived | Page has excessive crawl depth | Use relevant internal links to make the page reachable in fewer clicks from the home page or an authoritative hub. |
@@ -267,6 +268,7 @@ python scripts/generate_checks_reference.py
 | `MISSING_CHARSET` | warning | SF-derived | No character encoding declared via Content-Type or an early <meta> tag | Declare charset in the Content-Type response header, or add a <meta charset> tag in the first 1024 bytes of the HTML. |
 | `MISSING_DOCTYPE` | notice | SF-derived | Document lacks a modern <!DOCTYPE html> declaration, triggering quirks mode | Add `<!DOCTYPE html>` as the very first line of the document, with no PUBLIC or SYSTEM identifier. |
 | `VIEWPORT_MISSING` | warning | SF-derived | No <meta name=viewport> tag with width or an initial-scale of at least 1 | Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to the document head. |
+| `MOBILE_ALTERNATE_LINK` | warning | crawl:mobile_alternate | A <link rel=alternate media=...> declaration names no URL | Give the mobile alternate link an `href` pointing at the mobile URL, or remove the `<link rel="alternate" media=...>` tag. |
 | `UNSUPPORTED_PLUGIN` | warning | crawl:plugin_elements | Page contains a legacy plugin-dependent element (<object>/<embed>/<applet>) | Replace the plugin-dependent element with a native equivalent (HTML5 <video>/<audio>, an <img>/<svg>, or a JavaScript-driven alternative) -- mobile browsers, and modern desktop ones, do not run plugins, so this content is simply invisible there. |
 | `AJAX_CRAWLING_SCHEME_URL` | notice | crawl:ajax_scheme_outlinks | The deprecated AJAX crawling scheme (#! / _escaped_fragment_) is still used by this page's URL or by URLs it links to | Serve the same content at ordinary URLs and link to those instead. Google deprecated the scheme in 2015 and stopped supporting it in 2018, so an _escaped_fragment_ companion URL is no longer requested by anything -- informational rather than broken, because a site may still keep it for a legacy client of its own. |
 | `AJAX_CRAWLING_SCHEME_META_FRAGMENT` | notice | crawl:meta_fragment | Page declares <meta name="fragment"> -- the page-wide opt-in to the deprecated AJAX crawling scheme | Remove the tag once the page is served as ordinary HTML (server-rendered or crawlable client-rendered). Nothing requests the _escaped_fragment_ companion URL it advertises any more, so the declaration is inert -- informational rather than broken. |
@@ -319,10 +321,15 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `UNSAFE_CROSS_ORIGIN_LINK` | warning | crawl:link_findings | A target="_blank" link declares neither rel="noopener" nor rel="noreferrer" | Add rel="noopener" (or "noreferrer") so the opened page cannot reach back into this one through window.opener. |
 | `PROTOCOL_RELATIVE_LINK` | notice | crawl:link_findings | Link href is written in the protocol-relative "//host/path" form | Write an explicit https:// href; a protocol-relative one silently follows whatever scheme served the current page, including a plain-HTTP embed. |
+| `MISSING_CSP` | notice | crawl:security_headers | HTML page has no Content-Security-Policy header | Send a Content-Security-Policy header that names the script and style sources the page uses. |
+| `MISSING_X_CONTENT_TYPE_OPTIONS` | notice | crawl:security_headers | HTML page has no X-Content-Type-Options header | Send X-Content-Type-Options: nosniff so browsers do not sniff the response into another type. |
+| `MISSING_X_FRAME_OPTIONS` | notice | crawl:security_headers | HTML page has neither X-Frame-Options nor a CSP frame-ancestors directive | Send X-Frame-Options: SAMEORIGIN or a Content-Security-Policy frame-ancestors directive. |
+| `MISSING_REFERRER_POLICY` | notice | crawl:security_headers | HTML page has no Referrer-Policy header | Send a Referrer-Policy header, for example strict-origin-when-cross-origin. |
 | `OUTLINK_TO_LOCALHOST` | warning | crawl:link_findings | A link points at a loopback address (localhost, 127.0.0.1, ::1, ...) | Replace the development/staging reference with the production URL. |
 | `JS_CONSOLE_ERRORS` | warning | crawl:browser_artifacts | The page's browser console logged errors while it was rendered | Fix the script error the console reports; an uncaught exception can stop the page's content, links or metadata from being built in the browser. |
 | `FOLLOW_AND_NOFOLLOW_INLINKS` | notice | crawl:link_findings | The page receives both a followed and a nofollow internal link | Decide deliberately whether the page should be crawl-priority or not, and make every internal link to it agree. |
 | `INTERNAL_NOFOLLOW_OUTLINKS` | notice | crawl:link_findings | The page has internal outlinks marked nofollow | Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct. |
+| `INTERNAL_LINK_SPONSORED_UGC` | notice | crawl:link_findings | An internal link carries rel=sponsored or rel=ugc | Remove sponsored and ugc from links to pages of this site. Keep them only on links that really lead to paid placements or user-submitted content. |
 | `HTTP_LINK_ON_HTTPS` | notice | crawl:link_findings | HTTPS page contains an ordinary internal http:// anchor | Write the internal anchor as https:// or a relative URL. A fetched HTTP variant that already redirects to HTTPS is reported as converged, not as this finding. |
 | `FORM_URL_INSECURE` | critical | crawl:link_findings | A form submits to an http:// action, so its data leaves the browser unencrypted regardless of the page's own scheme | Point the form's action at an https:// URL. |
 | `FORM_ON_HTTP_URL` | critical | crawl:link_findings | A form with a password field is served from a plain-HTTP page, so the credentials themselves travel unencrypted before the action URL is even reached | Serve the page itself over HTTPS; an HTTPS form action does not protect input typed on an HTTP page. |

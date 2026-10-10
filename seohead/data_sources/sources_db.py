@@ -28,6 +28,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
+from seohead.core.sqlite import open_readonly, open_writer
+
 DB_NAME = "sources.sqlite"
 SCHEMA_VERSION = "1"
 SCHEMA_KIND = "seohead.sources"
@@ -126,11 +128,7 @@ def connect(path: Path, *, create: bool) -> sqlite3.Connection:
             pass
         else:
             os.close(descriptor)
-    connection = (
-        sqlite3.connect(path)
-        if create
-        else sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
-    )
+    connection = open_writer(path) if create else open_readonly(path.resolve())
     if create:
         connection.execute("BEGIN IMMEDIATE")
     marker = connection.execute(

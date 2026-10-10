@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from seohead.core.sqlite import open_readonly
 from seohead.crawl.spider import Scope
 
 from . import APPLICATION_ID, ScanError
@@ -79,11 +80,15 @@ def _open_light(path: str | Path) -> sqlite3.Connection:
         raise LinksError("scan_not_available", "scan file does not exist")
     con = None
     try:
-        con = sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        con.execute("PRAGMA cache_size=-65536")
+        con = open_readonly(
+            target.resolve(),
+            row_factory=sqlite3.Row,
+            pragmas=(
+                "PRAGMA trusted_schema=OFF",
+                "PRAGMA query_only=ON",
+                "PRAGMA cache_size=-65536",
+            ),
+        )
         con.execute("BEGIN")
         version = con.execute("PRAGMA user_version").fetchone()[0]
         if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:

@@ -1,0 +1,1 @@
+- crawl-site profiles (#941): `crawl-profile list` prints the saved profile names and `crawl-profile delete NAME` removes one; both print JSON and refuse unknown names with the list of saved profiles.

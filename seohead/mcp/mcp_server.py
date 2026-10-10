@@ -1412,12 +1412,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.regions_tree(save_to=save_to))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_spend_report(since: str | None = None) -> dict[str, Any]:
+    def seo_spend_report(since: str | None = None, csv_path: str | None = None) -> dict[str, Any]:
         """What the paid sources have actually charged: totals by source, by operation and
         by day, read from the local journal. Estimating spend by eye has already missed the
         provider usage was recorded, so check here before and after a large run. since is
-        YYYY-MM-DD."""
-        return _checked(handlers.spend_report(since=since))
+        YYYY-MM-DD. csv_path writes every journal row to that file instead of the totals."""
+        return _checked(handlers.spend_report(since=since, csv_path=csv_path))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_sources_doctor() -> dict[str, Any]:
@@ -1743,12 +1743,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_project_inbox_submit(
         directory: str,
         text: str,
-        kind: Literal["note", "proposed_goal"] = "note",
+        kind: Literal["note", "proposed_goal", "question"] = "note",
         references: list[str] | None = None,
         author_role: Literal["specialist", "agent"] = "specialist",
         expected_revision: int | None = None,
     ) -> dict[str, Any]:
-        """Persist a specialist note or proposed goal without starting any work."""
+        """Persist a specialist note, proposed goal or question without starting any work."""
         return _checked(
             handlers.project_inbox_submit(
                 directory, text, kind, references, author_role, expected_revision
@@ -2330,6 +2330,48 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             with_project_notice(
                 handlers.project_view_save(
                     directory=directory, view=view, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_project_view_delete(
+        directory: str, name: str, expected_revision: int, consumer: str | None = None
+    ) -> dict[str, Any]:
+        """Delete one saved finding view using the current project view-config revision.
+
+        Changes project view configuration only; it does not edit scans or affect scores/tasks."""
+        return _checked(
+            with_project_notice(
+                handlers.project_view_delete(
+                    directory=directory, name=name, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_view_rename(
+        directory: str,
+        name: str,
+        new_name: str,
+        expected_revision: int,
+        consumer: str | None = None,
+    ) -> dict[str, Any]:
+        """Rename one saved finding view using the current project view-config revision.
+
+        Keeps the view definition; the new name must be unused. Changes project view configuration
+        only; it does not edit scans or affect scores/tasks."""
+        return _checked(
+            with_project_notice(
+                handlers.project_view_rename(
+                    directory=directory,
+                    name=name,
+                    new_name=new_name,
+                    expected_revision=expected_revision,
                 ),
                 directory,
                 consumer,
@@ -3134,6 +3176,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_url_history(project: str, url: str, limit: int = 50) -> dict[str, Any]:
+        """State of one exact URL across the retained scans of a project, newest first.
+
+        Read-only. For each of the newest ``limit`` scans returns state (present, absent or
+        unavailable), status_code, indexability, title_hash, canonical, redirect_target and
+        content_hash; ``number`` counts all scans from 1 for the oldest. Lookup is by exact
+        retained URL text through an index, not a scan of the page table.
+        """
+        return _checked(handlers.scan_url_history(project=project, url=url, limit=limit))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_url_query(
         input_path: str,
         filters: list[dict[str, Any]] | None = None,
@@ -3146,6 +3199,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         max_bytes: int = 1_048_576,
         preset: str | None = None,
         facets: list[str] | str | None = None,
+        issue_check: str | list[str] | None = None,
+        issue_severity: str | None = None,
     ) -> dict[str, Any]:
         """Filter, sort and paginate the page table of one saved scan across the whole scan.
 
@@ -3155,7 +3210,9 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
         with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
         requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
-        the same filters, with facets_state exact or capped.
+        the same filters, with facets_state exact or capped. issue_check (1..50 check ids) and
+        issue_severity (critical|warning|notice) filter by audit issue; until the per-issue index
+        exists they return state unavailable with reason_code issue_index_missing.
         """
         return _checked(
             handlers.scan_url_query(
@@ -3170,6 +3227,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 max_bytes=max_bytes,
                 facets=facets,
                 preset=preset,
+                issue_check=issue_check,
+                issue_severity=issue_severity,
             )
         )
 

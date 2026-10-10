@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import stage_bytes
 
 CONFIG_ROOT = Path(os.path.expanduser("~/.config"))
 
@@ -84,13 +85,8 @@ def write_secret(path: str, value: str, *, replace: bool = False) -> None:
         raise FileNotFoundError(f"no existing credential to replace at {path}")
     if not replace and target.exists():
         raise FileExistsError(f"credential already exists at {path}; use replace")
-    descriptor, staged = tempfile.mkstemp(prefix=".credential-", dir=target.parent)
+    staged = stage_bytes(target.parent, ".credential-", value.encode("utf-8"), mode=0o600)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(value)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(staged, 0o600)
         if replace:
             os.replace(staged, target)
         else:
@@ -119,6 +115,15 @@ def available(path: str, env_var: str) -> bool:
     return True
 
 
+def _invalid_source(path: str, accepted: list[str], reason: str) -> dict[str, Any]:
+    return {
+        "state": "invalid",
+        "source_reference": f"config:{path}",
+        "accepted_source_references": accepted,
+        "reason": reason,
+    }
+
+
 def source_status(path: str, env_var: str) -> dict[str, Any]:
     """Describe a credential source without returning its value or an absolute path."""
     accepted = [f"env:{env_var}", f"config:{path}"]
@@ -140,42 +145,19 @@ def source_status(path: str, env_var: str) -> dict[str, Any]:
             "accepted_source_references": accepted,
         }
     except OSError:
-        return {
-            "state": "invalid",
-            "source_reference": f"config:{path}",
-            "accepted_source_references": accepted,
-            "reason": "configured credential file is unreadable",
-        }
+        return _invalid_source(path, accepted, "configured credential file is unreadable")
     if not candidate.is_file():
-        return {
-            "state": "invalid",
-            "source_reference": f"config:{path}",
-            "accepted_source_references": accepted,
-            "reason": "configured credential path is not a regular file",
-        }
+        return _invalid_source(path, accepted, "configured credential path is not a regular file")
     if info.st_size > 1024 * 1024:
-        return {
-            "state": "invalid",
-            "source_reference": f"config:{path}",
-            "accepted_source_references": accepted,
-            "reason": "configured credential file exceeds 1 MiB",
-        }
+        return _invalid_source(path, accepted, "configured credential file exceeds 1 MiB")
     try:
         value = candidate.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
-        return {
-            "state": "invalid",
-            "source_reference": f"config:{path}",
-            "accepted_source_references": accepted,
-            "reason": "configured credential file is unreadable or invalid text",
-        }
+        return _invalid_source(
+            path, accepted, "configured credential file is unreadable or invalid text"
+        )
     if not value.strip():
-        return {
-            "state": "invalid",
-            "source_reference": f"config:{path}",
-            "accepted_source_references": accepted,
-            "reason": "configured credential file is empty",
-        }
+        return _invalid_source(path, accepted, "configured credential file is empty")
     return {
         "state": "configured_unverified",
         "source_reference": f"config:{path}",
