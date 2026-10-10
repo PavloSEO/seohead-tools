@@ -664,6 +664,8 @@
  "действует": "valid",
  "не действует": "not valid",
  "{base} · не найден по этому пути": "{base} · not found at this path",
+ "вечером и в презентациях": "evening and demos",
+ "доступность": "accessibility",
  "по умолчанию": "default",
  "Сделать по умолчанию": "Make default",
  "Проверено {when}": "Checked {when}",
