@@ -31,7 +31,7 @@ from unittest.mock import patch
 
 import pytest
 
-from seohead.crawl import link_findings
+from seohead.crawl import link_findings, security_headers
 from seohead.mcp import handlers
 from seohead.sf.core import eeat as eeat_module
 from seohead.sf.core import heuristics as heuristics_module
@@ -96,6 +96,8 @@ def _owning_spy(check_id: str, source: str, spies: dict[str, object]):
         return spies["sitemap"]
     if source == "crawl:link_findings":
         return spies[check_id]
+    if source == "crawl:security_headers":
+        return spies["security_headers"]
     return spies["rules"]
 
 
@@ -159,6 +161,9 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
             "forms_on_http_pages_with_password",
             wraps=link_findings.forms_on_http_pages_with_password,
         ) as spy_http_password_form,
+        patch.object(
+            security_headers, "evaluate", wraps=security_headers.evaluate
+        ) as spy_security_headers,
     ):
         result = handlers.crawl_site(
             url=f"{site}/",
@@ -190,6 +195,7 @@ def test_every_wired_check_is_fired_skipped_or_provably_evaluated(site, tmp_path
         "FOLLOW_AND_NOFOLLOW_INLINKS": spy_follow_mix,
         "FORM_URL_INSECURE": spy_insecure_form,
         "FORM_ON_HTTP_URL": spy_http_password_form,
+        "security_headers": spy_security_headers,
     }
     in_scope = set(CHECKS) - _NOT_WIRED_INTO_CRAWL
     for check_id in sorted(in_scope):

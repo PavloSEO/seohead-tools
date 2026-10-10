@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**186 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -304,6 +304,10 @@ python scripts/generate_checks_reference.py
 |---|---|---|---|---|
 | `UNSAFE_CROSS_ORIGIN_LINK` | warning | crawl:link_findings | A target="_blank" link declares neither rel="noopener" nor rel="noreferrer" | Add rel="noopener" (or "noreferrer") so the opened page cannot reach back into this one through window.opener. |
 | `PROTOCOL_RELATIVE_LINK` | notice | crawl:link_findings | Link href is written in the protocol-relative "//host/path" form | Write an explicit https:// href; a protocol-relative one silently follows whatever scheme served the current page, including a plain-HTTP embed. |
+| `MISSING_CSP` | notice | crawl:security_headers | HTML page has no Content-Security-Policy header | Send a Content-Security-Policy header that names the script and style sources the page uses. |
+| `MISSING_X_CONTENT_TYPE_OPTIONS` | notice | crawl:security_headers | HTML page has no X-Content-Type-Options header | Send X-Content-Type-Options: nosniff so browsers do not sniff the response into another type. |
+| `MISSING_X_FRAME_OPTIONS` | notice | crawl:security_headers | HTML page has neither X-Frame-Options nor a CSP frame-ancestors directive | Send X-Frame-Options: SAMEORIGIN or a Content-Security-Policy frame-ancestors directive. |
+| `MISSING_REFERRER_POLICY` | notice | crawl:security_headers | HTML page has no Referrer-Policy header | Send a Referrer-Policy header, for example strict-origin-when-cross-origin. |
 | `OUTLINK_TO_LOCALHOST` | warning | crawl:link_findings | A link points at a loopback address (localhost, 127.0.0.1, ::1, ...) | Replace the development/staging reference with the production URL. |
 | `FOLLOW_AND_NOFOLLOW_INLINKS` | notice | crawl:link_findings | The page receives both a followed and a nofollow internal link | Decide deliberately whether the page should be crawl-priority or not, and make every internal link to it agree. |
 | `HTTP_LINK_ON_HTTPS` | notice | crawl:link_findings | HTTPS page contains an ordinary internal http:// anchor | Write the internal anchor as https:// or a relative URL. A fetched HTTP variant that already redirects to HTTPS is reported as converged, not as this finding. |

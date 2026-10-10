@@ -15,8 +15,8 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
+| check | 130 | a registry check finds it |
+| tool | 29 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
 | out of scope | 136 | a decision, with its reason |
@@ -62,10 +62,10 @@ having, because the alternative is an absence nobody has noticed.
 | Missing HSTS Header | check | `MISSING_HSTS` |  |
 | Unsafe Cross Origin Links | check | `UNSAFE_CROSS_ORIGIN_LINK` |  |
 | Protocol-Relative Resource Links | check | `PROTOCOL_RELATIVE_LINK` |  |
-| Missing Content-Security-Policy Header | tool | `security-check` |  |
-| Missing X-Content-Type-Options Header | tool | `security-check` |  |
-| Missing X-Frames-Options Header | tool | `security-check` |  |
-| Missing Secure Referrer-Policy Header | tool | `security-check` |  |
+| Missing Content-Security-Policy Header | check | `MISSING_CSP` |  |
+| Missing X-Content-Type-Options Header | check | `MISSING_X_CONTENT_TYPE_OPTIONS` |  |
+| Missing X-Frames-Options Header | check | `MISSING_X_FRAME_OPTIONS` |  |
+| Missing Secure Referrer-Policy Header | check | `MISSING_REFERRER_POLICY` |  |
 | Bad Content Type | partial | — | content type is recorded and drives HTML detection, but a mismatch between the declared type and the body is not asserted |
 
 ## URL

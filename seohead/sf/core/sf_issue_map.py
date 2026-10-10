@@ -95,10 +95,10 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Missing HSTS Header", "MISSING_HSTS"),
         _c("Unsafe Cross Origin Links", "UNSAFE_CROSS_ORIGIN_LINK"),
         _c("Protocol-Relative Resource Links", "PROTOCOL_RELATIVE_LINK"),
-        _t("Missing Content-Security-Policy Header", "security-check"),
-        _t("Missing X-Content-Type-Options Header", "security-check"),
-        _t("Missing X-Frames-Options Header", "security-check"),
-        _t("Missing Secure Referrer-Policy Header", "security-check"),
+        _c("Missing Content-Security-Policy Header", "MISSING_CSP"),
+        _c("Missing X-Content-Type-Options Header", "MISSING_X_CONTENT_TYPE_OPTIONS"),
+        _c("Missing X-Frames-Options Header", "MISSING_X_FRAME_OPTIONS"),
+        _c("Missing Secure Referrer-Policy Header", "MISSING_REFERRER_POLICY"),
         _p(
             "Bad Content Type",
             "content type is recorded and drives HTML detection, but a mismatch between the "

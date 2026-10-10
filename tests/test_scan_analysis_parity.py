@@ -6,6 +6,7 @@ import copy
 
 import pytest
 
+from seohead.crawl import security_headers
 from seohead.crawl.settings import fingerprint, load
 from seohead.crawl.sqlite_adapter import crawl_to_scan
 from seohead.mcp.handlers import _audit_crawl_result
@@ -102,13 +103,20 @@ def _drop_retained_only_checks(audit: dict) -> dict:
     it -- issues, skip declarations, coverage rows and their dependent totals --
     keeps this test measuring the shared-evidence parity it exists for.
     """
-    retained_only = {"BROKEN_BOOKMARK"}
+    # The four security-header checks (#1013) read each page's stored response headers, which
+    # the legacy graph never keeps: the same retained-only shape as BROKEN_BOOKMARK.
+    retained_only = {"BROKEN_BOOKMARK", *security_headers.HEADER_CHECKS}
     document = copy.deepcopy(audit)
     summary = document.get("summary") if isinstance(document.get("summary"), dict) else {}
     summary.pop("fragment_links", None)
 
     removed_ids = {
         issue["id"] for issue in document.get("issues", []) if issue.get("check") in retained_only
+    }
+    removed_checks = {
+        issue["check"]
+        for issue in document.get("issues", [])
+        if issue.get("check") in retained_only
     }
     issues = [
         issue for issue in document.get("issues", []) if issue.get("check") not in retained_only
@@ -157,8 +165,8 @@ def _drop_retained_only_checks(audit: dict) -> dict:
         for key in ("checks_disabled_ids", "checks_silent_ids"):
             if isinstance(coverage.get(key), list):
                 coverage[key] = [i for i in coverage[key] if i not in retained_only]
-        if removed_ids and coverage.get("checks_fired"):
-            coverage["checks_fired"] -= 1
+        if removed_checks and coverage.get("checks_fired"):
+            coverage["checks_fired"] -= len(removed_checks)
         skipped_id_set = {s.get("id") for s in run.get("checks_skipped") or []}
         disabled_id_set = set(coverage.get("checks_disabled_ids") or [])
         fired_id_set = {issue.get("check") for issue in issues}
@@ -166,7 +174,7 @@ def _drop_retained_only_checks(audit: dict) -> dict:
         coverage["checks_silent"] = len(coverage.get("checks_silent_ids") or [])
         coverage["checks_disabled"] = len(coverage.get("checks_disabled_ids") or [])
         if coverage.get("checks_total"):
-            coverage["checks_total"] -= 1
+            coverage["checks_total"] -= len(retained_only)
         available = (
             coverage["checks_total"]
             - coverage.get("checks_skipped", 0)
