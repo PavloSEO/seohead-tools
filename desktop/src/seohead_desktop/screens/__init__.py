@@ -11,7 +11,8 @@ SCREENS = {"scans": "scans:ScansScreen", "journal": "journal:JournalScreen", "wo
            "inbox": "inbox:InboxScreen", "content_search": "search:SearchScreen",
            "issues": "issues:IssuesScreen", "url": "url:UrlScreen"}
 # name -> "module:Class"; screens outside the navigation slots (start, first-run wizard), appended after the pages
-EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScreen", "backlinks": "backlinks:BacklinksScreen"}
+EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScreen", "backlinks": "backlinks:BacklinksScreen",
+          "new_tab": "new_tab:NewTabScreen"}
 # top-bar widgets that a screen with ``chrome_free = True`` hides (SHELL-CANON §7)
 PROJECT_CHROME = ("project_button", "project_chevron", "scan_button", "scan_state_badge", "new_scan", "refresh_button")
 
