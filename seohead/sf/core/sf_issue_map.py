@@ -238,9 +238,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Over 100 kb", "IMG_OVER_KB"),
         _c("Alt Text Over 100 Characters", "IMG_ALT_TOO_LONG"),
-        _g(
+        _p(
             "Incorrectly Sized Images",
-            "needs the rendered layout box to compare against the intrinsic size",
+            "render-check measures intrinsic size against the rendered box (image_sizing: "
+            "oversized, upscaled) on rendered routes only; no SF-analyzer check reads it yet, "
+            "and crawl exports are not checked",
         ),
         _c("Missing Size Attributes", "IMG_MISSING_DIMENSIONS"),
     ],
@@ -466,7 +468,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Multiple <head> Tags", "HEAD_MULTIPLE"),
         _c("Missing <body> Tag", "BODY_MISSING"),
         _c("Multiple <body> Tags", "BODY_MULTIPLE"),
-        _c("HTML Document Over 2MB", "LARGE_HTML"),
+        _c("HTML Document Over 2MB", "HTML_OVER_2MB"),
         _p(
             "Resource Over 2MB",
             "a body above the configured ceiling is recorded and not parsed; it is a limit, "

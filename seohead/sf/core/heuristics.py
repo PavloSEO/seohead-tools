@@ -28,6 +28,10 @@ SEPARATORS = (" | ", " — ", " - ", " · ", " :: ", " // ")
 # multiple-of-median rules have anything to say.
 MIN_IQR_FRACTION_OF_MEDIAN = 0.10
 
+# Screaming Frog's "HTML Document Over 2MB" is an absolute ceiling, not a site-relative
+# outlier, so it is a separate finding from LARGE_HTML (200 KB default, median-relative).
+HTML_OVER_2MB_BYTES = 2 * 1024 * 1024
+
 
 def _quantile(sorted_vals: list[float], q: float) -> float:
     if not sorted_vals:
@@ -60,6 +64,7 @@ def check_html_weight(ctx: AuditContext) -> dict[str, Any]:
     if not stats:
         ctx.skip("LARGE_HTML", "no Size (bytes) data for HTML pages")
         ctx.skip("HTML_BLOAT", "no Size (bytes) data for HTML pages")
+        ctx.skip("HTML_OVER_2MB", "no Size (bytes) data for HTML pages")
         return stats
 
     t = ctx.thresholds
@@ -117,6 +122,12 @@ def check_html_weight(ctx: AuditContext) -> dict[str, Any]:
                     "abs_threshold_kb": t["large_html_abs_kb"],
                     "outlier": bool(is_outlier),
                 },
+            )
+        if size > HTML_OVER_2MB_BYTES:
+            ctx.add(
+                "HTML_OVER_2MB",
+                target_url=page.url,
+                details={"size_bytes": int(size), "limit_bytes": HTML_OVER_2MB_BYTES},
             )
         bpw = page.metrics.get("bytes_per_word")
         if (

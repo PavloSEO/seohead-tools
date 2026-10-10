@@ -227,3 +227,9 @@ def test_slow_local_turn_runs_before_the_shared_host_slot():
     gate = _SharedDispatchGate(LocalGate(), lambda: events.append("shared"))
     gate.wait_turn()
     assert events == ["local", "shared"]
+
+
+@pytest.fixture(autouse=True)
+def _several_active_runs_in_one_process(monkeypatch):
+    """These fixtures keep several running records in one process, which start() now refuses."""
+    monkeypatch.setattr(run_observation, "_owner_busy", lambda run: False)

@@ -282,3 +282,75 @@ def test_chain_finding_carries_the_full_hop_path(tmp_path):
         "https://example.com/b",
         "https://example.com/c",
     ]
+
+
+# -- links to update: internal inlinks to each chain's first URL -----------
+
+ALL_INLINKS_HEADER = "Type,Source,Destination,Anchor Text,Follow"
+
+
+def _write_with_inlinks(tmp_path, rows: list[str], inlinks: list[str]) -> str:
+    exports_dir = _write_internal_all(tmp_path, rows)
+    (tmp_path / "exports" / "all_inlinks.csv").write_text(
+        ALL_INLINKS_HEADER + "\n" + "\n".join(inlinks) + "\n"
+    )
+    return exports_dir
+
+
+def _chain_issue(result: dict, check: str, target: str) -> dict:
+    return next(i for i in result["issues"] if i["check"] == check and i["target_url"] == target)
+
+
+def test_chain_lists_internal_links_still_pointing_at_its_first_url(tmp_path):
+    rows = [
+        _row("https://example.com/a", 301, "https://example.com/b"),
+        _row("https://example.com/b", 301, "https://example.com/c"),
+        _row("https://example.com/c", 200),
+        _row("https://example.com/loop1", 301, "https://example.com/loop2"),
+        _row("https://example.com/loop2", 301, "https://example.com/loop1"),
+    ]
+    inlinks = [
+        "Hyperlink,https://example.com/,https://example.com/a,Old page,TRUE",
+        "Hyperlink,https://example.com/page-x,https://example.com/a,,FALSE",
+        "Hyperlink,https://example.com/page-x,https://example.com/c,New page,TRUE",
+        "Hyperlink,https://other.example/,https://example.com/a,External,TRUE",
+    ]
+    exports_dir = _write_with_inlinks(tmp_path, rows, inlinks)
+    result = json.loads(
+        json.dumps(
+            run_audit(
+                input_mode="parse-exports", exports_dir=exports_dir, log=lambda m: None
+            ).to_json()
+        )
+    )
+
+    chain = _chain_issue(result, "REDIRECT_CHAIN", "https://example.com/a")
+    assert chain["details"]["inbound_links_count"] == 2
+    sources = {link["source_url"] for link in chain["details"]["inbound_links"]}
+    assert sources == {"https://example.com/", "https://example.com/page-x"}
+    anchors = {link["anchor"] for link in chain["details"]["inbound_links"]}
+    assert "Old page" in anchors
+
+    # measured and empty is a real answer, not the 'not measured' marker
+    loop = _chain_issue(result, "REDIRECT_LOOP", "https://example.com/loop1")
+    assert loop["details"]["inbound_links"] == []
+    assert loop["details"]["inbound_links_count"] == 0
+
+
+def test_inbound_links_say_not_measured_without_an_inlink_export(tmp_path):
+    rows = [
+        _row("https://example.com/a", 301, "https://example.com/b"),
+        _row("https://example.com/b", 301, "https://example.com/c"),
+        _row("https://example.com/c", 200),
+    ]
+    exports_dir = _write_internal_all(tmp_path, rows)
+    result = json.loads(
+        json.dumps(
+            run_audit(
+                input_mode="parse-exports", exports_dir=exports_dir, log=lambda m: None
+            ).to_json()
+        )
+    )
+    chain = _chain_issue(result, "REDIRECT_CHAIN", "https://example.com/a")
+    assert chain["details"]["inbound_links"] is None
+    assert chain["details"]["inbound_links_reason"] == "no all_inlinks export"

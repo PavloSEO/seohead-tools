@@ -33,6 +33,8 @@ these unpublished paths as content; the printed URLs make that evidence repeatab
   "verdict": "warning",
   "probes": [
     {"url": "https://example.com/seo-audit-not-found-9afcba6dff63-1",
+     "status": 200, "redirected": false},
+    {"url": "https://example.com/seo-audit-not-found-9afcba6dff63-2",
      "status": 200, "redirected": false}
   ],
   "findings": [

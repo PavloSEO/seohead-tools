@@ -42,6 +42,7 @@
         "H2_TOO_LONG",
         "HIGH_EXTERNAL_OUTLINKS",
         "HIGH_OUTLINKS",
+        "HTML_OVER_2MB",
         "HTTP_LINK_ON_HTTPS",
         "HTTP_URL",
         "IMPORTANT_URL_BLOCKED_BY_ROBOTS",

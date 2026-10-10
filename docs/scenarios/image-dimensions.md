@@ -10,7 +10,7 @@ longer that gap lasts — which is why dimensions and weight belong in one chain
 
 ## Covers
 
-- **Images** — Missing Size Attributes · Over 100 kb
+- **Images** — Missing Size Attributes · Over 100 kb · Incorrectly Sized Images
 
 ## The chain
 

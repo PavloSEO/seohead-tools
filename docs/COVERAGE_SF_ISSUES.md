@@ -157,7 +157,7 @@ having, because the alternative is an absence nobody has noticed.
 | Background Images | tool | `parse` | CSS url() sources are extracted by the parser's url_sources option, which is how four images invisible to the HTML were found on a live site |
 | Over 100 kb | check | `IMG_OVER_KB` |  |
 | Alt Text Over 100 Characters | check | `IMG_ALT_TOO_LONG` |  |
-| Incorrectly Sized Images | gap | — | needs the rendered layout box to compare against the intrinsic size |
+| Incorrectly Sized Images | partial | — | render-check measures intrinsic size against the rendered box (image_sizing: oversized, upscaled) on rendered routes only; no SF-analyzer check reads it yet, and crawl exports are not checked |
 | Missing Size Attributes | check | `IMG_MISSING_DIMENSIONS` |  |
 
 ## Canonicals
@@ -346,7 +346,7 @@ having, because the alternative is an absence nobody has noticed.
 | Multiple <head> Tags | check | `HEAD_MULTIPLE` |  |
 | Missing <body> Tag | check | `BODY_MISSING` |  |
 | Multiple <body> Tags | check | `BODY_MULTIPLE` |  |
-| HTML Document Over 2MB | check | `LARGE_HTML` |  |
+| HTML Document Over 2MB | check | `HTML_OVER_2MB` |  |
 | Resource Over 2MB | partial | — | a body above the configured ceiling is recorded and not parsed; it is a limit, not a finding |
 | Invalid HTML Elements In <head> | check | `INVALID_HEAD_ELEMENT` |  |
 | <body> Element Preceding <html> | check | `HEAD_NOT_FIRST` |  |

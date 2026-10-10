@@ -34,9 +34,9 @@ URLs means one file linked twice is not called a duplicate, because it is one fi
 
 **Minify CSS and Minify JavaScript** are one heuristic over line length and whitespace ratio,
 applied to both kinds. Hand-authored code is reformatted onto many short indented lines; minified
-code is not. A file under a couple of hundred characters is treated as minified, because it is
-too small to carry the signal either way, and a false alarm on a two-line inline shim is worse
-than no check.
+code is not. A file under 200 characters is judged by shape instead: it counts as minified only when it is one
+line with less than 15% whitespace, so a short multi-line file is never flagged, and a two-line
+inline shim is not a false alarm.
 
 **2. Check the same page for the delivery side of the same files.**
 

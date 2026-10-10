@@ -431,6 +431,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "HTML document is large in absolute terms or relative to the site",
         "fix": "Reduce HTML size by removing unnecessary markup, extracting inline styles or scripts, and avoiding embedded base64 assets.",
     },
+    "HTML_OVER_2MB": {
+        "severity": "warning",
+        "source": "SF-derived+heuristic",
+        "message": "HTML document is larger than 2 MB",
+        "fix": "Cut the document below 2 MB: remove inline data URIs and base64 assets, move inline CSS and scripts into cached files, and trim repeated markup.",
+    },
     # 7.J — security
     "HTTP_URL": {
         "severity": "warning",

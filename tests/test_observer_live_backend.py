@@ -314,3 +314,9 @@ def test_finding_detail_names_projection_omissions_and_preserves_source(tmp_path
     with AuditV2Reader(path) as retained:
         original = next(retained.iter_collection("/issues"))
     assert len(original["message"]) == 5000 and len(original["samples"]) == 30
+
+
+@pytest.fixture(autouse=True)
+def _several_active_runs_in_one_process(monkeypatch):
+    """These fixtures keep several running records in one process, which start() now refuses."""
+    monkeypatch.setattr(run_observation, "_owner_busy", lambda run: False)
