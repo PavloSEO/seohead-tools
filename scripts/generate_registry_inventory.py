@@ -18,7 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from seohead.cli import COMMANDS  # noqa: E402
-from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools  # noqa: E402
+from seohead.mcp.tool_reference import (  # noqa: E402
+    load_semantics_tools,
+    load_seo_tools,
+    load_sf_tools,
+)
 from seohead.sf.core.registry import CHECKS  # noqa: E402
 
 _INVENTORY_START = "<!-- generated-command-inventory:start -->"
@@ -65,7 +69,7 @@ def _tools_content() -> str:
     path = ROOT / "docs" / "TOOLS.md"
     text = path.read_text(encoding="utf-8")
     commands = sorted(COMMANDS)
-    callable_tools = len(load_seo_tools()) + len(load_sf_tools())
+    callable_tools = len(load_seo_tools()) + len(load_sf_tools()) + len(load_semantics_tools())
     severity = Counter(meta["severity"] for meta in CHECKS.values())
     text = _replace(
         text,
@@ -83,8 +87,9 @@ def _tools_content() -> str:
     )
     text = _replace(
         text,
-        r"\(\d+ \+ \d+\):\n\n```bash\nseohead mcp",
-        f"({len(load_seo_tools())} + {len(load_sf_tools())}):\n\n```bash\nseohead mcp",
+        r"\(\d+ \+ \d+(?: \+ \d+)?\):\n\n```bash\nseohead mcp",
+        f"({len(load_seo_tools())} + {len(load_sf_tools())} + {len(load_semantics_tools())}):"
+        "\n\n```bash\nseohead mcp",
         path,
     )
     inventory = "\n".join(

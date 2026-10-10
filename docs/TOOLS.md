@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 166 callable tools,
+The current registry has 161 commands and 170 callable tools,
 with 184 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -393,7 +393,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-list` | Validates and lists metadata for `*.sqlite` files in one existing directory without reading retained body BLOBs. It stops at 10,000 files and 64 MiB of metadata, and reports unreadable candidates under `errors` rather than treating them as scans. | — |
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
 | `scan-url-detail` | Reads one exact native URL's bounded retained page, redacted request/response headers, redirect chain and forms. Query values and sensitive headers are redacted; HTML body bytes are not returned. Legacy and Screaming Frog sources name this evidence as unavailable. | — |
-| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. Failures carry a machine-readable `reason_code`. | — |
+| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. `click_depth` is the shortest internal link path from the start page, computed per query from stored links (NULL = not reached by links); a scan that did not retain links fails with `reason_code: click_depth_unavailable`. Failures carry a machine-readable `reason_code`. | — |
 | `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, one retained document's per-link placement/heading context, or (`--view links`) the paged outgoing/incoming links of one URL. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. The scan is accepted by a light header/schema check and the response carries `validation: "light"`; `full_validation: true` (or earlier full validation of the same bytes) reports `"full"`. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
@@ -687,6 +687,29 @@ belongs to the caller's project dataset, not to a provider transport client.
 
 ---
 
+## Semantic core (`seohead/semantics/`)
+
+`seohead semantics <stage> --project DIR` grows one accumulating keyword pool per project in its
+own SQLite database (`sya.db`, named by `db:` in `project.yaml`); a SEOHEAD project workspace keeps
+it under `semantics/`. Nothing is deleted: stages change a phrase's status and record why. Louvain
+clustering (`cluster --method louvain`) needs the `semantics` extra
+(`pip install 'seohead-seotools[semantics]'`); every other stage works on the base install. Method,
+order and cost rules: [SEMANTICS.md](SEMANTICS.md) and the packaged `semantic-core` skill.
+
+| Stage | What it does | Money |
+|---|---|---|
+| `init`, `import`, `status`, `export` | Create the project, load a CSV, read counters, write `pool.csv`/`pool.json` | free |
+| `clean`, `graph`, `sitematch`, `relevance` | Filters, homonyms, catalog match and SERP red flags; statuses only | free |
+| `competitors`, `report`, `excel` | Competitor domains and title candidates from cached SERP, Markdown/CSV report, XLSX | free |
+| `mine` | Headings of top competitor pages become candidate phrases | public web fetch |
+| `collect`, `synonyms` | Yandex Wordstat expansion and candidate checks | paid; journaled |
+| `cluster` | One cached Yandex SERP per phrase, then union-find or Louvain clusters | paid for uncached phrases |
+| `exact` | Exact `!W` frequency through Arsenkin, once per lemma group | Arsenkin limits; `--yes` above the gate |
+
+MCP: `seo_semantics_status` (read-only), `seo_semantics_run` (free stages), `seo_semantics_mine`
+(public pages) and `seo_semantics_paid` (needs `confirm_paid=true`). Charges land in the shared
+spend journal, tagged with the semantic project and stage.
+
 ## Screaming Frog crawl audit (`seohead/sf/`)
 
 A subcommand with its own argument parser:
@@ -740,8 +763,8 @@ echo '{"url":"https://example.com"}' | seohead parse
 `security-check` and the sitemap live-recheck are off by default: a recon
 tool must not knock where it was not asked to.
 
-**MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(161 + 5):
+**MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
+`seo_semantics_*` tools (161 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio

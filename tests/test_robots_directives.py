@@ -129,7 +129,14 @@ def _fired_directives(tmp_path, meta="", x_robots=""):
     with open(path, "w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(
-            ["Address", "Content Type", "Status Code", "Indexability", "Meta Robots 1", "X-Robots-Tag 1"]
+            [
+                "Address",
+                "Content Type",
+                "Status Code",
+                "Indexability",
+                "Meta Robots 1",
+                "X-Robots-Tag 1",
+            ]
         )
         writer.writerow(["https://example.com/p", "text/html", "200", "Indexable", meta, x_robots])
     ctx = AuditContext(load_exports(str(tmp_path)), load_config(None))

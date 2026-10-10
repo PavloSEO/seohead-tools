@@ -134,6 +134,14 @@ def test_product_missing_required_name_not_eligible():
     assert "name" in rr["missing_required"]
 
 
+def test_rich_result_verdicts_carry_rules_version():
+    html = _ld('{"@type":"Product","description":"x"}')
+    r = schema.check_schema(html=html)
+    assert r["rules_version"] == schema.RICH_RESULTS_RULES_VERSION
+    rr = next(x for x in r["rich_results"] if x["type"] == "Product")
+    assert rr["rules_version"] == schema.RICH_RESULTS_RULES_VERSION
+
+
 def test_faqpage_marked_deprecated_for_rich():
     html = _ld(
         '{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"q",'

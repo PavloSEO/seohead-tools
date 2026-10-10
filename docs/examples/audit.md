@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-09T18:17:15Z
+- **Generated:** 2026-10-10T01:38:31Z
 
 ## Health summary
 
-> **No health score.** only 82 of 184 checks could run (45% coverage); too little evidence to score.
+> **No health score.** only 84 of 184 checks could run (46% coverage); too little evidence to score.
 
-_82 of 184 checks could run; the score is not comparable to a run with full evidence_
+_84 of 184 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 100 skipped, 62 silent, 0 disabled (of 184 total)
+- Checks: **20 fired**, 100 skipped, 64 silent, 0 disabled (of 184 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
