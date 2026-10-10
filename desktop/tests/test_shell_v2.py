@@ -163,7 +163,15 @@ class ShellV2Tests(unittest.TestCase):
     def test_new_sections_open_the_placeholder_without_numbers(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("methods", "graph"):
+        from seohead_desktop.screens.tool_redirects import ToolRedirectsScreen
+
+        self.assertTrue(self.window.navigation.select_section("methods"))  # the generator is the only tool built so far
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, ToolRedirectsScreen)
+        self.assertIn(page, self.window.placeholder_pages.values())
+        self.assertNotRegex("\n".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
+
+        for section in ("graph",):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
