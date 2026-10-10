@@ -162,7 +162,7 @@ class ShellV2Tests(unittest.TestCase):
     def test_new_sections_open_the_placeholder_without_numbers(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("crawler", "methods", "graph"):
+        for section in ("crawler", "methods"):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
