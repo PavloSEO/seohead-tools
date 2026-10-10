@@ -74,6 +74,13 @@ class ScanRunTests(unittest.TestCase):
         self.assertIn(921, waiting(page))
         self.assertIn(933, waiting(page))
 
+    def test_percent_comes_from_the_counters_and_the_speed_limit_from_the_collector(self):
+        self.feed(runs=[live_run()], owned=[owned()])
+        self.screen.show_monitor()
+        self.assertEqual(self.page.percent.text(), "28%")  # 5 of 18 fetched
+        self.assertEqual(self.page.limit.text(), "лимит 2 запр./с")
+        self.assertEqual(self.page.bar.height(), 10)
+
     def test_pause_waits_for_the_core_and_the_chart_and_stream_are_not_invented(self):
         self.feed(runs=[live_run()], owned=[owned()])
         self.screen.show_monitor()
