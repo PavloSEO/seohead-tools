@@ -81,6 +81,17 @@ def _references(value: Any) -> list[str]:
     return list(dict.fromkeys(value))
 
 
+def _stamp(value: Any) -> None:
+    if type(value) is not str:
+        raise ValueError("project inbox entry has an invalid timestamp")
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("project inbox entry has an invalid timestamp") from exc
+    if timestamp.tzinfo is None or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp):
+        raise ValueError("project inbox entry has an invalid timestamp")
+
+
 def _entry(value: Any) -> dict[str, Any]:
     required = {
         "id",
@@ -94,7 +105,7 @@ def _entry(value: Any) -> dict[str, Any]:
     }
     if (
         not isinstance(value, dict)
-        or set(value) - (required | {"triage"})
+        or set(value) - (required | {"triage", "accepted_at", "completed_at"})
         or not required <= set(value)
     ):
         raise ValueError("project inbox entry has an unsupported shape")
@@ -106,14 +117,10 @@ def _entry(value: Any) -> dict[str, Any]:
     _references(value["references"])
     if value["author_role"] not in {"specialist", "agent"}:
         raise ValueError("project inbox entry has an invalid author role")
-    if type(value["created_at"]) is not str:
-        raise ValueError("project inbox entry has an invalid timestamp")
-    try:
-        timestamp = datetime.fromisoformat(value["created_at"].replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("project inbox entry has an invalid timestamp") from exc
-    if timestamp.tzinfo is None or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp):
-        raise ValueError("project inbox entry has an invalid timestamp")
+    _stamp(value["created_at"])
+    for key in ("accepted_at", "completed_at"):
+        if key in value:
+            _stamp(value[key])
     if value["goal_state"] not in {None, "proposed", "accepted", "completed"}:
         raise ValueError("project inbox entry has an invalid goal state")
     if value["kind"] == "note" and value["goal_state"] is not None:
@@ -285,6 +292,8 @@ def _public(entry: dict[str, Any], consumer: str | None = None) -> dict[str, Any
         key: entry[key]
         for key in ("id", "kind", "text", "references", "author_role", "created_at", "goal_state")
     }
+    result["accepted_at"] = entry.get("accepted_at")
+    result["completed_at"] = entry.get("completed_at")
     result["triage"] = copy.deepcopy(entry.get("triage", []))
     if consumer is not None:
         receipt = entry["delivery"].get(consumer, {})
@@ -444,6 +453,8 @@ def set_goal_state(
             raise ValueError("a proposed goal must be accepted before completion")
         changed = entry["goal_state"] != state
         entry["goal_state"] = state
+        if changed:
+            entry[f"{state}_at"] = _now()
         return {
             "ok": True,
             "revision": document["revision"] + int(changed),
