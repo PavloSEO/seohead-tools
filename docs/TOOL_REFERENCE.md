@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**164 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 173 in total.
+**166 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 175 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1559,6 +1559,41 @@ Return a bounded unread reference summary without changing delivery state.
 | `directory` | `str` | `required` |
 | `consumer` | `str` | `required` |
 | `limit` | `int` | `10` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `project-event-append`
+
+MCP name: `seo_project_event_append`
+
+Append one structured event to the project journal (events.jsonl).
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `source` | `Literal['agent', 'user', 'scans', 'app']` | `required` |
+| `actor` | `Literal['user', 'agent', 'schedule']` | `required` |
+| `text` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Earlier events are never edited. Nothing is executed; the event only records text.
+
+### `project-event-page`
+
+MCP name: `seo_project_event_page`
+
+Read a newest-first bounded page of project events, optionally filtered.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `50` |
+| `source` | `Literal['agent', 'user', 'scans', 'app'] | None` | `None` |
+| `query` | `str` | `''` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 

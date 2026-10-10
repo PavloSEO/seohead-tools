@@ -64,8 +64,9 @@ the first saved view, `finding-views.json`, and, after the first event, `events.
 `events.jsonl` is the structured project log: one JSON line per event with a sequence,
 UTC time, source (`agent`, `user`, `scans`, `app`), actor (`user`, `agent`, `schedule`) and
 bounded text. It is append-only, read newest-first in pages of at most 200 with source and
-text filters, and refuses malformed lines instead of skipping them. `log.md` stays the
-human narrative.
+text filters, and refuses malformed lines instead of skipping them. The CLI
+(`project-event-append`, `project-event-page`) and the matching `seo_project_event_*`
+MCP tools expose the same two operations. `log.md` stays the human narrative.
 `project.json` records format `seohead.project.v1`, integer version 1, a persistent
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.

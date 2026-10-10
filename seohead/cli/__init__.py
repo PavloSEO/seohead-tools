@@ -138,6 +138,8 @@ COMMANDS = (
     "project-inbox-goal",
     "project-inbox-triage",
     "project-inbox-unread",
+    "project-event-append",
+    "project-event-page",
     "workflow-start",
     "workflow-checkpoint",
     "workflow-status",
@@ -720,6 +722,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["limit"] = args.limit
         if getattr(args, "unacknowledged_only", False):
             kw["include_acknowledged"] = False
+    elif cmd == "project-event-append":
+        for name in ("directory", "source", "actor", "text"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "project-event-page":
+        for name in ("directory", "source", "offset", "limit", "query"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
     elif cmd == "project-observe":
         for name in ("directory", "consumer", "scan_limit", "run_offset", "run_limit"):
             if getattr(args, name, None) is not None:
@@ -2217,6 +2227,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
     if cmd.startswith("project-inbox-"):
         _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd.startswith("project-event-"):
+        _source_flag(sub, "--directory", help="validated local project workspace")
+        sub.add_argument("--source", choices=("agent", "user", "scans", "app"), help="event source")
+    if cmd == "project-event-append":
+        sub.add_argument("--actor", choices=("user", "agent", "schedule"), help="event actor")
+        sub.add_argument("--text", help="event text, 1..2000 characters")
+    if cmd == "project-event-page":
+        sub.add_argument("--offset", type=int, default=0)
+        sub.add_argument("--limit", type=int, default=50, help="events per page, 1..200")
+        sub.add_argument("--query", default="", help="case-insensitive text substring")
     if cmd == "project-inbox-submit":
         _source_flag(sub, "--text", help="specialist note or proposed goal text")
         sub.add_argument(

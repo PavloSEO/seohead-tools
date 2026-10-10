@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 164 commands and 173 callable tools,
+The current registry has 166 commands and 175 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -38,7 +38,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
 `monitor-run` · `monitor-schedule` · `monitor-status` · `parse` · `project-activity` ·
 `project-checklist-init` · `project-checklist-page` · `project-checklist-record` · `project-checklist-update`
-· `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
+· `project-event-append` · `project-event-page` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
 `project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
 `project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
 `project-priorities` · `project-progress` · `project-scans` · `project-sources-link` · `project-sources-list` · `project-sources-unlink` · `project-start` · `project-status` ·
@@ -769,7 +769,7 @@ turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl
 `--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (164 + 5 + 4):
+`seo_semantics_*` tools (166 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio
@@ -791,7 +791,7 @@ seohead mcp        # stdio
 
 ## Additional registered workflows
 
-`remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`. See the generated tool reference for exact inputs, limits and side effects.
+`remediation-summary`, `remediation-cases`, `remediation-transition`, `remediation-record-verification`, `remediation-report`, `project-observe`, `project-inbox-submit`, `project-inbox-list`, `project-inbox-read`, `project-inbox-acknowledge`, `project-inbox-goal`, `project-inbox-unread`, `project-event-append`, `project-event-page`. See the generated tool reference for exact inputs, limits and side effects.
 
 `project-observe` accepts `run_offset`/`run_limit` (`--run-offset`/`--run-limit`
 in CLI) for each site's terminal-run history. Stored running records remain

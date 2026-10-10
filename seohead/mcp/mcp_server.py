@@ -1782,6 +1782,34 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Return a bounded unread reference summary without changing delivery state."""
         return _checked(handlers.project_inbox_unread(directory, consumer, limit))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_event_append(
+        directory: str,
+        source: Literal["agent", "user", "scans", "app"],
+        actor: Literal["user", "agent", "schedule"],
+        text: str,
+    ) -> dict[str, Any]:
+        """Append one structured event to the project journal (events.jsonl).
+
+        Earlier events are never edited. Nothing is executed; the event only records text.
+        """
+        return _checked(handlers.project_event_append(directory, source, actor, text))
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_event_page(
+        directory: str,
+        offset: int = 0,
+        limit: int = 50,
+        source: Literal["agent", "user", "scans", "app"] | None = None,
+        query: str = "",
+    ) -> dict[str, Any]:
+        """Read a newest-first bounded page of project events, optionally filtered."""
+        return _checked(
+            handlers.project_event_page(
+                directory, offset=offset, limit=limit, source=source, query=query
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_summary(ledger: str) -> dict[str, Any]:
         """Read explicit remediation and recheck coverage from retained local evidence.
