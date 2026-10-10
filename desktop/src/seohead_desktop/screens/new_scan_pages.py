@@ -763,7 +763,7 @@ def scope_page(draft, host):
     arrange_columns(True)
     waiting_row(page, "GET-параметры", "Оставлять / удалять отмеченные / игнорировать все", ISSUE_SETTINGS, "в ядре нет нормализации параметров",
                 Segmented([("k", tr("Оставлять")), ("s", tr("Удалять отмеченные")), ("i", tr("Игнорировать все"))], "k", tr("GET-параметры")))
-    page.caption(tr("Не обходить файлы типов"))
+    page.caption(tr("Типы файлов"))
     boxes = {}
     flow = QGridLayout()
     flow.setHorizontalSpacing(24)
