@@ -40,6 +40,8 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
+from seohead.core.common import collapse_whitespace
+
 # Menus, mastheads, sidebars and footers are boilerplate, not content, on most sites. Sites
 # that name theirs differently use exclude_selectors instead. header and aside are here because
 # stripping only nav and footer missed every masthead, breadcrumb bar and promo block that is
@@ -175,4 +177,4 @@ def extract_area_text(root: Tag) -> str:
     root = copy(root)
     for tag in root.find_all(list(TEXT_EXCLUDED_TAGS)):
         tag.decompose()
-    return " ".join(root.get_text(" ").split())
+    return collapse_whitespace(root.get_text(" "))
