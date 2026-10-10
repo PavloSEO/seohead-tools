@@ -177,6 +177,7 @@ class ShellMixin:
         self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
+        self.agent_gap.setVisible(not simple)
         self.update_status_tail()
 
     def set_display(self, mode, remember=True):
