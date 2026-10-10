@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QBoxLayout, QComboBox, QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
 from ...i18n import trf
 from ..controls import Segmented, SettingRow, Switch
@@ -66,22 +66,48 @@ def text_row(store, key, title, description, width=260):
     return row
 
 
+STACK_BELOW = 760  # viewport width (px) under which the two columns stack into one
+
+
+class _Columns(QWidget):
+    """Two stacks of rows side by side; one stack when the width cannot fit two without clipping."""
+
+    def __init__(self, columns):
+        super().__init__()
+        self._layout = QBoxLayout(QBoxLayout.LeftToRight, self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(32)
+        for column in columns:
+            box = QWidget()
+            box_layout = QVBoxLayout(box)
+            box_layout.setContentsMargins(0, 0, 0, 0)
+            box_layout.setSpacing(0)
+            for widget in column:
+                box_layout.addWidget(widget)
+            box_layout.addStretch(1)
+            self._layout.addWidget(box, 1)
+
+    def _viewport_width(self):
+        """The scroll area's visible width: this widget is widened to its own minimum, which is what must not decide."""
+        parent = self.parentWidget()
+        while parent is not None and not isinstance(parent, QScrollArea):
+            parent = parent.parentWidget()
+        return parent.viewport().width() if parent is not None else self.width()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        stacked = self._viewport_width() < STACK_BELOW
+        direction = QBoxLayout.TopToBottom if stacked else QBoxLayout.LeftToRight
+        if self._layout.direction() != direction:
+            self._layout.setDirection(direction)
+            self._layout.setSpacing(24 if stacked else 32)
+            for index in range(self._layout.count()):  # stacked columns keep their height, no extra gap
+                self._layout.setStretch(index, 0 if stacked else 1)
+
+
 def two_columns(left, right):
     """Two stacks of rows side by side (sheets use .col2 at 1440; dialog is wide enough)."""
-    holder = QWidget()
-    layout = QHBoxLayout(holder)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(32)
-    for column in (left, right):
-        box = QWidget()
-        box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(0, 0, 0, 0)
-        box_layout.setSpacing(0)
-        for widget in column:
-            box_layout.addWidget(widget)
-        box_layout.addStretch(1)
-        layout.addWidget(box, 1)
-    return holder
+    return _Columns((left, right))
 
 
 def page(*widgets):
