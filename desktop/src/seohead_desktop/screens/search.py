@@ -610,7 +610,7 @@ class SearchScreen(Screen):
                               action=scans, secondary=("Новый скан", lambda: host.scan_preview()))
         if view == "nohtml":
             return StatePanel("empty", "HTML страниц не сохранён", "Этот скан шёл с профилем без сохранения тел ответов, поэтому искать в коде нечего. Запустите новый скан с сохранением HTML.",
-                              action=("Новый скан", lambda: host.scan_preview()), secondary=scans)
+                              action=("Новый скан с HTML", lambda: host.scan_preview()), secondary=scans)
         if view == "nocore":
             return StatePanel("partial", "Ядро не поддерживает поиск", "Подключённое ядро не отдаёт поиск по сохранённому HTML. Обновите ядро SEOHEAD.")
         if view == "running":

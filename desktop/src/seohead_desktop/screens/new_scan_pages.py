@@ -952,7 +952,10 @@ def robots_page(draft, host):
     waiting_row(page, "Страницы с noindex", "Брать ссылки со страниц с noindex", ISSUE_OTHER, "в ядре нет такой настройки", Switch(tr("Брать ссылки с noindex")))
     waiting_row(page, "Переходить по canonical", "Добавлять канонические URL в очередь", ISSUE_SETTINGS, "в ядре нет такой настройки для обхода сайта", Switch(tr("Canonical")))
     waiting_row(page, "Переходить по hreflang", "Альтернативы на других языках и доменах", ISSUE_SETTINGS, "в ядре нет такой настройки", Switch(tr("hreflang")))
-    waiting_row(page, "X-Robots-Tag и meta robots", "Читать оба источника; при конфликте строже побеждает", ISSUE_SETTINGS, "в ядре нет такой настройки", Switch(tr("X-Robots-Tag и meta robots")))
+    # Fixed behaviour of the core, not a setting: X-Robots-Tag and meta robots are merged, so the stricter directive wins.
+    always_on = Switch(tr("X-Robots-Tag и meta robots"), checked=True)
+    always_on.setEnabled(False)
+    row(page, "X-Robots-Tag и meta robots", "Читать оба источника; при конфликте строже побеждает", always_on)
     page.caption(tr("Sitemap"))
     switch_row(page, draft, "sitemaps.auto_discover", "Искать sitemap автоматически", "robots.txt и /sitemap.xml. Умолчание ядра — выключено")
     waiting_row(page, "Список sitemap", "Автоматические и добавленные вручную с числом URL", ISSUE_OTHER, "ядро принимает один sitemap, число URL известно после чтения")

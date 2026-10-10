@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QRectF, QSize, Qt
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ... import i18n, theming
 from ...i18n import tr, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import keyed, page, segmented_row, switch_row, column_stack
+from .helpers import column_stack, keyed, page, segmented_row, switch_row
 
 ID, ICON, TITLE = "view", "palette", "Вид"
 HINT = "Тема, язык, плотность и раскладка"
@@ -166,15 +175,31 @@ def _zoom_control(store):
         store.set("view.zoom", max(80, min(150, store.get("view.zoom") + delta)))
         refresh()
 
-    from PyQt5.QtWidgets import QPushButton
     down, up = QPushButton("−"), QPushButton("+")
     down.setAccessibleName("Уменьшить масштаб")
     up.setAccessibleName("Увеличить масштаб")
+    slider = QSlider(Qt.Horizontal)
+    slider.setRange(80, 150)
+    slider.setSingleStep(10)
+    slider.setPageStep(10)
+    slider.setFixedWidth(110)
+    slider.setAccessibleName("Масштаб интерфейса")
+    slider.valueChanged.connect(lambda value: store.set("view.zoom", value))
     down.clicked.connect(lambda: step(-10))
     up.clicked.connect(lambda: step(10))
-    for widget in (down, label, up):
+    for widget in (down, slider, up):
         layout.addWidget(widget)
-    refresh()
+    layout.addSpacing(8)
+    layout.addWidget(label)
+
+    def sync_slider(_key=None):
+        slider.blockSignals(True)
+        slider.setValue(store.get("view.zoom"))
+        slider.blockSignals(False)
+        refresh()
+
+    store.changed.connect(sync_slider)
+    sync_slider()
     return box
 
 
@@ -205,21 +230,65 @@ def _preview(store):
 
 
 def build_page(store, context):
-    themes = keyed(SettingRow("Тема", "Системный «высокий контраст» включает контрастную тему сама", _theme_picker(store)), "view.theme")
-    left = [
-        segmented_row(store, "view.language", "Язык интерфейса", "Меню, подписи и подсказки. Перезапуск не нужен",
-                      [("ru", "Русский"), ("en", "English")]),
-        segmented_row(store, "view.density", "Плотность таблиц", "Высота строки 28 / 32 / 40 px",
-                      [("compact", "Плотно"), ("standard", "Стандарт"), ("comfortable", "Просторно")]),
-        segmented_row(store, "view.details_position", "Детали URL", "Панель выбранного адреса",
-                      [("bottom", "Снизу"), ("right", "Справа")]),
+    themes = keyed(
+        SettingRow(
+            "Тема",
+            "Системный «высокий контраст» включает контрастную тему сама",
+            _theme_picker(store),
+        ),
+        "view.theme",
+    )
+    rows = [
+        segmented_row(
+            store,
+            "view.language",
+            "Язык интерфейса",
+            "Меню, подписи и подсказки. Перезапуск не нужен",
+            [("ru", "Русский"), ("en", "English")],
+        ),
+        segmented_row(
+            store,
+            "view.density",
+            "Плотность таблиц",
+            "Высота строки 28 / 32 / 40 px",
+            [("compact", "Плотно"), ("standard", "Стандарт"), ("comfortable", "Просторно")],
+        ),
+        segmented_row(
+            store,
+            "view.details_position",
+            "Детали URL",
+            "Панель выбранного адреса",
+            [("bottom", "Снизу"), ("right", "Справа")],
+        ),
         keyed(SettingRow("Масштаб интерфейса", "80–150 %", _zoom_control(store)), "view.zoom"),
+        switch_row(
+            store,
+            "view.reduce_motion",
+            "Уменьшить движение",
+            "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе",
+        ),
+        switch_row(
+            store,
+            "view.mono_urls",
+            "Моноширинный шрифт для URL",
+            "Roboto Mono в колонках адресов и путей",
+        ),
+        switch_row(
+            store,
+            "view.rail_when_narrow",
+            "Сворачивать навигацию в узком окне",
+            "Меньше 900 px — только иконки",
+        ),
+        switch_row(
+            store,
+            "view.status_badges",
+            "Цветные статусы в таблице",
+            "Плашки статусов вместо текста",
+        ),
     ]
-    right = [
-        switch_row(store, "view.reduce_motion", "Уменьшить движение", "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе"),
-        switch_row(store, "view.mono_urls", "Моноширинный шрифт для URL", "Roboto Mono в колонках адресов и путей"),
-        switch_row(store, "view.rail_when_narrow", "Сворачивать навигацию в узком окне", "Меньше 900 px — только иконки"),
-        switch_row(store, "view.status_badges", "Цветные статусы в таблице", "Плашки статусов вместо текста"),
-    ]
-    note = Note("info", "Что это меняет.", "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.")
-    return page(themes, column_stack(left, right), _preview(store), note)
+    note = Note(
+        "info",
+        "Что это меняет.",
+        "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.",
+    )
+    return page(themes, column_stack(rows[:4], rows[4:]), _preview(store), note)
