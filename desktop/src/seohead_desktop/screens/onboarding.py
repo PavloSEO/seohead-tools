@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
 from .. import i18n, theming
 from ..cli_install import InstallCLIButton
 from ..common import ROOT
+from ..core_discovery import discover_core
 from ..mcp_integration import PermissionDialog
 from ..ui.controls import Note, Segmented, polish
 from ..ui.icons import MaterialIconLabel, material_icon
@@ -117,15 +118,17 @@ class OnboardingScreen(Screen):
         row.addStretch(1)
         card = QFrame()
         card.setProperty("card", "panel")
-        card.setMaximumWidth(760)
-        card.setMaximumHeight(640)
+        card.setMaximumWidth(900)
+        card.setMaximumHeight(680)
         row.addWidget(card, 100)
         row.addStretch(1)
-        layout = QVBoxLayout(card)
+        layout = QHBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._header())
-        layout.addWidget(self._steps())
+        layout.addWidget(self._rail())
+        content = QVBoxLayout()
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(0)
         self.stack = QStackedWidget()
         self.stack.addWidget(self._folder_page())
         self.stack.addWidget(self._core_page())
@@ -134,21 +137,25 @@ class OnboardingScreen(Screen):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidget(self.stack)
-        layout.addWidget(scroll, 1)
-        layout.addWidget(self._footer())
+        content.addWidget(scroll, 1)
+        content.addWidget(self._footer())
+        layout.addLayout(content, 1)
         self.go(0)
 
-    # frame
-    def _header(self):
+    # frame: left rail with brand and steps (sheet Onboarding: nav rail 220 px)
+    def _rail(self):
         box = QFrame()
-        box.setProperty("onb_part", "header")
-        line = QHBoxLayout(box)
-        line.setContentsMargins(28, 20, 28, 20)
-        line.setSpacing(12)
+        box.setProperty("onb_part", "rail")
+        box.setFixedWidth(220)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(16, 20, 16, 20)
+        column.setSpacing(4)
+        head = QHBoxLayout()
+        head.setSpacing(10)
         mark = QLabel()
-        mark.setPixmap(QIcon(str(ROOT / "assets/app/seohead-small.svg")).pixmap(32, 32))
+        mark.setPixmap(QIcon(str(ROOT / "assets/app/seohead-small.svg")).pixmap(28, 28))
         mark.setAccessibleName("SEOHEAD")
-        line.addWidget(mark)
+        head.addWidget(mark)
         texts = QVBoxLayout()
         texts.setSpacing(0)
         brand = QLabel("SEOHEAD")
@@ -157,40 +164,39 @@ class OnboardingScreen(Screen):
         meta.setProperty("text_style", "meta")
         texts.addWidget(brand)
         texts.addWidget(meta)
-        line.addLayout(texts, 1)
+        head.addLayout(texts, 1)
+        column.addLayout(head)
+        column.addSpacing(16)
+        self.dots, self.names, self.items = [], [], []
+        for title in STEPS:
+            item = QFrame()
+            item.setProperty("rail_item", True)
+            line = QHBoxLayout(item)
+            line.setContentsMargins(10, 8, 10, 8)
+            line.setSpacing(10)
+            dot = QLabel()
+            dot.setFixedSize(22, 22)
+            dot.setAlignment(Qt.AlignCenter)
+            name = QLabel(tr(title))
+            name.setWordWrap(True)
+            line.addWidget(dot)
+            line.addWidget(name, 1)
+            self.dots.append(dot)
+            self.names.append(name)
+            self.items.append(item)
+            column.addWidget(item)
+        column.addStretch(1)
         self.skip_button = QPushButton(tr("Пропустить"))
         self.skip_button.setProperty("role", "text")
         self.skip_button.clicked.connect(self.skip)
-        line.addWidget(self.skip_button)
-        return box
-
-    def _steps(self):
-        box = QFrame()
-        box.setProperty("onb_part", "steps")
-        line = QHBoxLayout(box)
-        line.setContentsMargins(28, 16, 28, 16)
-        line.setSpacing(28)
-        self.dots, self.names = [], []
-        for title in STEPS:
-            item = QHBoxLayout()
-            item.setSpacing(10)
-            dot = QLabel()
-            dot.setFixedSize(26, 26)
-            dot.setAlignment(Qt.AlignCenter)
-            name = QLabel(tr(title))
-            self.dots.append(dot)
-            self.names.append(name)
-            item.addWidget(dot)
-            item.addWidget(name)
-            line.addLayout(item)
-        line.addStretch(1)
+        column.addWidget(self.skip_button, 0, Qt.AlignLeft)
         return box
 
     def _footer(self):
         box = QFrame()
         box.setProperty("onb_part", "footer")
         line = QHBoxLayout(box)
-        line.setContentsMargins(28, 16, 28, 16)
+        line.setContentsMargins(28, 14, 28, 14)
         line.setSpacing(8)
         self.counter = QLabel()
         self.counter.setProperty("text_style", "meta")
@@ -377,12 +383,12 @@ class OnboardingScreen(Screen):
         elif self.host.core_executable:
             self.core_text.setText(trf("Команда ядра не запускается: {path}", path=tilde(self.host.core_executable)))
         else:
-            self.core_text.setText(tr("Команда seohead не найдена в PATH"))
+            self.core_text.setText(tr("Ядро seohead не найдено ни в одном из известных мест"))
         self.version_line.setVisible(found)
 
     def recheck_core(self):
-        if not self.host.core_executable:
-            found = shutil.which("seohead")
+        if not self.host.core_executable or self.host.prefs.get("core.custom"):
+            found = discover_core(self.host.prefs)
             if found:
                 self.host.core_executable = found
                 self.host.core_label.setText(tr("Ядро найдено"))
@@ -412,6 +418,11 @@ class OnboardingScreen(Screen):
         title = QLabel(tr("Подключить агента"))
         title.setProperty("text_style", "control")
         line.addWidget(title, 1)
+        link = QPushButton(tr("Подробнее о MCP и подключении Claude"))
+        link.setProperty("role", "text")
+        link.setCursor(Qt.PointingHandCursor)
+        link.clicked.connect(lambda: self.host.open_settings("mcp"))
+        line.addWidget(link)
         self.connect_button = QPushButton(tr("Прописать…"))
         self.connect_button.setProperty("role", "tonal")
         self.connect_button.setEnabled(bool(self.host.core_executable))
@@ -422,24 +433,19 @@ class OnboardingScreen(Screen):
         self.later_note = Note("info", "Агента можно подключить позже.", "Подключение — в Настройках → MCP-сервер. Запись в конфиг требует разрешения.")
         layout.insertWidget(layout.count() - 1, self.later_note)
 
-        look = QGridLayout()
-        look.setHorizontalSpacing(16)
-        look.setVerticalSpacing(8)
+        look = QHBoxLayout()
+        look.setSpacing(8)
         self.theme_choice = Segmented([("light", tr("Светлая")), ("dark", tr("Тёмная")), ("system", tr("Как в системе"))],
                                       self.host.prefs.get("view.theme"), tr("Тема"))
         self.language_choice = Segmented([("ru", "Русский"), ("en", "English")], self.host.prefs.get("view.language"), tr("Язык"))
         self.theme_choice.changed.connect(lambda value: self.host.prefs.set("view.theme", value))
         self.language_choice.changed.connect(lambda value: self.host.prefs.set("view.language", value))
-        for number, (caption, control) in enumerate(((tr("Тема"), self.theme_choice), (tr("Язык"), self.language_choice))):
-            look.addWidget(QLabel(caption), number, 0)
-            look.addWidget(control, number, 1, Qt.AlignLeft)
-        look.setColumnStretch(2, 1)
+        for caption, control in ((tr("Тема"), self.theme_choice), (tr("Язык"), self.language_choice)):
+            look.addWidget(QLabel(caption))
+            look.addWidget(control)
+            look.addSpacing(16)
+        look.addStretch(1)
         layout.insertLayout(layout.count() - 1, look)
-        link = QPushButton(tr("Подробнее о MCP и подключении Claude"))
-        link.setProperty("role", "text")
-        link.setCursor(Qt.PointingHandCursor)
-        link.clicked.connect(lambda: self.host.open_settings("mcp"))
-        layout.insertWidget(layout.count() - 1, link, 0, Qt.AlignLeft)
         self.sync_display()
         return page
 
@@ -461,10 +467,10 @@ class OnboardingScreen(Screen):
     def go(self, step):
         self.step = max(0, min(len(STEPS) - 1, step))
         self.stack.setCurrentIndex(self.step)
-        for number, (dot, name) in enumerate(zip(self.dots, self.names)):
+        for number, (dot, name, item) in enumerate(zip(self.dots, self.names, self.items)):
             state = "on" if number == self.step else "done" if number < self.step else "todo"
             dot.setText("✓" if state == "done" else str(number + 1))
-            for widget in (dot, name):
+            for widget in (dot, name, item):
                 widget.setProperty("step", state)
                 polish(widget)
             dot.setProperty("step_dot", True)

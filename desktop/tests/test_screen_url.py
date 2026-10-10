@@ -12,6 +12,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QFrame
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
@@ -132,6 +133,17 @@ class UrlTests(UrlBase):
         self.assertEqual(self.screen.page_label.text(), "1 / 7")
         self.assertFalse(self.screen.prev.isEnabled())
 
+    def test_first_page_read_shows_placeholder_rows_and_no_data(self):
+        self.screen.total = None
+        self.screen._reload()
+        self.assertEqual(self.screen.table_stack.currentIndex(), 1)
+        placeholder = self.screen.table_state_layout.itemAt(0).widget()
+        self.assertEqual(len([w for w in placeholder.findChildren(QFrame) if w.property("skeleton") == "row"]), 12)
+        self.assertEqual(self.screen.foot_text.text(), "Читаю первую страницу · 200 строк")
+        self.wait()
+        self.assertEqual(self.screen.table_stack.currentIndex(), 0)
+        self.assertIn("1 314", self.screen.foot_text.text().replace("\u202f", " "))
+
     def test_next_page_asks_the_core_for_the_next_offset(self):
         self.screen.next.click()
         self.wait()
@@ -234,6 +246,22 @@ class UrlTests(UrlBase):
         self.screen.resize(1440, 900)
         self.app.processEvents()
         self.assertEqual(self.screen.bottom.tabs.count(), 11)
+
+    def test_compact_window_shows_address_http_and_indexability_only(self):
+        from unittest import mock
+
+        from PyQt5.QtWidgets import QWidget
+
+        window = QWidget()
+        self.addCleanup(window.deleteLater)
+        visible = lambda: [c for c in range(len(COLUMNS)) if not self.screen.table.isColumnHidden(c)]  # noqa: E731
+        with mock.patch.object(self.screen, "window", return_value=window):
+            window.resize(800, 800)
+            self.screen._apply_columns()
+            self.assertEqual(visible(), [0, 1, 3])
+            window.resize(1440, 900)
+            self.screen._apply_columns()
+            self.assertGreater(len(visible()), 3)
 
     def test_details_are_cleared_when_nothing_matches(self):
         self.screen.table.selectRow(1)

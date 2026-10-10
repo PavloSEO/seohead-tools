@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QRectF, QSize, Qt
+from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-from ... import theming
-from ...i18n import trf
+from ... import i18n, theming
+from ...i18n import tr, trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import keyed, page, segmented_row, switch_row, two_columns
+from .helpers import keyed, page, segmented_row, switch_row, column_stack
 
 ID, ICON, TITLE = "view", "palette", "Вид"
 HINT = "Тема, язык, плотность и раскладка"
 
 THEME_CHOICES = ("light", "dark", "hc", "system")
+CARD_W, CARD_H, SAMPLE_H = 152, 142, 84
+THEME_NOTES = {"light": "по умолчанию", "dark": "вечером и в презентациях", "hc": "доступность"}
 
 SCHEMA = (
     Setting("view.theme", "light", str, choices=THEME_CHOICES),
@@ -29,24 +32,124 @@ SCHEMA = (
 )
 
 
+class _ThemeCard(QToolButton):
+    """Theme choice drawn from the theme's own tokens: a miniature shell with no data in it."""
+
+    def __init__(self, name):
+        super().__init__()
+        self.theme_name = name
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(CARD_W, CARD_H)
+        self.setAccessibleName(trf("Тема: {name}", name=self._title()))
+        i18n.signals.changed.connect(self._language_changed)
+
+    def _language_changed(self, _lang):
+        self.setAccessibleName(trf("Тема: {name}", name=self._title()))
+        self.update()
+
+    def sizeHint(self):  # Qt override: the global QSS would otherwise shrink the card
+        return QSize(CARD_W, CARD_H)
+
+    minimumSizeHint = sizeHint
+
+    def _title(self):
+        return theming.theme(self.theme_name)["name"][i18n.language()]
+
+    def paintEvent(self, _event):
+        roles = theming.roles(self.theme_name)
+        badges = theming.theme(self.theme_name)["badges"]
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        checked = self.isChecked()
+        frame = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        painter.setPen(QPen(QColor(roles["primary" if checked else "divider"]), 2 if checked else 1))
+        painter.setBrush(QColor(roles["base"]))
+        painter.drawRoundedRect(frame, 10, 10)
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(roles["ring"]), 2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(0, 0, -1, -1), 11, 11)
+
+        sample = QRectF(8, 8, CARD_W - 16, SAMPLE_H)
+        clip = QPainterPath()
+        clip.addRoundedRect(sample, 6, 6)
+        painter.save()
+        painter.setClipPath(clip)
+        painter.fillRect(sample, QColor(roles["surface"]))
+        x0, y0, width, height = sample.left(), sample.top(), sample.width(), sample.height()
+        painter.fillRect(QRectF(x0, y0, width, 14), QColor(roles["base"]))
+        painter.fillRect(QRectF(x0, y0 + 14, width, 1), QColor(roles["divider"]))
+        painter.fillRect(QRectF(x0 + width - 30, y0 + 4, 22, 6), QColor(roles["primary"]))
+        painter.fillRect(QRectF(x0, y0 + 15, 34, height - 24), QColor(roles["raised"]))
+        painter.fillRect(QRectF(x0 + 34, y0 + 15, 1, height - 24), QColor(roles["divider"]))
+        for index in range(4):
+            top = y0 + 19 + index * 12
+            if index == 1:
+                painter.fillRect(QRectF(x0 + 2, top - 2, 30, 12), QColor(roles["selected"]))
+            painter.fillRect(QRectF(x0 + 6, top, 22, 4), QColor(roles["on_selected" if index == 1 else "text_2"]))
+        painter.fillRect(QRectF(x0 + 35, y0 + 15, width - 35, height - 24), QColor(roles["base"]))
+        painter.fillRect(QRectF(x0 + 35, y0 + 15, width - 35, 9), QColor(roles["raised"]))
+        for index, kind in enumerate(("ok", "warn", "err")):
+            top = y0 + 26 + index * 12
+            if index == 1:
+                painter.fillRect(QRectF(x0 + 35, top - 2, width - 35, 12), QColor(roles["selected"]))
+            painter.fillRect(QRectF(x0 + 40, top + 1, 40, 4), QColor(roles["text_muted"]))
+            painter.fillRect(QRectF(x0 + width - 28, top, 22, 7), QColor(badges[kind][0]))
+            painter.fillRect(QRectF(x0 + width - 24, top + 2, 14, 3), QColor(badges[kind][1]))
+            painter.fillRect(QRectF(x0 + 35, top + 10, width - 35, 1), QColor(roles["divider_inner"]))
+        painter.fillRect(QRectF(x0, y0 + height - 9, width, 9), QColor(roles["raised"]))
+        painter.fillRect(QRectF(x0, y0 + height - 9, width, 1), QColor(roles["divider"]))
+        painter.restore()
+
+        text_width = CARD_W - 16
+        name_font = self.font()
+        name_font.setBold(True)
+        painter.setFont(name_font)
+        painter.setPen(QColor(roles["text"]))
+        metrics = painter.fontMetrics()
+        painter.drawText(QRectF(8, 100, text_width, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                         metrics.elidedText(self._title(), Qt.ElideRight, text_width))
+        note_font = self.font()
+        note_font.setBold(False)
+        painter.setFont(note_font)
+        painter.setPen(QColor(roles["text_2"]))
+        note = tr(THEME_NOTES[self.theme_name]) if self.theme_name in THEME_NOTES else ""
+        painter.drawText(QRectF(8, 118, text_width, 16), Qt.AlignLeft | Qt.AlignVCenter,
+                         painter.fontMetrics().elidedText(note, Qt.ElideRight, text_width))
+        painter.end()
+
+
 def _theme_picker(store):
     box = QWidget()
-    layout = QHBoxLayout(box)
+    layout = QVBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(8)
+    cards = QHBoxLayout()
+    cards.setSpacing(8)
+    cards.setContentsMargins(0, 0, 0, 0)
     group = QButtonGroup(box)
     group.setExclusive(True)
-    for value, label in (("light", "Светлая"), ("dark", "Тёмная"), ("hc", "Контраст"), ("system", "Как в системе")):
-        button = QToolButton()
-        button.setProperty("card", "choice")
-        button.setCheckable(True)
-        button.setText(label)
-        button.setFixedSize(116, 76)
-        button.setAccessibleName(trf("Тема: {name}", name=label))
-        button.setChecked(store.get("view.theme") == value)
-        group.addButton(button)
-        button.clicked.connect(lambda _c, v=value: store.set("view.theme", v))
-        layout.addWidget(button)
+    for value in ("light", "dark", "hc"):
+        card = _ThemeCard(value)
+        card.setChecked(store.get("view.theme") == value)
+        group.addButton(card)
+        card.clicked.connect(lambda _c, v=value: store.set("view.theme", v))
+        cards.addWidget(card)
+    cards.addStretch(1)
+    layout.addLayout(cards)
+    system = QToolButton()
+    system.setProperty("pill", "group")
+    system.setCheckable(True)
+    system.setText(tr("Как в системе"))
+    system.setAccessibleName(trf("Тема: {name}", name=tr("Как в системе")))
+    system.setChecked(store.get("view.theme") == "system")
+    group.addButton(system)
+    system.clicked.connect(lambda _c: store.set("view.theme", "system"))
+    system_row = QHBoxLayout()
+    system_row.addWidget(system)
+    system_row.addStretch(1)
+    layout.addLayout(system_row)
     return box
 
 
@@ -119,4 +222,4 @@ def build_page(store, context):
         switch_row(store, "view.status_badges", "Цветные статусы в таблице", "Плашки статусов вместо текста"),
     ]
     note = Note("info", "Что это меняет.", "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.")
-    return page(themes, two_columns(left, right), _preview(store), note)
+    return page(themes, column_stack(left, right), _preview(store), note)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
@@ -43,6 +42,7 @@ from .common import (  # noqa: F401
 )
 from .comparison import ComparisonController
 from .content_search import ContentSearchController
+from .core_discovery import discover_core
 from .inbox import InboxMixin
 from .pages import PagesMixin
 from .project_io import ProjectMixin
@@ -52,6 +52,7 @@ from .screens import install_screens
 from .settings_store import AppSettings
 from .shell_mixin import ShellMixin
 from .ui.content_search_panel import ContentSearchPanel
+from .ui.menus import entry, fill_menu, unavailable
 from .ui.panels import component_stylesheet
 from .ui.popup_style import install_popup_style
 from .ui.presentation import (
@@ -99,7 +100,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.prefs = AppSettings(self.settings, full_schema())
         i18n.set_language(self.prefs.get("view.language"))
         self.display = self.prefs.get("shell.display")
-        self.core_executable = core_executable or shutil.which("seohead")
+        self.core_executable = core_executable or discover_core(self.prefs)
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(4)
         self.read_generation = 0
@@ -238,10 +239,22 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.connect_preferences()
         file_menu = self.menuBar().addMenu("Проект")
         file_menu.addAction("Открыть проект…", self.choose_project, QKeySequence.Open)
+        fill_menu(self.menuBar().addMenu("Правка"), [
+            unavailable("undo", "Отменить", "⌘Z"),
+            None,
+            entry("content_copy", "Копировать URL", lambda: self.screens["url"].copy_row(), "⌘C"),
+            entry("table_rows", "Копировать как TSV", lambda: self.screens["url"].copy_tsv(), "⌘⇧C"),
+            entry("select_all", "Выделить видимые строки", lambda: self.screens["url"].table.selectAll(), "⌘A"),
+            None,
+            entry("search", "Найти в таблице", self.focus_search, "⌘F"),
+        ])
+        file_menu.addAction("Импорт фраз в ядро…", lambda: self.show_screen("semimport"))
         agent_menu = self.menuBar().addMenu("Агент")
         agent_menu.addAction("Подключить агента…", self.show_agent_connection)
         help_menu = self.menuBar().addMenu("Справка")
         self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
+        help_menu.addAction("Горячие клавиши…", self.open_shortcuts)
+        help_menu.addAction("Справка по разделам", lambda: self.show_screen("help"))
         view_menu = self.menuBar().addMenu("Вид")
         self.panel_actions = {}
         for name, widget in [("Навигация", self.navigation), ("Сводка", self.overview), ("Инспектор URL", self.inspector)]:
@@ -277,6 +290,32 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         motion_action.setEnabled(not self.system_reduced_motion)
         motion_action.setToolTip("Системное уменьшение движения имеет приоритет" if self.system_reduced_motion else "Отключить плавное сворачивание навигации")
         motion_action.toggled.connect(self.set_reduced_motion)
+        fill_menu(self.menuBar().addMenu("Скан"), [
+            entry("play_arrow", "Новый скан…", self.scan_preview, "⌘N"),
+            unavailable("format_list_bulleted", "Скан по списку URL…"),
+            None,
+            entry("stop_circle", "Запросить остановку", self.stop_selected_run, "⌘."),
+            entry("resume", "Продолжить запуск", self.resume_selected_scan),
+            None,
+            entry("compare_arrows", "Сравнить запуски…", lambda: self.navigation.select_section("compare")),
+            unavailable("download", "Экспорт…", "⌘E"),
+        ])
+        fill_menu(self.menuBar().addMenu("Агент"), [
+            entry("smart_toy", "Подключение агента…", self.show_agent_connection),
+            entry("inbox", "Входящие", lambda: self.navigation.select_section("inbox"), "⌘2"),
+            unavailable("edit_note", "Новая заметка агенту", "⌘⇧N"),
+            None,
+            entry("terminal", "Журнал действий", lambda: self.navigation.select_section("log")),
+        ])
+        fill_menu(self.menuBar().addMenu("Окно"), [
+            entry("minimize", "Свернуть", self.showMinimized, "⌘M"),
+            entry("open_in_full", "Масштаб", lambda: self.showNormal() if self.isMaximized() else self.showMaximized()),
+            None,
+            entry("sensors", "Наблюдение в отдельном окне", self.open_monitor_window),
+        ])
+        help_menu = self.menuBar().addMenu("Справка")
+        self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
+        help_menu.addAction("Справка по разделам", lambda: self.show_screen("help"))
         self.find_shortcut = QShortcut(QKeySequence.Find, self)
         self.find_shortcut.activated.connect(self.focus_search)
         self.region_shortcut = QShortcut("F6", self)
@@ -294,6 +333,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.workspace_tabs.newRequested.connect(self.new_workspace_tab)
         self.workspace_tabs.closeRequested.connect(self.close_workspace_tab)
         self.workspace_tabs.duplicateRequested.connect(self.duplicate_workspace_tab)
+        self.workspace_tabs.settingsRequested.connect(self.open_tab_settings)
         self.workspace_tabs.install_shortcuts(self)
         initial = WorkspaceContext(view_id="url")
         self._active_workspace_id = initial.id

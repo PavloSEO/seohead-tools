@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import QLabel
 from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.qt import app as qt_app
+from seohead_desktop.screens.crawler import CrawlerScreen
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
 from tests._qt import sweep_widgets
@@ -62,7 +63,9 @@ class ShellV2Tests(unittest.TestCase):
         self.assertTrue(self.window.simple_pill.isVisibleTo(self.window))
         self.assertEqual(self.window.prefs.get("shell.display"), "simple")
         self.assertEqual(self.window.mode_label.text(), "Простой режим · агент и MCP выключены")
+        self.assertEqual(self.window.navigation.profile.mode_line.text(), "Простой режим · MCP выкл.")  # SideNav sheet profile line
         self.window.set_display("agent")
+        self.assertEqual(self.window.navigation.profile.mode_line.text(), "С агентом · MCP вкл.")
         self.assertEqual(section_ids(nav)[:2], ["work", "inbox"])
         self.assertEqual(self.window.pages.currentIndex(), 0)
         with self.assertRaises(ValueError):
@@ -70,6 +73,13 @@ class ShellV2Tests(unittest.TestCase):
 
     def test_agent_pill_is_never_claimed_without_a_heartbeat(self):
         self.assertFalse(self.window.agent_pill.isVisibleTo(self.window))
+
+    def test_agent_slot_is_a_neutral_gap_badge_in_agent_mode_only(self):
+        self.assertTrue(self.window.agent_gap.isVisibleTo(self.window))
+        self.assertEqual(self.window.agent_gap.property("waiting_issue"), 1238)
+        self.window.set_display("simple")
+        self.assertFalse(self.window.agent_gap.isVisibleTo(self.window))
+        self.window.set_display("agent")
 
     def test_rail_and_wide_navigation_widths_come_from_tokens(self):
         layout = theming.metrics()["layout"]
@@ -160,15 +170,50 @@ class ShellV2Tests(unittest.TestCase):
         self.assertFalse(self.window.navigation.property("compact"))
 
     def test_new_sections_open_the_placeholder_without_numbers(self):
+        from seohead_desktop.screens.graph import GraphScreen
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("crawler", "methods", "graph"):
+        for section in ("methods",):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
             panel = page.findChild(StatePanel)
-            self.assertEqual(panel.title.text(), "Раздел готовится")
+            self.assertEqual(panel.title.text(), "Граф ссылок" if section == "graph" else "Раздел готовится")
             self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+            if section == "graph":
+                self.assertEqual(panel.kind, "waiting")
+                self.assertEqual(panel.issue_label.property("waiting_issue"), 975)
+
+        self.assertTrue(self.window.navigation.select_section("crawler"))
+        page = self.window.pages.currentWidget()
+        self.assertIn(page, self.window.placeholder_pages.values())
+        self.assertIsInstance(page, CrawlerScreen)
+        self.assertEqual(page.findChild(StatePanel).title.text(), "Краул без проекта пока не запускается")
+        self.assertNotRegex("\n".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
+
+        # The link graph has its own screen; it waits for the core and shows no issue numbers either
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, GraphScreen)
+        self.assertNotRegex(" ".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
+
+    def test_graph_section_shows_waiting_state_without_invented_counts(self):
+        from seohead_desktop.screens.graph import GraphScreen
+        from seohead_desktop.ui.kit import StatePanel
+
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, GraphScreen)
+        self.assertEqual([kpi.number.text() for kpi in page.kpis], ["Нет данных"] * 3)
+        self.assertEqual(page.gate.currentWidget(), page.gate.open_panel)  # no project open: nothing drawn
+        self.window.project_directory = "/p"
+        page.gate.refresh()
+        panel = page.gate.content.findChild(StatePanel)
+        self.assertEqual(page.gate.currentWidget(), page.gate.content)
+        self.assertEqual(panel.kind, "waiting")
+        self.assertIsNotNone(panel.issue_label)
+        self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+        self.window.project_directory = ""
 
     def test_items_that_need_a_project_are_locked_until_one_is_open(self):
         from seohead_desktop.ui.shell import ROLE_LOCKED

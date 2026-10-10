@@ -49,6 +49,16 @@ class ComparisonSummaryTests(unittest.TestCase):
         self.window.deleteLater()
         self.app.processEvents()
 
+    def test_loading_and_unavailable_states_show_the_core_reason(self):
+        self.summary.set_payload({"state": "loading", "rows": [], "reason": "Ядро сравнивает два сохранённых скана"})
+        self.assertTrue(self.summary.state_line.isVisibleTo(self.summary))
+        self.assertEqual(self.summary.state_line.text(), "Ядро сравнивает два сохранённых скана")
+        self.summary.set_payload({"state": "unavailable", "rows": [], "reason": "Ядро не сохранило compare.v2", "summary": {}})
+        self.assertEqual(self.summary.state_line.text(), "Ядро не сохранило compare.v2")
+        self.assertTrue(self.summary.state_line.isVisibleTo(self.summary))
+        self.summary.set_payload(payload())
+        self.assertFalse(self.summary.state_line.isVisibleTo(self.summary))
+
     def test_whole_delta_and_verified_page_have_distinct_visible_scopes(self):
         data = payload()
         original = deepcopy(data)

@@ -23,10 +23,13 @@ from PyQt5.QtWidgets import (
 
 from ... import i18n
 from ...i18n import joined, tr
-from ..brand_logos import BORDER, TILE, BrandTile, logo_path
+from ..brand_logos import BORDER, TILE, WHITE, BrandTile, logo_path
 from ..icons import material_icon
 from .listing import action_button, badge
 from .source_catalogue import NAMES, name_of
+
+# Letter on the white tile. Not a theme role: the tile stays white in every theme, so its ink must not follow the theme.
+_MONOGRAM_INK = "#45464F"
 
 
 class MonogramTile(QWidget):
@@ -42,10 +45,10 @@ class MonogramTile(QWidget):
         tile = self.rect().adjusted(0, 0, -1, -1)
         shape = QPainterPath()
         shape.addRoundedRect(tile.x() + 0.5, tile.y() + 0.5, tile.width(), tile.height(), 10, 10)
-        painter.fillPath(shape, QColor("#FFFFFF"))
+        painter.fillPath(shape, QColor(WHITE))
         painter.setPen(QPen(QColor(BORDER), 1))
         painter.drawPath(shape)
-        painter.setPen(QColor("#45464F"))
+        painter.setPen(QColor(_MONOGRAM_INK))
         font = QFont(self.font())
         font.setPixelSize(15 if len(self.letters) < 2 else 12)
         font.setWeight(QFont.Bold)
@@ -102,8 +105,8 @@ class SourceRow(QFrame):
         super().mouseReleaseEvent(event)
 
 
-def back_header(title, back_text, on_back, subtitle="", pid=None, actions=()):
-    """«← Все источники» + (tile) + title/subtitle + right-aligned actions."""
+def back_header(title, back_text, on_back, subtitle="", pid=None, actions=(), paid=""):
+    """«← Все источники» + (tile) + title (+ paid badge) / subtitle + right-aligned actions."""
     box = QWidget()
     outer = QVBoxLayout(box)
     outer.setContentsMargins(0, 0, 0, 8)
@@ -120,7 +123,13 @@ def back_header(title, back_text, on_back, subtitle="", pid=None, actions=()):
     texts.setSpacing(2)
     head = QLabel(title)
     head.setProperty("text_style", "section")
-    texts.addWidget(head)
+    heading = QHBoxLayout()
+    heading.setSpacing(8)
+    heading.addWidget(head)
+    if paid:
+        heading.addWidget(badge("warn", tr("платный" if paid == "paid" else "платный по желанию"), "payments"), 0, Qt.AlignVCenter)
+    heading.addStretch(1)
+    texts.addLayout(heading)
     if subtitle:
         meta = QLabel(subtitle)
         meta.setProperty("text_style", "meta")

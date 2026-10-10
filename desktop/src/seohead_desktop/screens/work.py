@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -35,11 +36,15 @@ from ..ui.kit import (
     BadgeDelegate,
     Kpi,
     StatePanel,
+    clear_layout,
     no_project_panel,
+    show_empty,
     style_table,
     waiting_badge,
 )
+from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
+from .scan_common import number
 
 TASK_STATES = {  # core display_state -> (badge kind, label, icon)
     "completed": ("ok", "Выполнена", "check_circle"),
@@ -74,11 +79,6 @@ def local_stamp(value, with_time=False):
     return stamp.strftime("%d.%m.%Y %H:%M" if with_time else "%d.%m.%Y")
 
 
-def number(value):
-    """Core counter as text with a thin grouping space; None (not measured) stays None."""
-    return f"{value:,}".replace(",", " ") if type(value) is int else None
-
-
 def scrolled(widget):
     """Vertical scroll container so a short window scrolls instead of squeezing cards."""
     area = QScrollArea()
@@ -87,17 +87,6 @@ def scrolled(widget):
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
     area.setWidget(widget)
     return area
-
-
-def clear_layout(layout):
-    while layout.count():
-        item = layout.takeAt(0)
-        widget = item.widget()
-        if widget is not None:
-            widget.setParent(None)
-            widget.deleteLater()
-        elif item.layout() is not None:
-            clear_layout(item.layout())
 
 
 class RowsModel(QAbstractTableModel):
@@ -489,6 +478,9 @@ class WorkScreen(Screen):
         self.tabs.currentChanged.connect(lambda index: self.pages.setCurrentIndex(index))
         bar.addWidget(self.tabs)
         bar.addStretch(1)
+        self.view_switch = Segmented([("list", tr("Список")), ("board", tr("Доска"))], "list", tr("Вид задач"))
+        self.view_switch.changed.connect(self._set_view)
+        bar.addWidget(self.view_switch)
         self.filter_switch = Segmented([("open", tr("Открытые")), ("all", tr("Все"))], "open", tr("Фильтр задач"))
         self.filter_switch.changed.connect(self._set_filter)
         bar.addWidget(self.filter_switch)
@@ -511,9 +503,17 @@ class WorkScreen(Screen):
         tasks_layout.setSpacing(0)
         self.task_state = QVBoxLayout()
         tasks_layout.addLayout(self.task_state)
+        from .task_board import TaskBoard  # local import: task_board reads constants from this module
+        self.task_views = QStackedWidget()
         self.task_table = build_table(self.tasks, fixed={1: 132, 2: 88, 3: 112, 4: 180}, stretch=0)
         self.task_table.selectionModel().currentRowChanged.connect(self._row_changed)
-        tasks_layout.addWidget(self.task_table, 1)
+        self.task_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.task_table.customContextMenuRequested.connect(self._task_menu)
+        self.task_views.addWidget(self.task_table)
+        self.task_board = TaskBoard()
+        self.task_board.card_picked.connect(self._board_pick)
+        self.task_views.addWidget(self.task_board)
+        tasks_layout.addWidget(self.task_views, 1)
         self.limits = QLabel()
         self.limits.setProperty("text_style", "meta")
         self.limits.setWordWrap(True)
@@ -537,6 +537,44 @@ class WorkScreen(Screen):
     def _set_filter(self, value):
         self.filter = value
         self._fill_tasks()
+
+    def _task_menu(self, point):
+        index = self.task_table.indexAt(point)
+        if not index.isValid():
+            return
+        self.task_table.selectRow(index.row())
+        menu = QMenu(self.task_table)
+        menu.addSection(tr("Состояние"))
+        fill_menu(menu, [
+            unavailable("rate_review", "На проверке"),
+            unavailable("check_circle", "Выполнено"),
+            entry("verified", "Подтверждено", None, "", False, "Только перепроверкой"),
+            None,
+            unavailable("person_add", "Назначить исполнителя"),
+            unavailable("replay", "Перепроверить URL задачи"),
+        ])
+        menu.exec_(self.task_table.viewport().mapToGlobal(point))
+
+    def _set_view(self, value):
+        """«Список» (table with the open/all filter) or «Доска» (four columns of every loaded task)."""
+        board = value == "board"
+        self.task_views.setCurrentIndex(1 if board else 0)
+        self.filter_switch.setVisible(self.pages.currentIndex() == 0 and not board)
+        self.view_switch.setVisible(self.pages.currentIndex() == 0)
+        if board:
+            self.task_board.set_rows(self.all_rows)
+
+    def _board_pick(self, item_id):
+        """A card opens its task in the list: the open/all filter widens if the task is closed."""
+        if self.filter != "all" and not any(r.get("id") == item_id for r in self.tasks.rows):
+            self.filter = "all"
+            self.filter_switch.setValue("all")
+        self.selected_id = item_id
+        self.view_switch.setValue("list")
+        self._set_view("list")
+        self._fill_tasks()
+        if self.host.task_detail_requested != item_id:
+            self.host.select_project_task(item_id)
 
     def _row_changed(self, current, _previous):
         if not current.isValid() or current.row() >= len(self.tasks.rows):
@@ -597,24 +635,16 @@ class WorkScreen(Screen):
         self.task_table.setColumnHidden(4, self.task_table.viewport().width() < 700)
         self.task_table.setColumnHidden(3, self.task_table.viewport().width() < 560)
 
-    def _show_empty(self, panel):
-        clear_layout(self.empty_holder)
-        margin = 24 if panel is not None else 0
-        self.empty_holder.setContentsMargins(margin, margin, margin, margin)
-        if panel is not None:
-            self.empty_holder.addWidget(panel)
-        self.content.setVisible(panel is None)
-
     def refresh(self):
         host = self.host
         status, _text = project_state(host)
         if status == "none":
-            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть цель и задачи"))
+            show_empty(self.empty_holder, self.content, no_project_panel(host, "Откройте проект, чтобы увидеть цель и задачи"))
             return
         if status == "loading":
-            self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
+            show_empty(self.empty_holder, self.content, StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
             return
-        self._show_empty(None)
+        show_empty(self.empty_holder, self.content, None)
         self._layout_kpis(force=True)
         self._fill_header()
         self._fill_kpis()
@@ -623,9 +653,9 @@ class WorkScreen(Screen):
         clear_layout(self.task_state)
         if panel is not None:
             self.task_state.addWidget(panel)
-        self.task_table.setVisible(panel is None)
+        self.task_views.setVisible(panel is None)
         self.limits.setVisible(panel is None)
-        self.filter_switch.setVisible(self.pages.currentIndex() == 0)
+        self._set_view(self.view_switch.value())
         self._fill_tasks()
         self.runs.set_rows(list(host.activity_model.rows))
         total = host.task_total

@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
 
 from .. import i18n, theming
 from ..i18n import joined, tr, trf
+from ..ui.controls import Segmented
 from ..ui.icons import material_icon
 from ..ui.kit import (
     BADGE_ROLE,
@@ -41,6 +42,8 @@ from ..ui.kit import (
 )
 from ..ui.presentation import short_run_id
 from .scan_common import Pairs, number
+from .url_graph import GraphPage
+from .url_history import HistoryPage
 from .url_detail import (
     OverviewPage,
     SnippetPage,
@@ -68,11 +71,8 @@ TAB_LABELS = {"info": "Обзор", "hdr": "Заголовки", "links": "Сс�
               "schema": "Schema", "graph": "Граф", "snip": "Сниппет", "checks": "Проверки"}
 # tab -> (title, text, core issue) of the tabs whose data the core does not give yet
 UNAVAILABLE = {
-    "html": ("Исходник страницы", "Читатель сохранённого тела страницы (исходного и после рендеринга) ещё не доступен; ниже — что известно о теле.", 936),
-    "res": ("Ресурсы страницы", "Изображения, CSS, JS и шрифты страницы со статусом и весом ядро по одному URL не отдаёт; ниже — счётчики со страницы.", 935),
-    "hist": ("История URL по сканам", "Статус и поля URL по всем сканам проекта («был 404») ядро одним запросом не отдаёт.", 972),
+    "res": ("Ресурсы страницы", "Изображения, CSS, JS и шрифты страницы со статусом и весом ядро по одному URL не отдаёт; ниже — счётчики со страницы.", 974),
     "schema": ("Структурированные данные", "Содержимое блоков JSON-LD, microdata и ошибки разметки по URL ядро не отдаёт; ниже — что найдено на странице.", 948),
-    "graph": ("Граф ссылок вокруг URL", "Постраничное чтение графа вокруг страницы ещё не доступно.", 975),
     "checks": ("Проверки выбранного URL", "Находки по одному URL ядро пока не отдаёт: в скане они есть только списком проверок.", 980),
 }
 MAX_HOPS = 10
@@ -353,9 +353,37 @@ class LinksPage(QWidget):
         self.job.failed.connect(self._failed)
         self.counter = CoreJob(ctx.host_ref, self)
         self.counter.done.connect(self._counted)
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        scope_row = QHBoxLayout()
+        scope_row.setContentsMargins(12, 6, 12, 0)
+        scope_row.setSpacing(8)
+        self.scope_buttons = {}
+        for key, label in (("int", "Внутренние"), ("ext", "Внешние")):
+            button = QToolButton()
+            button.setProperty("pill", "group")
+            button.setCheckable(True)
+            button.setChecked(key == "int")
+            button.setText(tr(label))
+            button.clicked.connect(lambda _c=False, k=key: self.set_scope(k))
+            self.scope_buttons[key] = button
+            scope_row.addWidget(button)
+        scope_row.addStretch(1)
+        root.addLayout(scope_row)
+        self.internal = QWidget()
+        layout = QVBoxLayout(self.internal)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        root.addWidget(self.internal, 1)
+        external_body = QWidget()
+        external_layout = QVBoxLayout(external_body)
+        external_layout.setContentsMargins(24, 14, 24, 14)
+        external_layout.addWidget(StatePanel("waiting", "Внешние ссылки доноров", "База внешних ссылок проекта (Вебмастер, Bing, GSC) ещё не подключена к ядру.", issue=999))
+        external_layout.addStretch(1)
+        self.external = scrolled(external_body)
+        self.external.hide()
+        root.addWidget(self.external, 1)
         bar = QHBoxLayout()
         bar.setContentsMargins(12, 6, 12, 6)
         bar.setSpacing(8)
@@ -430,7 +458,18 @@ class LinksPage(QWidget):
 
     def retranslate(self):
         self.search.setPlaceholderText(tr("Адрес или анкор содержит…"))
+        for key, label in (("int", "Внутренние"), ("ext", "Внешние")):
+            self.scope_buttons[key].setText(tr(label))
         self._labels()
+
+    def set_scope(self, key):
+        """«Внутренние» are the core's links; «Внешние» (donors from the project's backlink base) wait for issue 999."""
+        for name, button in self.scope_buttons.items():
+            button.setChecked(name == key)
+        self.internal.setVisible(key == "int")
+        self.external.setVisible(key == "ext")
+        if key == "int":
+            self.activate()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -451,6 +490,10 @@ class LinksPage(QWidget):
             widget.blockSignals(True)
             reset()
             widget.blockSignals(False)
+        for name, button in self.scope_buttons.items():
+            button.setChecked(name == "int")
+        self.internal.show()
+        self.external.hide()
         self.totals = {"in": None, "out": None}
         self.loaded_for = None
         self.offset = 0
@@ -738,25 +781,117 @@ class FactsPage(QWidget):
 
     def activate(self):
         clear(self.facts)
-        page, detail = self.ctx.page, self.ctx.detail
-        response = first_response(detail)
+        page = self.ctx.page
         rows = []
         if self.tab == "res":
             rows = [("Изображений на странице", number(page.get("images_total"))), ("Изображений без alt", number(page.get("images_missing_alt_attr")))]
-        elif self.tab == "schema":
-            hreflang = page.get("hreflang_json")
-            rows = [("Блоков JSON-LD найдено", number(page.get("jsonld_blocks_found"))), ("Блоков JSON-LD разобрано", number(page.get("jsonld_blocks_parsed"))),
-                    ("Записей hreflang", number(len(hreflang)) if isinstance(hreflang, list) else None)]
-        elif self.tab == "html":
-            size = response.get("reported_size_bytes")
-            sha = response.get("body_sha256")
-            rows = [("Тело сохранено", {"complete": tr("Полностью"), "partial": tr("Частично")}.get(response.get("body_state"), clean(response.get("body_state")))), ("Размер, байт", number(size)), ("SHA-256", f"{sha[:8]}…{sha[-4:]}" if isinstance(sha, str) and len(sha) > 12 else None),
-                    ("Представление", source_text({"source_kind": (detail or {}).get("source", {}).get("source_kind")}, page))]
         if rows:
             pairs = Pairs(tuple(key for key, _v in rows))
             for key, value in rows:
                 pairs.set(key, value)
             self.facts.addWidget(pairs)
+
+
+class HtmlPage(QWidget):
+    """HTML tab in the canvas layout: source toolbar, source area and a facts column with the saved body's real fields.
+
+    The core does not give a saved page body per URL yet (issue 936, merged into 980), so the source area is the
+    neutral waiting state and the toolbar controls stay disabled. Only the response record is shown as facts.
+    """
+
+    def __init__(self, ctx, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        bar = QHBoxLayout()
+        bar.setContentsMargins(20, 8, 12, 8)
+        bar.setSpacing(10)
+        self.mode = Segmented((("raw", tr("Исходный")), ("rendered", tr("После рендеринга JS"))), value="raw", accessible_name=tr("Представление HTML"))
+        self.mode.setEnabled(False)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(tr("Поиск в HTML"))
+        self.search.setEnabled(False)
+        self.search.setFixedWidth(240)
+        bar.addWidget(self.mode)
+        bar.addStretch(1)
+        bar.addWidget(self.search)
+        outer.addLayout(bar)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        self.source = StatePanel("waiting", "Исходник страницы недоступен",
+                                 "Сохранённое тело страницы ядро по одному URL пока не отдаёт: строки, подсветка и поиск появятся после этого.",
+                                 issue=936)
+        body.addWidget(self.source, 1)
+        side = QFrame()
+        side.setFixedWidth(300)
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(16, 12, 16, 12)
+        side_layout.setSpacing(12)
+        side_layout.addWidget(section_label("Сохранённое тело"))
+        self.facts = Pairs(("Тело сохранено", "Размер, байт", "SHA-256", "Представление"), mono=("SHA-256",))
+        side_layout.addWidget(self.facts)
+        side_layout.addStretch(1)
+        body.addWidget(side)
+        outer.addLayout(body, 1)
+
+    def activate(self):
+        page, detail = self.ctx.page, self.ctx.detail
+        response = first_response(detail)
+        sha = response.get("body_sha256")
+        state = response.get("body_state")
+        self.facts.set("Тело сохранено", {"complete": tr("Полностью"), "partial": tr("Частично")}.get(state, clean(state)))
+        self.facts.set("Размер, байт", number(response.get("reported_size_bytes")))
+        self.facts.set("SHA-256", f"{sha[:8]}…{sha[-4:]}" if isinstance(sha, str) and len(sha) > 12 else None)
+        self.facts.set("Представление", source_text({"source_kind": (detail or {}).get("source", {}).get("source_kind")}, page))
+
+
+class SchemaPage(QWidget):
+    """Structured data tab in the canvas layout: blocks | block tree | checks. The core gives only the JSON-LD block counts
+    per URL, so the three columns are honest waiting states; the counts and hreflang facts stay real."""
+
+    def __init__(self, ctx, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        title, text, issue = UNAVAILABLE["schema"]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(10)
+        head = QHBoxLayout()
+        head.addWidget(section_label(title))
+        head.addWidget(waiting_badge(issue))
+        head.addStretch(1)
+        layout.addLayout(head)
+        layout.addWidget(label_row(text))
+        self.count = label_row("")
+        self.count.setProperty("text_style", "meta")
+        layout.addWidget(self.count)
+        columns = QHBoxLayout()
+        columns.setSpacing(12)
+        self.blocks = StatePanel("waiting", "Блоки не перечислены", "Названия, позиции и статус каждого блока ядро по URL не отдаёт.")
+        self.tree = StatePanel("waiting", "Содержимое блока не получено", "Дерево свойств появится, когда ядро отдаст разобранный блок.")
+        self.checks = StatePanel("waiting", "Проверка не выполнена", "Ошибки разбора и предупреждения появятся вместе с содержимым блока.")
+        for panel, stretch in ((self.blocks, 3), (self.tree, 5), (self.checks, 3)):
+            columns.addWidget(panel, stretch)
+        layout.addLayout(columns)
+        self.facts_box = QWidget()
+        self.facts = QVBoxLayout(self.facts_box)
+        self.facts.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.facts_box)
+
+    def activate(self):
+        clear(self.facts)
+        page = self.ctx.page
+        found, parsed = number(page.get("jsonld_blocks_found")), number(page.get("jsonld_blocks_parsed"))
+        self.count.setText(joined(" · ", [tr("Найдено блоков JSON-LD"), found or tr("Нет данных"), tr("разобрано") + " " + (parsed or tr("Нет данных"))]))
+        hreflang = page.get("hreflang_json")
+        rows = [("Записей hreflang", number(len(hreflang)) if isinstance(hreflang, list) else None)]
+        pairs = Pairs(tuple(key for key, _v in rows))
+        for key, value in rows:
+            pairs.set(key, value)
+        self.facts.addWidget(pairs)
 
 
 class UrlCard(QFrame):
@@ -815,11 +950,15 @@ class UrlCard(QFrame):
         self.overview = OverviewPage()
         self.headers = HeadersPage()
         self.links = LinksPage(self.ctx)
+        self.graph = GraphPage(self.ctx)
+        self.graph.table_requested.connect(lambda: self.select_tab("links"))
         self.redirects = RedirectsPage(self.ctx)
+        self.history = HistoryPage(self.ctx)
+        self.history.counted.connect(lambda n: self._counter("hist", number(n) if n else ""))
         self.snippet = SnippetPage()
-        self.facts = {tab: FactsPage(tab, self.ctx) for tab in UNAVAILABLE}
+        self.facts = {tab: HtmlPage(self.ctx) if tab == "html" else SchemaPage(self.ctx) if tab == "schema" else FactsPage(tab, self.ctx) for tab in ("html", *UNAVAILABLE)}
         self.index = {}
-        widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "redir": scrolled(self.redirects),
+        widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "graph": self.graph, "redir": scrolled(self.redirects), "hist": scrolled(self.history),
                    "snip": self.snippet, **{tab: scrolled(page) for tab, page in self.facts.items()}}
         for tab in TAB_ORDER:
             self.index[tab] = self.pages.addWidget(widgets[tab])
@@ -872,8 +1011,12 @@ class UrlCard(QFrame):
     def _activate(self, tab):
         if tab == "links":
             self.links.activate()
+        elif tab == "graph":
+            self.graph.activate()
         elif tab == "redir":
             self.redirects.activate()
+        elif tab == "hist":
+            self.history.activate()
         elif tab in self.facts:
             self.facts[tab].activate()
 
@@ -912,7 +1055,9 @@ class UrlCard(QFrame):
         self.ctx.url = (row or {}).get("url") if self.has_row else None
         if self.ctx.url != had:
             self.links.context_changed()
+            self.graph.context_changed()
             self.redirects.context_changed()
+            self.history.context_changed()
             self._counter("redir", "")
         if self.has_row:
             self.head.set_row(row)
@@ -936,9 +1081,11 @@ class UrlCard(QFrame):
         if self.tabs.count() > len(TAB_ORDER):
             self.tabs.setTabText(len(TAB_ORDER), tr("Сводка"))
         self.links.retranslate()
+        self.graph.retranslate()
+        self.history.retranslate()
 
     def shutdown(self):
-        for job in (self.links.job, self.links.counter, self.redirects.job):
+        for job in (self.links.job, self.links.counter, self.graph.job, self.redirects.job, self.history.job):
             job.shutdown()
 
 

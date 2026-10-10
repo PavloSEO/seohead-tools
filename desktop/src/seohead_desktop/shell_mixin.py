@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import i18n, shortcuts, theming
+from .screens.graph import GraphScreen
 from .screens.scan_common import parse_time
 from .source_service import SourceService
 from .ui.controls import Segmented
@@ -31,6 +32,7 @@ from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
 from .ui.shell import NUMBERED_SECTIONS
+from .ui.shortcuts_sheet import ShortcutsSheet
 
 tr, trf, joined = i18n.tr, i18n.trf, i18n.joined
 
@@ -41,9 +43,11 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler, Methods and Link graph have no screen yet: an honest placeholder, no numbers, no invented data."""
+        """Crawler and Methods have no screen yet (honest placeholder); Link graph shows its waiting state (GraphScreen)."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
+
+        from .screens.link_graph import LinkGraphScreen
 
         self.placeholder_pages = {}
         # «Сканы» without a project would be a misleading project-less screen until the crawler mode exists
@@ -52,13 +56,29 @@ class ShellMixin:
         placeholder_layout.setContentsMargins(0, 0, 0, 0)
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
-        for view in ("crawler", "methods", "graph"):
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+        from .screens.crawler import CrawlerScreen
+        from .screens.graph_layouts import GraphLayoutsScreen
+
+        # The link graph screen is kept for its own tests; the graph section is GraphScreen (below)
+        self.link_graph_screen = LinkGraphScreen(self)
+        self.link_graph_screen.hide()
+        for view in ("crawler", "methods"):
+            if view == "crawler":
+                page = CrawlerScreen()
+            elif view == "graph":
+                page = GraphLayoutsScreen()
+            else:
+                page = QWidget()
+                layout = QVBoxLayout(page)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
+        from .screens.graph import GraphScreen
+
+        self.graph_page = GraphScreen(self)
+        self.pages.addWidget(self.graph_page)
+        self.placeholder_pages[VIEW_IDS.index("graph")] = self.graph_page
 
     def sync_scans_placeholder(self):
         """Show the placeholder for «Сканы» while no project is open and bring the screen back when one is."""
@@ -90,6 +110,7 @@ class ShellMixin:
                 if findings.get("state") == "available" and findings.get("truncated") is False:  # the sample is complete: its checks are all of them
                     checks = {item.get("check") for item in findings.get("items") or [] if isinstance(item, dict) and item.get("check")}
                     issues = len(checks) or None
+            self.navigation.set_count("scans", len(self.scan_model.rows) if opened else None)  # real project scans, no number without a project
             self.navigation.set_count("url", url_total)
             self.navigation.set_count("issues", issues)
         except RuntimeError:  # the window was deleted while a timer fired
@@ -99,6 +120,7 @@ class ShellMixin:
         """26 px bar: transient messages on the left, source / display mode / core on the right."""
         bar = self.statusBar()
         bar.setSizeGripEnabled(False)
+        bar.setContentsMargins(0, 0, 8, 0)  # keep the right-hand core/source text 8 px off the window edge in every theme
         self.source_badge = ElidedLabel("Проект не открыт")
         self.source_badge.setObjectName("sourceBadge")
         self.source_badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -135,7 +157,7 @@ class ShellMixin:
         """(text, tooltip): the real state of the core. «не найдено» only when nothing answered and no executable is known."""
         answered = bool(self.mcp_ready or self.project_result is not None)
         if not self.core_executable and not answered:
-            return tr("Ядро не найдено"), tr("Команда seohead не найдена в PATH")
+            return tr("Ядро не найдено"), tr("Ядро seohead не найдено ни в одном из известных мест")
         version = self.installed_core_version(self.core_executable)
         path = self.core_executable or ""
         if version:
@@ -177,6 +199,7 @@ class ShellMixin:
         self.mode_label.setText(tr("Простой режим · агент и MCP выключены" if simple else "С агентом"))
         self.simple_pill.setVisible(simple)
         self.agent_pill.setVisible(False)  # shown only from a real agent heartbeat (step 7); never claimed here
+        self.agent_gap.setVisible(not simple)
         self.update_status_tail()
 
     def set_display(self, mode, remember=True):
@@ -312,6 +335,32 @@ class ShellMixin:
             except RuntimeError:
                 pass  # the settings dialog was closed before the answer arrived
 
+    def request_semantics_import(self, path, callback, on_error):
+        """Project menu → Import phrases into the core: the core's offline init, then the CSV import, one MCP call at a time."""
+        self._semimport_handlers = (callback, on_error)
+        if not self.core_executable:
+            on_error(tr("CLI ядра seohead не найден"))
+            return
+        if not self.project_directory:
+            on_error(tr("Проект не открыт"))
+            return
+        project = str(self.project_directory)
+        self.start_command("semimport", "seo_semantics_run", {"stage": "init", "project": project},
+                           lambda _result: self.start_command("semimport", "seo_semantics_run",
+                                                              {"stage": "import", "project": project, "file": path},
+                                                              self._semimport_loaded))
+
+    def _semimport_loaded(self, result):
+        self._deliver_semimport(0, result)
+
+    def semimport_failed(self, text):
+        self._deliver_semimport(1, text)
+
+    def _deliver_semimport(self, index, value):
+        handlers = getattr(self, "_semimport_handlers", None)
+        if handlers:
+            handlers[index](value)
+
     def request_sources(self, operation, callback, on_error, owner, **kwargs):
         """Settings → Источники данных: allowlisted read-only core calls on a worker (source_service); answers for a closed page are dropped."""
         if getattr(self, "source_service", None) is None or self.source_service.executable != self.core_executable:
@@ -325,6 +374,13 @@ class ShellMixin:
     def open_settings(self, section="general"):
         """Settings are a modal window over the application (sheet Settings), never a workspace tab."""
         SettingsDialog(self.prefs, self.settings_context(), self, section).exec_()
+
+    def open_shortcuts(self):
+        """Canvas «Shortcuts»: the active bindings as a modal sheet; editing and help are one click away."""
+        sheet = ShortcutsSheet(self.prefs, self)
+        sheet.settingsRequested.connect(lambda: self.open_settings("keys"))
+        sheet.helpRequested.connect(self.show_help)
+        sheet.exec_()
 
     def connect_preferences(self):
         self.prefs.changed.connect(self.apply_preference)
@@ -345,7 +401,8 @@ class ShellMixin:
         self.expand_action.setShortcut(seqs.get("expand_table", none))
         self.find_shortcut.setKey(seqs.get("find_in_table", none))
         handlers = {"new_scan": self.scan_preview, "settings": self.open_settings, "stop_scan": self.cancel_active_work,
-                    "copy_url": self.copy_url_selection}
+                    "copy_url": self.copy_url_selection,
+                    "all_shortcuts": self.open_shortcuts}
         for old in getattr(self, "_bound_shortcuts", ()):
             old.setEnabled(False)
             old.deleteLater()

@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .. import theming
-from ..i18n import tr
+from ..i18n import tr, trf
 from .icons import MaterialIconLabel
 
 STATE_ICONS = {"empty": "inbox", "loading": "hourglass_top", "error": "error", "partial": "incomplete_circle", "waiting": "schedule"}
@@ -40,12 +40,13 @@ ISSUE_HINTS = {
     930: "Цепочка редиректов одного URL",
     931: "Оценка длительности и размера скана до запуска",
     933: "Хвост сохранённых страниц с временем получения",
-    935: "Изображения, CSS и JS страницы со статусом и весом",
+    974: "Изображения, CSS и JS страницы со статусом и весом",
     936: "Исходник сохранённой страницы",
-    938: "Сравнение сканов: что исправлено с прошлого скана",
+    938: "Сравнение по сегментам сайта и KPI до/после: медиана слов и ссылок по разделам",
     939: "Точный поиск в HTML на стороне ядра: фильтр и число вхождений",
     940: "Расписание сканов",
     941: "Именованные профили скана",
+    942: "Краул без проекта: журнал запуска и ограничение скорости по хосту",
     944: "Вопрос агенту и его ответ во входящих",
     946: "План аудита: знаменатель выполнения и время принятия цели",
     947: "Настройки проекта",
@@ -62,7 +63,14 @@ ISSUE_HINTS = {
     981: "Полный фильтр находок по проверке",
     990: "Выбор ресурса проекта у сервиса, время синхронизации и сохранение связей в проекте",
     991: "Количество страниц в каждой группе одним запросом",
+    1163: "Результат проверки целостности базы скана и точка восстановления без полного открытия",
     992: "Глубина кликов от главной: сейчас ядро считает от стартовых адресов, а адреса из sitemap стартовые",
+    1208: "Состояние стадий ядра, смета платных стадий и журнал запусков семантики проекта",
+    1220: "Проверка обновлений, загрузка по запросу и журнал изменений приложения и ядра",
+    999: "Профиль внешних ссылок проекта: ссылающиеся домены, ссылки и анкоры из подключённых источников",
+    1213: "Размер сканов каждого проекта на диске",
+    1205: "Импорт и экспорт ядра: разбор файла и превью, сопоставление колонок, сводка дублей до записи, выгрузка со счётчиками",
+    1238: "Агент: когда был на связи и подключён ли сейчас",
 }
 
 
@@ -182,7 +190,7 @@ def waiting_badge(issue, hint=""):
     label = UnavailableBadge()
     label.setProperty("waiting_issue", issue)
     hint = hint or ISSUE_HINTS.get(issue, "")
-    label.setToolTip(tr(UNAVAILABLE) + (f"\n{tr('Появится')}: {tr(hint)}" if hint else ""))
+    label.setToolTip(trf("{state}\n{soon}: {hint}", state=UNAVAILABLE, soon="Появится", hint=hint) if hint else tr(UNAVAILABLE))
     return label
 
 
@@ -308,3 +316,37 @@ def style_table(table, density="standard"):
     header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     header.setFixedHeight(theming.metrics()["row"]["header"])
     return table
+
+
+def clear_layout(layout):
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+        elif item.layout() is not None:
+            clear_layout(item.layout())
+
+
+def show_empty(holder, content, panel):
+    """Put ``panel`` into the empty holder and hide ``content``; with no panel, hide the holder instead."""
+    clear_layout(holder)
+    margin = 24 if panel is not None else 0
+    holder.setContentsMargins(margin, margin, margin, margin)
+    if panel is not None:
+        holder.addWidget(panel)
+    content.setVisible(panel is None)
+
+
+def set_panel_state(owner, kind, panel=None):
+    """Show ``panel`` as the state of ``owner`` (its stack, state_layout, panel_state); replace it only when ``kind`` changes."""
+    if kind != owner.panel_state:
+        owner.panel_state = kind
+        while owner.state_layout.count():
+            item = owner.state_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if panel is not None:
+            owner.state_layout.addWidget(panel)
+    owner.stack.setCurrentIndex(1 if panel is not None else 0)

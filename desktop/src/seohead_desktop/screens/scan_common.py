@@ -85,6 +85,11 @@ def number(value):
     return f"{value:,}".replace(",", " ") if isint(value) else None
 
 
+def selected_scan(host):
+    path = getattr(host, "selected_scan_path", None)
+    return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
+
+
 def megabytes(value):
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return None

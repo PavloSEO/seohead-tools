@@ -209,7 +209,7 @@ class JournalScreen(Screen):
         self.search.setAccessibleName(tr("Поиск в журнале"))
         self.search.setClearButtonEnabled(True)
         self.search.addAction(material_icon("search", theming.roles()["text_3"]), QLineEdit.LeadingPosition)
-        self.search.setMinimumWidth(120)
+        self.search.setMinimumWidth(220)
         self.search.setMaximumWidth(240)
         self.search.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.search.textChanged.connect(self.set_query)

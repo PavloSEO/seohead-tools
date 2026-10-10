@@ -9,7 +9,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtCore import QCoreApplication, QEvent, QTimer
+from PyQt5.QtCore import QCoreApplication, QEvent, Qt, QTimer
+from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import (
     QAbstractButton,
     QCheckBox,
@@ -36,7 +37,7 @@ from seohead_desktop.screens.new_scan_draft import (
     list_from_file_text,
     normalize_list,
 )
-from seohead_desktop.screens.new_scan_pages import PAGES
+from seohead_desktop.screens.new_scan_pages import PAGES, RateSlider
 from seohead_desktop.screens.new_scan_settings import ScanSettingsDialog
 from seohead_desktop.settings_store import AppSettings
 from seohead_desktop.ui.controls import SettingRow
@@ -485,6 +486,16 @@ class DialogTests(DialogCase):
         self.assertIn("в этой версии ядра", waiting[0].toolTip())
         self.assertEqual(self.calls, [])
 
+    def test_list_layout_fits_the_design_width_without_clipping_options(self):
+        dialog = self.open()
+        dialog.resize(960, 680)
+        dialog.findChild(QToolButton, "scanSource_list").click()
+        self.app.processEvents()
+        scroll = dialog.findChild(QScrollArea)
+        visible = scroll.viewport().width() + scroll.verticalScrollBar().sizeHint().width()
+        self.assertLessEqual(scroll.widget().minimumSizeHint().width(), visible)
+        self.assertEqual(dialog.profile_line.cursorPosition(), 0)
+
     def test_a_very_long_list_is_counted_when_typing_pauses(self):
         dialog = self.open()
         dialog.findChild(QToolButton, "scanSource_list").click()
@@ -492,7 +503,7 @@ class DialogTests(DialogCase):
         edit.setPlainText("\n".join(f"https://shop.example.test/page-{n}" for n in range(3000)))
         self.assertTrue(dialog._list_timer.isActive())
         dialog._list_timer.timeout.emit()
-        self.assertEqual(dialog.counter_labels["ready"].text(), "3 000 готовы")
+        self.assertEqual(dialog.counter_labels["ready"].text(), "3\u00a0000 готовы")
 
     def test_list_file_loads_into_the_editor(self):
         path = self.root / "urls.csv"
@@ -520,7 +531,7 @@ class DialogTests(DialogCase):
             self.assertTrue(badge.text().startswith("Недоступно"), badge.text())
             self.assertNotRegex(badge.text(), r"\d")
         self.assertEqual(rows["speed"], "2 запр/с · 1 пот.")
-        self.assertEqual(rows["urls"], "1 500")
+        self.assertEqual(rows["urls"], "1\u00a0500")
         self.assertEqual(rows["requests"], "без лимита")
         self.assertEqual(rows["paid"], "нет")
         self.assertEqual(rows["impact"], "только чтение")
@@ -678,6 +689,22 @@ class SettingsTests(DialogCase):
         settings.findChild(QPushButton, "scanSettingsCancel").click()
         self.assertEqual(dialog.draft.value("speed.concurrency"), 1)
 
+    def test_render_page_draws_four_resource_blocks_disabled_until_core_supports_them(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "render")
+        self.addCleanup(settings.deleteLater)
+        boxes = {c.text(): c for c in settings.findChildren(QCheckBox) if c.text() in {"Изображения", "Шрифты", "Медиа", "Аналитика"}}
+        self.assertEqual(set(boxes), {"Изображения", "Шрифты", "Медиа", "Аналитика"})
+        self.assertFalse(any(box.isEnabled() for box in boxes.values()))
+    def test_profile_diff_keeps_parameter_column_at_design_width(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "profiles")
+        self.addCleanup(settings.deleteLater)
+        settings.show()
+        table = settings.findChild(QTableView, "scanProfileDiff")
+        self.assertEqual(table.horizontalHeader().sectionSize(0), 220)
+        self.assertEqual(table.model().headerData(1, Qt.Horizontal, Qt.DisplayRole), "Умолчание ядра")
+
     def test_apply_copies_back_and_reset_restores_defaults(self):
         dialog = self.open()
         settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "speed")
@@ -691,6 +718,17 @@ class SettingsTests(DialogCase):
         self.assertEqual(dialog.draft.value("speed.concurrency"), 4)
         self.assertEqual(dialog.findChild(QLineEdit, "scanConcurrency").text(), "4")
         self.assertIn("speed.concurrency", dialog.draft.edited_paths())
+
+    def test_rate_slider_steps_through_presets_and_writes_the_rate(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "speed")
+        self.addCleanup(settings.deleteLater)
+        slider = settings.findChild(RateSlider, "scanRateSlider")
+        self.assertEqual(slider.index, 1)  # the draft default is 2 requests per second
+        QTest.keyClick(slider, Qt.Key_Right)
+        self.assertEqual(slider.index, 2)
+        self.assertAlmostEqual(settings.draft.rps(), 3, places=3)  # the core pause is rounded to 1e-6 s
+        self.assertEqual(settings.findChild(QLineEdit, "scanRequestRate").text(), "3")
 
     def test_invalid_depth_is_red_with_text_and_apply_is_closed(self):
         dialog = self.open()
@@ -715,7 +753,8 @@ class SettingsTests(DialogCase):
                 if row.property("waiting"):
                     waiting.append((page_id, row))
                     self.assertRegex(row.later_badge.text(), r"^Недоступно в этой версии ядра$")
-                    self.assertFalse(row.control.isEnabled(), (page_id, row.title.text()))
+                    if row.control is not None:  # the sitemap list is a disabled table under its row, not a control
+                        self.assertFalse(row.control.isEnabled(), (page_id, row.title.text()))
         self.assertGreaterEqual(len(waiting), 15)
         issues = {row.later_badge.property("waiting_issue") for _page, row in waiting}
         self.assertTrue({925, 950, ISSUE_EXTRACT} <= issues)

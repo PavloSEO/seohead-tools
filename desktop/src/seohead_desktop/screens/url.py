@@ -11,8 +11,8 @@ from __future__ import annotations
 import math
 from urllib.parse import urlsplit
 
-from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QKeySequence
+from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, QUrl, pyqtSignal
+from PyQt5.QtGui import QColor, QDesktopServices, QFont, QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -45,11 +45,13 @@ from ..ui.kit import (
     BadgeDelegate,
     StatePanel,
     no_project_panel,
+    set_panel_state,
     style_table,
     unavailable_tip,
 )
+from ..ui.menus import entry, fill_menu, unavailable
 from .base import Screen
-from .scan_common import number
+from .scan_common import number, selected_scan
 from .url_card import UrlCard
 from .url_detail import RunSummary, UrlSideDetail
 from .url_query import (
@@ -84,6 +86,8 @@ COLUMNS = (
 COLUMN_WIDTHS = {1: 68, 2: 74, 3: 132, 5: 112, 6: 88, 7: 66, 8: 92, 9: 82}
 TITLE_WIDTH = 180
 DROP_ORDER = (9, 6, 8, 2, 7, 5, 4)   # columns that give way first when the table is narrow
+COMPACT_COLUMNS = (0, 1, 3)           # canvas Compact (800x800): address, HTTP, indexability only
+COMPACT_WINDOW = 900                  # the same breakpoint at which the navigation becomes a rail
 URL_MIN = 340
 SIDE_COLUMNS = (0, 1, 7, 6, 9)        # MainB: address, HTTP, words, inlinks, issues
 # group id, label, core filters (None: the core cannot filter it), hint issue, tooltip
@@ -143,9 +147,37 @@ def drop(widget):
     widget.deleteLater()
 
 
-def selected_scan(host):
-    path = getattr(host, "selected_scan_path", None)
-    return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
+def skeleton_table():
+    """Placeholder rows while the first page is read: grey bars in the table's shape, never data (canvas Loading.dc.html)."""
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    for k in range(12):
+        row = QFrame()
+        row.setProperty("skeleton", "row")
+        row.setFixedHeight(30)
+        line = QHBoxLayout(row)
+        line.setContentsMargins(12, 0, 12, 0)
+        width = 40 + (k * 23) % 45
+        line.addWidget(_skeleton_bar(), width)
+        line.addStretch(100 - width)
+        line.addWidget(_skeleton_bar(34))
+        line.addSpacing(10)
+        line.addWidget(_skeleton_bar(80))
+        layout.addWidget(row)
+    layout.addStretch(1)
+    return box
+
+
+def _skeleton_bar(width=None):
+    bar = QFrame()
+    bar.setProperty("skeleton", "bar")
+    bar.setFixedHeight(10)
+    if width is not None:
+        bar.setFixedWidth(width)
+    return bar
+
 
 
 class UrlPageModel(QAbstractTableModel):
@@ -448,7 +480,7 @@ class UrlScreen(Screen):
         self.card_expanded = False
         copy = QShortcut(QKeySequence.Copy, self.table)
         copy.setContext(Qt.WidgetShortcut)
-        copy.activated.connect(self._copy_row)
+        copy.activated.connect(self.copy_row)
 
     def _build_groups(self):
         bar = QFrame()
@@ -554,6 +586,8 @@ class UrlScreen(Screen):
         header.setSortIndicatorShown(True)
         header.setSortIndicator(-1, Qt.AscendingOrder)
         header.sectionClicked.connect(self._sort_clicked)
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._header_menu)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.Interactive)
         self.table.setColumnWidth(4, TITLE_WIDTH)
@@ -583,9 +617,6 @@ class UrlScreen(Screen):
         self.foot_text.setProperty("text_style", "meta")
         foot_layout.addWidget(self.foot_text)
         foot_layout.addStretch(1)
-        self.speed = QLabel()
-        self.speed.setProperty("text_style", "meta")
-        foot_layout.addWidget(self.speed)
         self.prev = tool_button("chevron_left", "Предыдущая страница")
         self.next = tool_button("chevron_right", "Следующая страница")
         self.page_label = QLabel()
@@ -648,11 +679,62 @@ class UrlScreen(Screen):
         if not index.isValid():
             return
         self.table.selectRow(index.row())
-        menu = QMenu(self.table)
-        menu.addAction(tr("Открыть карточку"), lambda: self._open_tab("info"))
-        menu.addAction(tr("Развернуть карточку"), lambda: (self._open_tab("info"), self.bottom.set_expanded(True, emit=True)))
-        menu.addAction(tr("Копировать URL"), self._copy_row)
+        url = self._row_url(index.row())
+        web = urlsplit(url).scheme in ("http", "https")   # crawled addresses are data: only web links leave the app
+        menu = fill_menu(QMenu(self.table), [
+            entry("info", "Подробности", lambda: self._open_tab("info"), "↵"),
+            entry("open_in_new", "Открыть сайт в браузере", lambda: QDesktopServices.openUrl(QUrl(url)), enabled=web),
+            entry("expand", "Развернуть карточку", lambda: (self._open_tab("info"), self.bottom.set_expanded(True, emit=True))),
+            unavailable("tab", "В новой вкладке", "⌘↵"),
+            None,
+            entry("content_copy", "Копировать URL", self.copy_row, "⌘C"),
+            entry("table_rows", "Копировать строку TSV", self.copy_tsv),
+            None,
+            unavailable("edit_note", "Заметка агенту"),
+            unavailable("replay", "Перепроверить выбранные"),
+        ])
+        menu.setMinimumWidth(250)  # canvas Menus.dc.html: row menu width
         menu.exec_(self.table.viewport().mapToGlobal(point))
+
+    def _header_menu(self, point):
+        header = self.table.horizontalHeader()
+        column = header.logicalIndexAt(point)
+        if column < 0:
+            return
+        core = COLUMNS[column][3]
+        menu = fill_menu(QMenu(header), [
+            entry("arrow_upward", "По возрастанию", lambda: self._sort_by(column, "asc"), enabled=core is not None, tip=unavailable_tip(COLUMNS[column][1]) if core is None else ""),
+            entry("arrow_downward", "По убыванию", lambda: self._sort_by(column, "desc"), enabled=core is not None, tip=unavailable_tip(COLUMNS[column][1]) if core is None else ""),
+            None,
+            unavailable("filter_list", "Фильтр по колонке…"),
+            unavailable("push_pin", "Закрепить слева"),
+            entry("fit_width", "Ширина по содержимому", lambda: self.table.resizeColumnToContents(column)),
+            entry("visibility_off", "Скрыть колонку", lambda: self._toggle_column(column, False), enabled=column != 0),
+            None,
+            entry("view_column", "Все колонки…", self._show_columns),
+        ])
+        menu.setMinimumWidth(240)  # canvas Menus.dc.html: header menu width
+        menu.exec_(header.mapToGlobal(point))
+
+    def _sort_by(self, column, direction):
+        core = COLUMNS[column][3]
+        if core is None:
+            return
+        self.sort = (core, direction)
+        self.table.horizontalHeader().setSortIndicator(*self._indicator())
+        self._reload()
+
+    def _row_url(self, row):
+        return (self.rows[row].get("url") or "") if 0 <= row < len(self.rows) else ""
+
+    def copy_tsv(self):
+        index = self.table.currentIndex()
+        if not index.isValid():
+            return
+        QApplication.clipboard().setText("\t".join(
+            str(index.sibling(index.row(), column).data() or "")
+            for column in range(len(COLUMNS)) if not self.table.isColumnHidden(column)
+        ))
 
     def _set_summary_visible(self, visible):
         self.summary_hidden = not visible
@@ -665,9 +747,10 @@ class UrlScreen(Screen):
         self._layout_panels()
 
     def _apply_columns(self):
-        self.speed.setVisible(self.table.width() >= 640)
         side = self.side_layout
         wanted = [c for c in range(len(COLUMNS)) if c not in self.user_hidden and (not side or c in SIDE_COLUMNS)]
+        if self.window().width() < COMPACT_WINDOW:
+            wanted = [c for c in wanted if c in COMPACT_COLUMNS]
         width = self.table.viewport().width() or self.width()
         used = URL_MIN + sum(COLUMN_WIDTHS.get(c, TITLE_WIDTH) for c in wanted if c != 0)
         for column in DROP_ORDER:
@@ -718,17 +801,6 @@ class UrlScreen(Screen):
         self._apply_columns()
 
     # ---- state ---------------------------------------------------------------------------------------------------
-    def _set_state(self, kind, panel=None):
-        if kind != self.panel_state:
-            self.panel_state = kind
-            while self.state_layout.count():
-                item = self.state_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            if panel is not None:
-                self.state_layout.addWidget(panel)
-        self.stack.setCurrentIndex(1 if panel is not None else 0)
-
     def _set_table_state(self, panel=None):
         while self.table_state_layout.count():
             item = self.table_state_layout.takeAt(0)
@@ -744,17 +816,17 @@ class UrlScreen(Screen):
         if not host.project_directory:
             self._stop_jobs()
             self.scan_path = None
-            return self._set_state("none", no_project_panel(host, "Откройте проект, чтобы увидеть URL его сканов."))
+            return set_panel_state(self, "none", no_project_panel(host, "Откройте проект, чтобы увидеть URL его сканов."))
         if scan is None:
             self._stop_jobs()
             self.scan_path = None
             if host._project_loading:
-                return self._set_state("loading", StatePanel("loading", "Чтение проекта", "URL появятся после чтения сканов."))
+                return set_panel_state(self, "loading", StatePanel("loading", "Чтение проекта", "URL появятся после чтения сканов."))
             panel = StatePanel("empty", "В проекте ещё нет сканов",
-                               "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical. Запустите первый скан — данные появятся по мере обхода.",
+                               "URL-инспектор покажет каждую страницу сайта: ответ, индексацию, title, canonical, ссылки. Запустите первый скан — данные появятся по мере обхода.",
                                action=("Новый скан", host.scan_preview), secondary=("Сканы проекта", lambda: host.navigation.select_section("scans")))
-            return self._set_state("noscan", panel)
-        self._set_state(None)
+            return set_panel_state(self, "noscan", panel)
+        set_panel_state(self, None)
         self.model.project_host = scan.get("host") or urlsplit(scan.get("start_url") or "").hostname
         self.summary.set_scan(scan)
         self.bottom.summary.set_scan(scan)
@@ -804,7 +876,10 @@ class UrlScreen(Screen):
         if not keep_page:
             self.offset = 0
         self.revision += 1
-        self._set_table_state(StatePanel("loading", "Читаю скан…", "Первая страница · 200 строк") if self.total is None else None)
+        loading = self.total is None
+        self._set_table_state(skeleton_table() if loading else None)
+        if loading:
+            self.foot_text.setText(tr("Читаю первую страницу · 200 строк"))
         self.note.setText(note or "")
         self.note.setVisible(bool(note))
         try:
@@ -830,7 +905,7 @@ class UrlScreen(Screen):
         self.rows = payload.get("rows") or []
         self.total = payload.get("total") if type(payload.get("total")) is int else None
         self.filtered = payload.get("filtered_total") if payload.get("filtered_total_state") == "exact" else None
-        self.speed.setText(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
+        self.foot_text.setToolTip(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
         if payload.get("state") == "partial":
             self.note.setText(tr("Ядро остановило обход по времени: показаны первые строки, найденные к этому моменту."))
             self.note.show()
@@ -858,7 +933,7 @@ class UrlScreen(Screen):
     def _show_error(self, text, payload=None):
         self.model.set_rows([])
         self.rows = []
-        panel = StatePanel("error", "Не удалось прочитать данные скана", "Данные на диске не тронуты — повторите чтение.",
+        panel = StatePanel("error", "Не удалось прочитать данные скана", "Ядро seohead вернуло ошибку при чтении скана. Данные на диске не тронуты — повторите чтение или откройте диагностику окружения.",
                            action=("Повторить", lambda: self._reload(keep_page=True)),
                            secondary=("Диагностика", lambda: self.host.open_settings("core")))
         panel.layout().setContentsMargins(24, 6, 24, 6)
@@ -871,7 +946,7 @@ class UrlScreen(Screen):
         self._set_table_state(panel)
         self._clear_detail()
         self._update_footer()
-        self.speed.setText("")
+        self.foot_text.setToolTip("")
         self.page_label.setText("")
         self.prev.setEnabled(False)
         self.next.setEnabled(False)
@@ -1109,7 +1184,7 @@ class UrlScreen(Screen):
             self._render_detail("loading")
             self._load_detail()
 
-    def _copy_row(self):
+    def copy_row(self):
         index = self.table.currentIndex()
         if index.isValid() and index.row() < len(self.rows):
             QApplication.clipboard().setText(self.rows[index.row()].get("url") or "")

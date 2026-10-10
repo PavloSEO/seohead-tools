@@ -11,12 +11,14 @@ import re
 
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -28,18 +30,20 @@ from PyQt5.QtWidgets import (
 
 from .. import i18n, theming
 from ..i18n import tr, trf
+from ..ui import menus
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import (
     BADGE_ROLE,
     BadgeDelegate,
     StatePanel,
     no_project_panel,
+    set_panel_state,
     style_table,
     unavailable_tip,
     waiting_badge,
 )
 from .base import Screen
-from .scan_common import number, parse_time
+from .scan_common import number, parse_time, selected_scan
 from .url_widgets import StackBar, section_label
 
 SEVERITIES = (("critical", "Критичные", "error", "error"), ("warning", "Важные", "warning", "warning"), ("notice", "Советы", "lightbulb", "text_2"))
@@ -123,11 +127,6 @@ def skip_reason(reason):
     return tr(next((ru for pattern, ru in SKIP_REASONS if re.search(pattern, text)), "причина не указана ядром"))
 
 
-def selected_scan(host):
-    path = getattr(host, "selected_scan_path", None)
-    return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
-
-
 def sample_checks(findings):
     """Checks present in the bounded sample: {check: {severity, message, items}} in first-seen order."""
     checks = {}
@@ -168,6 +167,48 @@ class FindingModel(QAbstractTableModel):
         if role == Qt.ToolTipRole:
             return item.get("target_url") if column == 0 else tr("Нет данных") if column == 1 else item.get("message") if column == 2 else item.get("fingerprint") if column == 3 else None
         return None
+
+
+class LaneStrip(QWidget):
+    """Path of a finding: found → task → fixed → confirmed (canvas «lane»). The core reports only the first step, so the rest stay pending."""
+
+    STEPS = ("Найдена в скане", "Задача программисту", "Исправлено по словам исполнителя", "Подтверждено перепроверкой")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        self.chips = []
+        for number, text in enumerate(self.STEPS, 1):
+            if number > 1:
+                rule = QFrame()
+                rule.setFixedSize(24, 1)
+                layout.addWidget(rule)
+            chip = QLabel()
+            chip.setFixedSize(22, 22)
+            chip.setAlignment(Qt.AlignCenter)
+            caption = QLabel(tr(text))
+            caption.setProperty("text_style", "meta")
+            layout.addWidget(chip)
+            layout.addWidget(caption)
+            self.chips.append((number, chip, caption, rule if number > 1 else None))
+        layout.addStretch(1)
+        self.refresh()
+
+    def refresh(self):
+        roles = theming.roles()
+        for number, chip, caption, rule in self.chips:
+            if rule is not None:
+                rule.setStyleSheet(f"background: {roles['outline']};")
+            if number == 1:  # the only step the core reports
+                chip.setPixmap(material_icon("check", roles["on_primary"]).pixmap(16, 16))
+                chip.setStyleSheet(f"background: {roles['success']}; border-radius: 11px;")
+                caption.setStyleSheet(f"color: {roles['success']}; font-weight: 500;")
+            else:
+                chip.setText(str(number))
+                chip.setStyleSheet(f"background: {roles['disabled_bg']}; color: {roles['text_muted']}; border-radius: 11px;")
+                caption.setStyleSheet(f"color: {roles['text_muted']};")
 
 
 class IssuesScreen(Screen):
@@ -275,9 +316,7 @@ class IssuesScreen(Screen):
         self.desc = QLabel()
         self.desc.setWordWrap(True)
         head_layout.addWidget(self.desc)
-        self.lane_found = QLabel()
-        self.lane_found.setWordWrap(True)
-        self.lane_found.setProperty("text_style", "meta")
+        self.lane_found = LaneStrip()
         head_layout.addWidget(self.lane_found)
         lane = QHBoxLayout()
         lane.setSpacing(8)
@@ -298,6 +337,7 @@ class IssuesScreen(Screen):
         self.table = style_table(QTableView())
         self.table.setModel(self.model)
         self.table.setItemDelegateForColumn(3, BadgeDelegate(self.table))
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.setFrameShape(QFrame.NoFrame)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
@@ -394,35 +434,30 @@ class IssuesScreen(Screen):
             self.table.setColumnHidden(column, narrow)
 
     # ---- state -----------------------------------------------------------------------------------------------
-    def _set_state(self, kind, panel=None):
-        if kind != self.panel_state:
-            self.panel_state = kind
-            while self.state_layout.count():
-                item = self.state_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            if panel is not None:
-                self.state_layout.addWidget(panel)
-        self.stack.setCurrentIndex(1 if panel is not None else 0)
-
     def refresh(self):
         host = self.host
         scan = selected_scan(host)
         if not host.project_directory:
-            return self._set_state("none", no_project_panel(host, "Откройте проект, чтобы увидеть проблемы его сканов."))
+            return set_panel_state(self, "none", no_project_panel(host, "Откройте проект, чтобы увидеть проблемы его сканов."))
         if scan is None:
             if host._project_loading:
-                return self._set_state("loading", StatePanel("loading", "Чтение проекта", "Находки появятся после чтения сканов."))
-            return self._set_state("noscan", StatePanel("empty", "Нет выбранного скана", "Проблемы показываются по сохранённому скану проекта.", action=("Новый скан", host.scan_preview)))
+                return set_panel_state(self, "loading", StatePanel("loading", "Чтение проекта", "Находки появятся после чтения сканов."))
+            return set_panel_state(self, "noscan", StatePanel("empty", "Нет выбранного скана", "Проблемы показываются по сохранённому скану проекта.", action=("Новый скан", host.scan_preview)))
         findings = (scan.get("evidence") or {}).get("findings") or {}
         if findings.get("state") != "available":
             reason = findings.get("reason") or "Ядро не вернуло находок для этого скана"
-            return self._set_state("partial", StatePanel("partial", "Находки недоступны", f"{reason}. {tr('Это не «0 проблем».')}"))
+            return set_panel_state(self, "partial", StatePanel("partial", "Находки недоступны", f"{reason}. {tr('Это не «0 проблем».')}"))
         if findings.get("total") == 0:
             skipped = (scan.get("evidence") or {}).get("skipped_checks") or []
-            panel = StatePanel("empty", "Проблем не найдено", trf("Находок нет по выбранному скану. Это измеренный ноль; проверки, которые не запускались: {n}.", n=len(skipped)))
-            return self._set_state("zero", panel)
-        self._set_state(None)
+            skipped = (scan.get("evidence") or {}).get("skipped_checks") or []
+            panel = StatePanel("empty", "Проблем не найдено", "Находок нет по выбранному скану. Это измеренный ноль: проверки, которые не запускались, перечислены отдельно.")
+            panel.findChild(MaterialIconLabel).set_material_icon("verified", "role:success")
+            if skipped:  # the count of checks that did not run is measured data, shown as a neutral badge (never as «0 проблем»)
+                badge = QLabel(trf("{n} не измерялось", n=len(skipped)))
+                badge.setProperty("badge", "mut")
+                panel.layout().addWidget(badge, 0, Qt.AlignHCenter)
+            return set_panel_state(self, "zero", panel)
+        set_panel_state(self, None)
         signature = (scan.get("path"), findings.get("total"), tuple((findings.get("by_severity") or {}).items()), scan.get("crawl_partial"))
         if signature != self.signature:
             self.signature = signature
@@ -516,8 +551,10 @@ class IssuesScreen(Screen):
             button.setText(f"{name}  ·  {len(entry['items'])}")
             button.setToolTip(f"{check} · {tr('число находок этой проверки в выборке')}")
             button.setSizePolicy(button.sizePolicy().Expanding, button.sizePolicy().Fixed)
-            button.setMinimumHeight(36)
+            button.setMinimumHeight(40)
             button.clicked.connect(lambda _c=False, c=check: self._select(c))
+            button.setContextMenuPolicy(Qt.CustomContextMenu)
+            button.customContextMenuRequested.connect(lambda point, c=check, b=button: self._finding_menu(c, b, point))
             self.list_layout.insertWidget(self.list_layout.count() - 1, button)
             self.row_buttons[check] = button
         if not self.row_buttons:
@@ -525,6 +562,20 @@ class IssuesScreen(Screen):
             empty.setProperty("text_style", "meta")
             empty.setWordWrap(True)
             self.list_layout.insertWidget(0, empty)
+
+    def _finding_menu(self, check, button, point):
+        menu = menus.fill_menu(QMenu(button), [
+            menus.entry("open_in_new", "Открыть проверку", lambda: self._select(check) if self.selected != check else None),
+            menus.entry("content_copy", "Копировать код проверки", lambda: QApplication.clipboard().setText(check)),
+            None,
+            menus.unavailable("table_view", "Показать URL проверки"),
+            menus.unavailable("assignment_add", "Создать задачу"),
+            menus.unavailable("smart_toy", "Спросить агента"),
+            None,
+            menus.unavailable("visibility_off", "Скрыть: не применимо"),
+            menus.unavailable("download", "Экспорт CSV"),
+        ])
+        menu.exec_(button.mapToGlobal(point))
 
     def _select(self, check):
         self.selected = None if check == self.selected else check
@@ -540,7 +591,7 @@ class IssuesScreen(Screen):
             self.title.setText(tr("Проблемы скана"))
             self.icon.set_material_icon("rule", "role:text_2")
             self.desc.setText(tr("Выберите проверку слева: в списке проверки из первых находок скана."))
-            self.lane_found.setText(self._lane(scan))
+            self.lane_found.refresh()
             self.open_url.setEnabled(False)
             self.open_url.setToolTip(tr("Выберите проверку"))
             self.foot.setText("")
@@ -555,17 +606,12 @@ class IssuesScreen(Screen):
         self.icon.set_material_icon(icon, f"role:{colour}")
         self.desc.setText(message_ru(entry["message"]))
         self._sync_raw()
-        self.lane_found.setText(self._lane(scan))
+        self.lane_found.refresh()
         self.model.set_rows(entry["items"])
         urls = [i.get("target_url") for i in entry["items"] if i.get("target_url")]
         self.open_url.setEnabled(bool(urls))
         self.open_url.setToolTip(trf("Откроет URL из выборки находок этой проверки ({n}). Фильтр по проверке для всего скана пока недоступен", n=len(urls)))
         self.foot.setText(trf("{n} URL в выборке находок этой проверки. Полный список по всему скану пока недоступен.", n=len(entry["items"])))
-
-    @staticmethod
-    def _lane(scan):
-        steps = [tr("Найдена в скане"), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой")]
-        return "  →  ".join([f"1 {steps[0]}", *(f"{n} {text}" for n, text in enumerate(steps[1:], 2))])
 
     # ---- actions ---------------------------------------------------------------------------------------------
     def _open_in_url(self):

@@ -46,6 +46,7 @@ from .new_scan_draft import (
     ScanDraft,
     grouped,
     list_from_file_text,
+    request_project_policy,
 )
 from .new_scan_pages import ChoiceCard, FormRow, HelpIcon, Stepper, flow, number_edit
 
@@ -56,6 +57,7 @@ SOURCE_CARDS = (
     ("sf", "bug_report", "Screaming Frog", "Недоступно в этой сборке"),
 )
 SOURCE_NAMES = {key: name for key, _icon, name, _text in SOURCE_CARDS}
+ASIDE_WIDTH = 300  # the «Что произойдёт» summary column; the options column takes the rest
 FIELD_TITLES = {
     "rps": "Запросов/с", "threads": "Потоки", "limit": "Лимит URL", "depth": "Глубина", "requests": "Лимит запросов",
     "minutes": "Время скана", "sitemap": "Адрес sitemap", "robots": "robots.txt", "min_delay": "Минимальная пауза",
@@ -210,7 +212,8 @@ class NewScanDialog(QDialog):
         layout.addWidget(profile)
         layout.addWidget(waiting_badge(ISSUE_PROFILES))
         self.problem_icon = MaterialIconLabel("error", 18, color="role:error")
-        self.problem = ElidedLabel()
+        self.problem = QLabel()  # wraps to two lines instead of eliding the reason
+        self.problem.setWordWrap(True)
         self.problem.setObjectName("scanValidationFeedback")
         self.problem.setProperty("field_error", True)
         self.problem.setProperty("text_style", "meta")
@@ -239,11 +242,12 @@ class NewScanDialog(QDialog):
             self.stack.setCurrentIndex(1)
         else:
             error = getattr(host, "_crawl_descriptor_error", None)
+            layout = self.stack.widget(0).layout()
+            layout.removeWidget(self.state)  # otherwise the replaced panel stays visible until it is deleted
             self.state.deleteLater()
             kind, title, text = (("error", "Настройки ядра недоступны", error) if error
                                  else ("loading", "Читаем настройки ядра…", "Параметры скана берутся из crawl-describe-settings."))
             self.state = StatePanel(kind, title, text or "")
-            layout = self.stack.widget(0).layout()
             layout.insertWidget(1, self.state)
             i18n.retranslate(self.state)
             self.stack.setCurrentIndex(0)
@@ -297,7 +301,7 @@ class NewScanDialog(QDialog):
         layout.addWidget(scroll, 1)
         layout.addWidget(self._aside())
         draft.changed.connect(self._refresh)
-        self._request_policy()
+        request_project_policy(self.host, self.draft)
         self._refresh()
         self.cards[draft.source if draft.source != "sf" else "site"].setFocus()
 
@@ -340,12 +344,14 @@ class NewScanDialog(QDialog):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        # columns follow the left pane (dialog minus the fixed aside and the 20 px gutters), not the whole dialog
+        pane = self.width() - ASIDE_WIDTH - 40
         if getattr(self, "cards", None):
-            columns = 4 if self.width() >= 900 else 2
+            columns = 4 if pane >= 760 else 2
             if columns != self._card_columns:
                 self._layout_cards(columns)
         if getattr(self, "option_items", None):
-            columns = 2 if self.width() >= 900 else 1
+            columns = 2 if pane >= 640 else 1
             if columns != self._option_columns:
                 self._layout_options(columns)
 
@@ -379,7 +385,8 @@ class NewScanDialog(QDialog):
         listing = QVBoxLayout(self.list_block)
         listing.setContentsMargins(0, 0, 0, 0)
         listing.setSpacing(6)
-        title = ElidedLabel(tr("Список URL · по одному в строке"))
+        title = QLabel(tr("Список URL · по одному в строке"))
+        title.setWordWrap(True)
         title.setProperty("text_style", "control")
         from_file = QPushButton(tr("Из файла .txt / .csv"))
         from_file.setObjectName("scanListFile")
@@ -391,10 +398,11 @@ class NewScanDialog(QDialog):
         paste.setProperty("size", "sm")
         paste.setIcon(icon("content_paste"))
         paste.clicked.connect(self._list_paste)
-        listing.addWidget(hbox(title, from_file, paste, stretch=(title,)))
+        listing.addWidget(flow(title, from_file, paste))
         self.list_edit = QPlainTextEdit(draft.list_text)
         self.list_edit.setObjectName("scanListText")
         self.list_edit.setAccessibleName(tr("Список URL"))
+        self.list_edit.setPlaceholderText("https://site.ru/catalog/")
         self.list_edit.setMinimumHeight(76)
         self.list_edit.setMaximumHeight(96)
         self.list_edit.textChanged.connect(self._list_typed)
@@ -407,15 +415,12 @@ class NewScanDialog(QDialog):
             label.setProperty("badge", kind)
             self.counter_labels[name] = label
             parts.append(label)
-        approx = QLabel(tr("оценка приложения"))
-        approx.setProperty("text_style", "meta")
-        approx.setToolTip(f"{tr('Предпросмотр списка ядро не умеет')} · {tr('Недоступно в этой версии ядра')}")
         four = QPushButton(tr("Взять 4xx из скана"))
         four.setProperty("role", "text")
         four.setProperty("size", "sm")
         four.setEnabled(False)
         four.setToolTip(tr('Недоступно в этой версии ядра'))
-        listing.addWidget(flow(*parts, approx, four, waiting_badge(ISSUE_URL_QUERY)))
+        listing.addWidget(flow(*parts, four, waiting_badge(ISSUE_URL_QUERY)))
         self.list_note = Note("warn", tr("Запуск списка URL из приложения недоступен в этой версии ядра."))
         self.list_note.setToolTip(tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить."))
         listing.addWidget(self.list_note)
@@ -430,7 +435,7 @@ class NewScanDialog(QDialog):
         box = QWidget()
         grid = QGridLayout(box)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(24)
+        grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(10)
         grid.setAlignment(Qt.AlignTop)
         # mode
@@ -469,7 +474,7 @@ class NewScanDialog(QDialog):
         self.html_switch.setObjectName("scanSaveHtml")
         self.html_switch.setEnabled(draft.has("storage.body_mode"))
         self.html_switch.toggled.connect(lambda state: draft.set_value("storage.body_mode", "captured_entity_bytes" if state else "off"))
-        self.html_state = QLabel()
+        self.html_state = ElidedLabel()  # elided, not clipped: the column must fit two options side by side
         self.html_state.setProperty("text_style", "meta")
         self.html_state.setToolTip(tr("Нужно для поиска в HTML и сравнений"))
         self.html_row = FormRow(tr("Сохранять HTML"), self.html_state, label_widget=self.html_switch, label_width=152)
@@ -492,7 +497,7 @@ class NewScanDialog(QDialog):
     def _aside(self):
         aside = QFrame()
         aside.setObjectName("scanAside")
-        aside.setFixedWidth(300)
+        aside.setFixedWidth(ASIDE_WIDTH)
         layout = QVBoxLayout(aside)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
@@ -609,28 +614,6 @@ class NewScanDialog(QDialog):
         editor.exec_()
         editor.deleteLater()
 
-    def _request_policy(self):
-        host, draft = self.host, self.draft
-        if draft.policy_state != "unknown" or not hasattr(host, "request_scan_policy"):
-            return
-        draft.policy_state = "loading"
-
-        def arrived(overrides):
-            try:
-                draft.apply_project_policy(overrides)
-            except RuntimeError:
-                pass
-
-        def failed(_text):
-            try:
-                draft.policy_state = "unavailable"
-                draft.emit_changed()
-            except RuntimeError:
-                pass
-
-        if not host.request_scan_policy(arrived, failed):
-            draft.policy_state = "unavailable"
-
     def _accept_plan(self):
         draft = self.draft
         if draft is None:
@@ -705,6 +688,7 @@ class NewScanDialog(QDialog):
         self.limit_stepper.set_enabled_value(draft.limit_enabled)
         saving = draft.value("storage.body_mode") != "off"
         self.html_state.setText(tr("для поиска и сравнений") if saving else tr("только метаданные"))
+        self.html_state.setToolTip(tr("Нужно для поиска в HTML и сравнений"))  # ElidedLabel.setText overwrites the tooltip
         for switch, state in ((self.limit_switch, draft.limit_enabled), (self.html_switch, saving)):
             if switch.isChecked() != state:
                 switch.blockSignals(True)
@@ -717,6 +701,7 @@ class NewScanDialog(QDialog):
         state = draft.policy_state
         chain = trf("Умолчания: {chain}", chain=" → ".join(names[k] for k in ("core", "app") + (("project",) if draft.project_layer else ())))
         self.profile_line.setText(tr("Профиль проекта") if draft.project_layer else tr("Умолчания"))
+        self.profile_line.setCursorPosition(0)  # narrow column: show the start of the name, not its tail
         hint = {"ready": trf("Профиль проекта: {n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("Профиль проекта не задан"),
                 "loading": tr("Профиль проекта загружается…"), "unavailable": tr("Профиль проекта не прочитан"),
                 "unknown": tr("Профиль проекта не прочитан")}[state]

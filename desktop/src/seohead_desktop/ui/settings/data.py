@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note
+from ..kit import waiting_badge
 from .actions import (
     Columns,
     action_button,
@@ -43,7 +44,7 @@ def build_page(store, context):
         group_label("Места"),
         values,
         group_label("Сканы по проектам"),
-        meta_label("Нет данных", na=True),
+        button_row(waiting_badge(1213)),
     ]
     right = [
         group_label("Очистка"),
@@ -54,8 +55,8 @@ def build_page(store, context):
         button_row(
             action_button("Очистить кэш", context, "clear_cache"),
             action_button("Очистить логи", context, "clear_logs"),
-            action_button("Сбросить все панели", context, "reset_panels", icon="restart_alt", role="danger"),
         ),
+        button_row(action_button("Сбросить все панели", context, "reset_panels", icon="restart_alt", role="danger")),
         Note("warn", "Удаление идёт в Корзину, не насовсем.", "Закреплённые сканы не трогаются."),
         group_label("Настройки приложения"),
         button_row(

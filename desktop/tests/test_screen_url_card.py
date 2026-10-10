@@ -21,7 +21,7 @@ class CardBase(UrlBase):
         super().wait(timeout)
         card = self.screen.bottom
         end = time.monotonic() + timeout
-        while time.monotonic() < end and (card.links.job.busy or card.links.counter.busy or card.redirects.job.busy or card.links.timer.isActive()):
+        while time.monotonic() < end and (card.links.job.busy or card.links.counter.busy or card.redirects.job.busy or card.history.busy or card.links.timer.isActive()):
             self.app.processEvents()
             time.sleep(0.01)
         self.app.processEvents()
@@ -123,13 +123,35 @@ class CardTests(CardBase):
     def test_tabs_without_core_data_say_so_and_show_known_facts(self):
         card = self.open_tab("res")
         badges = [w for w in card.facts["res"].findChildren(type(card.scan_caption)) if w.property("waiting_issue")]
-        self.assertEqual(badges[0].property("waiting_issue"), 935)
+        self.assertEqual(badges[0].property("waiting_issue"), 974)
         self.assertIn("Недоступно", badges[0].toolTip())
-        for tab, issue in (("html", 936), ("hist", 972), ("schema", 948)):
+        for tab, issue in (("html", 936), ("schema", 948)):
             card.select_tab(tab)
             self.app.processEvents()
             found = [w.property("waiting_issue") for w in card.facts[tab].findChildren(type(card.scan_caption)) if w.property("waiting_issue")]
             self.assertEqual(found, [issue])
+
+    def test_history_reads_the_url_in_every_saved_scan_and_marks_missing_ones(self):
+        card = self.open_tab("hist")
+        page = card.history
+        self.assertEqual(len(page.entries), len(page.scans))
+        self.assertGreaterEqual(len(page.scans), 1)
+        self.assertEqual(page.entries[0]["state"], "ok")
+        self.assertEqual(page.entries[0]["status"], 200)
+        self.assertEqual(page.table.rowCount(), len(page.scans))
+        self.assertEqual(page.table.item(0, 6).text(), i18n.tr("Первое появление"))
+        self.assertIn("Недоступно", page.metrics["in"].value.text())
+        self.assertTrue(card.tabs.tabText(TAB_ORDER.index("hist")).startswith(i18n.tr("История")))
+
+    def test_history_change_column_names_status_title_and_words_changes(self):
+        from seohead_desktop.screens.url_history import changes
+
+        first = {"state": "ok", "status": 200, "title": "A", "words": 300, "ms": 2.0}
+        second = {"state": "ok", "status": 503, "title": "B", "words": 320, "ms": None}
+        self.assertEqual(changes(first, None), i18n.tr("Первое появление"))
+        self.assertIn("503", changes(second, first))
+        self.assertIn("+20", changes(dict(second, status=200), first))
+        self.assertEqual(changes({"state": "missing"}, first), i18n.tr("Не найден в скане"))
 
     def test_scan_is_shown_as_short_run_id_with_the_full_id_in_the_tooltip(self):
         card = self.open_tab("hdr")
@@ -175,7 +197,7 @@ class AddressTests(UrlBase):
         from PyQt5.QtWidgets import QApplication
 
         self.screen.table.selectRow(1)
-        self.screen._copy_row()
+        self.screen.copy_row()
         self.assertEqual(QApplication.clipboard().text(), self.screen.rows[1]["url"])
         self.assertEqual(self.screen.model.headerData(5, Qt.Horizontal), "Глубина обхода")
         self.assertIn("sitemap", self.screen.model.headerData(5, Qt.Horizontal, Qt.ToolTipRole))

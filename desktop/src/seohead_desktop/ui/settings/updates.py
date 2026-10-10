@@ -6,10 +6,12 @@ from importlib import metadata
 
 from ...settings_store import Setting
 from ..controls import Note
-from .actions import Columns, action_button, button_row, key_values, meta_label, spacer
+from ..kit import waiting_badge
+from .actions import Columns, action_button, button_row, key_values, spacer
 from .helpers import group_label, page, segmented_row, switch_row
 
 ID, ICON, TITLE = "updates", "system_update", "Обновления"
+CHANGELOG_GAP = 1220  # core update contract, see ui/kit.ISSUE_HINTS
 HINT = "Приложение и совместимое ядро обновляются вместе"
 
 SCHEMA = (
@@ -40,7 +42,7 @@ def build_page(store, context):
     ]
     right = [
         group_label("История изменений"),
-        meta_label("Нет данных", na=True),
+        button_row(waiting_badge(CHANGELOG_GAP)),
         Note("info", "Что это меняет.", "Приложение и ядро — вместе. Обновление ставит совместимое ядро; CLI в PATH тоже обновится."),
     ]
     return page(Columns(left, right))

@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QProgressBar,
     QPushButton,
     QToolButton,
     QVBoxLayout,
@@ -29,9 +30,10 @@ from ..ui.controls import Switch
 from ..ui.icons import MaterialIconLabel
 from ..ui.icons import material_icon as icon
 from ..ui.kit import waiting_badge
-from ..ui.presentation import ElidedLabel, short_run_id, state_text
-from .new_scan_draft import ISSUE_OTHER, PlanError, ScanDraft, grouped
+from ..ui.presentation import ElidedLabel, run_projection, short_run_id, state_text
+from .new_scan_draft import ISSUE_OTHER, PlanError, ScanDraft, grouped, request_project_policy
 from .new_scan_pages import HelpIcon, Stepper, number_edit
+from .scan_common import RunRow, StatusBadge, number, now
 
 ACTIVE_STATES = {"queued", "starting", "running", "stop_requested", "awaiting_core_status"}
 # (key, icon, name, shortcut text); «list» is shown but cannot be launched from the application
@@ -202,11 +204,20 @@ class QuickScanBar(QFrame):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(12)
-        self.live_state = QLabel()
+        self.live_state = StatusBadge()
         self.live_state.setObjectName("quickScanLiveState")
-        self.live_state.setProperty("badge", "info")
         self.live_id = QLabel()
         self.live_id.setProperty("text_style", "mono")
+        self.live_bar = QProgressBar()
+        self.live_bar.setObjectName("quickScanRunBar")
+        self.live_bar.setTextVisible(False)
+        self.live_bar.setFixedSize(160, 4)
+        self.live_counts = QLabel()
+        self.live_counts.setObjectName("quickScanRunCounts")
+        self.live_counts.setProperty("text_style", "meta")
+        self.live_rate = QLabel()
+        self.live_rate.setObjectName("quickScanRunRate")
+        self.live_rate.setProperty("text_style", "meta")
         link = QPushButton(tr("Живой прогресс"))
         link.setObjectName("quickScanProgress")
         link.setProperty("role", "text")
@@ -214,6 +225,9 @@ class QuickScanBar(QFrame):
         link.clicked.connect(self._show_scans)
         layout.addWidget(self.live_state)
         layout.addWidget(self.live_id)
+        layout.addWidget(self.live_bar)
+        layout.addWidget(self.live_counts)
+        layout.addWidget(self.live_rate)
         layout.addStretch(1)
         layout.addWidget(link)
         row.hide()
@@ -238,30 +252,8 @@ class QuickScanBar(QFrame):
             self._rps_edit, self._sync_rps = number_edit(draft, "rps", tr("Запросов в секунду"), 0, "quickScanRate")
             self._limit_edit, self._sync_limit = number_edit(draft, "limit", tr("Лимит URL"), 0, "quickScanLimit")
             draft.changed.connect(self.refresh)
-            self._request_policy()
+            request_project_policy(self.host, self.draft)
         self.refresh()
-
-    def _request_policy(self):
-        host, draft = self.host, self.draft
-        if draft.policy_state != "unknown" or not hasattr(host, "request_scan_policy"):
-            return
-        draft.policy_state = "loading"
-
-        def arrived(overrides):
-            try:
-                draft.apply_project_policy(overrides)
-            except RuntimeError:
-                pass
-
-        def failed(_text):
-            try:
-                draft.policy_state = "unavailable"
-                draft.emit_changed()
-            except RuntimeError:
-                pass
-
-        if not host.request_scan_policy(arrived, failed):
-            draft.policy_state = "unavailable"
 
     def set_mode(self, mode):
         if mode not in ("site", "sitemap") or self.draft is None:
@@ -321,6 +313,23 @@ class QuickScanBar(QFrame):
         finally:
             self._busy = False
 
+    def _sync_live(self, run):
+        """Status, id, and counters of the run in progress; a number the core did not measure is shown as such, never as 0."""
+        row = RunRow(run=run)
+        self.live_state.set_state(row.badge_kind, row.state_label(now()), row.badge_icon)
+        self.live_id.setText(short_run_id(row.id))
+        self.live_id.setToolTip(row.id or "")
+        if row.found:
+            self.live_bar.setRange(0, row.found)
+            self.live_bar.setValue(row.fetched or 0)
+            share = round(100 * (row.fetched or 0) / row.found)
+            self.live_counts.setText(trf("{done} / {found} · {share} %", done=number(row.fetched), found=number(row.found), share=share))
+        else:
+            self.live_bar.setRange(0, 1)
+            self.live_bar.setValue(0)
+            self.live_counts.setText(tr("Число обработанных и найденных URL не измерено"))
+        self.live_rate.setText(run_projection(run)["rate"])
+
     def _sync(self):
         draft = self.draft
         runs = active_runs(self.host)
@@ -330,8 +339,7 @@ class QuickScanBar(QFrame):
         self.stop_button.setVisible(busy)
         self.live_row.setVisible(busy)
         if busy:
-            self.live_state.setText(state_text(runs[-1].get("state")))
-            self.live_id.setText(short_run_id(runs[-1].get("id")))
+            self._sync_live(runs[-1])
         for key, action in self.mode_actions.items():
             action.setChecked(key == self.mode)
         name = next(tr(n) for k, _g, n, _s in MODES if k == self.mode)
