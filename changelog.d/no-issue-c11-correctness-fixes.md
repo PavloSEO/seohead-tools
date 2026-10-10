@@ -1,0 +1,13 @@
+- Correctness fixes from a review of checks, data sources and evidence import. Behaviour changes on purpose in these paths:
+  - Redirect chains of exactly the hop cap (default 20) now resolve instead of being reported as unresolved. The loop check runs before the cap check, in both chain resolution and hop-path walks.
+  - EEAT trust and citation checks compare destination hosts with their port (`netloc`), matching the internal-link host logic. Sites with explicit ports can change results.
+  - llms.txt keyword checks match ASCII terms as whole words with an optional plural, so `rapid`, `Showcase` and `Toolbar` no longer pass. Cyrillic stems still match as substrings.
+  - Navigation capture maps the `reload` reason to `refresh_navigation`. Unmapped requested reasons, such as `pageBlockInterstitial`, are recorded as frame observations that the validator accepts.
+  - Technology detection treats a negated implication (`["not", X]`) as implying nothing.
+  - Evidence import rejects duplicate declared metric names, and Search Console discovery uses the rows it is given.
+  - Yandex Cloud retries sleep only between attempts. Yandex Webmaster query-analytics retries back off before the next attempt.
+  - Schema build passes its `timeout` to the HTTP client (default unchanged).
+  - The delivery receipt store is created with mode 0600 before SQLite opens it.
+  - Semantic graph runs are serialised, because the stop-word set is module state. The semantic runner reports SQLite errors as `ok: false` instead of raising.
+  - The CrUX error parser tolerates non-object response bodies.
+  - Removed an unreachable `sqlite3 is None` guard in the ledger.
