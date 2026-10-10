@@ -4255,10 +4255,28 @@ def scan_url_query(
     limit: int = 200,
     count_timeout_seconds: float = 1.0,
     max_bytes: int = 1_048_576,
+    preset: str | None = None,
+    export: str | None = None,
+    export_format: str = "csv",
+    export_max_rows: int | None = None,
 ) -> dict[str, Any]:
-    """Filter, sort and paginate the whole page table of one saved scan, read-only."""
+    """Filter, sort and paginate the whole page table of one saved scan, read-only.
+
+    With ``export`` set, writes every matching row to that new file instead of returning a page.
+    """
+    from seohead.storage.url_query import EXPORT_MAX_ROWS, export_scan_query
     from seohead.storage.url_query import scan_url_query as core
 
+    if export is not None:
+        return export_scan_query(
+            input_path,
+            export,
+            fmt=export_format,
+            preset=preset,
+            filters=filters,
+            columns=columns,
+            max_rows=EXPORT_MAX_ROWS if export_max_rows is None else export_max_rows,
+        )
     return core(
         input_path,
         filters=filters,
@@ -4269,6 +4287,7 @@ def scan_url_query(
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
         max_bytes=max_bytes,
+        preset=preset,
     )
 
 

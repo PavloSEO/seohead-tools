@@ -55,7 +55,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-list` | List saved SQLite scan metadata without loading retained bodies. | offline, read-only |
 | `scan-status` | Summarize frontier work and committed page outcomes from one saved scan offline. | offline, read-only |
 | `scan-inspect` | Read a bounded, paginated table view from one saved scan. | offline, read-only |
-| `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. | offline, read-only |
+| `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. `--preset` applies a ready-made view; `--export PATH` writes all matching rows to a new CSV or XLSX file. | offline, read-only |
 | `scan-url-detail` | Read one exact native URL's retained headers, redirects, page fields, and forms. | offline, read-only |
 | `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's paged links offline. | offline, read-only |
 | `scan-navigation` | Read bounded observed navigation evidence from a retained local scan. | offline, read-only |

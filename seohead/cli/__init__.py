@@ -466,6 +466,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "limit",
             "count_timeout_seconds",
             "max_bytes",
+            "preset",
+            "export",
+            "export_format",
+            "export_max_rows",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2096,6 +2100,20 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--count-timeout-seconds", dest="count_timeout_seconds", type=float)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+        from seohead.storage.url_query import PRESETS
+
+        sub.add_argument(
+            "--preset",
+            help="ready-made filter set, AND-combined with --filters: "
+            + ", ".join(sorted(PRESETS)),
+        )
+        sub.add_argument(
+            "--export",
+            metavar="PATH",
+            help="write every matching row to this new file instead of printing a page",
+        )
+        sub.add_argument("--export-format", dest="export_format", choices=("csv", "xlsx"))
+        sub.add_argument("--export-max-rows", dest="export_max_rows", type=int)
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
