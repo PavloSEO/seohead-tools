@@ -378,3 +378,43 @@ def test_a_sorted_set_cut_short_is_a_timeout_not_a_guess(scan_path, monkeypatch)
     filters = [{"column": "status_code", "op": "eq", "value": 200}]
     got = _q(scan_path, filters=filters, sort="word_count")
     assert got["ok"] is False and got["reason_code"] == "query_timeout"
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"issue_check": ["Bad Id!"]},
+        {"issue_check": []},
+        {"issue_check": ["ok-id"] * 51},
+        {"issue_check": 7},
+        {"issue_severity": "fatal"},
+    ],
+)
+def test_malformed_issue_filter_is_rejected(scan_path, kw):
+    got = _q(scan_path, **kw)
+    assert got["ok"] is False and got["reason_code"] == "invalid_issue_filter"
+
+
+def test_issue_filter_without_an_index_is_unavailable_not_unfiltered(scan_path):
+    got = _q(scan_path, issue_check="title-missing", issue_severity="warning")
+    assert got["ok"] is True and got["state"] == "unavailable"
+    assert got["reason_code"] == "issue_index_missing"
+    assert got["rows"] == [] and got["total"] is None and got["filtered_total"] is None
+
+
+def test_issue_filter_reaches_cli_and_mcp(scan_path, capsys):
+    code = cli.main(
+        [
+            "scan-url-query",
+            "--scan",
+            str(scan_path),
+            "--issue-check",
+            "title-missing",
+            "--issue-severity",
+            "critical",
+        ]
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and out["reason_code"] == "issue_index_missing"
+    tool = build_server()._tool_manager.get_tool("seo_scan_url_query")
+    assert {"issue_check", "issue_severity"} <= set(tool.parameters["properties"])

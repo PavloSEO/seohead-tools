@@ -28,6 +28,9 @@ SORT_ROW_CAP = 100_000
 PAGE_BUDGET_SECONDS = 5.0
 DEFAULT_COUNT_BUDGET_SECONDS = 1.0
 PROGRESS_OPS = 1000  # SQLite VM steps between deadline checks
+ISSUE_SEVERITIES = ("critical", "warning", "notice")
+MAX_ISSUE_CHECKS = 50
+_ISSUE_CHECK = re.compile(r"[a-z0-9][a-z0-9_.-]{0,99}")
 
 
 class QueryError(Exception):
@@ -360,6 +363,25 @@ def _click_depth_check(con: sqlite3.Connection, names: set[str]) -> None:
         con.execute("PRAGMA query_only=ON")
 
 
+def _issue_filter_set(check: Any, severity: Any) -> bool:
+    """Validate the issue filter arguments; True when one of them is set."""
+    if check is not None:
+        checks = [check] if isinstance(check, str) else check
+        if (
+            type(checks) is not list
+            or not 1 <= len(checks) <= MAX_ISSUE_CHECKS
+            or not all(isinstance(c, str) and _ISSUE_CHECK.fullmatch(c) for c in checks)
+        ):
+            raise QueryError(
+                "invalid_issue_filter", f"issue_check needs 1..{MAX_ISSUE_CHECKS} check ids"
+            )
+    if severity is not None and severity not in ISSUE_SEVERITIES:
+        raise QueryError(
+            "invalid_issue_filter", "issue_severity must be one of: " + ", ".join(ISSUE_SEVERITIES)
+        )
+    return check is not None or severity is not None
+
+
 def _int(value: Any, name: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise QueryError("invalid_" + name, f"{name} must be an integer {low}..{high}")
@@ -377,6 +399,8 @@ def scan_url_query(
     limit: int = DEFAULT_LIMIT,
     count_timeout_seconds: float = DEFAULT_COUNT_BUDGET_SECONDS,
     max_bytes: int = 1_048_576,
+    issue_check: str | list[str] | None = None,
+    issue_severity: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -391,6 +415,8 @@ def scan_url_query(
             count_timeout_seconds,
             max_bytes,
             started,
+            issue_check,
+            issue_severity,
         )
     except QueryError as exc:
         return {
@@ -424,6 +450,8 @@ def _query(
     count_timeout: Any,
     max_bytes: Any,
     started: float,
+    issue_check: Any = None,
+    issue_severity: Any = None,
 ) -> dict[str, Any]:
     if not isinstance(input_path, str) or not input_path:
         raise QueryError("invalid_input", "input_path is required")
@@ -453,6 +481,7 @@ def _query(
         raise QueryError("unknown_column", "sort names an unavailable column")
     if sort == "status_class":
         sort = "status_code"
+    issue_filtered = _issue_filter_set(issue_check, issue_severity)
     clauses, params, needs_url = [], [], False
     for item in filters:
         sql, p, uses_url = _filter_clause(item)
@@ -460,6 +489,20 @@ def _query(
         params += p
         needs_url = needs_url or uses_url
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    if issue_filtered:
+        # No per-issue URL index is written yet, so the filter cannot be answered from this scan.
+        return {
+            "ok": True,
+            "state": "unavailable",
+            "format": FORMAT,
+            "reason_code": "issue_index_missing",
+            "reason": "this scan has no per-issue URL index; the issue filter is not applied",
+            "columns": columns,
+            "rows": [],
+            "total": None,
+            "filtered_total": None,
+            "filters": filters,
+        }
     if input_path.lower().endswith(".json"):
         return {
             "ok": True,

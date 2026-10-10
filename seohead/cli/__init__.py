@@ -466,6 +466,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "limit",
             "count_timeout_seconds",
             "max_bytes",
+            "issue_check",
+            "issue_severity",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -2096,6 +2098,17 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--count-timeout-seconds", dest="count_timeout_seconds", type=float)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+        sub.add_argument(
+            "--issue-check",
+            dest="issue_check",
+            action="append",
+            help="audit check id to filter by (repeatable, 1..50)",
+        )
+        sub.add_argument(
+            "--issue-severity",
+            dest="issue_severity",
+            choices=("critical", "warning", "notice"),
+        )
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
