@@ -15,18 +15,18 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
+| check | 132 | a registry check finds it |
 | tool | 33 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
-| out of scope | 136 | a decision, with its reason |
+| out of scope | 130 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **159 are found today**, 18 are
+remaining 212 issues, **165 are found today**, 18 are
 found in part, 7 are gaps worth closing, and
-28 need something we have decided not to build.
+22 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
 having, because the alternative is an absence nobody has noticed.
@@ -456,7 +456,7 @@ having, because the alternative is an absence nobody has noticed.
 
 ## AMP
 
-**16 issues, declined as one decision.** AMP is effectively retired: Google dropped the Top Stories carousel requirement in 2021 and the format is in maintenance. Building sixteen checks for it now would be work aimed at the last decade.
+**16 issues, declined as one decision.** pairing read from the AMP target the crawl captured (#1020)
 
 <details><summary>The full list, so the decision is auditable</summary>
 
@@ -464,17 +464,17 @@ having, because the alternative is an absence nobody has noticed.
 - Missing Non-AMP Return Link
 - Missing Canonical to Non-AMP
 - Non-Indexable Canonical
+- Missing Canonical
+- Indexable
 - Missing <html amp> Tag
 - Missing/Invalid Doctype HTML Tag
 - Missing Head Tag
 - Missing Body Tag
-- Missing Canonical
 - Missing/Invalid Meta Charset Tag
 - Missing/Invalid Meta Viewport Tag
 - Missing/Invalid AMP Script
 - Missing/Invalid AMP Boilerplate
 - Contains Disallowed HTML
 - Other Validation Errors
-- Indexable
 
 </details>

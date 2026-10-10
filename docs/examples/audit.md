@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-10T06:23:21Z
+- **Generated:** 2026-10-10T06:57:12Z
 
 ## Health summary
 
-> **No health score.** only 82 of 183 checks could run (45% coverage); too little evidence to score.
+> **No health score.** only 82 of 188 checks could run (44% coverage); too little evidence to score.
 
-_82 of 183 checks could run; the score is not comparable to a run with full evidence_
+_82 of 188 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 105 skipped, 62 silent, 0 disabled (of 187 total)
+- Checks: **20 fired**, 106 skipped, 62 silent, 0 disabled (of 188 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
@@ -271,6 +271,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | Page contains a legacy plugin-dependent element (<object>/<embed>/<applet>) | no plugin-element evidence (native crawl only) |
 | An <img> has no alt attribute at all (not even alt="") | no per-image evidence (native crawl only) |
 | An image's alt text exceeds the configured length threshold | no per-image evidence (native crawl only) |
+| Image URL answered with an HTTP error, so the browser shows nothing | no resource evidence (native crawl with resource capture only) |
 | The deprecated AJAX crawling scheme (#! / _escaped_fragment_) is still used by this page's URL or by URLs it links to | no AJAX-scheme URL evidence (native crawl only) |
 | Page declares <meta name="fragment"> -- the page-wide opt-in to the deprecated AJAX crawling scheme | no <meta name="fragment"> evidence (native crawl only) |
 | No character encoding declared via Content-Type or an early <meta> tag | no Meta Charset column, so a page without a header charset cannot be distinguished from one declaring <meta charset> (needs a native seohead crawl or Custom Extraction in SF) |

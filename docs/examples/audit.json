@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-10T06:23:21Z",
+    "generated_at": "2026-10-10T06:57:12Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -237,6 +237,10 @@
       {
         "id": "IMG_ALT_TOO_LONG",
         "reason": "no per-image evidence (native crawl only)"
+      },
+      {
+        "id": "IMG_BROKEN",
+        "reason": "no resource evidence (native crawl with resource capture only)"
       },
       {
         "id": "AJAX_CRAWLING_SCHEME_URL",
@@ -524,9 +528,9 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 187,
+      "checks_total": 188,
       "checks_fired": 20,
-      "checks_skipped": 105,
+      "checks_skipped": 106,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
       "checks_silent": 62,
@@ -594,10 +598,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.439
+      "coverage": 0.436
     },
-    "health_score_reason": "only 82 of 187 checks could run (44% coverage); too little evidence to score",
-    "health_score_basis": "82 of 187 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 82 of 188 checks could run (44% coverage); too little evidence to score",
+    "health_score_basis": "82 of 188 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"
