@@ -525,3 +525,26 @@ class ScanDraft(QObject):
 
     def emit_changed(self):
         self.changed.emit()
+
+
+def request_project_policy(host, draft):
+    """Ask the host for the project scan policy once per draft; apply it when it arrives."""
+    if draft.policy_state != "unknown" or not hasattr(host, "request_scan_policy"):
+        return
+    draft.policy_state = "loading"
+
+    def arrived(overrides):
+        try:
+            draft.apply_project_policy(overrides)
+        except RuntimeError:
+            pass
+
+    def failed(_text):
+        try:
+            draft.policy_state = "unavailable"
+            draft.emit_changed()
+        except RuntimeError:
+            pass
+
+    if not host.request_scan_policy(arrived, failed):
+        draft.policy_state = "unavailable"

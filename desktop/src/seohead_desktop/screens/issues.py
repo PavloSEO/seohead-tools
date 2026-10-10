@@ -34,12 +34,13 @@ from ..ui.kit import (
     BadgeDelegate,
     StatePanel,
     no_project_panel,
+    set_panel_state,
     style_table,
     unavailable_tip,
     waiting_badge,
 )
 from .base import Screen
-from .scan_common import number, parse_time
+from .scan_common import number, parse_time, selected_scan
 from .url_widgets import StackBar, section_label
 
 SEVERITIES = (("critical", "Критичные", "error", "error"), ("warning", "Важные", "warning", "warning"), ("notice", "Советы", "lightbulb", "text_2"))
@@ -121,11 +122,6 @@ def message_ru(message):
 def skip_reason(reason):
     text = (reason or "").casefold()
     return tr(next((ru for pattern, ru in SKIP_REASONS if re.search(pattern, text)), "причина не указана ядром"))
-
-
-def selected_scan(host):
-    path = getattr(host, "selected_scan_path", None)
-    return next((row for row in host.scan_model.rows if row.get("path") == path), None) if path else None
 
 
 def sample_checks(findings):
@@ -394,35 +390,24 @@ class IssuesScreen(Screen):
             self.table.setColumnHidden(column, narrow)
 
     # ---- state -----------------------------------------------------------------------------------------------
-    def _set_state(self, kind, panel=None):
-        if kind != self.panel_state:
-            self.panel_state = kind
-            while self.state_layout.count():
-                item = self.state_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            if panel is not None:
-                self.state_layout.addWidget(panel)
-        self.stack.setCurrentIndex(1 if panel is not None else 0)
-
     def refresh(self):
         host = self.host
         scan = selected_scan(host)
         if not host.project_directory:
-            return self._set_state("none", no_project_panel(host, "Откройте проект, чтобы увидеть проблемы его сканов."))
+            return set_panel_state(self, "none", no_project_panel(host, "Откройте проект, чтобы увидеть проблемы его сканов."))
         if scan is None:
             if host._project_loading:
-                return self._set_state("loading", StatePanel("loading", "Чтение проекта", "Находки появятся после чтения сканов."))
-            return self._set_state("noscan", StatePanel("empty", "Нет выбранного скана", "Проблемы показываются по сохранённому скану проекта.", action=("Новый скан", host.scan_preview)))
+                return set_panel_state(self, "loading", StatePanel("loading", "Чтение проекта", "Находки появятся после чтения сканов."))
+            return set_panel_state(self, "noscan", StatePanel("empty", "Нет выбранного скана", "Проблемы показываются по сохранённому скану проекта.", action=("Новый скан", host.scan_preview)))
         findings = (scan.get("evidence") or {}).get("findings") or {}
         if findings.get("state") != "available":
             reason = findings.get("reason") or "Ядро не вернуло находок для этого скана"
-            return self._set_state("partial", StatePanel("partial", "Находки недоступны", f"{reason}. {tr('Это не «0 проблем».')}"))
+            return set_panel_state(self, "partial", StatePanel("partial", "Находки недоступны", f"{reason}. {tr('Это не «0 проблем».')}"))
         if findings.get("total") == 0:
             skipped = (scan.get("evidence") or {}).get("skipped_checks") or []
             panel = StatePanel("empty", "Проблем не найдено", trf("Находок нет по выбранному скану. Это измеренный ноль; проверки, которые не запускались: {n}.", n=len(skipped)))
-            return self._set_state("zero", panel)
-        self._set_state(None)
+            return set_panel_state(self, "zero", panel)
+        set_panel_state(self, None)
         signature = (scan.get("path"), findings.get("total"), tuple((findings.get("by_severity") or {}).items()), scan.get("crawl_partial"))
         if signature != self.signature:
             self.signature = signature
