@@ -2209,6 +2209,103 @@ def check_links_extra(ctx: AuditContext) -> None:
             )
 
 
+# AMP pairing codes (#1020). Each reads the AMP target a desktop page declares with
+# <link rel="amphtml">, and only the AMP pages the crawl actually captured.
+_AMP_CODES = (
+    "AMP_NON_200",
+    "AMP_MISSING_CANONICAL",
+    "AMP_MISSING_RETURN_LINK",
+    "AMP_NON_INDEXABLE_CANONICAL",
+    "AMP_INDEXABLE",
+)
+
+
+def check_amp_pairing(ctx: AuditContext) -> None:
+    """AMP pairing checks (#1020): read each declared AMP target's own record.
+
+    A target the crawl never captured is unavailable evidence, not a broken AMP
+    page, so it is named in a skip rather than reported as a finding. Pages are
+    grouped by normalized AMP URL: one AMP page reached from several desktop
+    pages is reported once.
+    """
+    if not _has_column(ctx, "amphtml"):
+        for code in _AMP_CODES:
+            ctx.skip(code, "no amphtml Link Element column in Internal:All")
+        return
+
+    targets: dict[str, tuple[str, list[str]]] = {}
+    for page in ctx.html_pages():
+        amp = _rec(page).get("amphtml")
+        if amp:
+            targets.setdefault(norm_url(amp), (amp, []))[1].append(page.url)
+    if not targets:
+        for code in _AMP_CODES:
+            ctx.skip(code, "no page declares an AMP target (rel=amphtml)")
+        return
+
+    found: set[str] = set()
+    uncaptured = 0
+    for key, (amp_url, desktop_urls) in targets.items():
+        rows = ctx.pages_by_norm.get(key) or []
+        if not rows:
+            uncaptured += 1
+            continue
+        omitted = max(0, len(desktop_urls) - 20)
+        base = {
+            "amphtml": amp_url,
+            "desktop_urls": desktop_urls[:20],
+            "desktop_urls_omitted": omitted,
+        }
+
+        codes = [row.status_code for row in rows]
+        if any(code is not None and int(code) != 200 for code in codes):
+            ctx.add(
+                "AMP_NON_200",
+                target_url=amp_url,
+                status_code=codes[0] if len(set(codes)) == 1 else None,
+                details={**base, "status_codes": sorted({int(c) for c in codes if c is not None})},
+            )
+            found.add("AMP_NON_200")
+
+        for row in rows:
+            if row.status_code is None or int(row.status_code) != 200:
+                continue
+            rec = _rec(row)
+            if _body_unavailable(rec):
+                continue  # unparsed body: no canonical evidence either way
+            canonical = rec.get("canonical")
+            if not canonical:
+                ctx.add("AMP_MISSING_CANONICAL", target_url=amp_url, details=dict(base))
+                found.add("AMP_MISSING_CANONICAL")
+            elif not any(norm_url(canonical) == norm_url(d) for d in desktop_urls):
+                ctx.add(
+                    "AMP_MISSING_RETURN_LINK",
+                    target_url=amp_url,
+                    details={**base, "canonical": canonical},
+                )
+                found.add("AMP_MISSING_RETURN_LINK")
+            if canonical and norm_url(canonical) != norm_url(row.url):
+                canonical_targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+                if canonical_targets and not any(t.is_indexable for t in canonical_targets):
+                    ctx.add(
+                        "AMP_NON_INDEXABLE_CANONICAL",
+                        target_url=amp_url,
+                        details={**base, "canonical": canonical},
+                    )
+                    found.add("AMP_NON_INDEXABLE_CANONICAL")
+            if row.is_indexable:
+                ctx.add("AMP_INDEXABLE", target_url=amp_url, details=dict(base))
+                found.add("AMP_INDEXABLE")
+
+    if uncaptured:
+        for code in _AMP_CODES:
+            if code not in found:
+                ctx.skip(
+                    code,
+                    f"{uncaptured} AMP target(s) were declared but not captured by the crawl",
+                )
+
+
 def check_tech_extra(ctx: AuditContext) -> None:
     has_http_version = _has_column(ctx, "http_version")
     has_amphtml = _has_column(ctx, "amphtml")
@@ -2978,6 +3075,7 @@ ALL_CHECKS = [
     check_pagination_sequence,
     check_links_extra,
     check_tech_extra,
+    check_amp_pairing,
     check_native_page_evidence,
     check_native_image_resources,
     check_ajax_crawling_scheme,

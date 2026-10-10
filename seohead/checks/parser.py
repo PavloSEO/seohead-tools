@@ -1206,6 +1206,27 @@ def document_position(soup: BeautifulSoup, html: str) -> DocumentPosition:
     }
 
 
+def extract_amphtml(soup: BeautifulSoup, base_url: str) -> str:
+    """The URL of the document's first ``<link rel="amphtml">``, resolved (#1020).
+
+    An AMP pairing check needs the desktop page's declared AMP target, not
+    just the fact that a tag exists. ``""`` when the page declares none, or
+    when the only declaration names no URL -- an empty href points nowhere a
+    crawler can follow, so it is reported as absent here, not as a target.
+    """
+    for tag in soup.find_all("link"):
+        rel_attr: str | list[str] = tag.get("rel") or []
+        rel_tokens = rel_attr.split() if isinstance(rel_attr, str) else list(rel_attr)
+        if not any(isinstance(t, str) and t.lower() == "amphtml" for t in rel_tokens):
+            continue
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue  # a <template>'s link is never in the rendered document
+        raw_href = (cast("str | None", tag.get("href")) or "").strip()
+        if raw_href:
+            return urljoin(base_url, raw_href)
+    return ""
+
+
 def extract_hreflang(soup: BeautifulSoup, base_url: str) -> list[dict[str, str]]:
     """Every hreflang alternate the document declares, in document order (#357).
 
@@ -2167,6 +2188,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # about which pages are the same page in another language (#357).
     result["hreflang"] = extract_hreflang(soup, base_url)
     result["mobile_alternates"] = extract_mobile_alternates(soup, base_url)
+    result["amphtml"] = extract_amphtml(soup, base_url)
     # Same reasoning again: <img> alt-attribute evidence and legacy plugin
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)

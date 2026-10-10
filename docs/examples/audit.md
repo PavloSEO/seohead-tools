@@ -1,6 +1,6 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-09T18:17:15Z
+- **Generated:** 2026-10-10T06:23:21Z
 
 ## Health summary
 
@@ -8,7 +8,7 @@
 
 _82 of 183 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 100 skipped, 62 silent, 0 disabled (of 182 total)
+- Checks: **20 fired**, 105 skipped, 62 silent, 0 disabled (of 187 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
@@ -262,6 +262,11 @@ Each check below describes more than half the crawled pages. That can be true --
 | A rel="next" series breaks a page-number run it otherwise follows | no rel="next" column in Internal:All |
 | Response uses HTTP/1.x rather than HTTP/2 or newer | no HTTP Version column in Internal:All |
 | AMP version is declared | no amphtml Link Element column in Internal:All |
+| The AMP page declared by rel=amphtml does not answer 200 | no amphtml Link Element column in Internal:All |
+| The AMP page declares no rel=canonical | no amphtml Link Element column in Internal:All |
+| The AMP page's rel=canonical does not point back to the page that declares it | no amphtml Link Element column in Internal:All |
+| The AMP page's canonical target is not indexable | no amphtml Link Element column in Internal:All |
+| The AMP page is indexable | no amphtml Link Element column in Internal:All |
 | The Lorem Ipsum placeholder passage appears in the page's own content area | no Lorem Ipsum evidence (native crawl only) |
 | Page contains a legacy plugin-dependent element (<object>/<embed>/<applet>) | no plugin-element evidence (native crawl only) |
 | An <img> has no alt attribute at all (not even alt="") | no per-image evidence (native crawl only) |

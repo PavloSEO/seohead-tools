@@ -246,6 +246,16 @@ python scripts/generate_checks_reference.py
 | `HTTP1_ONLY` | notice | SF-derived | Response uses HTTP/1.x rather than HTTP/2 or newer | Enable HTTP/2 or HTTP/3 on the origin server or CDN where supported. |
 | `AMPHTML_PRESENT` | notice | SF-derived | AMP version is declared | Confirm that the AMP version is still required, current, valid, and canonically linked. |
 
+## --- AMP pairing, read from the AMP target a desktop page declares (issue #1020) ---
+
+| Check id | Severity | Evidence | Fires on | Fix |
+|---|---|---|---|---|
+| `AMP_NON_200` | warning | crawl:amp_pairing | The AMP page declared by rel=amphtml does not answer 200 | Serve the AMP URL with 200, or remove the rel=amphtml declaration that names it. |
+| `AMP_MISSING_CANONICAL` | warning | crawl:amp_pairing | The AMP page declares no rel=canonical | Add a rel=canonical on the AMP page that points to the non-AMP version. |
+| `AMP_MISSING_RETURN_LINK` | warning | crawl:amp_pairing | The AMP page's rel=canonical does not point back to the page that declares it | Point the AMP page's rel=canonical at the non-AMP URL that declares rel=amphtml. |
+| `AMP_NON_INDEXABLE_CANONICAL` | warning | crawl:amp_pairing | The AMP page's canonical target is not indexable | Make the canonical target indexable, or correct the AMP page's rel=canonical. |
+| `AMP_INDEXABLE` | notice | crawl:amp_pairing | The AMP page is indexable | Confirm the AMP page should compete in search; if the non-AMP page is canonical, the AMP page usually should not be. |
+
 ## snapshot of every id Lighthouse actually defines.
 
 | Check id | Severity | Evidence | Fires on | Fix |

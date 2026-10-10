@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-09T18:17:15Z",
+    "generated_at": "2026-10-10T06:23:21Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -200,6 +200,26 @@
       },
       {
         "id": "AMPHTML_PRESENT",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_NON_200",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_RETURN_LINK",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_NON_INDEXABLE_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_INDEXABLE",
         "reason": "no amphtml Link Element column in Internal:All"
       },
       {
@@ -504,9 +524,9 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 182,
+      "checks_total": 187,
       "checks_fired": 20,
-      "checks_skipped": 100,
+      "checks_skipped": 105,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
       "checks_silent": 62,
@@ -574,10 +594,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.451
+      "coverage": 0.439
     },
-    "health_score_reason": "only 82 of 182 checks could run (45% coverage); too little evidence to score",
-    "health_score_basis": "82 of 182 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 82 of 187 checks could run (44% coverage); too little evidence to score",
+    "health_score_basis": "82 of 187 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

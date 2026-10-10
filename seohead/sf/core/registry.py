@@ -889,6 +889,37 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "AMP version is declared",
         "fix": "Confirm that the AMP version is still required, current, valid, and canonically linked.",
     },
+    # --- AMP pairing, read from the AMP target a desktop page declares (issue #1020) ---
+    "AMP_NON_200": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page declared by rel=amphtml does not answer 200",
+        "fix": "Serve the AMP URL with 200, or remove the rel=amphtml declaration that names it.",
+    },
+    "AMP_MISSING_CANONICAL": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page declares no rel=canonical",
+        "fix": "Add a rel=canonical on the AMP page that points to the non-AMP version.",
+    },
+    "AMP_MISSING_RETURN_LINK": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page's rel=canonical does not point back to the page that declares it",
+        "fix": "Point the AMP page's rel=canonical at the non-AMP URL that declares rel=amphtml.",
+    },
+    "AMP_NON_INDEXABLE_CANONICAL": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page's canonical target is not indexable",
+        "fix": "Make the canonical target indexable, or correct the AMP page's rel=canonical.",
+    },
+    "AMP_INDEXABLE": {
+        "severity": "notice",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page is indexable",
+        "fix": "Confirm the AMP page should compete in search; if the non-AMP page is canonical, the AMP page usually should not be.",
+    },
     # --- extension: static Lighthouse audits (issue #59) ---
     # Correspondence to a Lighthouse audit id + doc URL lives in
     # seohead/sf/core/lighthouse.py, not here, so it can carry the longer
