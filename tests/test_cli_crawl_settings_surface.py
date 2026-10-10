@@ -179,9 +179,3 @@ def test_a_dotted_override_leaves_its_siblings_alone():
     limits = crawl_config.load(overrides={"limits.max_urls": 50})["limits"]
     assert limits["max_urls"] == 50
     assert set(limits) == set(crawl_config.DEFAULTS["limits"])
-
-
-def test_a_rate_above_two_prints_a_warning_on_stderr_only(capsys):
-    cli._print_effective_rate(_kwargs("--max-urls-per-second", "4"))
-    err = capsys.readouterr().err
-    assert "warning: effective rate 4.00 req/s is above 2 req/s" in err

@@ -1038,19 +1038,3 @@ def test_list_mode_inside_a_project_defaults_to_the_project_scans_dir(tmp_path, 
 def test_list_mode_without_a_project_still_needs_an_explicit_output(tmp_path):
     with pytest.raises(ValueError, match="list mode has no default SQLite artifact"):
         handlers.crawl_site(urls=["https://example.com/a"])
-
-
-def test_crawl_site_result_reports_the_rate_and_warns_above_two(monkeypatch, tmp_path):
-    monkeypatch.setattr(spider_mod, "crawl_site", lambda *a, **k: SpiderResult())
-
-    fast = handlers.crawl_site(
-        url="https://example.com/",
-        out_dir=str(tmp_path),
-        overrides={"speed.min_delay_seconds": 0.25},
-    )
-    assert fast["effective_max_requests_per_second"] == pytest.approx(4.0)
-    assert fast["warnings"] and "above 2 req/s" in fast["warnings"][0]
-
-    polite = handlers.crawl_site(url="https://example.com/", out_dir=str(tmp_path))
-    assert polite["effective_max_requests_per_second"] == pytest.approx(2.0)
-    assert polite["warnings"] == []

@@ -1698,29 +1698,3 @@ def effective_request_rate(config: dict[str, Any]) -> float:
     """
     delay = float(config["speed"]["min_delay_seconds"])
     return 1.0 / delay if delay > 0 else float("inf")
-
-
-# Above this worst-case rate the crawl still runs; the operator is told, not stopped.
-# This is a warning threshold, not a limit: the pacer's max(2.0, rate) is a ceiling.
-RATE_WARN_RPS = 2.0
-
-
-def rate_warnings(config: dict[str, Any]) -> list[str]:
-    """Warnings about the worst-case rate; empty while the rate is at or under the threshold."""
-    rate = effective_request_rate(config)
-    if rate <= RATE_WARN_RPS:
-        return []
-    shown = "unbounded" if rate == float("inf") else f"{rate:.2f}"
-    return [
-        f"effective rate {shown} req/s is above {RATE_WARN_RPS:g} req/s; "
-        "confirm the host tolerates it"
-    ]
-
-
-def rate_fields(config: dict[str, Any]) -> dict[str, Any]:
-    """The rate as a crawl result reports it: the number (or "unbounded") and its warnings."""
-    rate = effective_request_rate(config)
-    return {
-        "effective_max_requests_per_second": "unbounded" if rate == float("inf") else rate,
-        "warnings": rate_warnings(config),
-    }
