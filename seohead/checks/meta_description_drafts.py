@@ -21,6 +21,7 @@ from typing import Any, Protocol
 from bs4 import BeautifulSoup
 
 from seohead.checks.text_normalize import normalize_document
+from seohead.core.tabular import neutralize_formula
 
 CONTRACT_VERSION = "meta_description_drafts.v1"
 DEFAULT_MIN_CHARS = 120
@@ -444,8 +445,7 @@ def run_draft_plan(
 
 
 def _spreadsheet_text(value: Any) -> str:
-    text = "" if value is None else str(value)
-    return f"'{text}" if text.startswith(("=", "+", "-", "@")) else text
+    return neutralize_formula("" if value is None else str(value))
 
 
 def export_draft_review(
