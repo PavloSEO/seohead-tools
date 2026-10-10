@@ -1,0 +1,3 @@
+- `--max-urls` is now the crawl's page budget: an explicit page budget fills unset request and time budgets (3 requests and 2 seconds per page), so 50-300 page crawls are admitted without `approve_large_crawl`; budgets above the project thresholds are still refused.
+- A deliberate URL-budget stop is saved as a finished capture with `finish_reason` `stopped_by_budget` and a `finished_at` time, instead of `interrupted` with no finish time. Its queued URLs remain for a resume.
+- Competitor URLs keep the host as entered (for example `www.` stays), instead of being stored without it.

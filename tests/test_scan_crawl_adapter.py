@@ -774,11 +774,11 @@ def test_url_limit_with_pending_work_stays_interrupted(tmp_path):
     )
 
     assert run.pages == 1
-    assert run.finish_reason == "url_limit"
+    assert run.finish_reason == "stopped_by_budget"
     assert run.partial is True
     header = NativeScan.inspect(str(scan_path))["scan"]
     assert header["lifecycle"] == "interrupted"
-    assert "url limit" in header["finish_reason"]
+    assert header["finish_reason"] == "stopped_by_budget"
     assert header["finished_at"] is None
 
 

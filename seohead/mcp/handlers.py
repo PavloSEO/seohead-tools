@@ -864,6 +864,8 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    if max_urls is not None or "limits.max_urls" in resolved_overrides:
+        crawl_config.bind_budgets_to_page_budget(settings, set(resolved_overrides))
     # A storage-only synthetic capacity marker never enters a live crawl route.
     from seohead.crawl.settings import checked_url_budget
 

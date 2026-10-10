@@ -16,6 +16,7 @@ SAFE_FINISH_REASONS = frozenset(
         "finished",
         "running",
         "url_limit",
+        "stopped_by_budget",
         "request_limit",
         "duration_limit",
         "robots_unavailable",
@@ -515,7 +516,12 @@ def _explain(result: dict[str, Any]) -> list[dict[str, Any]]:
             ["source.lifecycle", "source.finish_reason", "observed.page_errors"],
             "Inspect the failed URL and process records before a focused retry.",
         )
-    if source["finish_reason"] in {"url_limit", "request_limit", "duration_limit"}:
+    if source["finish_reason"] in {
+        "url_limit",
+        "stopped_by_budget",
+        "request_limit",
+        "duration_limit",
+    }:
         add(
             "budget_exhausted",
             f"The recorded finish reason is {source['finish_reason']}.",

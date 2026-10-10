@@ -331,7 +331,10 @@ def resume_inputs(scan_path: str) -> dict[str, Any]:
             f"{scan_path} is a derived {header['source_kind']} artifact, not a crawl that can "
             "be resumed"
         )
-    if header["lifecycle"] in {"finished", "failed"}:
+    budget_stopped = header["lifecycle"] == "finished" and (
+        header["finish_reason"] == "stopped_by_budget"
+    )
+    if header["lifecycle"] in {"finished", "failed"} and not budget_stopped:
         raise ValueError(
             f"{scan_path} is already {header['lifecycle']} "
             f"(finish reason: {header['finish_reason']}); there is nothing left to resume"
