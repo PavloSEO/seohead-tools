@@ -1793,7 +1793,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
         Earlier events are never edited. Nothing is executed; the event only records text.
         """
-        return _checked(handlers.project_event_append(directory, source, actor, text))
+        return _checked(
+            handlers.project_event_append(
+                directory=directory, source=source, actor=actor, text=text
+            )
+        )
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_project_event_page(
@@ -1806,7 +1810,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Read a newest-first bounded page of project events, optionally filtered."""
         return _checked(
             handlers.project_event_page(
-                directory, offset=offset, limit=limit, source=source, query=query
+                directory=directory, offset=offset, limit=limit, source=source, query=query
             )
         )
 
