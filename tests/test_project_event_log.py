@@ -147,3 +147,51 @@ def test_symlinked_event_file_refuses(project, tmp_path):
         event_log.append(project, source="agent", actor="agent", text="x")
     with pytest.raises(ValueError, match="unsafe"):
         event_log.page(project)
+
+
+def test_handlers_expose_append_and_page_through_the_shared_registry(project):
+    from seohead.mcp.handlers import HANDLERS
+
+    appended = HANDLERS["project_event_append"](
+        directory=str(project), source="user", actor="user", text="Note from the operator"
+    )
+    assert appended["ok"] is True
+    assert appended["event"]["sequence"] == 1
+
+    page = HANDLERS["project_event_page"](directory=str(project), source="user", limit=5)
+    assert [item["text"] for item in page["items"]] == ["Note from the operator"]
+
+
+def test_cli_parses_event_append_and_page_into_handler_kwargs(project):
+    from seohead.cli import _build_kwargs, build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "project-event-append",
+            "--directory",
+            str(project),
+            "--source",
+            "agent",
+            "--actor",
+            "agent",
+            "--text",
+            "Scan queued",
+        ]
+    )
+    handler, kwargs = _build_kwargs("project-event-append", args)
+    assert handler == "project_event_append"
+    assert kwargs == {
+        "directory": str(project),
+        "source": "agent",
+        "actor": "agent",
+        "text": "Scan queued",
+    }
+
+    args = parser.parse_args(
+        ["project-event-page", "--directory", str(project), "--query", "scan", "--limit", "3"]
+    )
+    handler, kwargs = _build_kwargs("project-event-page", args)
+    assert handler == "project_event_page"
+    assert kwargs["query"] == "scan"
+    assert kwargs["limit"] == 3

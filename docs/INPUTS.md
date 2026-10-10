@@ -25,7 +25,7 @@ and this decision makes no backend migration.
 | `bi-filter` | Local directory (`package, out_dir`)<br>Selector (`dataset, columns`)<br>Inline JSON (`where, max_rows_per_file, max_bytes_per_file, max_output_bytes, xlsx_max_rows_per_sheet`)<br>Local file (`xlsx_out`) | — |
 | `scan-navigation` | Scan artifact (`input_path`)<br>Selector (`document_id, limit, offset`) | — |
 | `project-activity` | Project directory (`directory`) | — |
-| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state`) | — |
+| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state, sort, descending, states`) | — |
 | `project-task-detail` | Project directory (`directory`)<br>Selector (`item_id`) | — |
 | `project-scans` | Project directory (`directory`)<br>Selector (`offset, limit`) | — |
 | `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; cancel a pending browser flow; confirmed disconnect or remote revoke. No secret values returned. |
@@ -124,6 +124,8 @@ and this decision makes no backend migration.
 | `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
 | `remediation-create` | Local file (`path`)<br>Project directory (`project_dir`)<br>Selector (`producer_build`) | New ledger path; an existing file is refused.; Full lowercase 40-character Git SHA. |
 | `remediation-ingest` | Local file (`ledger`)<br>Local file (`scan`) | Read-only saved scan.v1 SQLite artifact. |
+| `project-event-append` | Project directory (`directory`)<br>Selector (`source, actor`)<br>Inline text (`text`) | — |
+| `project-event-page` | Project directory (`directory`)<br>Selector (`source, offset, limit, query`) | — |
 | `remediation-summary` | Local file (`ledger`) | — |
 | `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset, source_scan_id, group_ref, max_bytes`) | Use source_scan_id and group_ref together for a complete ordered group member page; mutually exclusive with finding selectors. |
 | `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |

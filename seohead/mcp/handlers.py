@@ -4358,10 +4358,28 @@ def scan_url_query(
     count_timeout_seconds: float = 1.0,
     max_bytes: int = 1_048_576,
     facets: list[str] | str | None = None,
+    preset: str | None = None,
+    export: str | None = None,
+    export_format: str = "csv",
+    export_max_rows: int | None = None,
 ) -> dict[str, Any]:
-    """Filter, sort and paginate the whole page table of one saved scan, read-only."""
+    """Filter, sort and paginate the whole page table of one saved scan, read-only.
+
+    With ``export`` set, writes every matching row to that new file instead of returning a page.
+    """
+    from seohead.storage.url_query import EXPORT_MAX_ROWS, export_scan_query
     from seohead.storage.url_query import scan_url_query as core
 
+    if export is not None:
+        return export_scan_query(
+            input_path,
+            export,
+            fmt=export_format,
+            preset=preset,
+            filters=filters,
+            columns=columns,
+            max_rows=EXPORT_MAX_ROWS if export_max_rows is None else export_max_rows,
+        )
     return core(
         input_path,
         filters=filters,
@@ -4373,6 +4391,7 @@ def scan_url_query(
         count_timeout_seconds=count_timeout_seconds,
         max_bytes=max_bytes,
         facets=facets,
+        preset=preset,
     )
 
 
@@ -5025,6 +5044,24 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return core(directory, consumer=consumer, limit=limit)
 
 
+def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_append as core
+
+    return core(directory, source=source, actor=actor, text=text)
+
+
+def project_event_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    source: str | None = None,
+    query: str = "",
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_page as core
+
+    return core(directory, offset=offset, limit=limit, source=source, query=query)
+
+
 def project_observe(
     directory: str,
     consumer: str | None = None,
@@ -5615,12 +5652,23 @@ def project_checklist_page(
     query: str = "",
     kind: str | None = None,
     state: str | None = None,
+    sort: str = "id",
+    descending: bool = False,
+    states: list[str] | None = None,
 ) -> dict[str, Any]:
     """Read a bounded searchable page of project checklist evidence."""
     from seohead.projects.observer import checklist_page as core
 
     return core(
-        directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+        directory=directory,
+        offset=offset,
+        limit=limit,
+        query=query,
+        kind=kind,
+        state=state,
+        sort=sort,
+        descending=descending,
+        states=states,
     )
 
 
@@ -6393,6 +6441,8 @@ _RAW_HANDLERS = {
     "project_inbox_goal": project_inbox_goal,
     "project_inbox_triage": project_inbox_triage,
     "project_inbox_unread": project_inbox_unread,
+    "project_event_append": project_event_append,
+    "project_event_page": project_event_page,
     "project_observe": project_observe,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,

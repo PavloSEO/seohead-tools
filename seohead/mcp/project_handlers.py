@@ -148,6 +148,24 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return unread_summary(directory, consumer=consumer, limit=limit)
 
 
+def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
+    from seohead.projects.event_log import append
+
+    return append(directory, source=source, actor=actor, text=text)
+
+
+def project_event_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    source: str | None = None,
+    query: str = "",
+) -> dict[str, Any]:
+    from seohead.projects.event_log import page
+
+    return page(directory, offset=offset, limit=limit, source=source, query=query)
+
+
 def project_observe(
     directory: str,
     consumer: str | None = None,

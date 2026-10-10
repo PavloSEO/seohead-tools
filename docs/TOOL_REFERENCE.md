@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**170 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 179 in total.
+**172 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 181 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1607,6 +1607,41 @@ Return a bounded unread reference summary without changing delivery state.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `project-event-append`
+
+MCP name: `seo_project_event_append`
+
+Append one structured event to the project journal (events.jsonl).
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `source` | `Literal['agent', 'user', 'scans', 'app']` | `required` |
+| `actor` | `Literal['user', 'agent', 'schedule']` | `required` |
+| `text` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Earlier events are never edited. Nothing is executed; the event only records text.
+
+### `project-event-page`
+
+MCP name: `seo_project_event_page`
+
+Read a newest-first bounded page of project events, optionally filtered.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `50` |
+| `source` | `Literal['agent', 'user', 'scans', 'app'] | None` | `None` |
+| `query` | `str` | `''` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `remediation-summary`
 
 MCP name: `seo_remediation_summary`
@@ -2504,11 +2539,16 @@ Read a bounded searchable page of project checklist evidence.
 | `query` | `str` | `''` |
 | `kind` | `str | None` | `None` |
 | `state` | `str | None` | `None` |
+| `sort` | `str` | `'id'` |
+| `descending` | `bool` | `False` |
+| `states` | `list[str] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 **Behavior and failure modes**
 
+sort is one of id (stored order, default), priority, state or updated; states
+keeps up to 8 display states. Each item carries updated, the newest record time.
 Reads saved local evidence with metadata-only receipt status; this is not
 fresh byte verification. Missing historical receipts remain unverified.
 Does not collect, fetch or modify evidence.
@@ -2956,18 +2996,20 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `limit` | `int` | `200` |
 | `count_timeout_seconds` | `float` | `1.0` |
 | `max_bytes` | `int` | `1048576` |
+| `preset` | `str | None` | `None` |
 | `facets` | `list[str] | str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 **Behavior and failure modes**
 
-Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
-non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
-sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-exceeds count_timeout_seconds) and at most 200 rows of the requested columns. facets
-(a list of group ids, or "all") adds facets: {group: count} over the same filters, with
-facets_state exact or capped.
+Read-only. Filters are {column, op, value} objects combined with AND; preset names a
+ready-made filter set (for example status_4xx, title_missing, title_over_60, noindex_meta)
+that is combined with them. Sorting by a non-indexed column needs a filter that leaves at
+most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
+with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
+requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
+the same filters, with facets_state exact or capped.
 
 ### `scan-link-inspect`
 

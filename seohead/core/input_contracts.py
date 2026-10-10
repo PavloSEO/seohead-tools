@@ -73,7 +73,9 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project-checklist-page",
         "project_checklist_page",
         _form("project_directory", "directory"),
-        _form("selector", "offset", "limit", "query", "kind", "state"),
+        _form(
+            "selector", "offset", "limit", "query", "kind", "state", "sort", "descending", "states"
+        ),
     ),
     _command(
         "project-task-detail",
@@ -602,6 +604,19 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "remediation_ingest",
         _form("local_file", "ledger"),
         _form("local_file", "scan", note="Read-only saved scan.v1 SQLite artifact."),
+    ),
+    _command(
+        "project-event-append",
+        "project_event_append",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "actor"),
+        _form("inline_text", "text"),
+    ),
+    _command(
+        "project-event-page",
+        "project_event_page",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "offset", "limit", "query"),
     ),
     _command("remediation-summary", "remediation_summary", _form("local_file", "ledger")),
     _command(

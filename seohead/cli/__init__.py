@@ -143,6 +143,8 @@ COMMANDS = (
     "project-inbox-goal",
     "project-inbox-triage",
     "project-inbox-unread",
+    "project-event-append",
+    "project-event-page",
     "workflow-start",
     "workflow-checkpoint",
     "workflow-status",
@@ -475,6 +477,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "count_timeout_seconds",
             "max_bytes",
             "facets",
+            "preset",
+            "export",
+            "export_format",
+            "export_max_rows",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -731,6 +737,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             kw["limit"] = args.limit
         if getattr(args, "unacknowledged_only", False):
             kw["include_acknowledged"] = False
+    elif cmd == "project-event-append":
+        for name in ("directory", "source", "actor", "text"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd == "project-event-page":
+        for name in ("directory", "source", "offset", "limit", "query"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
     elif cmd == "project-observe":
         for name in ("directory", "consumer", "scan_limit", "run_offset", "run_limit"):
             if getattr(args, name, None) is not None:
@@ -795,6 +809,9 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "query",
             "kind",
             "state",
+            "sort",
+            "descending",
+            "states",
             "input_path",
             "document_id",
             "package",
@@ -2155,6 +2172,20 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             type=lambda v: v if v == "all" else v.split(","),
             help="comma-separated facet groups, or 'all': counts per group over the same filters",
         )
+        from seohead.storage.url_query import PRESETS
+
+        sub.add_argument(
+            "--preset",
+            help="ready-made filter set, AND-combined with --filters: "
+            + ", ".join(sorted(PRESETS)),
+        )
+        sub.add_argument(
+            "--export",
+            metavar="PATH",
+            help="write every matching row to this new file instead of printing a page",
+        )
+        sub.add_argument("--export-format", dest="export_format", choices=("csv", "xlsx"))
+        sub.add_argument("--export-max-rows", dest="export_max_rows", type=int)
     if cmd == "scan-url-detail":
         _source_flag(sub, "--url", help="exact retained logical URL")
         sub.add_argument("--response-offset", type=int)
@@ -2255,6 +2286,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
     if cmd.startswith("project-inbox-"):
         _source_flag(sub, "--directory", help="validated local project workspace")
+    if cmd.startswith("project-event-"):
+        _source_flag(sub, "--directory", help="validated local project workspace")
+        sub.add_argument("--source", choices=("agent", "user", "scans", "app"), help="event source")
+    if cmd == "project-event-append":
+        sub.add_argument("--actor", choices=("user", "agent", "schedule"), help="event actor")
+        sub.add_argument("--text", help="event text, 1..2000 characters")
+    if cmd == "project-event-page":
+        sub.add_argument("--offset", type=int, default=0)
+        sub.add_argument("--limit", type=int, default=50, help="events per page, 1..200")
+        sub.add_argument("--query", default="", help="case-insensitive text substring")
     if cmd == "project-inbox-submit":
         _source_flag(sub, "--text", help="specialist note or proposed goal text")
         sub.add_argument(
@@ -2541,6 +2582,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             "--kind", choices=("method", "schema", "check", "skill", "scenario", "custom")
         )
         sub.add_argument("--state", help="exact displayed checklist state")
+        sub.add_argument(
+            "--sort", choices=("id", "priority", "state", "updated"), help="sort field (default id)"
+        )
+        sub.add_argument("--desc", dest="descending", action="store_true", help="reverse order")
+        sub.add_argument(
+            "--states", type=_split_list, help="comma-separated displayed states (up to 8)"
+        )
     if cmd == "scan-navigation":
         _source_flag(sub, "--scan", dest="input_path", help="retained local scan artifact")
         sub.add_argument("--document-id", type=int, help="exact retained document identifier")

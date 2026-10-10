@@ -1829,6 +1829,38 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Return a bounded unread reference summary without changing delivery state."""
         return _checked(handlers.project_inbox_unread(directory, consumer, limit))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_event_append(
+        directory: str,
+        source: Literal["agent", "user", "scans", "app"],
+        actor: Literal["user", "agent", "schedule"],
+        text: str,
+    ) -> dict[str, Any]:
+        """Append one structured event to the project journal (events.jsonl).
+
+        Earlier events are never edited. Nothing is executed; the event only records text.
+        """
+        return _checked(
+            handlers.project_event_append(
+                directory=directory, source=source, actor=actor, text=text
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_event_page(
+        directory: str,
+        offset: int = 0,
+        limit: int = 50,
+        source: Literal["agent", "user", "scans", "app"] | None = None,
+        query: str = "",
+    ) -> dict[str, Any]:
+        """Read a newest-first bounded page of project events, optionally filtered."""
+        return _checked(
+            handlers.project_event_page(
+                directory=directory, offset=offset, limit=limit, source=source, query=query
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_summary(ledger: str) -> dict[str, Any]:
         """Read explicit remediation and recheck coverage from retained local evidence.
@@ -2671,16 +2703,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         query: str = "",
         kind: str | None = None,
         state: str | None = None,
+        sort: str = "id",
+        descending: bool = False,
+        states: list[str] | None = None,
     ) -> dict[str, Any]:
         """Read a bounded searchable page of project checklist evidence.
 
+        sort is one of id (stored order, default), priority, state or updated; states
+        keeps up to 8 display states. Each item carries updated, the newest record time.
         Reads saved local evidence with metadata-only receipt status; this is not
         fresh byte verification. Missing historical receipts remain unverified.
         Does not collect, fetch or modify evidence.
         """
         return _checked(
             handlers.project_checklist_page(
-                directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+                directory=directory,
+                offset=offset,
+                limit=limit,
+                query=query,
+                kind=kind,
+                state=state,
+                sort=sort,
+                descending=descending,
+                states=states,
             )
         )
 
@@ -3099,16 +3144,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         limit: int = 200,
         count_timeout_seconds: float = 1.0,
         max_bytes: int = 1_048_576,
+        preset: str | None = None,
         facets: list[str] | str | None = None,
     ) -> dict[str, Any]:
         """Filter, sort and paginate the page table of one saved scan across the whole scan.
 
-        Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
-        non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
-        sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-        exceeds count_timeout_seconds) and at most 200 rows of the requested columns. facets
-        (a list of group ids, or "all") adds facets: {group: count} over the same filters, with
-        facets_state exact or capped.
+        Read-only. Filters are {column, op, value} objects combined with AND; preset names a
+        ready-made filter set (for example status_4xx, title_missing, title_over_60, noindex_meta)
+        that is combined with them. Sorting by a non-indexed column needs a filter that leaves at
+        most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
+        with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
+        requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
+        the same filters, with facets_state exact or capped.
         """
         return _checked(
             handlers.scan_url_query(
@@ -3122,6 +3169,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 count_timeout_seconds=count_timeout_seconds,
                 max_bytes=max_bytes,
                 facets=facets,
+                preset=preset,
             )
         )
 
