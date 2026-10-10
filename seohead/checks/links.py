@@ -10,8 +10,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from seohead.recon.net import http_client
 
-_UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
-
 
 def _request_target(href: str) -> str:
     """The identity a fragment never changes: /guide#a and /guide#b name the same
@@ -61,9 +59,7 @@ def check_links(
     redirects: list[dict] = []
     ok_count = 0
     checked = 0
-    client, _http2_capable = http_client(
-        timeout, follow_redirects=False, headers={"User-Agent": _UA}
-    )
+    client, _http2_capable = http_client(timeout, follow_redirects=False)
     with client:
         for href, ln in targets:
             checked += 1

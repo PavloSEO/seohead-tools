@@ -23,7 +23,7 @@ import re
 from typing import Any
 from urllib.parse import urljoin
 
-from seohead.recon.net import http_client
+from seohead.recon.net import UA, http_client
 
 try:  # httpx is only needed for the live checker; keep import failures soft.
     import httpx
@@ -169,14 +169,13 @@ def generate_rules(
 
 # ── Live redirect chain checker ──────────────────────────────────────────────
 
-_DEFAULT_UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 _MAX_HOPS_CAP = 10
 
 
 def _check_step(client: httpx.Client, url: str, options: dict) -> dict:
     """Perform one HTTP request (no auto-follow) and describe the hop."""
     method = str(options.get("method") or "HEAD").upper()
-    user_agent = options.get("user_agent") or options.get("userAgent") or _DEFAULT_UA
+    user_agent = options.get("user_agent") or options.get("userAgent") or UA
     headers = {"User-Agent": user_agent, "Accept": "*/*"}
 
     try:

@@ -12,8 +12,6 @@ import re
 from seohead.recon.net import http_client
 from seohead.sf.core.normalize import norm_url
 
-_UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
-
 # An hreflang value is a language tag: language, optionally a script, optionally
 # a region, in that order and case-insensitive. A shape-only regex cannot decide
 # validity — "xx" and "en-XQ" have the right shape and name nothing — so each
@@ -768,9 +766,7 @@ def validate(alternates: list[dict], page_url: str = "") -> list[str]:
 
 def check_hreflang(url: str, timeout: float = 25.0) -> dict:
     try:
-        client, _http2_capable = http_client(
-            timeout, follow_redirects=True, headers={"User-Agent": _UA}
-        )
+        client, _http2_capable = http_client(timeout, follow_redirects=True)
         with client:
             resp = client.get(url)
     except Exception as exc:
