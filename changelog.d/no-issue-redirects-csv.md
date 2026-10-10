@@ -1,0 +1,1 @@
+- Add a `csv` redirect format (`source,target,301` rows, quoted when needed) to `generate_rule` and the `redirects-generate` CLI help; the `wordpress-redirection` format is not included because its import syntax has not been verified (#998).
