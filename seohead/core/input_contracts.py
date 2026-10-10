@@ -1113,7 +1113,7 @@ SF_CONTRACTS: tuple[CommandContract, ...] = (
     _command(
         "sf tasks",
         None,
-        _form("audit_document", "audit_json"),
+        _form("audit_document", "audit_json", note="Audit JSON or a retained scan.v1 artifact."),
         _form("local_config", "config"),
         _form("local_directory", "out", note="Local task output directory."),
     ),
