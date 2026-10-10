@@ -9,6 +9,7 @@ import json
 import os
 import pickle
 import stat
+import threading
 
 import pytest
 
@@ -159,3 +160,30 @@ def test_ensure_safe_dir_creates_a_non_world_writable_directory(tmp_path):
     crawl_state.ensure_safe_dir(str(directory))
     mode = os.stat(directory).st_mode
     assert not (mode & stat.S_IWOTH)
+
+
+def test_concurrent_saves_leave_one_complete_checkpoint_and_no_temp_files(tmp_path):
+    path = str(tmp_path / "state.json")
+    errors: list[BaseException] = []
+
+    def writer(index: int) -> None:
+        try:
+            for round_number in range(25):
+                url = f"https://example.com/{index}/{round_number}"
+                crawl_state.save(
+                    path,
+                    crawl_state.CrawlState(start_url="https://example.com/", queue=[(url, 0)]),
+                )
+        except BaseException as exc:  # surfaced on the main thread below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    with open(path, encoding="utf-8") as handle:
+        assert json.load(handle)["start_url"] == "https://example.com/"
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == ["state.json"]
