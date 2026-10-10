@@ -943,6 +943,8 @@ _ENV_REF_RE = re.compile(r"^env:([A-Za-z_][A-Za-z0-9_]*)$")
 
 # These headers authenticate a request. They may not use the global
 # ``http.headers`` lane: that lane is deliberately sent with every fetch.
+# Deliberately narrower than capture.SENSITIVE_HEADER_NAMES: set-cookie is a
+# response header, and collect.py relies on this request-side set alone.
 SENSITIVE_HEADER_NAMES = frozenset(
     {"authorization", "proxy-authorization", "cookie", "x-api-key", "x-auth-token"}
 )

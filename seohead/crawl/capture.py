@@ -43,7 +43,7 @@ _ALLOW = frozenset(
 # Headers whose value must never be stored, but whose presence explains a response:
 # a request that carried one and a request that carried none are otherwise identical
 # once redaction has run.
-_SENSITIVE = frozenset(
+SENSITIVE_HEADER_NAMES = frozenset(
     {"authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"}
 )
 
@@ -76,7 +76,7 @@ def redact_headers(headers: Any) -> tuple[tuple[str, str], ...]:
     """
     pairs = header_pairs(headers)
     kept = tuple((name, value) for name, value in pairs if name in _ALLOW)
-    redacted = sorted({name for name, value in pairs if name in _SENSITIVE and value})
+    redacted = sorted({name for name, value in pairs if name in SENSITIVE_HEADER_NAMES and value})
     if redacted:
         kept += ((REDACTED_NAMES_HEADER, ",".join(redacted)),)
     return kept
@@ -190,6 +190,7 @@ def now_utc() -> str:
 
 __all__ = [
     "REDACTED_NAMES_HEADER",
+    "SENSITIVE_HEADER_NAMES",
     "CaptureEvent",
     "bounded_entity",
     "bounded_entity_chunks",

@@ -8,6 +8,7 @@ import time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from seohead.crawl.capture import SENSITIVE_HEADER_NAMES
 from seohead.storage import READ_TIMEOUT_SECONDS, open_scan, open_scan_mode
 from seohead.storage.body_diff import body_diff
 from seohead.storage.history import (
@@ -227,9 +228,6 @@ def scan_status(input_path: str, full_validation: bool = False) -> dict[str, Any
     return _scan_status(_path(input_path, "input"), full_validation=full_validation)
 
 
-_DETAIL_SENSITIVE_HEADERS = frozenset(
-    {"authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key", "x-auth-token"}
-)
 _DETAIL_PAGE_URL_FIELDS = frozenset(
     {"canonical", "redirect_url", "final_url", "og_image", "og_url", "meta_refresh", "http_refresh"}
 )
@@ -287,7 +285,7 @@ def _detail_headers(value: Any, label: str) -> list[list[str]]:
         ):
             raise ValueError(f"{label} are not valid retained header pairs")
         name, header_value = pair
-        if name.lower() in _DETAIL_SENSITIVE_HEADERS:
+        if name.lower() in SENSITIVE_HEADER_NAMES:
             safe.append(["X-SEOHEAD-Redacted-Headers", name.lower()])
         else:
             safe.append([name, _detail_url(header_value)])
