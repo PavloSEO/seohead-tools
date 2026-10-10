@@ -999,6 +999,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         ignore_scheme: bool = False,
         casefold_path: bool = False,
         out_urls: str | None = None,
+        visits_column: str | None = None,
+        bounce_column: str | None = None,
     ) -> dict[str, Any]:
         """Join an existing audit or scan to an offline URL-keyed CSV without a
         provider call. Matched rows retain both page and external data; crawl-only,
@@ -1014,6 +1016,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 ignore_scheme=ignore_scheme,
                 casefold_path=casefold_path,
                 out_urls=out_urls,
+                visits_column=visits_column,
+                bounce_column=bounce_column,
             )
         )
 
@@ -2364,11 +2368,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     @mcp.tool(annotations=submit, structured_output=True)
     def seo_provider_auth(
         provider: str,
-        action: Literal["status", "connect", "refresh", "disconnect", "revoke"] = "status",
+        action: Literal[
+            "status", "connect", "refresh", "cancel", "disconnect", "revoke"
+        ] = "status",
         grant_file: str | None = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
-        """Manage GSC read-only OAuth grants: import private file, refresh, or explicitly revoke. Never returns secrets."""
+        """Manage GSC read-only OAuth grants: import private file, refresh, cancel a pending flow, or explicitly revoke. Never returns secrets."""
         return _checked(
             handlers.provider_auth(
                 provider=provider, action=action, grant_file=grant_file, confirm=confirm
@@ -2770,6 +2776,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         selector: str | None = None,
         case_sensitive: bool = False,
         include_snippets: bool = False,
+        kind: Literal["literal", "regex"] = "literal",
     ) -> dict[str, Any]:
         """Search one closed retained scan offline and create an indexed local NDJSON package.
 
@@ -2777,6 +2784,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         separate requests; a missing body remains unavailable rather than an
         absence. It returns only source identity, counts and output paths.
         ``include_snippets`` is opt-in and redacts common credential-shaped values.
+        ``kind="regex"`` treats ``query`` as a regular expression; a document
+        that exceeds the per-document regex budget is unavailable, not absent.
         """
         return _checked(
             handlers.scan_content_search(
@@ -2789,6 +2798,7 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 selector=selector,
                 case_sensitive=case_sensitive,
                 include_snippets=include_snippets,
+                kind=kind,
             )
         )
 

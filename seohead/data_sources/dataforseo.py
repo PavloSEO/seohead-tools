@@ -25,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 
-from seohead.data_sources import spend
+from seohead.data_sources import spend, spend_gate
 from seohead.data_sources.credentials import (
     MissingCredential,
     dataforseo_login,
@@ -500,6 +500,7 @@ def backlinks_summary(
     account_eligible: bool = False,
     production_approved: bool = False,
     cost_approved: bool = False,
+    confirm_paid: bool = False,
     spend_ceiling_usd: float | None = None,
     cache_key: str | None = None,
     env: str | None = None,
@@ -509,7 +510,8 @@ def backlinks_summary(
 
     The adapter is deliberately disabled until the operator records account eligibility, an
     approved production/cost decision, and a local cache key.  It returns a bounded summary,
-    never an unbounded backlink export.
+    never an unbounded backlink export.  Each call is billed, so it also needs
+    ``confirm_paid=True``; the check runs before any client or request is created.
     """
     if not target:
         raise ValueError("target required")
@@ -536,6 +538,9 @@ def backlinks_summary(
         not isinstance(spend_ceiling_usd, (int, float)) or spend_ceiling_usd < 0
     ):
         raise ValueError("spend_ceiling_usd must be a non-negative number")
+    refusal = spend_gate.confirmation_required(confirm_paid, "backlinks_summary")
+    if refusal is not None:
+        return refusal
     try:
         source = client or DataForSEOClient(env=requested_env)
         items, errors, cost, failed = _run(

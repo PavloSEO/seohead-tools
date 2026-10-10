@@ -320,10 +320,11 @@ formula. JSON and XML retain the original values without these escapes.
 
 Records stream from the validated storage iterators; neither format builds a
 second in-memory copy of the scan. XLSX uses openpyxl's write-only workbook and
-refuses rather than truncates when data exceeds Excel's limits: 1,048,576 rows
-or 16,384 columns per sheet, or 32,767 characters per cell. Workbook splitting
-is not implemented; it is #759's scope, like finding filters, segment
-selection, and an export index manifest. CSV and XLSX encode formula-leading
+XLSX splits records into numbered sheets at 1,048,575 data rows each (the
+1,048,576 limit includes the header) and lists each sheet's record ranges on a
+Partitions sheet. It refuses rather than truncates when a sheet would exceed
+16,384 columns or a cell exceeds 32,767 characters. Finding filters, segment
+selection, and an export index manifest remain open scope (#759). CSV and XLSX encode formula-leading
 cell text safely (CWE-1236); JSON and XML carry raw retained values.
 
 ## Offline reanalysis
@@ -408,7 +409,7 @@ unknown/newer versions and missing required fields rather than guessing.
 
 Raw HTTP entities, decoded documents, and rendered DOM are distinct evidence. A
 rendered DOM never substitutes for raw HTTP bytes. The legacy importer retains no
-bodies. Native G captures fetched HTML entity bytes and separately captured DOM
+bodies. Native capture fetched HTML entity bytes and separately captured DOM
 bytes when rendering provides them, with SHA-256 deduplication and `identity` or
 `zlib` level-6 storage (compression is used only when smaller). A body record is
 consistency evidence, not a signature or an anti-tampering claim.
@@ -979,7 +980,7 @@ rendered DOM, JavaScript and CSS bodies remain unavailable.
 
 #### SQL graph profile
 
-The E profiler constructs a deterministic 10,000-page native-writer fixture
+The SQL graph profiler (scripts/profile_scan_graph.py) constructs a deterministic 10,000-page native-writer fixture
 with classified `content`/`footer` links and a complete 10,000-member selected
 expanded root. Build, graph, and sitemap readers run in separate
 subprocesses, so graph/sitemap RSS does not inherit fixture-construction RSS.
@@ -1004,8 +1005,8 @@ analyzer, report, body, or arbitrary-site capacity claim.
 
 ### Saved-scan analysis and report capacity
 
-Run `python scripts/profile_scan_analysis.py --pages 10000` for the full F
-profile. It uses complete synthetic PageRecords and a balanced graph at
+Run `python scripts/profile_scan_analysis.py --pages 10000` for the full saved-scan
+analysis profile. It uses complete synthetic PageRecords and a balanced graph at
 300,000 and 1,500,000 links. Only collection and the sitemap protocol request
 are injected: the whole stage runs CLI dispatch, saves the native audit,
 reopens the file, and creates a Markdown report. Separate subprocesses measure
@@ -1127,7 +1128,7 @@ The current native lanes use these versioned context rows:
 | `resource_commit` / `resource:<ordinal>` | `{"digest":lowercase_sha256,"requests_used":nonnegative_integer}`. |
 | `sitemap_declaration` / `ordinal:<root_ordinal>` | `{"sitemap_url_id":positive_integer,"source":"explicit or robots","ordinal":nonnegative_integer}`. This names one selected expanded root, including its nested sitemap indexes. |
 | `sitemap_declared_url` / `sitemap:<sitemap_url_id>:ordinal:<global_ordinal>` | `{"sitemap_url_id":positive_integer,"url_id":positive_integer,"ordinal":nonnegative_integer}`. `ordinal` is run-wide post-expansion normalization/deduplication order across roots, never a direct XML-line claim. |
-| `sitemap_fetch_summary` / `url:<sitemap_url_id>` | `{"sitemap_url_id":positive_integer,"response_ids":[positive_integer],"complete":boolean,"reason":string}`. Current E capture has `response_ids: []`; response provenance belongs to the later response/body lane. |
+| `sitemap_fetch_summary` / `url:<sitemap_url_id>` | `{"sitemap_url_id":positive_integer,"response_ids":[positive_integer],"complete":boolean,"reason":string}`. Current sitemap-fetch capture has `response_ids: []`; response provenance belongs to the later response/body lane. |
 
 Unknown context kinds/keys and extra payload fields are refused. A robots context
 references this scan's URL and measured policy; `native_commit` belongs to a done

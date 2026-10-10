@@ -8,8 +8,10 @@ provider or paid API is used.
 
 ## Stable release gate
 
-The stable CLI/MCP crawler and remote submission schema share a **50,000-URL**
-ceiling. Larger live requests fail explicitly; scope is never silently reduced.
+The stable CLI/MCP crawler, remote submission schema and workers share a
+**1,000,000-URL** admission ceiling (`MAX_URLS_CEILING`). Larger live requests fail
+explicitly; scope is never silently reduced. The 50,000 limit
+(`MAX_MATERIALIZED_URLS`) applies only to legacy eager list APIs.
 The separate request ceiling remains 2,000,000, and operational remote project
 defaults remain 10,000 URLs and 20,000 requests.
 
@@ -66,18 +68,18 @@ storage survived, but finalization did not pass.
 
 ## Current admission boundary
 
-The effective crawler configuration refuses `limits.max_urls > 50,000` before
+The effective crawler configuration refuses `limits.max_urls > 1,000,000` before
 creating a scan. `NativeScan.create` and `NativeScan.inspect` both validate that
-configuration. Consequently, 100k and 1M cannot yet pass the real writer's
-build/reopen/recovery stages. This harness records their refusal; it does not
+configuration. The 50,000 ceiling that blocked 100k and 1M in the 1a5825b run is
+historical; current native admission uses the 1,000,000 ceiling. This harness
+records any refusal; it does not
 monkeypatch the cap, seed raw SQL rows into an operational artifact, or claim a
 million-page result from an unrelated SQLite table. The optional
 `--experimental-synthetic` flag requests the separately versioned
 `storage.capacity_profile=experimental_synthetic` gate proposed in #818. A
 build without that implementation still refuses the request. The marker is
 recorded in scan configuration/fingerprint, admits only a direct synthetic
-NativeScan writer/reader, and never makes public crawl collectors accept more
-than 50k. Even when admission passes, this profile must still prove every stage
+NativeScan writer/reader, and live crawl collectors reject it. Even when admission passes, this profile must still prove every stage
 within its declared budgets before any capacity claim.
 
 Existing `docs/SQLITE_ACCEPTANCE.md` also records a 64 MiB saved-audit limit and
@@ -108,7 +110,7 @@ outside the public repository.
 | 50k sparse partial: read / inspect / snapshot / integrity | 43,264 rows readable and structurally valid; snapshot saved; integrity and foreign keys `ok`. Capture is **not finished** | 1.983 / 1.338 / 3.396 / 0.124 s | 236.94 / 234.41 / 247.27 / 228.36 MiB | snapshot 24,240,128 B |
 | 50k dense: build, 3 links/page, 4 KiB HTML + 4 KiB DOM | **blocked** at 900 s, 12,032/50,000 pages; lifecycle `running` | 900 s ceiling | unreported for blocked process | 84,025,344 B retained DB |
 | 50k dense partial: read / inspect / snapshot / integrity | 12,032 rows readable and structurally valid; snapshot saved; integrity and foreign keys `ok`. Capture is **not finished** | 10.982 / 13.014 / 19.632 / 0.116 s | 236.72 / 233.48 / 247.16 / 228.36 MiB | snapshot 84,025,344 B |
-| 100k and 1M admission | **blocked** before artifact creation by the stable 50k crawler-config ceiling | — | — | none |
+| 100k and 1M admission (historical, revision 1a5825b) | **blocked** before artifact creation by the then-50k crawler-config ceiling; current ceiling is 1,000,000 | — | — | none |
 
 The 50k process-loss exercise proves that committed rows survived and the writer
 continued from 25,000 to 43,264 pages. It does **not** prove completed recovery
@@ -129,7 +131,7 @@ The following is an exploratory run against the unmerged #818 storage commit
 `19919c86c6dc7e0cc4502452a292fd71f11368eb40abbd9b4e0bac953147f862`.
 Both checkouts were clean. The stored configuration includes
 `storage.capacity_profile=experimental_synthetic`; public crawl collectors still
-refuse this marker and retain the stable 50k guard. The 100k run used the same
+refuse this marker. The 100k run used the same
 900 s / 2048 MiB / 8192 MiB / 32768 MiB resource limits as above. A separate
 **admission-only** 1M probe declared a 120 s wall limit before starting. The
 host was shared with other agents and tests: two read-only samples had load
@@ -174,7 +176,7 @@ contained 1,000,000 frontier rows and 1,000,000 committed page records with
 
 The final scan was 535 MiB. This confirms sparse metadata storage, snapshot,
 readback, and crash/reopen recovery at one million records. It does **not**
-raise the public 50,000-URL crawl ceiling or establish one-million-page live
+change the native crawl admission ceiling (1,000,000 URLs) or establish one-million-page live
 crawling, link density, retained HTML/DOM, audit/report, or concurrent-reader
 capacity. Those claims remain separate acceptance work.
 

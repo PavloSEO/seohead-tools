@@ -60,7 +60,12 @@ seohead project progress --directory ./example-project --limit 20 --offset 0
 ```
 
 The directory contains `project.json`, `scans/`, `reports/`, `log.md`, and, after
-the first saved view, `finding-views.json`.
+the first saved view, `finding-views.json`, and, after the first event, `events.jsonl`.
+`events.jsonl` is the structured project log: one JSON line per event with a sequence,
+UTC time, source (`agent`, `user`, `scans`, `app`), actor (`user`, `agent`, `schedule`) and
+bounded text. It is append-only, read newest-first in pages of at most 200 with source and
+text filters, and refuses malformed lines instead of skipping them. `log.md` stays the
+human narrative.
 `project.json` records format `seohead.project.v1`, integer version 1, a persistent
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.

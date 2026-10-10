@@ -1045,7 +1045,15 @@ def _resolve_redirect_destination(
                 else {}
             ),
         )
-        chain.append({"url": hop.url, "status_code": hop.status_code, "error": hop.error})
+        chain.append(
+            {
+                "url": hop.url,
+                "status_code": hop.status_code,
+                "location": hop.redirect_url,
+                "response_time": hop.response_time,
+                "error": hop.error,
+            }
+        )
         record.final_url = hop.url
         if not hop.redirect_url:
             break
@@ -1109,6 +1117,7 @@ def _resolve_canonical_destination(
                 "url": hop.url,
                 "status_code": hop.status_code,
                 "canonical": hop.canonical,
+                "response_time": hop.response_time,
                 "error": hop.error,
             }
         )
