@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 170 callable tools,
+The current registry has 163 commands and 172 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -147,6 +147,7 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-checklist-record` | Validate and record supplied evidence for one item with an expected revision; does not execute it | no |
 | `project-view-list` / `project-view-show` | List saved finding views or retrieve one with stable identity and schema/config revisions | no |
 | `project-view-save` | Create or revise a closed declarative finding view using an expected config revision | writes project view configuration |
+| `project-view-delete` / `project-view-rename` | Delete or rename a saved finding view using the expected config revision; leaves scans and scores untouched | writes project view configuration |
 | `findings-view` | Apply a saved view to audit JSON or a validated scan.v1 artifact; return a bounded stable page with explicit counts | no |
 | `project-priorities` | Preview saved-fact work order; an explicit expected-revision apply preserves operator decisions and never changes technical severity | no |
 | `project-policy` | Preview or explicitly save the bounded crawl/admission policy; applying it requires the current policy revision | no |
@@ -764,7 +765,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (161 + 5 + 4):
+`seo_semantics_*` tools (163 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio

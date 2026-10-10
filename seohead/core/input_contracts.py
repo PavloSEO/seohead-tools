@@ -662,6 +662,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "expected_revision", note="Required; use 0 for the first saved view."),
     ),
     _command(
+        "project-view-delete",
+        "project_view_delete",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+        _form("selector", "expected_revision", note="Required; current view config revision."),
+    ),
+    _command(
+        "project-view-rename",
+        "project_view_rename",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+        _form("selector", "new_name"),
+        _form("selector", "expected_revision", note="Required; current view config revision."),
+    ),
+    _command(
         "findings-view",
         "findings_view",
         _form("project_directory", "directory"),

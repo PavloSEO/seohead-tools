@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**161 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 170 in total.
+**163 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 172 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -1986,6 +1986,46 @@ Create or revise a bounded declarative finding view using an expected config rev
 Filters are closed severity/check/URL/segment selections. Sorting and column projection
 use registered fields only; no SQL, code, or regular expressions are accepted. This
 changes project view configuration only; it does not edit scans or affect scores/tasks.
+
+### `project-view-delete`
+
+MCP name: `seo_project_view_delete`
+
+Delete one saved finding view using the current project view-config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+Changes project view configuration only; it does not edit scans or affect scores/tasks.
+
+### `project-view-rename`
+
+MCP name: `seo_project_view_rename`
+
+Rename one saved finding view using the current project view-config revision.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `name` | `str` | `required` |
+| `new_name` | `str` | `required` |
+| `expected_revision` | `int` | `required` |
+| `consumer` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Keeps the view definition; the new name must be unused. Changes project view configuration
+only; it does not edit scans or affect scores/tasks.
 
 ### `findings-view`
 

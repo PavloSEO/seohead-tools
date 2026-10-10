@@ -154,6 +154,8 @@ COMMANDS = (
     "project-view-list",
     "project-view-show",
     "project-view-save",
+    "project-view-delete",
+    "project-view-rename",
     "findings-view",
     "project-policy",
     "project-prepare",
@@ -891,6 +893,10 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = getattr(args, name)
     elif cmd == "project-view-save":
         for name in ("directory", "expected_revision"):
+            if getattr(args, name, None) is not None:
+                kw[name] = getattr(args, name)
+    elif cmd in {"project-view-delete", "project-view-rename"}:
+        for name in ("directory", "name", "new_name", "expected_revision"):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
     elif cmd == "findings-view":
@@ -2295,10 +2301,25 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             type=int,
             help="current checklist revision required before a write",
         )
-    if cmd in {"project-view-list", "project-view-show", "project-view-save"}:
+    if cmd in {
+        "project-view-list",
+        "project-view-show",
+        "project-view-save",
+        "project-view-delete",
+        "project-view-rename",
+    }:
         _source_flag(sub, "--directory", help="validated local project workspace")
-    if cmd == "project-view-show":
+    if cmd in {"project-view-show", "project-view-delete", "project-view-rename"}:
         sub.add_argument("--name", help="saved finding view name")
+    if cmd == "project-view-rename":
+        sub.add_argument("--new-name", dest="new_name", help="new finding view name")
+    if cmd in {"project-view-delete", "project-view-rename"}:
+        sub.add_argument(
+            "--expected-revision",
+            dest="expected_revision",
+            type=int,
+            help="current project view config revision",
+        )
     if cmd == "project-view-save":
         sub.add_argument(
             "--expected-revision",
@@ -2708,6 +2729,8 @@ def build_parser() -> argparse.ArgumentParser:
         "view-list",
         "view-show",
         "view-save",
+        "view-delete",
+        "view-rename",
         "policy",
         "prepare",
         "start",

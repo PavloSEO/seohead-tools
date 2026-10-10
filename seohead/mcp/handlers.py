@@ -4930,6 +4930,20 @@ def project_view_save(directory: str, view: dict, expected_revision: int) -> dic
     return core(directory, view, expected_revision)
 
 
+def project_view_delete(directory: str, name: str, expected_revision: int) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_delete as core
+
+    return core(directory, name, expected_revision)
+
+
+def project_view_rename(
+    directory: str, name: str, new_name: str, expected_revision: int
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_rename as core
+
+    return core(directory, name, new_name, expected_revision)
+
+
 def findings_view(directory: str, name: str, audit: Any, offset: int = 0) -> dict[str, Any]:
     from seohead.projects.finding_views import apply_view_to_audit
     from seohead.storage.inputs import resolve_audit_input
@@ -6120,6 +6134,8 @@ _RAW_HANDLERS = {
     "project_view_list": project_view_list,
     "project_view_show": project_view_show,
     "project_view_save": project_view_save,
+    "project_view_delete": project_view_delete,
+    "project_view_rename": project_view_rename,
     "findings_view": findings_view,
     "inspect_url": inspect_url,
     "audit_workflow": audit_workflow,

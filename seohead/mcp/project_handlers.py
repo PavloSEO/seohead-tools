@@ -231,6 +231,20 @@ def project_view_save(directory: str, view: dict, expected_revision: int) -> dic
     return save_view(directory, view, expected_revision=expected_revision)
 
 
+def project_view_delete(directory: str, name: str, expected_revision: int) -> dict[str, Any]:
+    from seohead.projects.finding_views import delete_view
+
+    return delete_view(directory, name, expected_revision=expected_revision)
+
+
+def project_view_rename(
+    directory: str, name: str, new_name: str, expected_revision: int
+) -> dict[str, Any]:
+    from seohead.projects.finding_views import rename_view
+
+    return rename_view(directory, name, new_name, expected_revision=expected_revision)
+
+
 def project_priorities(
     directory: str,
     policy: dict | None = None,

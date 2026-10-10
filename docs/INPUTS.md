@@ -130,6 +130,8 @@ and this decision makes no backend migration.
 | `project-view-list` | Project directory (`directory`) | — |
 | `project-view-show` | Project directory (`directory`)<br>Selector (`name`) | — |
 | `project-view-save` | Project directory (`directory`)<br>Inline JSON (`view`)<br>Selector (`expected_revision`) | Required; use 0 for the first saved view. |
+| `project-view-delete` | Project directory (`directory`)<br>Selector (`name`)<br>Selector (`expected_revision`) | Required; current view config revision. |
+| `project-view-rename` | Project directory (`directory`)<br>Selector (`name`)<br>Selector (`new_name`)<br>Selector (`expected_revision`) | Required; current view config revision. |
 | `findings-view` | Project directory (`directory`)<br>Selector (`name`)<br>Audit document (`audit`)<br>Selector (`offset`) | Audit JSON, inline audit object, or retained scan.v1.; Optional stable finding-view page offset. |
 | `project-priorities` | Project directory (`directory`)<br>Inline JSON (`policy`) | Optional data-only priority policy; preview by default. Apply requires expected_revision. |
 | `project-policy` | Project directory (`directory`)<br>Inline JSON (`policy`) | Optional data-only policy; preview by default. Apply requires expected_revision. |
