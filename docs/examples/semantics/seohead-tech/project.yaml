@@ -1,0 +1,14 @@
+# Synthetic example semantic core for seohead.tech (no real search-console data).
+db: sya.db
+seeds_file: seeds.txt
+regions: [225]
+min_base: 20
+reexpand_floor: 300
+max_depth: 2
+num: 300
+preset: seo
+anchor_words: [seo, сайт, сайта]
+exact_cut_base: 20
+exact_cut_exact: 10
+serp_overlap: 3
+budget_arsenkin_gate: 200
