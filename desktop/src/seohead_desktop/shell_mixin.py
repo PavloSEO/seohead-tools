@@ -56,7 +56,10 @@ class ShellMixin:
             page = QWidget()
             layout = QVBoxLayout(page)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+            if view == "graph":  # the layouts need paged core edges around a URL or section (core issue 975)
+                layout.addWidget(StatePanel("waiting", "Граф ссылок", "Раскладки графа строятся по постраничным данным ядра. Граф вокруг страницы или раздела ядро пока не отдаёт.", issue=975))
+            else:
+                layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
 

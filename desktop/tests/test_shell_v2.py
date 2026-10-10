@@ -167,8 +167,11 @@ class ShellV2Tests(unittest.TestCase):
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
             panel = page.findChild(StatePanel)
-            self.assertEqual(panel.title.text(), "Раздел готовится")
+            self.assertEqual(panel.title.text(), "Граф ссылок" if section == "graph" else "Раздел готовится")
             self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+            if section == "graph":
+                self.assertEqual(panel.kind, "waiting")
+                self.assertEqual(panel.issue_label.property("waiting_issue"), 975)
 
     def test_items_that_need_a_project_are_locked_until_one_is_open(self):
         from seohead_desktop.ui.shell import ROLE_LOCKED
