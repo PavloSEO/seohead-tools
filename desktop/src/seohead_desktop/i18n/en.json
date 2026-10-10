@@ -2096,5 +2096,20 @@
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
  "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
- "Раскладки графа строятся по постраничным данным ядра. Граф вокруг страницы или раздела ядро пока не отдаёт.": "Layouts are built from the core's paged data. The core does not yet return the graph around a page or section."
+ "Раскладки графа строятся по постраничным данным ядра. Граф вокруг страницы или раздела ядро пока не отдаёт.": "Layouts are built from the core's paged data. The core does not yet return the graph around a page or section.",
+ "Расписание": "Schedule",
+ "Расписания проекта: список, повтор, профиль, следующий и последний запуск, история запусков": "Project schedules: list, repeat, profile, next and last run, run history",
+ "Повтор": "Repeat",
+ "Следующий запуск": "Next run",
+ "Последний": "Last",
+ "Вкл.": "On",
+ "запуски по профилю проекта": "runs by the project profile",
+ "Расписания": "Schedules",
+ "История запусков · 14 дней": "Run history · 14 days",
+ "Новое расписание": "New schedule",
+ "Расписаний пока нет": "No schedules yet",
+ "Список расписаний проекта появится, когда ядро начнёт его хранить.": "The project schedule list appears when the core starts storing it.",
+ "Запуски по расписанию появятся вместе с расписаниями.": "Scheduled runs appear together with the schedules.",
+ "Расписаний в ядре пока нет.": "The core has no schedules yet.",
+ "Ничего не запускается по расписанию. Список и история появятся вместе с расписаниями в ядре.": "Nothing runs on a schedule. The list and history appear together with schedules in the core."
 }
