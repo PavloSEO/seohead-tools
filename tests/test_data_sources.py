@@ -2481,6 +2481,11 @@ def test_dataforseo_network_error_does_not_retry_and_logs_the_lost_attempt(monke
     assert rows[0]["source"] == "dataforseo"
     assert rows[0]["cost"] == 0.0
     assert rows[0]["extra"]["attempt_failed"] == "network_error"
+    # A lost response proves nothing about the charge: it must not count as a measured zero.
+    assert rows[0]["extra"]["cost_unknown"] is True
+    report = spend.report()
+    assert "dataforseo" not in report["by_source"]
+    assert len(report["uncertain"]) == 1
 
 
 def test_dataforseo_malformed_response_still_creates_a_receipt(monkeypatch, journal):
