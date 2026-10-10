@@ -2097,5 +2097,13 @@
  "добавить {key}": "add {key}",
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
- "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed."
+ "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
+ "Размер сканов каждого проекта на диске": "Size of scans per project on disk",
+ "Недоступно в этой версии ядра\nПоявится: Размер сканов каждого проекта на диске": "Unavailable in this core version\nWill appear: Size of scans per project on disk",
+ "Исходник страницы недоступен": "Page source is unavailable",
+ "Сохранённое тело страницы ядро по одному URL пока не отдаёт: строки, подсветка и поиск появятся после этого.": "The core does not yet return the saved page body per URL: lines, highlighting and search will appear after that.",
+ "Сохранённое тело": "Saved body",
+ "Представление HTML": "HTML view",
+ "Исходный": "Raw HTML",
+ "После рендеринга JS": "After JS rendering"
 }
