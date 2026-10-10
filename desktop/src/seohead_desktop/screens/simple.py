@@ -23,15 +23,14 @@ from PyQt5.QtWidgets import (
 from .. import i18n
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
-from ..ui.kit import Kpi, StatePanel, no_project_panel, waiting_badge
+from ..ui.kit import Kpi, StatePanel, clear_layout, no_project_panel, show_empty, waiting_badge
 from .base import Screen
+from .scan_common import number
 from .work import (
     RowsModel,
     build_table,
-    clear_layout,
     is_open,
     local_stamp,
-    number,
     progress_numbers,
     project_names,
     project_state,
@@ -301,24 +300,16 @@ class SimpleScreen(Screen):
         super().resizeEvent(event)
         self._layout_grids()
 
-    def _show_empty(self, panel):
-        clear_layout(self.empty_holder)
-        margin = 24 if panel is not None else 0
-        self.empty_holder.setContentsMargins(margin, margin, margin, margin)
-        if panel is not None:
-            self.empty_holder.addWidget(panel)
-        self.content.setVisible(panel is None)
-
     def refresh(self):
         host = self.host
         status, _text = project_state(host)
         if status == "none":
-            self._show_empty(no_project_panel(host, "Откройте проект, чтобы увидеть сканы и задачи"))
+            show_empty(self.empty_holder, self.content, no_project_panel(host, "Откройте проект, чтобы увидеть сканы и задачи"))
             return
         if status == "loading":
-            self._show_empty(StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
+            show_empty(self.empty_holder, self.content, StatePanel("loading", "Загрузка проекта…", "Читаем сохранённые данные проекта из ядра"))
             return
-        self._show_empty(None)
+        show_empty(self.empty_holder, self.content, None)
         self._layout_grids(force=True)
         label, site = project_names(host)
         self.eyebrow.setText(" · ".join(part for part in (label, site) if part) or tr("Проект"))
