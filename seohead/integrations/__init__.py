@@ -1,1 +1,1 @@
-"""Optional integrations outside the CLI and MCP core: guided bot and remote job API."""
+"""Optional integrations outside the CLI and MCP core: remote job API."""
