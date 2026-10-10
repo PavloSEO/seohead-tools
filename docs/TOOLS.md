@@ -38,25 +38,26 @@ and inputs remain in the nearby route sections and generated tool reference.
 `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
 `monitor-run` · `monitor-schedule` · `monitor-status` · `parse` · `project-activity` ·
 `project-checklist-init` · `project-checklist-page` · `project-checklist-record` · `project-checklist-update`
-· `project-event-append` · `project-event-page` · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
-`project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
-`project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
-`project-priorities` · `project-progress` · `project-scans` · `project-sources-link` · `project-sources-list` · `project-sources-unlink` · `project-start` · `project-status` ·
-`project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
-`provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
-`provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
-`regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` ·
-`remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
-`robots-check` · `scan-body-diff` · `scan-content-search` · `scan-content-search-page` · `scan-evidence` ·
-`scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
-`scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
-`scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
-`scan-url-query` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
-`semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` ·
-`skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status`
-· `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
-`wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` ·
-`workflow-start` · `workflow-status`
+· `project-event-append` · `project-event-page` · `project-facts` · `project-inbox-acknowledge` ·
+`project-inbox-goal` · `project-inbox-list` · `project-inbox-read` · `project-inbox-submit` ·
+`project-inbox-triage` · `project-inbox-unread` · `project-new` · `project-observe` · `project-open` ·
+`project-policy` · `project-prepare` · `project-priorities` · `project-progress` · `project-scans` ·
+`project-sources-link` · `project-sources-list` · `project-sources-unlink` · `project-start` ·
+`project-status` · `project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` ·
+`provider-auth` · `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` ·
+`provider-replay` · `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` ·
+`regions-check` · `regions-tree` · `remediation-cases` · `remediation-recheck` ·
+`remediation-record-verification` · `remediation-report` · `remediation-summary` · `remediation-transition` ·
+`render-check` · `report-build` · `robots-check` · `scan-body-diff` · `scan-content-search` ·
+`scan-content-search-page` · `scan-evidence` · `scan-export` · `scan-extract` · `scan-fragment-links` ·
+`scan-import-urls` · `scan-inspect` · `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` ·
+`scan-prune` · `scan-reanalyze` · `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` ·
+`scan-url-detail` · `scan-url-query` · `scenario-show` · `schema-build` · `schema-check` · `security-check` ·
+`segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` ·
+`skill-list` · `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` ·
+`sources-status` · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` ·
+`verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` ·
+`workflow-resume` · `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
 ## Offline bounded comparison
 
