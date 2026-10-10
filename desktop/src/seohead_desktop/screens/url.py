@@ -583,9 +583,6 @@ class UrlScreen(Screen):
         self.foot_text.setProperty("text_style", "meta")
         foot_layout.addWidget(self.foot_text)
         foot_layout.addStretch(1)
-        self.speed = QLabel()
-        self.speed.setProperty("text_style", "meta")
-        foot_layout.addWidget(self.speed)
         self.prev = tool_button("chevron_left", "Предыдущая страница")
         self.next = tool_button("chevron_right", "Следующая страница")
         self.page_label = QLabel()
@@ -665,7 +662,6 @@ class UrlScreen(Screen):
         self._layout_panels()
 
     def _apply_columns(self):
-        self.speed.setVisible(self.table.width() >= 640)
         side = self.side_layout
         wanted = [c for c in range(len(COLUMNS)) if c not in self.user_hidden and (not side or c in SIDE_COLUMNS)]
         width = self.table.viewport().width() or self.width()
@@ -830,7 +826,7 @@ class UrlScreen(Screen):
         self.rows = payload.get("rows") or []
         self.total = payload.get("total") if type(payload.get("total")) is int else None
         self.filtered = payload.get("filtered_total") if payload.get("filtered_total_state") == "exact" else None
-        self.speed.setText(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
+        self.foot_text.setToolTip(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
         if payload.get("state") == "partial":
             self.note.setText(tr("Ядро остановило обход по времени: показаны первые строки, найденные к этому моменту."))
             self.note.show()
@@ -871,7 +867,7 @@ class UrlScreen(Screen):
         self._set_table_state(panel)
         self._clear_detail()
         self._update_footer()
-        self.speed.setText("")
+        self.foot_text.setToolTip("")
         self.page_label.setText("")
         self.prev.setEnabled(False)
         self.next.setEnabled(False)
