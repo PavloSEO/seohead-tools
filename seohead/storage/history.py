@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from seohead.core import filesystem
+from seohead.core.sqlite import open_readonly
 
 from . import (
     APPLICATION_ID,
@@ -132,13 +133,17 @@ def _metadata_connection(path: Path, *, allow_native_v2: bool = False) -> sqlite
     """Validate identity/schema and bound metadata work without reading bodies."""
     _runtime()
     before = _regular(path)
-    con = sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, timeout=5)
+    con = open_readonly(
+        path.absolute(),
+        row_factory=sqlite3.Row,
+        pragmas=(
+            "PRAGMA trusted_schema=OFF",
+            "PRAGMA query_only=ON",
+            "PRAGMA cache_size=-8192",
+            "PRAGMA temp_store=FILE",
+        ),
+    )
     try:
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        con.execute("PRAGMA cache_size=-8192")
-        con.execute("PRAGMA temp_store=FILE")
         deadline = time.monotonic() + 5
         con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
         con.execute("BEGIN")
