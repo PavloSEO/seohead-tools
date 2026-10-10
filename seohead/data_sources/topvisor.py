@@ -8,6 +8,7 @@ import urllib.request
 from typing import Any
 
 from seohead.data_sources.credentials import read
+from seohead.data_sources.http import open_no_redirect
 
 SOURCE = "topvisor"
 
@@ -31,11 +32,6 @@ _PAGE_META = ("nextOffset", "total", "limitedBy")
 
 class TopvisorError(RuntimeError):
     """Redacted provider or transport error."""
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise TopvisorError("Topvisor redirect refused; credentials were not forwarded")
 
 
 def fetch(operation: str = "projects", params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -82,7 +78,7 @@ def fetch(operation: str = "projects", params: dict[str, Any] | None = None) -> 
         method="POST",
     )
     try:
-        with urllib.request.build_opener(_NoRedirect()).open(request, timeout=30) as response:
+        with open_no_redirect(request, timeout=30) as response:
             raw = response.read(10_000_001)
         if len(raw) > 10_000_000:
             raise TopvisorError("Response exceeded 10 MB; request fewer rows or fields")

@@ -23,6 +23,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from seohead.data_sources.http import open_no_redirect
+
 HOST = "https://api.indexnow.org/indexnow"
 TIMEOUT = 30
 MAX_URLS_PER_BATCH = 10_000
@@ -60,7 +62,7 @@ def _default_fetcher(payload: dict[str, Any]) -> tuple[int, str]:
     try:
         # The request URL is the fixed HTTPS IndexNow endpoint; the key travels only in the
         # POST body the protocol itself requires, never in the URL.
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # nosec B310
+        with open_no_redirect(request, timeout=TIMEOUT) as response:
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode("utf-8", "replace")

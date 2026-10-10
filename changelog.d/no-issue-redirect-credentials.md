@@ -1,0 +1,1 @@
+- Credential-bearing provider requests (Arsenkin, Metrika, Yandex Cloud, IndexNow, Topvisor, BI destinations) no longer follow HTTP redirects, so an Authorization header is never re-sent to another host. A redirect now surfaces as a provider HTTP error.

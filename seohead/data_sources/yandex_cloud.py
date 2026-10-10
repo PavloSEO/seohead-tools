@@ -37,6 +37,7 @@ from typing import Any
 
 from seohead.data_sources import spend
 from seohead.data_sources.credentials import yandex_cloud_api_key, yandex_cloud_folder_id
+from seohead.data_sources.http import open_no_redirect
 
 HOST = "https://searchapi.api.cloud.yandex.net"
 OPERATIONS = "https://operation.api.cloud.yandex.net/operations"
@@ -102,9 +103,7 @@ class _Base:
             request = urllib.request.Request(url, data=data, method=method, headers=headers)
             try:
                 # The request URL is built from the fixed HTTPS provider base.
-                with urllib.request.urlopen(  # nosec B310
-                    request, timeout=45, context=self.context
-                ) as response:
+                with open_no_redirect(request, timeout=45, context=self.context) as response:
                     try:
                         parsed = json.loads(response.read().decode("utf-8"))
                     except ValueError:

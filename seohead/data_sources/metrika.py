@@ -40,6 +40,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from seohead.data_sources import spend
 from seohead.data_sources.credentials import metrika_token
+from seohead.data_sources.http import open_no_redirect
 
 API_BASE = "https://api-metrika.yandex.net"
 API_MANAGEMENT = "management/v1"
@@ -103,7 +104,7 @@ class MetrikaClient:
             )
             try:
                 # The request URL is built from the fixed HTTPS provider base.
-                with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # nosec B310
+                with open_no_redirect(request, timeout=TIMEOUT) as response:
                     body = response.read().decode("utf-8", "replace")
                     return body if raw else json.loads(body)
             except urllib.error.HTTPError as exc:

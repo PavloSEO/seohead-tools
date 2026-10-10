@@ -2548,7 +2548,7 @@ def test_arsenkin_set_task_network_error_does_not_retry_and_logs_the_lost_attemp
         calls.append(request)
         raise urllib.error.URLError("simulated network failure")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     client = arsenkin.ArsenkinClient(
         token="test-token", limiter=arsenkin.RateLimiter(max_calls=100)
@@ -2573,7 +2573,7 @@ def test_arsenkin_read_only_endpoint_still_retries_on_network_error(monkeypatch)
         calls.append(request)
         raise urllib.error.URLError("still failing, just proving a retry was attempted")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(arsenkin, "open_no_redirect", fake_urlopen)
 
     client = arsenkin.ArsenkinClient(
         token="test-token", limiter=arsenkin.RateLimiter(max_calls=100)
@@ -2593,7 +2593,7 @@ def test_yandex_cloud_wordstat_top_network_error_does_not_retry_and_logs_the_los
         calls.append(request)
         raise urllib.error.URLError("simulated network failure")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     client = yandex_cloud.Wordstat(api_key="test-key", folder_id="test-folder")
     with pytest.raises(yandex_cloud.NetworkAmbiguousError):
@@ -2615,7 +2615,7 @@ def test_yandex_cloud_websearch_submit_network_error_does_not_retry_and_logs_the
         calls.append(request)
         raise urllib.error.URLError("simulated network failure")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     client = yandex_cloud.WebSearch(api_key="test-key", folder_id="test-folder")
     with pytest.raises(yandex_cloud.NetworkAmbiguousError):
@@ -2639,7 +2639,7 @@ def test_yandex_cloud_search_batch_isolates_a_lost_response_from_the_rest_of_the
             raise urllib.error.URLError("simulated network failure")
         return _FakeSearchAsyncResponse(f"op-{len(calls)}")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     client = yandex_cloud.WebSearch(api_key="test-key", folder_id="test-folder")
     results = client.search_batch(["alpha", "beta", "gamma"], timeout=0)
@@ -2680,7 +2680,7 @@ def test_yandex_cloud_search_batch_reports_a_rejected_submission_as_an_error_not
     def fake_urlopen(request, timeout=None, context=None):
         raise _make_http_error(400, '{"message": "invalid query"}')
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     client = yandex_cloud.WebSearch(api_key="test-key", folder_id="test-folder")
     results = client.search_batch(["synthetic invalid query"], timeout=0)
@@ -2704,7 +2704,7 @@ def test_serp_fetch_never_calls_a_rejected_query_billed(monkeypatch, journal):
     def fake_urlopen(request, timeout=None, context=None):
         raise _make_http_error(400, '{"message": "invalid query"}')
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
     real_websearch = yandex_cloud.WebSearch
     monkeypatch.setattr(
         yandex_cloud,
@@ -2736,7 +2736,7 @@ def test_yandex_cloud_search_batch_dedupes_exact_duplicate_queries_before_billin
             return _FakeOperationDoneResponse("https://example.com/", "result")
         return _FakeSearchAsyncResponse("only-operation")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
     monkeypatch.setattr(yandex_cloud.time, "sleep", lambda _seconds: None)
 
     client = yandex_cloud.WebSearch(api_key="test-key", folder_id="test-folder")
@@ -2762,7 +2762,7 @@ def test_serp_fetch_reconciles_requested_and_returned_for_duplicate_queries(monk
             return _FakeOperationDoneResponse("https://example.com/", "result")
         return _FakeSearchAsyncResponse("only-operation")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
     monkeypatch.setattr(yandex_cloud.time, "sleep", lambda _seconds: None)
     real_websearch = yandex_cloud.WebSearch
     monkeypatch.setattr(
