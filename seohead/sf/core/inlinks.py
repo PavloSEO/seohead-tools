@@ -1311,7 +1311,7 @@ def _internal_hyperlink_records(
     return kept
 
 
-def _click_depth_seed(ctx: AuditContext) -> tuple[str | None, str]:
+def click_depth_seed(ctx: AuditContext) -> tuple[str | None, str]:
     """The URL the click-depth walk starts from, or the reason there is none.
 
     The crawl's own recorded start URL is the only trustworthy seed. Crawl Depth 0
@@ -1417,7 +1417,7 @@ def check_internal_link_graph(ctx: AuditContext) -> None:
     That check reads Screaming Frog's own Crawl Depth column to pick a seed and
     flags anything past ``crawl_depth_max``, the same budget ``DEEP_CRAWL_DEPTH``
     uses. This one refuses to start unless the run recorded where the crawl
-    actually began (see ``_click_depth_seed``), and its floor is the separate,
+    actually began (see ``click_depth_seed``), and its floor is the separate,
     coarser ``click_depth_max`` -- the depth past which navigation has stopped
     reaching a page at all, rather than the depth past which a site's own budget
     is exceeded.
@@ -1490,22 +1490,34 @@ def _duplicate_groups_from_records(records: list[dict[str, Any]], max_repeats: i
         )
 
 
+def open_click_depth_session(ctx: AuditContext, graph) -> tuple[Any, str | None, str]:
+    """Begin the followed-graph walk from the crawl's start: ``(session, seed, reason)``.
+
+    ``session`` is None, with ``reason`` set, when there is nothing to walk.
+    """
+    seed, reason = click_depth_seed(ctx)
+    if seed is None:
+        return None, None, reason
+    session = graph.begin_paths(seed)
+    if session is None:
+        return None, seed, "all_inlinks export has no internal hyperlinks"
+    return session, seed, ""
+
+
 def _measure_click_depth(ctx: AuditContext, records, graph, floor: int) -> dict[str, Any]:
     """Walk the followed internal graph from the start URL; emit and describe."""
-    seed, reason = _click_depth_seed(ctx)
-    if seed is None:
-        ctx.skip("DEEP_CLICK_DEPTH", reason)
-        return unmeasured(reason)
-    page_keys = ctx.html_page_keys()
     if graph is not None:
-        session = graph.begin_paths(seed)
+        session, seed, reason = open_click_depth_session(ctx, graph)
         if session is None:
-            reason = "all_inlinks export has no internal hyperlinks"
             ctx.skip("DEEP_CLICK_DEPTH", reason)
             return unmeasured(reason)
         depths = session.depth_for
         _emit_deep_click_depth(ctx, depths, floor, session.path_to, seed, compact_routes=True)
     else:
+        seed, reason = click_depth_seed(ctx)
+        if seed is None:
+            ctx.skip("DEEP_CLICK_DEPTH", reason)
+            return unmeasured(reason)
         edges = _internal_hyperlink_edges(records, _site_host(ctx))
         if not edges:
             reason = "all_inlinks export has no internal followed hyperlinks"
@@ -1520,7 +1532,7 @@ def _measure_click_depth(ctx: AuditContext, records, graph, floor: int) -> dict[
     seed_page = ctx.page_by_norm.get(seed)
     return summarize_depth(
         depths,
-        page_keys,
+        ctx.html_page_keys(),
         seed=seed_page.url if seed_page is not None else seed,
         floor=floor,
     )
