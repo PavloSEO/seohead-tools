@@ -890,6 +890,14 @@ def record_execution(
                 "revision": document["revision"] + 1,
             }
         )
+    from .journal import note
+
+    note(
+        directory,
+        source="agent",
+        actor="agent",
+        text=f"checklist {item_id}: {record.get('status')}",
+    )
     return coverage_status(directory)
 
 

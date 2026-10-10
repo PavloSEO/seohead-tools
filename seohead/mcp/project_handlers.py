@@ -149,9 +149,9 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
 
 
 def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
-    from seohead.projects.event_log import append
+    from seohead.projects.journal import record
 
-    return append(directory, source=source, actor=actor, text=text)
+    return record(directory, source=source, actor=actor, text=text)
 
 
 def project_event_page(
