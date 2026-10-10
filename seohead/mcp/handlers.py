@@ -4903,6 +4903,24 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return core(directory, consumer=consumer, limit=limit)
 
 
+def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_append as core
+
+    return core(directory, source=source, actor=actor, text=text)
+
+
+def project_event_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    source: str | None = None,
+    query: str = "",
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_page as core
+
+    return core(directory, offset=offset, limit=limit, source=source, query=query)
+
+
 def project_observe(
     directory: str,
     consumer: str | None = None,
@@ -6164,6 +6182,8 @@ _RAW_HANDLERS = {
     "project_inbox_goal": project_inbox_goal,
     "project_inbox_triage": project_inbox_triage,
     "project_inbox_unread": project_inbox_unread,
+    "project_event_append": project_event_append,
+    "project_event_page": project_event_page,
     "project_observe": project_observe,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,

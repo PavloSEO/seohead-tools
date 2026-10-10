@@ -574,6 +574,19 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("project_directory", "directory"),
         _form("selector", "consumer", "limit"),
     ),
+    _command(
+        "project-event-append",
+        "project_event_append",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "actor"),
+        _form("inline_text", "text"),
+    ),
+    _command(
+        "project-event-page",
+        "project_event_page",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "offset", "limit", "query"),
+    ),
     _command("remediation-summary", "remediation_summary", _form("local_file", "ledger")),
     _command(
         "remediation-cases",

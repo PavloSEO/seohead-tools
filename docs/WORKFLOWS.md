@@ -59,6 +59,8 @@ The inbox records the specialist's intent and the agent's explicit decisions abo
 | `project-inbox-submit` | Store a `note` or a `proposed_goal` (up to 8,000 characters) with optional references such as `task:…`, `scan:…`, `finding:…`. Starts no work. |
 | `project-inbox-list` | Read a page of entries for a named `consumer`; reading does not mark anything read. |
 | `project-inbox-unread` | Bounded unread summary for one consumer; does not change delivery state. |
+| `project-event-append` | Append one structured project event; it records text and executes nothing. |
+| `project-event-page` | Read a newest-first page of project events, filtered by source or text. |
 | `project-inbox-read` | Record that a consumer inspected specific entries. |
 | `project-inbox-acknowledge` | Record an explicit acknowledgment. It never accepts or completes a goal. |
 | `project-inbox-goal` | Move a proposed goal to `accepted` or `completed` (completion requires acceptance first). Launches nothing. |
