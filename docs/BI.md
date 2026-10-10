@@ -94,7 +94,7 @@ up to 16 GiB for that full local package. `bi-export` hashes a native scan in a 
 populated representative million-page database is not silently treated as a small 4 GiB source.
 Providers and total output retain separate hard budgets:
 for a large scan, normalized provider evidence must first be saved with
-`evidence-join --scan ... --out-dir ./private-evidence`. The command writes a versioned
+`evidence-join --scan <scan.sqlite> --evidence <evidence.json> --out-dir ./private-evidence`. The command writes a versioned
 `seohead.evidence-join-sqlite.v1` artifact in that directory and returns its filename and
 content hash. It stores page rows, provider rows, and each provider-row-to-URL provenance edge
 in separate SQLite tables; it never stores a full matched/crawl-only JSON population. Pass that
