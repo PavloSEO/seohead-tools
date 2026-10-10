@@ -2097,5 +2097,17 @@
  "добавить {key}": "add {key}",
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
- "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed."
+ "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
+ "Инструмент": "Tool",
+ "Инструмент не выбран": "No tool selected",
+ "Выберите инструмент в каталоге: его параметры и команда появятся здесь.": "Pick a tool in the catalogue: its parameters and command appear here.",
+ "Проверка hreflang": "hreflang check",
+ "сеть": "network",
+ "Пакетный режим (список URL, скан проекта) и опции проверки пока не работают в приложении.": "Batch mode (URL list, project scan) and check options do not work in the app yet.",
+ "Команда": "Command",
+ "Результат появится после запуска": "The result appears after the run",
+ "Запуск из приложения ждёт ядра. Команду можно выполнить в терминале или через MCP-агента.": "Running from the app waits for the core. Run the command in a terminal or through an MCP agent.",
+ "Агент вызывает то же самое по MCP-инструменту с этим именем.": "An agent calls the same through the MCP tool with this name.",
+ "Запуск из приложения": "Running from the app",
+ "Запуск инструмента из приложения, пакетный режим по списку URL и по скану, результат на экране": "Running a tool from the app, batch mode over a URL list and a scan, the result on screen"
 }
