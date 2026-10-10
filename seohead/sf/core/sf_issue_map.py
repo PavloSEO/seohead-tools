@@ -272,10 +272,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Pagination Loop", "PAGINATION_LOOP"),
         _p(
             "Sequence Error",
-            "only a run that increments by one somewhere is judged: a series with a stride, "
-            "or one whose URLs do not state a page number, is left unevaluated rather than "
-            "reported against a numbering we would have had to invent -- and is then named, "
-            "with the reason true of that series, among the run's skipped checks",
+            "a run that increments by one, or a stride that one step covers most of, is "
+            "judged; an irregular offset scheme, or one whose URLs do not state a page number, "
+            "is left unevaluated rather than reported against a numbering we would have had to "
+            "invent -- and is then named, with the reason true of that series, among the run's "
+            "skipped checks",
             "PAGINATION_SEQUENCE_ERROR",
         ),
         _c("Non-Indexable", "PAGINATION_NONINDEXABLE"),
