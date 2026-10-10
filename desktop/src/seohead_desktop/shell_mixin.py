@@ -52,11 +52,16 @@ class ShellMixin:
         placeholder_layout.setContentsMargins(0, 0, 0, 0)
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
+        from .screens.crawler import CrawlerScreen
+
         for view in ("crawler", "methods", "graph"):
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+            if view == "crawler":
+                page = CrawlerScreen()
+            else:
+                page = QWidget()
+                layout = QVBoxLayout(page)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
 
@@ -99,6 +104,7 @@ class ShellMixin:
         """26 px bar: transient messages on the left, source / display mode / core on the right."""
         bar = self.statusBar()
         bar.setSizeGripEnabled(False)
+        bar.setContentsMargins(0, 0, 12, 0)  # the core label is no longer flush against the window edge
         self.source_badge = ElidedLabel("Проект не открыт")
         self.source_badge.setObjectName("sourceBadge")
         self.source_badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
