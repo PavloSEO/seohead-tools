@@ -163,6 +163,7 @@ COMMANDS = (
     "project-start",
     "skill-list",
     "skill-show",
+    "scenario-list",
     "scenario-show",
     "provider-replay",
     "provider-auth",

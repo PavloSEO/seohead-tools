@@ -140,6 +140,8 @@ and this decision makes no backend migration.
 | `project-start` | Project directory (`directory`)<br>Live URL (`target`)<br>Inline JSON (`facts`)<br>Inline JSON (`template`)<br>Inline JSON (`competitors`) | Optional supplied project facts.; Optional data-only project template.; Optional bounded competitor inputs. |
 | `skill-list` | No direct input | — |
 | `skill-show` | Selector (`name`) | — |
+| `scenario-list` | No direct input | — |
+| `scenario-list` | No direct input | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
 | `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |

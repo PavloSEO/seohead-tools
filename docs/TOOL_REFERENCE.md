@@ -2154,6 +2154,16 @@ Return a packaged skill's exact text and definition identity.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `scenario-list`
+
+MCP name: `seo_scenario_list`
+
+List the packaged workflow scenarios with their ordered steps, without running them.
+
+Takes no arguments.
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `scenario-show`
 
 MCP name: `seo_scenario_show`

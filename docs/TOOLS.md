@@ -51,7 +51,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
 `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
 `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
-`scan-url-query` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
+`scan-url-query` · `scenario-list` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
 `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` ·
 `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status`
 · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
@@ -185,6 +185,7 @@ missing definitions are explicitly unavailable. The view schema itself does not 
 | Command | What it does | Network |
 |---|---|---|
 | `skill-list`, `skill-show` | List or retrieve one addressable packaged skill playbook; showing a playbook does not execute it | no |
+| `scenario-list` | List packaged workflow scenarios with their ordered steps, without executing them | no |
 | `scenario-show` | Retrieve one addressable packaged scenario without executing its steps | no |
 | `inspect-url` | Runs a bounded selection of metadata, headers, robots, redirects, structured-data, and render checks for one URL; representations and indexing outcomes remain separate | yes when selected checks read the target |
 | `audit-workflow` | Closed project action router: status, start, prepare, or report; it does not accept arbitrary handler names | depends on action |

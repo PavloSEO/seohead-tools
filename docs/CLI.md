@@ -255,6 +255,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `tool-catalog` | Search complete source-derived tool metadata and load argument details only on request. | offline, read-only |
 | `skill-list` | List the packaged, source-derived method playbooks without executing them. | offline, read-only |
 | `skill-show` | Return a packaged skill's exact text and definition identity. | offline, read-only |
+| `scenario-list` | List the packaged workflow scenarios with their ordered steps, without running them. | offline, read-only |
 | `scenario-show` | Return a packaged workflow scenario's text without running its commands. | offline, read-only |
 | `log-scan` | Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to… | offline, read-only |
 
