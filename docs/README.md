@@ -154,6 +154,25 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 - [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) defines participation standards.
 - [CITATION.cff](../CITATION.cff) provides versioned citation metadata.
 
+### Maintenance and generator scripts
+
+Run from the repository root with the venv Python. Each script's docstring and `--help` are the
+authority; this list only says what it is for.
+
+- `scripts/generate_project_catalogue.py` rewrites the packaged project coverage catalogue
+  (`seohead/data/project_catalogue.json`) from repository sources. `--check` fails when it is stale.
+- `scripts/generate_registry_inventory.py` synchronizes the registry counts and generated command
+  inventory in [TOOLS.md](TOOLS.md) and [SKILLS.md](SKILLS.md). It leaves hand-written route prose
+  alone. `--check` fails when either file is stale.
+- `scripts/render_readme_visuals.py` renders the README images under `.github/assets/` from the
+  committed examples and registries. The images are documentation artifacts, not a product UI.
+- `scripts/linux_lifecycle_smoke.py` runs in CI (`.github/workflows/ci.yml`). It exercises a clean
+  Linux source install, upgrade, rollback, and a local JavaScript scan.
+- `scripts/capacity_watchdog.py` supervises one owned capacity stage and keeps its retained
+  evidence. It is an operator tool for large-run acceptance, not part of CI.
+- `scripts/profile_million_audit.py` profiles audit assembly over a completed synthetic native
+  capture. It needs the scan path and `--pages`; `--streaming` selects the streaming path.
+
 ## Documentation must not lie silently
 
 Nobody recounts the numbers in prose by hand, so `tests/test_docs_drift.py`
