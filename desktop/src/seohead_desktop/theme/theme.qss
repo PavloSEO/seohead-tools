@@ -174,8 +174,10 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* settings rows, key-value */
 QFrame[set_row="true"] { border: 0; border-bottom: 1px solid $divider_inner; background: transparent; }
 QFrame[set_row="true"] QLabel { background: transparent; }
-QLabel[kv="key"] { padding: 7px 0; border-bottom: 1px solid $divider_inner; }
+QLabel[kv="key"] { padding: 7px 16px 7px 0; border-bottom: 1px solid $divider_inner; }
 QLabel[kv="value"] { padding: 6px 0; border-bottom: 1px solid $divider_inner; }
+/* about: licence rows (canvas SetAbout .li) */
+QFrame[li="true"] { border: 0; border-bottom: 1px solid $divider_inner; background: transparent; }
 QLabel[text_style="control"] { font-size: ${font_control}px; font-weight: 500; }
 QFrame[segmented="true"] { background: $raised; border-radius: 10px; border: 0; }
 QToolButton[segment="true"] { height: 30px; padding: 0 12px; border-radius: ${radius_control}px; background: transparent; color: $text_2; font-weight: 500; border: 1px solid transparent; }

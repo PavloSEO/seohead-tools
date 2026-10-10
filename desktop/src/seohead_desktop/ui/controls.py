@@ -190,7 +190,7 @@ class KeyValue(QWidget):
         super().__init__(parent)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(16)
+        grid.setHorizontalSpacing(0)  # gap lives in the key padding so each row's divider runs unbroken
         grid.setVerticalSpacing(0)
         grid.setColumnMinimumWidth(0, 148)
         grid.setColumnStretch(1, 1)
