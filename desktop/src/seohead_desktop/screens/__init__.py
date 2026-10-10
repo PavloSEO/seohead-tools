@@ -30,6 +30,8 @@ def install_screens(window):
         window._legacy_pages[slot] = legacy
         window.pages.insertWidget(index, screen)
         window.screens[slot] = screen
+        if slot == "reports":
+            screen.export_requested.connect(lambda dataset, fmt, owner=screen: window.export_selected_scan(dataset, fmt, owner))
     window.extra_screens = getattr(window, "extra_screens", {})
     for name, target in EXTRAS.items():
         module, _, cls = target.partition(":")

@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from importlib import metadata
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint, QTimer
 from PyQt5.QtGui import QKeySequence, QPalette
@@ -23,11 +24,14 @@ from PyQt5.QtWidgets import (
 )
 
 from . import i18n, shortcuts, theming
+from .export_service import FORMATS as EXPORT_FORMATS
+from .export_service import RECORDS as EXPORT_RECORDS
+from .export_service import ExportService, output_name
 from .screens.scan_common import parse_time
 from .source_service import SourceService
 from .ui.controls import Segmented
 from .ui.icons import material_icon as icon
-from .ui.presentation import ElidedLabel
+from .ui.presentation import ElidedLabel, short_run_id
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
 from .ui.shell import NUMBERED_SECTIONS
@@ -317,6 +321,20 @@ class ShellMixin:
         if getattr(self, "source_service", None) is None or self.source_service.executable != self.core_executable:
             self.source_service = SourceService(self.core_executable, self)
         self.source_service.request(operation, callback, on_error, owner, **kwargs)
+
+    def export_selected_scan(self, dataset, fmt, owner):
+        """«Экспорт и отчёты»: the window's selected scan goes to ``seohead scan-export`` on a worker. The owner screen
+        gets export_started / export_done / export_failed; nothing is written outside the project's exports folder."""
+        scan = next((row for row in self.scan_model.rows if row.get("path") == self.selected_scan_path), None)
+        if not self.project_directory or scan is None or dataset not in EXPORT_RECORDS or fmt not in EXPORT_FORMATS:
+            owner.export_failed("Выберите скан и формат экспорта")
+            return
+        if getattr(self, "export_service", None) is None or self.export_service.executable != self.core_executable:
+            self.export_service = ExportService(self.core_executable, self)
+        name = output_name(dataset, short_run_id(scan.get("uuid")), fmt)
+        owner.export_started(name)
+        self.export_service.request(scan["path"], str(Path(self.project_directory) / "exports"), name, fmt,
+                                    EXPORT_RECORDS[dataset], owner.export_done, owner.export_failed, owner)
 
     def settings_context(self):
         return SettingsContext(core_executable=self.core_executable, project_directory=self.project_directory,

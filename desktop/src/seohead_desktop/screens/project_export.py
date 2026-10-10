@@ -2,13 +2,14 @@
 
 The sheet's three columns are kept: dataset and format, columns, folder and run. The dataset list comes from the
 selected scan; the page reads nothing itself. The core's ``scan_export.v1`` covers pages (URL table) and findings in
-CSV, XLSX, JSON and XML. Not connected in this build, shown as the neutral waiting state instead of a sample: the
-PDF report, compare and task exports, the column catalogue, the run button and the list of earlier exports.
+CSV, XLSX, JSON and XML. «Экспортировать» emits a request; the window runs seohead scan-export on a worker and the
+screen shows progress and the written path. Not connected in this build, shown as the neutral waiting state instead of
+a sample: the PDF report, compare and task exports, the column catalogue and the list of earlier exports.
 """
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -16,6 +17,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -24,6 +26,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from ..export_service import output_name
 from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import StatePanel, no_project_panel
@@ -40,6 +43,7 @@ DATASETS = (
     ("compare", "compare_arrows", "Сравнение", None),
     ("tasks", "checklist", "Задачи", None),
 )
+DATASETS_BY_ID = {row[0]: row for row in DATASETS}
 FORMATS = (("csv", "CSV", "CSV: отдельный файл на каждый тип записи"),
            ("xlsx", "XLSX", "XLSX: книга Excel"),
            ("json", "JSON", "JSON: построчно, для скриптов и агентов"),
@@ -94,11 +98,13 @@ def meta(text=""):
 class ProjExportScreen(Screen):
     slot = "reports"
     watches = ("project", "scans", "scan_status")
+    export_requested = pyqtSignal(str, str)  # (dataset id, format); the window runs it through the core
 
     def __init__(self, host):
         super().__init__(host)
         self.dataset = "url"
         self.fmt = "xlsx"
+        self.busy = False
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -213,8 +219,16 @@ class ProjExportScreen(Screen):
         self.run.setProperty("role", "primary")
         self.run.setIcon(material_icon("download"))
         self.run.setEnabled(False)
-        self.run.setToolTip(tr("Запуск экспорта из приложения пока не подключён"))
+        self.run.clicked.connect(self._request_export)
         box.addWidget(self.run)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)  # the core runs as one process: busy indicator, no percentage
+        self.progress.setTextVisible(False)
+        self.progress.setVisible(False)
+        box.addWidget(self.progress)
+        self.result = meta()
+        self.result.setAccessibleName(tr("Результат экспорта"))
+        box.addWidget(self.result)
         layout.addWidget(frame)
         history, history_box = card("Недавние экспорты", "history")
         history_box.addWidget(StatePanel("waiting", "Журнал экспортов пока недоступен",
@@ -231,7 +245,30 @@ class ProjExportScreen(Screen):
         self.fmt = key
         self.refresh()
 
+    def _request_export(self):
+        if not self.busy:
+            self.export_requested.emit(self.dataset, self.fmt)
+
+    def export_started(self, name):
+        self.busy = True
+        self.progress.setVisible(True)
+        self.result.setText(trf("Экспорт выполняется: {name}", name=name))
+        self.refresh()
+
+    def export_done(self, outcome):
+        self.busy = False
+        self.progress.setVisible(False)
+        self.result.setText(trf("Готово: {files}", files="\n".join(outcome["files"])))
+        self.refresh()
+
+    def export_failed(self, message):
+        self.busy = False
+        self.progress.setVisible(False)
+        self.result.setText(trf("Экспорт не выполнен: {reason}", reason=tr(message)))
+        self.refresh()
+
     def refresh(self):
+        self.run.setEnabled(False)
         if not self.project_open:
             self.scan_meta.setText("")
             self.stack.setCurrentWidget(self.no_project)
@@ -254,6 +291,9 @@ class ProjExportScreen(Screen):
         for key, _label, _hint in FORMATS:
             self.format_buttons[key].setChecked(key == self.fmt)
         self.format_hint.setText(tr(next(hint for key, _label, hint in FORMATS if key == self.fmt)))
-        name = f"{self.dataset}_{short_run_id(scan.get('uuid'))}.{self.fmt}"
+        name = output_name(self.dataset, short_run_id(scan.get("uuid")), self.fmt)
         self.folder.setText(f"{self.host.project_directory}/exports")
         self.file_name.setText(f"{tr('Файл')}: {name}")
+        exportable = DATASETS_BY_ID[self.dataset][3] is not None
+        self.run.setEnabled(exportable and not self.busy)
+        self.run.setToolTip(tr("Выгрузить выбранный скан через ядро") if exportable else tr(UNAVAILABLE))
