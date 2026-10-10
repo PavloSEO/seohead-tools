@@ -2095,5 +2095,22 @@
  "добавить {key}": "add {key}",
  "Бэкап: {path}": "Backup: {path}",
  "MCP прописан: {clients}": "MCP registered: {clients}",
- "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed."
+ "Восстановить конфиг клиента из последнего проверенного бэкапа? Запись SEOHEAD будет убрана.": "Restore the client config from the latest verified backup? The SEOHEAD entry will be removed.",
+ "Основное": "Basics",
+ "Цели проекта": "Project goals",
+ "Участники": "Members",
+ "Опасная зона": "Danger zone",
+ "Расписание": "Schedule",
+ "Название проекта": "Project name",
+ "Хост сайта": "Site host",
+ "Профиль скана по умолчанию": "Default scan profile",
+ "Цели проекта ядро пока не хранит": "The core does not store project goals yet",
+ "Удаление проекта из приложения, с сохранением файлов в Корзине": "Deleting the project from the app, with files moved to the Trash",
+ "Удалить проект": "Delete project",
+ "Расписание появится, когда ядро начнёт его хранить": "The schedule appears once the core stores it",
+ "Экспорт настроек проекта появится позже": "Project export settings will appear later",
+ "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
+ "Проект локальный: участников нет.": "The project is local: no members.",
+ "проект хранится локально": "the project is stored locally",
+ "Источники": "Sources"
 }
