@@ -16,6 +16,7 @@ import argparse
 import contextlib
 import json
 import sys
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -2770,6 +2771,19 @@ def build_parser() -> argparse.ArgumentParser:
         cmd = "project-" + action
         sp = project_subs.add_parser(action, help=f"run {cmd}")
         _add_flags(sp, cmd)
+    project_archive = project_subs.add_parser(
+        "archive", help="write a portable project archive zip (no credentials)"
+    )
+    project_archive.add_argument("--project", dest="project_dir", required=True)
+    project_archive.add_argument("--out", required=True, help="new archive file path")
+    project_archive.add_argument(
+        "--dry-run", action="store_true", help="report files and size estimate; write nothing"
+    )
+    project_restore = project_subs.add_parser(
+        "restore", help="restore a project archive into a new directory"
+    )
+    project_restore.add_argument("archive_file", metavar="ARCHIVE")
+    project_restore.add_argument("--to", dest="to_dir", required=True, help="new project path")
     skill = subs.add_parser("skill", help="packaged method playbooks")
     skill_actions = skill.add_subparsers(dest="skill_command", required=True)
     for action in ("list", "show"):
@@ -2934,6 +2948,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.profile is None and not args.no_progress:
             return mcp_main()
         return mcp_main(profile=args.profile, progress_notifications=not args.no_progress)
+    if cmd == "project-archive":
+        from seohead.projects.archive import archive_project
+
+        try:
+            result = archive_project(args.project_dir, args.out, dry_run=args.dry_run)
+        except ValueError as exc:
+            result = {"ok": False, "error": str(exc)}
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
+    if cmd == "project-restore":
+        from seohead.projects.archive import restore_project
+
+        try:
+            result = restore_project(args.archive_file, args.to_dir)
+        except (ValueError, OSError, zipfile.BadZipFile, KeyError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
     if cmd in INTERACTIVE_COMMANDS:
         try:
             from seohead.tui.app import run as tui_run
