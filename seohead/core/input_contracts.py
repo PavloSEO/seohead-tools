@@ -487,6 +487,23 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("live_url", "target"),
     ),
     _command("project-open", "project_open", _form("project_directory", "directory")),
+    _command(
+        "project-sources-link",
+        "project_sources_link",
+        _form("project_directory", "directory"),
+        note="Binds a provider resource ID (--service, --resource, optional --label) to the project in sources.json; no network.",
+    ),
+    _command(
+        "project-sources-unlink",
+        "project_sources_unlink",
+        _form("project_directory", "directory"),
+        note="Removes one (--service, --resource) binding from sources.json; no network.",
+    ),
+    _command(
+        "project-sources-list",
+        "project_sources_list",
+        _form("project_directory", "directory"),
+    ),
     _command("project-status", "project_status", _form("project_directory", "directory")),
     _command(
         "project-progress",

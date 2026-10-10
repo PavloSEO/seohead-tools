@@ -107,6 +107,9 @@ and this decision makes no backend migration.
 | `scan-list` | Local directory (`directory`)<br>Project directory (`project`) | — |
 | `project-new` | Project directory (`directory`)<br>Live URL (`target`) | — |
 | `project-open` | Project directory (`directory`) | — |
+| `project-sources-link` | Project directory (`directory`) | Binds a provider resource ID (--service, --resource, optional --label) to the project in sources.json; no network. |
+| `project-sources-unlink` | Project directory (`directory`) | Removes one (--service, --resource) binding from sources.json; no network. |
+| `project-sources-list` | Project directory (`directory`) | — |
 | `project-status` | Project directory (`directory`) | — |
 | `project-progress` | Project directory (`directory`)<br>Inline JSON (`limit, offset`) | Optional bounded progress pagination. |
 | `project-observe` | Project directory (`directory`)<br>Selector (`consumer`)<br>Inline JSON (`scan_limit`)<br>Inline JSON (`run_offset, run_limit`) | Optional scoped unread-notice recipient.; Bounded retained scan-history page.; Per-site terminal run page; all stored running records remain visible. |

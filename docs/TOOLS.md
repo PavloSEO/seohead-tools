@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 161 commands and 170 callable tools,
+The current registry has 164 commands and 173 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -41,7 +41,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
 `project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
 `project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
-`project-priorities` · `project-progress` · `project-scans` · `project-start` · `project-status` ·
+`project-priorities` · `project-progress` · `project-scans` · `project-sources-link` · `project-sources-list` · `project-sources-unlink` · `project-start` · `project-status` ·
 `project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
 `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
 `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
@@ -140,6 +140,9 @@ not the geographic region `key`; `summary` takes the singular `region_index`.
 | `project-new` | Create a portable local project with site facts and custom template/profile references; does not execute a checklist | no |
 | `project-open` | Validate and open a saved project without rewriting it | no |
 | `project-status` | Show scan history and explicit pending checklist/preparation states | no |
+| `project-sources-link` | Bind a provider resource ID (`--service`, `--resource`, optional `--label`) to a project in `sources.json`; no provider call or discovery | no |
+| `project-sources-unlink` | Remove one `(service, resource)` binding from `sources.json` | no |
+| `project-sources-list` | List the project's resource bindings with `status: selected` | no |
 | `project-progress` | Show a compact, bounded page of checklist states and next actions; any percentage is explicitly labelled audit-task completion and requires an agreed scope | no |
 | `project-facts` | Preview or record the project's stack facts; `--detect` fetches the target once after robots.txt, and an unavailable or ambiguous detection leaves the fact absent with its reason | only with `--detect` |
 | `project-checklist-init` | Initialize or reconcile a local checklist from the built-in catalogue, an optional data-only template, and an optional agreed scope `plan` that fixes the URL-population and task denominators; does not execute items | no |
@@ -766,7 +769,7 @@ turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl
 `--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (161 + 5 + 4):
+`seo_semantics_*` tools (164 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio

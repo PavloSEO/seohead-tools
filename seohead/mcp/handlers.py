@@ -4465,6 +4465,26 @@ def project_status(directory: str, consumer: str | None = None) -> dict[str, Any
     return project_basic_status(directory, consumer=consumer)
 
 
+def project_sources_link(
+    directory: str, service: str, resource: str, label: str | None = None
+) -> dict[str, Any]:
+    from seohead.projects.bindings import link
+
+    return link(directory, service, resource, label=label)
+
+
+def project_sources_unlink(directory: str, service: str, resource: str) -> dict[str, Any]:
+    from seohead.projects.bindings import unlink
+
+    return unlink(directory, service, resource)
+
+
+def project_sources_list(directory: str) -> dict[str, Any]:
+    from seohead.projects.bindings import list_bindings
+
+    return list_bindings(directory)
+
+
 def project_progress(
     directory: str, limit: int = 20, offset: int = 0, consumer: str | None = None
 ) -> dict[str, Any]:
@@ -6116,6 +6136,9 @@ _RAW_HANDLERS = {
     "project_new": project_new,
     "project_open": project_open,
     "project_status": project_status,
+    "project_sources_link": project_sources_link,
+    "project_sources_unlink": project_sources_unlink,
+    "project_sources_list": project_sources_list,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
     "workflow_start": workflow_start,
