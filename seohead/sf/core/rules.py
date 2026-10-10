@@ -2786,6 +2786,44 @@ def check_og(ctx: AuditContext) -> None:
         ctx.add("OG_MISSING", target_url=page.url, details={"missing_tags": missing})
 
 
+def check_native_image_resources(ctx: AuditContext) -> None:
+    """IMG_BROKEN: an <img> whose fetched target answered 4xx/5xx.
+
+    Reads the native crawl's resource graph (resource_graph_occurrences joined to
+    resource_graph_fetches) from the stored scan. Streams rows through the cursor,
+    so memory stays bounded. Skips honestly when no image was measured: a crawl
+    without resource capture must not read as "no broken images".
+    """
+    no_evidence = "no resource evidence (native crawl with resource capture only)"
+    con = ctx.scan_con
+    if con is None:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"resource_graph_occurrences", "resource_graph_fetches"} <= tables:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    measured = con.execute(
+        "SELECT 1 FROM resource_graph_occurrences o JOIN resource_graph_fetches f "
+        "ON f.resolved_url=o.resolved_url WHERE o.kind='image' LIMIT 1"
+    ).fetchone()
+    if measured is None:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    rows = con.execute(
+        "SELECT p.url, o.resolved_url, f.status_code FROM resource_graph_occurrences o "
+        "JOIN resource_graph_fetches f ON f.resolved_url=o.resolved_url "
+        "JOIN urls p ON p.url_id=o.page_url_id "
+        "WHERE o.kind='image' AND f.status_code>=400 ORDER BY p.url, o.resolved_url"
+    )
+    for page_url, image_url, status in rows:
+        ctx.add(
+            "IMG_BROKEN",
+            target_url=image_url,
+            details={"source_page": page_url, "status_code": status, "reason": f"HTTP {status}"},
+        )
+
+
 # Native-filter exports: emit one issue per Address when the export is present,
 # else honestly skip (no dead zeros). export key -> check id.
 _NATIVE_EXPORT_CHECKS = {
@@ -2941,6 +2979,7 @@ ALL_CHECKS = [
     check_links_extra,
     check_tech_extra,
     check_native_page_evidence,
+    check_native_image_resources,
     check_ajax_crawling_scheme,
     check_charset,
     check_doctype,
