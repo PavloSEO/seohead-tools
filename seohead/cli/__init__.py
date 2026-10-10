@@ -2886,6 +2886,22 @@ SCAN_FRAGMENT_LINKS_HELP_NOTE = (
 )
 
 
+CHECKLIST_RECORD_HELP_NOTE = """\
+--input takes {"record": {...}} with the checklist item's directory, --item-id and
+--expected-revision. Accepted record shapes (all are evidence only; nothing is executed):
+  automatic check:   {"status": "succeeded", "reason": "...", "artifact": "scans/<saved>.sqlite"}
+                     the saved scan (scan.v1 or streamed audit.v2) must prove the check ran
+  attempt:           {"status": "failed" | "unavailable" | "running", "reason": "..."}
+  manual signoff:    {"status": "succeeded", "reason": "...", "reviewer": "...", "signoff": true}
+  reviewed artifact: {"status": "succeeded", "reason": "...", "reviewer": "...",
+                      "review": "approved", "artifact": "reports/<file>"}
+                     (manual and deliverable items; deliverables take no signoff)
+  reviewed exclusion: {"status": "not_applicable", "reason": "...", "reviewer": "...",
+                      "artifact": "reports/<file>"} or "evidence": "..." instead of artifact
+artifact paths are project-relative and must lie under scans/ or reports/.
+"""
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="seohead", description="Headless Python SEO toolkit.")
     p.add_argument("--version", action="version", version=f"seohead {__version__}")
@@ -2965,7 +2981,12 @@ def build_parser() -> argparse.ArgumentParser:
         "sources-list",
     ):
         cmd = "project-" + action
-        sp = project_subs.add_parser(action, help=f"run {cmd}")
+        sp = project_subs.add_parser(
+            action,
+            help=f"run {cmd}",
+            epilog=CHECKLIST_RECORD_HELP_NOTE if cmd == "project-checklist-record" else None,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
         _add_flags(sp, cmd)
     project_archive = project_subs.add_parser(
         "archive", help="write a portable project archive zip (no credentials)"

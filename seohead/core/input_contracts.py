@@ -704,8 +704,10 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form(
             "inline_json",
             "record",
-            note="Requires expected_revision; records supplied evidence only; "
-            "not_applicable needs reason, reviewer and an evidence basis.",
+            note="Requires expected_revision; records supplied evidence only. Automatic checks "
+            "take status succeeded, reason and a saved scan artifact; manual items take a reviewer "
+            "with signoff or an approved reviewed artifact; not_applicable needs reason, reviewer "
+            "and an evidence basis.",
         ),
     ),
     _command("project-view-list", "project_view_list", _form("project_directory", "directory")),

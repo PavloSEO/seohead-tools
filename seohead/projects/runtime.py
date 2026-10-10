@@ -408,11 +408,11 @@ def prepare_project(
             relative = source.relative_to(root).as_posix()
             from seohead.storage import open_scan
 
+            from .evidence import audit_facts
+
             with contextlib.closing(open_scan(source)) as con:
                 header = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
-                audit = json.loads(
-                    con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()[0]
-                )
+                run, coverage, fired = audit_facts(source, con)
             state["steps"]["crawl"] = {
                 "state": "partial" if header["crawl_partial"] else "run",
                 "artifact": relative,
@@ -422,7 +422,7 @@ def prepare_project(
             }
             sitemap_skips = [
                 row
-                for row in audit.get("run", {}).get("checks_skipped", [])
+                for row in run.get("checks_skipped", [])
                 if str(row.get("id", "")).startswith("SITEMAP_")
             ]
             state["steps"]["sitemap"] = {
@@ -433,13 +433,10 @@ def prepare_project(
             }
             from .coverage import record_execution
 
-            executed = set(
-                audit.get("summary", {}).get("check_coverage", {}).get("checks_silent_ids", [])
-            )
-            executed.update(row.get("check") for row in audit.get("issues", []))
+            executed = set(coverage.get("checks_silent_ids", []))
+            executed.update(fired)
             unavailable = {
-                row.get("id"): row.get("reason")
-                for row in audit.get("run", {}).get("checks_skipped", [])
+                row.get("id"): row.get("reason") for row in run.get("checks_skipped", [])
             }
             recording_errors = []
             for item in coverage_status(root)["items"]:
