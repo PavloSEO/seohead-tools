@@ -50,6 +50,8 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from seohead.core.common import collapse_whitespace
+
 MODES: tuple[str, ...] = ("css", "xpath", "regex")
 OUTPUTS_BY_MODE: dict[str, tuple[str, ...]] = {
     "css": ("element", "html", "text"),
@@ -109,7 +111,7 @@ def _extract_css(html: str, selector: str, output: str) -> list[str]:
         return [_outer_html(m) for m in matches]
     if output == "html":
         return [_inner_html(m) for m in matches]
-    return [" ".join(m.get_text(" ").split()) for m in matches]
+    return [collapse_whitespace(m.get_text(" ")) for m in matches]
 
 
 def _extract_xpath(html: str, expression: str, output: str) -> list[str]:
@@ -129,7 +131,7 @@ def _extract_xpath(html: str, expression: str, output: str) -> list[str]:
         elif output == "html":
             values.append("".join(etree.tostring(c, encoding="unicode") for c in node))
         else:
-            values.append(" ".join((node.text_content() or "").split()))
+            values.append(collapse_whitespace(node.text_content() or ""))
     return values
 
 

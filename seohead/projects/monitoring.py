@@ -18,9 +18,11 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from seohead.core.common import utc_iso_z as _now
 
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
@@ -45,10 +47,6 @@ _DEFAULTS = {
     "severity_threshold": "warning",
 }
 _DEFAULT_LEASE_SECONDS = 300
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _after_interval(interval_seconds: int) -> str:
