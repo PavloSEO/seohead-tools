@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QRectF, QSize, Qt
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ... import i18n, theming
 from ...i18n import tr, trf
