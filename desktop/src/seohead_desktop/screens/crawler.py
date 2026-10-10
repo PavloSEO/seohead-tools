@@ -2,7 +2,8 @@
 
 The core cannot run a project-less crawl with a run log and per-host pacing yet (core gap #942), so the screen shows
 no addresses, counts or progress: the start control and the table are waiting states with the neutral «Недоступно»
-badge. Nothing is started from here and no sample data is shown.
+badge. Nothing is started from here and no sample data is shown. Temporary results (banner, selected address, status)
+appear only through set_temporary_results() once the core can return such a crawl; until then they stay hidden.
 """
 
 from __future__ import annotations
@@ -14,20 +15,25 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ..i18n import tr
+from .. import theming
+from ..i18n import tr, trf
 from ..ui.icons import MaterialIconLabel, material_icon
 from ..ui.kit import UNAVAILABLE, StatePanel
 
 WAITING_ISSUE = (
     942  # core gap: project-less crawl run log and per-host rate limit (code only, never shown)
 )
+COMPACT_WIDTH = 1000  # below this the toolbar moves Очистить and Сохранить как проект into the overflow menu
 CHECK_TABS = (
     "Внутренние",
     "Внешние",
@@ -75,6 +81,10 @@ COLUMNS = (
     ("Длина", 64),
     ("Глубина", 72),
 )
+COLUMN_MIN = 80  # stretch columns never shrink below this; the header scrolls sideways instead
+DEFAULT_DETAILS = "Сведения появятся, когда будет выбран адрес краула"
+DEFAULT_STATUS = "Без проекта · данные краула недоступны"
+TEMPORARY_STATUS = "Без проекта · данные во временной папке до закрытия окна"
 
 
 class CrawlerScreen(QWidget):
@@ -87,6 +97,7 @@ class CrawlerScreen(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._toolbar())
+        root.addWidget(self._temporary_note())
         root.addWidget(self._check_tabs())
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -95,6 +106,26 @@ class CrawlerScreen(QWidget):
         body.addWidget(self._overview())
         root.addLayout(body, 1)
         root.addWidget(self._status())
+        self._fit_toolbar()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_toolbar()
+
+    def set_temporary_results(self, active, selected_url=None):
+        """Show or hide the temporary-results banner, the selected address and the status text together."""
+        self._note.setVisible(active)
+        self._status_note.setText(tr(TEMPORARY_STATUS if active else DEFAULT_STATUS))
+        if active and selected_url:
+            self._details.setText(trf("Выбрано: {url}", url=selected_url))
+        else:
+            self._details.setText(tr(DEFAULT_DETAILS))
+
+    def _fit_toolbar(self):
+        compact = self.width() < COMPACT_WIDTH
+        self._clear.setVisible(not compact)
+        self._save.setVisible(not compact)
+        self._overflow.setVisible(compact)
 
     def _toolbar(self):
         bar = QFrame()
@@ -108,6 +139,7 @@ class CrawlerScreen(QWidget):
         address = QLineEdit()
         address.setPlaceholderText(tr("Адрес сайта"))
         address.setEnabled(False)
+        address.setMinimumWidth(120)
         row.addWidget(address, 1)
         segmented = QFrame()
         segmented.setProperty("segmented", "true")
@@ -131,21 +163,53 @@ class CrawlerScreen(QWidget):
         start.setIcon(material_icon("play_arrow"))
         start.setToolTip(tr(UNAVAILABLE))
         row.addWidget(start)
-        clear = QPushButton(tr("Очистить"))
-        clear.setEnabled(False)
-        row.addWidget(clear)
-        save = QPushButton(tr("Сохранить как проект"))
-        save.setToolTip(tr("Сохранять пока нечего: краул без проекта не запускается"))
-        save.setEnabled(False)
-        row.addWidget(save)
+        self._clear = QPushButton(tr("Очистить"))
+        self._clear.setEnabled(False)
+        row.addWidget(self._clear)
+        self._save = QPushButton(tr("Сохранить как проект"))
+        self._save.setToolTip(tr("Сохранять пока нечего: краул без проекта не запускается"))
+        self._save.setEnabled(False)
+        row.addWidget(self._save)
+        self._overflow = QToolButton()
+        self._overflow.setIcon(material_icon("more_horiz"))
+        self._overflow.setFixedWidth(36)
+        self._overflow.setToolTip(tr("Ещё действия"))
+        self._overflow.setPopupMode(QToolButton.InstantPopup)
+        self._overflow.setEnabled(False)
+        menu = QMenu(self._overflow)
+        for text in ("Очистить", "Сохранить как проект"):
+            menu.addAction(tr(text)).setEnabled(False)
+        self._overflow.setMenu(menu)
+        row.addWidget(self._overflow)
         return bar
+
+    def _temporary_note(self):
+        self._note = QFrame()
+        self._note.setProperty("note", "info")
+        row = QHBoxLayout(self._note)
+        row.setContentsMargins(12, 10, 12, 10)
+        row.setSpacing(10)
+        row.addWidget(MaterialIconLabel("info", 20, color=theming.roles()["text_2"]), 0, Qt.AlignTop)
+        text = QLabel(
+            trf(
+                "<b>{title}</b> {text}",
+                title="Результат временный:",
+                text="без проекта нет истории, задач и сравнения сканов. Сохраните как проект, чтобы перепроверять исправления.",
+            )
+        )
+        text.setTextFormat(Qt.RichText)
+        text.setWordWrap(True)
+        row.addWidget(text, 1)
+        self._note.setVisible(False)
+        return self._note
 
     def _check_tabs(self):
         tabs = QTabBar()
         tabs.setProperty("tabs", "underline")
         tabs.setEnabled(False)
         tabs.setExpanding(False)
-        tabs.setUsesScrollButtons(False)
+        tabs.setUsesScrollButtons(True)
+        tabs.setElideMode(Qt.ElideNone)
         for text in CHECK_TABS:
             tabs.addTab(tr(text))
         return tabs
@@ -163,11 +227,12 @@ class CrawlerScreen(QWidget):
         search = QLineEdit()
         search.setPlaceholderText(tr("Поиск в адресах…"))
         search.setEnabled(False)
-        search.setFixedWidth(260)
-        filters.addWidget(search)
-        filters.addStretch(1)
+        search.setMinimumWidth(120)
+        search.setMaximumWidth(260)
+        filters.addWidget(search, 1)
         export = QPushButton(tr("Экспорт"))
         export.setEnabled(False)
+        export.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         filters.addWidget(export)
         column.addLayout(filters)
         column.addWidget(self._table_header())
@@ -181,10 +246,10 @@ class CrawlerScreen(QWidget):
             ),
             1,
         )
-        details = QLabel(tr("Сведения появятся, когда будет выбран адрес краула"))
-        details.setProperty("text_style", "meta")
-        details.setContentsMargins(16, 10, 16, 10)
-        column.addWidget(details)
+        self._details = QLabel(tr(DEFAULT_DETAILS))
+        self._details.setProperty("text_style", "meta")
+        self._details.setContentsMargins(16, 10, 16, 10)
+        column.addWidget(self._details)
         return column
 
     def _table_header(self):
@@ -193,15 +258,27 @@ class CrawlerScreen(QWidget):
         row = QHBoxLayout(header)
         row.setContentsMargins(16, 6, 16, 6)
         row.setSpacing(8)
+        needed = 16 * 2 + 8 * (len(COLUMNS) - 1)
         for text, width in COLUMNS:
             label = QLabel(tr(text))
             label.setProperty("text_style", "overline")
             if isinstance(width, int) and width > 1:
                 label.setFixedWidth(width)
                 row.addWidget(label)
+                needed += width
             else:
+                label.setMinimumWidth(COLUMN_MIN)
                 row.addWidget(label, int(width * 10))
-        return header
+                needed += COLUMN_MIN
+        header.setMinimumWidth(needed)
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(header)
+        scroll.setFixedHeight(header.sizeHint().height() + scroll.horizontalScrollBar().sizeHint().height())
+        return scroll
 
     def _overview(self):
         panel = QFrame()
@@ -223,11 +300,11 @@ class CrawlerScreen(QWidget):
             row.addWidget(MaterialIconLabel(icon_name, 16, color="role:text_muted"))
             label = QLabel(tr(text))
             label.setEnabled(False)
-            row.addWidget(label, 1)
+            row.addWidget(label)
             count = QLabel("—")
             count.setProperty("text_style", "meta")
-            count.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             row.addWidget(count)
+            row.addStretch(1)
             column.addLayout(row)
         column.addStretch(1)
         return panel
@@ -236,7 +313,7 @@ class CrawlerScreen(QWidget):
         bar = QFrame()
         bar.setProperty("role", "status")
         row = QHBoxLayout(bar)
-        row.setContentsMargins(12, 4, 12, 4)
+        row.setContentsMargins(12, 4, 8, 4)
         row.setSpacing(20)
         state = QLabel(tr("Краул не запущен"))
         state.setProperty("badge", "mut")
@@ -246,7 +323,8 @@ class CrawlerScreen(QWidget):
             label.setProperty("text_style", "meta")
             row.addWidget(label)
         row.addStretch(1)
-        note = QLabel(tr("Без проекта · данные краула недоступны"))
-        note.setProperty("text_style", "meta")
-        row.addWidget(note)
+        self._status_note = QLabel(tr(DEFAULT_STATUS))
+        self._status_note.setProperty("text_style", "meta")
+        self._status_note.setWordWrap(True)
+        row.addWidget(self._status_note)
         return bar

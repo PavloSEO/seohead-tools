@@ -2190,5 +2190,10 @@
  "Настроить вкладки и панели": "Configure tabs and panels",
  "Без перетаскивания: ⌥↑ / ⌥↓": "Without dragging: ⌥↑ / ⌥↓",
  "Отмеченные показываются в этом порядке. Источник без данных покажет «Нет измерения», а не пустую таблицу.": "Checked tabs keep this order. A source without data shows \"No measurement\", not an empty table.",
- "Оставьте хотя бы одну видимую вкладку в каждой области.": "Keep at least one visible tab in every area."
+ "Оставьте хотя бы одну видимую вкладку в каждой области.": "Keep at least one visible tab in every area.",
+ "Результат временный:": "Temporary result:",
+ "без проекта нет истории, задач и сравнения сканов. Сохраните как проект, чтобы перепроверять исправления.": "without a project there is no history, tasks or scan comparison. Save as a project to recheck fixes.",
+ "Без проекта · данные во временной папке до закрытия окна": "No project · data in a temporary folder until the window closes",
+ "Выбрано: {url}": "Selected: {url}",
+ "Ещё действия": "More actions"
 }

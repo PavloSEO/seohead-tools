@@ -3,7 +3,9 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QLabel, QPushButton, QToolButton
+from PyQt5.QtCore import QSize
+from PyQt5.QtGui import QResizeEvent
+from PyQt5.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QToolButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
@@ -54,6 +56,29 @@ class CrawlerScreenTests(unittest.TestCase):
         self.assertEqual(len(OVERVIEW), 18)
         dashes = [label for label in self.screen.findChildren(QLabel) if label.text() == "—"]
         self.assertEqual(len(dashes), len(OVERVIEW))
+
+
+    def test_temporary_results_banner_is_hidden_until_results_exist(self):
+        banner = next(f for f in self.screen.findChildren(QFrame) if f.property("note") == "info")
+        self.assertTrue(banner.isHidden())
+        self.screen.set_temporary_results(True, "https://crawl.localhost/")
+        self.assertFalse(banner.isHidden())
+        texts = [label.text() for label in self.screen.findChildren(QLabel)]
+        self.assertIn("Выбрано: https://crawl.localhost/", texts)
+        self.assertIn("Без проекта · данные во временной папке до закрытия окна", texts)
+        self.screen.set_temporary_results(False)
+        self.assertTrue(banner.isHidden())
+        self.assertIn("Сведения появятся, когда будет выбран адрес краула", [label.text() for label in self.screen.findChildren(QLabel)])
+
+    def test_narrow_toolbar_moves_clear_and_save_into_overflow(self):
+        clear = next(b for b in self.screen.findChildren(QPushButton) if b.text() == "Очистить")
+        save = next(b for b in self.screen.findChildren(QPushButton) if b.text() == "Сохранить как проект")
+        self.screen.resize(800, 800)
+        QApplication.sendEvent(self.screen, QResizeEvent(QSize(800, 800), QSize(640, 480)))
+        self.assertTrue(clear.isHidden() and save.isHidden())
+        self.screen.resize(1200, 800)
+        QApplication.sendEvent(self.screen, QResizeEvent(QSize(1200, 800), QSize(800, 800)))
+        self.assertFalse(clear.isHidden() or save.isHidden())
 
 
 if __name__ == "__main__":
