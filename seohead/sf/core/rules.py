@@ -668,6 +668,8 @@ def check_heading_outline(ctx: AuditContext) -> None:
     for check_id in ("HEADING_BEFORE_H1", "HEADING_IN_PAGE_CHROME", "HEADING_SKIP"):
         _skip_for_body_unavailable(ctx, check_id, pages)
     unplaced = 0
+    chrome_pages: dict[tuple[tuple[str, int, str], ...], list[str]] = defaultdict(list)
+    chrome_details: dict[tuple[tuple[str, int, str], ...], dict[str, Any]] = {}
     for page in pages:
         outline = _rec(page).get("heading_outline")
         if not isinstance(outline, list) or not outline:
@@ -690,11 +692,13 @@ def check_heading_outline(ctx: AuditContext) -> None:
         if chrome:
             # One finding per page, not per heading: a masthead with eighteen
             # menu labels is one template to fix, and eighteen rows of it would
-            # bury every other finding about the page.
-            ctx.add(
-                "HEADING_IN_PAGE_CHROME",
-                target_url=page.url,
-                details={
+            # bury every other finding about the page. Pages that share the same
+            # chrome headings become one finding with a page count, below.
+            pattern = tuple((str(h["region"]), int(h["level"]), str(h["text"])) for h in chrome)
+            chrome_pages[pattern].append(page.url)
+            chrome_details.setdefault(
+                pattern,
+                {
                     "count": len(chrome),
                     "regions": sorted({str(h["region"]) for h in chrome}),
                     "first_headings": [
@@ -736,6 +740,8 @@ def check_heading_outline(ctx: AuditContext) -> None:
         # it content would be a verdict nobody measured (see parser.heading_outline).
         if any(not h.get("region") for h in outline):
             unplaced += 1
+    for pattern, urls in chrome_pages.items():
+        ctx.add_site_wide("HEADING_IN_PAGE_CHROME", urls, chrome_details[pattern])
     if unplaced:
         ctx.skip(
             "HEADING_IN_PAGE_CHROME",
@@ -1015,6 +1021,7 @@ def check_content(ctx: AuditContext) -> None:
     if not frames_known:
         ctx.skip("CONTENT_IN_IFRAME", "no iframe inventory in this evidence")
     has_text_ratio = False
+    low_ratio: list[tuple[str, float]] = []
     for page in ctx.indexable_html_pages():
         rec = _rec(page)
         if _body_unavailable(rec):
@@ -1056,11 +1063,7 @@ def check_content(ctx: AuditContext) -> None:
         if ratio is not None:
             has_text_ratio = True
             if ratio < t["low_text_ratio_pct"]:
-                ctx.add(
-                    "LOW_TEXT_RATIO",
-                    target_url=page.url,
-                    details={"text_ratio": ratio, "threshold": t["low_text_ratio_pct"]},
-                )
+                low_ratio.append((page.url, ratio))
         near = rec.get("near_duplicates")
         sim = rec.get("closest_similarity")
         if near is not None and near > 0:
@@ -1069,6 +1072,20 @@ def check_content(ctx: AuditContext) -> None:
                 target_url=page.url,
                 details={"near_duplicates": near, "closest_similarity": sim},
             )
+    if low_ratio:
+        # A template that is mostly markup puts every page under the line; one
+        # finding with the page count and the spread says so without a row per page.
+        ratios = [ratio for _, ratio in low_ratio]
+        threshold = t["low_text_ratio_pct"]
+        if len(low_ratio) == 1:
+            details = {"text_ratio": ratios[0], "threshold": threshold}
+        else:
+            details = {
+                "text_ratio_min": min(ratios),
+                "text_ratio_max": max(ratios),
+                "threshold": threshold,
+            }
+        ctx.add_site_wide("LOW_TEXT_RATIO", [url for url, _ in low_ratio], details)
     if not has_text_ratio:
         ctx.skip("LOW_TEXT_RATIO", "no Text Ratio column in Internal:All")
 
@@ -3121,10 +3138,84 @@ def check_redirect_chains(ctx: AuditContext) -> None:
             ctx.add("REDIRECT_CHAIN", target_url=url, details={"hops": n, "final_url": fin})
 
 
+def native_check_ids(ctx: AuditContext) -> frozenset[str]:
+    """Checks the stored native crawl measures itself, so they need no SF export.
+
+    The parsed-block column exists only in a native crawl's own records, so
+    STRUCTURED_DATA_MISSING needs no stored scan and a legacy and a stored-scan audit
+    of one crawl agree. HSTS and mixed content read response headers and the resource
+    graph, which only a stored scan keeps. An export that happens to exist is not
+    consulted for these: a missing export never says the site lacks a header.
+    """
+    ids: set[str] = set()
+    if _has_column(ctx, "structured_data_parsed"):
+        ids.add("STRUCTURED_DATA_MISSING")
+    con = ctx.scan_con
+    if con is None:
+        return frozenset(ids)
+    tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "responses" in tables:
+        ids.add("MISSING_HSTS")
+    if (
+        "resource_graph_occurrences" in tables
+        and con.execute("SELECT 1 FROM resource_graph_occurrences LIMIT 1").fetchone()
+    ):
+        ids.add("MIXED_CONTENT")
+    return frozenset(ids)
+
+
+def check_native_structured_and_mixed(ctx: AuditContext) -> None:
+    """STRUCTURED_DATA_MISSING and MIXED_CONTENT, measured from the native crawl.
+
+    Structured data: an indexable HTML page whose stored block count is zero has no
+    markup at all. Mixed content: an https page whose resource graph names an http
+    subresource. MISSING_HSTS is judged from response headers by
+    ``seohead.crawl.security_headers`` in the audit handler, not here.
+    """
+    native = native_check_ids(ctx)
+    if "STRUCTURED_DATA_MISSING" in native:
+        measured = 0
+        for page in ctx.indexable_html_pages():
+            rec = _rec(page)
+            if _body_unavailable(rec):
+                continue
+            found = rec.get("structured_data")
+            if found is None:
+                continue
+            measured += 1
+            if found == 0:
+                ctx.add("STRUCTURED_DATA_MISSING", target_url=page.url)
+        if not measured:
+            ctx.skip("STRUCTURED_DATA_MISSING", "no indexable HTML page carries a block count")
+    if "MIXED_CONTENT" in native:
+        insecure: dict[str, list[str]] = defaultdict(list)
+        rows = ctx.scan_con.execute(
+            "SELECT p.url, o.resolved_url FROM resource_graph_occurrences o "
+            "JOIN urls p ON p.url_id=o.page_url_id "
+            "WHERE p.url LIKE 'https://%' AND o.resolved_url LIKE 'http://%' "
+            "ORDER BY p.url, o.resolved_url"
+        )
+        for page_url, resource in rows:
+            if resource not in insecure[page_url]:
+                insecure[page_url].append(resource)
+        for page_url, resources in insecure.items():
+            ctx.add(
+                "MIXED_CONTENT",
+                target_url=page_url,
+                details={
+                    "count": len(resources),
+                    "insecure_resources": resources[:_PLACEMENT_EVIDENCE_ITEMS],
+                },
+            )
+
+
 def check_native_exports(ctx: AuditContext) -> None:
     from .normalize import find_column, normalize_value
 
+    native = native_check_ids(ctx)
     for key, check_id in _NATIVE_EXPORT_CHECKS.items():
+        if check_id in native:
+            continue
         df = ctx.exports.get(key)
         if df is None or df.empty:
             ctx.skip(check_id, f"no {key} export (export this SF filter to enable)")
@@ -3140,6 +3231,7 @@ def check_native_exports(ctx: AuditContext) -> None:
 
 
 ALL_CHECKS = [
+    check_native_structured_and_mixed,
     check_response_codes,
     check_indexability,
     check_redirect_type,

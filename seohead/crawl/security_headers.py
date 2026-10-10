@@ -18,6 +18,7 @@ from typing import Any
 
 # check id -> the header whose absence it reports. The registry carries the message and fix.
 HEADER_CHECKS: dict[str, str] = {
+    "MISSING_HSTS": "strict-transport-security",
     "MISSING_CSP": "content-security-policy",
     "MISSING_X_CONTENT_TYPE_OPTIONS": "x-content-type-options",
     "MISSING_X_FRAME_OPTIONS": "x-frame-options",
@@ -76,7 +77,7 @@ def _missing(check_id: str, headers: dict[str, str]) -> bool:
 
 
 def evaluate(con: sqlite3.Connection) -> dict[str, Any]:
-    """Judge every stored HTML page for the four header checks.
+    """Judge every stored HTML page for the native header checks, HSTS included.
 
     Returns the URLs each check fires on (in crawl order), how many judged pages had no parseable
     response headers, and how many judged pages were measured. A page that was not measured is

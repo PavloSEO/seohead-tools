@@ -1398,22 +1398,29 @@ def click_depth_seed(ctx: AuditContext) -> tuple[str | None, str]:
 
 
 def _emit_duplicate_links(ctx: AuditContext, groups) -> int:
-    """One finding per source page that writes the same link twice. Returns the surplus."""
+    """One finding per repeated-link pattern: the pages that write the same links twice.
+
+    A navigation link written twice on every page is one template defect. Pages that
+    share the same repeats become one finding with their page count, so a site-wide
+    menu does not appear once per URL. Returns the surplus.
+    """
     surplus_total = 0
+    buckets: OrderedDict[tuple, list] = OrderedDict()
     for group in groups:
         surplus_total += group.surplus_total
+        pattern = tuple((r["destination"], r["anchor"], r["count"]) for r in group.repeats)
         page = ctx.page_by_norm.get(norm_url(group.source_url))
-        ctx.add(
+        bucket = buckets.setdefault(pattern, [group.surplus_total, []])
+        bucket[1].append(page.url if page is not None else group.source_url)
+    for pattern, (surplus, urls) in buckets.items():
+        # No threshold here, and that is deliberate: "written more than once" is a
+        # count, not a judgement calibrated against a number somebody chose.
+        repeats = [{"destination": d, "anchor": a, "count": c} for d, a, c in pattern]
+        ctx.add_site_wide(
             "DUPLICATE_INTERNAL_LINK",
-            target_url=page.url if page is not None else group.source_url,
-            occurrences_count=group.surplus_total,
-            details={
-                # No threshold here, and that is deliberate: "written more than
-                # once" is a count, not a judgement calibrated against a number
-                # somebody chose.
-                "surplus_links": group.surplus_total,
-                "repeats": group.repeats,
-            },
+            urls,
+            {"surplus_links": surplus, "repeats": repeats},
+            occurrences=surplus,
         )
     return surplus_total
 
