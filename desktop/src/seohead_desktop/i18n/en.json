@@ -2167,5 +2167,17 @@
  "Ядро проверяет подлинность ботов по обратному и прямому DNS, но отдаёт вердикт по семейству ботов, а не по каждому IP. Таблица IP, подсетей и цепочка проверки появятся с этим ответом ядра.": "The core verifies bot authenticity by reverse and forward DNS, but returns one verdict per bot family, not per IP. The IP and subnet table and the verification chain will appear with that core answer.",
  "Журнал сервера не подключён в этой версии ядра": "The server log is not connected in this core version",
  "X-Robots-Tag и meta robots": "X-Robots-Tag and meta robots",
- "Читать оба источника; при конфликте строже побеждает": "Read both sources; on conflict the stricter one wins"
+ "Читать оба источника; при конфликте строже побеждает": "Read both sources; on conflict the stricter one wins",
+ "запуски по профилю проекта": "runs per project profile",
+ "Новое расписание": "New schedule",
+ "Расписание срабатывает": "The schedule runs",
+ "только пока открыт SEOHEAD Desktop или запущен seohead watch в терминале. Пропущенный запуск выполнится при следующем старте.": "only while SEOHEAD Desktop is open or seohead watch runs in a terminal. A missed run executes at the next start.",
+ "Расписания": "Schedules",
+ "Повтор": "Repeat",
+ "Следующий запуск": "Next run",
+ "Последний": "Last",
+ "Вкл.": "On",
+ "Расписаний пока нет": "No schedules yet",
+ "История запусков": "Run history",
+ "Запуски появятся, когда ядро начнёт их хранить": "Runs appear once the core stores them"
 }
