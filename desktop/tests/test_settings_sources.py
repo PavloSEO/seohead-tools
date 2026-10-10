@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop.qt import app as qt_app
 from seohead_desktop.settings_store import AppSettings
@@ -89,6 +89,18 @@ class SourcesSectionTests(unittest.TestCase):
     def test_dialog_lists_the_section_with_its_title(self):
         dialog = SettingsDialog(AppSettings(schema=full_schema()), SettingsContext(), section="sources")
         self.assertEqual(dialog.section_title.text(), "Источники данных")
+
+    def test_spend_view_shows_core_units_and_waiting_limits_never_roubles(self):
+        page = self.page(sources_hook())
+        page._snapshot(load_sources("core", "snapshot", call=core_call()))
+        page._open(("spend",))
+        joined = " | ".join(texts(page))
+        self.assertIn("ЛИМИТЫ И ПОДТВЕРЖДЕНИЯ", joined)
+        self.assertIn("Недоступно в этой версии ядра", joined)
+        self.assertNotIn("₽", joined)
+        export = [b for b in page.findChildren(QPushButton) if b.text() == "Экспорт CSV"]
+        self.assertEqual(len(export), 1)
+        self.assertFalse(export[0].isEnabled())
 
     def test_core_missing_is_reported(self):
         from seohead_desktop.app import MainWindow
