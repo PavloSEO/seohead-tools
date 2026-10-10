@@ -235,6 +235,22 @@ class UrlTests(UrlBase):
         self.app.processEvents()
         self.assertEqual(self.screen.bottom.tabs.count(), 11)
 
+    def test_compact_window_shows_address_http_and_indexability_only(self):
+        from unittest import mock
+
+        from PyQt5.QtWidgets import QWidget
+
+        window = QWidget()
+        self.addCleanup(window.deleteLater)
+        visible = lambda: [c for c in range(len(COLUMNS)) if not self.screen.table.isColumnHidden(c)]  # noqa: E731
+        with mock.patch.object(self.screen, "window", return_value=window):
+            window.resize(800, 800)
+            self.screen._apply_columns()
+            self.assertEqual(visible(), [0, 1, 3])
+            window.resize(1440, 900)
+            self.screen._apply_columns()
+            self.assertGreater(len(visible()), 3)
+
     def test_details_are_cleared_when_nothing_matches(self):
         self.screen.table.selectRow(1)
         self.wait()

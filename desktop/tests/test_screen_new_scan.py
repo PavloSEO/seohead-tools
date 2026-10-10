@@ -688,6 +688,14 @@ class SettingsTests(DialogCase):
         settings.findChild(QPushButton, "scanSettingsCancel").click()
         self.assertEqual(dialog.draft.value("speed.concurrency"), 1)
 
+    def test_render_page_draws_four_resource_blocks_disabled_until_core_supports_them(self):
+        dialog = self.open()
+        settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "render")
+        self.addCleanup(settings.deleteLater)
+        boxes = {c.text(): c for c in settings.findChildren(QCheckBox) if c.text() in {"Изображения", "Шрифты", "Медиа", "Аналитика"}}
+        self.assertEqual(set(boxes), {"Изображения", "Шрифты", "Медиа", "Аналитика"})
+        self.assertFalse(any(box.isEnabled() for box in boxes.values()))
+
     def test_apply_copies_back_and_reset_restores_defaults(self):
         dialog = self.open()
         settings = ScanSettingsDialog(dialog.draft, self.window, dialog, "speed")

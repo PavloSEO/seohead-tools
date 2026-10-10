@@ -89,6 +89,7 @@ QFrame[note="success"] QLabel { color: $note_success_fg; }
 
 /* cards, KPI */
 QFrame[card="panel"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
+QFrame[card="panel"][picked="true"] { border: 2px solid $primary; }
 QFrame[kpi="true"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
 QFrame[kpi="true"] QLabel[kpi_part="label"] { font-size: ${font_meta}px; color: $text_3; }
 QFrame[kpi="true"] QLabel[kpi_part="value"] { font-size: ${font_kpi}px; font-weight: 500; }
