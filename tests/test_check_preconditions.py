@@ -120,7 +120,8 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # a named silent check rather than a manufactured finding.
     # 66 -> 67 (HTML_OVER_2MB) -> 68 (INTERNAL_LINK_SPONSORED_UGC, #1143): reads native rel hints
     # that the SF-export fixture never produces, so it runs silent.
-    assert coverage["checks_silent"] <= 68
+    assert coverage["checks_silent"] <= 69
+    # 69: URL_HAS_PARAMETERS (#batch-3) also runs silent here, the fixture has no query strings.
 
 
 def test_a_disabled_check_is_its_own_bucket_never_silent_or_clean(tmp_path):

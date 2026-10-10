@@ -450,10 +450,29 @@ CATEGORIES: dict[str, list[Entry]] = {
     ],
     "Accessibility": [],  # filled below: one decision, 92 entries
     "Analytics": [
-        _o("Orphan URLs", "needs Google Analytics data; see the free-sources issue (#97)"),
-        _o("Bounce Rate Above 70%", "needs Google Analytics data"),
-        _o("No GA Data", "needs Google Analytics data"),
-        _o("Non-Indexable with GA Data", "needs Google Analytics data"),
+        _t(
+            "Orphan URLs",
+            "crawl-enrich",
+            note="found from an offline analytics CSV joined to the crawl, not by sf run; "
+            "a withheld result on a partial crawl; live per-URL sourcing needs #990",
+        ),
+        _t(
+            "Bounce Rate Above 70%",
+            "crawl-enrich",
+            note="found from an offline per-URL bounce column (--bounce-column), not by sf run; "
+            "live per-URL sourcing needs #990 and #984",
+        ),
+        _t(
+            "No GA Data",
+            "crawl-enrich",
+            note="found from an offline analytics CSV joined to the crawl, not by sf run; "
+            "skipped for an empty analytics file",
+        ),
+        _t(
+            "Non-Indexable with GA Data",
+            "crawl-enrich",
+            note="found from an offline visits column (--visits-column), not by sf run",
+        ),
     ],
     "Search Console": [
         _o("Page is Not Mobile Friendly", "needs Search Console; see #97"),

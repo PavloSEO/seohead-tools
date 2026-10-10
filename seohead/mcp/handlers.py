@@ -4454,6 +4454,15 @@ def scan_url_query(
     )
 
 
+def scan_url_history(project: str, url: str, limit: int = 50) -> dict[str, Any]:
+    """State of one exact URL in each retained scan of a project, newest first, read-only."""
+    from seohead.projects.workspace import _load
+    from seohead.storage.url_history import url_history as core
+
+    root, _document = _load(project)
+    return core(root / "scans", url, limit=limit)
+
+
 def scan_url_detail(
     input_path: str,
     url: str,
@@ -5193,6 +5202,20 @@ def project_view_save(directory: str, view: dict, expected_revision: int) -> dic
     from seohead.mcp.project_handlers import project_view_save as core
 
     return core(directory, view, expected_revision)
+
+
+def project_view_delete(directory: str, name: str, expected_revision: int) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_delete as core
+
+    return core(directory, name, expected_revision)
+
+
+def project_view_rename(
+    directory: str, name: str, new_name: str, expected_revision: int
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_view_rename as core
+
+    return core(directory, name, new_name, expected_revision)
 
 
 def findings_view(directory: str, name: str, audit: Any, offset: int = 0) -> dict[str, Any]:
@@ -6450,6 +6473,7 @@ _RAW_HANDLERS = {
     "scan_inspect": scan_inspect,
     "scan_url_detail": scan_url_detail,
     "scan_url_query": scan_url_query,
+    "scan_url_history": scan_url_history,
     "scan_link_inspect": scan_link_inspect,
     "scan_status": scan_status,
     "scan_rendered_routes": scan_rendered_routes,
@@ -6511,6 +6535,8 @@ _RAW_HANDLERS = {
     "project_view_list": project_view_list,
     "project_view_show": project_view_show,
     "project_view_save": project_view_save,
+    "project_view_delete": project_view_delete,
+    "project_view_rename": project_view_rename,
     "findings_view": findings_view,
     "inspect_url": inspect_url,
     "audit_workflow": audit_workflow,

@@ -251,6 +251,8 @@ def test_url_hygiene_checks_fire_and_stay_silent(tmp_path):
     assert OK not in f.get("URL_TOO_LONG", set())
     assert params_url in f.get("URL_HAS_PARAMS", set())
     assert OK not in f.get("URL_HAS_PARAMS", set())
+    assert params_url in f.get("URL_HAS_PARAMETERS", set())
+    assert OK not in f.get("URL_HAS_PARAMETERS", set())
 
 
 def test_meta_directives_and_markup_checks_fire_and_stay_silent(tmp_path):

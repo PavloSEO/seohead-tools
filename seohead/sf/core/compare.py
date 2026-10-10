@@ -359,6 +359,20 @@ def _key(issue: dict[str, Any]) -> tuple[str, str]:
     return (issue.get("check", ""), str(issue.get("target_url") or ""))
 
 
+def _url_set_lists(
+    before_urls: set[str], after_urls: set[str], *, unproven: bool
+) -> dict[str, Any]:
+    """Pages crawled in only one side. Partial crawls make absence unproven (#212, #458)."""
+    only_before = sorted(before_urls - after_urls)
+    only_after = sorted(after_urls - before_urls)
+    return {
+        "only_in_before": only_before,
+        "only_in_after": only_after,
+        "counts": {"only_in_before": len(only_before), "only_in_after": len(only_after)},
+        "unproven": unproven,
+    }
+
+
 def _crawled_urls(audit: dict[str, Any]) -> set[str]:
     urls: set[str] = set()
     for page in _iter_rows(audit, "pages"):
@@ -660,6 +674,9 @@ def compare(
         "left": _sort(left),
         "appeared": _sort(appeared),
         "disappeared": _sort(disappeared),
+        "url_sets": _url_set_lists(
+            before_urls, after_urls, unproven=before_partial or after_partial
+        ),
     }
     gaps = _measurement_gaps(before_source, after_source)
     if gaps:

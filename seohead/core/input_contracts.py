@@ -723,6 +723,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "expected_revision", note="Required; use 0 for the first saved view."),
     ),
     _command(
+        "project-view-delete",
+        "project_view_delete",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+        _form("selector", "expected_revision", note="Required; current view config revision."),
+    ),
+    _command(
+        "project-view-rename",
+        "project_view_rename",
+        _form("project_directory", "directory"),
+        _form("selector", "name"),
+        _form("selector", "new_name"),
+        _form("selector", "expected_revision", note="Required; current view config revision."),
+    ),
+    _command(
         "findings-view",
         "findings_view",
         _form("project_directory", "directory"),
@@ -1054,6 +1069,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "url", note="Exact retained native URL; output redacts query values."),
     ),
     _command("scan-url-query", "scan_url_query", _form("scan_artifact", "input_path")),
+    _command(
+        "scan-url-history",
+        "scan_url_history",
+        _form("project_directory", "project"),
+        _form("selector", "url", note="Exact retained URL text, as scan-url-detail takes it."),
+    ),
     _command(
         "scan-link-inspect",
         "scan_link_inspect",

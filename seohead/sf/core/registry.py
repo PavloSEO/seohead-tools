@@ -395,6 +395,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Parameterized URL has no canonical",
         "fix": "Point the canonical to the preferred parameter-free URL when the parameters do not create unique indexable content.",
     },
+    "URL_HAS_PARAMETERS": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Internal URL contains query parameters",
+        "fix": "Review whether the parameters create unique indexable content; keep internal links and sitemaps on the parameter-free URL where they do not.",
+    },
     "URL_NON_ASCII": {
         "severity": "notice",
         "source": "SF-derived",

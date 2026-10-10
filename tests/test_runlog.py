@@ -356,3 +356,24 @@ def test_an_under_ceiling_journal_is_never_rotated(journal_path):
         with runlog.journal("cli", f"t{n}", {}):
             pass
     assert not journal_path.with_name(journal_path.name + ".1").exists()
+def test_an_answer_over_the_size_cap_is_measured_again_not_reused(journal_path, monkeypatch):
+    """Only answers that fit MAX_REUSABLE_RESULT_BYTES are stored; the boundary is inclusive."""
+    monkeypatch.setenv("SEOHEAD_REUSE_POLICY", json.dumps({"domain_profile": 3600}))
+    overhead = len(json.dumps({"blob": ""}, ensure_ascii=False))
+    fits = runlog.MAX_REUSABLE_RESULT_BYTES - overhead
+    calls = []
+
+    def fn(size, **kwargs):
+        calls.append(size)
+        return {"blob": "x" * size}
+
+    wrapped = runlog.journaled("domain_profile", fn)
+
+    wrapped(size=fits, domain="at-cap.example")
+    assert "reused" in wrapped(size=fits, domain="at-cap.example")
+    assert len(calls) == 1
+
+    wrapped(size=fits + 1, domain="over-cap.example")
+    again = wrapped(size=fits + 1, domain="over-cap.example")
+    assert "reused" not in again
+    assert len(calls) == 3
