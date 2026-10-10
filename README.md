@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/readme-hero.svg" alt="SEOHEAD Tools: local-first SEO crawler, audit toolkit and desktop app — CLI, MCP and Desktop" width="100%"></p>
+<p align="center"><img src="docs/assets/readme-hero.svg" alt="SpiderHead: SEO crawler and audit toolkit — CLI, MCP and Desktop" width="100%"></p>
 
 
 
@@ -10,14 +10,15 @@
 </p>
 
 <p align="center">
-<a href="https://seohead.tech/seotools"><b>Website</b></a> &nbsp;·&nbsp;
+<a href="https://github.com/PavloSEO/spiderhead"><b>GitHub</b></a> &nbsp;·&nbsp;
+<a href="https://seohead.tech"><b>Website</b></a> &nbsp;·&nbsp;
 <a href="docs/README.md"><b>Documentation</b></a> &nbsp;·&nbsp;
 <a href="docs/CLI.md"><b>CLI</b></a> &nbsp;·&nbsp;
 <a href="docs/examples/README.md"><b>Examples</b></a> &nbsp;·&nbsp;
 <a href="docs/COMPARISON.md"><b>Scope and trade-offs</b></a>
 </p>
 
-**SEOHEAD Tools is a working environment for an SEO specialist and their AI agent.** Crawl a site,
+**SpiderHead is a working environment for an SEO specialist and their AI agent.** Crawl a site,
 keep every scan, find and prioritise issues, hand tasks to developers, recheck the fixes and report —
 all on your own machine, in a native desktop app, in the terminal or through Claude over MCP.
 
@@ -32,24 +33,24 @@ all on your own machine, in a native desktop app, in the terminal or through Cla
 
 | Interface | For | Start with |
 |---|---|---|
-| **Desktop** — SEOHEAD Desktop for macOS, Windows and Linux | Crawling, issues, URL inspector, link graph, toolbox and project work in a native window | `seohead-desktop --project ./shop` |
+| **Desktop** — SpiderHead Desktop for macOS, Windows and Linux | Crawling, issues, URL inspector, link graph, toolbox and project work in a native window | `seohead-desktop --project ./shop` |
 | **CLI** — `seohead` | Scripts, CI and terminal work | `seohead crawl-site --url https://example.com --max-urls 500 --scan-out ./scans/audit.sqlite` |
-| **MCP** — local stdio server | Claude and other agent clients | `claude mcp add seohead -- /absolute/path/to/seohead-tools/.venv/bin/seohead mcp` |
+| **MCP** — local stdio server | Claude and other agent clients | `claude mcp add seohead -- /absolute/path/to/spiderhead/.venv/bin/seohead mcp` |
 
-<p align="center"><img src="docs/assets/screenshots/desktop-quick-scan.png" alt="SEOHEAD Desktop: a running crawl with the internal URL table and the scan overview panel" width="100%"></p>
+<p align="center"><img src="docs/assets/screenshots/desktop-quick-scan.png" alt="SpiderHead Desktop: a running crawl with the internal URL table and the scan overview panel" width="100%"></p>
 
 All three call the same shared handlers (`crawl-site` in the CLI is `seo_crawl_site` over MCP) and
 work on the same local projects and retained scans.
 
 ## Install
 
-### SEOHEAD Desktop
+### SpiderHead Desktop
 
 The app lives in `desktop/` and installs together with the core (Python 3.10 or newer):
 
 ```bash
-git clone https://github.com/PavloSEO/seohead-tools.git
-cd seohead-tools
+git clone https://github.com/PavloSEO/spiderhead.git
+cd spiderhead
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[all]" -e desktop
@@ -64,8 +65,8 @@ described in `desktop/docs/`.
 Python 3.10 or newer. Clone the repository and install it into a virtual environment:
 
 ```bash
-git clone https://github.com/PavloSEO/seohead-tools.git
-cd seohead-tools
+git clone https://github.com/PavloSEO/spiderhead.git
+cd spiderhead
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -79,7 +80,7 @@ With [uv](https://docs.astral.sh/uv/), `uv sync --all-extras` creates the same e
 the committed `uv.lock`, and `uv run seohead --help` runs it. On Windows PowerShell, activate the
 virtual environment with `.venv\Scripts\Activate.ps1`.
 
-The repository is named `seohead-tools`; the Python distribution is `seohead-seotools` and the
+The repository is named `spiderhead`; the Python distribution is `seohead-seotools` and the
 installed command and import package are `seohead`.
 
 `all` installs every optional dependency; smaller extras (`mcp`, `render`, `reports`, `pdf`, `cluster`,
@@ -146,7 +147,7 @@ crawl policy in the project, reuses retained evidence and follows the
 
 ## Desktop app
 
-SEOHEAD Desktop is a native PyQt5 application for macOS, Windows and Linux. It is a presentation
+SpiderHead Desktop is a native PyQt5 application for macOS, Windows and Linux. It is a presentation
 layer over the same core: it opens the same local projects and retained scans as the CLI and MCP
 server, so a crawl started in the terminal or by an agent shows up in the window and the other
 way round.
@@ -216,7 +217,7 @@ Each area links to the page that documents its method, inputs and limits. The
 **Claude Code** — register the installed CLI (use the absolute path to your virtual environment):
 
 ```bash
-claude mcp add seohead -- /absolute/path/to/seohead-tools/.venv/bin/seohead mcp
+claude mcp add seohead -- /absolute/path/to/spiderhead/.venv/bin/seohead mcp
 ```
 
 Inside this repository the committed [`.mcp.json`](.mcp.json) already registers `seohead` for
@@ -229,7 +230,7 @@ Claude Code when the virtual environment is active.
 {
   "mcpServers": {
     "seohead": {
-      "command": "/absolute/path/to/seohead-tools/.venv/bin/seohead",
+      "command": "/absolute/path/to/spiderhead/.venv/bin/seohead",
       "args": ["mcp", "--profile", "full"]
     }
   }
@@ -307,7 +308,7 @@ See [the audit guideline](docs/GUIDELINE.md) and [GOTCHAS.md](docs/GOTCHAS.md).
 | `seohead/sf/` | Screaming Frog export analysis |
 | `seohead/skills/`, `seohead/data/` | Method skills and versioned reference data |
 | `seohead/tui/`, `seohead/integrations/` | Optional terminal shell, remote job API and other integrations |
-| `desktop/` | SEOHEAD Desktop (PyQt5, GPL-3.0-or-later) with its own toolchain and tests |
+| `desktop/` | SpiderHead Desktop (PyQt5, GPL-3.0-or-later) with its own toolchain and tests |
 | `docs/` | Documentation, scenarios, examples and images |
 | `tests/` | Offline test suite for the core |
 
@@ -330,7 +331,7 @@ changes. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
 
 ## Licence and provenance
 
-The core toolkit and documentation are released under the [MIT License](LICENSE). SEOHEAD Desktop
+The core toolkit and documentation are released under the [MIT License](LICENSE). SpiderHead Desktop
 in `desktop/` is GPL-3.0-or-later, as required by PyQt5 (see `desktop/LICENSE`). The
 bundled Schema.org vocabulary keeps its original CC BY-SA terms. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [PROVENANCE.md](docs/legal/PROVENANCE.md),
@@ -338,4 +339,4 @@ bundled Schema.org vocabulary keeps its original CC BY-SA terms. See
 
 ---
 
-<p align="center"><sub><img src="docs/assets/seohead-spider.svg" alt="" width="20" height="20" align="absmiddle"> Made with SEOHEAD Tools</sub></p>
+<p align="center"><sub><img src="docs/assets/spiderhead-mark.svg" alt="" width="20" height="20" align="absmiddle"> Made with SpiderHead</sub></p>
