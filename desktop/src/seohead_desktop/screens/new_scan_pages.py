@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLayout,
     QLineEdit,
@@ -1069,6 +1070,12 @@ def profiles_page(draft, host):
     table.setAccessibleName(tr("Отличия профиля от умолчаний ядра"))
     table.setModel(model)
     style_table(table)
+    # design ScProfiles «.gt»: parameter 220 px, the two value columns share the rest
+    header = table.horizontalHeader()
+    header.setSectionResizeMode(0, QHeaderView.Fixed)
+    header.resizeSection(0, 220)
+    header.setSectionResizeMode(1, QHeaderView.Stretch)
+    header.setSectionResizeMode(2, QHeaderView.Stretch)
     table.setMinimumHeight(160)
     page.caption(tr("Отличия от умолчаний ядра"))
     page.add(table)
