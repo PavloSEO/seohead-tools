@@ -316,3 +316,9 @@ def test_initialized_stdio_mcp_pages_all_fifty_ids_and_rejects_coercion(project)
 
     asyncio.run(asyncio.wait_for(run(), timeout=60))
     assert _files(project) == before
+
+
+@pytest.fixture(autouse=True)
+def _several_active_runs_in_one_process(monkeypatch):
+    """These fixtures keep several running records in one process, which start() now refuses."""
+    monkeypatch.setattr(run_observation, "_owner_busy", lambda run: False)

@@ -261,3 +261,83 @@ def test_out_of_range_collector_pid_is_unknown_not_an_observer_crash(tmp_path):
     )
     run_observation.collector_started(root, run["id"], 10**100)
     assert run_observation.status(root)["items"][0]["collector_runtime"]["state"] == "unknown"
+
+
+def _try_start_in_child(directory: str, barrier, outcomes) -> None:
+    barrier.wait(10)
+    try:
+        run_observation.start(
+            directory,
+            kind="native",
+            mode="spider",
+            max_urls=100,
+            config_fingerprint="synthetic",
+            artifact=Path(directory) / "scans" / f"{os.getpid()}.sqlite",
+        )
+        outcomes.put("started")
+    except ValueError as exc:
+        outcomes.put(str(exc))
+
+
+def _start(root: Path):
+    return run_observation.start(
+        root,
+        kind="native",
+        mode="spider",
+        max_urls=100,
+        config_fingerprint="synthetic",
+        artifact=root / "scans" / "live.sqlite",
+    )
+
+
+def test_second_start_is_refused_while_a_live_scan_runs(tmp_path):
+    root = _project(tmp_path)
+    first = _start(root)
+    try:
+        _start(root)
+    except ValueError as exc:
+        assert str(exc) == f"project busy; owner={first['id']} pid={os.getpid()}"
+    else:
+        raise AssertionError("second live scan was admitted")
+
+
+def test_abandoned_scan_does_not_block_a_new_start(tmp_path):
+    root = _project(tmp_path)
+    context = get_context("spawn")
+    ready, release = context.Event(), context.Event()
+    child = context.Process(target=_start_in_child, args=(str(root), ready, release))
+    child.start()
+    try:
+        assert ready.wait(10)
+    finally:
+        release.set()
+        child.join(timeout=15)
+    deadline = time.monotonic() + 2
+    while (
+        time.monotonic() < deadline
+        and run_observation.status(root)["items"][0]["pid_state"] == "live"
+    ):
+        time.sleep(0.02)
+    assert run_observation.status(root)["items"][0]["pid_state"] == "abandoned"
+    assert _start(root)["state"] == "running"
+
+
+def test_simultaneous_starts_admit_exactly_one_scan(tmp_path):
+    root = _project(tmp_path)
+    context = get_context("spawn")
+    barrier, outcomes = context.Barrier(2), context.Queue()
+    children = [
+        context.Process(target=_try_start_in_child, args=(str(root), barrier, outcomes))
+        for _ in range(2)
+    ]
+    for child in children:
+        child.start()
+    for child in children:
+        child.join(timeout=20)
+    assert all(child.exitcode == 0 for child in children)
+    results = [outcomes.get(timeout=2), outcomes.get(timeout=2)]
+    assert results.count("started") == 1
+    busy = next(r for r in results if r != "started")
+    assert busy.startswith("project busy; owner=")
+    running = [row for row in run_observation.status(root)["items"] if row["state"] == "running"]
+    assert len(running) == 1

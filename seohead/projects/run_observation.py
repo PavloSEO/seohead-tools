@@ -325,6 +325,12 @@ def _retry_delay(attempt: int) -> None:
     time.sleep(0.01 * (attempt + 1))
 
 
+def _owner_busy(run: dict[str, Any]) -> bool:
+    """A running record whose controller may still be alive blocks a new scan."""
+    owner = _runtime_state(run["controller_pid"], run["controller_start_identity"], running=True)
+    return owner in {"live", "unknown"}
+
+
 def start(
     directory: str | Path,
     *,
@@ -372,6 +378,9 @@ def start(
         root, _project, document = _load(directory)
         if any(item["id"] == run_id for item in document["runs"]):
             raise ValueError("observer run ID already exists in this project")
+        for item in document["runs"]:
+            if item["state"] == "running" and _owner_busy(item):
+                raise ValueError(f"project busy; owner={item['id']} pid={item['controller_pid']}")
         run = {
             "id": run_id,
             "kind": kind,
