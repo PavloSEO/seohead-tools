@@ -177,7 +177,9 @@ def _seed_workdir(tmp_path: Path, base_url: str) -> None:
     workbook.save(tmp_path / "redirect-map.xlsx")
     (tmp_path / "gsc.csv").write_text(f"url,clicks\n{base_url}/page,10\n", encoding="utf-8")
     # docs/scenarios/structure.md step 6: an analytics export with visits and bounce columns.
-    (tmp_path / "analytics.csv").write_text(f"url,visits,bounce\n{base_url}/page,10,80%\n", encoding="utf-8")
+    (tmp_path / "analytics.csv").write_text(
+        f"url,visits,bounce\n{base_url}/page,10,80%\n", encoding="utf-8"
+    )
     (tmp_path / "not-observed.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
     # docs/URL_LIST_SCANS.md's `--urls-file input.txt`: the list the example captures.
     (tmp_path / "input.txt").write_text(f"{base_url}/page\n", encoding="utf-8")
