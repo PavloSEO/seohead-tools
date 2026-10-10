@@ -12,6 +12,7 @@ from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.crawler import CrawlerScreen
+from seohead_desktop.screens.graph_layouts import GraphLayoutsScreen
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
 from tests._qt import sweep_widgets
@@ -163,13 +164,20 @@ class ShellV2Tests(unittest.TestCase):
     def test_new_sections_open_the_placeholder_without_numbers(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("methods", "graph"):
+        for section in ("methods",):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
             panel = page.findChild(StatePanel)
             self.assertEqual(panel.title.text(), "Раздел готовится")
             self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, GraphLayoutsScreen)
+        self.assertIn(page, self.window.placeholder_pages.values())
+        self.assertEqual(len(page.cards), 4)
+        self.assertEqual(page.findChildren(StatePanel), [])
 
         self.assertTrue(self.window.navigation.select_section("crawler"))
         page = self.window.pages.currentWidget()

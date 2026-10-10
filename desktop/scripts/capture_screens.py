@@ -4,6 +4,7 @@
 NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
+``shell:graph`` needs a QA project with a saved scan: --project DIR, or the SEOHEAD_QA_PROJECT environment variable.
 """
 
 from __future__ import annotations
@@ -181,6 +182,10 @@ def main(argv=None):
     parser.add_argument("--core", help="seohead CLI executable (default: .venv-desktop/bin/seohead next to the repo)")
     parser.add_argument("--display", choices=("agent", "simple"), default="agent")
     args = parser.parse_args(argv)
+    if args.project is None and os.environ.get("SEOHEAD_QA_PROJECT"):
+        args.project = Path(os.environ["SEOHEAD_QA_PROJECT"])
+    if any(name.startswith("shell:graph") for name in args.names) and args.project is None:
+        parser.error("shell:graph needs a QA project with a saved scan: pass --project DIR or set SEOHEAD_QA_PROJECT")
     default_core = Path(__file__).resolve().parents[2] / ".venv-desktop/bin/seohead"
     OPTIONS.update(project=args.project, display=args.display, core=args.core or (str(default_core) if default_core.exists() else None))
     os.environ.setdefault("SEOHEAD_ALLOW_PRIVATE_HOSTS", "crawl.localhost,127.0.0.1")
