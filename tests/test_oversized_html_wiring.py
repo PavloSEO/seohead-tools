@@ -23,11 +23,12 @@ from seohead.sf.core.loader import LoadedExports
 from seohead.sf.core.rules import run_rules
 
 FOUR_CHECKS = {"TITLE_MISSING", "DESC_MISSING", "H1_MISSING", "CANONICAL_MISSING"}
+# AMPHTML_PRESENT is not in this set: `amphtml` is a persisted native page field now
+# (scan.v1 late field, #1020), so the native crawl measures it.
 UNMEASURED_NATIVE_FIELDS = {
     "META_KEYWORDS_PRESENT",
     "CANONICAL_MULTIPLE",
     "HTTP1_ONLY",
-    "AMPHTML_PRESENT",
 }
 
 
