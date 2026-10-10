@@ -42,6 +42,7 @@ from ..ui.kit import (
 from ..ui.presentation import short_run_id
 from .scan_common import Pairs, number
 from .url_graph import GraphPage
+from .url_history import HistoryPage
 from .url_detail import (
     OverviewPage,
     SnippetPage,
@@ -71,7 +72,6 @@ TAB_LABELS = {"info": "Обзор", "hdr": "Заголовки", "links": "Сс�
 UNAVAILABLE = {
     "html": ("Исходник страницы", "Читатель сохранённого тела страницы (исходного и после рендеринга) ещё не доступен; ниже — что известно о теле.", 936),
     "res": ("Ресурсы страницы", "Изображения, CSS, JS и шрифты страницы со статусом и весом ядро по одному URL не отдаёт; ниже — счётчики со страницы.", 935),
-    "hist": ("История URL по сканам", "Статус и поля URL по всем сканам проекта («был 404») ядро одним запросом не отдаёт.", 972),
     "schema": ("Структурированные данные", "Содержимое блоков JSON-LD, microdata и ошибки разметки по URL ядро не отдаёт; ниже — что найдено на странице.", 948),
     "checks": ("Проверки выбранного URL", "Находки по одному URL ядро пока не отдаёт: в скане они есть только списком проверок.", 980),
 }
@@ -818,10 +818,12 @@ class UrlCard(QFrame):
         self.graph = GraphPage(self.ctx)
         self.graph.table_requested.connect(lambda: self.select_tab("links"))
         self.redirects = RedirectsPage(self.ctx)
+        self.history = HistoryPage(self.ctx)
+        self.history.counted.connect(lambda n: self._counter("hist", number(n) if n else ""))
         self.snippet = SnippetPage()
         self.facts = {tab: FactsPage(tab, self.ctx) for tab in UNAVAILABLE}
         self.index = {}
-        widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "graph": self.graph, "redir": scrolled(self.redirects),
+        widgets = {"info": scrolled(self.overview), "hdr": scrolled(self.headers), "links": self.links, "graph": self.graph, "redir": scrolled(self.redirects), "hist": scrolled(self.history),
                    "snip": self.snippet, **{tab: scrolled(page) for tab, page in self.facts.items()}}
         for tab in TAB_ORDER:
             self.index[tab] = self.pages.addWidget(widgets[tab])
@@ -878,6 +880,8 @@ class UrlCard(QFrame):
             self.graph.activate()
         elif tab == "redir":
             self.redirects.activate()
+        elif tab == "hist":
+            self.history.activate()
         elif tab in self.facts:
             self.facts[tab].activate()
 
@@ -918,6 +922,7 @@ class UrlCard(QFrame):
             self.links.context_changed()
             self.graph.context_changed()
             self.redirects.context_changed()
+            self.history.context_changed()
             self._counter("redir", "")
         if self.has_row:
             self.head.set_row(row)
@@ -942,9 +947,10 @@ class UrlCard(QFrame):
             self.tabs.setTabText(len(TAB_ORDER), tr("Сводка"))
         self.links.retranslate()
         self.graph.retranslate()
+        self.history.retranslate()
 
     def shutdown(self):
-        for job in (self.links.job, self.links.counter, self.graph.job, self.redirects.job):
+        for job in (self.links.job, self.links.counter, self.graph.job, self.redirects.job, self.history.job):
             job.shutdown()
 
 

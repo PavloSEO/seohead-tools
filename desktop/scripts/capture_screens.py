@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
+NAME: settings:<section id> | shell[:<section>] | url[:<detail tab>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
+``url:hist`` needs --project with at least two saved scans: it selects the first URL of the URL section and opens its
+detail tab (``hist`` = История, reads every saved scan through the core). Such a project: ``seohead project-new``
+on a local fixture host, then two ``seohead crawl-site --approve-large-crawl --producer-build <sha>`` runs into it
+(examples/qa-site serves the fixture; no crawl leaves loopback).
 """
 
 from __future__ import annotations
@@ -126,6 +130,31 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+def url_tab(window, tab, timeout=120):
+    """Select the first saved URL of the URL section and open its detail on ``tab``; every answer is read through the core."""
+    import time
+
+    deadline = time.monotonic() + timeout
+
+    def wait(done):
+        while time.monotonic() < deadline and not done():
+            QApplication.processEvents()
+            time.sleep(0.05)
+        QApplication.processEvents()
+
+    window.navigation.select_section("url")
+    screen = window.screens["url"]
+    wait(lambda: bool(screen.rows))
+    screen.table.selectRow(0)
+    wait(lambda: screen.detail_job.busy or screen._select_timer.isActive() or screen.detail_data is not None)
+    wait(lambda: not screen.detail_job.busy and not screen._select_timer.isActive())
+    screen._open_tab(tab)
+    wait(lambda: not screen.bottom.history.busy if tab == "hist" else True)
+    for _ in range(20):
+        QApplication.processEvents()
+        time.sleep(0.02)
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -133,6 +162,18 @@ def build(name, width, height, store, theme="light", lang="ru"):
         dialog = SettingsDialog(store, SettingsContext(), section=arg or "general")
         dialog.resize(width, height)
         return dialog
+    if kind == "url":
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        window.prefs.set("view.language", lang)
+        window.show_startup_workspace()
+        if not OPTIONS.get("project"):
+            raise SystemExit("url:<tab> needs --project")
+        open_project(window, OPTIONS["project"])
+        url_tab(window, arg or "info")
+        return window
     if kind == "shell":
         from seohead_desktop.app import MainWindow
 
@@ -200,7 +241,7 @@ def main(argv=None):
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
                 widget.render_image(width, height, args.theme, args.lang).save(str(path))
-            elif name.startswith("shell"):
+            elif name.startswith(("shell", "url")):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)
