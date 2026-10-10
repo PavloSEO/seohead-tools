@@ -92,11 +92,6 @@ QFrame[card="panel"] { background: $base; border: 1px solid $divider; border-rad
 QFrame[kpi="true"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
 QFrame[kpi="true"] QLabel[kpi_part="label"] { font-size: ${font_meta}px; color: $text_3; }
 QFrame[kpi="true"] QLabel[kpi_part="value"] { font-size: ${font_kpi}px; font-weight: 500; }
-QFrame[report_canvas="true"] { background: $surface; }
-QFrame[report_page="true"] { background: $base; border: 1px solid $divider; border-radius: ${radius_card}px; }
-QFrame[report_rail="true"] { background: $raised; border-right: 1px solid $divider; }
-QFrame[report_aside="true"] { background: $base; border-left: 1px solid $divider; }
-QToolButton[report_thumb="true"] { color: $text_3; padding: 6px; border-radius: 8px; }
 
 /* fields */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { height: ${control_field}px; min-height: ${control_field}px; border: 1px solid $outline; border-radius: ${radius_control}px; padding: 0 12px; background: $base; color: $text; selection-background-color: $selected; selection-color: $on_selected; }
