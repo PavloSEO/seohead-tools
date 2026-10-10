@@ -49,6 +49,10 @@ from seohead.recon.net import http_client, normalize_url
 # a parent) produced a verdict about a feature that does not exist. Their
 # presence is instead one of the conditions a parent feature (e.g. Product)
 # checks for through ``required_any``.
+# Version of the offline RICH_RESULTS table. Stamped on every rich-result verdict
+# so a stored result says which rule set produced it. Bump it when the table changes.
+RICH_RESULTS_RULES_VERSION = "2026-10-10"
+
 RICH_RESULTS: dict[str, dict[str, Any]] = {
     "Article": {
         "google_feature": "Article",
@@ -453,6 +457,7 @@ def _rich_results(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "missing_required": missing_req,
                 "missing_required_any_of": missing_any,
                 "missing_recommended": [f for f in spec["recommended"] if f not in present],
+                "rules_version": RICH_RESULTS_RULES_VERSION,
             }
             if spec.get("deprecated_for_rich"):
                 entry["note"] = (
@@ -605,6 +610,7 @@ def check_schema(
         graph=_graph_shape(nodes),
         entities=entities,
         rich_results=_rich_results(nodes),
+        rules_version=RICH_RESULTS_RULES_VERSION,
         other_markup={
             "microdata": bool(_MICRODATA_RE.search(html)),
             "rdfa": bool(_RDFA_RE.search(html)),

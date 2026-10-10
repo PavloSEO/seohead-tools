@@ -526,6 +526,27 @@ property access separately as `verified`, `not_granted`, or `unknown`. Do not pu
 private key, service-account email, a token, or a property name in a report, fixture, or Git.
 Remove the local file and its property permission to revoke this path.
 
+### Search Console OAuth login (browser consent)
+
+Use this path when you want a personal read-only grant instead of a service account, for example
+for a property you own in your own Google account. Run `scripts/gsc_oauth_login.py` once per
+machine:
+
+1. In Google Cloud Console create an OAuth client of type Desktop app and download its JSON
+   to a private path outside the repository. The script rejects any client without the
+   `installed` key, which is what Desktop app clients produce.
+2. Run `python scripts/gsc_oauth_login.py --client-file /private/path/client_secret.json`.
+3. Approve the read-only scope `webmasters.readonly` in the browser. The script receives the code
+   on `127.0.0.1` and does not print tokens or secrets.
+4. The refresh token is stored in `~/.config/gsc/oauth.json` through `oauth.save_grant("gsc", ...)`.
+   The script then lists the Search Console properties the account can read, with their permission
+   level.
+
+The script refuses to run if a grant already exists. To reconnect, disconnect first with
+`seohead provider-auth gsc disconnect`. Check the state with `seohead sources-doctor`. A listed
+property still needs to be verified with `provider-verify` before collection. Do not paste the
+client JSON, the refresh token, or the authorization code into chat, reports, or Git.
+
 ## Docker alternative
 
 No local Python needed:

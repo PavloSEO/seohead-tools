@@ -61,7 +61,7 @@ time, so two branches never edit this file and can never conflict over it (#638)
 - Answer "is this site linked well, and where is it linked badly", taking the registry from 157
   to 161 checks and adding an `internal-linking` skill (#634). The pieces existed -- every edge
   with its position, anchor and nofollow flag in the `links` table, `ORPHAN_PAGE`,
-  `INLINK_BOILERPLATE_ONLY`, `LINK_SCORE` -- and nothing turned them into an answer about the
+  `INLINK_BOILERPLATE_ONLY`, `LOW_LINK_SCORE` -- and nothing turned them into an answer about the
   graph. A 40 920-page audit carried the wrong headline for hours because of it: 66% of the
   sitemap was reported unreachable by internal links, a figure produced by subtracting a crawl's
   URL count from the sitemap's, which measures "the crawler did not get there". Walking the
@@ -352,7 +352,7 @@ time, so two branches never edit this file and can never conflict over it (#638)
   unauthenticated crawl on a typo'd or deleted path — appropriate for the optional
   `seospiderconfig` default, wrong for a profile the caller explicitly requested; a missing
   explicit `sf_cli.auth_config` now raises before Screaming Frog starts.
-- Fix two content-extraction defects in `seohead/tools/parser.py` (#138, #140). `collapse_whitespace`
+- Fix two content-extraction defects in `seohead/checks/parser.py` (#138, #140). `collapse_whitespace`
   decoded HTML entities a second time on top of the single decode BeautifulSoup's lxml parser
   already performs on every `tag.get_text()`/`tag.get(attr)` value it hands to that helper — a
   silent no-op on ordinary markup, but on a page whose CMS or import pipeline already
@@ -570,7 +570,7 @@ time, so two branches never edit this file and can never conflict over it (#638)
   the entry, so a replayed page reports what the live fetch reported; its schema moves to
   `http_cache.v2` and v1 entries are re-fetched once rather than replayed without a size.
 - Add `docs/TOOL_REFERENCE.md`, generated from the MCP tool definitions
-  (`seohead/servers/tool_reference.py`, `scripts/generate_tool_reference.py`): every
+  (`seohead/mcp/tool_reference.py`, `scripts/generate_tool_reference.py`): every
   `seo_*`/`sf_*` tool's arguments with type and default, its cost (network/writes/
   idempotent/spend, read from its `ToolAnnotations` profile), and its own docstring's
   behavior and failure-mode notes. `tests/test_docs_drift.py` fails the build if it
@@ -705,7 +705,7 @@ time, so two branches never edit this file and can never conflict over it (#638)
   partly from cache says so. A cache hit costs no request and consumes no throttle delay or
   concurrent dispatch-gate slot either — the wait is issued from inside `fetch_one` itself, only
   once a real network round trip is actually about to happen.
-- Add journal-driven reuse to `seohead/runlog.py` (`SEOHEAD_REUSE_POLICY`, a per-tool maximum
+- Add journal-driven reuse to `seohead/core/runlog.py` (`SEOHEAD_REUSE_POLICY`, a per-tool maximum
   age in seconds; default empty, meaning nothing is ever reused). A configured, still-fresh,
   successful prior answer is returned instead of calling the tool again, marked `reused: true`
   with `reused_from_ts` in both the result and the new journal entry it still writes — freshness

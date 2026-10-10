@@ -961,8 +961,7 @@ def collect_once(
 def local_deliver(directory: str | Path, *, scan_id: str, expected_revision: int) -> dict[str, Any]:
     """Record one authorized local receipt without a network destination."""
     root, project = _workspace_load(directory)
-    from seohead.integrations.bot.report_delivery import DeliveryReceipts
-    from seohead.projects.service_delivery import MonitorServiceDelivery
+    from seohead.projects.service_delivery import DeliveryReceipts, MonitorServiceDelivery
 
     receipt_path = _new_report_target(_reports_root(root), "monitor-delivery-receipts.sqlite")
     service = MonitorServiceDelivery(

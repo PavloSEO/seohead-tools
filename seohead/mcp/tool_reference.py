@@ -22,6 +22,7 @@ from pathlib import Path
 
 MCP_SERVER_SOURCE = Path(__file__).with_name("mcp_server.py")
 SF_MCP_SOURCE = Path(__file__).with_name("sf_mcp.py")
+SEMANTICS_MCP_SOURCE = Path(__file__).with_name("semantics_mcp.py")
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,11 @@ def load_sf_tools() -> list[ToolSpec]:
     return _tool_specs(SF_MCP_SOURCE, "register", "")
 
 
+def load_semantics_tools() -> list[ToolSpec]:
+    """The ``seo_semantics_*`` tools; ``seohead semantics <stage>`` dispatches by stage."""
+    return _tool_specs(SEMANTICS_MCP_SOURCE, "register", "")
+
+
 def _cost_line(tool: ToolSpec) -> str:
     parts = [
         f"network: {'yes' if tool.network else 'no'}",
@@ -197,11 +203,13 @@ def render() -> str:
     """Build the full TOOL_REFERENCE.md content from the live MCP tool definitions."""
     seo_tools = load_seo_tools()
     sf_tools = load_sf_tools()
+    semantics_tools = load_semantics_tools()
     lines = [
         "# Tool reference",
         "",
-        "Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py` and "
-        "`seohead/mcp/sf_mcp.py` — do not edit by hand. Regenerate with:",
+        "Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, "
+        "`seohead/mcp/sf_mcp.py` and `seohead/mcp/semantics_mcp.py` — do not edit by hand. "
+        "Regenerate with:",
         "",
         "```bash",
         "python scripts/generate_tool_reference.py",
@@ -210,7 +218,9 @@ def render() -> str:
         f"**{len(seo_tools)} core tools** (`seohead <command>` / "
         "`seo_<command>` on the MCP server) plus "
         f"**{len(sf_tools)} crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) "
-        f"— {len(seo_tools) + len(sf_tools)} in total.",
+        f"plus **{len(semantics_tools)} semantic-core tools** (`seo_semantics_*`, driven by "
+        "`seohead semantics <stage>`) "
+        f"— {len(seo_tools) + len(sf_tools) + len(semantics_tools)} in total.",
         "",
         "Every tool shares one contract: JSON in, JSON out. A target that could not be "
         'reached comes back as `{"ok": false, "error": "..."}` instead of raising, so '
@@ -233,6 +243,9 @@ def render() -> str:
         lines += _render_tool(tool)
     lines += ["---", "", "## Crawl-audit tools (Screaming Frog)", ""]
     for tool in sf_tools:
+        lines += _render_tool(tool)
+    lines += ["---", "", "## Semantic-core tools", ""]
+    for tool in semantics_tools:
         lines += _render_tool(tool)
 
     return "\n".join(lines).rstrip() + "\n"

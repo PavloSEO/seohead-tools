@@ -31,7 +31,19 @@ def _audit(tmp_path, sizes):
         for index, size in enumerate(sizes):
             url = f"https://example.com/p{index}"
             writer.writerow(
-                [url, "text/html", 200, "Indexable", f"Title {index}", "d" * 80, "H", url, size, 500, 20]
+                [
+                    url,
+                    "text/html",
+                    200,
+                    "Indexable",
+                    f"Title {index}",
+                    "d" * 80,
+                    "H",
+                    url,
+                    size,
+                    500,
+                    20,
+                ]
             )
     return run_audit(input_mode="parse-exports", exports_dir=str(d), log=lambda m: None)
 
