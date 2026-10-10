@@ -2142,5 +2142,21 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "Проверка ботов": "Bot verification",
+ "IP с User-Agent ботов": "IPs with bot User-Agent",
+ "подтверждено": "confirmed count",
+ "подделки": "spoofed count",
+ "не проверено": "unchecked count",
+ "Подтверждён": "Confirmed",
+ "Подделка": "Spoofed",
+ "Не проверен": "Unchecked",
+ "AI-боты": "AI bots",
+ "Проверка по IP появится, когда ядро отдаст вердикт по каждому адресу лога. Недоступно в этой версии ядра": "Per-IP verdicts will appear when the core returns one for each log address. Unavailable in this core version",
+ "Откройте проект, чтобы проверить ботов по логам сервера.": "Open a project to verify bots from the server logs.",
+ "Лог сервера не подключён": "Server log not connected",
+ "Лог сервера не загружен": "Server log not loaded",
+ "Проверка ботов по логу не загружена": "Bot verification for the log is not loaded",
+ "Ядро проверяет подлинность ботов по обратному и прямому DNS, но отдаёт вердикт по семейству ботов, а не по каждому IP. Таблица IP, подсетей и цепочка проверки появятся с этим ответом ядра.": "The core verifies bot authenticity by reverse and forward DNS, but returns one verdict per bot family, not per IP. The IP and subnet table and the verification chain will appear with that core answer.",
+ "Журнал сервера не подключён в этой версии ядра": "The server log is not connected in this core version"
 }

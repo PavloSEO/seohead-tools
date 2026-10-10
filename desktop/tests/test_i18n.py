@@ -39,7 +39,7 @@ SCOPE = [
     PACKAGE / "screens/work.py", PACKAGE / "screens/simple.py", PACKAGE / "screens/inbox.py",
     PACKAGE / "screens/scans.py", PACKAGE / "screens/scan_run.py", PACKAGE / "screens/scan_common.py", PACKAGE / "screens/journal.py", PACKAGE / "screens/crawler.py",
     PACKAGE / "screens/new_scan.py", PACKAGE / "screens/new_scan_draft.py", PACKAGE / "screens/new_scan_pages.py", PACKAGE / "screens/new_scan_settings.py", PACKAGE / "screens/quick_scan.py",
-    PACKAGE / "screens/issues.py",
+    PACKAGE / "screens/issues.py", PACKAGE / "screens/logs_bots.py",
     PACKAGE / "screens/url.py", PACKAGE / "screens/url_detail.py", PACKAGE / "screens/url_query.py", PACKAGE / "screens/url_widgets.py", PACKAGE / "screens/url_card.py",
     PACKAGE / "screens/search.py", PACKAGE / "screens/search_results.py",
     PACKAGE / "screens/project_sources.py", PACKAGE / "screens/project_sources_page.py",
