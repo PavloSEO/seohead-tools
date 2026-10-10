@@ -91,3 +91,25 @@ def test_a_fully_healthy_sitemap_reports_no_orphans_and_nothing_missing():
     assert report["in_sitemap_and_linked"] == urls
     assert report["in_sitemap_not_linked"] == []
     assert report["linked_not_in_sitemap"] == []
+
+
+def test_normalized_index_parity_for_url_pairs():
+    # Pins the key/value contract of the index helper before it moves between modules.
+    from seohead.crawl.reconcile import _normalized_index
+
+    index = _normalized_index(
+        [
+            "https://Example.com/a/",
+            "https://example.com:443/a",
+            "https://example.com/a#frag",
+            "https://example.com/",
+            "",
+            "/relative-only",
+            "https://example.com/b",
+        ]
+    )
+    assert index == {
+        "https://example.com/a": "https://Example.com/a/",
+        "https://example.com/": "https://example.com/",
+        "https://example.com/b": "https://example.com/b",
+    }
