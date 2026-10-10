@@ -857,6 +857,19 @@ def crawl_site(
         raise ValueError(
             "experimental_synthetic capacity profile is storage-only, not a live crawl"
         )
+    if (
+        project_root is not None
+        and not scan_out
+        and not out_dir
+        and not settings["output"]["dir"]
+        and (not url or urls)
+    ):
+        import uuid
+
+        from seohead.storage.history import new_scan_path
+
+        # A URL list has no start URL; an empty host makes the name fall back to "scan".
+        scan_out = str(new_scan_path(project_root / "scans", "", str(uuid.uuid4())))
     from seohead.crawl.settings import MAX_MATERIALIZED_URLS
 
     native_list = not url and (
