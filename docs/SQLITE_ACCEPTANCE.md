@@ -127,7 +127,7 @@ the canonical-chain pair and `og_url`. `NULL` means the observation was absent
 from that source, not a measured empty or zero value. This field-level state is
 distinct from `crawl_partial` and `corpus_partial`.
 
-The legacy materialized audit bridge is bounded to 10,000 pages, 20,000 forms,
+The legacy materialized audit bridge is bounded to 10,000 pages, 20,000 forms, 1,500,000 links,
 and a 64 MiB saved JSON document. A capture beyond those limits must not
 manufacture a legacy audit. Native scans use the ordered `audit.v2` companion
 instead; it is streamed by the native readers and report/export consumers. This
@@ -220,7 +220,7 @@ Holding pages at 10,000 and raising links from 300,000 to 1,500,000:
 | whole path | -48.97 MiB |
 
 Every stage is inside the 128 MiB edge-growth budget, and both whole-path peaks
-(497.42 MiB and 448.45 MiB) are inside the 2048 MiB target. Five of six values are
+(497.42 MiB and 448.45 MiB) are inside the 2048 MiB target. All six values are
 negative: process peak RSS varies with allocation and garbage collection, so read
 these as "no growth measured at this edge density", not as a saving produced by
 adding edges.

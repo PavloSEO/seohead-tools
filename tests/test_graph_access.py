@@ -7,7 +7,7 @@ import pandas as pd
 from seohead.core.graph import AnchorGroup, DuplicateLinkGroup, InlinkCompositionRow
 from seohead.sf.config import load_config
 from seohead.sf.core.context import AuditContext
-from seohead.sf.core.inlinks import run_inlinks
+from seohead.sf.core.inlinks import open_click_depth_session, run_inlinks
 from seohead.sf.core.loader import LoadedExports
 
 
@@ -182,3 +182,17 @@ def test_native_graph_with_no_internal_edges_skips_before_seed_lookup():
     assert skipped["DEEP_DISCOVERY_PATH"] == "all_inlinks export has no internal hyperlinks"
     assert skipped["DEEP_CLICK_DEPTH"] == "all_inlinks export has no internal hyperlinks"
     assert ctx.internal_linking["measured"] is False
+
+
+def test_open_click_depth_session_returns_seed_and_reason_when_graph_has_no_walk():
+    class _NoPaths(_Graph):
+        def begin_paths(self, seed):
+            return None
+
+    graph = _NoPaths()
+    ctx = _context(graph)
+    ctx.start_url = "https://example.test/"
+    session, seed, reason = open_click_depth_session(ctx, graph)
+    assert session is None
+    assert seed == "https://example.test"  # norm_url drops the trailing slash
+    assert reason == "all_inlinks export has no internal hyperlinks"

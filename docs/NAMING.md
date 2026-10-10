@@ -16,7 +16,7 @@ already named after its source, not the generic word for what it returns.
 
 Do not fix this by prefixing the package name onto the filename (`sf_config.py` inside `sf/`) —
 that only restates the path the import statement already carries. Name the responsibility instead:
-what `sf/config.py` loads is audit thresholds and severity overrides, so it is `audit_config.py`.
+what `sf/config.py` loads is audit thresholds and severity overrides, so it should be named `audit_config.py` (the file is still `sf/config.py`).
 
 ## Two kinds of deliberate basename reuse
 
@@ -60,10 +60,10 @@ duplicated `test_page_type.py`'s subject with no distinction a reader could act 
 ## Generic names inside a single package are the lowest priority
 
 `sf/core/rules.py`, `heuristics.py`, `models.py`, and `context.py` say nothing about the SF-audit
-domain on their own, but each is the only file with that name anywhere in the tree, their
+domain on their own, but all but `models.py` are the only file with that name anywhere in the tree, their
 docstrings are accurate, and renaming them is churn for readers who already know the package.
 Leave them unless a second module with the same name appears; that is the point at which a generic
-name has actually become a collision.
+name has actually become a collision. `models.py` has now reached that point (`sf/core/models.py` and `core/models.py`); the rename or an accepted-collision record is left to the owner.
 
 ## What this convention does not decide
 

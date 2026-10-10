@@ -23,12 +23,12 @@ implementations. Publicly relevant inspirations and data licences are listed in
 
 ## Reproducible claims
 
-Counts shown in the README are checked against source registries:
+Counts shown in `docs/TOOLS.md` and `docs/CHECKS.md` are checked against source registries:
 
 - 161 shared handlers exposed through the CLI and `seo_*` MCP tools;
 - five Screaming Frog-specific `sf_*` MCP tools;
 - 182 audit checks in the crawl registry;
 - 25 technical workflow skills plus eight packaged SEO playbooks;
-- Over 1100 offline tests in the current suite.
+- About 7,400 offline tests collected by pytest in the current suite.
 
 When these registries change, tests and public counts must change in the same pull request.
