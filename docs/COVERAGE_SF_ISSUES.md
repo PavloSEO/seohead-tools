@@ -16,17 +16,17 @@ here is written about *our own* behaviour.
 | Status | Count | Meaning |
 |---|---:|---|
 | check | 126 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
+| tool | 37 | a command outside the crawl registry finds it |
 | partial | 18 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
-| out of scope | 136 | a decision, with its reason |
+| out of scope | 132 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **159 are found today**, 18 are
+remaining 212 issues, **163 are found today**, 18 are
 found in part, 7 are gaps worth closing, and
-28 need something we have decided not to build.
+24 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
 having, because the alternative is an absence nobody has noticed.
@@ -318,10 +318,10 @@ having, because the alternative is an absence nobody has noticed.
 
 | Issue | Status | Found by | Note |
 |---|---|---|---|
-| Orphan URLs | out of scope | — | needs Google Analytics data; see the free-sources issue (#97) |
-| Bounce Rate Above 70% | out of scope | — | needs Google Analytics data |
-| No GA Data | out of scope | — | needs Google Analytics data |
-| Non-Indexable with GA Data | out of scope | — | needs Google Analytics data |
+| Orphan URLs | tool | `crawl-enrich` | found from an offline analytics CSV joined to the crawl, not by sf run; a withheld result on a partial crawl; live per-URL sourcing needs #990 |
+| Bounce Rate Above 70% | tool | `crawl-enrich` | found from an offline per-URL bounce column (--bounce-column), not by sf run; live per-URL sourcing needs #990 and #984 |
+| No GA Data | tool | `crawl-enrich` | found from an offline analytics CSV joined to the crawl, not by sf run; skipped for an empty analytics file |
+| Non-Indexable with GA Data | tool | `crawl-enrich` | found from an offline visits column (--visits-column), not by sf run |
 
 ## Search Console
 
