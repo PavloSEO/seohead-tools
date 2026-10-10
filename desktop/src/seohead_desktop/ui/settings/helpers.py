@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QComboBox, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from ...i18n import trf
 from ..controls import Segmented, SettingRow, Switch
@@ -66,21 +66,15 @@ def text_row(store, key, title, description, width=260):
     return row
 
 
-def two_columns(left, right):
-    """Two stacks of rows side by side (sheets use .col2 at 1440; dialog is wide enough)."""
+def column_stack(*columns):
+    """Rows of every column in one vertical stack: design v2 settings sheets are single-column, max 760 px."""
     holder = QWidget()
-    layout = QHBoxLayout(holder)
+    layout = QVBoxLayout(holder)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(32)
-    for column in (left, right):
-        box = QWidget()
-        box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(0, 0, 0, 0)
-        box_layout.setSpacing(0)
+    layout.setSpacing(0)
+    for column in columns:
         for widget in column:
-            box_layout.addWidget(widget)
-        box_layout.addStretch(1)
-        layout.addWidget(box, 1)
+            layout.addWidget(widget)
     return holder
 
 
