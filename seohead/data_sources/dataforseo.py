@@ -301,6 +301,20 @@ def _run(
     return task_items(body), task_errors(body), cost, tasks_all_failed(body)
 
 
+def _call(
+    kind: str, env: str | None, payload: list[dict], items_count: int
+) -> tuple[DataForSEOClient, list[dict], list[str], float, bool] | dict:
+    """Run one operation; return its parts, or the ``ok: false`` dict when it cannot run."""
+    try:
+        client = DataForSEOClient(env=env)
+        items, errors, cost, failed = _run(client, kind, payload, items_count)
+    except MissingCredential as exc:
+        return {"ok": False, "error": str(exc)}
+    except DataForSEOError as exc:
+        return {"ok": False, "error": exc.message, "status": exc.status}
+    return client, items, errors, cost, failed
+
+
 # --- operations -------------------------------------------------------------
 
 
@@ -316,24 +330,21 @@ def search_volume(
     blocked = geo_guard(country, location_code)
     if blocked:
         return blocked
-    try:
-        client = DataForSEOClient(env=env)
-        items, errors, cost, failed = _run(
-            client,
-            "search_volume",
-            [
-                {
-                    "keywords": list(keywords),
-                    "location_code": location_code,
-                    "language_code": language,
-                }
-            ],
-            len(keywords),
-        )
-    except MissingCredential as exc:
-        return {"ok": False, "error": str(exc)}
-    except DataForSEOError as exc:
-        return {"ok": False, "error": exc.message, "status": exc.status}
+    result = _call(
+        "search_volume",
+        env,
+        [
+            {
+                "keywords": list(keywords),
+                "location_code": location_code,
+                "language_code": language,
+            }
+        ],
+        len(keywords),
+    )
+    if isinstance(result, dict):
+        return result
+    client, items, errors, cost, failed = result
     return {
         "ok": not failed,
         "env": client.env,
@@ -364,25 +375,22 @@ def keyword_ideas(
     blocked = geo_guard(country, location_code)
     if blocked:
         return blocked
-    try:
-        client = DataForSEOClient(env=env)
-        items, errors, cost, failed = _run(
-            client,
-            "keyword_ideas",
-            [
-                {
-                    "keywords": [seed],
-                    "location_code": location_code,
-                    "language_code": language,
-                    "limit": int(limit),
-                }
-            ],
-            1,
-        )
-    except MissingCredential as exc:
-        return {"ok": False, "error": str(exc)}
-    except DataForSEOError as exc:
-        return {"ok": False, "error": exc.message, "status": exc.status}
+    result = _call(
+        "keyword_ideas",
+        env,
+        [
+            {
+                "keywords": [seed],
+                "location_code": location_code,
+                "language_code": language,
+                "limit": int(limit),
+            }
+        ],
+        1,
+    )
+    if isinstance(result, dict):
+        return result
+    client, items, errors, cost, failed = result
     return {
         "ok": not failed,
         "env": client.env,
@@ -413,24 +421,21 @@ def keyword_difficulty(
     blocked = geo_guard(country, location_code)
     if blocked:
         return blocked
-    try:
-        client = DataForSEOClient(env=env)
-        items, errors, cost, failed = _run(
-            client,
-            "keyword_difficulty",
-            [
-                {
-                    "keywords": list(keywords),
-                    "location_code": location_code,
-                    "language_code": language,
-                }
-            ],
-            len(keywords),
-        )
-    except MissingCredential as exc:
-        return {"ok": False, "error": str(exc)}
-    except DataForSEOError as exc:
-        return {"ok": False, "error": exc.message, "status": exc.status}
+    result = _call(
+        "keyword_difficulty",
+        env,
+        [
+            {
+                "keywords": list(keywords),
+                "location_code": location_code,
+                "language_code": language,
+            }
+        ],
+        len(keywords),
+    )
+    if isinstance(result, dict):
+        return result
+    client, items, errors, cost, failed = result
     return {
         "ok": not failed,
         "env": client.env,
@@ -455,25 +460,22 @@ def serp(
     blocked = geo_guard(country, location_code)
     if blocked:
         return blocked
-    try:
-        client = DataForSEOClient(env=env)
-        items, errors, cost, failed = _run(
-            client,
-            "serp",
-            [
-                {
-                    "keyword": query,
-                    "location_code": location_code,
-                    "language_code": language,
-                    "depth": int(depth),
-                }
-            ],
-            1,
-        )
-    except MissingCredential as exc:
-        return {"ok": False, "error": str(exc)}
-    except DataForSEOError as exc:
-        return {"ok": False, "error": exc.message, "status": exc.status}
+    result = _call(
+        "serp",
+        env,
+        [
+            {
+                "keyword": query,
+                "location_code": location_code,
+                "language_code": language,
+                "depth": int(depth),
+            }
+        ],
+        1,
+    )
+    if isinstance(result, dict):
+        return result
+    client, items, errors, cost, failed = result
     organic = [i for i in items if i.get("type") == "organic"] or items
     return {
         "ok": not failed,

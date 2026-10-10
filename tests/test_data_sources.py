@@ -3303,7 +3303,7 @@ def test_crux_query_key_travels_in_a_header_not_the_request_url():
     """The key must never be able to leak through a URL echoed into a log or an exception."""
     import inspect
 
-    source = inspect.getsource(crux._default_fetcher)
+    source = inspect.getsource(crux._post)
     assert "X-goog-api-key" in source
     assert "?" not in source.split("urllib.request.Request(")[1].split(",")[0]
 

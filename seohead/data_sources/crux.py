@@ -45,10 +45,10 @@ class ResponseTooLarge(ValueError):
 Fetcher = Callable[[dict[str, Any], str], str]
 
 
-def _default_fetcher(payload: dict[str, Any], api_key: str) -> str:
+def _post(host: str, payload: dict[str, Any], api_key: str) -> str:
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
-        HOST,
+        host,
         data=data,
         method="POST",
         # The key travels in a header, never in the query string, so it can never end up
@@ -62,19 +62,12 @@ def _default_fetcher(payload: dict[str, Any], api_key: str) -> str:
         return raw.decode("utf-8")
 
 
+def _default_fetcher(payload: dict[str, Any], api_key: str) -> str:
+    return _post(HOST, payload, api_key)
+
+
 def _history_fetcher(payload: dict[str, Any], api_key: str) -> str:
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        HISTORY_HOST,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
-    )
-    with open_no_redirect(request, timeout=TIMEOUT) as response:
-        raw = response.read(MAX_RESPONSE_BYTES + 1)
-        if len(raw) > MAX_RESPONSE_BYTES:
-            raise ResponseTooLarge("CrUX response exceeded the 2 MiB limit")
-        return raw.decode("utf-8")
+    return _post(HISTORY_HOST, payload, api_key)
 
 
 def _api_error(exc: urllib.error.HTTPError) -> str:
