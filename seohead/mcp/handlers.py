@@ -6005,6 +6005,14 @@ def scan_extract(
     return core(input_path, rules, url=url, representation=representation, limit=limit)
 
 
+def scan_structured_blocks(
+    input_path: str, url: str, representation: str = "static"
+) -> dict[str, Any]:
+    from seohead.mcp.evidence_handlers import scan_structured_blocks as core
+
+    return core(input_path, url, representation=representation)
+
+
 def marketing_inventory(
     documents: list[dict[str, Any]],
     cta_selector: str | None = None,
@@ -6137,6 +6145,7 @@ _RAW_HANDLERS = {
     "scan_content_search": scan_content_search,
     "scan_content_search_page": scan_content_search_page,
     "scan_extract": scan_extract,
+    "scan_structured_blocks": scan_structured_blocks,
     "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,

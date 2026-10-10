@@ -210,3 +210,55 @@ def scan_fragment_links(
         return result
     finally:
         con.close()
+
+
+def scan_structured_blocks(
+    input_path: str, url: str, representation: str = "static"
+) -> dict[str, Any]:
+    """Describe one retained document's JSON-LD blocks offline: line, state, graph findings, source.
+
+    Reads only the stored complete body of one exact logical URL; reports why when the
+    body is not retained instead of inventing an empty answer.
+    """
+    from seohead.checks.structured_blocks import structured_blocks
+    from seohead.storage import ScanError, open_scan
+    from seohead.storage.bodies import read_document
+
+    if not isinstance(url, str) or not url or len(url) > 8192:
+        raise ValueError("url must be nonempty exact retained URL text of at most 8192 characters")
+    if representation not in {"static", "rendered", "legacy_fragment"}:
+        raise ValueError("representation must be static, rendered or legacy_fragment")
+    con = open_scan(input_path, require_audit=False)
+    try:
+        row = con.execute(
+            "SELECT d.document_id FROM documents d JOIN urls u USING(url_id) "
+            "WHERE u.url=? AND d.representation=? ORDER BY d.document_id LIMIT 1",
+            (url, representation),
+        ).fetchone()
+        if row is None:
+            return {
+                "ok": True,
+                "state": "not_found",
+                "reason": "no retained document for this URL and representation",
+                "representation": representation,
+            }
+        try:
+            html = read_document(con, row["document_id"], max_decoded_bytes=8 * 1024 * 1024)
+        except ScanError as exc:
+            return {
+                "ok": True,
+                "state": "unavailable",
+                "reason": str(exc),
+                "representation": representation,
+                "document_id": row["document_id"],
+            }
+        result = structured_blocks(html)
+        result.update(
+            ok=True,
+            representation=representation,
+            document_id=row["document_id"],
+            scope="retained complete body only; no network or artifact mutation",
+        )
+        return result
+    finally:
+        con.close()

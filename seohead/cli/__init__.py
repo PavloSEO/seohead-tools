@@ -192,6 +192,7 @@ COMMANDS = (
     "scan-extract",
     "marketing-inventory",
     "scan-fragment-links",
+    "scan-structured-blocks",
     "scan-requeue",
     "scan-import-urls",
 )
@@ -417,6 +418,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         "scan-evidence",
         "scan-extract",
         "scan-fragment-links",
+        "scan-structured-blocks",
         "scan-requeue",
         "scan-import-urls",
     }:
@@ -1560,6 +1562,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         "scan-content-search",
         "scan-extract",
         "scan-fragment-links",
+        "scan-structured-blocks",
         "scan-requeue",
         "scan-import-urls",
     }:
@@ -1616,6 +1619,9 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         _source_flag(sub, "--package", help="completed local content-search package directory")
         sub.add_argument("--offset", type=int, help="zero-based derived record offset")
         sub.add_argument("--limit", type=int, help="records per page, 1..100")
+    if cmd == "scan-structured-blocks":
+        _source_flag(sub, "--url", help="exact retained logical URL")
+        sub.add_argument("--representation", choices=("static", "rendered", "legacy_fragment"))
     if cmd == "scan-extract":
         _source_flag(sub, "--url", help="optional exact logical URL")
         sub.add_argument("--representation", choices=("static", "rendered", "legacy_fragment"))
