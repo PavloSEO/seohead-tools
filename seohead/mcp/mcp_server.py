@@ -2234,6 +2234,48 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_project_view_delete(
+        directory: str, name: str, expected_revision: int, consumer: str | None = None
+    ) -> dict[str, Any]:
+        """Delete one saved finding view using the current project view-config revision.
+
+        Changes project view configuration only; it does not edit scans or affect scores/tasks."""
+        return _checked(
+            with_project_notice(
+                handlers.project_view_delete(
+                    directory=directory, name=name, expected_revision=expected_revision
+                ),
+                directory,
+                consumer,
+            )
+        )
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_view_rename(
+        directory: str,
+        name: str,
+        new_name: str,
+        expected_revision: int,
+        consumer: str | None = None,
+    ) -> dict[str, Any]:
+        """Rename one saved finding view using the current project view-config revision.
+
+        Keeps the view definition; the new name must be unused. Changes project view configuration
+        only; it does not edit scans or affect scores/tasks."""
+        return _checked(
+            with_project_notice(
+                handlers.project_view_rename(
+                    directory=directory,
+                    name=name,
+                    new_name=new_name,
+                    expected_revision=expected_revision,
+                ),
+                directory,
+                consumer,
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_findings_view(
         directory: str, name: str, audit: dict | str, offset: int = 0, consumer: str | None = None
