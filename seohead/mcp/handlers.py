@@ -960,14 +960,62 @@ def crawl_site(
         from seohead.mcp.scan_handlers import crawl_list_scan
 
         directory = settings["output"]["dir"] or None
-        return crawl_list_scan(
-            urls,
-            scan_out=scan_out or str(Path(directory) / ".list.seohead"),
-            settings=settings,
-            producer_build=producer_build,
-            out_dir=directory,
-            proxy_route=proxy_route,
-        )
+        list_scan_out = scan_out or str(Path(directory) / ".list.seohead")
+        observed = None
+        if project_root is not None:
+            from seohead.projects.run_observation import finish, start
+
+            try:
+                within_project = (
+                    Path(list_scan_out).resolve().is_relative_to(project_root.resolve())
+                )
+            except OSError:
+                within_project = False
+            if within_project:
+                from math import isfinite
+
+                rate = crawl_config.effective_request_rate(settings)
+                observed = start(
+                    project_root,
+                    kind="native",
+                    mode="list",
+                    max_urls=settings["limits"]["max_urls"],
+                    max_requests=settings["limits"]["max_requests"],
+                    max_crawl_seconds=settings["limits"]["max_crawl_seconds"],
+                    max_requests_per_second=float(rate) if isfinite(rate) else None,
+                    config_fingerprint=crawl_config.fingerprint(settings),
+                    artifact=list_scan_out,
+                    run_id=observer_run_id,
+                )
+        try:
+            result = crawl_list_scan(
+                urls,
+                scan_out=list_scan_out,
+                settings=settings,
+                producer_build=producer_build,
+                out_dir=directory,
+                proxy_route=proxy_route,
+            )
+        except BaseException as exc:
+            if observed is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    finish(project_root, observed["id"], state="failed", reason=type(exc).__name__)
+            raise
+        if observed is None:
+            return result
+        unavailable = result.get("audit_available") is False
+        with contextlib.suppress(OSError, ValueError):
+            finish(
+                project_root,
+                observed["id"],
+                state="partial" if result.get("partial") or unavailable else "finished",
+                reason=(
+                    str(result.get("audit_reason") or "audit_unavailable")
+                    if unavailable
+                    else str(result.get("finish_reason") or "finished")
+                ),
+            )
+        return {**result, "observer_run_id": observed["id"]}
     if settings.get("resources", {}).get("fetch") and not scan_out:
         raise ValueError("resources.fetch requires a SQLite scan artifact")
     if scan_out:
