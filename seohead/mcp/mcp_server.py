@@ -1412,12 +1412,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.regions_tree(save_to=save_to))
 
     @mcp.tool(annotations=read_files, structured_output=True)
-    def seo_spend_report(since: str | None = None) -> dict[str, Any]:
+    def seo_spend_report(since: str | None = None, csv_path: str | None = None) -> dict[str, Any]:
         """What the paid sources have actually charged: totals by source, by operation and
         by day, read from the local journal. Estimating spend by eye has already missed the
         provider usage was recorded, so check here before and after a large run. since is
-        YYYY-MM-DD."""
-        return _checked(handlers.spend_report(since=since))
+        YYYY-MM-DD. csv_path writes every journal row to that file instead of the totals."""
+        return _checked(handlers.spend_report(since=since, csv_path=csv_path))
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_sources_doctor() -> dict[str, Any]:

@@ -562,6 +562,26 @@ def test_spend_report_on_missing_log_is_empty(monkeypatch, tmp_path):
     assert report["calls"] == 0 and report["by_source"] == {}
 
 
+def test_spend_csv_keeps_every_row_and_flags_uncertain_ones(journal, tmp_path):
+    spend.record("arsenkin", "top", cost=5, task_id=7)
+    spend.record("yandex_cloud", "serp", cost=1, extra={"charge_uncertain": True})
+    out = tmp_path / "spend.csv"
+    assert spend.write_csv(out) == 2
+    lines = out.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[0] == "at;source;operation;cost;unit;items;task_id;uncertain"
+    assert lines[1].split(";")[1:3] == ["arsenkin", "top"]
+    assert lines[1].endswith(";7;False")
+    assert lines[2].endswith(";;True")
+
+
+def test_spend_csv_since_filters_rows(journal, tmp_path):
+    spend.record("arsenkin", "top", cost=5)
+    rows = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()]
+    with journal.open("w", encoding="utf-8") as handle:
+        handle.write(json.dumps(dict(rows[0], at="2020-01-01T00:00:00")) + "\n")
+    assert spend.write_csv(tmp_path / "old.csv", since="2026-01-01") == 0
+
+
 # --- Arsenkin rate limiting and usage accounting --------------------------
 
 

@@ -1301,6 +1301,8 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
         kw["save_to"] = args.save_to
     if cmd == "spend-report" and getattr(args, "since", None):
         kw["since"] = args.since
+    if cmd == "spend-report" and getattr(args, "csv", None):
+        kw["csv_path"] = args.csv
     if cmd in {"sources-sync", "sources-status", "sources-export"}:
         for name in (
             "source",
@@ -2052,6 +2054,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--save-to", dest="save_to", help="save a flat {name: id} mapping as JSON")
     if cmd == "spend-report":
         sub.add_argument("--since", help="include charges on or after YYYY-MM-DD")
+        sub.add_argument("--csv", help="write one CSV row per journal entry to this path")
     if cmd in {"sources-sync", "sources-status", "sources-export"}:
         _source_flag(sub, "--db", help="sources SQLite database path")
         _source_flag(sub, "--project", help="project directory; uses its sources.sqlite")
