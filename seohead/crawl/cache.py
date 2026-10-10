@@ -168,7 +168,7 @@ def resolve_dir() -> Path | None:
         return None
 
 
-def _parse_cache_control(value: str) -> dict[str, str | None]:
+def parse_cache_control(value: str) -> dict[str, str | None]:
     out: dict[str, str | None] = {}
     for part in (value or "").split(","):
         part = part.strip()
@@ -190,7 +190,7 @@ def freshness_lifetime(headers: dict[str, str]) -> tuple[float, bool]:
     (a validator may still save a round trip) but treat it as already stale — see the module
     docstring for why "unstated" is not read as "forever".
     """
-    directives = _parse_cache_control(headers.get("cache-control", ""))
+    directives = parse_cache_control(headers.get("cache-control", ""))
     if "no-store" in directives:
         return 0.0, True
     if "no-cache" in directives:

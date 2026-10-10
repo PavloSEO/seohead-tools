@@ -10,7 +10,7 @@ from datetime import datetime
 from email.message import Message
 from typing import Any
 
-from seohead.crawl.cache import _parse_cache_control
+from seohead.crawl.cache import parse_cache_control
 from seohead.crawl.capture import CaptureEvent
 from seohead.crawl.settings import MAX_RENDER_PAGE_CONCURRENCY
 
@@ -85,7 +85,7 @@ def _pairs(pairs: tuple[tuple[str, str], ...], label: str) -> str:
 
 def _no_store(pairs: tuple[tuple[str, str], ...]) -> bool:
     return any(
-        name.lower() == "cache-control" and "no-store" in _parse_cache_control(value)
+        name.lower() == "cache-control" and "no-store" in parse_cache_control(value)
         for name, value in pairs
     )
 

@@ -1560,9 +1560,9 @@ def render_document(
     def _capture_response(response: Any) -> None:
         if max_html_bytes is None:
             return
-        from seohead.crawl.cache import _parse_cache_control
+        from seohead.crawl.cache import parse_cache_control
 
-        if "no-store" in _parse_cache_control(response.all_headers().get("cache-control", "")):
+        if "no-store" in parse_cache_control(response.all_headers().get("cache-control", "")):
             observed_policy["cache_control_no_store"] = True
 
     def _on_console(msg: Any) -> None:
