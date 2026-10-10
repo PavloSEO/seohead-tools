@@ -15,18 +15,18 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 126 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
-| partial | 18 | we find part of it; the missing part is stated |
-| gap | 7 | we should find it and do not |
-| out of scope | 136 | a decision, with its reason |
+| check | 137 | a registry check finds it |
+| tool | 32 | a command outside the crawl registry finds it |
+| partial | 19 | we find part of it; the missing part is stated |
+| gap | 4 | we should find it and do not |
+| out of scope | 128 | a decision, with its reason |
 | **total** | **320** | |
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **159 are found today**, 18 are
-found in part, 7 are gaps worth closing, and
-28 need something we have decided not to build.
+remaining 212 issues, **169 are found today**, 19 are
+found in part, 4 are gaps worth closing, and
+20 need something we have decided not to build.
 
 A gap is not a defect. It is a named, deliberate absence — which is the only kind worth
 having, because the alternative is an absence nobody has noticed.
@@ -46,7 +46,7 @@ having, because the alternative is an absence nobody has noticed.
 | Internal Redirection (3XX) | check | `INTERNAL_LINK_TO_REDIRECT` `BAD_REDIRECT_TYPE` |  |
 | Internal Redirection (Meta Refresh) | check | `META_REFRESH_REDIRECT` |  |
 | Internal Redirection (HTTP Refresh) | check | `HTTP_REFRESH_REDIRECT` |  |
-| Internal Redirection (JavaScript) | gap | — | needs rendering plus navigation tracking; render mode reports the DOM, not location changes |
+| Internal Redirection (JavaScript) | partial | — | navigation is observed on rendered scans (`scan-navigation`, cause `script_navigation`), but no finding reports a script-initiated location change as a redirect yet, and the SF-export and legacy paths never see one |
 | External No Response | tool | `links-check` |  |
 | External Client Error (4XX) | check | `BROKEN_EXTERNAL_LINK` |  |
 | External Server Error (5XX) | check | `BROKEN_EXTERNAL_LINK` |  |
@@ -142,7 +142,7 @@ having, because the alternative is an absence nobody has noticed.
 | Soft 404 Pages | tool | `soft404-check` |  |
 | Lorem Ipsum Placeholder | check | `LOREM_IPSUM_PLACEHOLDER` | matched as the full multi-word passage within the resolved content area, never a substring of the whole document, so a page merely mentioning it once outside the content area is not flagged |
 | Near Duplicates | partial | `NEAR_DUPLICATE` | an SF export's native "No. Near Duplicates" column is read directly and answers this fully; the SimHash-based fallback that answers it without one needs HTML stored to disk (input.html_store_dir), which a native `crawl-site` run never writes, so that run always skips this one by name instead |
-| Semantically Similar | gap | — | needs embeddings; simhash finds near-duplicates by shingles, not by meaning |
+| Semantically Similar | gap | — | needs an embedding adapter; the semantic-similarity command and MCP tool take caller-supplied vectors or a local adapter, but no adapter ships and the SF run does not call it yet, so the row stays open. simhash finds near-duplicates by shingles, not by meaning |
 | Low Relevance Content | gap | — | needs a query or a topic model to be relevant to |
 | Low Content Pages | check | `THIN_CONTENT` `LOW_TEXT_RATIO` |  |
 | Readability Difficult | check | `READABILITY_DIFFICULT` `LONG_SENTENCES` |  |
@@ -157,7 +157,7 @@ having, because the alternative is an absence nobody has noticed.
 | Background Images | tool | `parse` | CSS url() sources are extracted by the parser's url_sources option, which is how four images invisible to the HTML were found on a live site |
 | Over 100 kb | check | `IMG_OVER_KB` |  |
 | Alt Text Over 100 Characters | check | `IMG_ALT_TOO_LONG` |  |
-| Incorrectly Sized Images | gap | — | needs the rendered layout box to compare against the intrinsic size |
+| Incorrectly Sized Images | partial | — | render-check measures intrinsic size against the rendered box (image_sizing: oversized, upscaled) on rendered routes only; no SF-analyzer check reads it yet, and crawl exports are not checked |
 | Missing Size Attributes | check | `IMG_MISSING_DIMENSIONS` |  |
 
 ## Canonicals
@@ -198,8 +198,8 @@ having, because the alternative is an absence nobody has noticed.
 | None | check | `NOINDEX` `NOFOLLOW_PAGE` | 'none' is expanded to noindex+nofollow when directives are parsed |
 | Unavailable_After | check | `UNAVAILABLE_AFTER` |  |
 | NoSnippet | check | `NOSNIPPET` |  |
-| NoODP | out of scope | — | the directive was retired with the Open Directory Project in 2017 |
-| NoYDIR | out of scope | — | the directive was retired with the Yahoo Directory |
+| NoODP | check | `NOODP` |  |
+| NoYDIR | check | `NOYDIR` |  |
 | NoTranslate | check | `NOTRANSLATE` |  |
 
 ## Hreflang
@@ -215,7 +215,7 @@ having, because the alternative is an absence nobody has noticed.
 | Multiple Entries | check | `HREFLANG_MULTIPLE_ENTRIES` |  |
 | Not Using Canonical | check | `HREFLANG_NOT_CANONICAL` |  |
 | Outside <head> | check | `HREFLANG_OUTSIDE_HEAD` |  |
-| Unlinked Hreflang URLs | gap | — | hreflang targets are not tested against the link graph |
+| Unlinked Hreflang URLs | check | `HREFLANG_UNLINKED_TARGET` |  |
 | Missing Self Reference | check | `HREFLANG_MISSING_SELF_REFERENCE` |  |
 | Missing X-Default | check | `HREFLANG_MISSING_XDEFAULT` |  |
 
@@ -238,7 +238,7 @@ having, because the alternative is an absence nobody has noticed.
 | H1 Only in Rendered HTML | tool | `render-check` |  |
 | H1 Updated by JavaScript | tool | `render-check` |  |
 | Canonical Only in Rendered HTML | tool | `render-check` |  |
-| Pages With JavaScript Errors | tool | `crawl-site` | browser console errors are captured per URL when rendering.artifacts.console_errors is on |
+| Pages With JavaScript Errors | check | `JS_CONSOLE_ERRORS` |  |
 
 ## Links
 
@@ -248,7 +248,7 @@ having, because the alternative is an absence nobody has noticed.
 | Pages With Uncrawlable Internal Outlinks | partial | — | attribution is possible -- the exclusion map holds the reason and the link graph holds the source -- but every reason a crawl records for an internal destination is a property of the run's own scope configuration (exclude/include patterns, segments_only, depth and query-variant budgets), not of the site, so a finding built on them would report the operator's settings back as defects. The two site-caused reasons already have their own checks from the destination side (BLOCKED_BY_ROBOTS, IMPORTANT_URL_BLOCKED_BY_ROBOTS) and a link to a robots-disallowed cart or search URL is ordinary, not a defect. This needs a reason the crawler does not record today -- a destination that is unfetchable in itself, e.g. a malformed href, which the parser discards before the crawl ever sees it |
 | Pages Without Internal Outlinks | check | `NO_INTERNAL_OUTLINKS` |  |
 | Non-Indexable Page Inlinks Only | check | `ONLY_NONINDEXABLE_SOURCE_INLINKS` |  |
-| Internal Nofollow Outlinks | partial | — | nofollow is recorded per edge and gates crawling; there is no page-level finding for having them |
+| Internal Nofollow Outlinks | check | `INTERNAL_NOFOLLOW_OUTLINKS` |  |
 | Pages With High External Outlinks | check | `HIGH_EXTERNAL_OUTLINKS` |  |
 | Pages With High Internal Outlinks | check | `HIGH_OUTLINKS` |  |
 | Follow & Nofollow Internal Inlinks To Page | check | `FOLLOW_AND_NOFOLLOW_INLINKS` |  |
@@ -346,7 +346,7 @@ having, because the alternative is an absence nobody has noticed.
 | Multiple <head> Tags | check | `HEAD_MULTIPLE` |  |
 | Missing <body> Tag | check | `BODY_MISSING` |  |
 | Multiple <body> Tags | check | `BODY_MULTIPLE` |  |
-| HTML Document Over 2MB | check | `LARGE_HTML` |  |
+| HTML Document Over 2MB | check | `HTML_OVER_2MB` |  |
 | Resource Over 2MB | partial | — | a body above the configured ceiling is recorded and not parsed; it is a limit, not a finding |
 | Invalid HTML Elements In <head> | check | `INVALID_HEAD_ELEMENT` |  |
 | <body> Element Preceding <html> | check | `HEAD_NOT_FIRST` |  |
@@ -456,7 +456,7 @@ having, because the alternative is an absence nobody has noticed.
 
 ## AMP
 
-**16 issues, declined as one decision.** AMP is effectively retired: Google dropped the Top Stories carousel requirement in 2021 and the format is in maintenance. Building sixteen checks for it now would be work aimed at the last decade.
+**16 issues, declined as one decision.** pairing read from the AMP target the crawl captured (#1020)
 
 <details><summary>The full list, so the decision is auditable</summary>
 
@@ -464,17 +464,17 @@ having, because the alternative is an absence nobody has noticed.
 - Missing Non-AMP Return Link
 - Missing Canonical to Non-AMP
 - Non-Indexable Canonical
+- Missing Canonical
+- Indexable
 - Missing <html amp> Tag
 - Missing/Invalid Doctype HTML Tag
 - Missing Head Tag
 - Missing Body Tag
-- Missing Canonical
 - Missing/Invalid Meta Charset Tag
 - Missing/Invalid Meta Viewport Tag
 - Missing/Invalid AMP Script
 - Missing/Invalid AMP Boilerplate
 - Contains Disallowed HTML
 - Other Validation Errors
-- Indexable
 
 </details>

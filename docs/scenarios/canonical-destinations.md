@@ -46,7 +46,7 @@ The source URL and exact canonical target stay together with response and indexa
 
 **3. Review a homepage group only when the crawl supports the pattern.**
 
-`CANONICAL_HOMEPAGE_GROUP` fires for at least three fetched, indexable source pages from at least two top-level path sections, each with its own non-empty title and H1 distinct from the fetched homepage. The audit returns exact source URLs, their sections, title/H1 evidence, and homepage response/indexability. It excludes the homepage itself, query URLs, and recognizable `/page/2` or `/paged/2` paths. Configured pagination/filter patterns from the canonical policy contract are delegated to its shared matcher and excluded from this general pattern check.
+`CANONICAL_HOMEPAGE_GROUP` fires for at least three fetched, indexable source pages from at least two top-level path sections, with at least three distinct titles and at least three distinct H1 values among them, each with its own non-empty title and H1 distinct from the fetched homepage. The audit returns exact source URLs, their sections, title/H1 evidence, and homepage response/indexability. It excludes the homepage itself, query URLs, and recognizable `/page/N`, `/page-N` or `/paged/N` paths. Configured pagination/filter patterns from the canonical policy contract are delegated to its shared matcher and excluded from this general pattern check.
 
 Partial native crawls withhold this site-wide pattern and report a named skip. A missing or unindexable homepage target also prevents a group verdict. These thresholds make the result a review signal; they do not prove semantic irrelevance or replace the operator's configured policy.
 

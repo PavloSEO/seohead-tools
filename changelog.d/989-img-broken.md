@@ -1,0 +1,1 @@
+- Native crawl: new check IMG_BROKEN (#989, slice 1) reports <img> targets that answered 4xx/5xx, with the source page as evidence. It reads the stored resource graph and skips honestly when no image was measured.

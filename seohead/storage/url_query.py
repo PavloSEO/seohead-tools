@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sqlite3
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -117,11 +119,75 @@ DEFAULT_COLUMNS = (
     "response_time",
     "indexable",
 )
+# Screaming-Frog-style views as named filter sets over COLUMNS. A preset is a shorthand: it is
+# AND-combined with the caller's filters and reported back. Views whose column is absent on main
+# (duplicate-title groups, in_sitemap, inlinks, hreflang) are not presets yet.
+PRESETS: dict[str, tuple[str, tuple[dict[str, Any], ...]]] = {
+    "status_3xx": (
+        "Response codes: 3xx",
+        ({"column": "status_class", "op": "eq", "value": "3xx"},),
+    ),
+    "status_4xx": (
+        "Response codes: 4xx",
+        ({"column": "status_class", "op": "eq", "value": "4xx"},),
+    ),
+    "status_5xx": (
+        "Response codes: 5xx",
+        ({"column": "status_class", "op": "eq", "value": "5xx"},),
+    ),
+    "no_response": (
+        "Response codes: none",
+        ({"column": "status_class", "op": "eq", "value": "none"},),
+    ),
+    "title_missing": ("Titles: missing", ({"column": "title", "op": "empty"},)),
+    "title_over_60": (
+        "Titles: over 60 characters",
+        ({"column": "title_length", "op": "gt", "value": 60},),
+    ),
+    "meta_description_missing": (
+        "Meta description: missing",
+        ({"column": "meta_description", "op": "empty"},),
+    ),
+    "meta_description_over_160": (
+        "Meta description: over 160 characters",
+        ({"column": "meta_description_length", "op": "gt", "value": 160},),
+    ),
+    "h1_missing": ("H1: missing", ({"column": "h1", "op": "empty"},)),
+    "h1_multiple": ("H1: more than one", ({"column": "h1_2", "op": "not_empty"},)),
+    "canonical_missing": ("Canonicals: missing", ({"column": "canonical", "op": "empty"},)),
+    "images_missing_alt": (
+        "Images: missing alt attribute",
+        ({"column": "images_missing_alt_attr", "op": "gt", "value": 0},),
+    ),
+    "noindex_meta": (
+        "Directives: noindex in meta robots",
+        ({"column": "meta_robots", "op": "contains", "value": "noindex"},),
+    ),
+    "noindex_header": (
+        "Directives: noindex in X-Robots-Tag",
+        ({"column": "x_robots", "op": "contains", "value": "noindex"},),
+    ),
+    "no_outlinks": ("Links: no outlinks", ({"column": "outlinks", "op": "eq", "value": 0},)),
+}
 # Physical pages columns the allow-list reads; a scan lacking one is a different schema version.
 _REQUIRED_PAGE_COLUMNS = frozenset(
     c.expr[2:] for c in COLUMNS.values() if re.fullmatch(r"p\.\w+", c.expr)
 )
 _STATUS_CLASSES = {f"{n}xx": (n * 100, n * 100 + 100) for n in range(1, 6)}
+# Facet groups over the pages table only (no urls join), so every count is one conditional scan.
+# Literals only: the SQL text is fixed and no user value reaches it.
+FACET_GROUPS: dict[str, str] = {
+    "all": "1",
+    "status_2xx": "p.status_code>=200 AND p.status_code<300",
+    "status_3xx": "p.status_code>=300 AND p.status_code<400",
+    "status_4xx": "p.status_code>=400 AND p.status_code<500",
+    "status_5xx": "p.status_code>=500 AND p.status_code<600",
+    "title_missing": "(p.title IS NULL OR p.title='')",
+    "canonical_missing": "(p.canonical IS NULL OR p.canonical='')",
+    "directives_noindex": "instr(lower(p.meta_robots||','||p.x_robots),'noindex')>0",
+    "directives_nofollow": "instr(lower(p.meta_robots||','||p.x_robots),'nofollow')>0",
+    "with_outlinks": "p.outlinks>0",
+}
 _OPS = {
     "int": {"eq", "ne", "gt", "gte", "lt", "lte", "between", "in", "not_in", "is_null", "not_null"},
     "real": {
@@ -258,6 +324,23 @@ def _filter_clause(item: Any) -> tuple[str, list[Any], bool]:
     return f"instr({hay},?)=0", [needle], uses_url  # not_contains
 
 
+def _preset_filters(preset: str) -> list[dict[str, Any]]:
+    if not isinstance(preset, str) or preset not in PRESETS:
+        raise QueryError("unknown_preset", "preset is not one of: " + ", ".join(sorted(PRESETS)))
+    return [dict(item) for item in PRESETS[preset][1]]
+
+
+def _where(filters: list[dict[str, Any]]) -> tuple[str, list[Any], bool]:
+    """AND-combined SQL condition (without WHERE), its parameters and whether urls is read."""
+    clauses, params, needs_url = [], [], False
+    for item in filters:
+        sql, p, uses_url = _filter_clause(item)
+        clauses.append(sql)
+        params += p
+        needs_url = needs_url or uses_url
+    return " AND ".join(clauses), params, needs_url
+
+
 class _Budget:
     """Abort a statement once a wall-clock deadline passes."""
 
@@ -360,6 +443,45 @@ def _click_depth_check(con: sqlite3.Connection, names: set[str]) -> None:
         con.execute("PRAGMA query_only=ON")
 
 
+def _facet_ids(facets: Any) -> list[str]:
+    """Requested facet group ids in order; None or [] means no facets are requested."""
+    if facets is None:
+        return []
+    if facets == "all":
+        return list(FACET_GROUPS)
+    if type(facets) is not list or not all(isinstance(f, str) for f in facets):
+        raise QueryError("invalid_facet", "facets must be a list of group ids or 'all'")
+    unknown = [f for f in facets if f not in FACET_GROUPS]
+    if unknown:
+        raise QueryError("invalid_facet", "unknown facet group: " + ", ".join(map(str, unknown)))
+    if len(set(facets)) != len(facets):
+        raise QueryError("invalid_facet", "facets repeats a group")
+    return facets
+
+
+def _facet_counts(
+    con: sqlite3.Connection,
+    budget: _Budget,
+    ids: list[str],
+    join: str,
+    where: str,
+    params: list[Any],
+    timeout: float,
+) -> tuple[dict[str, int | None], str]:
+    """Count every requested group in one pass over the same filtered rows."""
+    exprs = ",".join(
+        f"COALESCE(SUM(CASE WHEN ({FACET_GROUPS[g]}) THEN 1 ELSE 0 END),0)" for g in ids
+    )
+    budget.start(timeout)
+    try:
+        row = con.execute(f"SELECT {exprs} FROM pages p{join}{where}", params).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        return {g: None for g in ids}, "capped"
+    return dict(zip(ids, row, strict=True)), "exact"
+
+
 def _int(value: Any, name: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise QueryError("invalid_" + name, f"{name} must be an integer {low}..{high}")
@@ -377,6 +499,8 @@ def scan_url_query(
     limit: int = DEFAULT_LIMIT,
     count_timeout_seconds: float = DEFAULT_COUNT_BUDGET_SECONDS,
     max_bytes: int = 1_048_576,
+    preset: str | None = None,
+    facets: list[str] | str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -391,6 +515,8 @@ def scan_url_query(
             count_timeout_seconds,
             max_bytes,
             started,
+            preset,
+            facets,
         )
     except QueryError as exc:
         return {
@@ -424,6 +550,8 @@ def _query(
     count_timeout: Any,
     max_bytes: Any,
     started: float,
+    preset: Any = None,
+    facets: Any = None,
 ) -> dict[str, Any]:
     if not isinstance(input_path, str) or not input_path:
         raise QueryError("invalid_input", "input_path is required")
@@ -438,7 +566,11 @@ def _query(
         raise QueryError("invalid_sort", "direction must be asc or desc")
     if filters is None:
         filters = []
-    if type(filters) is not list or len(filters) > MAX_FILTERS:
+    if type(filters) is not list:
+        raise QueryError("invalid_filter", f"filters must be a list of at most {MAX_FILTERS}")
+    if preset is not None:
+        filters = _preset_filters(preset) + filters
+    if len(filters) > MAX_FILTERS:
         raise QueryError("invalid_filter", f"filters must be a list of at most {MAX_FILTERS}")
     if columns is None:
         columns = list(DEFAULT_COLUMNS)
@@ -453,13 +585,10 @@ def _query(
         raise QueryError("unknown_column", "sort names an unavailable column")
     if sort == "status_class":
         sort = "status_code"
-    clauses, params, needs_url = [], [], False
-    for item in filters:
-        sql, p, uses_url = _filter_clause(item)
-        clauses.append(sql)
-        params += p
-        needs_url = needs_url or uses_url
-    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    conditions, params, needs_url = _where(filters)
+    where = (" WHERE " + conditions) if conditions else ""
+    join = " JOIN urls u ON u.url_id=p.url_id" if needs_url else ""
+    facet_ids = _facet_ids(facets)
     if input_path.lower().endswith(".json"):
         return {
             "ok": True,
@@ -478,9 +607,8 @@ def _query(
         budget.start(PAGE_BUDGET_SECONDS)
         total = con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
         filtered: int | None = total
-        if clauses:
+        if conditions:
             budget.start(float(count_timeout))
-            join = " JOIN urls u ON u.url_id=p.url_id" if needs_url else ""
             try:
                 filtered = con.execute(
                     "SELECT COUNT(*) FROM pages p" + join + where, params
@@ -489,6 +617,11 @@ def _query(
                 if "interrupt" not in str(exc).lower():
                     raise
                 filtered = None
+        facet_counts, facets_state = None, None
+        if facet_ids:
+            facet_counts, facets_state = _facet_counts(
+                con, budget, facet_ids, join, where, params, float(count_timeout)
+            )
         small = filtered is not None and filtered <= SORT_ROW_CAP
         order_col = sort or "page_ordinal"
         if not small and order_col not in indexed:
@@ -598,6 +731,11 @@ def _query(
         "total": total,
         "filtered_total": filtered,
         "filtered_total_state": "exact" if filtered is not None else "capped",
+        **(
+            {"facets": facet_counts, "facets_state": facets_state}
+            if facet_counts is not None
+            else {}
+        ),
         "sort": {
             "column": order_col,
             "direction": direction,
@@ -605,10 +743,167 @@ def _query(
             "mode": "materialized" if small else "index",
         },
         "filters": filters,
+        "preset": preset,
         "coverage": {
             "rows": "committed page records; queued or excluded URLs without a page are not rows",
             "scan_complete": complete,
             "scan_lifecycle": source["lifecycle"],
         },
         "elapsed_ms": round((time.monotonic() - started) * 1000),
+    }
+
+
+EXPORT_FORMAT = "seohead.scan-url-query-export.v1"
+EXPORT_FORMATS = ("csv", "xlsx")
+# Default row cap for a filtered export. The final value is Pavel's decision (issue #1007).
+EXPORT_MAX_ROWS = 100_000
+# One XLSX sheet holds 1,048,576 rows; the export writes a header row above its data.
+EXPORT_XLSX_ROWS = 1_048_575
+
+
+def export_scan_query(
+    input_path: str,
+    out: str,
+    *,
+    fmt: str = "csv",
+    preset: str | None = None,
+    filters: list[dict[str, Any]] | None = None,
+    columns: list[str] | None = None,
+    max_rows: int = EXPORT_MAX_ROWS,
+) -> dict[str, Any]:
+    """Write every row a validated query matches to one new CSV or XLSX file, read-only on the scan.
+
+    Rows are read in url_id order in batches, so memory stays flat. The export refuses above
+    ``max_rows`` instead of truncating, and publication is all-or-nothing via scan_export's writer.
+    """
+    from seohead.storage.scan_export import ScanError
+
+    try:
+        return _export(input_path, out, fmt, preset, filters, columns, max_rows)
+    except QueryError as exc:
+        return {
+            "ok": False,
+            "format": EXPORT_FORMAT,
+            "reason_code": exc.reason_code,
+            "error": str(exc),
+        }
+    except ScanError as exc:
+        return {
+            "ok": False,
+            "format": EXPORT_FORMAT,
+            "reason_code": "export_failed",
+            "error": str(exc),
+        }
+    except sqlite3.OperationalError as exc:
+        interrupted = "interrupt" in str(exc).lower()
+        return {
+            "ok": False,
+            "format": EXPORT_FORMAT,
+            "reason_code": "query_timeout" if interrupted else "cannot_read",
+            "error": f"cannot read scan: {exc}",
+        }
+
+
+def _export(
+    input_path: str,
+    out: Any,
+    fmt: Any,
+    preset: Any,
+    filters: Any,
+    columns: Any,
+    max_rows: Any,
+) -> dict[str, Any]:
+    from seohead.storage.scan_export import _publish_files, _write_csv_bytes, _write_xlsx
+
+    if fmt not in EXPORT_FORMATS:
+        raise QueryError("invalid_export_format", "export format must be csv or xlsx")
+    if type(max_rows) is not int or not 1 <= max_rows <= EXPORT_XLSX_ROWS:
+        raise QueryError("invalid_max_rows", f"max_rows must be an integer 1..{EXPORT_XLSX_ROWS}")
+    if not isinstance(out, str) or not out:
+        raise QueryError("invalid_output", "out must name a file path")
+    destination = Path(out)
+    if not destination.parent.is_dir():
+        raise QueryError("invalid_output", f"output directory does not exist: {destination.parent}")
+    if os.path.lexists(destination):
+        raise QueryError("output_exists", f"output already exists: {destination}")
+    # The same validation as a normal read, with one row: it resolves the preset and reports the count.
+    probe = scan_url_query(input_path, filters=filters, preset=preset, columns=columns, limit=1)
+    if not probe.get("ok") or "rows" not in probe:
+        return {**probe, "ok": False, "format": EXPORT_FORMAT}
+    expected = probe["filtered_total"]
+    if expected is None:
+        raise QueryError(
+            "export_count_unavailable",
+            "the matching row count exceeded its time budget; narrow the filters",
+        )
+    if expected > max_rows:
+        raise QueryError(
+            "export_too_large",
+            f"{expected} rows match, above max_rows {max_rows}; narrow the filters "
+            f"or raise max_rows (up to {EXPORT_XLSX_ROWS})",
+        )
+    fields = tuple(probe["columns"])
+    conditions, params, _ = _where(probe["filters"])
+    select = ",".join(f"{COLUMNS[n].expr} AS c{i}" for i, n in enumerate(fields))
+    body = (conditions + " AND " if conditions else "") + "p.url_id > ?"
+    sql = (
+        f"SELECT p.url_id,{select} FROM pages p JOIN urls u ON u.url_id=p.url_id "
+        f"WHERE {body} ORDER BY p.url_id LIMIT ?"
+    )
+    con, source, _ = _open(input_path)
+    budget = _Budget(con)
+    head = {
+        "format": EXPORT_FORMAT,
+        "preset": preset,
+        "filters": probe["filters"],
+        "columns": list(fields),
+        "rows": expected,
+        "source": source,
+    }
+    written = 0
+
+    def records() -> Iterator[dict[str, Any]]:
+        nonlocal written
+        last = -1
+        try:
+            while True:
+                budget.start(PAGE_BUDGET_SECONDS)
+                batch = con.execute(sql, [*params, last, MAX_LIMIT]).fetchall()
+                for row in batch:
+                    last = row[0]
+                    item = dict(zip(fields, tuple(row)[1:], strict=True))
+                    if item.get("indexable") is not None:
+                        item["indexable"] = bool(item["indexable"])
+                    written += 1
+                    yield item
+                if len(batch) < MAX_LIMIT:
+                    break
+        finally:
+            con.set_progress_handler(None, 0)
+        if written != expected:
+            raise QueryError(
+                "export_incomplete",
+                f"wrote {written} rows but the count said {expected}; the scan changed meanwhile",
+            )
+
+    def write(target: Path, owned: dict[Path, tuple[int, int]]) -> None:
+        if fmt == "csv":
+            _write_csv_bytes(target, fields, records(), owned)
+        else:
+            _write_xlsx(target, head, [("pages", fields, records())], owned)
+
+    try:
+        _publish_files({fmt: destination}, {fmt: write})
+    finally:
+        con.close()
+    return {
+        "ok": True,
+        "format": EXPORT_FORMAT,
+        "fmt": fmt,
+        "file": str(destination),
+        "rows": written,
+        "preset": preset,
+        "filters": probe["filters"],
+        "columns": list(fields),
+        "coverage": probe["coverage"],
     }

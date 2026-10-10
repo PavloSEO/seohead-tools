@@ -184,6 +184,15 @@ def test_the_ast_walk_found_crawl_site_and_its_tuple_loop():
     )
 
 
+# CLI-only named flags, each with the reason MCP does not carry it. MCP read tools are
+# read-only by contract (readOnlyHint), and these flags write a new file. The MCP export path
+# is seo_scan_export. A flag listed here must stay absent from MCP; the tripwire below fails
+# when MCP starts exposing it so the exemption gets removed rather than rot.
+CLI_ONLY_EXPORT_FLAGS: dict[str, set[str]] = {
+    "scan-url-query": {"export", "export_format", "export_max_rows"},
+}
+
+
 @pytest.mark.parametrize(
     ("cmd", "handler_name"), _SHARED_HANDLERS, ids=[c for c, _ in _SHARED_HANDLERS]
 )
@@ -194,7 +203,12 @@ def test_mcp_exposes_everything_the_cli_can_name_explicitly(cmd, handler_name):
     """
     cli_flags = CLI_EXPLICIT_FLAGS[cmd]
     mcp_flags = MCP_FORWARDED_BY_HANDLER[handler_name]
-    missing = cli_flags - mcp_flags
+    cli_only = CLI_ONLY_EXPORT_FLAGS.get(cmd, set())
+    assert cli_only <= cli_flags, f"{cmd} CLI_ONLY_EXPORT_FLAGS names flags the CLI does not set"
+    assert not (cli_only & mcp_flags), (
+        f"{cmd} now forwards {sorted(cli_only & mcp_flags)} over MCP; remove them from CLI_ONLY_EXPORT_FLAGS"
+    )
+    missing = cli_flags - mcp_flags - cli_only
     assert not missing, (
         f"'{cmd}' can set {sorted(missing)} from a named CLI flag, but no MCP tool "
         f"forwarding to handlers.{handler_name} accepts them: {sorted(mcp_flags)}"

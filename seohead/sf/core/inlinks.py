@@ -453,6 +453,61 @@ def check_hreflang_targets(ctx: AuditContext) -> None:
         )
 
 
+def check_hreflang_unlinked_targets(ctx: AuditContext) -> None:
+    """HREFLANG_UNLINKED_TARGET — an hreflang alternate no ordinary hyperlink reaches.
+
+    A URL that is only ever named by another page's ``<link rel="alternate"
+    hreflang>`` is discoverable by a search engine following the annotation,
+    but never by a user or crawler following a link. This is the hreflang twin
+    of UNLINKED_CANONICAL: the same set difference, with hreflang targets in
+    place of canonical targets. The target's own Inlinks count is read from
+    Internal:All, which counts hyperlinks only, so hreflang declarations never
+    count as inlinks. A page that names itself is not an unlinked alternate.
+    On a partial crawl "no inlink" cannot be proven, so
+    ``aggregate.aggregate`` withholds this finding.
+    """
+    df = ctx.exports.get("all_hreflang")
+    if df is None or df.empty:
+        ctx.skip(
+            "HREFLANG_UNLINKED_TARGET",
+            "no all_hreflang export (export Bulk Export → Links → All Hreflang to enable)",
+        )
+        return
+    if not any(_rec(p).get("inlinks") is not None for p in ctx.pages):
+        ctx.skip("HREFLANG_UNLINKED_TARGET", "no Inlinks column in Internal:All")
+        return
+    declared_from: OrderedDict[str, list[str]] = OrderedDict()
+    for rec in records_from_df(df, HREFLANG_FIELD_MAP):
+        src = rec.get("source_url")
+        dest = rec.get("destination_url")
+        if not src or not dest:
+            continue
+        source_norm = norm_url(src)
+        target_norm = norm_url(dest)
+        if source_norm == target_norm:
+            continue  # a self-reference is not evidence that anything links here
+        sources = declared_from.setdefault(target_norm, [])
+        if src not in sources:
+            sources.append(src)
+    for target_norm, sources in declared_from.items():
+        # Targets outside the crawl cannot be classified, as in check_hreflang_targets.
+        target = ctx.page_by_norm.get(target_norm)
+        if target is None:
+            continue
+        rec = _rec(target)
+        if rec.get("crawl_depth") == 0:
+            continue  # the homepage is never "unlinked"
+        inlinks = rec.get("inlinks")
+        if inlinks is None or inlinks > 0:
+            continue
+        ctx.add(
+            "HREFLANG_UNLINKED_TARGET",
+            target_url=target.url,
+            details={"declared_from": sorted(sources)},
+            evidence={"export": ctx.exports.files.get("all_hreflang")},
+        )
+
+
 def _rec(page: Any) -> dict[str, Any]:
     return page.metrics.get("_record", {})
 
@@ -1826,6 +1881,7 @@ def run_inlinks(ctx: AuditContext) -> None:
         _process_export(ctx, key, internal_check, external_check, site_host)
     check_anchor_text(ctx)
     check_hreflang_targets(ctx)
+    check_hreflang_unlinked_targets(ctx)
     check_hreflang_noindex_targets(ctx)
     check_hreflang_quality(ctx)
     check_hreflang_reciprocity(ctx)

@@ -64,13 +64,22 @@ the first saved view, `finding-views.json`, and, after the first event, `events.
 `events.jsonl` is the structured project log: one JSON line per event with a sequence,
 UTC time, source (`agent`, `user`, `scans`, `app`), actor (`user`, `agent`, `schedule`) and
 bounded text. It is append-only, read newest-first in pages of at most 200 with source and
-text filters, and refuses malformed lines instead of skipping them. `log.md` stays the
-human narrative.
+text filters, and refuses malformed lines instead of skipping them. The CLI
+(`project-event-append`, `project-event-page`) and the matching `seo_project_event_*`
+MCP tools expose the same two operations. `log.md` stays the human narrative.
 `project.json` records format `seohead.project.v1`, integer version 1, a persistent
 project UUID, UTC creation time, normalized target/host and an optional human label.
 Unknown formats/versions refuse; opening never upgrades or rewrites the file.
 Existing project directories are never overwritten. Move the entire directory to
-preserve the relative artifact references. The `ledger.v1` remediation ledger
+preserve the relative artifact references.
+
+Local portability: the project archive action writes one zip (a manifest with SHA-256 and size for
+each member, plus project.json, log.md, scans/, reports/ and the top-level SQLite stores, which are
+snapshotted through the SQLite backup API). A dry-run reports the file list, skipped entries and a
+size estimate without writing. Credential-like file names are never archived. The restore action
+verifies every member against the manifest, validates the project, and publishes it at a new path
+only; it never replaces an existing directory. Raw HTML bodies pruning, event journal, bindings and
+core version compatibility are not part of this first slice (#996). The `ledger.v1` remediation ledger
 ([LEDGER.md](LEDGER.md)) binds to this project UUID and normalized site target: it
 tracks the project's findings and their observation history in a separate artifact,
 never inside a scan.
@@ -288,6 +297,27 @@ else remain operator-entered.
 Recording a fact does not reorder work by itself: apply the priority policy below
 to act on it. The MCP equivalent is `seo_project_facts`, with the same `facts`,
 `detect` and `apply` arguments.
+
+### Linking a semantic core
+
+A project keeps a link to its semantic core and a short summary, never the core
+itself. The core stays in its own database; the project database is not merged with
+it. Record the link as operator-entered facts, so it uses the same provenance and
+precedence rules as any other fact:
+
+```bash
+seohead project facts --directory ./example-project \
+  --input '{"facts":[
+    {"name":"semcore_project","value":"semantics/semcore/example-shop","provenance":"operator: semantic core project directory","observed_at":null},
+    {"name":"semcore_cluster_count","value":42,"provenance":"operator: semcore report summary","observed_at":null},
+    {"name":"semcore_landing_mapping","value":"38 of 42 clusters mapped to a landing page","provenance":"operator: semcore landing-page mapping summary","observed_at":null}
+  ]}' --apply
+```
+
+Re-recording a name replaces its value in place. Detection never writes these names,
+and a supplied fact cannot claim detection provenance. The values are a relative
+project-side identifier and plain summary numbers or text; keep absolute local paths
+out of the project record.
 
 ## Checklist coverage
 

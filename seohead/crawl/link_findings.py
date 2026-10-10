@@ -153,6 +153,33 @@ def follow_and_nofollow_inlinks(links: list[LinkEdge], host: str) -> list[str]:
     return sorted(dest for dest, flags in by_dest.items() if flags == {True, False})
 
 
+def internal_nofollow_outlinks(
+    links: Iterable[LinkEdge], host: str, max_destinations: int = 20
+) -> list[dict[str, Any]]:
+    """Source pages carrying internal ``nofollow`` outlinks, with a bounded destination sample.
+
+    Reads only ``nofollow`` and ``destination``, both always recorded. A nofollow link is a
+    signal, not a defect (``rel="sponsored"`` and ``rel="ugc"`` are different reasons), so
+    this reports the fact for review rather than a verdict.
+    """
+    host = host.lower()
+    grouped: dict[str, dict[str, Any]] = {}
+    for edge in links:
+        if not edge.nofollow or (urlsplit(edge.destination).hostname or "").lower() != host:
+            continue
+        item = grouped.setdefault(edge.source, {"destinations": set(), "occurrences": 0})
+        item["destinations"].add(edge.destination)
+        item["occurrences"] += 1
+    return [
+        {
+            "target_url": source,
+            "nofollow_occurrences": item["occurrences"],
+            "destinations": sorted(item["destinations"])[:max_destinations],
+        }
+        for source, item in sorted(grouped.items())
+    ]
+
+
 def follow_and_nofollow_inlink_details(
     links: Iterable[LinkEdge], host: str, max_sources: int = 20
 ) -> list[dict[str, Any]]:

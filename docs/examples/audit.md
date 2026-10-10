@@ -1,14 +1,14 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-09T18:17:15Z
+- **Generated:** 2026-10-10T09:40:50Z
 
 ## Health summary
 
-> **No health score.** only 82 of 182 checks could run (45% coverage); too little evidence to score.
+> **No health score.** only 87 of 194 checks could run (45% coverage); too little evidence to score.
 
-_82 of 182 checks could run; the score is not comparable to a run with full evidence_
+_87 of 194 checks could run; the score is not comparable to a run with full evidence_
 
-- Checks: **20 fired**, 100 skipped, 62 silent, 0 disabled (of 182 total)
+- Checks: **20 fired**, 107 skipped, 67 silent, 0 disabled (of 194 total)
 
 - URLs crawled: **6** (HTML: 4, indexable: 4)
 - Total issues: **25**
@@ -262,10 +262,16 @@ Each check below describes more than half the crawled pages. That can be true --
 | A rel="next" series breaks a page-number run it otherwise follows | no rel="next" column in Internal:All |
 | Response uses HTTP/1.x rather than HTTP/2 or newer | no HTTP Version column in Internal:All |
 | AMP version is declared | no amphtml Link Element column in Internal:All |
+| The AMP page declared by rel=amphtml does not answer 200 | no amphtml Link Element column in Internal:All |
+| The AMP page declares no rel=canonical | no amphtml Link Element column in Internal:All |
+| The AMP page's rel=canonical does not point back to the page that declares it | no amphtml Link Element column in Internal:All |
+| The AMP page's canonical target is not indexable | no amphtml Link Element column in Internal:All |
+| The AMP page is indexable | no amphtml Link Element column in Internal:All |
 | The Lorem Ipsum placeholder passage appears in the page's own content area | no Lorem Ipsum evidence (native crawl only) |
 | Page contains a legacy plugin-dependent element (<object>/<embed>/<applet>) | no plugin-element evidence (native crawl only) |
 | An <img> has no alt attribute at all (not even alt="") | no per-image evidence (native crawl only) |
 | An image's alt text exceeds the configured length threshold | no per-image evidence (native crawl only) |
+| Image URL answered with an HTTP error, so the browser shows nothing | no resource evidence (native crawl with resource capture only) |
 | The deprecated AJAX crawling scheme (#! / _escaped_fragment_) is still used by this page's URL or by URLs it links to | no AJAX-scheme URL evidence (native crawl only) |
 | Page declares <meta name="fragment"> -- the page-wide opt-in to the deprecated AJAX crawling scheme | no <meta name="fragment"> evidence (native crawl only) |
 | No character encoding declared via Content-Type or an early <meta> tag | no Meta Charset column, so a page without a header charset cannot be distinguished from one declaring <meta charset> (needs a native seohead crawl or Custom Extraction in SF) |
@@ -292,6 +298,7 @@ Each check below describes more than half the crawled pages. That can be true --
 | External link points to a 4xx or 5xx URL | export inlinks_5xx not available |
 | Internal link points to a redirect (3xx) | export inlinks_3xx not available |
 | External link points to a redirect (3xx) | export inlinks_3xx not available |
+| Hreflang alternate target has no hyperlink pointing to it anywhere in the crawl | no all_hreflang export (export Bulk Export → Links → All Hreflang to enable) |
 | Hreflang alternate points to an observed noindex page | no all_hreflang declaration export |
 | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |
 | The same hreflang value is declared more than once on the page | no all_hreflang export (export Bulk Export -> Links -> All Hreflang) |

@@ -357,7 +357,10 @@ def _run_render_escalation(
                 # the pattern lands in patterns_unprobed with a reason (#626).
                 reason = (probed.get("findings") or [""])[0] or "the probe reached no verdict"
                 probed = dict(probed, ok=False, error=reason)
-            probed["needs_escalation"] = bool(verdict)
+            needs = bool(verdict)
+            if rendering_config.get("escalation", {}).get("policy") == "auto" and probed.get("ok"):
+                needs = needs or render_tool.little_text(probed.get("raw") or {})
+            probed["needs_escalation"] = needs
             return probed
 
         def render_fetch(target: str) -> dict[str, Any]:
@@ -1546,6 +1549,7 @@ def _audit_crawl_result(
 
         audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
         ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
+        ctx.scan_con = stored_scan.con if stored_scan is not None else None
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
@@ -1822,6 +1826,12 @@ def _audit_crawl_result(
                     ctx.add(
                         "FOLLOW_AND_NOFOLLOW_INLINKS", target_url=item["target_url"], details=item
                     )
+                for item in link_findings.internal_nofollow_outlinks(
+                    graph.iter_links() if graph else links, crawl_host
+                ):
+                    ctx.add(
+                        "INTERNAL_NOFOLLOW_OUTLINKS", target_url=item["target_url"], details=item
+                    )
                 if settings["link_attributes"]["capture"]:
                     safely_upgraded = {
                         page.url
@@ -1844,14 +1854,14 @@ def _audit_crawl_result(
                         "link_attributes.capture is false; original href schemes were not retained",
                     )
             else:
-                ctx.skip(
-                    "FOLLOW_AND_NOFOLLOW_INLINKS",
-                    "no crawl start URL is available to identify one site's internal links",
-                )
+                no_host = "no crawl start URL is available to identify one site's internal links"
+                ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", no_host)
+                ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", no_host)
         else:
             reason = "crawl-list input retains no link-edge evidence"
             ctx.skip("OUTLINK_TO_LOCALHOST", reason)
             ctx.skip("FOLLOW_AND_NOFOLLOW_INLINKS", reason)
+            ctx.skip("INTERNAL_NOFOLLOW_OUTLINKS", reason)
             ctx.skip("HTTP_LINK_ON_HTTPS", reason)
 
         if has_form_evidence:
@@ -1885,6 +1895,38 @@ def _audit_crawl_result(
                 else link_findings.protocol_relative_links(links)
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
+
+    # Pages With JavaScript Errors (#1015): read from the retained render console sidecars,
+    # never re-rendered here. Unreadable evidence is a stated skip, not a clean page.
+    if stored_scan is not None and not stored_list and hasattr(stored_scan, "path"):
+        from seohead.storage import browser_artifacts
+
+        console = browser_artifacts.console_error_pages(stored_scan.con, stored_scan.path)
+        # A skip is retracted by any sibling add(), so an unreadable record only becomes
+        # the stated reason when no readable page produced a finding.
+        if console["unreadable"] and not console["pages"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                f"{console['unreadable']} retained browser console record(s) could not be read",
+            )
+        elif not console["captured"]:
+            ctx.skip(
+                "JS_CONSOLE_ERRORS",
+                "no browser console was retained; enable rendering.artifacts.console_errors",
+            )
+        for item in console["pages"]:
+            ctx.add(
+                "JS_CONSOLE_ERRORS",
+                target_url=item["target_url"],
+                details={"error_count": item["error_count"], "errors": item["errors"]},
+            )
+    else:
+        # The legacy graph path keeps no render sidecars, so it states the same
+        # skip the stored-scan path states for an uncaptured console (keeps parity).
+        ctx.skip(
+            "JS_CONSOLE_ERRORS",
+            "no browser console was retained; enable rendering.artifacts.console_errors",
+        )
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
@@ -2934,8 +2976,9 @@ def markdown_extract(
     Pass ``html`` to render offline, or ``url`` to fetch it first. The
     content-area rendering is what is worth diffing between crawls, scoring,
     or handing to a model; the full-document rendering (header and footer
-    included) is what ``boilerplate_report`` hashes to check whether
-    boilerplate is actually consistent across a crawl.
+    included) is not what ``boilerplate_report`` takes: that check needs the
+    original HTML (or a precomputed hash) to see whether boilerplate is
+    consistent across a crawl.
     """
     if not url and not html:
         raise ValueError("url or html required")
@@ -3207,6 +3250,44 @@ def meta_description_drafts(
     )
     if json_path and csv_path:
         core.export_draft_review(result, json_path, csv_path)
+    return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
+
+
+def ai_column(
+    items: list[dict] | None = None,
+    scan: str | None = None,
+    prompt: str = "",
+    urls: list[str] | None = None,
+    column: str = "ai_column",
+    max_pages: int = 100,
+    rows: list[dict] | None = None,
+    csv_path: str | None = None,
+) -> dict[str, Any]:
+    """Plan a per-URL AI column over retained page evidence, then validate caller-supplied values."""
+    if (items is None) == (scan is None):
+        raise ValueError("provide exactly one of items[] or scan")
+    from seohead.checks import ai_column as core
+
+    if scan is not None:
+        from seohead.storage.corpus_inputs import corpus_public, scan_corpus
+
+        corpus = scan_corpus(scan, kind="semantic")
+        if corpus["coverage"]["state"] == "unavailable":
+            return {"ok": False, **corpus_public(corpus)}
+        source_items = corpus["items"]
+        public = corpus_public(corpus)
+    else:
+        assert items is not None
+        source_items = items
+        public = {}
+    plan = core.prepare_ai_column_plan(
+        source_items, prompt, urls=urls, column=column, max_pages=max_pages
+    )
+    if rows is None:
+        return {"ok": True, "plan": plan, **public}
+    result = core.apply_ai_column_results(plan, rows)
+    if csv_path:
+        core.export_ai_column_csv(result, csv_path)
     return {"ok": True, "plan_coverage": plan["coverage"], "result": result, **public}
 
 
@@ -3864,6 +3945,17 @@ def wayback_history(
     return core.history(url, limit=limit, from_date=from_date, to_date=to_date)
 
 
+def cloudflare_traffic(
+    zone: str | None = None, since: str | None = None, until: str | None = None
+) -> dict[str, Any]:
+    """Bot and human traffic from Cloudflare edge analytics (aggregated, not raw logs)."""
+    if not zone:
+        raise ValueError("zone required (Cloudflare zone name)")
+    from seohead.data_sources import cloudflare as core
+
+    return core.traffic(zone, since=since, until=until)
+
+
 def crtsh_subdomains(domain: str | None = None) -> dict[str, Any]:
     """Subdomains discovered from public Certificate Transparency logs (crt.sh).
 
@@ -4239,10 +4331,20 @@ def scan_inspect(
     offset: int = 0,
     limit: int = 100,
     max_bytes: int = 1_048_576,
+    columns: list[str] | None = None,
+    total: bool = False,
 ) -> dict[str, Any]:
     from seohead.mcp.history_handlers import scan_inspect as core
 
-    return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
+    return core(
+        input_path,
+        table=table,
+        offset=offset,
+        limit=limit,
+        max_bytes=max_bytes,
+        columns=columns,
+        total=total,
+    )
 
 
 def scan_url_query(
@@ -4255,10 +4357,29 @@ def scan_url_query(
     limit: int = 200,
     count_timeout_seconds: float = 1.0,
     max_bytes: int = 1_048_576,
+    facets: list[str] | str | None = None,
+    preset: str | None = None,
+    export: str | None = None,
+    export_format: str = "csv",
+    export_max_rows: int | None = None,
 ) -> dict[str, Any]:
-    """Filter, sort and paginate the whole page table of one saved scan, read-only."""
+    """Filter, sort and paginate the whole page table of one saved scan, read-only.
+
+    With ``export`` set, writes every matching row to that new file instead of returning a page.
+    """
+    from seohead.storage.url_query import EXPORT_MAX_ROWS, export_scan_query
     from seohead.storage.url_query import scan_url_query as core
 
+    if export is not None:
+        return export_scan_query(
+            input_path,
+            export,
+            fmt=export_format,
+            preset=preset,
+            filters=filters,
+            columns=columns,
+            max_rows=EXPORT_MAX_ROWS if export_max_rows is None else export_max_rows,
+        )
     return core(
         input_path,
         filters=filters,
@@ -4269,6 +4390,8 @@ def scan_url_query(
         limit=limit,
         count_timeout_seconds=count_timeout_seconds,
         max_bytes=max_bytes,
+        facets=facets,
+        preset=preset,
     )
 
 
@@ -4501,6 +4624,21 @@ def remediation_summary(ledger: str) -> dict[str, Any]:
     from seohead.storage.ledger import remediation_summary as core
 
     return core(ledger)
+
+
+def remediation_create(path: str, project_dir: str, producer_build: str) -> dict[str, Any]:
+    """Create one new empty ledger bound to a project; existing files are refused."""
+    from seohead.storage.ledger import create_ledger, ledger_summary
+
+    out = create_ledger(path, project_dir=project_dir, producer_build=producer_build)
+    return {"ledger": str(out), "summary": ledger_summary(out)}
+
+
+def remediation_ingest(ledger: str, scan: str) -> dict[str, Any]:
+    """Ingest one saved audit into a ledger as baseline/history; re-ingest is idempotent."""
+    from seohead.storage.ledger import ingest_scan
+
+    return ingest_scan(ledger, scan)
 
 
 def workflow_start(
@@ -4906,6 +5044,24 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
     return core(directory, consumer=consumer, limit=limit)
 
 
+def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_append as core
+
+    return core(directory, source=source, actor=actor, text=text)
+
+
+def project_event_page(
+    directory: str,
+    offset: int = 0,
+    limit: int = 50,
+    source: str | None = None,
+    query: str = "",
+) -> dict[str, Any]:
+    from seohead.mcp.project_handlers import project_event_page as core
+
+    return core(directory, offset=offset, limit=limit, source=source, query=query)
+
+
 def project_observe(
     directory: str,
     consumer: str | None = None,
@@ -5070,6 +5226,12 @@ def skill_show(name: str) -> dict[str, Any]:
     from seohead.projects.runtime import playbook_show
 
     return playbook_show(name, "skill")
+
+
+def scenario_list() -> dict[str, Any]:
+    from seohead.projects.runtime import playbook_list
+
+    return playbook_list("scenario")
 
 
 def scenario_show(name: str) -> dict[str, Any]:
@@ -5490,12 +5652,23 @@ def project_checklist_page(
     query: str = "",
     kind: str | None = None,
     state: str | None = None,
+    sort: str = "id",
+    descending: bool = False,
+    states: list[str] | None = None,
 ) -> dict[str, Any]:
     """Read a bounded searchable page of project checklist evidence."""
     from seohead.projects.observer import checklist_page as core
 
     return core(
-        directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+        directory=directory,
+        offset=offset,
+        limit=limit,
+        query=query,
+        kind=kind,
+        state=state,
+        sort=sort,
+        descending=descending,
+        states=states,
     )
 
 
@@ -5877,14 +6050,29 @@ def scan_content_search(
     }
 
 
-def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
-    """Read no more than 100 indexed derived content-search records without rescanning evidence."""
+def scan_content_search_page(
+    package: str,
+    offset: int = 0,
+    limit: int = 100,
+    status: str | None = None,
+    status_code: int | None = None,
+) -> dict[str, Any]:
+    """Read no more than 100 indexed derived content-search records without rescanning evidence.
+
+    With ``status`` or ``status_code`` the page is taken from the filtered stream: ``offset`` and
+    ``next_offset`` count matching records, and the scan is linear (every record is re-verified).
+    """
     import hashlib
     import json
     import os
 
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("offset must be nonnegative and limit must be 1..100")
+    if status is not None and status not in {"matched", "not_matched", "unavailable"}:
+        raise ValueError("status must be matched, not_matched, unavailable, or omitted")
+    if status_code is not None and (type(status_code) is not int or not 100 <= status_code <= 599):
+        raise ValueError("status_code must be an integer 100..599 or omitted")
+    filtered = status is not None or status_code is not None
     root = Path(package)
     manifest_path = root / "manifest.json"
     if (
@@ -5930,6 +6118,36 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
         type(source.get("scan_uuid")) is not str or type(source.get("evidence_revision")) is not int
     ):
         raise ValueError("content-search package source identity is invalid")
+
+    def checked_row(line: bytes, digest: bytes) -> dict[str, Any]:
+        if len(line) > 64 * 1024 or not line.endswith(b"\n"):
+            raise ValueError("content-search package record is truncated or exceeds 64 KiB")
+        if hashlib.sha256(line).digest() != digest:
+            raise ValueError("content-search package record integrity is invalid")
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError("content-search package record is invalid") from exc
+        if not isinstance(row, dict):
+            raise ValueError("content-search package record is invalid")
+        if row.get("scan_uuid") != source.get("scan_uuid") or row.get(
+            "evidence_revision"
+        ) != source.get("evidence_revision"):
+            raise ValueError("content-search package record source identity disagrees")
+        return row
+
+    if filtered:
+        return _content_search_filtered_page(
+            manifest=manifest,
+            records=records,
+            index_path=index_path,
+            records_path=records_path,
+            offset=offset,
+            limit=limit,
+            status=status,
+            status_code=status_code,
+            checked_row=checked_row,
+        )
     if offset >= records["count"]:
         return {
             "ok": True,
@@ -5951,24 +6169,12 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
             line = stream.readline(64 * 1024 + 1)
             if not line:
                 raise ValueError("content-search package records are truncated")
-            if len(line) > 64 * 1024 or not line.endswith(b"\n"):
-                raise ValueError("content-search package record is truncated or exceeds 64 KiB")
             entry = offset + len(rows)
             index.seek(entry * records["index_entry_bytes"] + 8)
             expected = index.read(32)
-            if len(expected) != 32 or hashlib.sha256(line).digest() != expected:
-                raise ValueError("content-search package record integrity is invalid")
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError("content-search package record is invalid") from exc
-            if not isinstance(row, dict):
-                raise ValueError("content-search package record is invalid")
-            if row.get("scan_uuid") != source.get("scan_uuid") or row.get(
-                "evidence_revision"
-            ) != source.get("evidence_revision"):
-                raise ValueError("content-search package record source identity disagrees")
-            rows.append(row)
+            if len(expected) != 32:
+                raise ValueError("content-search package index is truncated")
+            rows.append(checked_row(line, expected))
             if offset + len(rows) >= records["count"]:
                 break
     next_offset = offset + len(rows)
@@ -5983,6 +6189,61 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
     }
 
 
+def _content_search_filtered_page(
+    *,
+    manifest: dict[str, Any],
+    records: dict[str, Any],
+    index_path: Path,
+    records_path: Path,
+    offset: int,
+    limit: int,
+    status: str | None,
+    status_code: int | None,
+    checked_row: Any,
+) -> dict[str, Any]:
+    # ponytail: linear pass over every record, no matched index | ceiling: ~1M records per page read | upgrade: matched.idx offsets (issue #939 slice 2)
+    def matches(row: dict[str, Any]) -> bool:
+        return (status is None or row.get("status") == status) and (
+            status_code is None or row.get("status_code") == status_code
+        )
+
+    rows: list[dict[str, Any]] = []
+    seen = 0
+    has_more = False
+    entry_bytes = records["index_entry_bytes"]
+    with index_path.open("rb") as index, records_path.open("rb") as stream:
+        for _ in range(records["count"]):
+            marker = index.read(entry_bytes)
+            if len(marker) != entry_bytes:
+                raise ValueError("content-search package index is truncated")
+            stream.seek(int.from_bytes(marker[:8], "big"))
+            line = stream.readline(64 * 1024 + 1)
+            if not line:
+                raise ValueError("content-search package records are truncated")
+            row = checked_row(line, marker[8:40])
+            if not matches(row):
+                continue
+            if seen < offset:
+                seen += 1
+                continue
+            if len(rows) == limit:
+                has_more = True
+                break
+            rows.append(row)
+            seen += 1
+    return {
+        "ok": True,
+        "format": manifest["format"],
+        "source": manifest["source"],
+        "filtered": True,
+        "filter": {"status": status, "status_code": status_code},
+        "offset": offset,
+        "records": rows,
+        "has_more": has_more,
+        "next_offset": offset + len(rows),
+    }
+
+
 def scan_extract(
     input_path: str,
     rules: list[dict[str, Any]],
@@ -5993,6 +6254,14 @@ def scan_extract(
     from seohead.mcp.evidence_handlers import scan_extract as core
 
     return core(input_path, rules, url=url, representation=representation, limit=limit)
+
+
+def scan_structured_blocks(
+    input_path: str, url: str, representation: str = "static"
+) -> dict[str, Any]:
+    from seohead.mcp.evidence_handlers import scan_structured_blocks as core
+
+    return core(input_path, url, representation=representation)
 
 
 def marketing_inventory(
@@ -6075,6 +6344,7 @@ _RAW_HANDLERS = {
     "semantic_inputs": semantic_inputs,
     "semantic_similarity": semantic_similarity,
     "meta_description_drafts": meta_description_drafts,
+    "ai_column": ai_column,
     "log_scan": log_scan,
     "crawl_diagnose": crawl_diagnose,
     "crawl_diagnose_export": crawl_diagnose_export,
@@ -6109,6 +6379,7 @@ _RAW_HANDLERS = {
     "google_serp": google_serp,
     "wayback_history": wayback_history,
     "crtsh_subdomains": crtsh_subdomains,
+    "cloudflare_traffic": cloudflare_traffic,
     "gsc_query": gsc_query,
     "webmaster_url_queries": webmaster_url_queries,
     "miratext_analyze": miratext_analyze,
@@ -6127,6 +6398,7 @@ _RAW_HANDLERS = {
     "scan_content_search": scan_content_search,
     "scan_content_search_page": scan_content_search_page,
     "scan_extract": scan_extract,
+    "scan_structured_blocks": scan_structured_blocks,
     "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,
@@ -6144,6 +6416,8 @@ _RAW_HANDLERS = {
     "project_sources_list": project_sources_list,
     "project_progress": project_progress,
     "remediation_summary": remediation_summary,
+    "remediation_create": remediation_create,
+    "remediation_ingest": remediation_ingest,
     "workflow_start": workflow_start,
     "workflow_checkpoint": workflow_checkpoint,
     "workflow_status": workflow_status,
@@ -6167,6 +6441,8 @@ _RAW_HANDLERS = {
     "project_inbox_goal": project_inbox_goal,
     "project_inbox_triage": project_inbox_triage,
     "project_inbox_unread": project_inbox_unread,
+    "project_event_append": project_event_append,
+    "project_event_page": project_event_page,
     "project_observe": project_observe,
     "project_facts": project_facts,
     "project_checklist_init": project_checklist_init,
@@ -6185,6 +6461,7 @@ _RAW_HANDLERS = {
     "project_start": project_start,
     "skill_list": skill_list,
     "skill_show": skill_show,
+    "scenario_list": scenario_list,
     "scenario_show": scenario_show,
     "provider_replay": provider_replay,
     "provider_auth": provider_auth,

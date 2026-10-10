@@ -1,8 +1,8 @@
 # Audit Tasks — example.com
 
-> 82 of 182 checks could run; the score is not comparable to a run with full evidence
+> 87 of 194 checks could run; the score is not comparable to a run with full evidence
 
-- Source: audit generated at 2026-10-09T18:17:15Z (health n/a)
+- Source: audit generated at 2026-10-10T09:40:50Z (health n/a)
 - Tasks: **20** (P1: 3, P2: 8, P3: 9)
 
 ## P1 (3)

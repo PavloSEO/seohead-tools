@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-09T18:17:15Z",
+    "generated_at": "2026-10-10T09:40:50Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -203,6 +203,26 @@
         "reason": "no amphtml Link Element column in Internal:All"
       },
       {
+        "id": "AMP_NON_200",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_RETURN_LINK",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_NON_INDEXABLE_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_INDEXABLE",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
         "id": "LOREM_IPSUM_PLACEHOLDER",
         "reason": "no Lorem Ipsum evidence (native crawl only)"
       },
@@ -217,6 +237,10 @@
       {
         "id": "IMG_ALT_TOO_LONG",
         "reason": "no per-image evidence (native crawl only)"
+      },
+      {
+        "id": "IMG_BROKEN",
+        "reason": "no resource evidence (native crawl with resource capture only)"
       },
       {
         "id": "AJAX_CRAWLING_SCHEME_URL",
@@ -321,6 +345,10 @@
       {
         "id": "EXTERNAL_LINK_TO_REDIRECT",
         "reason": "export inlinks_3xx not available"
+      },
+      {
+        "id": "HREFLANG_UNLINKED_TARGET",
+        "reason": "no all_hreflang export (export Bulk Export → Links → All Hreflang to enable)"
       },
       {
         "id": "HREFLANG_NOINDEX_TARGET",
@@ -504,12 +532,12 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 182,
+      "checks_total": 194,
       "checks_fired": 20,
-      "checks_skipped": 100,
+      "checks_skipped": 107,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 62,
+      "checks_silent": 67,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
@@ -534,18 +562,23 @@
         "H2_TOO_LONG",
         "HIGH_EXTERNAL_OUTLINKS",
         "HIGH_OUTLINKS",
+        "HTML_OVER_2MB",
         "HTTP_LINK_ON_HTTPS",
         "HTTP_URL",
         "IMPORTANT_URL_BLOCKED_BY_ROBOTS",
         "INLINK_BOILERPLATE_ONLY",
+        "INTERNAL_NOFOLLOW_OUTLINKS",
+        "JS_CONSOLE_ERRORS",
         "META_REFRESH_REDIRECT",
         "NOARCHIVE",
         "NOFOLLOW_PAGE",
         "NOIMAGEINDEX",
         "NOINDEX",
         "NON_INDEXABLE_LINKED",
+        "NOODP",
         "NOSNIPPET",
         "NOTRANSLATE",
+        "NOYDIR",
         "NO_INTERNAL_OUTLINKS",
         "NO_RESPONSE",
         "ORPHAN_PAGE",
@@ -574,10 +607,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.451
+      "coverage": 0.448
     },
-    "health_score_reason": "only 82 of 182 checks could run (45% coverage); too little evidence to score",
-    "health_score_basis": "82 of 182 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 87 of 194 checks could run (45% coverage); too little evidence to score",
+    "health_score_basis": "87 of 194 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

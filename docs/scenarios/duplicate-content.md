@@ -63,13 +63,17 @@ Non-indexable items are dropped before comparison by default: a canonicalised tw
 defect. Pass `--all-pages` when the canonical tags themselves are what you are auditing.
 
 **5. Note the registry's own two checks, and where they come from.** In `audit.json`,
-`DUPLICATE_BY_HASH` reports exact duplicates and `NEAR_DUPLICATE` reports near ones — but both
-read Screaming Frog columns (`Hash`, `No. Near Duplicates`, `Closest Similarity Match`) rather
-than computing anything. A native crawl names them skipped instead of clean:
+`DUPLICATE_BY_HASH` reports exact duplicates and `NEAR_DUPLICATE` reports near ones. Each reads
+the Screaming Frog columns (`Hash`, `No. Near Duplicates`, `Closest Similarity Match`) when an
+export carries them. Otherwise an SF audit computes the missing half from stored page HTML, but
+only when `input.html_store_dir` is set. A native crawl never writes that store, so it names both
+checks skipped instead of clean:
 
 ```json
 { "id": "DUPLICATE_BY_HASH", "reason": "no Hash/Page Hash column in Internal:All" }
 ```
+
+The other skip reason for the same checks is `no stored HTML (input.html_store_dir not set)`.
 
 So: `duplicate-check` computes; the registry checks import. Use whichever matches the evidence
 you have, and say which one produced the number.

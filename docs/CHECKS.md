@@ -6,7 +6,7 @@ Generated from `seohead/sf/core/registry.py` — do not edit by hand. Regenerate
 python scripts/generate_checks_reference.py
 ```
 
-**182 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
+**194 checks.** Severity, evidence and fix all come from the same `CHECKS` dict the rule engine reads, so this table cannot say something the engine disagrees with.
 
 - **Fires on** — what the check id means, in the registry's own words.
 - **Evidence** — the `source` tag: which export or module has to be present for the check to run at all; its absence is why a check comes back `skipped` instead of a silent pass.
@@ -121,6 +121,7 @@ python scripts/generate_checks_reference.py
 | `ORPHAN_PAGE` | warning | SF-derived | Orphan page has no internal inlinks | Add relevant internal links so users and crawlers can discover the page. |
 | `SLOW_RESPONSE` | warning | SF-derived | Slow server response | Improve TTFB by profiling the application and origin, then optimizing caching and infrastructure. |
 | `LARGE_HTML` | warning | SF-derived+heuristic | HTML document is large in absolute terms or relative to the site | Reduce HTML size by removing unnecessary markup, extracting inline styles or scripts, and avoiding embedded base64 assets. |
+| `HTML_OVER_2MB` | warning | SF-derived+heuristic | HTML document is larger than 2 MB | Cut the document below 2 MB: remove inline data URIs and base64 assets, move inline CSS and scripts into cached files, and trim repeated markup. |
 
 ## 7.J — security
 
@@ -183,6 +184,8 @@ python scripts/generate_checks_reference.py
 | `META_REFRESH_REDIRECT` | warning | SF:Directives:Refresh | Redirect is implemented with meta refresh | Replace meta refresh with a server-side 301 redirect when the move is permanent. |
 | `HTTP_REFRESH_REDIRECT` | warning | crawl:http_refresh | Redirect is implemented with an HTTP Refresh response header | Replace it with a server-side 301/302 redirect (Location header); a search engine treats Refresh the same as a meta refresh -- an unreliable, delayed signal compared to a real HTTP redirect status code. |
 | `NOTRANSLATE` | notice | SF-derived | Page contains a notranslate directive | Confirm that opting out of translation-related Google Search features is intentional. |
+| `NOODP` | notice | SF-derived | Page contains a legacy noodp directive | Remove the retired noodp directive; the Open Directory Project closed in 2017 and the directive has no effect. |
+| `NOYDIR` | notice | SF-derived | Page contains a legacy noydir directive | Remove the retired noydir directive; the Yahoo Directory closed and the directive has no effect. |
 | `UNAVAILABLE_AFTER` | warning | SF-derived | Page carries an unavailable_after directive with a deindex date | Confirm the date is intentional and in the future; once it passes, the page is removed from the index automatically. |
 
 ## --- extension: canonicals ---
@@ -202,6 +205,7 @@ python scripts/generate_checks_reference.py
 | `CANONICAL_TARGET_ERROR` | warning | SF-derived | Canonical points to a URL returning 4xx or 5xx | Point the canonical to a fetched, successful URL; restore the target or redirect it to the intended canonical page. |
 | `CANONICAL_HOMEPAGE_GROUP` | warning | SF-derived | Distinct indexable pages in multiple sections canonicalize to the homepage | Review each listed page's canonical. Use a self-canonical for distinct indexable content, or configure an explicit pagination/filter policy when a landing canonical is intentional. |
 | `UNLINKED_CANONICAL` | warning | SF-derived | Canonical target has no hyperlink pointing to it anywhere in the crawl | Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional. |
+| `HREFLANG_UNLINKED_TARGET` | warning | SF-derived | Hreflang alternate target has no hyperlink pointing to it anywhere in the crawl | Add an ordinary internal link to the hreflang alternate, or confirm relying on the hreflang annotation alone for discovery is intentional. |
 | `HREFLANG_BROKEN_TARGET` | warning | inlinks:All Hreflang | Hreflang points to a redirecting or broken URL (3xx, 4xx, or 5xx) | Update hreflang to reference the final 200-status URL; redirecting or broken targets undermine localization signals and crawling. |
 | `HREFLANG_NOINDEX_TARGET` | warning | crawl:hreflang graph / SF:All Hreflang + Internal:All | Hreflang alternate points to an observed noindex page | Use an indexable alternate URL or remove the noindex directive if that page should appear in search. |
 | `HREFLANG_INVALID_CODE` | warning | inlinks:All Hreflang | Hreflang value is not a valid ISO 639-1 language / ISO 3166-1 region code | Use a valid language code, optionally followed by a valid region (e.g. en-GB, not en-UK). |
@@ -246,6 +250,16 @@ python scripts/generate_checks_reference.py
 | `HTTP1_ONLY` | notice | SF-derived | Response uses HTTP/1.x rather than HTTP/2 or newer | Enable HTTP/2 or HTTP/3 on the origin server or CDN where supported. |
 | `AMPHTML_PRESENT` | notice | SF-derived | AMP version is declared | Confirm that the AMP version is still required, current, valid, and canonically linked. |
 
+## --- AMP pairing, read from the AMP target a desktop page declares (issue #1020) ---
+
+| Check id | Severity | Evidence | Fires on | Fix |
+|---|---|---|---|---|
+| `AMP_NON_200` | warning | crawl:amp_pairing | The AMP page declared by rel=amphtml does not answer 200 | Serve the AMP URL with 200, or remove the rel=amphtml declaration that names it. |
+| `AMP_MISSING_CANONICAL` | warning | crawl:amp_pairing | The AMP page declares no rel=canonical | Add a rel=canonical on the AMP page that points to the non-AMP version. |
+| `AMP_MISSING_RETURN_LINK` | warning | crawl:amp_pairing | The AMP page's rel=canonical does not point back to the page that declares it | Point the AMP page's rel=canonical at the non-AMP URL that declares rel=amphtml. |
+| `AMP_NON_INDEXABLE_CANONICAL` | warning | crawl:amp_pairing | The AMP page's canonical target is not indexable | Make the canonical target indexable, or correct the AMP page's rel=canonical. |
+| `AMP_INDEXABLE` | notice | crawl:amp_pairing | The AMP page is indexable | Confirm the AMP page should compete in search; if the non-AMP page is canonical, the AMP page usually should not be. |
+
 ## snapshot of every id Lighthouse actually defines.
 
 | Check id | Severity | Evidence | Fires on | Fix |
@@ -282,6 +296,7 @@ python scripts/generate_checks_reference.py
 | `MISSING_HSTS` | notice | SF:Security:Missing HSTS Header | HSTS header is missing | Add an appropriate Strict-Transport-Security header after confirming the entire site is HTTPS-ready. |
 | `STRUCTURED_DATA_MISSING` | notice | SF:Structured Data:Missing | Structured data is missing | Add relevant, accurate Schema.org markup that reflects visible page content. |
 | `OG_MISSING` | notice | SF:Social:Open Graph | og:title is missing, so social previews may not render correctly | Add og:title, og:image, and og:url; at minimum, provide og:title and og:image for a useful preview. |
+| `IMG_BROKEN` | warning | crawl:images | Image URL answered with an HTTP error, so the browser shows nothing | Restore the file, or update the reference in the page template or CMS to a URL that answers 200. |
 | `IMG_OVER_KB` | warning | SF:Images:Over X KB | Image exceeds the configured file-size threshold | Compress the image and consider converting it to WebP or AVIF while preserving acceptable visual quality. |
 | `IMG_MISSING_DIMENSIONS` | notice | SF:Images:Missing Size Attributes | Image is missing width and height attributes | Declare intrinsic width and height values to reserve layout space and reduce CLS. |
 
@@ -305,7 +320,9 @@ python scripts/generate_checks_reference.py
 | `UNSAFE_CROSS_ORIGIN_LINK` | warning | crawl:link_findings | A target="_blank" link declares neither rel="noopener" nor rel="noreferrer" | Add rel="noopener" (or "noreferrer") so the opened page cannot reach back into this one through window.opener. |
 | `PROTOCOL_RELATIVE_LINK` | notice | crawl:link_findings | Link href is written in the protocol-relative "//host/path" form | Write an explicit https:// href; a protocol-relative one silently follows whatever scheme served the current page, including a plain-HTTP embed. |
 | `OUTLINK_TO_LOCALHOST` | warning | crawl:link_findings | A link points at a loopback address (localhost, 127.0.0.1, ::1, ...) | Replace the development/staging reference with the production URL. |
+| `JS_CONSOLE_ERRORS` | warning | crawl:browser_artifacts | The page's browser console logged errors while it was rendered | Fix the script error the console reports; an uncaught exception can stop the page's content, links or metadata from being built in the browser. |
 | `FOLLOW_AND_NOFOLLOW_INLINKS` | notice | crawl:link_findings | The page receives both a followed and a nofollow internal link | Decide deliberately whether the page should be crawl-priority or not, and make every internal link to it agree. |
+| `INTERNAL_NOFOLLOW_OUTLINKS` | notice | crawl:link_findings | The page has internal outlinks marked nofollow | Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct. |
 | `HTTP_LINK_ON_HTTPS` | notice | crawl:link_findings | HTTPS page contains an ordinary internal http:// anchor | Write the internal anchor as https:// or a relative URL. A fetched HTTP variant that already redirects to HTTPS is reported as converged, not as this finding. |
 | `FORM_URL_INSECURE` | critical | crawl:link_findings | A form submits to an http:// action, so its data leaves the browser unencrypted regardless of the page's own scheme | Point the form's action at an https:// URL. |
 | `FORM_ON_HTTP_URL` | critical | crawl:link_findings | A form with a password field is served from a plain-HTTP page, so the credentials themselves travel unencrypted before the action URL is even reached | Serve the page itself over HTTPS; an HTTPS form action does not protect input typed on an HTTP page. |

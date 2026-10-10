@@ -71,7 +71,10 @@ def _collected_tests() -> int:
     )
     match = re.search(r"(\d+) tests? collected", result.stdout)
     if not match:
-        pytest.skip("could not collect the suite to count it")
+        pytest.fail(
+            "could not collect the suite to count it; "
+            f"collect exit={result.returncode}: {result.stderr.strip()[-500:]}"
+        )
     return int(match.group(1))
 
 

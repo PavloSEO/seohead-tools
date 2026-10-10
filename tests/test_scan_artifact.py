@@ -17,7 +17,7 @@ def legacy_run(tmp_path, monkeypatch):
     from seohead.crawl import spider
     from seohead.mcp import handlers
     from seohead.sf.core import sitemap_coverage
-    from tests.test_crawl_spider import FakeResponse, _fetcher
+    from tests._crawl_fakes import FakeResponse, _fetcher
 
     def no_network(*args, **kwargs):
         raise AssertionError("storage acceptance must not use the network")

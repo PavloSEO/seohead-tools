@@ -152,3 +152,24 @@ def test_mcp_checklist_tools_forward_data_without_execution(monkeypatch):
             "project": "project",
         },
     }
+
+
+def test_cli_checklist_page_forwards_sort_direction_and_states():
+    page = cli.build_parser().parse_args(
+        [
+            "project",
+            "checklist-page",
+            "--directory",
+            "project",
+            "--sort",
+            "priority",
+            "--desc",
+            "--states",
+            "remaining,blocked",
+        ]
+    )
+    handler, kwargs = cli._build_kwargs("project-checklist-page", page)
+    assert handler == "project_checklist_page"
+    assert kwargs["sort"] == "priority"
+    assert kwargs["descending"] is True
+    assert kwargs["states"] == ["remaining", "blocked"]

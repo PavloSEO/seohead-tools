@@ -55,7 +55,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-list` | List saved SQLite scan metadata without loading retained bodies. | offline, read-only |
 | `scan-status` | Summarize frontier work and committed page outcomes from one saved scan offline. | offline, read-only |
 | `scan-inspect` | Read a bounded, paginated table view from one saved scan. | offline, read-only |
-| `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. | offline, read-only |
+| `scan-url-query` | Filter, sort and paginate the whole page table of one saved scan with total and filtered total. `--preset` applies a ready-made view; `--export PATH` writes all matching rows to a new CSV or XLSX file. | offline, read-only |
 | `scan-url-detail` | Read one exact native URL's retained headers, redirects, page fields, and forms. | offline, read-only |
 | `scan-link-inspect` | Inspect saved shortest paths, reverse inlinks, per-link DOM context, or one URL's paged links offline. | offline, read-only |
 | `scan-navigation` | Read bounded observed navigation evidence from a retained local scan. | offline, read-only |
@@ -65,6 +65,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `scan-content-search-page` | Read up to 100 indexed derived content-search records without rereading the scan. | offline, read-only |
 | `scan-extract` | Run bounded data-only extraction rules on retained complete bodies, without network or writes. | offline, read-only |
 | `scan-fragment-links` | Evaluate every retained fragment anchor offline and page the results. | offline, read-only |
+| `scan-structured-blocks` | Describe one retained URL's JSON-LD blocks offline: line, state, graph findings and source JSON. | offline, read-only |
 | `scan-body-diff` | Compare compatible retained bodies offline; a change is not an SEO verdict. | offline, read-only |
 | `scan-reanalyze` | Reparse retained HTML/DOM and rerun existing checks without network. | writes |
 | `scan-export` | Export retained scan data under scan_export.v1 as CSV, XLSX, JSON, or XML. | writes |
@@ -102,8 +103,9 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `tech-detect` | Detect the technologies behind a page: CMS, framework, server stack, analytics and ad pixels, chat widgets, consent tools, fonts and third-party script hosts. | network |
 | `security-check` | Security headers with a score and grade (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), software version disclosure, cookie… | network |
 | `crtsh-subdomains` | Subdomains discovered from public Certificate Transparency logs (crt.sh). | network |
+| `cloudflare-traffic` | Bot and human traffic for a Cloudflare zone from edge analytics (aggregated, not raw logs), shaped like `log-analyze`. | network |
 | `wayback-history` | Every recorded Wayback Machine snapshot of a URL, oldest first: timestamp, HTTP status, and MIME type at capture time. | network |
-| `log-analyze` | Analyse a web server access log (Apache/Nginx Common or Combined, IIS W3C). | network |
+| `log-analyze` | Analyse a web server access log (Apache/Nginx Common or Combined, IIS W3C; gzip-compressed files are read directly). | network |
 | `regions-check` | Audit a site's regional structure: subdomains (msk.site.ru), folders (site.ru/msk/) and satellite domains (site-msk.ru). | network |
 | `backlinks-check` | Verify backlinks from a list of donor pages: is the link still there, its anchor and rel, whether it passes weight (nofollow/ugc/sponsored), and whether the donor… | network |
 
@@ -124,6 +126,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `semantic-inputs` | Build the reproducible normalized-input manifest for semantic analysis over retained page content. | offline, read-only |
 | `semantic-similarity` | Group topical and internal-link review candidates from supplied vectors. | writes |
 | `meta-description-drafts` | Prepare or validate a resumable, page-grounded meta-description batch. | writes |
+| `ai-column` | Plan or validate a per-URL AI custom column over retained page evidence; no model call. | writes |
 | `marketing-inventory` | Inventory supplied CTA/form DOM occurrences without fetching or submitting forms. | writes |
 | `keywords-cluster` | Cluster keywords into topic groups (K-Means, DBSCAN, Agglomerative). | offline, read-only |
 | `images-download` | Download images from a URL list, setting the correct extension by content-type and skipping already-downloaded files. | network, writes |
@@ -137,6 +140,8 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `compare-crawls` | Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the… | writes |
 | `segment-diff` | Cross-segment counterpart diff: which pages in a source segment (for example `en`) have a counterpart in a target segment (for example `pl`), and which do not. | offline, read-only |
 | `verify-fixes` | Recheck selected baseline findings in an explicit, bounded URL subset. | network, writes |
+| `remediation-create` | Create one new empty remediation ledger bound to a validated local project; an existing path is refused. | writes |
+| `remediation-ingest` | Ingest one retained saved audit into a ledger as baseline/history without rerunning a crawl; re-ingest is idempotent. | writes |
 | `remediation-summary` | Read explicit remediation and recheck coverage from retained local evidence. | offline, read-only |
 | `remediation-cases` | Read a bounded page of exact remediation cases and decision history. | offline, read-only |
 | `remediation-transition` | Append one revision-safe, evidence-bound lifecycle decision. | writes |
@@ -193,6 +198,8 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `project-inbox-goal` | Explicitly accept or complete a stored proposed goal; no executor is launched. | writes |
 | `project-inbox-triage` | Append an explicit task, goal, competitor, blocked, or rejected note outcome. | writes |
 | `project-inbox-unread` | Return a bounded unread reference summary without changing delivery state. | offline, read-only |
+| `project-event-append` | Append one structured event (source, actor, text) to the project journal `events.jsonl`; earlier events are never edited. | writes |
+| `project-event-page` | Read a newest-first bounded page of project events, with optional source and text filters. | offline, read-only |
 | `audit-workflow` | Use a closed project workflow: status, bounded start/prepare, or an evidence-backed report. | network, writes |
 | `workflow-start` | Start a local registered workflow; it performs no scan or provider call. | writes |
 | `workflow-checkpoint` | Persist one registered-step result before the next step or agent handoff. | writes |
@@ -255,6 +262,7 @@ The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf
 | `tool-catalog` | Search complete source-derived tool metadata and load argument details only on request. | offline, read-only |
 | `skill-list` | List the packaged, source-derived method playbooks without executing them. | offline, read-only |
 | `skill-show` | Return a packaged skill's exact text and definition identity. | offline, read-only |
+| `scenario-list` | List the packaged workflow scenarios with their ordered steps, without running them. | offline, read-only |
 | `scenario-show` | Return a packaged workflow scenario's text without running its commands. | offline, read-only |
 | `log-scan` | Report claims a finished run makes that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to… | offline, read-only |
 

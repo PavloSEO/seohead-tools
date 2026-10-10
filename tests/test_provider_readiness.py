@@ -360,3 +360,38 @@ def test_cli_and_mcp_share_provider_readiness_state(monkeypatch, tmp_path, capsy
         {"provider": "gsc", "operation": "search_analytics"},
         {"provider": "gsc", "operation": "search_analytics"},
     ]
+
+
+def test_arsenkin_verify_reads_limits_without_claiming_target_access(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("ARSENKIN_TOKEN", "synthetic-arsenkin-canary")
+    from seohead.data_sources import arsenkin
+
+    monkeypatch.setattr(arsenkin.ArsenkinClient, "limits", lambda self: 1234)
+
+    result = providers.provider_verify("arsenkin")
+
+    assert result["ok"] is True
+    assert result["state"] == "authenticated"
+    assert result["permission_state"] == "authenticated_account"
+    assert result["target_access"] == "not_requested"
+    assert result["verified"] is False
+    assert "synthetic-arsenkin-canary" not in json.dumps(result)
+
+
+def test_arsenkin_verify_maps_rejected_token_to_invalid(monkeypatch, tmp_path):
+    _isolate_credentials(monkeypatch, tmp_path)
+    monkeypatch.setenv("ARSENKIN_TOKEN", "synthetic-arsenkin-canary")
+    from seohead.data_sources import arsenkin
+
+    def rejected(self):
+        raise arsenkin.ArsenkinError("401", "synthetic-arsenkin-canary echoed")
+
+    monkeypatch.setattr(arsenkin.ArsenkinClient, "limits", rejected)
+
+    result = providers.provider_verify("arsenkin")
+
+    assert result["ok"] is False
+    assert result["permission_state"] == "invalid"
+    assert result["verified"] is False
+    assert "synthetic-arsenkin-canary" not in json.dumps(result)

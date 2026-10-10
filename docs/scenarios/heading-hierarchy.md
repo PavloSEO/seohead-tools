@@ -67,7 +67,8 @@ single H1 and no subheadings is normal, and a check that fires on every landing 
 Turn it on for a site whose content type genuinely needs sections; leave it off for a brochure.
 
 **5. Know what is judged and what is deliberately not.** `H2_DUPLICATE` and `H2_TOO_LONG` (the
-same length threshold as H1, 70 characters by default — see `thresholds.h2_max_chars`) now run
+same length threshold as H1, 70 characters by default; the code falls back to 70 when
+`thresholds.h2_max_chars` is unset, so set that key only to override it) now run
 against `H2-1`, the same column an SF export or a native crawl already carries. Multiple H2s on
 one page are still recorded and **not** counted against it — several H2s are what a sectioned
 document looks like, and the issue that asked for this row supplied no defensible count past

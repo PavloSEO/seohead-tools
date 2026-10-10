@@ -73,7 +73,9 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project-checklist-page",
         "project_checklist_page",
         _form("project_directory", "directory"),
-        _form("selector", "offset", "limit", "query", "kind", "state"),
+        _form(
+            "selector", "offset", "limit", "query", "kind", "state", "sort", "descending", "states"
+        ),
     ),
     _command(
         "project-task-detail",
@@ -322,6 +324,21 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         _form("selector", "batch_size"),
     ),
     _command(
+        "ai-column",
+        "ai_column",
+        _form("inline_corpus", "items", note="Dry-run needs only supplied normalized page text."),
+        _form("scan_artifact", "scan", note="Uses retained normalized page content offline."),
+        _form("inline_text", "prompt", note="Required instruction, at most 2000 characters."),
+        _form(
+            "inline_json",
+            "urls",
+            "rows",
+            note="Optional URL selection and caller-supplied values; no provider call.",
+        ),
+        _form("local_file", "csv_path", note="Formula-safe CSV of the column values."),
+        _form("selector", "column", "max_pages"),
+    ),
+    _command(
         "social-meta-check",
         "social_meta_check",
         _form("live_url", "url"),
@@ -434,6 +451,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("google-serp", "google_serp", _form("provider_query", "query")),
     _command("wayback-history", "wayback_history", _form("live_url", "url")),
+    _command("cloudflare-traffic", "cloudflare_traffic", _form("provider_query", "zone")),
     _command("crtsh-subdomains", "crtsh_subdomains", _form("domain", "domain")),
     _command("gsc-query", "gsc_query", _form("provider_query", "site_url")),
     _command(
@@ -573,6 +591,32 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
         "project_inbox_unread",
         _form("project_directory", "directory"),
         _form("selector", "consumer", "limit"),
+    ),
+    _command(
+        "remediation-create",
+        "remediation_create",
+        _form("local_file", "path", note="New ledger path; an existing file is refused."),
+        _form("project_directory", "project_dir"),
+        _form("selector", "producer_build", note="Full lowercase 40-character Git SHA."),
+    ),
+    _command(
+        "remediation-ingest",
+        "remediation_ingest",
+        _form("local_file", "ledger"),
+        _form("local_file", "scan", note="Read-only saved scan.v1 SQLite artifact."),
+    ),
+    _command(
+        "project-event-append",
+        "project_event_append",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "actor"),
+        _form("inline_text", "text"),
+    ),
+    _command(
+        "project-event-page",
+        "project_event_page",
+        _form("project_directory", "directory"),
+        _form("selector", "source", "offset", "limit", "query"),
     ),
     _command("remediation-summary", "remediation_summary", _form("local_file", "ledger")),
     _command(
@@ -726,6 +770,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("skill-list", "skill_list", _form("no_input")),
     _command("skill-show", "skill_show", _form("selector", "name")),
+    _command("scenario-list", "scenario_list", _form("no_input")),
     _command("scenario-show", "scenario_show", _form("selector", "name")),
     _command("provider-registry", "provider_registry", _form("no_input")),
     _command(
@@ -1074,6 +1119,12 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
             note="Closed declarative rules over retained complete bodies.",
         ),
         _form("selector", "url", note="Optional exact logical URL."),
+    ),
+    _command(
+        "scan-structured-blocks",
+        "scan_structured_blocks",
+        _form("scan_artifact", "input_path"),
+        _form("selector", "url", note="Exact retained logical URL."),
     ),
     _command(
         "scan-fragment-links",

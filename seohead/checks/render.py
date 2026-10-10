@@ -553,6 +553,69 @@ _BACKGROUND_IMAGES_JS = """() => {
   return Array.from(found);
 }"""
 
+# Intrinsic pixel size against the box each image is drawn in. Only a rendered
+# layout can say this: the HTML carries the file's size, not the CSS box.
+_IMAGE_BOXES_JS = """() => {
+  const images = Array.from(document.querySelectorAll('img')).map((img) => {
+    const rect = img.getBoundingClientRect();
+    const src = img.currentSrc || img.src || '';
+    const entry = src ? performance.getEntriesByName(src)[0] : null;
+    return {
+      src: src,
+      natural_width: img.naturalWidth,
+      natural_height: img.naturalHeight,
+      rendered_width: Math.round(rect.width),
+      rendered_height: Math.round(rect.height),
+      encoded_bytes: entry ? (entry.encodedBodySize || 0) : 0,
+    };
+  });
+  return {dpr: window.devicePixelRatio || 1, images: images};
+}"""
+
+# An image counts as oversized only when it is at least this heavy on the wire;
+# a 2x-too-large 2 KB icon wastes nothing worth a finding.
+IMAGE_OVERSIZED_RATIO = 2
+IMAGE_OVERSIZED_MIN_BYTES = 10 * 1024
+
+
+def image_sizing_findings(
+    images: list[dict[str, Any]], dpr: float
+) -> dict[str, list[dict[str, Any]]]:
+    """Compare each rendered image's intrinsic pixels with the device pixels its box needs.
+
+    ``oversized``: the file has more than ``IMAGE_OVERSIZED_RATIO`` times the pixels
+    the box can show, and weighs at least ``IMAGE_OVERSIZED_MIN_BYTES``.
+    ``upscaled``: the file is narrower than the box in device pixels, so it blurs.
+    Images that did not load or are not rendered (zero natural or box size) are
+    skipped rather than measured as zero. One entry per source URL.
+    """
+    seen: set[str] = set()
+    oversized: list[dict[str, Any]] = []
+    upscaled: list[dict[str, Any]] = []
+    for img in images:
+        src = str(img.get("src") or "")
+        natural_w = int(img.get("natural_width") or 0)
+        rendered_w = int(img.get("rendered_width") or 0)
+        rendered_h = int(img.get("rendered_height") or 0)
+        if not src or src in seen or natural_w <= 0 or rendered_w <= 0 or rendered_h <= 0:
+            continue
+        seen.add(src)
+        needed_w = rendered_w * dpr
+        entry = {
+            "src": src,
+            "natural": [natural_w, int(img.get("natural_height") or 0)],
+            "rendered": [rendered_w, rendered_h],
+            "dpr": dpr,
+        }
+        if (
+            natural_w > IMAGE_OVERSIZED_RATIO * needed_w
+            and int(img.get("encoded_bytes") or 0) >= IMAGE_OVERSIZED_MIN_BYTES
+        ):
+            oversized.append(entry)
+        elif natural_w < needed_w:
+            upscaled.append(entry)
+    return {"oversized": oversized, "upscaled": upscaled}
+
 
 def _visible_text(html: str) -> str:
     """Return candidate content text after removing scripts, styles, and tags."""
@@ -704,6 +767,17 @@ def _shell_finding(shell: str) -> str:
         "page is assembled entirely by JavaScript, so a non-rendering "
         "crawler receives an empty page"
     )
+
+
+def little_text(snapshot: dict[str, Any]) -> bool:
+    """Whether a raw snapshot is too thin to stand on its own without JavaScript.
+
+    Feeds ``rendering.escalation.policy: "auto"`` (the desktop Auto mode): a
+    pattern whose sampled raw page is below ``EMPTY_BODY_WORDS`` is escalated even
+    when raw and rendered agree, because the raw page carries too little text to
+    trust as the whole picture.
+    """
+    return int(snapshot.get("words", 0) or 0) < EMPTY_BODY_WORDS
 
 
 def compare(
@@ -1072,6 +1146,7 @@ def render_check(
                 navigation.data["final_url"] = rendered_url
                 metrics = page.evaluate(_METRICS_JS)
                 computed_backgrounds = page.evaluate(_BACKGROUND_IMAGES_JS)
+                image_boxes = page.evaluate(_IMAGE_BOXES_JS) or {}
                 if limitations:
                     if _RENDER_CANCELLED in limitations:
                         return {
@@ -1210,6 +1285,11 @@ def render_check(
         # Laboratory, not field data: one run from one machine. Field Core Web
         # Vitals come from CrUX and must not be inferred from this measurement.
         "metrics_lab": metrics,
+        # Evidence only, not findings: the SF-style check ids for these do not exist yet
+        # (#1049), so audits must not read them as an incorrectly-sized-images verdict.
+        "image_sizing": image_sizing_findings(
+            image_boxes.get("images") or [], float(image_boxes.get("dpr") or 1.0)
+        ),
         "findings": findings,
         "dual_crawl": dual_crawl,
         **transport_info,

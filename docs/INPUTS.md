@@ -25,7 +25,7 @@ and this decision makes no backend migration.
 | `bi-filter` | Local directory (`package, out_dir`)<br>Selector (`dataset, columns`)<br>Inline JSON (`where, max_rows_per_file, max_bytes_per_file, max_output_bytes, xlsx_max_rows_per_sheet`)<br>Local file (`xlsx_out`) | — |
 | `scan-navigation` | Scan artifact (`input_path`)<br>Selector (`document_id, limit, offset`) | — |
 | `project-activity` | Project directory (`directory`) | — |
-| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state`) | — |
+| `project-checklist-page` | Project directory (`directory`)<br>Selector (`offset, limit, query, kind, state, sort, descending, states`) | — |
 | `project-task-detail` | Project directory (`directory`)<br>Selector (`item_id`) | — |
 | `project-scans` | Project directory (`directory`)<br>Selector (`offset, limit`) | — |
 | `provider-auth` | Inline JSON (`provider, action, grant_file, confirm`) | GSC private grant import/status/refresh; cancel a pending browser flow; confirmed disconnect or remote revoke. No secret values returned. |
@@ -70,6 +70,7 @@ and this decision makes no backend migration.
 | `semantic-inputs` | Inline corpus (`items`)<br>Scan artifact (`scan`) | — |
 | `semantic-similarity` | Inline corpus (`items`); requires `embeddings, adapter, cache_path`<br>Scan artifact (`scan`); requires `embeddings, adapter, cache_path`<br>Inline JSON (`embeddings, adapter`)<br>Local file (`cache_path`)<br>Selector (`threshold, max_candidate_comparisons`) | Supplied normalized-vector evidence; no model is loaded or called.; Uses the retained semantic corpus and its recorded normalization policy.; Local SQLite embedding cache. |
 | `meta-description-drafts` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline JSON (`context`)<br>Inline JSON (`drafts, executor`); requires `checkpoint_path`<br>Local file (`checkpoint_path, json_path, csv_path`)<br>Selector (`batch_size`) | Dry-run needs only supplied page HTML.; Uses retained normalized page content offline.; Optional versioned site instructions.; Optional structured caller/delegated-agent results; no provider call. |
+| `ai-column` | Inline corpus (`items`)<br>Scan artifact (`scan`)<br>Inline text (`prompt`)<br>Inline JSON (`urls, rows`)<br>Local file (`csv_path`)<br>Selector (`column, max_pages`) | Dry-run needs only supplied normalized page text.; Uses retained normalized page content offline.; Required instruction, at most 2000 characters.; Optional URL selection and caller-supplied values; no provider call.; Formula-safe CSV of the column values. |
 | `social-meta-check` | Live URL (`url`)<br>Inline JSON (`og, twitter`) | — |
 | `soft404-check` | Live URL (`url`) | — |
 | `log-analyze` | Local log (`path`) | — |
@@ -97,6 +98,7 @@ and this decision makes no backend migration.
 | `google-keywords` | Provider query (`keywords`)<br>Provider query (`seed`) | — |
 | `google-serp` | Provider query (`query`) | — |
 | `wayback-history` | Live URL (`url`) | — |
+| `cloudflare-traffic` | Provider query (`zone`) | — |
 | `crtsh-subdomains` | Domain (`domain`) | — |
 | `gsc-query` | Provider query (`site_url`) | — |
 | `webmaster-url-queries` | Provider query (`host_id`) | Bounded Yandex URL-to-query evidence. |
@@ -120,6 +122,10 @@ and this decision makes no backend migration.
 | `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
 | `project-inbox-triage` | Project directory (`directory`)<br>Inline JSON (`entry_id, outcome, actor, expected_revision`) | Explicit controller outcome for a specialist note; it never reads, acknowledges, or executes the note. |
 | `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `remediation-create` | Local file (`path`)<br>Project directory (`project_dir`)<br>Selector (`producer_build`) | New ledger path; an existing file is refused.; Full lowercase 40-character Git SHA. |
+| `remediation-ingest` | Local file (`ledger`)<br>Local file (`scan`) | Read-only saved scan.v1 SQLite artifact. |
+| `project-event-append` | Project directory (`directory`)<br>Selector (`source, actor`)<br>Inline text (`text`) | — |
+| `project-event-page` | Project directory (`directory`)<br>Selector (`source, offset, limit, query`) | — |
 | `remediation-summary` | Local file (`ledger`) | — |
 | `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset, source_scan_id, group_ref, max_bytes`) | Use source_scan_id and group_ref together for a complete ordered group member page; mutually exclusive with finding selectors. |
 | `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |
@@ -140,6 +146,7 @@ and this decision makes no backend migration.
 | `project-start` | Project directory (`directory`)<br>Live URL (`target`)<br>Inline JSON (`facts`)<br>Inline JSON (`template`)<br>Inline JSON (`competitors`) | Optional supplied project facts.; Optional data-only project template.; Optional bounded competitor inputs. |
 | `skill-list` | No direct input | — |
 | `skill-show` | Selector (`name`) | — |
+| `scenario-list` | No direct input | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
 | `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |
@@ -183,6 +190,7 @@ and this decision makes no backend migration.
 | `scan-body-diff` | Scan artifact (`left, right`)<br>Selector (`url`) | Selects the logical URL within both scans. |
 | `scan-evidence` | Scan artifact (`input_path`)<br>Selector (`section`) | capabilities, corpus, structured, routes, resources, or timeline. |
 | `scan-extract` | Scan artifact (`input_path`)<br>Inline JSON (`rules`)<br>Selector (`url`) | Closed declarative rules over retained complete bodies.; Optional exact logical URL. |
+| `scan-structured-blocks` | Scan artifact (`input_path`)<br>Selector (`url`) | Exact retained logical URL. |
 | `scan-fragment-links` | Scan artifact (`input_path`)<br>Selector (`state`)<br>Selector (`representation`) | Optional resolved, missing, or skipped occurrence filter.; Optional static, rendered, or legacy_fragment source filter. |
 | `scan-requeue` | Scan artifact (`input_path`)<br>Selector (`where`)<br>Local file (`backup_path`)<br>Scan artifact (`from_scan`) | Restricted saved URL/page predicate.; Mandatory new verified backup destination.; Optional alternate saved selection source. |
 | `scan-import-urls` | Scan artifact (`input_path`)<br>Local file (`urls_file`)<br>Local file (`backup_path`) | Explicit TXT, CSV, XLSX, or XML URL source.; Mandatory new verified backup destination. |

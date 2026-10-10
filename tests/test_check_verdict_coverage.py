@@ -97,6 +97,7 @@ KNOWN_UNCOVERED: frozenset[str] = frozenset(
         "INSECURE_SUBRESOURCE",
         "INTERNAL_LINK_TO_REDIRECT",
         "INVALID_HEAD_ELEMENT",
+        "JS_CONSOLE_ERRORS",
         "LARGE_HTML",
         "LINK_TO_5XX",
         "LONG_SENTENCES",

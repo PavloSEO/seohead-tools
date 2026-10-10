@@ -231,6 +231,8 @@ _BODY_DERIVED_HTML_CHECKS = (
     "NOSNIPPET",
     "NOIMAGEINDEX",
     "NOTRANSLATE",
+    "NOODP",
+    "NOYDIR",
     "UNAVAILABLE_AFTER",
     "HREFLANG_OUTSIDE_HEAD",
     "META_REFRESH_REDIRECT",
@@ -243,6 +245,7 @@ _BODY_DERIVED_HTML_CHECKS = (
     "AJAX_CRAWLING_SCHEME_URL",
     "AJAX_CRAWLING_SCHEME_META_FRAGMENT",
     "HREFLANG_BROKEN_TARGET",
+    "HREFLANG_UNLINKED_TARGET",
     "HREFLANG_INVALID_CODE",
     "HREFLANG_MULTIPLE_ENTRIES",
     "HREFLANG_MISSING_SELF_REFERENCE",
@@ -1332,6 +1335,10 @@ def check_directives_extra(ctx: AuditContext) -> None:
             ctx.add("NOIMAGEINDEX", target_url=page.url)
         if "notranslate" in robots:
             ctx.add("NOTRANSLATE", target_url=page.url)
+        if "noodp" in robots:
+            ctx.add("NOODP", target_url=page.url)
+        if "noydir" in robots:
+            ctx.add("NOYDIR", target_url=page.url)
         unavailable_after = next((t for t in robots if t.startswith("unavailable_after")), None)
         if unavailable_after:
             ctx.add(
@@ -2209,6 +2216,103 @@ def check_links_extra(ctx: AuditContext) -> None:
             )
 
 
+# AMP pairing codes (#1020). Each reads the AMP target a desktop page declares with
+# <link rel="amphtml">, and only the AMP pages the crawl actually captured.
+_AMP_CODES = (
+    "AMP_NON_200",
+    "AMP_MISSING_CANONICAL",
+    "AMP_MISSING_RETURN_LINK",
+    "AMP_NON_INDEXABLE_CANONICAL",
+    "AMP_INDEXABLE",
+)
+
+
+def check_amp_pairing(ctx: AuditContext) -> None:
+    """AMP pairing checks (#1020): read each declared AMP target's own record.
+
+    A target the crawl never captured is unavailable evidence, not a broken AMP
+    page, so it is named in a skip rather than reported as a finding. Pages are
+    grouped by normalized AMP URL: one AMP page reached from several desktop
+    pages is reported once.
+    """
+    if not _has_column(ctx, "amphtml"):
+        for code in _AMP_CODES:
+            ctx.skip(code, "no amphtml Link Element column in Internal:All")
+        return
+
+    targets: dict[str, tuple[str, list[str]]] = {}
+    for page in ctx.html_pages():
+        amp = _rec(page).get("amphtml")
+        if amp:
+            targets.setdefault(norm_url(amp), (amp, []))[1].append(page.url)
+    if not targets:
+        for code in _AMP_CODES:
+            ctx.skip(code, "no page declares an AMP target (rel=amphtml)")
+        return
+
+    found: set[str] = set()
+    uncaptured = 0
+    for key, (amp_url, desktop_urls) in targets.items():
+        rows = ctx.pages_by_norm.get(key) or []
+        if not rows:
+            uncaptured += 1
+            continue
+        omitted = max(0, len(desktop_urls) - 20)
+        base = {
+            "amphtml": amp_url,
+            "desktop_urls": desktop_urls[:20],
+            "desktop_urls_omitted": omitted,
+        }
+
+        codes = [row.status_code for row in rows]
+        if any(code is not None and int(code) != 200 for code in codes):
+            ctx.add(
+                "AMP_NON_200",
+                target_url=amp_url,
+                status_code=codes[0] if len(set(codes)) == 1 else None,
+                details={**base, "status_codes": sorted({int(c) for c in codes if c is not None})},
+            )
+            found.add("AMP_NON_200")
+
+        for row in rows:
+            if row.status_code is None or int(row.status_code) != 200:
+                continue
+            rec = _rec(row)
+            if _body_unavailable(rec):
+                continue  # unparsed body: no canonical evidence either way
+            canonical = rec.get("canonical")
+            if not canonical:
+                ctx.add("AMP_MISSING_CANONICAL", target_url=amp_url, details=dict(base))
+                found.add("AMP_MISSING_CANONICAL")
+            elif not any(norm_url(canonical) == norm_url(d) for d in desktop_urls):
+                ctx.add(
+                    "AMP_MISSING_RETURN_LINK",
+                    target_url=amp_url,
+                    details={**base, "canonical": canonical},
+                )
+                found.add("AMP_MISSING_RETURN_LINK")
+            if canonical and norm_url(canonical) != norm_url(row.url):
+                canonical_targets = ctx.pages_by_norm.get(norm_url(canonical)) or []
+                if canonical_targets and not any(t.is_indexable for t in canonical_targets):
+                    ctx.add(
+                        "AMP_NON_INDEXABLE_CANONICAL",
+                        target_url=amp_url,
+                        details={**base, "canonical": canonical},
+                    )
+                    found.add("AMP_NON_INDEXABLE_CANONICAL")
+            if row.is_indexable:
+                ctx.add("AMP_INDEXABLE", target_url=amp_url, details=dict(base))
+                found.add("AMP_INDEXABLE")
+
+    if uncaptured:
+        for code in _AMP_CODES:
+            if code not in found:
+                ctx.skip(
+                    code,
+                    f"{uncaptured} AMP target(s) were declared but not captured by the crawl",
+                )
+
+
 def check_tech_extra(ctx: AuditContext) -> None:
     has_http_version = _has_column(ctx, "http_version")
     has_amphtml = _has_column(ctx, "amphtml")
@@ -2786,6 +2890,44 @@ def check_og(ctx: AuditContext) -> None:
         ctx.add("OG_MISSING", target_url=page.url, details={"missing_tags": missing})
 
 
+def check_native_image_resources(ctx: AuditContext) -> None:
+    """IMG_BROKEN: an <img> whose fetched target answered 4xx/5xx.
+
+    Reads the native crawl's resource graph (resource_graph_occurrences joined to
+    resource_graph_fetches) from the stored scan. Streams rows through the cursor,
+    so memory stays bounded. Skips honestly when no image was measured: a crawl
+    without resource capture must not read as "no broken images".
+    """
+    no_evidence = "no resource evidence (native crawl with resource capture only)"
+    con = ctx.scan_con
+    if con is None:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"resource_graph_occurrences", "resource_graph_fetches"} <= tables:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    measured = con.execute(
+        "SELECT 1 FROM resource_graph_occurrences o JOIN resource_graph_fetches f "
+        "ON f.resolved_url=o.resolved_url WHERE o.kind='image' LIMIT 1"
+    ).fetchone()
+    if measured is None:
+        ctx.skip("IMG_BROKEN", no_evidence)
+        return
+    rows = con.execute(
+        "SELECT p.url, o.resolved_url, f.status_code FROM resource_graph_occurrences o "
+        "JOIN resource_graph_fetches f ON f.resolved_url=o.resolved_url "
+        "JOIN urls p ON p.url_id=o.page_url_id "
+        "WHERE o.kind='image' AND f.status_code>=400 ORDER BY p.url, o.resolved_url"
+    )
+    for page_url, image_url, status in rows:
+        ctx.add(
+            "IMG_BROKEN",
+            target_url=image_url,
+            details={"source_page": page_url, "status_code": status, "reason": f"HTTP {status}"},
+        )
+
+
 # Native-filter exports: emit one issue per Address when the export is present,
 # else honestly skip (no dead zeros). export key -> check id.
 _NATIVE_EXPORT_CHECKS = {
@@ -2798,6 +2940,43 @@ _NATIVE_EXPORT_CHECKS = {
     "titles_multiple": "TITLE_MULTIPLE",
     "hreflang": "HREFLANG_ERROR",
 }
+
+
+_INBOUND_LINK_CAP = 20
+
+
+def _inbound_internal_links(ctx: AuditContext) -> dict[str, list[dict[str, str]]] | None:
+    """Internal hyperlinks grouped by normalized destination, or None without an inlink inventory."""
+    from .inlinks import _all_inlink_records, _internal_hyperlink_records, _site_host
+    from .normalize import normalize_value
+
+    records = _all_inlink_records(ctx)
+    if records is None:
+        return None
+    host = _site_host(ctx)
+    index: dict[str, list[dict[str, str]]] = {}
+    for rec in _internal_hyperlink_records(records, host):
+        # An internal link is one written on this site: the source must be on the host too.
+        if urllib.parse.urlparse(str(rec["source_url"])).netloc.lower() != host:
+            continue
+        index.setdefault(norm_url(rec["destination_url"]), []).append(
+            {
+                "source_url": str(rec["source_url"]),
+                "anchor": normalize_value(rec.get("anchor")) or "",
+            }
+        )
+    return index
+
+
+def _inbound_detail(inbound: dict[str, list[dict[str, str]]] | None, start: str) -> dict[str, Any]:
+    """The inbound-link evidence for one chain start, or an honest 'not measured' marker."""
+    if inbound is None:
+        return {"inbound_links": None, "inbound_links_reason": "no all_inlinks export"}
+    links = inbound.get(norm_url(start), [])
+    return {
+        "inbound_links": links[:_INBOUND_LINK_CAP],
+        "inbound_links_count": len(links),
+    }
 
 
 def check_redirect_chains(ctx: AuditContext) -> None:
@@ -2824,14 +3003,23 @@ def check_redirect_chains(ctx: AuditContext) -> None:
         from .redirect_chains import DEFAULT_HOP_CAP, redirect_hop_path, resolve_redirect_chains
 
         hop_cap = ctx.thresholds.get("redirect_hop_cap", DEFAULT_HOP_CAP)
+        inbound = _inbound_internal_links(ctx)
         for start, outcome in resolve_redirect_chains(ctx.redirect_map, hop_cap).items():
             # The full walk, so a finding names each hop to replace, not just a count.
             path = redirect_hop_path(ctx.redirect_map, start, hop_cap)
+            # The internal links that still point at the chain's first URL: the edits
+            # that move users off the chain, not just the hop that is broken.
+            links = _inbound_detail(inbound, start)
             if outcome["kind"] == "loop":
                 ctx.add(
                     "REDIRECT_LOOP",
                     target_url=start,
-                    details={"hops": outcome["hops"], "final_url": None, "path": path},
+                    details={
+                        "hops": outcome["hops"],
+                        "final_url": None,
+                        "path": path,
+                        **links,
+                    },
                 )
             elif outcome["kind"] == "chain":
                 ctx.add(
@@ -2841,6 +3029,7 @@ def check_redirect_chains(ctx: AuditContext) -> None:
                         "hops": outcome["hops"],
                         "final_url": outcome["final_url"],
                         "path": path,
+                        **links,
                     },
                 )
             elif outcome["kind"] == "unresolved":
@@ -2856,6 +3045,7 @@ def check_redirect_chains(ctx: AuditContext) -> None:
                         "final_url": outcome["final_url"],
                         "unresolved": True,
                         "path": path,
+                        **links,
                     },
                 )
         return
@@ -2940,7 +3130,9 @@ ALL_CHECKS = [
     check_pagination_sequence,
     check_links_extra,
     check_tech_extra,
+    check_amp_pairing,
     check_native_page_evidence,
+    check_native_image_resources,
     check_ajax_crawling_scheme,
     check_charset,
     check_doctype,

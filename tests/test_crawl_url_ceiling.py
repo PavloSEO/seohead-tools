@@ -44,7 +44,10 @@ from seohead.crawl.spider import LinkEdge
 # 64 -> 65 for duplicate IDs (#828), measured over 8,000 distinct URLs: None
 # adds no allocation, while the bounded 20 id/count objects add 4,977 bytes per
 # populated record. These are allocation estimates, not a complete crawler capacity measurement.
-FIELD_COUNTS_THE_CEILING_WAS_COMPUTED_AGAINST = {LinkEdge: 8, PageRecord: 65}
+# 65 -> 66 for the resolved AMP target (#1020), measured over 8,000 distinct URLs on
+# Python 3.14: an empty string adds no allocation, a populated AMP URL adds about 99 bytes
+# per record.
+FIELD_COUNTS_THE_CEILING_WAS_COMPUTED_AGAINST = {LinkEdge: 8, PageRecord: 66}
 
 
 def test_both_crawlers_read_the_same_ceiling() -> None:

@@ -431,6 +431,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "HTML document is large in absolute terms or relative to the site",
         "fix": "Reduce HTML size by removing unnecessary markup, extracting inline styles or scripts, and avoiding embedded base64 assets.",
     },
+    "HTML_OVER_2MB": {
+        "severity": "warning",
+        "source": "SF-derived+heuristic",
+        "message": "HTML document is larger than 2 MB",
+        "fix": "Cut the document below 2 MB: remove inline data URIs and base64 assets, move inline CSS and scripts into cached files, and trim repeated markup.",
+    },
     # 7.J — security
     "HTTP_URL": {
         "severity": "warning",
@@ -647,6 +653,18 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "Page contains a notranslate directive",
         "fix": "Confirm that opting out of translation-related Google Search features is intentional.",
     },
+    "NOODP": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Page contains a legacy noodp directive",
+        "fix": "Remove the retired noodp directive; the Open Directory Project closed in 2017 and the directive has no effect.",
+    },
+    "NOYDIR": {
+        "severity": "notice",
+        "source": "SF-derived",
+        "message": "Page contains a legacy noydir directive",
+        "fix": "Remove the retired noydir directive; the Yahoo Directory closed and the directive has no effect.",
+    },
     "UNAVAILABLE_AFTER": {
         "severity": "warning",
         "source": "SF-derived",
@@ -702,6 +720,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "source": "SF-derived",
         "message": "Canonical target has no hyperlink pointing to it anywhere in the crawl",
         "fix": "Add an ordinary internal link to the canonical target, or confirm relying on the canonical alone for discovery is intentional.",
+    },
+    "HREFLANG_UNLINKED_TARGET": {
+        "severity": "warning",
+        "source": "SF-derived",
+        "message": "Hreflang alternate target has no hyperlink pointing to it anywhere in the crawl",
+        "fix": "Add an ordinary internal link to the hreflang alternate, or confirm relying on the hreflang annotation alone for discovery is intentional.",
     },
     "HREFLANG_BROKEN_TARGET": {
         "severity": "warning",
@@ -889,6 +913,37 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "AMP version is declared",
         "fix": "Confirm that the AMP version is still required, current, valid, and canonically linked.",
     },
+    # --- AMP pairing, read from the AMP target a desktop page declares (issue #1020) ---
+    "AMP_NON_200": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page declared by rel=amphtml does not answer 200",
+        "fix": "Serve the AMP URL with 200, or remove the rel=amphtml declaration that names it.",
+    },
+    "AMP_MISSING_CANONICAL": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page declares no rel=canonical",
+        "fix": "Add a rel=canonical on the AMP page that points to the non-AMP version.",
+    },
+    "AMP_MISSING_RETURN_LINK": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page's rel=canonical does not point back to the page that declares it",
+        "fix": "Point the AMP page's rel=canonical at the non-AMP URL that declares rel=amphtml.",
+    },
+    "AMP_NON_INDEXABLE_CANONICAL": {
+        "severity": "warning",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page's canonical target is not indexable",
+        "fix": "Make the canonical target indexable, or correct the AMP page's rel=canonical.",
+    },
+    "AMP_INDEXABLE": {
+        "severity": "notice",
+        "source": "crawl:amp_pairing",
+        "message": "The AMP page is indexable",
+        "fix": "Confirm the AMP page should compete in search; if the non-AMP page is canonical, the AMP page usually should not be.",
+    },
     # --- extension: static Lighthouse audits (issue #59) ---
     # Correspondence to a Lighthouse audit id + doc URL lives in
     # seohead/sf/core/lighthouse.py, not here, so it can carry the longer
@@ -1038,6 +1093,12 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "og:title is missing, so social previews may not render correctly",
         "fix": "Add og:title, og:image, and og:url; at minimum, provide og:title and og:image for a useful preview.",
     },
+    "IMG_BROKEN": {
+        "severity": "warning",
+        "source": "crawl:images",
+        "message": "Image URL answered with an HTTP error, so the browser shows nothing",
+        "fix": "Restore the file, or update the reference in the page template or CMS to a URL that answers 200.",
+    },
     "IMG_OVER_KB": {
         "severity": "warning",
         "source": "SF:Images:Over X KB",
@@ -1109,12 +1170,25 @@ CHECKS: dict[str, dict[str, Any]] = {
         "message": "A link points at a loopback address (localhost, 127.0.0.1, ::1, ...)",
         "fix": "Replace the development/staging reference with the production URL.",
     },
+    "JS_CONSOLE_ERRORS": {
+        "severity": "warning",
+        "source": "crawl:browser_artifacts",
+        "message": "The page's browser console logged errors while it was rendered",
+        "fix": "Fix the script error the console reports; an uncaught exception can stop "
+        "the page's content, links or metadata from being built in the browser.",
+    },
     "FOLLOW_AND_NOFOLLOW_INLINKS": {
         "severity": "notice",
         "source": "crawl:link_findings",
         "message": "The page receives both a followed and a nofollow internal link",
         "fix": "Decide deliberately whether the page should be crawl-priority or not, and "
         "make every internal link to it agree.",
+    },
+    "INTERNAL_NOFOLLOW_OUTLINKS": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "The page has internal outlinks marked nofollow",
+        "fix": "Confirm each internal nofollow link is intentional; links to pages that should be crawled and ranked should be followed. rel=sponsored and rel=ugc are not visible here and stay distinct.",
     },
     "HTTP_LINK_ON_HTTPS": {
         "severity": "notice",

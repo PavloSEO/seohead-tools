@@ -721,6 +721,41 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
             )
         )
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_ai_column(
+        items: list[dict] | None = None,
+        scan: str | None = None,
+        prompt: str = "",
+        urls: list[str] | None = None,
+        column: str = "ai_column",
+        max_pages: int = 100,
+        rows: list[dict] | None = None,
+        csv_path: str = "",
+    ) -> dict[str, Any]:
+        """Plan a per-URL AI custom column over retained page evidence, then validate its values.
+
+        With no rows this is a dry-run plan: a prompt, the selected URLs' title,
+        headings and text excerpt from a retained scan.v1 or supplied items, a
+        character-based size estimate with no price applied, and the consent scope.
+        With rows, each value must echo the page's source hash and is validated
+        for presence, staleness and length; missing or failed pages are reported,
+        never filled. The calling or delegated agent owns the prompt run and the
+        transfer of data; this tool has no model key and makes no provider call.
+        Optional csv_path writes a formula-safe local CSV and never writes back to
+        a site or CMS."""
+        return _checked(
+            handlers.ai_column(
+                items=items,
+                scan=scan,
+                prompt=prompt,
+                urls=urls,
+                column=column,
+                max_pages=max_pages,
+                rows=rows,
+                csv_path=csv_path or None,
+            )
+        )
+
     @mcp.tool(annotations=fetch, structured_output=True)
     def seo_social_meta_check(
         url: str = "", og: dict | None = None, twitter: dict | None = None
@@ -1409,6 +1444,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         )
 
     @mcp.tool(annotations=fetch, structured_output=True)
+    def seo_cloudflare_traffic(
+        zone: str, since: str | None = None, until: str | None = None
+    ) -> dict[str, Any]:
+        """Bot and human traffic for a Cloudflare zone from edge GraphQL analytics (read-only,
+        free): bots x URLs x status codes x cache status per day, in the same shape as
+        seo_log_analyze. Use it when origin logs are absent. It is aggregated data
+        (source=cloudflare-aggregated), not raw logs: no client IPs, so bots cannot be verified
+        by reverse DNS. Dates are UTC YYYY-MM-DD; the Free plan keeps 32 days. The token is read
+        from CLOUDFLARE_API_TOKEN or SEOHEAD_CLOUDFLARE_TOKEN_FILE."""
+        return _checked(handlers.cloudflare_traffic(zone=zone, since=since, until=until))
+
+    @mcp.tool(annotations=fetch, structured_output=True)
     def seo_crtsh_subdomains(domain: str) -> dict[str, Any]:
         """Subdomains discovered from public Certificate Transparency logs (crt.sh). Free and
         keyless. Every TLS certificate ever issued for a domain is public record, so this finds
@@ -1782,6 +1829,38 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         """Return a bounded unread reference summary without changing delivery state."""
         return _checked(handlers.project_inbox_unread(directory, consumer, limit))
 
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_project_event_append(
+        directory: str,
+        source: Literal["agent", "user", "scans", "app"],
+        actor: Literal["user", "agent", "schedule"],
+        text: str,
+    ) -> dict[str, Any]:
+        """Append one structured event to the project journal (events.jsonl).
+
+        Earlier events are never edited. Nothing is executed; the event only records text.
+        """
+        return _checked(
+            handlers.project_event_append(
+                directory=directory, source=source, actor=actor, text=text
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_project_event_page(
+        directory: str,
+        offset: int = 0,
+        limit: int = 50,
+        source: Literal["agent", "user", "scans", "app"] | None = None,
+        query: str = "",
+    ) -> dict[str, Any]:
+        """Read a newest-first bounded page of project events, optionally filtered."""
+        return _checked(
+            handlers.project_event_page(
+                directory=directory, offset=offset, limit=limit, source=source, query=query
+            )
+        )
+
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_remediation_summary(ledger: str) -> dict[str, Any]:
         """Read explicit remediation and recheck coverage from retained local evidence.
@@ -1791,6 +1870,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         It does not run a crawl or infer that omitted evidence is clean.
         """
         return _checked(handlers.remediation_summary(ledger=ledger))
+
+    @mcp.tool(annotations=create_files, structured_output=True)
+    def seo_remediation_create(path: str, project_dir: str, producer_build: str) -> dict[str, Any]:
+        """Create one new empty remediation ledger bound to a validated local project.
+
+        producer_build must be the full lowercase 40-character Git SHA of the
+        build that writes the ledger. An existing path is refused; ledgers never
+        overwrite.
+        """
+        return _checked(
+            handlers.remediation_create(
+                path=path, project_dir=project_dir, producer_build=producer_build
+            )
+        )
+
+    @mcp.tool(annotations=rewrite_files, structured_output=True)
+    def seo_remediation_ingest(ledger: str, scan: str) -> dict[str, Any]:
+        """Ingest one retained saved audit into a local ledger without rerunning a crawl.
+
+        The scan is opened read-only. Re-ingesting the same revision is idempotent;
+        a new revision appends observation history.
+        """
+        return _checked(handlers.remediation_ingest(ledger=ledger, scan=scan))
 
     @mcp.tool(annotations=create_files, structured_output=True)
     def seo_workflow_start(
@@ -2365,6 +2467,11 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         return _checked(handlers.skill_show(name))
 
     @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scenario_list() -> dict[str, Any]:
+        """List the packaged workflow scenarios with their ordered steps, without running them."""
+        return _checked(handlers.scenario_list())
+
+    @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scenario_show(name: str) -> dict[str, Any]:
         """Return a packaged workflow scenario's text without running its commands."""
         return _checked(handlers.scenario_show(name))
@@ -2596,16 +2703,29 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         query: str = "",
         kind: str | None = None,
         state: str | None = None,
+        sort: str = "id",
+        descending: bool = False,
+        states: list[str] | None = None,
     ) -> dict[str, Any]:
         """Read a bounded searchable page of project checklist evidence.
 
+        sort is one of id (stored order, default), priority, state or updated; states
+        keeps up to 8 display states. Each item carries updated, the newest record time.
         Reads saved local evidence with metadata-only receipt status; this is not
         fresh byte verification. Missing historical receipts remain unverified.
         Does not collect, fetch or modify evidence.
         """
         return _checked(
             handlers.project_checklist_page(
-                directory=directory, offset=offset, limit=limit, query=query, kind=kind, state=state
+                directory=directory,
+                offset=offset,
+                limit=limit,
+                query=query,
+                kind=kind,
+                state=state,
+                sort=sort,
+                descending=descending,
+                states=states,
             )
         )
 
@@ -2827,11 +2947,24 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_content_search_page(
-        package: str, offset: int = 0, limit: int = 100
+        package: str,
+        offset: int = 0,
+        limit: int = 100,
+        status: Literal["matched", "not_matched", "unavailable"] | None = None,
+        status_code: int | None = None,
     ) -> dict[str, Any]:
-        """Read up to 100 indexed derived content-search records without rereading the scan."""
+        """Read up to 100 indexed derived content-search records without rereading the scan.
+
+        Optional status or status_code filters the stream; offset then counts matching records.
+        """
         return _checked(
-            handlers.scan_content_search_page(package=package, offset=offset, limit=limit)
+            handlers.scan_content_search_page(
+                package=package,
+                offset=offset,
+                limit=limit,
+                status=status,
+                status_code=status_code,
+            )
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
@@ -2850,6 +2983,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 url=url,
                 representation=representation,
                 limit=limit,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_structured_blocks(
+        input_path: str, url: str, representation: str = "static"
+    ) -> dict[str, Any]:
+        """Describe one retained page's JSON-LD blocks: line, state, graph findings and source JSON, offline."""
+        return _checked(
+            handlers.scan_structured_blocks(
+                input_path=input_path, url=url, representation=representation
             )
         )
 
@@ -2942,8 +3086,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         offset: int = 0,
         limit: int = 100,
         max_bytes: int = 1_048_576,
+        columns: list[str] | None = None,
+        total: bool = False,
     ) -> dict[str, Any]:
-        """Read a bounded, paginated table view from one saved scan."""
+        """Read a bounded, paginated table view from one saved scan.
+
+        ``columns`` projects the named table columns; ``total`` adds the table's row count.
+        """
         return _checked(
             handlers.scan_inspect(
                 input_path=input_path,
@@ -2951,6 +3100,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 offset=offset,
                 limit=limit,
                 max_bytes=max_bytes,
+                columns=columns,
+                total=total,
             )
         )
 
@@ -2993,13 +3144,18 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         limit: int = 200,
         count_timeout_seconds: float = 1.0,
         max_bytes: int = 1_048_576,
+        preset: str | None = None,
+        facets: list[str] | str | None = None,
     ) -> dict[str, Any]:
         """Filter, sort and paginate the page table of one saved scan across the whole scan.
 
-        Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
-        non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
-        sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-        exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+        Read-only. Filters are {column, op, value} objects combined with AND; preset names a
+        ready-made filter set (for example status_4xx, title_missing, title_over_60, noindex_meta)
+        that is combined with them. Sorting by a non-indexed column needs a filter that leaves at
+        most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
+        with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
+        requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
+        the same filters, with facets_state exact or capped.
         """
         return _checked(
             handlers.scan_url_query(
@@ -3012,6 +3168,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 limit=limit,
                 count_timeout_seconds=count_timeout_seconds,
                 max_bytes=max_bytes,
+                facets=facets,
+                preset=preset,
             )
         )
 

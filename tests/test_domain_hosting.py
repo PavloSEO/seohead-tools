@@ -6,6 +6,8 @@ record carried a perfectly usable routable address. IPv4 must not be a hidden
 prerequisite for a documented hosting IP/ASN/owner result.
 """
 
+import pytest
+
 from seohead.recon import domain
 
 
@@ -115,3 +117,114 @@ def test_a_run_whose_registration_came_from_rdap_carries_no_availability_flag():
 
     joined = " ".join(_flags(_profile(source="rdap", age_days=4000)))
     assert "registration data is unavailable" not in joined
+
+
+# ── Provider and registrar helpers: pure functions over DNS and RDAP data ───
+
+
+@pytest.mark.parametrize(
+    ("nameservers", "expected"),
+    [
+        (["ns1.cloudflare.com", "ns2.cloudflare.com"], "Cloudflare"),
+        (["ns-1234.awsdns-01.org"], "AWS Route 53"),
+        (["ns1.reg.ru", "ns2.reg.ru"], "REG.RU"),
+        (["ns1.example-unknown.org"], None),
+        ([], None),
+    ],
+)
+def test_dns_provider_is_recognised_from_nameserver_names(nameservers, expected):
+    assert domain._dns_provider(nameservers) == expected
+
+
+@pytest.mark.parametrize(
+    ("mx", "expected"),
+    [
+        (["aspmx.l.google.com"], "Google Workspace"),
+        (["mx.yandex.net"], "Yandex 360"),
+        (["mx1.mail.protonmail.ch"], "Proton"),
+        (["mx1.mail.example.org"], None),
+        ([], None),
+    ],
+)
+def test_mail_provider_is_recognised_from_mx_hosts(mx, expected):
+    assert domain._mail_provider(mx) == expected
+
+
+def test_rdap_domain_record_yields_registrar_dates_and_clean_nameservers():
+    data = {
+        "events": [
+            {"eventAction": "registration", "eventDate": "2010-01-02T00:00:00Z"},
+            {"eventAction": "expiration", "eventDate": "2031-01-02T00:00:00Z"},
+            {"eventAction": "last changed", "eventDate": "2024-05-06T00:00:00Z"},
+        ],
+        "entities": [
+            {"roles": ["abuse"], "vcardArray": ["vcard", [["fn", {}, "text", "Not it"]]]},
+            {
+                "roles": ["registrar"],
+                "vcardArray": [
+                    "vcard",
+                    [["version", {}, "text", "4.0"], ["fn", {}, "text", "REG.RU LLC"]],
+                ],
+            },
+        ],
+        "status": ["active"],
+        "nameservers": [{"ldhName": "NS2.EXAMPLE.NET."}, {"ldhName": "ns1.example.net"}],
+    }
+
+    assert domain._from_rdap_domain(data) == {
+        "registrar": "REG.RU LLC",
+        "created": "2010-01-02T00:00:00Z",
+        "expires": "2031-01-02T00:00:00Z",
+        "updated": "2024-05-06T00:00:00Z",
+        "status": ["active"],
+        "nameservers": ["ns1.example.net", "ns2.example.net"],
+    }
+
+
+def test_ip_owner_is_empty_when_rdap_does_not_support_the_address(monkeypatch):
+    monkeypatch.setattr(domain, "rdap", lambda _path: {"supported": False})
+    assert domain._ip_owner("203.0.113.5") == {}
+
+
+def test_ip_owner_maps_the_rdap_network_fields(monkeypatch):
+    seen = []
+
+    def fake_rdap(path):
+        seen.append(path)
+        return {
+            "supported": True,
+            "data": {
+                "name": "EXAMPLE-NET",
+                "handle": "NET-203-0-113-0-1",
+                "country": "US",
+                "type": "ALLOCATED",
+            },
+        }
+
+    monkeypatch.setattr(domain, "rdap", fake_rdap)
+
+    assert domain._ip_owner("203.0.113.5") == {
+        "network": "EXAMPLE-NET",
+        "handle": "NET-203-0-113-0-1",
+        "country": "US",
+        "type": "ALLOCATED",
+    }
+    assert seen == ["ip/203.0.113.5"]
+
+
+def test_cymru_origin_and_as_name_come_from_two_txt_lookups(monkeypatch):
+    origin = "15169 | 8.8.8.0/24 | US | arin | 1992-12-01"
+    as_line = "AS15169 | US | arin | 2000-03-30 | GOOGLE, US"
+
+    def fake_doh(name, record_type):
+        assert record_type == "TXT"
+        return [as_line] if name.startswith("AS") else [origin]
+
+    monkeypatch.setattr(domain, "doh", fake_doh)
+
+    assert domain._asn_via_cymru("8.8.8.8") == {
+        "asn": "AS15169",
+        "prefix": "8.8.8.0/24",
+        "country": "US",
+        "as_name": "GOOGLE, US",
+    }

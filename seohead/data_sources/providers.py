@@ -184,6 +184,28 @@ def provider_registry() -> dict[str, Any]:
     }
 
 
+def credential_slot(provider: str, component: str) -> dict[str, Any]:
+    """Resolve a provider/component pair to its secret slot without reading the secret.
+
+    Raises ``ValueError`` for an unknown provider or a component that is not a stored secret
+    of that provider. ``env_shadowed`` reports whether the environment variable would take
+    precedence over the file. The secret value is never read or returned.
+    """
+    if provider not in _REGISTRY:
+        raise ValueError("unknown provider")
+    sources = _CREDENTIAL_SOURCES.get(provider, {})
+    if component not in sources:
+        raise ValueError(f"{component!r} is not a stored credential component of {provider!r}")
+    path, env_var = sources[component]
+    return {
+        "provider": provider,
+        "component": component,
+        "source_reference": f"config:{path}",
+        "env_reference": f"env:{env_var}",
+        "env_shadowed": bool((os.environ.get(env_var) or "").strip()),
+    }
+
+
 def _credential_details(provider: str) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
     sources = _CREDENTIAL_SOURCES.get(provider)
     if provider not in _REGISTRY:
@@ -571,6 +593,21 @@ def provider_verify(
         from seohead.data_sources.bing_webmaster import collect
 
         result = collect("sites", site_url=request.get("site_url", ""), transport=transport)
+    elif provider == "arsenkin":
+        # Balance read (/info limits) is not a billed task; it only reports remaining credits.
+        from seohead.data_sources.arsenkin import ArsenkinClient, ArsenkinError
+
+        try:
+            balance = ArsenkinClient().limits()
+        except (ArsenkinError, ValueError) as exc:
+            code = getattr(exc, "code", "invalid_response")
+            result = {
+                "ok": False,
+                "status": int(code) if str(code).isdigit() else None,
+                "error": str(code),
+            }
+        else:
+            result = {"ok": True, "balance": balance}
     else:
         return {
             "ok": False,

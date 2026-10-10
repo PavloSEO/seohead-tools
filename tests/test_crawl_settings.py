@@ -156,6 +156,7 @@ def test_generic_headers_refuse_credentials_without_echoing_their_values(name):
             "resize_to_content_max_height_px",
         ),
         ({"rendering.browser.device_pixel_ratio": 0}, "device_pixel_ratio"),
+        ({"rendering.escalation.policy": "always"}, "rendering.escalation.policy"),
         ({"rendering.escalation.sample_per_pattern": 0}, "sample_per_pattern"),
         ({"rendering.escalation.max_render_urls": -1}, "max_render_urls"),
         ({"rendering.escalation.max_render_seconds": -1}, "max_render_seconds"),

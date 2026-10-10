@@ -78,10 +78,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Internal Redirection (3XX)", "INTERNAL_LINK_TO_REDIRECT", "BAD_REDIRECT_TYPE"),
         _c("Internal Redirection (Meta Refresh)", "META_REFRESH_REDIRECT"),
         _c("Internal Redirection (HTTP Refresh)", "HTTP_REFRESH_REDIRECT"),
-        _g(
+        _p(
             "Internal Redirection (JavaScript)",
-            "needs rendering plus navigation tracking; render mode reports the DOM, not "
-            "location changes",
+            "navigation is observed on rendered scans (`scan-navigation`, cause "
+            "`script_navigation`), but no finding reports a script-initiated location change "
+            "as a redirect yet, and the SF-export and legacy paths never see one",
         ),
         _t("External No Response", "links-check"),
         _c("External Client Error (4XX)", "BROKEN_EXTERNAL_LINK"),
@@ -212,7 +213,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _g(
             "Semantically Similar",
-            "needs embeddings; simhash finds near-duplicates by shingles, not by meaning",
+            "needs an embedding adapter; the semantic-similarity command and MCP tool take caller-supplied vectors or a local adapter, but no adapter ships and the SF run does not call it yet, so the row stays open. simhash finds near-duplicates by shingles, not by meaning",
         ),
         _g("Low Relevance Content", "needs a query or a topic model to be relevant to"),
         _c("Low Content Pages", "THIN_CONTENT", "LOW_TEXT_RATIO"),
@@ -237,9 +238,11 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Over 100 kb", "IMG_OVER_KB"),
         _c("Alt Text Over 100 Characters", "IMG_ALT_TOO_LONG"),
-        _g(
+        _p(
             "Incorrectly Sized Images",
-            "needs the rendered layout box to compare against the intrinsic size",
+            "render-check measures intrinsic size against the rendered box (image_sizing: "
+            "oversized, upscaled) on rendered routes only; no SF-analyzer check reads it yet, "
+            "and crawl exports are not checked",
         ),
         _c("Missing Size Attributes", "IMG_MISSING_DIMENSIONS"),
     ],
@@ -293,8 +296,8 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Unavailable_After", "UNAVAILABLE_AFTER"),
         _c("NoSnippet", "NOSNIPPET"),
-        _o("NoODP", "the directive was retired with the Open Directory Project in 2017"),
-        _o("NoYDIR", "the directive was retired with the Yahoo Directory"),
+        _c("NoODP", "NOODP"),
+        _c("NoYDIR", "NOYDIR"),
         _c("NoTranslate", "NOTRANSLATE"),
     ],
     "Hreflang": [
@@ -310,7 +313,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Multiple Entries", "HREFLANG_MULTIPLE_ENTRIES"),
         _c("Not Using Canonical", "HREFLANG_NOT_CANONICAL"),
         _c("Outside <head>", "HREFLANG_OUTSIDE_HEAD"),
-        _g("Unlinked Hreflang URLs", "hreflang targets are not tested against the link graph"),
+        _c("Unlinked Hreflang URLs", "HREFLANG_UNLINKED_TARGET"),
         _c("Missing Self Reference", "HREFLANG_MISSING_SELF_REFERENCE"),
         _c("Missing X-Default", "HREFLANG_MISSING_XDEFAULT"),
     ],
@@ -333,12 +336,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _t("H1 Only in Rendered HTML", "render-check"),
         _t("H1 Updated by JavaScript", "render-check"),
         _t("Canonical Only in Rendered HTML", "render-check"),
-        _t(
-            "Pages With JavaScript Errors",
-            "crawl-site",
-            note="browser console errors are captured per URL when "
-            "rendering.artifacts.console_errors is on",
-        ),
+        _c("Pages With JavaScript Errors", "JS_CONSOLE_ERRORS"),
     ],
     "Links": [
         _c("Outlinks To Localhost", "OUTLINK_TO_LOCALHOST"),
@@ -358,11 +356,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _c("Pages Without Internal Outlinks", "NO_INTERNAL_OUTLINKS"),
         _c("Non-Indexable Page Inlinks Only", "ONLY_NONINDEXABLE_SOURCE_INLINKS"),
-        _p(
-            "Internal Nofollow Outlinks",
-            "nofollow is recorded per edge and gates crawling; there is no page-level finding "
-            "for having them",
-        ),
+        _c("Internal Nofollow Outlinks", "INTERNAL_NOFOLLOW_OUTLINKS"),
         _c("Pages With High External Outlinks", "HIGH_EXTERNAL_OUTLINKS"),
         _c("Pages With High Internal Outlinks", "HIGH_OUTLINKS"),
         _c("Follow & Nofollow Internal Inlinks To Page", "FOLLOW_AND_NOFOLLOW_INLINKS"),
@@ -474,7 +468,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Multiple <head> Tags", "HEAD_MULTIPLE"),
         _c("Missing <body> Tag", "BODY_MISSING"),
         _c("Multiple <body> Tags", "BODY_MULTIPLE"),
-        _c("HTML Document Over 2MB", "LARGE_HTML"),
+        _c("HTML Document Over 2MB", "HTML_OVER_2MB"),
         _p(
             "Resource Over 2MB",
             "a body above the configured ceiling is recorded and not parsed; it is a limit, "
@@ -493,7 +487,7 @@ CATEGORIES: dict[str, list[Entry]] = {
             "the rating adds a model, not a measurement",
         ),
     ],
-    "AMP": [],  # filled below: one decision, 16 entries
+    "AMP": [],  # filled below: six pairing checks, ten declined
 }
 
 # Two categories are a single decision rather than 108 separate ones. Listing each row would
@@ -506,8 +500,8 @@ _ACCESSIBILITY_NOTE = (
 )
 _AMP_NOTE = (
     "AMP is effectively retired: Google dropped the Top Stories carousel requirement in 2021 "
-    "and the format is in maintenance. Building sixteen checks for it now would be work aimed "
-    "at the last decade."
+    "and the format is in maintenance. The AMP validator's document model is a separate "
+    "project, so these ten rules stay declined; only the pairing rules are checked."
 )
 
 
@@ -612,27 +606,34 @@ ACCESSIBILITY_RULES = [
     "WCAG 2.0 AAA - Links With Same Accessible Name",
 ]
 
+# The six pairing rules are read from the crawl (#1020); the rest need the AMP
+# validator's document model and stay declined.
+AMP_PAIRING_RULES = {
+    "Non-200 Response": "AMP_NON_200",
+    "Missing Non-AMP Return Link": "AMP_MISSING_RETURN_LINK",
+    "Missing Canonical to Non-AMP": "AMP_MISSING_RETURN_LINK",
+    "Non-Indexable Canonical": "AMP_NON_INDEXABLE_CANONICAL",
+    "Missing Canonical": "AMP_MISSING_CANONICAL",
+    "Indexable": "AMP_INDEXABLE",
+}
 AMP_RULES = [
-    "Non-200 Response",
-    "Missing Non-AMP Return Link",
-    "Missing Canonical to Non-AMP",
-    "Non-Indexable Canonical",
     "Missing <html amp> Tag",
     "Missing/Invalid Doctype HTML Tag",
     "Missing Head Tag",
     "Missing Body Tag",
-    "Missing Canonical",
     "Missing/Invalid Meta Charset Tag",
     "Missing/Invalid Meta Viewport Tag",
     "Missing/Invalid AMP Script",
     "Missing/Invalid AMP Boilerplate",
     "Contains Disallowed HTML",
     "Other Validation Errors",
-    "Indexable",
 ]
 
 CATEGORIES["Accessibility"] = _bulk(ACCESSIBILITY_RULES, _ACCESSIBILITY_NOTE)
-CATEGORIES["AMP"] = _bulk(AMP_RULES, _AMP_NOTE)
+CATEGORIES["AMP"] = [
+    _c(name, code, note="pairing read from the AMP target the crawl captured (#1020)")
+    for name, code in AMP_PAIRING_RULES.items()
+] + _bulk(AMP_RULES, _AMP_NOTE)
 
 
 def entries() -> list[tuple[str, Entry]]:

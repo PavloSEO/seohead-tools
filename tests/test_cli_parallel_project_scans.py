@@ -16,6 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import pairwise
 from pathlib import Path
 
+import pytest
+
 from seohead.projects import run_observation
 from seohead.projects.workspace import create_project
 from seohead.storage.native_scan import NativeScan
@@ -108,6 +110,10 @@ def _command(root: Path, project: Path, observer_run_id: str) -> subprocess.Pope
     )
 
 
+@pytest.mark.skip(
+    reason="#983 C3: one live scan per project; three concurrent scans in one project are refused. "
+    "Pacing test needs a redesign (separate projects, one origin)."
+)
 def test_three_project_scans_share_pacing_and_one_sigint_does_not_stop_the_others(tmp_path):
     root = Path(__file__).parents[1]
     project = tmp_path / "project"

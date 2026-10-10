@@ -6,6 +6,7 @@ from seohead.crawl.link_findings import (
     form_url_insecure,
     forms_on_http_pages_with_password,
     http_links_on_https_pages,
+    internal_nofollow_outlinks,
     outlinks_to_localhost,
     protocol_relative_links,
     unsafe_cross_origin_links,
@@ -327,3 +328,48 @@ def test_non_password_form_on_http_page_is_not_flagged():
         FormEdge(page="http://example.com/search", method="get", action="/s", has_password=False)
     ]
     assert forms_on_http_pages_with_password(forms) == []
+
+
+# ── internal_nofollow_outlinks ────────────────────────────────────────────────
+
+
+def test_source_with_internal_nofollow_outlink_is_reported_with_its_destination():
+    links = [edge("https://example.com/a", "https://example.com/b", nofollow=True)]
+    found = internal_nofollow_outlinks(links, "example.com")
+    assert found == [
+        {
+            "target_url": "https://example.com/a",
+            "nofollow_occurrences": 1,
+            "destinations": ["https://example.com/b"],
+        }
+    ]
+
+
+def test_mixed_follow_and_nofollow_source_counts_only_the_nofollow_edges():
+    links = [
+        edge("https://example.com/a", "https://example.com/b"),
+        edge("https://example.com/a", "https://example.com/c", nofollow=True),
+        edge("https://example.com/a", "https://example.com/c", nofollow=True),
+    ]
+    (item,) = internal_nofollow_outlinks(links, "example.com")
+    assert item["nofollow_occurrences"] == 2
+    assert item["destinations"] == ["https://example.com/c"]
+
+
+def test_source_with_only_followed_outlinks_is_not_reported():
+    links = [edge("https://example.com/a", "https://example.com/b")]
+    assert internal_nofollow_outlinks(links, "example.com") == []
+
+
+def test_external_nofollow_outlink_is_not_an_internal_finding():
+    links = [edge("https://example.com/a", "https://other.test/", nofollow=True)]
+    assert internal_nofollow_outlinks(links, "example.com") == []
+
+
+def test_destination_sample_is_bounded_but_the_count_is_not():
+    links = [
+        edge("https://example.com/a", f"https://example.com/{i}", nofollow=True) for i in range(5)
+    ]
+    (item,) = internal_nofollow_outlinks(links, "example.com", max_destinations=2)
+    assert item["nofollow_occurrences"] == 5
+    assert item["destinations"] == ["https://example.com/0", "https://example.com/1"]

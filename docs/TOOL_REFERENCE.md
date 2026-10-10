@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**164 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 173 in total.
+**172 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 181 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -624,6 +624,37 @@ contract and runtime kind, while checkpoint_path enables resume. Optional
 json_path and csv_path export a review artifact; neither path writes a
 CMS or metadata.
 
+### `ai-column`
+
+MCP name: `seo_ai_column`
+
+Plan a per-URL AI custom column over retained page evidence, then validate its values.
+
+| Argument | Type | Default |
+|---|---|---|
+| `items` | `list[dict] | None` | `None` |
+| `scan` | `str | None` | `None` |
+| `prompt` | `str` | `''` |
+| `urls` | `list[str] | None` | `None` |
+| `column` | `str` | `'ai_column'` |
+| `max_pages` | `int` | `100` |
+| `rows` | `list[dict] | None` | `None` |
+| `csv_path` | `str` | `''` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+With no rows this is a dry-run plan: a prompt, the selected URLs' title,
+headings and text excerpt from a retained scan.v1 or supplied items, a
+character-based size estimate with no price applied, and the consent scope.
+With rows, each value must echo the page's source hash and is validated
+for presence, staleness and length; missing or failed pages are reported,
+never filled. The calling or delegated agent owns the prompt run and the
+transfer of data; this tool has no model key and makes no provider call.
+Optional csv_path writes a formula-safe local CSV and never writes back to
+a site or CMS.
+
 ### `social-meta-check`
 
 MCP name: `seo_social_meta_check`
@@ -1181,6 +1212,20 @@ Every recorded Wayback Machine snapshot of a URL, oldest first: timestamp, HTTP 
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
+### `cloudflare-traffic`
+
+MCP name: `seo_cloudflare_traffic`
+
+Bot and human traffic for a Cloudflare zone from edge GraphQL analytics (read-only, free): bots x URLs x status codes x cache status per day, in the same shape as seo_log_analyze. Use it when origin logs are absent. It is aggregated data (source=cloudflare-aggregated), not raw logs: no client IPs, so bots cannot be verified by reverse DNS. Dates are UTC YYYY-MM-DD; the Free plan keeps 32 days. The token is read from CLOUDFLARE_API_TOKEN or SEOHEAD_CLOUDFLARE_TOKEN_FILE.
+
+| Argument | Type | Default |
+|---|---|---|
+| `zone` | `str` | `required` |
+| `since` | `str | None` | `None` |
+| `until` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
 ### `crtsh-subdomains`
 
 MCP name: `seo_crtsh_subdomains`
@@ -1562,6 +1607,41 @@ Return a bounded unread reference summary without changing delivery state.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `project-event-append`
+
+MCP name: `seo_project_event_append`
+
+Append one structured event to the project journal (events.jsonl).
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `source` | `Literal['agent', 'user', 'scans', 'app']` | `required` |
+| `actor` | `Literal['user', 'agent', 'schedule']` | `required` |
+| `text` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+Earlier events are never edited. Nothing is executed; the event only records text.
+
+### `project-event-page`
+
+MCP name: `seo_project_event_page`
+
+Read a newest-first bounded page of project events, optionally filtered.
+
+| Argument | Type | Default |
+|---|---|---|
+| `directory` | `str` | `required` |
+| `offset` | `int` | `0` |
+| `limit` | `int` | `50` |
+| `source` | `Literal['agent', 'user', 'scans', 'app'] | None` | `None` |
+| `query` | `str` | `''` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `remediation-summary`
 
 MCP name: `seo_remediation_summary`
@@ -1579,6 +1659,44 @@ Read explicit remediation and recheck coverage from retained local evidence.
 The result keeps verified original cases, resolved, persisting,
 regressed, false-positive-reviewed and unverifiable states separate.
 It does not run a crawl or infer that omitted evidence is clean.
+
+### `remediation-create`
+
+MCP name: `seo_remediation_create`
+
+Create one new empty remediation ledger bound to a validated local project.
+
+| Argument | Type | Default |
+|---|---|---|
+| `path` | `str` | `required` |
+| `project_dir` | `str` | `required` |
+| `producer_build` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+**Behavior and failure modes**
+
+producer_build must be the full lowercase 40-character Git SHA of the
+build that writes the ledger. An existing path is refused; ledgers never
+overwrite.
+
+### `remediation-ingest`
+
+MCP name: `seo_remediation_ingest`
+
+Ingest one retained saved audit into a local ledger without rerunning a crawl.
+
+| Argument | Type | Default |
+|---|---|---|
+| `ledger` | `str` | `required` |
+| `scan` | `str` | `required` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no · can overwrite/remove existing data
+
+**Behavior and failure modes**
+
+The scan is opened read-only. Re-ingesting the same revision is idempotent;
+a new revision appends observation history.
 
 ### `workflow-start`
 
@@ -2154,6 +2272,16 @@ Return a packaged skill's exact text and definition identity.
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
+### `scenario-list`
+
+MCP name: `seo_scenario_list`
+
+List the packaged workflow scenarios with their ordered steps, without running them.
+
+Takes no arguments.
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
 ### `scenario-show`
 
 MCP name: `seo_scenario_show`
@@ -2411,11 +2539,16 @@ Read a bounded searchable page of project checklist evidence.
 | `query` | `str` | `''` |
 | `kind` | `str | None` | `None` |
 | `state` | `str | None` | `None` |
+| `sort` | `str` | `'id'` |
+| `descending` | `bool` | `False` |
+| `states` | `list[str] | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 **Behavior and failure modes**
 
+sort is one of id (stored order, default), priority, state or updated; states
+keeps up to 8 display states. Each item carries updated, the newest record time.
 Reads saved local evidence with metadata-only receipt status; this is not
 fresh byte verification. Missing historical receipts remain unverified.
 Does not collect, fetch or modify evidence.
@@ -2672,8 +2805,14 @@ Read up to 100 indexed derived content-search records without rereading the scan
 | `package` | `str` | `required` |
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
+| `status` | `Literal['matched', 'not_matched', 'unavailable'] | None` | `None` |
+| `status_code` | `int | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Optional status or status_code filters the stream; offset then counts matching records.
 
 ### `scan-extract`
 
@@ -2688,6 +2827,20 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 | `url` | `str | None` | `None` |
 | `representation` | `str` | `'static'` |
 | `limit` | `int` | `100` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-structured-blocks`
+
+MCP name: `seo_scan_structured_blocks`
+
+Describe one retained page's JSON-LD blocks: line, state, graph findings and source JSON, offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `url` | `str` | `required` |
+| `representation` | `str` | `'static'` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -2793,8 +2946,14 @@ Read a bounded, paginated table view from one saved scan.
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
 | `max_bytes` | `int` | `1048576` |
+| `columns` | `list[str] | None` | `None` |
+| `total` | `bool` | `False` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+``columns`` projects the named table columns; ``total`` adds the table's row count.
 
 ### `scan-url-detail`
 
@@ -2837,15 +2996,20 @@ Filter, sort and paginate the page table of one saved scan across the whole scan
 | `limit` | `int` | `200` |
 | `count_timeout_seconds` | `float` | `1.0` |
 | `max_bytes` | `int` | `1048576` |
+| `preset` | `str | None` | `None` |
+| `facets` | `list[str] | str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
 **Behavior and failure modes**
 
-Read-only. Filters are {column, op, value} objects combined with AND; sorting by a
-non-indexed column needs a filter that leaves at most 100,000 rows (else reason_code
-sort_not_indexed). Returns total, filtered_total (null with state capped when the count
-exceeds count_timeout_seconds) and at most 200 rows of the requested columns.
+Read-only. Filters are {column, op, value} objects combined with AND; preset names a
+ready-made filter set (for example status_4xx, title_missing, title_over_60, noindex_meta)
+that is combined with them. Sorting by a non-indexed column needs a filter that leaves at
+most 100,000 rows (else reason_code sort_not_indexed). Returns total, filtered_total (null
+with state capped when the count exceeds count_timeout_seconds) and at most 200 rows of the
+requested columns. facets (a list of group ids, or "all") adds facets: {group: count} over
+the same filters, with facets_state exact or capped.
 
 ### `scan-link-inspect`
 

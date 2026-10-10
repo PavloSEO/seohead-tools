@@ -733,6 +733,10 @@ class AuditContext:
         self._disk_pages: _DiskPages | None = None
         self._disk_final_issues: _DiskIssueResults | None = None
         self._saved_corpus = None
+        # Native stored-scan connection (set by the audit-v2 handler). Checks that
+        # need crawl-only evidence, such as resource_graph_fetches, read it and
+        # skip honestly when it is absent (export audits leave it None).
+        self.scan_con: Any = None
         self._html_pages: list[Page] | None = None
         self._indexable_html_pages: list[Page] | None = None
         self._build_pages(disk_backed_pages=disk_backed_pages)

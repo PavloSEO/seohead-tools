@@ -357,7 +357,7 @@ DEFAULTS: dict[str, Any] = {
         # "legacy_fragment" are applied selectively rather than to every URL.
         "mode": "raw",  # raw | legacy_fragment | js
         "escalation": {
-            "policy": "sampled",  # sampled | full
+            "policy": "sampled",  # sampled | full | auto
             # How many URLs per detected template pattern are probed
             # raw-versus-fuller before the whole pattern is escalated.
             # Sampling patterns, not every URL, is what keeps rendering an
@@ -823,7 +823,11 @@ DESCRIPTIONS: dict[str, str] = {
         "'_escaped_fragment_' opt-in), or 'js' (execute JavaScript in a headless "
         "browser, selectively -- see rendering.escalation)."
     ),
-    "rendering.escalation.policy": "Sample template patterns or render every eligible URL within the independent URL/time budgets.",
+    "rendering.escalation.policy": (
+        "sampled: probe template patterns and escalate those that diverge; full: render every "
+        "eligible URL within the independent URL/time budgets; auto: sampled, and also escalate "
+        "patterns whose raw page carries little text (the desktop Auto mode)."
+    ),
     "rendering.escalation.sample_per_pattern": (
         "URLs probed raw-versus-fuller per detected template pattern before deciding "
         "whether the whole pattern needs escalation."
@@ -1377,8 +1381,8 @@ def _validate_rendering(rendering: dict[str, Any]) -> None:
         raise ConfigError("rendering.rendered_links.store must be a boolean")
     if type(rendering["rendered_links"]["crawl"]) is not bool:
         raise ConfigError("rendering.rendered_links.crawl must be a boolean")
-    if escalation.get("policy", "sampled") not in {"sampled", "full"}:
-        raise ConfigError("rendering.escalation.policy must be sampled or full")
+    if escalation.get("policy", "sampled") not in {"sampled", "full", "auto"}:
+        raise ConfigError("rendering.escalation.policy must be sampled, full or auto")
     if escalation["sample_per_pattern"] < 1:
         raise ConfigError("rendering.escalation.sample_per_pattern must be at least 1")
     if escalation["max_render_urls"] < 0:

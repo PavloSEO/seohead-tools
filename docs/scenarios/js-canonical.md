@@ -41,7 +41,7 @@ seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./r
 ```
 
 With `rendering.mode` set to `js`, an escalated page's canonical is re-read from the rendered
-DOM, and the canonical checks run against it: self-reference, canonical to a redirect, canonical
+DOM, and the canonical checks run against it: canonical to a redirect, canonical
 to a non-indexable URL, a canonical carrying a fragment. The static run of the same site answers
 the same questions about the document a non-rendering crawler received; the two together are the
 mismatch.

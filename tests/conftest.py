@@ -12,6 +12,16 @@ from seohead.sf.core.audit import run_audit
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
+def pytest_configure(config):
+    """Switch the run journal off for the whole session, before collection.
+
+    The journal ignores SEOHEAD_CONFIG_DIR, so without this any CLI call made by a test (or at
+    import time) appends to the real ~/.config/seohead/runs.jsonl. Tests that need the journal
+    set SEOHEAD_RUN_LOG themselves.
+    """
+    os.environ["SEOHEAD_RUN_LOG"] = "off"
+
+
 @pytest.fixture
 def exports_dir(tmp_path):
     """A temp exports dir holding both fixture CSVs."""

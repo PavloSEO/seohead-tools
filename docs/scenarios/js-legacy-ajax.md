@@ -39,8 +39,8 @@ seohead crawl-site --url https://example.com --config ./crawl.json --out-dir ./r
 
 Two opt-ins are honoured, and only these two. A URL whose fragment starts with `!` yields the
 companion address with `_escaped_fragment_` set to the rest; a page carrying
-`<meta name="fragment" content="!">` yields the same address with an empty value. Any other query
-parameters on the URL are preserved. A page declaring neither is left alone — the crawler never
+`<meta name="fragment" content="!">` yields the same address with an empty value. Other query parameters
+are carried over, except that blank-valued parameters are dropped and a repeated key keeps only its last value. A page declaring neither is left alone — the crawler never
 invents an `_escaped_fragment_` URL a site did not offer.
 
 **3. Read the finding.** A native crawl records both opt-ins per page, and the audit reports
