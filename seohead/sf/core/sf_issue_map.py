@@ -212,7 +212,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         ),
         _g(
             "Semantically Similar",
-            "needs embeddings; simhash finds near-duplicates by shingles, not by meaning",
+            "needs an embedding adapter; the semantic-similarity command and MCP tool take caller-supplied vectors or a local adapter, but no adapter ships and the SF run does not call it yet, so the row stays open. simhash finds near-duplicates by shingles, not by meaning",
         ),
         _g("Low Relevance Content", "needs a query or a topic model to be relevant to"),
         _c("Low Content Pages", "THIN_CONTENT", "LOW_TEXT_RATIO"),

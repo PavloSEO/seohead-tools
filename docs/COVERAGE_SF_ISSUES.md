@@ -142,7 +142,7 @@ having, because the alternative is an absence nobody has noticed.
 | Soft 404 Pages | tool | `soft404-check` |  |
 | Lorem Ipsum Placeholder | check | `LOREM_IPSUM_PLACEHOLDER` | matched as the full multi-word passage within the resolved content area, never a substring of the whole document, so a page merely mentioning it once outside the content area is not flagged |
 | Near Duplicates | partial | `NEAR_DUPLICATE` | an SF export's native "No. Near Duplicates" column is read directly and answers this fully; the SimHash-based fallback that answers it without one needs HTML stored to disk (input.html_store_dir), which a native `crawl-site` run never writes, so that run always skips this one by name instead |
-| Semantically Similar | gap | — | needs embeddings; simhash finds near-duplicates by shingles, not by meaning |
+| Semantically Similar | gap | — | needs an embedding adapter; the semantic-similarity command and MCP tool take caller-supplied vectors or a local adapter, but no adapter ships and the SF run does not call it yet, so the row stays open. simhash finds near-duplicates by shingles, not by meaning |
 | Low Relevance Content | gap | — | needs a query or a topic model to be relevant to |
 | Low Content Pages | check | `THIN_CONTENT` `LOW_TEXT_RATIO` |  |
 | Readability Difficult | check | `READABILITY_DIFFICULT` `LONG_SENTENCES` |  |
