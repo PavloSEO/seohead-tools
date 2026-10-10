@@ -105,7 +105,7 @@ EXEMPT = (
     # line only kept passing because the live count still happened to equal
     # the frozen one -- exactly the silent failure this constant exists to
     # prevent (coverage-evidence, #385/#386).
-    "139 checks today, up from 104",
+    "139 checks when this audit was written",
 )
 
 # Documents claim "over 1100 offline tests" rather than an exact figure: an

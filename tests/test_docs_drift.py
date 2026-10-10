@@ -11,7 +11,7 @@ from scripts.build_changelog import fragment_paths
 from seohead.cli import COMMANDS, DOCUMENTED_CLI_ENTRYPOINTS, URL_COMMANDS
 from seohead.core.provider_matrix import render as render_provider_matrix
 from seohead.mcp.handlers import HANDLERS
-from seohead.mcp.tool_reference import load_seo_tools, load_sf_tools
+from seohead.mcp.tool_reference import load_semantics_tools, load_seo_tools, load_sf_tools
 from seohead.mcp.tool_reference import render as render_tool_reference
 from seohead.sf.core.checks_reference import render as render_checks_reference
 from seohead.sf.core.registry import CHECKS
@@ -204,7 +204,7 @@ def test_documented_product_counts_match_the_registries():
     assert len(_sf_tool_names()) == 5
     assert CHECKS
     assert len(TECHNICAL_SKILLS) == 25
-    assert len(PACKAGED_SKILLS) == 7
+    assert len(PACKAGED_SKILLS) == 8
     assert (
         str(len(COMMANDS)) in provenance
         and str(len(CHECKS)) in provenance
@@ -323,8 +323,9 @@ def test_tool_reference_is_generated_and_current():
     documented = set(re.findall(r"^### `([a-z0-9_-]+)`", committed, re.M))
     seo_tools = load_seo_tools()
     sf_tools = load_sf_tools()
-    expected = {tool.command or tool.name for tool in (*seo_tools, *sf_tools)}
-    assert documented == expected, "every seo_*/sf_* tool must appear in the generated reference"
+    semantics_tools = load_semantics_tools()
+    expected = {tool.command or tool.name for tool in (*seo_tools, *sf_tools, *semantics_tools)}
+    assert documented == expected, "every MCP tool must appear in the generated reference"
     assert len(seo_tools) == len(COMMANDS)
     assert len(sf_tools) == 5
 

@@ -50,10 +50,7 @@ seohead/
   reports/        XLSX, DOCX, CSV, Markdown, and JSON formatting
   data_sources/   optional demand, SERP, and traffic providers
   servers/        shared handlers and MCP registration
-  bot/            versioned guided-scan conversation contract and wizard for the
-                  approved adapter roadmap (docs/GUIDED_SCAN_ADAPTER.md); it is a core-side
-                  contract, not a third interface — adapters submit through the
-                  JobSubmitter protocol
+  semantics/      optional semantic-core pipeline with its own SQLite DB (extra `semantics`)
   skills/         packaged SEO workflow playbooks
 ```
 
