@@ -17,12 +17,13 @@ import re
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from seohead.core.filesystem import atomic_write_bytes
 
+from .coverage import _now
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
 
@@ -46,17 +47,6 @@ _DEFAULTS = {
     "severity_threshold": "warning",
 }
 _DEFAULT_LEASE_SECONDS = 300
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _after_interval(interval_seconds: int) -> str:
-    """Return retained scheduler advice only; this module never starts a timer."""
-    current = _now()
-    parsed = datetime.fromisoformat(current.replace("Z", "+00:00"))
-    return (parsed + timedelta(seconds=interval_seconds)).isoformat().replace("+00:00", "Z")
 
 
 def _expiry(stamp: str, seconds: int) -> str:
@@ -543,7 +533,7 @@ def run(
         ),
         "next_url_offset": offset,
         "last_finished_at": retained["recorded_at"],
-        "next_due_at": _after_interval(policy["interval_seconds"]),
+        "next_due_at": _expiry(_now(), policy["interval_seconds"]),
     }
     document["revision"] += 1
     write_document(root, NAME, document, expected_revision=expected_revision)

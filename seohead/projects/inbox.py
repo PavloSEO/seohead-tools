@@ -23,6 +23,7 @@ from typing import Any
 
 from seohead.core.filesystem import atomic_write_bytes
 
+from .coverage import _now
 from .workspace import _load
 
 FORMAT = "seohead.project-inbox.v1"
@@ -32,10 +33,6 @@ MAX_ENTRIES = 10_000
 MAX_PAGE = 100
 _CONSUMER = re.compile(r"[a-z][a-z0-9._/-]{0,127}\Z")
 _REFERENCE = re.compile(r"(?:goal|task|scan|finding|section):[A-Za-z0-9._/-]{1,128}\Z")
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _text(value: Any, name: str, maximum: int = MAX_TEXT) -> str:
