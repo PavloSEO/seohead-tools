@@ -212,6 +212,33 @@ def test_mirror_rate_below_90_percent_switches_inference_off():
     assert result["counts"]["absent"] == 0
 
 
+@pytest.mark.parametrize(
+    ("mirrored", "declared", "inference_enabled"),
+    [
+        # Exactly at MIRROR_RATE_THRESHOLD (9/10 == 0.90): the bar is inclusive, so it is trusted.
+        (9, 10, True),
+        # Just under it (8/9 ~= 0.889): path inference must be switched off.
+        (8, 9, False),
+    ],
+)
+def test_mirror_rate_threshold_boundary(mirrored, declared, inference_enabled):
+    """Pins the side of MIRROR_RATE_THRESHOLD on each side of the boundary.
+    A wrong comparison here (< vs <=, or a different constant) would silently
+    turn inference on for a site that only partly mirrors its paths."""
+    scope = _scope()
+    pages = []
+    for i in range(declared):
+        mirror = f"https://x.tld/fr/p{i}"
+        target = mirror if i < mirrored else f"{mirror}-different"
+        pages.append(_page(f"https://x.tld/en/p{i}", hreflang=[_alt(target)]))
+        pages.append(_page(target, hreflang=[]))
+    result = sd.diff_segments(
+        pages, source="en", target="fr", segments=SEGMENTS, segment_for=scope.segment_for
+    )
+    assert result["mirror_rate"] == pytest.approx(mirrored / declared)
+    assert result["inference_enabled"] is inference_enabled
+
+
 def test_no_declared_pairs_at_all_leaves_inference_off_by_default():
     scope = _scope()
     pages = [_page("https://x.tld/en/a", hreflang=[])]
