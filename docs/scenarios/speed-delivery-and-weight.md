@@ -65,12 +65,10 @@ one prerequisite worth stating in advance:
 seohead sf run --exports-dir docs/examples/exports --out report --tasks
 ```
 
-The DOM checks read the HTML body of each page. A native `crawl-site` run that keeps a scan store
-(the default inside a project) measures them from the body it retained there. A Screaming Frog
-export measures them only when it has HTML stored to disk (`input.html_store_dir`), and without it
-they are reported as skipped, with that reason attached, rather than as clean. A page whose body was not retained (`storage.body_mode`
-set to `off`, or a body over `storage.max_body_bytes`) is skipped with that reason too. A skipped
-check that looks like a passed check is how an audit lies without saying anything false.
+The DOM checks read stored HTML. Without `input.html_store_dir` — a Screaming Frog crawl run with
+Store HTML enabled — they are reported as skipped, with that reason attached, rather than as
+clean. A skipped check that looks like a passed check is how an audit lies without saying
+anything false.
 
 **5. Verify, then hand it over.**
 

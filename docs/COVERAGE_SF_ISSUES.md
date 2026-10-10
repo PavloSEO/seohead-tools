@@ -300,7 +300,7 @@ having, because the alternative is an absence nobody has noticed.
 | Reduce Unused JavaScript | out of scope | — | needs coverage instrumentation from a real render |
 | Reduce JavaScript Execution Time | out of scope | — | needs a CPU profile |
 | Minimize Main-Thread Work | out of scope | — | needs a CPU profile |
-| Optimize DOM Size | partial | `DOM_TOO_MANY_NODES` `DOM_TOO_DEEP` | a native `crawl-site` run that keeps a scan store measures it from the body it retained there, and skips a page with the real reason when that body was not kept; the legacy native route and a Screaming Frog export measure it only from HTML stored to disk (input.html_store_dir) |
+| Optimize DOM Size | partial | `DOM_TOO_MANY_NODES` `DOM_TOO_DEEP` | needs HTML stored to disk (input.html_store_dir) to measure; a Screaming Frog export configured to store HTML supplies it, but a native `crawl-site` run never writes one, so that run always skips both by name instead |
 | Font Display | tool | `asset-weight-check` |  |
 
 ## Mobile

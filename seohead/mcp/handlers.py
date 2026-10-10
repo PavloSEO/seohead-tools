@@ -1617,24 +1617,12 @@ def _audit_crawl_result(
         run_eeat(ctx)
     # Same gap, two more modules (issue #165): DOM size, HTML weight, templated
     # titles and the near-duplicate/exact-duplicate heuristic fallback all live in
-    # heuristics.py and were never reached from a crawl either. DOM depth/nodes read
-    # the body the native crawl retained in its scan store (``stored_html``), and skip
-    # by page with the real reason when a body was not kept. Only a run that keeps a
-    # scan store (``scan_out``, or a project-scoped default) has bodies to read; the
-    # legacy JSONL route still lands on the "no stored HTML" skip. The near-duplicate
-    # fallback still needs HTML stored to disk (``input.html_store_dir``), which a
-    # native crawl never writes, so it keeps its own "no stored HTML" skip. HTML weight
+    # heuristics.py and were never reached from a crawl either. DOM depth/nodes and
+    # the near-duplicate fallback need HTML stored to disk (``input.html_store_dir``),
+    # which a native crawl never writes -- they land on their own existing "no
+    # stored HTML" skip branch rather than gaining new evidence here. HTML weight
     # and templated-title detection need only Size (bytes), Word Count and Title,
     # which build_evidence already puts on every page, so those genuinely fire.
-    if stored_scan is not None:
-        from seohead.storage import fragment_links
-        from seohead.storage.bodies import page_html_reader
-
-        storage = settings.get("storage")
-        html_limit = storage.get("max_body_bytes") if isinstance(storage, dict) else None
-        if type(html_limit) is not int or html_limit <= 0:
-            html_limit = fragment_links.DEFAULT_MAX_DECODED_BYTES
-        ctx.stored_html = page_html_reader(stored_scan.con, max_decoded_bytes=html_limit)
     run_heuristics(ctx)
 
     # ``run_sitemap`` covers the sitemap-protocol and robots.txt checks that need a
