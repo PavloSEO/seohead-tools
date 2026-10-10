@@ -267,15 +267,25 @@ def test_a_full_baseline_still_reports_a_genuinely_new_url_as_appeared():
 # prove a before-only URL is genuinely gone, only that it was not reached.
 
 
-def test_a_partial_after_crawl_does_not_report_an_unreached_url_as_disappeared():
+def test_a_partial_after_crawl_does_not_count_an_unfetched_url_as_fixed():
+    """Only a URL fetched by both crawls can be fixed; an unreached one is not rechecked."""
     before = _audit(
         ["https://x.com/a", "https://x.com/b"],
         [("MISSING_TITLE", "https://x.com/a")],
     )
     after = _audit(["https://x.com/b"], [], crawl_partial=True)  # /a never reached this run
     result = compare(before, after)
-    assert result["disappeared"] == []
-    assert [i["target_url"] for i in result["left"]] == ["https://x.com/a"]
+    assert result["left"] == []
+    assert [i["target_url"] for i in result["disappeared"]] == ["https://x.com/a"]
+
+
+def test_a_finding_on_a_url_the_before_crawl_never_fetched_is_not_fixed():
+    """A link-level finding can name a URL no crawl fetched; fixing it is unproven."""
+    before = _audit(["https://x.com/b"], [("BROKEN_LINK", "https://x.com/a")])
+    after = _audit(["https://x.com/a", "https://x.com/b"], [])
+    result = compare(before, after)
+    assert result["left"] == []
+    assert [i["target_url"] for i in result["disappeared"]] == ["https://x.com/a"]
 
 
 def test_a_full_after_crawl_still_reports_a_genuinely_gone_url_as_disappeared():

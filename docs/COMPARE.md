@@ -57,6 +57,9 @@ Known partial corpora remain warned even when both sides have the same partial
 state. Legacy inputs are never assigned `false` by the comparison consumer.
 
 `measurement_gaps` retains each side's skipped/disabled check ID and reason.
+`left` requires the URL to be fetched by both crawls. A finding whose URL the later crawl
+never fetched (partial crawl, budget stop) lands in `disappeared`, which means not rechecked, never fixed.
+
 The legacy four delta categories are still observational row differences:
 for example, an after-run that skipped `SITEMAP_STALE_LASTMOD` may put an old
 finding in `left` or `disappeared`, but its explicit unmeasured-check warning
