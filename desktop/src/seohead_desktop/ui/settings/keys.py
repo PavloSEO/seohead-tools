@@ -8,6 +8,7 @@ from pathlib import Path
 from PyQt5.QtCore import QEvent, Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
+    QBoxLayout,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -27,6 +28,8 @@ from .helpers import group_label, two_columns
 ID, ICON, TITLE = "keys", "keyboard", "Горячие клавиши"
 HINT = "Сочетания по группам; конфликты подсвечиваются"
 SCHEMA = shortcuts.schema()
+
+COLUMNS_MIN_WIDTH = 720
 
 _MODIFIER_KEYS = {Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_AltGr}
 
@@ -151,10 +154,11 @@ class ShortcutRow(SettingRow):
         layout = QHBoxLayout(control)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        for widget in (self.reset_button, self.replace_button, self.capture):
+        for widget in (self.capture, self.replace_button, self.reset_button):
             layout.addWidget(widget)
         super().__init__(action.title, "", control)
         self.setProperty("setting_key", shortcuts.key(action.id))
+        self.setProperty("shortcut", True)
         self.layout().setContentsMargins(0, 6, 0, 6)
         self._pending = None            # (portable, replaceable) of a recorded chord waiting for 'Заменить'
         if action.fixed:
@@ -232,8 +236,14 @@ class KeysPage(QWidget):
                 columns[index].append(group_label(group))
                 columns[index].extend(r for a, r in zip(shortcuts.ACTIONS, self.rows.values()) if a.group == group)
         columns[1].append(self._transfer_buttons())
-        layout.addWidget(two_columns(*columns))
+        self._columns = two_columns(*columns)
+        layout.addWidget(self._columns)
         store.changed.connect(self._on_changed)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        narrow = self.width() < COLUMNS_MIN_WIDTH   # 800x800 window: one column instead of horizontal scroll
+        self._columns.layout().setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
 
     def _transfer_buttons(self):
         box = QWidget()
