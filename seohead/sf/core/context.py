@@ -692,6 +692,9 @@ class AuditContext:
         # Native retained scans can supply complete, document-bound hreflang
         # relations. Export audits retain the established DataFrame path.
         self.native_hreflang: dict[str, Any] | None = None
+        # Stored probes of canonical targets no crawled page answered (#987), keyed by
+        # normalized URL. Empty for exports and for scans that never probed.
+        self.target_probes: dict[str, dict[str, Any]] = {}
         # Where the crawl actually started, when the producer knows. A native crawl
         # does; a Screaming Frog export carries no such field, and the checks that
         # need one fall back to Crawl Depth 0 -- but only when exactly one page has

@@ -228,6 +228,9 @@ def _indexability(page: dict[str, Any]) -> dict[str, str]:
     }
 
 
+UNCAPTURED_TARGET_REASON = "target has no captured page observation in this scan"
+
+
 def _target(target_url: str, by_normalized: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     """Resolve only one unambiguous captured target page, never a queued URL."""
     if not target_url:
@@ -236,7 +239,7 @@ def _target(target_url: str, by_normalized: dict[str, list[dict[str, Any]]]) -> 
     if not candidates:
         return {
             "state": "unmeasured",
-            "reason": "target has no captured page observation in this scan",
+            "reason": UNCAPTURED_TARGET_REASON,
         }
     if len(candidates) != 1:
         return {
@@ -461,6 +464,11 @@ def derive(
     scan = con.execute("SELECT crawl_partial,corpus_partial FROM scan WHERE singleton=1").fetchone()
     crawl_partial, corpus_partial = bool(scan[0]), bool(scan[1])
 
+    from seohead.storage.target_probes import load as load_target_probes
+    from seohead.storage.target_probes import observation as probe_observation
+
+    probes = load_target_probes(con)
+
     def declaration_rows():
         groups = (
             (
@@ -479,6 +487,13 @@ def derive(
                         "state": "unmeasured",
                         "reason": "the retained crawl or corpus is partial; a clean relationship is unproven",
                     }
+                if (
+                    probes
+                    and declaration["target_observation"].get("reason") == UNCAPTURED_TARGET_REASON
+                ):
+                    observed = probe_observation(probes.get(declaration["target_identity"], {}))
+                    if observed is not None:
+                        declaration["target_observation"] = observed
                 yield declaration
 
     declarations = (

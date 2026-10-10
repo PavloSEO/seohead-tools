@@ -331,6 +331,10 @@ def _native_sample_details(name, entries, count):
     return details
 
 
+# A captured page, or a target the post-crawl probe fetched because no link reached it (#987).
+_ANSWERED_TARGET_STATES = frozenset({"observed", "probed"})
+
+
 def _active_declaration(item):
     return (
         item["source_representation_state"] == "active" and item["declaration_state"] == "declared"
@@ -356,7 +360,7 @@ def check_hreflang_targets(ctx: AuditContext) -> None:
             code = target.get("status_code")
             return (
                 _active_declaration(item)
-                and target["state"] == "observed"
+                and target["state"] in _ANSWERED_TARGET_STATES
                 and type(code) is int
                 and (code >= 300 or target["redirect_url"])
             )
@@ -385,7 +389,7 @@ def check_hreflang_targets(ctx: AuditContext) -> None:
         unmeasured = any(
             _active_declaration(item)
             and (
-                item["target_observation"]["state"] != "observed"
+                item["target_observation"]["state"] not in _ANSWERED_TARGET_STATES
                 or type(item["target_observation"].get("status_code")) is not int
             )
             for item in native["declarations"]

@@ -1554,6 +1554,9 @@ def _audit_crawl_result(
         if streaming:
             ctx._saved_corpus = saved_corpus
         ctx.native_hreflang = saved_corpus["internationalization"]
+        from seohead.storage.target_probes import load as load_target_probes
+
+        ctx.target_probes = load_target_probes(stored_scan.con)
     # Where this crawl actually began. A native crawl knows; nothing else does,
     # and pages.crawl_depth is not a substitute -- a sitemap-seeded crawl records
     # 0 for every seeded URL, so the click-depth walk would start from an
