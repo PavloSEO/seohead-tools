@@ -11,7 +11,7 @@ from email.message import Message
 from typing import Any
 
 from seohead.crawl.cache import _parse_cache_control
-from seohead.crawl.capture import CaptureEvent
+from seohead.crawl.capture import SENSITIVE_HEADER_NAMES, CaptureEvent
 from seohead.crawl.settings import MAX_RENDER_PAGE_CONCURRENCY
 
 from . import ScanError
@@ -66,12 +66,11 @@ def _intern_url(con: sqlite3.Connection, value: str) -> int:
 
 
 def _checked_pairs(pairs: Any, label: str) -> tuple[tuple[str, str], ...]:
-    sensitive = {"authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key"}
     if not isinstance(pairs, tuple) or any(
         not isinstance(item, tuple)
         or len(item) != 2
         or any(type(part) is not str for part in item)
-        or item[0].lower() in sensitive
+        or item[0].lower() in SENSITIVE_HEADER_NAMES
         for item in pairs
     ):
         raise ScanError(f"captured {label} headers must be redacted string pairs")
