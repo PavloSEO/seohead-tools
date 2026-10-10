@@ -275,10 +275,8 @@ class IssuesScreen(Screen):
         self.desc = QLabel()
         self.desc.setWordWrap(True)
         head_layout.addWidget(self.desc)
-        self.lane_found = QLabel()
-        self.lane_found.setWordWrap(True)
-        self.lane_found.setProperty("text_style", "meta")
-        head_layout.addWidget(self.lane_found)
+        self.stepper = self._build_stepper()
+        head_layout.addWidget(self.stepper)
         lane = QHBoxLayout()
         lane.setSpacing(8)
         lane.addWidget(waiting_badge(926, "Путь находки: задача, исправление и подтверждение перепроверкой"))
@@ -325,6 +323,40 @@ class IssuesScreen(Screen):
         self.foot.setWordWrap(True)
         layout.addWidget(self.foot)
         return pane
+
+    def _build_stepper(self):
+        """Path of a finding: found → task → fixed → confirmed. Only «found» is measured by the core; the other steps wait for #922/#926."""
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        self.stepper_tail = []  # steps 2–4 and their rules: hidden in a narrow row, where the first step would be cut
+        steps = (tr("Найдена в скане"), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой"))
+        for number, text in enumerate(steps, 1):
+            done = number == 1
+            if done:
+                mark = MaterialIconLabel("check", 16, color="role:success")
+            else:
+                mark = QLabel(str(number))
+                mark.setProperty("text_style", "meta")
+                mark.setAlignment(Qt.AlignCenter)
+                mark.setFixedSize(16, 16)
+                mark.setToolTip(tr("Появится, когда будут задачи и журнал исправлений"))
+            label = QLabel(text)
+            if not done:
+                label.setProperty("text_style", "meta")
+            layout.addWidget(mark)
+            layout.addWidget(label)
+            if not done:
+                self.stepper_tail += [mark, label]
+            if number < len(steps):
+                rule = QFrame()
+                rule.setFixedSize(24, 1)
+                rule.setStyleSheet(f"background: {theming.roles()['divider']};")
+                layout.addWidget(rule)
+                self.stepper_tail.append(rule)
+        layout.addStretch(1)
+        return row
 
     def _build_overview(self):
         scroll = QScrollArea()
@@ -390,6 +422,8 @@ class IssuesScreen(Screen):
         for button, text in ((self.open_url, "Открыть в URL"), (self.to_task, "В задачу"), (self.recheck, "Перепроверить")):
             button.setText("" if narrow else tr(text))
             button.setToolTip(button.toolTip() or tr(text))
+        for widget in self.stepper_tail:
+            widget.setVisible(not narrow)
         for column in (1, 3):  # constant «—» and «Найдена в скане» only steal width from address and evidence when narrow
             self.table.setColumnHidden(column, narrow)
 
@@ -534,13 +568,11 @@ class IssuesScreen(Screen):
 
     def _fill_detail(self):
         entry = self.checks.get(self.selected)
-        scan = selected_scan(self.host) or {}
         if entry is None:
             self.pages.setCurrentIndex(0)
             self.title.setText(tr("Проблемы скана"))
             self.icon.set_material_icon("rule", "role:text_2")
             self.desc.setText(tr("Выберите проверку слева: в списке проверки из первых находок скана."))
-            self.lane_found.setText(self._lane(scan))
             self.open_url.setEnabled(False)
             self.open_url.setToolTip(tr("Выберите проверку"))
             self.foot.setText("")
@@ -555,17 +587,11 @@ class IssuesScreen(Screen):
         self.icon.set_material_icon(icon, f"role:{colour}")
         self.desc.setText(message_ru(entry["message"]))
         self._sync_raw()
-        self.lane_found.setText(self._lane(scan))
         self.model.set_rows(entry["items"])
         urls = [i.get("target_url") for i in entry["items"] if i.get("target_url")]
         self.open_url.setEnabled(bool(urls))
         self.open_url.setToolTip(trf("Откроет URL из выборки находок этой проверки ({n}). Фильтр по проверке для всего скана пока недоступен", n=len(urls)))
         self.foot.setText(trf("{n} URL в выборке находок этой проверки. Полный список по всему скану пока недоступен.", n=len(entry["items"])))
-
-    @staticmethod
-    def _lane(scan):
-        steps = [tr("Найдена в скане"), tr("Задача программисту"), tr("Исправлено по словам исполнителя"), tr("Подтверждено перепроверкой")]
-        return "  →  ".join([f"1 {steps[0]}", *(f"{n} {text}" for n, text in enumerate(steps[1:], 2))])
 
     # ---- actions ---------------------------------------------------------------------------------------------
     def _open_in_url(self):
