@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.core.filesystem import file_sha256
 from seohead.core.job_contracts import MAX_REMOTE_CRAWL_SECONDS
 from seohead.crawl.settings import MAX_REQUESTS_CEILING, checked_url_budget
 from seohead.integrations.remote_api.contracts import (
@@ -163,14 +164,6 @@ def _safe_dir(path: Path) -> None:
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     if not path.is_dir() or path.is_symlink() or path.stat().st_mode & 0o077:
         raise ValueError("remote state directory must be private")
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _render_coverage_reason(scan_path: Path, mode: str) -> str:
@@ -607,7 +600,7 @@ class SQLiteJobBackend:
             return None
         path, row = entry
         try:
-            return path if _file_sha256(path) == row["sha256"] else None
+            return path if file_sha256(path) == row["sha256"] else None
         except OSError:
             return None
 
@@ -822,7 +815,7 @@ class SQLiteJobBackend:
                     path.name,
                     types[kind],
                     path.stat().st_size,
-                    _file_sha256(path),
+                    file_sha256(path),
                 )
             )
         return metadata

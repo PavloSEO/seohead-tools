@@ -17,6 +17,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from seohead.core.sqlite import open_readonly
+
 from . import APPLICATION_ID, click_depth
 
 FORMAT = "seohead.scan-url-query.v1"
@@ -363,12 +365,16 @@ def _open(path: str) -> tuple[sqlite3.Connection, dict[str, Any], bool]:
         raise QueryError("cannot_open", "scan file does not exist", "unavailable")
     con = None
     try:
-        con = sqlite3.connect(file.absolute().as_uri() + "?mode=ro", uri=True, timeout=5)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA trusted_schema=OFF")
-        con.execute("PRAGMA query_only=ON")
-        con.execute("PRAGMA cache_size=-65536")
-        con.execute("PRAGMA temp_store=FILE")
+        con = open_readonly(
+            file.absolute(),
+            row_factory=sqlite3.Row,
+            pragmas=(
+                "PRAGMA trusted_schema=OFF",
+                "PRAGMA query_only=ON",
+                "PRAGMA cache_size=-65536",
+                "PRAGMA temp_store=FILE",
+            ),
+        )
         con.execute("BEGIN")
         if con.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise QueryError("not_a_scan", "file is not a SEOHEAD scan", "unavailable")

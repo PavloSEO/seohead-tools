@@ -160,3 +160,46 @@ def paid_task_ids(source: str) -> list[Any]:
         for r in read_all()
         if r.get("source") == source and r.get("task_id") is not None
     ]
+
+
+CSV_COLUMNS = ("at", "source", "operation", "cost", "unit", "items", "task_id", "uncertain")
+
+
+def iter_rows(since: str | None = None) -> Iterator[dict]:
+    """Yield one flat row per journal entry, in journal order, for CSV export.
+
+    Unlike :func:`report`, rows are not aggregated, and uncertain receipts are kept with
+    ``uncertain`` set, so a spreadsheet shows them rather than hiding them.
+    """
+    for row in read_all():
+        if since and row.get("at", "")[:10] < since:
+            continue
+        yield {
+            "at": row.get("at", ""),
+            "source": row.get("source", ""),
+            "operation": row.get("operation", ""),
+            "cost": row.get("cost", 0),
+            "unit": row.get("unit", "limits"),
+            "items": row.get("items", 0),
+            "task_id": "" if row.get("task_id") is None else row["task_id"],
+            "uncertain": _is_uncertain(row),
+        }
+
+
+def write_csv(path: str | Path, since: str | None = None) -> int:
+    """Write :func:`iter_rows` to ``path`` as CSV and return the number of rows written.
+
+    Uses the ``;`` delimiter and UTF-8 BOM, as the other CSV exports in ``seohead.reports`` do.
+    """
+    import csv
+
+    from seohead.reports import neutralize_formula
+
+    count = 0
+    with Path(path).expanduser().open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.writer(handle, delimiter=";")
+        writer.writerow(CSV_COLUMNS)
+        for row in iter_rows(since=since):
+            writer.writerow([neutralize_formula(row[c]) for c in CSV_COLUMNS])
+            count += 1
+    return count

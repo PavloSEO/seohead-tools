@@ -13,6 +13,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from seohead.core.sqlite import open_readonly
+
+from ..core.filesystem import file_sha256
 from . import APPLICATION_ID, ScanError, open_scan
 from .history import _hold_writer_lock, _regular
 from .native_scan import NativeScan, _utc
@@ -28,14 +31,6 @@ _WHERE_FIELDS = {
     "page_ordinal": "p.page_ordinal",
 }
 _WHERE = re.compile(r"\s*([a-z_]+)\s*(=|!=|<=|>=|<|>)\s*(.+?)\s*\Z")
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _predicate(where: str) -> tuple[str, list[Any], list[dict[str, Any]]]:
@@ -222,9 +217,8 @@ def _validate_copy(path: Path) -> None:
 def _backup(path: Path, backup_path: Path) -> str:
     if not isinstance(backup_path, Path) or os.path.lexists(backup_path):
         raise ScanError("retry requires a new backup_path")
-    con = sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, timeout=5)
+    con = open_readonly(path.absolute(), row_factory=sqlite3.Row)
     try:
-        con.row_factory = sqlite3.Row
         reader = SimpleNamespace(
             path=path, con=con, inspect=lambda copy: _validate_copy(Path(copy))
         )
@@ -232,7 +226,7 @@ def _backup(path: Path, backup_path: Path) -> str:
     finally:
         con.close()
     _validate_copy(backup_path)
-    return _sha256(backup_path)
+    return file_sha256(backup_path)
 
 
 def upgrade_to_v2(con: sqlite3.Connection) -> None:

@@ -11,8 +11,6 @@ import time
 
 from seohead.recon.net import http_client
 
-_UA = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
-
 _SEO_HEADERS = [
     "content-type",
     "x-robots-tag",
@@ -35,9 +33,7 @@ def check_headers(url: str, method: str = "GET", timeout: float = 25.0) -> dict:
     # Without the h2 package, httpx always negotiates HTTP/1.1, so a protocol
     # finding would describe our client rather than the server. Expose this limitation.
     try:
-        client, http2_capable = http_client(
-            timeout, follow_redirects=True, headers={"User-Agent": _UA}
-        )
+        client, http2_capable = http_client(timeout, follow_redirects=True)
     except Exception as exc:
         return {"ok": False, "url": url, "error": str(exc)}
 

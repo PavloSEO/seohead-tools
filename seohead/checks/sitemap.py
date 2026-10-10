@@ -60,7 +60,6 @@ MAX_XML_BYTES = 12 * 1024 * 1024
 TIMEOUT_S = 25.0
 MAX_REDIRECTS = 8
 
-_USER_AGENT = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 _GZIP_MAGIC = b"\x1f\x8b"
 _GUNZIP_CHUNK = 64 * 1024  # read granularity for the bounded gunzip loop below
 # One message for "too large", raised whichever stage (compressed or decompressed) catches
@@ -423,10 +422,7 @@ def _fetch(client: httpx.Client, url: str) -> bytes:
     """
     resp = client.get(
         url,
-        headers={
-            "User-Agent": _USER_AGENT,
-            "Accept": "application/xml,text/xml,application/gzip,*/*",
-        },
+        headers={"Accept": "application/xml,text/xml,application/gzip,*/*"},
     )
     resp.raise_for_status()
     body = resp.content

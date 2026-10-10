@@ -1174,11 +1174,12 @@ Authoritative tree of Yandex region IDs for the regions[] parameter. This is the
 
 MCP name: `seo_spend_report`
 
-What the paid sources have actually charged: totals by source, by operation and by day, read from the local journal. Estimating spend by eye has already missed the provider usage was recorded, so check here before and after a large run. since is YYYY-MM-DD.
+What the paid sources have actually charged: totals by source, by operation and by day, read from the local journal. Estimating spend by eye has already missed the provider usage was recorded, so check here before and after a large run. since is YYYY-MM-DD. csv_path writes every journal row to that file instead of the totals.
 
 | Argument | Type | Default |
 |---|---|---|
 | `since` | `str | None` | `None` |
+| `csv_path` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
