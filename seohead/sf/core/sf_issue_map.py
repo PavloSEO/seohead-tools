@@ -447,7 +447,12 @@ CATEGORIES: dict[str, list[Entry]] = {
             "declares an image (an SVG or raster fallback, not plugin content)",
         ),
         _o("Target Size", "needs rendered hit-box geometry"),
-        _g("Mobile Alternate Link", "rel=alternate media annotations are not read"),
+        _c(
+            "Mobile Alternate Link",
+            "MOBILE_ALTERNATE_LINK",
+            note="only a media-qualified rel=alternate with no href is flagged; the "
+            "reciprocal canonical on the mobile URL is not checked",
+        ),
     ],
     "Accessibility": [],  # filled below: one decision, 92 entries
     "Analytics": [
