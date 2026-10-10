@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import statistics
 
+from seohead.semantics.demand import has_observed_demand
 from seohead.semantics.norm import Filters
 
 STEM = re.compile(r"(ый|ой|ая|ое|ые|ий|его|ого|ому|ыми|ами|ах|ов|ей|ю|я|и|е|а|у|ом|ем)$")
@@ -56,7 +57,7 @@ def run(store, cfg):
             lg = next_lg
             next_lg += 1
             lemma[key] = lg
-        if any(r[field] is not None and r[field] > 0 for field in ("impr", "pos_y", "pos_g")):
+        if has_observed_demand(r["impr"], r["pos_y"], r["pos_g"]):
             status = "kept"
             reason = "observed search demand"
         elif status == "dropped":

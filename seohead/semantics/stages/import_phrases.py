@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from seohead.semantics.demand import has_observed_demand
 from seohead.semantics.norm import normalize
 
 NUMERIC_FIELDS = ("base", "quoted", "exact", "impr", "pos_y", "pos_g")
@@ -59,7 +60,7 @@ def run(store, cfg, file):
         missing = {key: value for key, value in values.items() if existing[key] is None}
         if missing:
             store.set_fields(phrase, **missing)
-        if any(values.get(key, 0) > 0 for key in ("impr", "pos_y", "pos_g")):
+        if has_observed_demand(values.get("impr"), values.get("pos_y"), values.get("pos_g")):
             store.set_status(phrase, "kept", reason="observed search demand", stage="import")
     store.commit()
     print(f"import: {len(rows)} rows, {added} new phrases")

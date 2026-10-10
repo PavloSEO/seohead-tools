@@ -6,6 +6,7 @@ import time
 from collections import deque
 
 from seohead.data_sources.yandex_cloud import NetworkAmbiguousError, Wordstat
+from seohead.semantics.demand import has_observed_demand
 from seohead.semantics.norm import Filters, normalize
 
 
@@ -106,7 +107,7 @@ def run(store, cfg, seeds=None, max_seeds=0, max_phrases=100000, resume=False):
                 row = store.db.execute(
                     "SELECT impr,pos_y,pos_g FROM phrases WHERE norm=?", (p,)
                 ).fetchone()
-                if not any(value is not None and value > 0 for value in row):
+                if not has_observed_demand(*row):
                     store.set_status(p, "dropped", reason="stop-list match", stage="collect")
                 continue
             if depth < max_depth and base is not None and base >= floor and f.has_intent(p):
