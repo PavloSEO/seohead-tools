@@ -104,6 +104,7 @@ class ShellMixin:
         """26 px bar: transient messages on the left, source / display mode / core on the right."""
         bar = self.statusBar()
         bar.setSizeGripEnabled(False)
+        bar.setContentsMargins(0, 0, 12, 0)  # the core label is no longer flush against the window edge
         self.source_badge = ElidedLabel("Проект не открыт")
         self.source_badge.setObjectName("sourceBadge")
         self.source_badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
