@@ -2672,8 +2672,14 @@ Read up to 100 indexed derived content-search records without rereading the scan
 | `package` | `str` | `required` |
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
+| `status` | `Literal['matched', 'not_matched', 'unavailable'] | None` | `None` |
+| `status_code` | `int | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Optional status or status_code filters the stream; offset then counts matching records.
 
 ### `scan-extract`
 
