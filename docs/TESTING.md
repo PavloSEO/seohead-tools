@@ -123,7 +123,7 @@ From `.github/workflows/ci.yml` (all run on every push/PR to `main`):
 Descriptions only — write them when the corresponding code changes or
 before extending that area.
 
-1. **Per-command CLI smoke** (`seohead <cmd> --help` for all 161): the
+1. **Per-command CLI smoke** (`seohead <cmd> --help` for all 167): the
    cheapest possible net against argument-parser typos — the exact class of
    the `soft404-check` bug that once left a tool dead with tests green.
    `test_docs_commands_execute.py` now covers this for every command that

@@ -102,7 +102,7 @@ For the crawl audit the flow stays inside the core:
 SF exports (mode B) or SF CLI crawl (mode A)
     -> loader (pandas, vectorized normalization)
     -> context (per-run state, ctx.skip(id, reason) for missing data)
-    -> rules/inlinks/heuristics/sitemap (checks, 182 ids in registry.py)
+    -> rules/inlinks/heuristics/sitemap (checks, 183 ids in registry.py)
     -> aggregate (summary, health score, by_check)
     -> reporters (audit.json + audit.md, schema-validated)
     -> tasks.py (prioritized backlog)
