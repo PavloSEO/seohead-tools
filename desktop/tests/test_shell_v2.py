@@ -160,15 +160,21 @@ class ShellV2Tests(unittest.TestCase):
         self.assertFalse(self.window.navigation.property("compact"))
 
     def test_new_sections_open_the_placeholder_without_numbers(self):
+        from seohead_desktop.screens.graph import GraphScreen
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("crawler", "methods", "graph"):
+        for section in ("crawler", "methods"):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
             panel = page.findChild(StatePanel)
             self.assertEqual(panel.title.text(), "Раздел готовится")
             self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+        # The link graph has its own screen; it waits for the core and shows no issue numbers either
+        self.assertTrue(self.window.navigation.select_section("graph"))
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, GraphScreen)
+        self.assertNotRegex(" ".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
 
     def test_items_that_need_a_project_are_locked_until_one_is_open(self):
         from seohead_desktop.ui.shell import ROLE_LOCKED
