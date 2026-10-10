@@ -36,16 +36,6 @@ DEFAULT_MAX_PIXELS = 50_000_000
 DEFAULT_MAX_SVG_BYTES = 10 * 1024 * 1024
 
 
-def format_size(num_bytes: int) -> str:
-    """Return a compact human-readable byte size."""
-    if num_bytes < 1024:
-        return f"{num_bytes} B"
-    kibibytes = num_bytes / 1024
-    if kibibytes < 1024:
-        return f"{kibibytes:.1f} KB"
-    return f"{kibibytes / 1024:.2f} MB"
-
-
 def clamp_quality(quality: Any) -> int:
     """Clamp requested quality to the supported 10-100 range."""
     try:
@@ -125,11 +115,6 @@ def minify_svg(text: str) -> str:
     for index, block in enumerate(protected):
         output = output.replace(f"\0{index}\0", block)
     return output
-
-
-def scan_paths(paths: list[str]) -> list[str]:
-    """Expand files and directories into a deterministic, de-duplicated list."""
-    return [path for path, _relative in _scan_targets(paths)]
 
 
 def _scan_targets(

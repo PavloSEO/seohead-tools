@@ -1637,7 +1637,7 @@ def render_document(
                     }
                 raise
             context = open_context(browser, endpoint, context_options)
-            actual_browser = browser if browser is not None else getattr(context, "browser", None)
+            actual_browser = browser
             renderer["engine_version"] = str(getattr(actual_browser, "version", "unknown"))
             try:
                 route_handler, browser_limitations = _pinned_browser_route(

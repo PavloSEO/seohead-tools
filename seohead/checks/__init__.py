@@ -10,7 +10,6 @@ and HTTP faces.
 from . import (  # noqa: F401
     clusterer,
     downloader,
-    excel,
     headers,
     hreflang,
     links,
@@ -24,7 +23,6 @@ from . import (  # noqa: F401
 __all__ = [
     "clusterer",
     "downloader",
-    "excel",
     "optimizer",
     "parser",
     "redirects",

@@ -352,7 +352,7 @@ def diff_values(suggested: dict[str, Any], existing_jsonld: list[Any]) -> dict[s
     for n in live:
         if isinstance(n.get("@id"), str):
             live_by_id[n["@id"]] = n
-        for t in n.get("__types__") or _node_types(n):
+        for t in _node_types(n):
             live_by_type.setdefault(t, []).append(n)
 
     matched: set[int] = set()
