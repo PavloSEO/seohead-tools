@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from seohead.core.sqlite import open_readonly
+
 from . import APPLICATION_ID, ScanError, open_scan
 from .history import _hold_writer_lock, _regular
 from .native_scan import NativeScan, _utc
@@ -222,9 +224,8 @@ def _validate_copy(path: Path) -> None:
 def _backup(path: Path, backup_path: Path) -> str:
     if not isinstance(backup_path, Path) or os.path.lexists(backup_path):
         raise ScanError("retry requires a new backup_path")
-    con = sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, timeout=5)
+    con = open_readonly(path.absolute(), row_factory=sqlite3.Row)
     try:
-        con.row_factory = sqlite3.Row
         reader = SimpleNamespace(
             path=path, con=con, inspect=lambda copy: _validate_copy(Path(copy))
         )

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from seohead.core import filesystem
+from seohead.core.sqlite import open_readonly
 
 from . import ScanError, open_scan, open_scan_mode
 
@@ -404,12 +405,16 @@ class AuditV2Reader:
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise AuditV2Error("audit.v2 companion must be a regular unaliased file")
         try:
-            self.con = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True, timeout=5)
-            self.con.row_factory = sqlite3.Row
-            self.con.execute("PRAGMA trusted_schema=OFF")
-            self.con.execute("PRAGMA query_only=ON")
-            self.con.execute("PRAGMA cache_size=-8192")
-            self.con.execute("PRAGMA temp_store=FILE")
+            self.con = open_readonly(
+                self.path,
+                row_factory=sqlite3.Row,
+                pragmas=(
+                    "PRAGMA trusted_schema=OFF",
+                    "PRAGMA query_only=ON",
+                    "PRAGMA cache_size=-8192",
+                    "PRAGMA temp_store=FILE",
+                ),
+            )
             # Validation and every later read must refer to the same generation.
             self.con.execute("BEGIN")
             self._validate(verify_binding=verify_binding)

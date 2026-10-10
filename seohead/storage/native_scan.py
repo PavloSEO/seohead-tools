@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from seohead.core import filesystem
+from seohead.core.sqlite import open_readonly
 from seohead.crawl.settings import (
     DEFAULTS,
 )
@@ -957,11 +958,15 @@ class NativeScan:
         start = time.monotonic()
         timed_out = False
         try:
-            con = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=5)
-            con.row_factory = sqlite3.Row
-            con.execute("PRAGMA trusted_schema=OFF")
-            con.execute("PRAGMA query_only=ON")
-            con.execute("PRAGMA foreign_keys=ON")
+            con = open_readonly(
+                source,
+                row_factory=sqlite3.Row,
+                pragmas=(
+                    "PRAGMA trusted_schema=OFF",
+                    "PRAGMA query_only=ON",
+                    "PRAGMA foreign_keys=ON",
+                ),
+            )
             deadline = start + timeout_seconds
 
             def _past_deadline() -> int:
@@ -1024,12 +1029,17 @@ class NativeScan:
             raise ValueError("observation timeout must be positive and at most 5 seconds")
         source = Path(path).absolute()
         before = _regular(source)
-        con = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=timeout_seconds)
+        con = open_readonly(
+            source,
+            timeout=timeout_seconds,
+            row_factory=sqlite3.Row,
+            pragmas=(
+                "PRAGMA trusted_schema=OFF",
+                "PRAGMA query_only=ON",
+                "PRAGMA cache_size=-2048",
+            ),
+        )
         try:
-            con.row_factory = sqlite3.Row
-            con.execute("PRAGMA trusted_schema=OFF")
-            con.execute("PRAGMA query_only=ON")
-            con.execute("PRAGMA cache_size=-2048")
             deadline = time.monotonic() + timeout_seconds
             con.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
             con.execute("BEGIN")
