@@ -34,8 +34,7 @@ you that and nothing more.
 content region" is a measurement; "this page is worth reading" is not, and no output here should
 be read as claiming it.
 
-**It has no interface.** A CLI and a local MCP server, both over the same handlers. There is no
-web panel and there will not be one.
+**It has no web interface.** Its surfaces are a CLI and a local MCP server, both over the same handlers, and the optional `seohead watch` terminal observer. There is no web panel and there will not be one.
 
 The point of the whole thing is narrow and worth stating plainly: checking every page of a site
 by hand gives the best analysis and costs the most; a script is cheap and usually stupid. This
