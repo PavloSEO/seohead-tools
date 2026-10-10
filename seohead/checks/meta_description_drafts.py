@@ -21,6 +21,7 @@ from typing import Any, Protocol
 from bs4 import BeautifulSoup
 
 from seohead.checks.text_normalize import normalize_document
+from seohead.core.common import canonical_json
 from seohead.core.tabular import neutralize_formula
 
 CONTRACT_VERSION = "meta_description_drafts.v1"
@@ -93,12 +94,8 @@ class DeclaredDraftExecutor:
         return [draft for draft in self.drafts if draft.get("url") in expected]
 
 
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
 def _sha(value: Any) -> str:
-    return hashlib.sha256(_canonical(value).encode()).hexdigest()
+    return hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
 
 def _context(context: dict[str, Any] | None) -> dict[str, Any]:
@@ -317,7 +314,7 @@ class DraftCheckpoint:
         with self._connect() as con:
             con.execute(
                 "INSERT OR REPLACE INTO meta_description_drafts (draft_key, record_json) VALUES (?, ?)",
-                (key, _canonical(record)),
+                (key, canonical_json(record)),
             )
 
 

@@ -5,12 +5,14 @@ legitimately start at a number other than one, and may be filtered, so the
 finding is a break in a run the series otherwise follows -- never a deviation
 from ``1..n``. Most of what is asserted here is therefore silence: an ordered
 series, a series starting at 4, a series with a stride, and a series whose URLs
-do not state a page number all have to stay quiet.
+do not state a page number all have to stay quiet. A stride that one step
+covers most of (0, 10, 20) is also quiet; a stride that breaks is reported.
 
 Silence is not the same as clean, so each of those has to say out loud that it
 was never judged, and say it with the reason that is true of *it*. The five
 causes -- a crawl whose every chain cycles, a series that cycles from its head,
-a series too short to hold a run, a URL that states no number, and a stride --
+a series too short to hold a run, a URL that states no number, and an
+irregular offset scheme --
 are not interchangeable, and three of them describe series in which every URL
 does state its number. They are also counted per series rather than per run:
 the WordPress shape (page one at an unnumbered ``/blog/``, the rest at
@@ -105,22 +107,50 @@ def test_a_series_that_starts_at_four_is_not_an_error(tmp_path):
     assert not _fired(res)
 
 
-def test_a_series_with_a_stride_is_left_unevaluated(tmp_path):
-    """0, 10, 20 is an offset scheme, not a broken run -- and nothing here can
-    prove which, so it is not reported and is named as unjudged instead.
+def test_a_consistent_stride_stays_silent(tmp_path):
+    """0, 10, 20 is an offset scheme that every step agrees on: nothing broke."""
+    urls = [f"https://example.com/catalog?page={n}" for n in (0, 10, 20)]
+    res = _run(tmp_path, _chain(urls))
+    assert not _fired(res)
+    assert _skip_reason(res) is None
 
-    The reason has to be about the stride. Every one of these URLs states its
+
+def test_a_stride_that_breaks_is_named_at_the_break(tmp_path):
+    """Steps of two, then three: the stride is 2 (it covers most steps), so 5 -> 8
+    is the break and the rest of the stride is not reported."""
+    urls = [f"https://example.com/catalog?page={n}" for n in (1, 3, 5, 8, 10)]
+    res = _run(tmp_path, _chain(urls))
+    fired = _fired(res)
+    assert set(fired) == {urls[0]}
+    assert fired[urls[0]].details["breaks"] == [
+        {"from": urls[2], "to": urls[3], "from_page": 5, "to_page": 8}
+    ]
+
+
+def test_an_irregular_offset_scheme_is_left_unevaluated(tmp_path):
+    """0, 10, 25, 30 has no step that covers most of it, so nothing here can
+    tell a broken run from an offset scheme -- it is named as unjudged instead.
+
+    The reason has to be about the steps. Every one of these URLs states its
     page number, so a reason saying otherwise is a false statement about the
     evidence, and it sends the operator to fix a numbering scheme that is not
     the problem.
     """
-    urls = [f"https://example.com/catalog?page={n}" for n in (0, 10, 20)]
+    urls = [f"https://example.com/catalog?page={n}" for n in (0, 10, 25, 30)]
     res = _run(tmp_path, _chain(urls))
     assert not _fired(res)
     reason = _skip_reason(res) or ""
-    assert "never step by one" in reason
+    assert "neither step by one" in reason
     assert "state no page number" not in reason
     assert "states no page number" not in reason
+
+
+def test_a_lone_step_is_not_a_stride(tmp_path):
+    """1, 3, 6 has one step of two and one of three: a tie is not a stride."""
+    urls = [f"https://example.com/catalog?page={n}" for n in (1, 3, 6)]
+    res = _run(tmp_path, _chain(urls))
+    assert not _fired(res)
+    assert "neither step by one" in (_skip_reason(res) or "")
 
 
 def test_a_series_whose_urls_state_no_page_number_declares_itself_unjudged(tmp_path):
@@ -202,7 +232,7 @@ def test_an_unjudged_series_is_named_even_when_another_one_was_judged(tmp_path):
 
 def test_each_unjudged_cause_is_counted_and_named_on_its_own(tmp_path):
     """Three series, three different causes, one reason that keeps them apart."""
-    stride = [f"https://example.com/catalog?page={n}" for n in (0, 10, 20)]
+    stride = [f"https://example.com/catalog?page={n}" for n in (0, 10, 25, 30)]
     short = _pages(1, 6, prefix="https://example.com/tags/page/")
     unnumbered = [
         "https://example.com/blog/",
@@ -213,7 +243,7 @@ def test_each_unjudged_cause_is_counted_and_named_on_its_own(tmp_path):
     reason = _skip_reason(res) or ""
     assert reason.startswith('3 of 3 rel="next" series could not be judged')
     for clause, example in (
-        ("never step by one", stride[0]),
+        ("neither step by one", stride[0]),
         ("only 2 pages long", short[0]),
         ("1 of its 3 URLs states no page number", unnumbered[0]),
     ):

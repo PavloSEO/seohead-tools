@@ -21,9 +21,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from seohead.core.common import utc_iso_z as _now
 from seohead.core.filesystem import atomic_write_bytes
 
-from .coverage import _now
 from .runtime import read_document, write_document
 from .workspace import _load as _workspace_load
 
@@ -47,6 +47,7 @@ _DEFAULTS = {
     "severity_threshold": "warning",
 }
 _DEFAULT_LEASE_SECONDS = 300
+
 
 
 def _expiry(stamp: str, seconds: int) -> str:
@@ -665,12 +666,12 @@ def _source_artifacts(
         ).encode("utf-8")
     ).hexdigest()
     body_ref = body_hash = None
-    from seohead.crawl.cache import _parse_cache_control
+    from seohead.crawl.cache import parse_cache_control
 
     retain_body = (
         isinstance(body, str)
         and transport.get("status_code") in {200, 304}
-        and "no-store" not in _parse_cache_control(transport.get("cache_control") or "")
+        and "no-store" not in parse_cache_control(transport.get("cache_control") or "")
         and not transport.get("set_cookie")
     )
     if retain_body:

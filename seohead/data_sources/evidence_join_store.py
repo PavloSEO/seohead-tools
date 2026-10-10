@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from seohead.core.common import canonical_json
 from seohead.data_sources.evidence_import import NORMALIZED_FORMAT
 from seohead.data_sources.evidence_join import _evidence_header, _key_fn, _row_join_key
 from seohead.storage import open_scan
@@ -31,10 +32,6 @@ MAX_MATCH_EDGES = 5_000_000
 
 class EvidenceJoinStoreError(ValueError):
     """A durable evidence-join artifact is malformed or unsafe."""
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _update(digest: Any, *values: Any) -> None:
@@ -319,7 +316,7 @@ def write(
                 if not isinstance(dimensions, dict):
                     raise EvidenceJoinStoreError("normalized evidence dimensions must be an object")
                 dimension_names.update(str(name) for name in dimensions)
-                key, payload = _row_join_key(raw, key_fn), _canonical(raw)
+                key, payload = _row_join_key(raw, key_fn), canonical_json(raw)
                 batch.append(
                     (
                         index,
@@ -403,13 +400,13 @@ def write(
                 "evidence_rows_digest_sha256": row_digest.hexdigest(),
             }
             _validate_metadata(metadata)
-            content = hashlib.sha256(_canonical(metadata).encode("utf-8"))
+            content = hashlib.sha256(canonical_json(metadata).encode("utf-8"))
             for edge in con.execute(
                 "SELECT row_index,natural_key_sha256,page_ordinal FROM matches ORDER BY row_index,natural_key_sha256,page_ordinal"
             ):
                 _update(content, *edge)
             metadata["content_sha256"] = content.hexdigest()
-            con.execute("INSERT INTO meta VALUES (?,?)", ("document", _canonical(metadata)))
+            con.execute("INSERT INTO meta VALUES (?,?)", ("document", canonical_json(metadata)))
             con.commit()
         finally:
             con.close()

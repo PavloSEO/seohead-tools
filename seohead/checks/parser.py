@@ -30,6 +30,7 @@ from urllib.parse import parse_qsl, urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 from seohead.checks.content_area import TEXT_EXCLUDED_TAGS, extract_area_text, resolve_content_area
+from seohead.checks.text_normalize import declared_language
 from seohead.core.models import (
     DocumentPosition,
     DuplicateId,
@@ -247,6 +248,12 @@ def document_doctype(html: str) -> str | None:
     """The raw ``<!DOCTYPE ...>`` declaration text, if the document has one."""
     match = _DOCTYPE_RE.search(html[:_DOCTYPE_WINDOW_CHARS])
     return match.group(0).strip() if match else None
+
+
+def document_html_amp(soup: BeautifulSoup) -> bool:
+    """True when the root ``<html>`` tag carries an AMP marker: ``amp`` or ``⚡``."""
+    root = soup.find("html")
+    return root is not None and any(name in root.attrs for name in ("amp", "⚡"))
 
 
 def _first_meta_tag(soup: BeautifulSoup, *, name: str) -> Any:
@@ -2028,6 +2035,8 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = document_doctype(html)
         result["viewport"] = _meta_content(soup, name="viewport")
         result["meta_refresh"] = meta_refresh_content(soup)
+        # AMP attribute on <html>: data only, no finding reads it yet (#1021 slice 1).
+        result["html_amp"] = document_html_amp(soup)
     else:
         result["title"] = None
         result["meta_description"] = None
@@ -2039,6 +2048,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = None
         result["viewport"] = None
         result["meta_refresh"] = ""
+        result["html_amp"] = False
 
     if opts["canonical"]:
         canonical_tag = _canonical_tag(soup)
@@ -2213,6 +2223,8 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # Same reasoning again: <img> alt-attribute evidence and legacy plugin
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)
+    # The document's own <html lang> claim, read from the same tree (epic #1002).
+    result["html_lang"] = declared_language(soup)
     result["plugin_elements_count"] = unsupported_plugin_count(soup)
     result["mobile_alternate_broken"] = mobile_alternate_broken_count(soup)
     # Same reasoning once more: one <meta> lookup on the already-built tree, and

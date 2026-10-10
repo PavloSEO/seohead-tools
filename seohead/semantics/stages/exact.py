@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 from seohead.data_sources.arsenkin import ArsenkinClient, parse_wordstat, wordstat_payload
+from seohead.semantics.demand import has_observed_demand
 from seohead.semantics.norm import normalize
 
 DEFAULT_REGION = 225
@@ -69,7 +70,7 @@ def _apply_result(store, task, by_group, cut_b, cut_e):
                 snapped += 1
             if fields:
                 store.set_fields(member, **fields)
-            real_demand = any(m[k] is not None and m[k] > 0 for k in ("impr", "pos_y", "pos_g"))
+            real_demand = has_observed_demand(m["impr"], m["pos_y"], m["pos_g"])
             effective_exact = m["exact"] if m["exact"] is not None else frequency
             if (
                 not real_demand

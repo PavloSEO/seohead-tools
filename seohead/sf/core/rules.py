@@ -11,7 +11,7 @@ import itertools
 import mimetypes
 import re
 import urllib.parse
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -2039,6 +2039,22 @@ def _display_url(ctx: AuditContext, norm: str) -> str:
     return page.url if page is not None else norm
 
 
+def _expected_step(steps: list[int]) -> int | None:
+    """The step a series is judged against, or ``None`` when the steps show none.
+
+    A run that ever steps by one is judged on +1, as it always was. Otherwise the
+    series is a stride, but only when one step is at least two and accounts for a
+    strict majority of the steps: a tie or a lone step is not evidence of an
+    offset scheme, so it is left unjudged rather than given a stride it may not have.
+    """
+    if not steps:
+        return None
+    if 1 in steps:
+        return 1
+    step, count = Counter(steps).most_common(1)[0]
+    return step if step >= 2 and 2 * count > len(steps) else None
+
+
 def _series_unjudged_reason(stated: list[int | None], cycles: bool) -> str | None:
     """Why this series cannot be judged for a broken run, or ``None`` when it can.
 
@@ -2067,10 +2083,11 @@ def _series_unjudged_reason(stated: list[int | None], cycles: bool) -> str | Non
             "missing number is not evidence of a gap"
         )
     numbers = [n for n in stated if n is not None]
-    if 1 not in [b - a for a, b in itertools.pairwise(numbers)]:
+    if _expected_step([b - a for a, b in itertools.pairwise(numbers)]) is None:
         return (
-            "its page numbers never step by one, so there is no contiguous run "
-            "to have been broken (an offset scheme such as 0, 10, 20 looks like this)"
+            "its page numbers neither step by one nor by one stride that covers most "
+            "of the series, so there is no run to have been broken (an irregular offset "
+            "scheme such as 0, 10, 25, 30 looks like this)"
         )
     return None
 
@@ -2107,8 +2124,9 @@ def check_pagination_sequence(ctx: AuditContext) -> None:
       looks like. Only the *steps* between consecutive pages are judged, never
       the first number.
     * **A series may have a stride.** ``?page=0,10,20`` is an offset, not a
-      broken sequence, so a run in which no step is ``+1`` is left unjudged
-      rather than reported: there is no contiguous run there to have broken.
+      broken sequence. A series with no ``+1`` step is judged against its stride
+      only when one step covers most of its steps; ``?page=1,3,5,8`` breaks at
+      5 -> 8, while an irregular run with no dominant step stays unjudged.
     * **Every URL in the series must state its number.** One unreadable URL and
       the series is not evaluated at all, since a missing number is not evidence
       of a gap.
@@ -2160,6 +2178,7 @@ def check_pagination_sequence(ctx: AuditContext) -> None:
         judged += 1
         numbers = [n for n in stated if n is not None]
         steps = [b - a for a, b in itertools.pairwise(numbers)]
+        expected = _expected_step(steps)
         breaks = [
             {
                 "from": _display_url(ctx, path[i]),
@@ -2168,7 +2187,7 @@ def check_pagination_sequence(ctx: AuditContext) -> None:
                 "to_page": numbers[i + 1],
             }
             for i, step in enumerate(steps)
-            if step != 1
+            if step != expected
         ]
         if not breaks:
             continue

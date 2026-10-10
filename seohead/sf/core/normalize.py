@@ -217,18 +217,8 @@ def normalize_value(value: Any) -> Any:
 
 
 def to_int(value: Any) -> int | None:
-    value = normalize_value(value)
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = _comma_to_dot(value)
-    try:
-        f = float(value)
-    except (ValueError, TypeError):
-        return None
-    if not math.isfinite(f):  # inf/-inf/nan would crash int() or poison JSON
-        return None
-    return int(f)
+    f = to_float(value)
+    return None if f is None else int(f)
 
 
 def to_float(value: Any) -> float | None:

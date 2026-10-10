@@ -340,6 +340,13 @@ def _discover_resources(soup: BeautifulSoup, base_url: str) -> list[dict[str, st
     return out
 
 
+def _response_text(resp: Any) -> str:
+    """Body text of a response: ``.text`` when present, else decoded ``.content``."""
+    if hasattr(resp, "text"):
+        return resp.text
+    return (getattr(resp, "content", None) or b"").decode("utf-8", "ignore")
+
+
 def analyze_page_asset_weight(
     url: str,
     *,
@@ -360,13 +367,16 @@ def analyze_page_asset_weight(
     if fetcher is None:
         client, _http2_capable = http_client(timeout, headers={"User-Agent": UA})
 
+    def _get(target_url: str) -> Any:
+        return fetcher(target_url) if fetcher else client.get(target_url)
+
     def fetch_one(target: dict[str, str]) -> dict[str, Any]:
         try:
-            resp = fetcher(target["url"]) if fetcher else client.get(target["url"])
+            resp = _get(target["url"])
         except Exception as exc:
             return {**target, "ok": False, "error": str(exc)}
         content = getattr(resp, "content", None)
-        text = resp.text if hasattr(resp, "text") else (content or b"").decode("utf-8", "ignore")
+        text = _response_text(resp)
         # Decoded size: what the browser parses and executes, which is what a
         # minification/bloat check cares about, not the compressed wire size.
         size = len(content) if content is not None else len(text.encode("utf-8"))
@@ -406,19 +416,16 @@ def analyze_page_asset_weight(
         probe) the imported file's own content must be inspected.
         """
         try:
-            resp = fetcher(target_url) if fetcher else client.get(target_url)
+            resp = _get(target_url)
         except Exception:
             return None
         if resp.status_code >= 400:
             return None
-        content = getattr(resp, "content", None)
-        if hasattr(resp, "text"):
-            return resp.text
-        return (content or b"").decode("utf-8", "ignore")
+        return _response_text(resp)
 
     with client:
         try:
-            page_resp = fetcher(url) if fetcher else client.get(url)
+            page_resp = _get(url)
         except Exception as exc:
             return {"ok": False, "url": url, "error": str(exc)}
         if page_resp.status_code >= 400:

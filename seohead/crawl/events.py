@@ -7,6 +7,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from seohead.core.common import utc_iso_z
+
 FORMAT = "seohead.crawl-event.v1"
 MAX_EVENTS = 10_000
 MAX_PAYLOAD_BYTES = 4_096
@@ -43,13 +45,9 @@ _IDENTIFIER_SENSITIVE = {"url", "query", "filter", "host", "site_url", "target_u
 _UNSET = object()
 
 
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def _timestamp(value: Any) -> tuple[str | None, str]:
     if value is _UNSET:
-        return _utc_now(), "known"
+        return utc_iso_z(), "known"
     if value is None:
         return None, "unknown"
     if not isinstance(value, str):

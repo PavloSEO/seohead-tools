@@ -72,10 +72,10 @@ def _headers(value: Any, label: str) -> None:
 
 
 def _has_no_store(value: Any) -> bool:
-    from seohead.crawl.cache import _parse_cache_control
+    from seohead.crawl.cache import parse_cache_control
 
     return any(
-        pair[0].lower() == "cache-control" and "no-store" in _parse_cache_control(pair[1])
+        pair[0].lower() == "cache-control" and "no-store" in parse_cache_control(pair[1])
         for pair in _json(value, "response headers")
         if isinstance(pair, list) and len(pair) == 2 and all(type(part) is str for part in pair)
     )

@@ -21,6 +21,8 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Protocol
 
+from seohead.core.common import canonical_json
+
 MAX_DOCUMENTS = 10_000
 MAX_CANDIDATE_COMPARISONS = 250_000
 MAX_VECTOR_DIMENSIONS = 8_192
@@ -113,10 +115,6 @@ class DeclaredEmbeddingAdapter:
         raise ValueError("an embedding is missing from the supplied semantic input")
 
 
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
 def adapter_identity(adapter: EmbeddingAdapter) -> dict[str, Any]:
     """Return the reproducible identity that scopes a cached embedding."""
     declared = adapter.describe()
@@ -158,7 +156,7 @@ def cache_key(source_sha256: str, identity: dict[str, Any]) -> str:
     """Bind a vector to the normalized source, model and all declared settings."""
     if not isinstance(source_sha256, str) or len(source_sha256) != 64:
         raise ValueError("source_sha256 must be a SHA-256 hex digest")
-    return hashlib.sha256(f"{source_sha256}:{_canonical(identity)}".encode()).hexdigest()
+    return hashlib.sha256(f"{source_sha256}:{canonical_json(identity)}".encode()).hexdigest()
 
 
 def _vector(value: Sequence[float]) -> list[float]:
@@ -216,13 +214,13 @@ class EmbeddingCache:
     def put(
         self, key: str, source_sha256: str, identity: dict[str, Any], vector: Sequence[float]
     ) -> None:
-        encoded = _canonical(_vector(vector))
+        encoded = canonical_json(_vector(vector))
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "INSERT OR REPLACE INTO semantic_embeddings "
                 "(cache_key,source_sha256,identity_json,vector_json) VALUES (?,?,?,?)",
-                (key, source_sha256, _canonical(identity), encoded),
+                (key, source_sha256, canonical_json(identity), encoded),
             )
             excess = (
                 con.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0]

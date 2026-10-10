@@ -21,9 +21,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.core.common import utc_iso_z as _now
 from seohead.core.filesystem import atomic_write_bytes
 
-from .coverage import _now
 from .workspace import _load
 
 FORMAT = "seohead.project-inbox.v1"

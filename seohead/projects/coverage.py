@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.core.common import utc_iso_z as _now
 from seohead.core.filesystem import atomic_write_bytes
 
 from .catalogue import load_catalogue
@@ -25,10 +26,6 @@ URL_ENUMERATION_LIMIT = 10000
 _ID = re.compile(
     r"(?:check:[A-Z][A-Z0-9_]*|skill:(?:workflow|general)/[a-z0-9_-]+|scenario:[a-z0-9_-]+|custom:[a-z][a-z0-9._/-]{0,127})\Z"
 )
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _hash(value: Any) -> str:
