@@ -308,6 +308,8 @@
  "Выбрать сохранённый запуск": "Choose a saved run",
  "Агент подключён": "Agent connected",
  "Простой режим": "Simple mode",
+ "Простой режим · MCP выкл.": "Simple mode · MCP off",
+ "С агентом · MCP вкл.": "With agent · MCP on",
  "Простой режим: сменить отображение": "Simple mode: change display",
  "Отменить чтение": "Cancel reading",
  "Отменить чтение или остановить выбранный собственный запуск": "Cancel reading or stop the selected own run",
