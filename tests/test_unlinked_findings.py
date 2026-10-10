@@ -177,3 +177,105 @@ def test_unlinked_findings_are_withheld_on_a_partial_crawl(tmp_path):
     reasons = {s.id: s.reason for s in result.skipped}
     assert "partial" in reasons["UNLINKED_CANONICAL"]
     assert "partial" in reasons["UNLINKED_PAGINATION_SERIES"]
+
+
+# -- HREFLANG_UNLINKED_TARGET ----------------------------------------------
+
+HREFLANG_COLS = ["Source", "Destination", "Hreflang"]
+
+
+def _run_hreflang(tmp_path, rows, hreflang_rows):
+    d = tmp_path / "exports"
+    d.mkdir()
+    with open(d / "internal_all.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(COLS)
+        w.writerows(rows)
+    with open(d / "all_hreflang.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(HREFLANG_COLS)
+        w.writerows(hreflang_rows)
+    return run_audit(input_mode="parse-exports", exports_dir=str(d), log=lambda m: None)
+
+
+def test_hreflang_target_with_no_inlinks_is_unlinked(tmp_path):
+    rows = [
+        _row("https://example.com/", inlinks=0, depth=0),  # homepage: never "unlinked"
+        _row("https://example.com/en/", inlinks=2),
+        _row("https://example.com/de/", inlinks=0),  # named only by hreflang
+    ]
+    hreflang = [
+        ["https://example.com/en/", "https://example.com/de/", "de"],
+        ["https://example.com/de/", "https://example.com/en/", "en"],
+    ]
+    res = _run_hreflang(tmp_path, rows, hreflang)
+    fired = _fired(res, "HREFLANG_UNLINKED_TARGET")
+    assert set(fired) == {"https://example.com/de/"}
+    assert fired["https://example.com/de/"].details["declared_from"] == ["https://example.com/en/"]
+
+
+def test_hreflang_self_reference_is_not_an_unlinked_target(tmp_path):
+    rows = [_row("https://example.com/en/", inlinks=0)]
+    hreflang = [["https://example.com/en/", "https://example.com/en/", "en"]]
+    res = _run_hreflang(tmp_path, rows, hreflang)
+    assert _fired(res, "HREFLANG_UNLINKED_TARGET") == {}
+
+
+def test_hreflang_target_with_a_real_inlink_does_not_fire(tmp_path):
+    rows = [
+        _row("https://example.com/en/", inlinks=2),
+        _row("https://example.com/de/", inlinks=3),  # also reached by an ordinary hyperlink
+    ]
+    hreflang = [["https://example.com/en/", "https://example.com/de/", "de"]]
+    res = _run_hreflang(tmp_path, rows, hreflang)
+    assert _fired(res, "HREFLANG_UNLINKED_TARGET") == {}
+
+
+def test_unlinked_hreflang_skips_without_an_hreflang_export(tmp_path):
+    rows = [_row("https://example.com/de/", inlinks=0)]
+    d = tmp_path / "exports"
+    d.mkdir()
+    with open(d / "internal_all.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(COLS)
+        w.writerows(rows)
+    res = run_audit(input_mode="parse-exports", exports_dir=str(d), log=lambda m: None)
+    reasons = {s.id: s.reason for s in res.skipped}
+    assert "all_hreflang" in reasons["HREFLANG_UNLINKED_TARGET"]
+
+
+def test_unlinked_hreflang_is_withheld_on_a_partial_crawl(tmp_path):
+    from seohead.sf.config import load_config
+    from seohead.sf.core.aggregate import aggregate
+    from seohead.sf.core.context import AuditContext
+    from seohead.sf.core.inlinks import run_inlinks
+    from seohead.sf.core.loader import load_exports
+    from seohead.sf.core.rules import run_rules
+
+    d = tmp_path / "exports"
+    d.mkdir()
+    with open(d / "internal_all.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(COLS)
+        w.writerows(
+            [
+                _row("https://example.com/en/", inlinks=2),
+                _row("https://example.com/de/", inlinks=0),
+            ]
+        )
+    with open(d / "all_hreflang.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(HREFLANG_COLS)
+        w.writerow(["https://example.com/en/", "https://example.com/de/", "de"])
+
+    ctx = AuditContext(load_exports(str(d)), load_config(None))
+    ctx.skip_unsupported(set(ctx.exports.frames))
+    run_rules(ctx)
+    run_inlinks(ctx)
+    result = aggregate(ctx, {"crawl_partial": True}, {}, {})
+
+    assert _fired(result, "HREFLANG_UNLINKED_TARGET") == {}
+    reasons = {s.id: s.reason for s in result.skipped}
+    assert "partial" in reasons["HREFLANG_UNLINKED_TARGET"]
+    reasons_w = {s.id: s.reason for s in result.skipped}
+    assert "partial" in reasons_w["HREFLANG_UNLINKED_TARGET"]

@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-09T18:17:15Z",
+    "generated_at": "2026-10-09T23:34:02Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -323,6 +323,10 @@
         "reason": "export inlinks_3xx not available"
       },
       {
+        "id": "HREFLANG_UNLINKED_TARGET",
+        "reason": "no all_hreflang export (export Bulk Export → Links → All Hreflang to enable)"
+      },
+      {
         "id": "HREFLANG_NOINDEX_TARGET",
         "reason": "no all_hreflang declaration export"
       },
@@ -504,9 +508,9 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 182,
+      "checks_total": 183,
       "checks_fired": 20,
-      "checks_skipped": 100,
+      "checks_skipped": 101,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
       "checks_silent": 62,
@@ -574,10 +578,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.451
+      "coverage": 0.448
     },
-    "health_score_reason": "only 82 of 182 checks could run (45% coverage); too little evidence to score",
-    "health_score_basis": "82 of 182 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 82 of 183 checks could run (45% coverage); too little evidence to score",
+    "health_score_basis": "82 of 183 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"
