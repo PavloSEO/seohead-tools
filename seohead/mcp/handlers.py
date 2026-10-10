@@ -812,8 +812,10 @@ def crawl_site(
         from seohead.crawl.settings import rate_fields
         from seohead.mcp.scan_handlers import resume_inputs
 
+        # Read the settings before resuming: the scan is finished once resume_scan returns.
+        rate = rate_fields(resume_inputs(resume)["settings"])
         resumed = resume_scan(resume, url=url, producer_build=producer_build, progress=progress)
-        return {**resumed, **rate_fields(resume_inputs(resume)["settings"])}
+        return {**resumed, **rate}
 
     import os
 
