@@ -1916,6 +1916,13 @@ def _audit_crawl_result(
                 target_url=item["target_url"],
                 details={"error_count": item["error_count"], "errors": item["errors"]},
             )
+    else:
+        # The legacy graph path keeps no render sidecars, so it states the same
+        # skip the stored-scan path states for an uncaptured console (keeps parity).
+        ctx.skip(
+            "JS_CONSOLE_ERRORS",
+            "no browser console was retained; enable rendering.artifacts.console_errors",
+        )
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
