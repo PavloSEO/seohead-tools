@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PyQt5.QtCore import QRectF, QSize, Qt
+from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
+from PyQt5.QtWidgets import (
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ... import theming
 from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import keyed, page, segmented_row, switch_row, two_columns
+from .helpers import keyed, page, segmented_row, switch_row
 
 ID, ICON, TITLE = "view", "palette", "Вид"
 HINT = "Тема, язык, плотность и раскладка"
@@ -29,11 +39,39 @@ SCHEMA = (
 )
 
 
+SWATCH = QSize(112, 58)
+
+
+def _swatch(value):
+    """Miniature of a theme (nav, accent bar, text lines) painted from that theme's own role tokens."""
+    light, dark, hc = theming.roles("light"), theming.roles("dark"), theming.roles("hc")
+    bg, nav, accent, line = {
+        "light": (light["surface"], light["raised"], light["primary"], light["divider_inner"]),
+        "dark": (dark["base"], dark["raised"], dark["primary"], dark["divider_inner"]),
+        "hc": (hc["surface"], hc["raised"], hc["primary"], hc["text"]),
+        "system": (light["surface"], dark["raised"], light["primary"], light["outline"]),
+    }[value]
+    pixmap = QPixmap(SWATCH)
+    pixmap.fill(QColor(bg))
+    painter = QPainter(pixmap)
+    painter.setPen(Qt.NoPen)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setBrush(QColor(nav))
+    painter.drawRoundedRect(QRectF(7, 7, 18, 44), 3, 3)
+    painter.setBrush(QColor(accent))
+    painter.drawRoundedRect(QRectF(30, 7, 41, 7), 2, 2)
+    painter.setBrush(QColor(line))
+    for y, width in ((19, 75), (29, 75), (39, 52)):
+        painter.drawRoundedRect(QRectF(30, y, width, 5), 2, 2)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def _theme_picker(store):
     box = QWidget()
     layout = QHBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(8)
+    layout.setSpacing(10)
     group = QButtonGroup(box)
     group.setExclusive(True)
     for value, label in (("light", "Светлая"), ("dark", "Тёмная"), ("hc", "Контраст"), ("system", "Как в системе")):
@@ -41,7 +79,10 @@ def _theme_picker(store):
         button.setProperty("card", "choice")
         button.setCheckable(True)
         button.setText(label)
-        button.setFixedSize(116, 76)
+        button.setIcon(_swatch(value))
+        button.setIconSize(SWATCH)
+        button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        button.setFixedSize(SWATCH.width() + 4, SWATCH.height() + 34)
         button.setAccessibleName(trf("Тема: {name}", name=label))
         button.setChecked(store.get("view.theme") == value)
         group.addButton(button)
@@ -63,15 +104,31 @@ def _zoom_control(store):
         store.set("view.zoom", max(80, min(150, store.get("view.zoom") + delta)))
         refresh()
 
-    from PyQt5.QtWidgets import QPushButton
     down, up = QPushButton("−"), QPushButton("+")
     down.setAccessibleName("Уменьшить масштаб")
     up.setAccessibleName("Увеличить масштаб")
+    slider = QSlider(Qt.Horizontal)
+    slider.setRange(80, 150)
+    slider.setSingleStep(10)
+    slider.setPageStep(10)
+    slider.setFixedWidth(110)
+    slider.setAccessibleName("Масштаб интерфейса")
+    slider.valueChanged.connect(lambda value: store.set("view.zoom", value))
     down.clicked.connect(lambda: step(-10))
     up.clicked.connect(lambda: step(10))
-    for widget in (down, label, up):
+    for widget in (down, slider, up):
         layout.addWidget(widget)
-    refresh()
+    layout.addSpacing(8)
+    layout.addWidget(label)
+
+    def sync_slider(_key=None):
+        slider.blockSignals(True)
+        slider.setValue(store.get("view.zoom"))
+        slider.blockSignals(False)
+        refresh()
+
+    store.changed.connect(sync_slider)
+    sync_slider()
     return box
 
 
@@ -102,21 +159,65 @@ def _preview(store):
 
 
 def build_page(store, context):
-    themes = keyed(SettingRow("Тема", "Системный «высокий контраст» включает контрастную тему сама", _theme_picker(store)), "view.theme")
-    left = [
-        segmented_row(store, "view.language", "Язык интерфейса", "Меню, подписи и подсказки. Перезапуск не нужен",
-                      [("ru", "Русский"), ("en", "English")]),
-        segmented_row(store, "view.density", "Плотность таблиц", "Высота строки 28 / 32 / 40 px",
-                      [("compact", "Плотно"), ("standard", "Стандарт"), ("comfortable", "Просторно")]),
-        segmented_row(store, "view.details_position", "Детали URL", "Панель выбранного адреса",
-                      [("bottom", "Снизу"), ("right", "Справа")]),
+    themes = keyed(
+        SettingRow(
+            "Тема",
+            "Системный «высокий контраст» включает контрастную тему сама",
+            _theme_picker(store),
+        ),
+        "view.theme",
+    )
+    rows = [
+        segmented_row(
+            store,
+            "view.language",
+            "Язык интерфейса",
+            "Меню, подписи и подсказки. Перезапуск не нужен",
+            [("ru", "Русский"), ("en", "English")],
+        ),
+        segmented_row(
+            store,
+            "view.density",
+            "Плотность таблиц",
+            "Высота строки 28 / 32 / 40 px",
+            [("compact", "Плотно"), ("standard", "Стандарт"), ("comfortable", "Просторно")],
+        ),
+        segmented_row(
+            store,
+            "view.details_position",
+            "Детали URL",
+            "Панель выбранного адреса",
+            [("bottom", "Снизу"), ("right", "Справа")],
+        ),
         keyed(SettingRow("Масштаб интерфейса", "80–150 %", _zoom_control(store)), "view.zoom"),
+        switch_row(
+            store,
+            "view.reduce_motion",
+            "Уменьшить движение",
+            "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе",
+        ),
+        switch_row(
+            store,
+            "view.mono_urls",
+            "Моноширинный шрифт для URL",
+            "Roboto Mono в колонках адресов и путей",
+        ),
+        switch_row(
+            store,
+            "view.rail_when_narrow",
+            "Сворачивать навигацию в узком окне",
+            "Меньше 900 px — только иконки",
+        ),
+        switch_row(
+            store,
+            "view.status_badges",
+            "Цветные статусы в таблице",
+            "Плашки статусов вместо текста",
+        ),
     ]
-    right = [
-        switch_row(store, "view.reduce_motion", "Уменьшить движение", "Отключает анимации панелей, тостов и меню. По умолчанию — как в системе"),
-        switch_row(store, "view.mono_urls", "Моноширинный шрифт для URL", "Roboto Mono в колонках адресов и путей"),
-        switch_row(store, "view.rail_when_narrow", "Сворачивать навигацию в узком окне", "Меньше 900 px — только иконки"),
-        switch_row(store, "view.status_badges", "Цветные статусы в таблице", "Плашки статусов вместо текста"),
-    ]
-    note = Note("info", "Что это меняет.", "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.")
-    return page(themes, two_columns(left, right), _preview(store), note)
+    note = Note(
+        "info",
+        "Что это меняет.",
+        "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.",
+    )
+    return page(themes, *rows, _preview(store), note)
