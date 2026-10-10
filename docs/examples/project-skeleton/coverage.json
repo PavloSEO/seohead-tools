@@ -9961,7 +9961,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "eb1ded4cccfb83c381fc4ed93128b4fc7aa2ca241dc040e94c831e4e79a6e5bd",
+        "source_hash": "09e8ef496da8655efc71b03f55983944db89567c831f4060a53c2ae9d77c9859",
         "title": "Scenario 34 \u2014 Structured data at site scale: valid, eligible, and neither"
       },
       "definitions": [
@@ -9981,7 +9981,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "eb1ded4cccfb83c381fc4ed93128b4fc7aa2ca241dc040e94c831e4e79a6e5bd",
+            "source_hash": "09e8ef496da8655efc71b03f55983944db89567c831f4060a53c2ae9d77c9859",
             "title": "Scenario 34 \u2014 Structured data at site scale: valid, eligible, and neither"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10049,7 +10049,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "95e08b94829db3530a941c005e3dc14623f9cb8f07a51c12d7d717855ec6bc37",
+        "source_hash": "88440c73f6c730b3229d6399301106261cae199c1d1e683404c9b3987e666db2",
         "title": "Scenario 30 \u2014 Sitemap health: the entries that should not be in it"
       },
       "definitions": [
@@ -10069,7 +10069,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "95e08b94829db3530a941c005e3dc14623f9cb8f07a51c12d7d717855ec6bc37",
+            "source_hash": "88440c73f6c730b3229d6399301106261cae199c1d1e683404c9b3987e666db2",
             "title": "Scenario 30 \u2014 Sitemap health: the entries that should not be in it"
           },
           "observed_at": "2026-09-09T00:00:00Z"
