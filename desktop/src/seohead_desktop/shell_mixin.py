@@ -41,9 +41,11 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler, Methods and Link graph have no screen yet: an honest placeholder, no numbers, no invented data."""
+        """Crawler and Methods have no screen yet: an honest placeholder; Link graph has its screen with an honest state."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
+
+        from .screens.link_graph import LinkGraphScreen
 
         self.placeholder_pages = {}
         # «Сканы» without a project would be a misleading project-less screen until the crawler mode exists
@@ -54,7 +56,10 @@ class ShellMixin:
         self.pages.addWidget(self.scans_placeholder)
         from .screens.crawler import CrawlerScreen
 
-        for view in ("crawler", "methods", "graph"):
+        self.link_graph_screen = LinkGraphScreen(self)
+        self.pages.addWidget(self.link_graph_screen)
+        self.placeholder_pages[VIEW_IDS.index("graph")] = self.link_graph_screen
+        for view in ("crawler", "methods"):
             if view == "crawler":
                 page = CrawlerScreen()
             else:

@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -31,6 +32,7 @@ from ..ui.icons import material_icon
 from ..ui.kit import UNAVAILABLE, PageHeader, StatePanel, waiting_badge
 from ..ui.presentation import ElidedLabel
 from ..ui.settings.listing import badge, terminal
+from .project_schedule_page import SchedulePage
 from .project_sources import GAP, GAP_HINT, access_count, build_rows
 from .work import project_names
 
@@ -292,7 +294,7 @@ class ProjectSettingsDialog(QDialog):
         tabs = (
             ("settings", "Основное", self._main_page()),
             ("dns", "Источники", _scrolled(self.page)),
-            ("event_repeat", "Расписание", StatePanel("waiting", "Расписание сканов", "Расписание появится, когда ядро начнёт его хранить", issue=940)),
+            ("event_repeat", "Расписание", SchedulePage(host)),
             ("ios_share", "Экспорт", StatePanel("waiting", "Экспорт и отчёты", "Экспорт настроек проекта появится позже")),
         )
         for icon_name, title, widget in tabs:
