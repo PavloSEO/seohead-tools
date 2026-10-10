@@ -33,7 +33,10 @@ from ..ui.settings.listing import badge, terminal
 from .project_sources import GAP, GAP_HINT, access_count, build_rows
 from .work import project_names
 
-RESOURCE_W, SYNC_W, ACTIONS_W, GAP_W = 112, 84, 104, 12
+# Canvas grid: status, sync and actions are fixed widths. The free width goes to service and resource at 2 : 1,
+# not the canvas 1.05 : 1.5: the sheet is a 940 px dialog here, and the access line of a service must stay readable.
+SERVICE_STRETCH, RESOURCE_STRETCH = 2, 1
+STATUS_W, SYNC_W, ACTIONS_W, GAP_W = 150, 110, 104, 12
 NARROW = 760  # below this the sync column goes away
 
 
@@ -92,11 +95,11 @@ class SourceRowWidget(QFrame):
         names.addWidget(self.name)
         names.addWidget(self.access)
         names.addStretch(1)
-        layout.addLayout(names, 1)
-        self.resource = cell(QLabel(tr("Нет данных")), RESOURCE_W)
+        layout.addLayout(names, SERVICE_STRETCH)
+        self.resource = QLabel(tr("Нет данных"))
         self.resource.setProperty("na", True)
         self.resource.setToolTip(f"{trf('Связь проекта: {kind}', kind=row.resource_kind)}\n{unavailable_text()}")
-        layout.addWidget(self.resource)
+        layout.addWidget(self.resource, RESOURCE_STRETCH)
         if row.state is None:
             self.status = waiting_badge(GAP, "Состояние доступа этого сервиса ядро пока не сообщает")
             self.status.setFixedWidth(self.status.minimumSizeHint().width())  # the short pill, not a bar across the column
@@ -142,7 +145,7 @@ class HeadRow(QFrame):
             return cell(label, width)
 
         layout.addSpacing(40 + GAP_W)
-        layout.addWidget(caption("Сервис · доступ"), 1)
+        layout.addWidget(caption("Сервис · доступ"), SERVICE_STRETCH)
         resource = QWidget()
         resource_layout = QHBoxLayout(resource)
         resource_layout.setContentsMargins(0, 0, 0, 0)
@@ -153,7 +156,7 @@ class HeadRow(QFrame):
         self.help.setFocusPolicy(Qt.NoFocus)
         resource_layout.addWidget(self.help)
         resource_layout.addStretch(1)
-        layout.addWidget(cell(resource, RESOURCE_W))
+        layout.addWidget(resource, RESOURCE_STRETCH)
         layout.addWidget(caption("Статус", status_width))
         self.sync = caption("Синхр.", SYNC_W)
         layout.addWidget(self.sync)
@@ -241,7 +244,7 @@ class ProjectSourcesPage(QWidget):
         layout.addWidget(self.note)
         self.row_widgets = [SourceRowWidget(row, self.open_access) for row in self.rows]
         # the status column is as wide as the widest badge (a «not available» pill shrinks to its short form)
-        status_width = max((w.status.minimumSizeHint() if w.row.state is None else w.status.sizeHint()).width() for w in self.row_widgets) + 4
+        status_width = max(STATUS_W, max((w.status.minimumSizeHint() if w.row.state is None else w.status.sizeHint()).width() for w in self.row_widgets) + 4)
         self.head = HeadRow(status_width)
         layout.addWidget(self.head)
         for widget in self.row_widgets:
