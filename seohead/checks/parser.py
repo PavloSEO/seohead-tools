@@ -808,7 +808,7 @@ def extract_mobile_alternates(soup: BeautifulSoup, base_url: str) -> list[dict[s
         raw_href = (cast("str | None", tag.get("href")) or "").strip()
         alternates.append(
             {
-                "media": collapse_whitespace(tag.get("media")),
+                "media": collapse_whitespace(cast("str | None", tag.get("media")) or ""),
                 "raw_href": raw_href,
                 "url": urljoin(base_url, raw_href) if raw_href else "",
             }

@@ -174,7 +174,7 @@ def test_rollback_accepts_only_explicit_newer_schema_refusal(tmp_path, monkeypat
 
     def refused(*args, **kwargs):
         raise subprocess.CalledProcessError(
-            1, ["seohead"], stderr="error: scan.v1 schema differs: missing/changed tables"
+            1, ["seohead"], stderr="error: cannot read scan: scan.v1 schema differs"
         )
 
     monkeypatch.setattr(smoke, "run", refused)

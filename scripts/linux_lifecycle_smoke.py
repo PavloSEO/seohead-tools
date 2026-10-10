@@ -363,7 +363,7 @@ def rollback_scan_status(
         if (
             not allow_newer_schema
             or exc.returncode != 1
-            or "scan.v1 schema differs:" not in diagnostic
+            or "scan.v1 schema differs" not in diagnostic
         ):
             raise
         status = {
