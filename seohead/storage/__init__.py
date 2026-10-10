@@ -97,6 +97,7 @@ _LATE_PAGE_FIELDS = {
     "meta_fragment": "meta_fragment",
     "ajax_scheme_outlinks": "ajax_scheme_outlinks",
     "og_url": "og_url",
+    "mobile_alternate_broken": "mobile_alternate_broken",
 }
 # Record fields a pages.jsonl may carry or omit, and whose null is a recorded
 # state rather than a type error -- distinct from _LATE_PAGE_FIELDS, where an
@@ -120,6 +121,7 @@ _PAGE_NONNEGATIVE_INTS = {
     "jsonld_blocks_parsed",
     "lorem_ipsum_count",
     "meta_description_count",
+    "mobile_alternate_broken",
     "outlinks",
     "plugin_elements",
     "size_bytes",
