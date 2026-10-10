@@ -249,6 +249,12 @@ def document_doctype(html: str) -> str | None:
     return match.group(0).strip() if match else None
 
 
+def document_html_amp(soup: BeautifulSoup) -> bool:
+    """True when the root ``<html>`` tag carries an AMP marker: ``amp`` or ``⚡``."""
+    root = soup.find("html")
+    return root is not None and any(name in root.attrs for name in ("amp", "⚡"))
+
+
 def _first_meta_tag(soup: BeautifulSoup, *, name: str) -> Any:
     """Return the first ``<meta name=...>`` tag (case-insensitive), or ``None``.
 
@@ -2007,6 +2013,8 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = document_doctype(html)
         result["viewport"] = _meta_content(soup, name="viewport")
         result["meta_refresh"] = meta_refresh_content(soup)
+        # AMP attribute on <html>: data only, no finding reads it yet (#1021 slice 1).
+        result["html_amp"] = document_html_amp(soup)
     else:
         result["title"] = None
         result["meta_description"] = None
@@ -2018,6 +2026,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
         result["doctype"] = None
         result["viewport"] = None
         result["meta_refresh"] = ""
+        result["html_amp"] = False
 
     if opts["canonical"]:
         canonical_tag = _canonical_tag(soup)
