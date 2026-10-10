@@ -111,7 +111,9 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # has no parser evidence for duplicate ids and no marker/session/slash
     # candidate, so these remain named silent checks rather than manufactured
     # findings.
-    assert coverage["checks_silent"] <= 62
+    # 62 -> 63 when INTERNAL_LINK_SPONSORED_UGC joined the registry (#1143): it reads the
+    # native crawl's rel hints, which this SF-export fixture never produces, so it runs silent.
+    assert coverage["checks_silent"] <= 63
 
 
 def test_a_disabled_check_is_its_own_bucket_never_silent_or_clean(tmp_path):
