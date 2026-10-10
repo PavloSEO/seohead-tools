@@ -1123,6 +1123,13 @@ CHECKS: dict[str, dict[str, Any]] = {
         "fix": "Decide deliberately whether the page should be crawl-priority or not, and "
         "make every internal link to it agree.",
     },
+    "INTERNAL_LINK_SPONSORED_UGC": {
+        "severity": "notice",
+        "source": "crawl:link_findings",
+        "message": "An internal link carries rel=sponsored or rel=ugc",
+        "fix": "Remove sponsored and ugc from links to pages of this site. Keep them only on "
+        "links that really lead to paid placements or user-submitted content.",
+    },
     "HTTP_LINK_ON_HTTPS": {
         "severity": "notice",
         "source": "crawl:link_findings",

@@ -1915,6 +1915,13 @@ def _audit_crawl_result(
                 else link_findings.protocol_relative_links(links)
             ):
                 ctx.add("PROTOCOL_RELATIVE_LINK", target_url=item["target_url"], details=item)
+            site_host = urlsplit(start_norm).hostname or ""
+            for item in (
+                graph.iter_internal_sponsored_ugc(site_host)
+                if graph
+                else link_findings.internal_sponsored_ugc_links(links, site_host)
+            ):
+                ctx.add("INTERNAL_LINK_SPONSORED_UGC", target_url=item["target_url"], details=item)
 
     # A broken bookmark is not a link-status problem: the fragment resolves
     # inside the retained destination document, which only a native scan keeps
