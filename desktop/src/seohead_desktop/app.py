@@ -249,6 +249,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
             entry("search", "Найти в таблице", self.focus_search, "⌘F"),
         ])
         file_menu.addAction("Импорт фраз в ядро…", lambda: self.show_screen("semimport"))
+        file_menu.addAction("Конкуренты…", lambda: self.show_screen("competitors"))
         agent_menu = self.menuBar().addMenu("Агент")
         agent_menu.addAction("Подключить агента…", self.show_agent_connection)
         help_menu = self.menuBar().addMenu("Справка")
