@@ -433,8 +433,7 @@ container prints `--help`. The image does not include Screaming Frog or a Playwr
 
 ## Configuration
 
-Audit behaviour lives in `config.json` (template: `config.example.json` in
-the repo root): `thresholds`, `severity_overrides`,
+Audit behaviour lives in `config.json` (template: `docs/examples/config.example.json`): `thresholds`, `severity_overrides`,
 `checks.<ID>.enabled`, `tasks_pipeline`, plus the `sf_cli` block (path
 search list for the SF CLI). Numbers are not hardcoded in the source — a
 threshold is changed in config, not in code.

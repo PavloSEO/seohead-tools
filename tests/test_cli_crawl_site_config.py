@@ -61,7 +61,14 @@ from seohead.mcp import handlers
 # -q/--quiet (#619, progress half) is the one line above that: it turns the crawl's
 # stderr off, and that is not a crawler setting either -- it says what this process
 # prints, not what it fetches.
-HELP_LINE_CEILING = 42
+#
+# Raised by five for --profile and --save-profile (issue #941). A saved profile is
+# a named --config file: it selects the input configuration the way --config does,
+# so it passes the same test as --config itself. The two flags are one feature --
+# select a profile, store one -- and the save side cannot read from --config alone.
+# Listing and deleting profiles is not a flag: it waits for its own command rather
+# than growing this help again.
+HELP_LINE_CEILING = 47
 
 
 def _help_lines(capsys):

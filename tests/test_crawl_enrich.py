@@ -60,3 +60,36 @@ def test_writing_orphan_list_from_a_partial_crawl_is_refused(tmp_path):
             external_csv=str(external),
             out_urls=str(tmp_path / "urls.txt"),
         )
+
+
+def test_analytics_findings_use_named_csv_columns(tmp_path):
+    external = tmp_path / "analytics.csv"
+    external.write_text(
+        "url,visits,bounce\nhttps://example.test/seen,12,85%\nhttps://example.test/gone,3,20%\n",
+        encoding="utf-8",
+    )
+    audit = {
+        "run": {"crawl_partial": False},
+        "pages": [{"url": "https://example.test/seen", "Indexability": "Non-Indexable"}],
+        "issues": [],
+    }
+
+    result = handlers.crawl_enrich(
+        audit=audit,
+        external_csv=str(external),
+        visits_column="visits",
+        bounce_column="bounce",
+    )
+
+    findings = result["analytics_findings"]["findings"]
+    assert findings["GA_ORPHAN_URL"]["urls"] == ["https://example.test/gone"]
+    assert findings["NON_INDEXABLE_WITH_GA_DATA"]["urls"] == ["https://example.test/seen"]
+    assert findings["BOUNCE_RATE_ABOVE_70"]["urls"] == ["https://example.test/seen"]
+
+
+def test_analytics_column_missing_from_csv_is_refused_by_name(tmp_path):
+    external = tmp_path / "analytics.csv"
+    external.write_text("url,visits\nhttps://example.test/seen,12\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="'bounce' not found"):
+        handlers.crawl_enrich(audit=_audit(), external_csv=str(external), bounce_column="bounce")

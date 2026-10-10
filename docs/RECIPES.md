@@ -62,6 +62,7 @@ Use a reserved example or an explicitly authorized public site. Start small:
 seohead site-audit \
   --url https://example.com \
   --limit 25 \
+  --report json \
   --out ./site-audit.json
 ```
 

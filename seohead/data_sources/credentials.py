@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,55 @@ def read(path: str, env_var: str, *, hint: str = "") -> str:
     if not value:
         raise MissingCredential(f"{file_path} is empty; store a value there or set ${env_var}")
     return value
+
+
+def _private_target(path: str) -> Path:
+    """Return ``~/.config/<path>`` after refusing symlinks on the file and its directory."""
+    target = CONFIG_ROOT / path
+    if target.parent.is_symlink() or target.is_symlink():
+        raise ValueError(f"credential storage must not use symlinks: {path}")
+    return target
+
+
+def write_secret(path: str, value: str, *, replace: bool = False) -> None:
+    """Store ``value`` at ``~/.config/<path>`` with mode 0600, atomically.
+
+    ``replace=False`` fails if the file exists; ``replace=True`` fails if it does not. A failed
+    write leaves the previous file untouched. Errors name only the relative path, never the value.
+    """
+    if not value:
+        raise ValueError(f"empty credential value rejected for {path}")
+    target = _private_target(path)
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(target.parent, 0o700)
+    if replace and not target.is_file():
+        raise FileNotFoundError(f"no existing credential to replace at {path}")
+    if not replace and target.exists():
+        raise FileExistsError(f"credential already exists at {path}; use replace")
+    descriptor, staged = tempfile.mkstemp(prefix=".credential-", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(staged, 0o600)
+        if replace:
+            os.replace(staged, target)
+        else:
+            # os.link refuses an existing target, so a concurrent writer cannot be overwritten.
+            os.link(staged, target)
+    finally:
+        Path(staged).unlink(missing_ok=True)
+
+
+def revoke_secret(path: str) -> bool:
+    """Delete ``~/.config/<path>``; return whether a file was removed."""
+    target = _private_target(path)
+    try:
+        target.unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def available(path: str, env_var: str) -> bool:

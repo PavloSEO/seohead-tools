@@ -401,3 +401,70 @@ def test_content_search_partial_package_has_exit_two_and_retains_unknowns(tmp_pa
     assert result["absence_confirmed"] is False
     assert result["coverage"]["unavailable_documents"] == 1
     assert (package / "manifest.json").is_file()
+
+
+def test_regex_kind_matches_markers_and_confirms_absence_only_on_complete_corpus(tmp_path):
+    def run(name, values, query):
+        return search_scan(
+            _scan(
+                tmp_path / name,
+                [
+                    (f"https://example.test/{index}", f"<html><body>{value}</body></html>")
+                    for index, value in enumerate(values)
+                ],
+            ),
+            query=query,
+            scope="body_text",
+            kind="regex",
+            include_snippets=True,
+            on_record=records.append,
+        )
+
+    records: list[dict] = []
+    tagged = run("tagged", ("GTM-12345", "plain"), r"GTM-\d+")
+    assert tagged["kind"] == "regex"
+    assert tagged["coverage"]["present_documents"] == 1
+    assert tagged["coverage"]["absent_documents"] == 1
+    snippet = next(r["snippet"] for r in records if r["status"] == "matched")
+    assert "GTM-12345" in snippet
+
+    records.clear()
+    absent = run("absent", ("plain", "plain"), r"GTM-\d+")
+    assert absent["coverage"]["present_documents"] == 0
+    assert absent["absence_confirmed"] is True
+
+
+def test_regex_kind_is_case_insensitive_unless_asked(tmp_path):
+    scan = _scan(tmp_path / "case", [("https://example.test/a", "<body>Gtm-7</body>")])
+    assert (
+        search_scan(scan, query=r"GTM-\d", scope="body_text", kind="regex")["coverage"][
+            "present_documents"
+        ]
+        == 1
+    )
+    assert (
+        search_scan(scan, query=r"GTM-\d", scope="body_text", kind="regex", case_sensitive=True)[
+            "coverage"
+        ]["present_documents"]
+        == 0
+    )
+
+
+def test_invalid_regex_and_unknown_kind_are_rejected_before_scanning(tmp_path):
+    scan = _scan(tmp_path / "bad", [("https://example.test/a", "<body>x</body>")])
+    with pytest.raises(ValueError, match="invalid regex"):
+        search_scan(scan, query="GTM-(", scope="body_text", kind="regex")
+    with pytest.raises(ValueError, match="unknown content search kind"):
+        search_scan(scan, query="GTM", scope="body_text", kind="glob")
+
+
+def test_regex_budget_exceeded_is_unavailable_never_absence(tmp_path, monkeypatch):
+    from seohead.storage import content_search
+
+    scan = _scan(tmp_path / "budget", [("https://example.test/a", "<body>plain</body>")])
+    monkeypatch.setattr(content_search, "_run_with_budget", lambda *_a, **_k: (None, True))
+    result = search_scan(scan, query=r"(a+)+$", scope="body_text", kind="regex")
+
+    assert result["coverage"]["unavailable_reasons"] == {"regex_budget_exceeded": 1}
+    assert result["coverage"]["absent_documents"] == 0
+    assert result["absence_confirmed"] is False

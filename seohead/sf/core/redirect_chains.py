@@ -56,3 +56,27 @@ def resolve_redirect_chains(
         kind, hops, final_url = outcome
         results[start] = {"kind": kind, "hops": hops, "final_url": final_url}
     return results
+
+
+def redirect_hop_path(
+    redirect_map: dict[str, str], start: str, hop_cap: int = DEFAULT_HOP_CAP
+) -> list[str]:
+    """Every URL the redirect walk from ``start`` visits, in order.
+
+    ``[start, hop1, hop2, ...]`` for a resolved chain, ``[..., X, ..., X]`` when the
+    walk closes a loop back on ``X``, and a prefix of at most ``hop_cap + 1`` URLs when
+    the cap is hit. This is the evidence a fixer needs (which hop to replace), and it is
+    the same bounded walk ``resolve_redirect_chains`` performs, so the two never disagree
+    about where a chain ends.
+    """
+    path = [start]
+    seen = {start}
+    while len(path) <= hop_cap:
+        target = redirect_map.get(path[-1])
+        if target is None:
+            break
+        path.append(target)
+        if target in seen:
+            break
+        seen.add(target)
+    return path

@@ -116,3 +116,23 @@ with no conflict raised (#638).
 `CHANGELOG.md` is deliberately not regenerated on every pull request. A gate holding it
 continuously in sync with the fragments would put both branches back into the same file and
 rebuild the conflict this removes.
+
+## Page actions in rendered crawls: proposed policy (#1011, not accepted)
+
+Status: proposal. The owner has not decided it, so it does not change behavior. Child 1 of #1011
+stays open until the decision is recorded here as accepted or rejected.
+
+- Actions are a closed set: `click`, `scroll`, `wait_for_selector`, `wait_ms`, and `extract`,
+  where `extract` returns JSON-serialisable values only.
+- Named presets (for example `expand_tabs`, `load_more`, `read_datalayer`) are the reusable form.
+  A raw JavaScript string is accepted only inside `extract`, and only if the owner accepts that.
+- Any action rule must stay within `settings.py` `evidence.extraction_rules` limits: no regular
+  expressions inside actions, and no executable code beyond the accepted extract form.
+- Actions do not run under `persistent_profile`, because page storage and cookies could then leak
+  between crawls.
+- Each step has its own timeout and the URL has a total budget. A step that fails or exceeds its
+  budget is recorded in the step result, and a value is reported only when every step it depends
+  on succeeded.
+- Network access during actions stays inside the existing pinned route guard.
+- Who may run actions depends on the agent permission model (#977). Until #977 is decided, the
+  contract is recorded without permissions.

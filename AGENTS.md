@@ -4,7 +4,7 @@ SEOHEAD Tools is a headless, local-first evidence and audit-automation layer for
 and tool-calling agents. The `seohead` CLI and one local stdio MCP server remain the default
 interfaces. An optional, authenticated remote scan API may reuse the same core only with an
 explicit job backend and target/egress policy; it must never expose anonymous submission or
-silently enable a listener. SEOHEAD Desktop (`desktop/`, PyQt5) is a native presentation adapter over the same core. A hosted account, web dashboard and remote MCP endpoint
+silently enable a listener. A planned SEOHEAD Desktop (PyQt5) is a native presentation adapter over the same core; its specification is in `desktop/docs/spec/`, and this repository does not yet ship it. A hosted account, web dashboard and remote MCP endpoint
 remain outside this repository's current delivery boundary.
 
 ## Product model
@@ -41,22 +41,27 @@ seohead sf run --exports-dir docs/examples/exports --out /tmp/seohead-report --t
 
 ```text
 seohead/
-  cli.py          CLI registration and argument mapping
-  tools/          live page, content, image, log, and structured-data tools
+  cli/            CLI registration and argument mapping
+  checks/         live page, content, image, log, and structured-data checks
+  mcp/            shared handlers, MCP server registration, and SF MCP tools
+  integrations/remote_api/  optional authenticated scan API (ASGI app, no listener)
   recon/          domain and infrastructure reconnaissance
   crawl/          native site collector (crawl-site) — no Screaming Frog required
   sf/             Screaming Frog export runner and 182-check analyzer, shared with crawl/'s output
   audit/          bounded sitemap-based evidence orchestration
+  core/           shared models, job contracts, and run logs
   reports/        XLSX, DOCX, CSV, Markdown, and JSON formatting
   data_sources/   optional demand, SERP, and traffic providers
-  servers/        shared handlers and MCP registration
   semantics/      optional semantic-core pipeline with its own SQLite DB (extra `semantics`)
+  tui/            terminal UI
   skills/         packaged SEO workflow playbooks
 ```
 
-The core (`tools`, `recon`, `sf`, `audit`, `data_sources`) does not import `cli` or `servers`.
+The core (`checks`, `recon`, `sf`, `audit`, `data_sources`) does not import `cli`, `mcp`,
+`integrations/remote_api` or `tui`.
 Public behavior starts in the core, receives a shared handler, and is then registered in both the
-CLI and MCP. `tests/test_registration.py` enforces this boundary.
+CLI and MCP. `tests/test_interface_binding.py` enforces the core import boundary, and
+`tests/test_registration.py` enforces CLI/MCP registration parity.
 
 ## Invariants
 
@@ -105,7 +110,7 @@ notice in `THIRD_PARTY_NOTICES.md`.
 
 Entries live one file per change under `changelog.d/`, named for the issue the change closes
 (`changelog.d/638.md`), and are folded into `CHANGELOG.md` at release time by
-`python scripts/build_changelog.py`. A branch that edits `CHANGELOG.md` conflicts with every
+`python scripts/build_changelog.py --prune`. A branch that edits `CHANGELOG.md` conflicts with every
 other branch that landed before it; a branch that adds its own file never can (#638). The
 fragment holds the entry verbatim -- top-level `- ` bullets with their continuation lines, no
 heading -- so prose is not reformatted on the way in. See CONTRIBUTING.md for the naming rules.

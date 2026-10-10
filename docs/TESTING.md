@@ -29,8 +29,8 @@ No test goes to the network. Mocking is done with `monkeypatch`, fake
 clients and fixtures — e.g. `test_data_sources.py` feeds `_FakeClient`
 objects into the Arsenkin batch runner; `test_llms_txt.py` patches the HTTP
 client factory. Verdict logic is deliberately factored into pure functions
-(`compare()` in `tools/render.py`, `_findings()` in `recon/regions.py`,
-`detect_bot()` in `tools/logs.py`) so tests never need a browser or a
+(`compare()` in `seohead/checks/render.py`, `_findings()` in `recon/regions.py`,
+`detect_bot()` in `seohead/checks/logs.py`) so tests never need a browser or a
 socket.
 
 Why: a suite that needs the internet goes green on the developer's machine,
@@ -93,8 +93,7 @@ Grouped by area (file names under `tests/`):
 
 From `.github/workflows/ci.yml` (all run on every push/PR to `main`):
 
-1. **Layer boundary**: a grep that fails if `seohead/sf|tools|recon|data_sources`
-   imports `seohead.mcp` or `seohead.cli`.
+1. **Collector/analyzer boundary**: fails if `seohead/crawl` imports `seohead.sf`, or `seohead/sf` imports `seohead.crawl`.
 2. **Audit on examples**: `seohead sf run --exports-dir docs/examples/exports`
    must produce issues — the sample crawl must keep finding its planted
    problems.
@@ -124,9 +123,9 @@ From `.github/workflows/ci.yml` (all run on every push/PR to `main`):
 Descriptions only — write them when the corresponding code changes or
 before extending that area.
 
-1. **Per-command CLI smoke** (`seohead <cmd> --help` for all 45): the
+1. **Per-command CLI smoke** (`seohead <cmd> --help` for all 161): the
    cheapest possible net against argument-parser typos — the exact class of
-   the `soft-404-check` bug that once left a tool dead with tests green.
+   the `soft404-check` bug that once left a tool dead with tests green.
    `test_docs_commands_execute.py` now covers this for every command that
    happens to appear in a documented example; this item is the remainder —
    every command, whether or not any doc shows it.
