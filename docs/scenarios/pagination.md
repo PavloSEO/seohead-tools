@@ -89,8 +89,11 @@ number, from a `page`/`paged`/`pg` token and nothing else — a bare number in a
 or a product id as often as a page index. It reports a break in a run that increments by one
 somewhere and then does not: 1, 2, 3, 7 leaves pages 4 to 6 in nobody's chain.
 
+A series with no step of one is judged against its stride when one step covers most of its steps:
+1, 3, 5, 8 breaks at 5 to 8.
+
 What it deliberately does not report: a series starting at a number other than one (a crawl of
-a subsection looks exactly like that), a series with a stride such as `?page=0,10,20`, a series
+a subsection looks exactly like that), an irregular offset scheme such as `?page=0,10,25,30`, a series
 of only two pages, a series that cycles (`PAGINATION_LOOP` owns that one), and any series where
 one URL does not state its number at all. Each of those is left unevaluated rather than reported
 against a numbering that would have had to be invented.
@@ -153,8 +156,9 @@ for non-indexable pagination. A site with 39 unreachable pages of products does 
 
 - **The order of a series whose URLs do not number themselves.** `/catalog/2/` states nothing a
   page-number token can be read from, and guessing produces sequence "errors" on ordered series.
-- **Whether a stride is intentional.** `?page=0,10,20` is an offset scheme to one site and a
-  broken run to another, and nothing here can tell which; it is left unevaluated.
+- **Whether a stride is intentional.** A consistent stride such as `?page=0,10,20` is judged
+  against its own step, so `?page=1,3,5,8` reports the break at 5 to 8. Nothing here can tell an
+  intentional stride from a broken one when the steps are irregular, so those are left unevaluated.
 - **Infinite scroll.** A series assembled by JavaScript has no `rel` annotations to read and no
   hyperlinks to follow; the [rendering scenario](rendering.md) comes first.
 - **Whether the products on page 2 are indexed.** Reachability is not indexation, and nothing
