@@ -10,7 +10,7 @@ defects, and only one of them is urgent.
 
 ## Covers
 
-- **Response Codes** — Internal Redirect Loop · Internal Redirect Chain · Internal Redirection (3XX) · Internal Redirection (Meta Refresh) · Internal Redirection (HTTP Refresh)
+- **Response Codes** — Internal Redirect Loop · Internal Redirect Chain · Internal Redirection (3XX) · Internal Redirection (Meta Refresh) · Internal Redirection (HTTP Refresh) · Internal Redirection (JavaScript)
 
 ## The chain
 
