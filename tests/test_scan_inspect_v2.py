@@ -36,3 +36,22 @@ def test_native_v2_inspection_conserves_pages_without_mutation(tmp_path):
         corrupt.execute("UPDATE frontier SET state='queued' WHERE state='done'")
     with pytest.raises(ScanError, match="frontier"):
         scan_inspect(input_path=str(path))
+
+
+def test_native_v2_inspection_projects_columns_and_counts_rows(tmp_path):
+    path = tmp_path / "v2-projection.sqlite"
+    with NativeScan.create(
+        path, format_version="scan.v2", **_metadata(**{"storage.format_version": "scan.v2"})
+    ) as scan:
+        url = "https://example.test/"
+        scan.enqueue([(url, 0)])
+        scan.commit_page(scan.claim(1)[0], _record(url), runtime=_runtime())
+        scan.finish_capture()
+    view = scan_inspect(input_path=str(path), columns=["url"], total=True)
+    assert view["columns"] == ["url"]
+    assert view["rows"] == [{"url": "https://example.test/"}]
+    assert view["total"] == 1
+    plain = scan_inspect(input_path=str(path))
+    assert plain["total"] is None
+    with pytest.raises(ValueError, match="columns"):
+        scan_inspect(input_path=str(path), columns=["no_such_column"])

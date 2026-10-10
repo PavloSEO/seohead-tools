@@ -349,7 +349,10 @@ def inspect_scan(
     offset: int = 0,
     limit: int = 100,
     max_bytes: int = 1_048_576,
+    columns: list[str] | None = None,
+    total: bool = False,
 ) -> dict:
+    columns_filter = columns
     if table not in _TABLE_COLUMNS:
         raise ValueError("inspection table is not allowed")
     _pagination(offset, limit)
@@ -373,6 +376,11 @@ def inspect_scan(
             order = ",".join('"' + name + '"' for _, name in primary)
             base = "SELECT " + _TABLE_COLUMNS[table] + " FROM " + table + " ORDER BY " + order
         columns = [item[0] for item in con.execute(base + " LIMIT 0").description]
+        if columns_filter is not None:
+            unknown = [name for name in columns_filter if name not in columns]
+            if not columns_filter or unknown or len(set(columns_filter)) != len(columns_filter):
+                raise ValueError("columns must be distinct names of the inspected table")
+            columns = list(columns_filter)
         quoted = ['"' + name.replace('"', '""') + '"' for name in columns]
         size = "+".join("COALESCE(length(CAST(" + name + " AS BLOB)),0)" for name in quoted)
         limited = base + " LIMIT ? OFFSET ?"
@@ -387,6 +395,9 @@ def inspect_scan(
             + ") AS _row_bytes FROM selected) SELECT _row_bytes,"
             + guarded
             + " FROM sized"
+        )
+        total_rows = (
+            con.execute("SELECT COUNT(*) FROM (" + base + ")").fetchone()[0] if total else None
         )
         rows, used, has_more, truncated = [], 0, False, False
         for index, row in enumerate(
@@ -408,6 +419,8 @@ def inspect_scan(
         return {
             "table": table,
             "offset": offset,
+            "total": total_rows,
+            "columns": columns,
             "rows": rows,
             "bytes": used,
             "truncated": truncated,

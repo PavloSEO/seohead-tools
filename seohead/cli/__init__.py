@@ -1131,10 +1131,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
     if cmd == "scan-inspect":
         if getattr(args, "input_path", None):
             kw["input_path"] = args.input_path
-        for name in ("table", "offset", "limit", "max_bytes"):
+        for name in ("table", "offset", "limit", "max_bytes", "columns"):
             value = getattr(args, name, None)
             if value is not None:
                 kw[name] = value
+        if getattr(args, "total", False):
+            kw["total"] = True
     if cmd == "scan-link-inspect":
         if getattr(args, "input_path", None):
             kw["input_path"] = args.input_path
@@ -2087,6 +2089,8 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--offset", type=int)
         sub.add_argument("--limit", type=int)
         sub.add_argument("--max-bytes", dest="max_bytes", type=int)
+        sub.add_argument("--columns", type=lambda v: v.split(","), help="comma-separated columns")
+        sub.add_argument("--total", action="store_true", help="include the table row count")
     if cmd == "scan-url-query":
         sub.add_argument("--filters", type=_json_list, help="JSON list of {column, op, value}")
         sub.add_argument("--sort")
