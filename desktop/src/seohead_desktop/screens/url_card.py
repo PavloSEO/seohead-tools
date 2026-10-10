@@ -40,7 +40,7 @@ from ..ui.kit import (
     waiting_badge,
 )
 from ..ui.presentation import short_run_id
-from .scan_common import Pairs, number
+from .scan_common import Pairs, StatusBadge, number
 from .url_detail import (
     OverviewPage,
     SnippetPage,
@@ -738,6 +738,8 @@ class FactsPage(QWidget):
 
     def activate(self):
         clear(self.facts)
+        if self.tab == "hist":
+            return self._history()
         page, detail = self.ctx.page, self.ctx.detail
         response = first_response(detail)
         rows = []
@@ -757,6 +759,43 @@ class FactsPage(QWidget):
             for key, value in rows:
                 pairs.set(key, value)
             self.facts.addWidget(pairs)
+
+    def _history(self):
+        """The one saved scan the core gives for this URL, as a table row; other scans wait for the core history."""
+        row, page = self.ctx.row or {}, self.ctx.page
+        source = (self.ctx.detail or {}).get("source") or {}
+        kind, status = http_badge(row.get("status_code"))
+        columns = ((tr("Скан"), 0.6), (tr("Дата"), 1.0), (tr("HTTP"), 0.8), (tr("Title"), 2.4), (tr("Слов"), 0.8), (tr("Статус"), 1.2))
+        head = QFrame()
+        head.setProperty("table_head", True)
+        body = QFrame()
+        grid = QGridLayout(head)
+        body_grid = QGridLayout(body)
+        for layout in (grid, body_grid):
+            layout.setContentsMargins(12, 6, 12, 6)
+            layout.setHorizontalSpacing(12)
+            for column, (_title, stretch) in enumerate(columns):
+                layout.setColumnStretch(column, int(stretch * 10))
+        for column, (title, _stretch) in enumerate(columns):
+            grid.addWidget(label_row(title, wrap=False), 0, column)
+        title = clean(page.get("title")) or clean(row.get("title"))
+        words = page.get("word_count", row.get("word_count"))
+        cells = (short_run_id(source.get("scan_uuid")) or tr("Нет данных"), stamp_text(first_response(self.ctx.detail).get("received_at")) or tr("Нет данных"), None, title or tr("Нет данных"),
+                 number(words) if type(words) is int else tr("Нет данных"), None)
+        for column, value in enumerate(cells):
+            if column == 2:
+                badge = StatusBadge()
+                badge.set_state(kind, status, {"ok": "check_circle", "info": "turn_right", "warn": "warning", "err": "error"}.get(kind, "help"))
+                body_grid.addWidget(badge, 0, column, Qt.AlignLeft | Qt.AlignVCenter)
+            elif column == 5:
+                badge = StatusBadge()
+                badge.set_state("info", tr("Текущий скан"), "radio_button_checked")
+                body_grid.addWidget(badge, 0, column, Qt.AlignLeft | Qt.AlignVCenter)
+            else:
+                body_grid.addWidget(label_row(value, wrap=False, na=value == tr("Нет данных")), 0, column)
+        self.facts.addWidget(head)
+        self.facts.addWidget(body)
+        self.facts.addWidget(note("info", tr("Это единственный сохранённый скан этого URL. Сравнение с другими сканами проекта и «был 404» появятся, когда ядро отдаст историю URL.")))
 
 
 class UrlCard(QFrame):
