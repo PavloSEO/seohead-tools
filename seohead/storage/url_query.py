@@ -122,6 +122,20 @@ _REQUIRED_PAGE_COLUMNS = frozenset(
     c.expr[2:] for c in COLUMNS.values() if re.fullmatch(r"p\.\w+", c.expr)
 )
 _STATUS_CLASSES = {f"{n}xx": (n * 100, n * 100 + 100) for n in range(1, 6)}
+# Facet groups over the pages table only (no urls join), so every count is one conditional scan.
+# Literals only: the SQL text is fixed and no user value reaches it.
+FACET_GROUPS: dict[str, str] = {
+    "all": "1",
+    "status_2xx": "p.status_code>=200 AND p.status_code<300",
+    "status_3xx": "p.status_code>=300 AND p.status_code<400",
+    "status_4xx": "p.status_code>=400 AND p.status_code<500",
+    "status_5xx": "p.status_code>=500 AND p.status_code<600",
+    "title_missing": "(p.title IS NULL OR p.title='')",
+    "canonical_missing": "(p.canonical IS NULL OR p.canonical='')",
+    "directives_noindex": "instr(lower(p.meta_robots||','||p.x_robots),'noindex')>0",
+    "directives_nofollow": "instr(lower(p.meta_robots||','||p.x_robots),'nofollow')>0",
+    "with_outlinks": "p.outlinks>0",
+}
 _OPS = {
     "int": {"eq", "ne", "gt", "gte", "lt", "lte", "between", "in", "not_in", "is_null", "not_null"},
     "real": {
@@ -360,6 +374,45 @@ def _click_depth_check(con: sqlite3.Connection, names: set[str]) -> None:
         con.execute("PRAGMA query_only=ON")
 
 
+def _facet_ids(facets: Any) -> list[str]:
+    """Requested facet group ids in order; None or [] means no facets are requested."""
+    if facets is None:
+        return []
+    if facets == "all":
+        return list(FACET_GROUPS)
+    if type(facets) is not list or not all(isinstance(f, str) for f in facets):
+        raise QueryError("invalid_facet", "facets must be a list of group ids or 'all'")
+    unknown = [f for f in facets if f not in FACET_GROUPS]
+    if unknown:
+        raise QueryError("invalid_facet", "unknown facet group: " + ", ".join(map(str, unknown)))
+    if len(set(facets)) != len(facets):
+        raise QueryError("invalid_facet", "facets repeats a group")
+    return facets
+
+
+def _facet_counts(
+    con: sqlite3.Connection,
+    budget: _Budget,
+    ids: list[str],
+    join: str,
+    where: str,
+    params: list[Any],
+    timeout: float,
+) -> tuple[dict[str, int | None], str]:
+    """Count every requested group in one pass over the same filtered rows."""
+    exprs = ",".join(
+        f"COALESCE(SUM(CASE WHEN ({FACET_GROUPS[g]}) THEN 1 ELSE 0 END),0)" for g in ids
+    )
+    budget.start(timeout)
+    try:
+        row = con.execute(f"SELECT {exprs} FROM pages p{join}{where}", params).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        return {g: None for g in ids}, "capped"
+    return dict(zip(ids, row, strict=True)), "exact"
+
+
 def _int(value: Any, name: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise QueryError("invalid_" + name, f"{name} must be an integer {low}..{high}")
@@ -377,6 +430,7 @@ def scan_url_query(
     limit: int = DEFAULT_LIMIT,
     count_timeout_seconds: float = DEFAULT_COUNT_BUDGET_SECONDS,
     max_bytes: int = 1_048_576,
+    facets: list[str] | str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -391,6 +445,7 @@ def scan_url_query(
             count_timeout_seconds,
             max_bytes,
             started,
+            facets,
         )
     except QueryError as exc:
         return {
@@ -424,6 +479,7 @@ def _query(
     count_timeout: Any,
     max_bytes: Any,
     started: float,
+    facets: Any = None,
 ) -> dict[str, Any]:
     if not isinstance(input_path, str) or not input_path:
         raise QueryError("invalid_input", "input_path is required")
@@ -460,6 +516,8 @@ def _query(
         params += p
         needs_url = needs_url or uses_url
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    join = " JOIN urls u ON u.url_id=p.url_id" if needs_url else ""
+    facet_ids = _facet_ids(facets)
     if input_path.lower().endswith(".json"):
         return {
             "ok": True,
@@ -480,7 +538,6 @@ def _query(
         filtered: int | None = total
         if clauses:
             budget.start(float(count_timeout))
-            join = " JOIN urls u ON u.url_id=p.url_id" if needs_url else ""
             try:
                 filtered = con.execute(
                     "SELECT COUNT(*) FROM pages p" + join + where, params
@@ -489,6 +546,11 @@ def _query(
                 if "interrupt" not in str(exc).lower():
                     raise
                 filtered = None
+        facet_counts, facets_state = None, None
+        if facet_ids:
+            facet_counts, facets_state = _facet_counts(
+                con, budget, facet_ids, join, where, params, float(count_timeout)
+            )
         small = filtered is not None and filtered <= SORT_ROW_CAP
         order_col = sort or "page_ordinal"
         if not small and order_col not in indexed:
@@ -598,6 +660,11 @@ def _query(
         "total": total,
         "filtered_total": filtered,
         "filtered_total_state": "exact" if filtered is not None else "capped",
+        **(
+            {"facets": facet_counts, "facets_state": facets_state}
+            if facet_counts is not None
+            else {}
+        ),
         "sort": {
             "column": order_col,
             "direction": direction,
