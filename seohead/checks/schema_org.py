@@ -49,81 +49,20 @@ from seohead.recon.net import http_client, normalize_url
 # a parent) produced a verdict about a feature that does not exist. Their
 # presence is instead one of the conditions a parent feature (e.g. Product)
 # checks for through ``required_any``.
-# Version of the offline RICH_RESULTS table. Stamped on every rich-result verdict
-# so a stored result says which rule set produced it. Bump it when the table changes.
-RICH_RESULTS_RULES_VERSION = "2026-10-10"
+# The offline rich-result rule set lives in ``seohead/data/rich_results_rules.json``
+# so it is versioned as data. Its ``version`` stamps every rich-result verdict,
+# letting a stored result say which rule set produced it. Bump it when the rules change.
 
-RICH_RESULTS: dict[str, dict[str, Any]] = {
-    "Article": {
-        "google_feature": "Article",
-        "required": [],
-        "recommended": ["image", "datePublished", "dateModified", "author", "headline"],
-    },
-    "NewsArticle": {
-        "google_feature": "Article",
-        "required": [],
-        "recommended": ["image", "datePublished", "dateModified", "author", "headline"],
-    },
-    "BlogPosting": {
-        "google_feature": "Article",
-        "required": [],
-        "recommended": ["image", "datePublished", "dateModified", "author", "headline"],
-    },
-    "Product": {
-        "google_feature": "Product snippets",
-        "required": ["name"],
-        "required_any": ["review", "aggregateRating", "offers"],
-        "recommended": ["image", "description", "brand"],
-    },
-    "BreadcrumbList": {
-        "google_feature": "Breadcrumb",
-        "required": ["itemListElement"],
-        "recommended": [],
-    },
-    "Organization": {
-        "required": ["name"],
-        "recommended": ["url", "logo", "sameAs", "contactPoint"],
-    },
-    "LocalBusiness": {
-        "required": ["name", "address"],
-        "recommended": ["telephone", "openingHoursSpecification", "geo", "priceRange"],
-    },
-    "Event": {
-        "required": ["name", "startDate", "location"],
-        "recommended": ["endDate", "offers", "performer", "eventStatus"],
-    },
-    "Recipe": {
-        "required": ["name", "image"],
-        "recommended": ["recipeIngredient", "recipeInstructions", "cookTime", "nutrition"],
-    },
-    "JobPosting": {
-        "required": ["title", "datePosted", "hiringOrganization", "jobLocation"],
-        "recommended": ["baseSalary", "employmentType", "validThrough"],
-    },
-    "VideoObject": {
-        "required": ["name", "thumbnailUrl", "uploadDate"],
-        "recommended": ["description", "duration", "contentUrl"],
-    },
-    "Course": {
-        "required": ["name", "description", "provider"],
-        "recommended": ["hasCourseInstance"],
-    },
-    "SoftwareApplication": {
-        "required": ["name"],
-        "recommended": ["applicationCategory", "operatingSystem", "offers", "aggregateRating"],
-    },
-    "Service": {
-        "required": ["name"],
-        "recommended": ["provider", "areaServed", "offers", "serviceType"],
-    },
-    "WebSite": {"required": ["name", "url"], "recommended": ["potentialAction"]},
-    "WebPage": {
-        "required": [],
-        "recommended": ["name", "url", "isPartOf", "breadcrumb", "primaryImageOfPage"],
-    },
-    "FAQPage": {"required": ["mainEntity"], "recommended": [], "deprecated_for_rich": True},
-    "HowTo": {"required": ["name", "step"], "recommended": [], "deprecated_for_rich": True},
-}
+
+@lru_cache(maxsize=1)
+def _rich_rules_file() -> dict[str, Any]:
+    from importlib.resources import files
+
+    return json.loads(files("seohead.data").joinpath("rich_results_rules.json").read_text("utf-8"))
+
+
+RICH_RESULTS_RULES_VERSION: str = _rich_rules_file()["version"]
+RICH_RESULTS: dict[str, dict[str, Any]] = _rich_rules_file()["rules"]
 
 _MICRODATA_RE = re.compile(r"\bitemscope\b", re.IGNORECASE)
 _RDFA_RE = re.compile(r'\bvocab\s*=\s*["\']https?://schema\.org', re.IGNORECASE)
