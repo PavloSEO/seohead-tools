@@ -4,9 +4,12 @@ import json
 
 import pytest
 
-from seohead.integrations.bot.report_delivery import DeliveryReceipts, DeliveryUnavailable
 from seohead.projects.monitoring import configure, deliver, run, schedule
-from seohead.projects.service_delivery import MonitorServiceDelivery
+from seohead.projects.service_delivery import (
+    DeliveryReceipts,
+    DeliveryUnavailable,
+    MonitorServiceDelivery,
+)
 from seohead.projects.workspace import create_project
 
 

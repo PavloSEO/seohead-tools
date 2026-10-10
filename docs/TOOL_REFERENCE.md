@@ -1,12 +1,12 @@
 # Tool reference
 
-Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py` and `seohead/mcp/sf_mcp.py` — do not edit by hand. Regenerate with:
+Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead/mcp/sf_mcp.py` and `seohead/mcp/semantics_mcp.py` — do not edit by hand. Regenerate with:
 
 ```bash
 python scripts/generate_tool_reference.py
 ```
 
-**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) — 167 in total.
+**162 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 171 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -824,6 +824,8 @@ Join an existing audit or scan to an offline URL-keyed CSV without a provider ca
 | `ignore_scheme` | `bool` | `False` |
 | `casefold_path` | `bool` | `False` |
 | `out_urls` | `str | None` | `None` |
+| `visits_column` | `str | None` | `None` |
+| `bounce_column` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -3088,3 +3090,58 @@ come from the configured ``tasks_pipeline``. ``check_assignment`` uses
 only declared template/component URLs or validated audit segments and
 preserves grouping provenance and candidate/declared/confirmed state.
 Returns a compact summary and absolute paths to both backlog files.
+
+---
+
+## Semantic-core tools
+
+### `seo_semantics_status`
+
+Read a semantic core's phrase counters, provider units used and the next stage, without migrating or writing its database. project is the semantic project directory, or a SEOHEAD project workspace whose semantics/ subdirectory holds the core.
+
+| Argument | Type | Default |
+|---|---|---|
+| `project` | `str` | `required` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `seo_semantics_run`
+
+Run one free, offline semantic-core stage: init, import (file = CSV with a norm/phrase/query column), clean, graph, competitors, report, excel, sitematch, relevance or export. Phrases and evidence are retained; statuses change reversibly. No network access; paid stages are refused here (use seo_semantics_paid).
+
+| Argument | Type | Default |
+|---|---|---|
+| `stage` | `str` | `required` |
+| `project` | `str` | `required` |
+| `out` | `str | None` | `None` |
+| `file` | `str | None` | `None` |
+
+**Cost** — network: no · writes files: yes · idempotent: no · spends money: no
+
+### `seo_semantics_mine`
+
+Fetch the most frequent competitor pages from the core's cached SERP and append title/heading 2-3-grams to synonyms.txt as candidate phrases. Reads public pages; spends no provider quota. Run seo_semantics_paid stage=synonyms afterwards to check them.
+
+| Argument | Type | Default |
+|---|---|---|
+| `project` | `str` | `required` |
+| `out` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: no
+
+### `seo_semantics_paid`
+
+Run one paid semantic-core stage: collect (Wordstat expansion of seeds.txt), synonyms (Wordstat check of synonyms.txt), cluster (Yandex Search SERP, cached per phrase; method=louvain needs the semantics extra) or exact (Arsenkin !W, once, at the end). Paid: without confirm_paid=true nothing is sent. Every submission is reserved before the call, so an interrupted or ambiguous request is never paid for twice; charges land in the shared spend journal (seo_spend_report).
+
+| Argument | Type | Default |
+|---|---|---|
+| `stage` | `str` | `required` |
+| `project` | `str` | `required` |
+| `confirm_paid` | `bool` | `False` |
+| `resume` | `bool` | `False` |
+| `max_seeds` | `int` | `0` |
+| `limit` | `int` | `0` |
+| `method` | `str` | `'serp'` |
+| `yes` | `bool` | `False` |
+
+**Cost** — network: yes · writes files: yes · idempotent: no · spends money: yes, external provider quota

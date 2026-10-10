@@ -16,7 +16,7 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 162 commands and 167 callable tools,
+The current registry has 162 commands and 171 callable tools,
 with 182 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
@@ -27,12 +27,12 @@ and inputs remain in the nearby route sections and generated tool reference.
 
 `ai-bots-check` · `asset-weight-check` · `audit-workflow` · `backlinks-check` · `bi-bigquery-plan` ·
 `bi-destination-apply` · `bi-export` · `bi-filter` · `bi-sheets-plan` · `boilerplate-report` · `cdn-check` ·
-`citability-check` · `cloudflare-traffic` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export`
-· `crawl-enrich` · `crawl-import` · `crawl-site` · `crtsh-subdomains` · `crux-report` · `domain-profile` ·
-`duplicate-check` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` ·
-`google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` · `headers-check` ·
-`hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url` ·
-`keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
+`citability-check` · `cloudflare-traffic` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` ·
+`crawl-diagnose-export` · `crawl-enrich` · `crawl-import` · `crawl-site` · `crtsh-subdomains` · `crux-report`
+· `domain-profile` · `duplicate-check` · `evidence-join` · `evidence-normalize` · `facts-export` ·
+`findings-view` · `google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` ·
+`headers-check` · `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url`
+· `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
 `llms-txt-check` · `log-analyze` · `log-scan` · `markdown-extract` · `marketing-inventory` ·
 `meta-description-drafts` · `metrika-counters` · `metrika-report` · `metrika-setup` · `metrika-traffic-pdf` ·
 `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
@@ -742,7 +742,7 @@ echo '{"url":"https://example.com"}' | seohead parse
 tool must not knock where it was not asked to.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools
-(162 + 5):
+(162 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio

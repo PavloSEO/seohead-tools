@@ -2603,6 +2603,8 @@ def crawl_enrich(
     ignore_scheme: bool = False,
     casefold_path: bool = False,
     out_urls: str | None = None,
+    visits_column: str | None = None,
+    bounce_column: str | None = None,
 ) -> dict[str, Any]:
     """Join an existing crawl's pages to an offline traffic/search CSV.
 
@@ -2611,7 +2613,8 @@ def crawl_enrich(
     can write reliable same-origin external-only URLs as a list-mode input.
     A partial crawl cannot prove an external-only URL is an orphan, so that
     list is refused rather than silently turning an incomplete population into
-    an orphan claim.
+    an orphan claim. ``visits_column`` and ``bounce_column`` name CSV columns
+    for the analytics findings; without them those findings are skipped.
     """
     if not external_csv:
         raise ValueError("external_csv required")
@@ -2620,6 +2623,7 @@ def crawl_enrich(
     import tempfile
     from pathlib import Path
 
+    from seohead.checks.analytics_findings import analytics_findings
     from seohead.checks.external_join import (
         join_external_data,
         load_csv_rows,
@@ -2630,6 +2634,9 @@ def crawl_enrich(
     diagnostics: list[dict[str, str]] = []
     document = _load_audit(audit, "audit", diagnostics)
     rows = load_csv_rows(external_csv, url_column=url_column)
+    for column in (visits_column, bounce_column):
+        if column and rows and column not in rows[0]:
+            raise ValueError(f"column {column!r} not found in {external_csv!r}")
 
     def key(value: str | None) -> str | None:
         return normalize_join_key(
@@ -2672,6 +2679,13 @@ def crawl_enrich(
             "urls": candidates,
         },
         "out_urls": out_urls,
+        "analytics_findings": analytics_findings(
+            document.get("pages") or [],
+            joined,
+            partial=partial,
+            visits_column=visits_column,
+            bounce_column=bounce_column,
+        ),
     }
     if diagnostics:
         result["input_diagnostics"] = diagnostics

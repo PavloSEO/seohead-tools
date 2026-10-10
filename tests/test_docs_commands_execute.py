@@ -53,6 +53,9 @@ NEEDS_LIVE_INFRASTRUCTURE = {
     # entirely offline -- every other project command below runs against the seeded
     # workspace, so only the one that needs a real hostname is skipped here.
     "project-new",
+    # A documented stage runs against a project initialized by an earlier line of the same
+    # walkthrough; tests/test_semantics_cli.py executes that whole sequence end to end.
+    "semantics",
     "keywords-expand",
     "keywords-seasonality",
     "keywords-exact",

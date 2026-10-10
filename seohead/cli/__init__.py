@@ -203,7 +203,7 @@ INTERACTIVE_COMMANDS = ("tui", "watch")
 # unknown spelling without pretending every entry point is an MCP tool.  The
 # namespace entries own subcommand parsers; ``mcp`` and the interactive shell
 # own process/session behavior rather than a shared handler.
-DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
+DOCUMENTED_CLI_ENTRYPOINTS = ("sf", "semantics", "mcp", "scan", "project", *INTERACTIVE_COMMANDS)
 
 # Tools whose complete direct CLI input can be supplied by one --url flag.
 URL_COMMANDS = (
@@ -936,7 +936,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value:
                 kw[key] = _split_list(value)
     elif cmd == "crawl-enrich":
-        for name in ("audit", "external_csv", "url_column", "out_urls"):
+        for name in (
+            "audit",
+            "external_csv",
+            "url_column",
+            "out_urls",
+            "visits_column",
+            "bounce_column",
+        ):
             value = getattr(args, name, None)
             if value:
                 kw[name] = value
@@ -1751,6 +1758,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--out-urls",
             help="write reliable external-only URLs as a list-mode input file",
+        )
+        sub.add_argument(
+            "--visits-column", help="CSV column with visit counts (analytics findings)"
+        )
+        sub.add_argument(
+            "--bounce-column",
+            help="CSV column with bounce rate, as a percentage or fraction (analytics findings)",
         )
     if cmd == "crawl-import":
         _source_flag(
@@ -2673,6 +2687,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in (
         "list",
         "inspect",
+        "url-query",
         "url-detail",
         "link-inspect",
         "status",
@@ -2743,6 +2758,13 @@ def build_parser() -> argparse.ArgumentParser:
     sf.add_argument(
         "sf_args", nargs=argparse.REMAINDER, help="arguments forwarded to the sf-analyzer CLI"
     )
+    semantics = subs.add_parser(
+        "semantics",
+        help="accumulating semantic core (seohead semantics <stage> --project DIR)",
+    )
+    semantics.add_argument(
+        "semantics_args", nargs=argparse.REMAINDER, help="stage and its arguments"
+    )
     reanalyze = scan_subs.add_parser("reanalyze", help="reanalyze retained inputs without network")
     _add_flags(reanalyze, "scan-reanalyze")
     mcp = subs.add_parser("mcp", help="run the MCP server (stdio)")
@@ -2795,6 +2817,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_streams()
     runlog.set_interface("cli")
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw[:1] == ["semantics"]:
+        # The semantic-core pipeline owns its parser, including its own --help.
+        from seohead.semantics.cli import main as semantics_main
+
+        return semantics_main(raw[1:])
     argv, warnings = _rewrite_deprecated_scan_flags(argv)
     args = build_parser().parse_args(argv)
     for warning in warnings:
