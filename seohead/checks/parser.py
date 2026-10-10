@@ -791,6 +791,31 @@ def link_placement(soup: BeautifulSoup, base_url: str, final_url: str) -> dict[s
     }
 
 
+def extract_mobile_alternates(soup: BeautifulSoup, base_url: str) -> list[dict[str, str]]:
+    """Every ``<link rel="alternate" media="...">`` that is not an hreflang alternate (#1051).
+
+    A media-qualified alternate with no ``hreflang`` is a separate mobile URL
+    (``media="only screen and (max-width: ...)"``). ``_hreflang_tags`` skips it, so
+    it was never read. ``media`` and ``raw_href`` are kept as written; ``url`` is the
+    href resolved against the document base, the same way ``extract_hreflang`` does.
+    """
+    alternates: list[dict[str, str]] = []
+    for tag in soup.find_all("link", attrs={"rel": _rel_has("alternate")}):
+        if tag.get("hreflang") or not tag.get("media"):
+            continue
+        if _has_ancestor(tag, _INERT_LINK_CONTAINERS):
+            continue  # a <template>'s alternate is never in the rendered document
+        raw_href = (cast("str | None", tag.get("href")) or "").strip()
+        alternates.append(
+            {
+                "media": collapse_whitespace(tag.get("media")),
+                "raw_href": raw_href,
+                "url": urljoin(base_url, raw_href) if raw_href else "",
+            }
+        )
+    return alternates
+
+
 def extract_images(soup: BeautifulSoup) -> list[dict[str, Any]]:
     """Every ``<img>`` element's alt-attribute evidence (#386).
 
@@ -2141,6 +2166,7 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # that is already built, and the one authoritative statement a site makes
     # about which pages are the same page in another language (#357).
     result["hreflang"] = extract_hreflang(soup, base_url)
+    result["mobile_alternates"] = extract_mobile_alternates(soup, base_url)
     # Same reasoning again: <img> alt-attribute evidence and legacy plugin
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)
