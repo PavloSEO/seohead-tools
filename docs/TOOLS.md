@@ -45,7 +45,7 @@ and inputs remain in the nearby route sections and generated tool reference.
 `project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
 `provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
 `provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
-`regions-tree` · `remediation-cases` · `remediation-recheck` · `remediation-record-verification` ·
+`regions-tree` · `remediation-cases` · `remediation-create` · `remediation-ingest` · `remediation-recheck` · `remediation-record-verification` ·
 `remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
 `robots-check` · `scan-body-diff` · `scan-content-search` · `scan-content-search-page` · `scan-evidence` ·
 `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·

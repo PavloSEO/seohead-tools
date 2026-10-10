@@ -120,6 +120,8 @@ and this decision makes no backend migration.
 | `project-inbox-goal` | Project directory (`directory`)<br>Selector (`entry_id, state, expected_revision`) | — |
 | `project-inbox-triage` | Project directory (`directory`)<br>Inline JSON (`entry_id, outcome, actor, expected_revision`) | Explicit controller outcome for a specialist note; it never reads, acknowledges, or executes the note. |
 | `project-inbox-unread` | Project directory (`directory`)<br>Selector (`consumer, limit`) | — |
+| `remediation-create` | Local file (`path`)<br>Project directory (`project_dir`)<br>Selector (`producer_build`) | New ledger path; an existing file is refused.; Full lowercase 40-character Git SHA. |
+| `remediation-ingest` | Local file (`ledger`)<br>Local file (`scan`) | Read-only saved scan.v1 SQLite artifact. |
 | `remediation-summary` | Local file (`ledger`) | — |
 | `remediation-cases` | Local file (`ledger`)<br>Selector (`check, url, finding_key, limit, offset, source_scan_id, group_ref, max_bytes`) | Use source_scan_id and group_ref together for a complete ordered group member page; mutually exclusive with finding selectors. |
 | `remediation-transition` | Local file (`ledger`)<br>Selector (`occurrence_key, state, actor, reason, expected_revision`)<br>Inline JSON (`observation_id, decided_at`) | — |
