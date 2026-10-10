@@ -262,10 +262,16 @@ Each check below describes more than half the crawled pages. That can be true --
 | A rel="next" series breaks a page-number run it otherwise follows | no rel="next" column in Internal:All |
 | Response uses HTTP/1.x rather than HTTP/2 or newer | no HTTP Version column in Internal:All |
 | AMP version is declared | no amphtml Link Element column in Internal:All |
+| The AMP page declared by rel=amphtml does not answer 200 | no amphtml Link Element column in Internal:All |
+| The AMP page declares no rel=canonical | no amphtml Link Element column in Internal:All |
+| The AMP page's rel=canonical does not point back to the page that declares it | no amphtml Link Element column in Internal:All |
+| The AMP page's canonical target is not indexable | no amphtml Link Element column in Internal:All |
+| The AMP page is indexable | no amphtml Link Element column in Internal:All |
 | The Lorem Ipsum placeholder passage appears in the page's own content area | no Lorem Ipsum evidence (native crawl only) |
 | Page contains a legacy plugin-dependent element (<object>/<embed>/<applet>) | no plugin-element evidence (native crawl only) |
 | An <img> has no alt attribute at all (not even alt="") | no per-image evidence (native crawl only) |
 | An image's alt text exceeds the configured length threshold | no per-image evidence (native crawl only) |
+| Image URL answered with an HTTP error, so the browser shows nothing | no resource evidence (native crawl with resource capture only) |
 | The deprecated AJAX crawling scheme (#! / _escaped_fragment_) is still used by this page's URL or by URLs it links to | no AJAX-scheme URL evidence (native crawl only) |
 | Page declares <meta name="fragment"> -- the page-wide opt-in to the deprecated AJAX crawling scheme | no <meta name="fragment"> evidence (native crawl only) |
 | No character encoding declared via Content-Type or an early <meta> tag | no Meta Charset column, so a page without a header charset cannot be distinguished from one declaring <meta charset> (needs a native seohead crawl or Custom Extraction in SF) |

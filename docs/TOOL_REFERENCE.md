@@ -1181,6 +1181,20 @@ Every recorded Wayback Machine snapshot of a URL, oldest first: timestamp, HTTP 
 
 **Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
 
+### `cloudflare-traffic`
+
+MCP name: `seo_cloudflare_traffic`
+
+Bot and human traffic for a Cloudflare zone from edge GraphQL analytics (read-only, free): bots x URLs x status codes x cache status per day, in the same shape as seo_log_analyze. Use it when origin logs are absent. It is aggregated data (source=cloudflare-aggregated), not raw logs: no client IPs, so bots cannot be verified by reverse DNS. Dates are UTC YYYY-MM-DD; the Free plan keeps 32 days. The token is read from CLOUDFLARE_API_TOKEN or SEOHEAD_CLOUDFLARE_TOKEN_FILE.
+
+| Argument | Type | Default |
+|---|---|---|
+| `zone` | `str` | `required` |
+| `since` | `str | None` | `None` |
+| `until` | `str | None` | `None` |
+
+**Cost** — network: yes · writes files: no · idempotent: yes · spends money: no
+
 ### `crtsh-subdomains`
 
 MCP name: `seo_crtsh_subdomains`

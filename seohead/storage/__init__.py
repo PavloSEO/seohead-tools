@@ -97,6 +97,7 @@ _LATE_PAGE_FIELDS = {
     "meta_fragment": "meta_fragment",
     "ajax_scheme_outlinks": "ajax_scheme_outlinks",
     "og_url": "og_url",
+    "amphtml": "amphtml",
 }
 # Record fields a pages.jsonl may carry or omit, and whose null is a recorded
 # state rather than a type error -- distinct from _LATE_PAGE_FIELDS, where an

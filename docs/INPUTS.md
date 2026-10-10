@@ -97,6 +97,7 @@ and this decision makes no backend migration.
 | `google-keywords` | Provider query (`keywords`)<br>Provider query (`seed`) | — |
 | `google-serp` | Provider query (`query`) | — |
 | `wayback-history` | Live URL (`url`) | — |
+| `cloudflare-traffic` | Provider query (`zone`) | — |
 | `crtsh-subdomains` | Domain (`domain`) | — |
 | `gsc-query` | Provider query (`site_url`) | — |
 | `webmaster-url-queries` | Provider query (`host_id`) | Bounded Yandex URL-to-query evidence. |

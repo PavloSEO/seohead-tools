@@ -181,6 +181,7 @@ does rather than by what somebody thought of.
 | 58 | [Project control](project-control.md) | configure what to collect/extract, retain work and improve the next iteration |
 | 59 | [Saved evidence](saved-evidence.md) | reuse retained observations and separate backup-protected mutations |
 | 60 | [Full audit](full-audit.md) | run a scoped audit and deliver a reviewed developer task workbook with evidence |
+| 61 | [AMP pairing](amp-pairing.md) | the desktop page and its AMP twin agree, or they do not |
 | — | [Marketing inventory](marketing-inventory.md) | inspect retained CTA, form and contact occurrences without inferring conversions |
 
 

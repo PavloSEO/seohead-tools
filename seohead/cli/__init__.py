@@ -97,6 +97,7 @@ COMMANDS = (
     "google-serp",
     "wayback-history",
     "crtsh-subdomains",
+    "cloudflare-traffic",
     "gsc-query",
     "webmaster-url-queries",
     "miratext-analyze",
@@ -1070,6 +1071,11 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
                 kw[name] = value
     if cmd == "crtsh-subdomains" and args.domain:
         kw["domain"] = args.domain
+    if cmd == "cloudflare-traffic":
+        for name in ("zone", "since", "until"):
+            value = getattr(args, name, None)
+            if value:
+                kw[name] = value
     if cmd == "gsc-query":
         if args.site_url:
             kw["site_url"] = args.site_url
@@ -1546,7 +1552,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "links-check":
         sub.add_argument("--internal-only", action="store_true", help="check internal links only")
     if cmd == "log-analyze":
-        _source_flag(sub, "--path", help="web server access-log file (Apache, Nginx, or IIS)")
+        _source_flag(
+            sub,
+            "--path",
+            help="web server access-log file (Apache, Nginx, or IIS; gzip-compressed allowed)",
+        )
         sub.add_argument(
             "--verify-bots",
             action="store_true",
@@ -1907,6 +1917,12 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int, help="maximum snapshots to return")
         sub.add_argument("--from-date", dest="from_date", help="earliest timestamp, e.g. 2024")
         sub.add_argument("--to-date", dest="to_date", help="latest timestamp, e.g. 20260101")
+    if cmd == "cloudflare-traffic":
+        _source_flag(sub, "--zone", help="Cloudflare zone name, e.g. example.com")
+        sub.add_argument(
+            "--since", help="first UTC day, YYYY-MM-DD (default: 6 days before --until)"
+        )
+        sub.add_argument("--until", help="last UTC day, YYYY-MM-DD (default: today)")
     if cmd == "crtsh-subdomains":
         _source_flag(sub, "--domain", help="domain to search Certificate Transparency logs for")
     if cmd == "gsc-query":

@@ -571,6 +571,21 @@ def provider_verify(
         from seohead.data_sources.bing_webmaster import collect
 
         result = collect("sites", site_url=request.get("site_url", ""), transport=transport)
+    elif provider == "arsenkin":
+        # Balance read (/info limits) is not a billed task; it only reports remaining credits.
+        from seohead.data_sources.arsenkin import ArsenkinClient, ArsenkinError
+
+        try:
+            balance = ArsenkinClient().limits()
+        except (ArsenkinError, ValueError) as exc:
+            code = getattr(exc, "code", "invalid_response")
+            result = {
+                "ok": False,
+                "status": int(code) if str(code).isdigit() else None,
+                "error": str(code),
+            }
+        else:
+            result = {"ok": True, "balance": balance}
     else:
         return {
             "ok": False,

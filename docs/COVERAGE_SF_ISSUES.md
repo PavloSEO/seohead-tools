@@ -142,7 +142,7 @@ having, because the alternative is an absence nobody has noticed.
 | Soft 404 Pages | tool | `soft404-check` |  |
 | Lorem Ipsum Placeholder | check | `LOREM_IPSUM_PLACEHOLDER` | matched as the full multi-word passage within the resolved content area, never a substring of the whole document, so a page merely mentioning it once outside the content area is not flagged |
 | Near Duplicates | partial | `NEAR_DUPLICATE` | an SF export's native "No. Near Duplicates" column is read directly and answers this fully; the SimHash-based fallback that answers it without one needs HTML stored to disk (input.html_store_dir), which a native `crawl-site` run never writes, so that run always skips this one by name instead |
-| Semantically Similar | gap | — | needs embeddings; simhash finds near-duplicates by shingles, not by meaning |
+| Semantically Similar | gap | — | needs an embedding adapter; the semantic-similarity command and MCP tool take caller-supplied vectors or a local adapter, but no adapter ships and the SF run does not call it yet, so the row stays open. simhash finds near-duplicates by shingles, not by meaning |
 | Low Relevance Content | gap | — | needs a query or a topic model to be relevant to |
 | Low Content Pages | check | `THIN_CONTENT` `LOW_TEXT_RATIO` |  |
 | Readability Difficult | check | `READABILITY_DIFFICULT` `LONG_SENTENCES` |  |
@@ -456,7 +456,7 @@ having, because the alternative is an absence nobody has noticed.
 
 ## AMP
 
-**16 issues, declined as one decision.** AMP is effectively retired: Google dropped the Top Stories carousel requirement in 2021 and the format is in maintenance. Building sixteen checks for it now would be work aimed at the last decade.
+**16 issues, declined as one decision.** pairing read from the AMP target the crawl captured (#1020)
 
 <details><summary>The full list, so the decision is auditable</summary>
 
@@ -464,17 +464,17 @@ having, because the alternative is an absence nobody has noticed.
 - Missing Non-AMP Return Link
 - Missing Canonical to Non-AMP
 - Non-Indexable Canonical
+- Missing Canonical
+- Indexable
 - Missing <html amp> Tag
 - Missing/Invalid Doctype HTML Tag
 - Missing Head Tag
 - Missing Body Tag
-- Missing Canonical
 - Missing/Invalid Meta Charset Tag
 - Missing/Invalid Meta Viewport Tag
 - Missing/Invalid AMP Script
 - Missing/Invalid AMP Boilerplate
 - Contains Disallowed HTML
 - Other Validation Errors
-- Indexable
 
 </details>

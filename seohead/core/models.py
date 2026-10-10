@@ -344,6 +344,10 @@ class ParsedPage(_ParsedPageOptional):
     # crawling scheme. A value, not a flag: "!" is the scheme's own opt-in and
     # anything else is a different declaration a report should quote back.
     meta_fragment: str
+    # The resolved target of the first <link rel="amphtml">, "" when none (#1020).
+    amphtml: str
+    # Each <link rel="alternate" media=...> declaration, resolved against the page URL (#1051).
+    mobile_alternates: list[dict[str, str]]
 
 
 class ParseFetched(ParsedPage):

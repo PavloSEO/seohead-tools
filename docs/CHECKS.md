@@ -249,6 +249,16 @@ python scripts/generate_checks_reference.py
 | `HTTP1_ONLY` | notice | SF-derived | Response uses HTTP/1.x rather than HTTP/2 or newer | Enable HTTP/2 or HTTP/3 on the origin server or CDN where supported. |
 | `AMPHTML_PRESENT` | notice | SF-derived | AMP version is declared | Confirm that the AMP version is still required, current, valid, and canonically linked. |
 
+## --- AMP pairing, read from the AMP target a desktop page declares (issue #1020) ---
+
+| Check id | Severity | Evidence | Fires on | Fix |
+|---|---|---|---|---|
+| `AMP_NON_200` | warning | crawl:amp_pairing | The AMP page declared by rel=amphtml does not answer 200 | Serve the AMP URL with 200, or remove the rel=amphtml declaration that names it. |
+| `AMP_MISSING_CANONICAL` | warning | crawl:amp_pairing | The AMP page declares no rel=canonical | Add a rel=canonical on the AMP page that points to the non-AMP version. |
+| `AMP_MISSING_RETURN_LINK` | warning | crawl:amp_pairing | The AMP page's rel=canonical does not point back to the page that declares it | Point the AMP page's rel=canonical at the non-AMP URL that declares rel=amphtml. |
+| `AMP_NON_INDEXABLE_CANONICAL` | warning | crawl:amp_pairing | The AMP page's canonical target is not indexable | Make the canonical target indexable, or correct the AMP page's rel=canonical. |
+| `AMP_INDEXABLE` | notice | crawl:amp_pairing | The AMP page is indexable | Confirm the AMP page should compete in search; if the non-AMP page is canonical, the AMP page usually should not be. |
+
 ## snapshot of every id Lighthouse actually defines.
 
 | Check id | Severity | Evidence | Fires on | Fix |
@@ -285,6 +295,7 @@ python scripts/generate_checks_reference.py
 | `MISSING_HSTS` | notice | SF:Security:Missing HSTS Header | HSTS header is missing | Add an appropriate Strict-Transport-Security header after confirming the entire site is HTTPS-ready. |
 | `STRUCTURED_DATA_MISSING` | notice | SF:Structured Data:Missing | Structured data is missing | Add relevant, accurate Schema.org markup that reflects visible page content. |
 | `OG_MISSING` | notice | SF:Social:Open Graph | og:title is missing, so social previews may not render correctly | Add og:title, og:image, and og:url; at minimum, provide og:title and og:image for a useful preview. |
+| `IMG_BROKEN` | warning | crawl:images | Image URL answered with an HTTP error, so the browser shows nothing | Restore the file, or update the reference in the page template or CMS to a URL that answers 200. |
 | `IMG_OVER_KB` | warning | SF:Images:Over X KB | Image exceeds the configured file-size threshold | Compress the image and consider converting it to WebP or AVIF while preserving acceptable visual quality. |
 | `IMG_MISSING_DIMENSIONS` | notice | SF:Images:Missing Size Attributes | Image is missing width and height attributes | Declare intrinsic width and height values to reserve layout space and reduce CLS. |
 

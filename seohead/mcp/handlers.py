@@ -1549,6 +1549,7 @@ def _audit_crawl_result(
 
         audit_config["canonical_policy"] = settings["analysis"]["canonical_policy"]
         ctx = AuditContext(exports, audit_config, disk_backed_pages=stored_scan is not None)
+        ctx.scan_con = stored_scan.con if stored_scan is not None else None
     saved_corpus = None
     if stored_scan is not None:
         from seohead.sf.core.corpus_derivations import derive
@@ -3904,6 +3905,17 @@ def wayback_history(
     from seohead.data_sources import wayback as core
 
     return core.history(url, limit=limit, from_date=from_date, to_date=to_date)
+
+
+def cloudflare_traffic(
+    zone: str | None = None, since: str | None = None, until: str | None = None
+) -> dict[str, Any]:
+    """Bot and human traffic from Cloudflare edge analytics (aggregated, not raw logs)."""
+    if not zone:
+        raise ValueError("zone required (Cloudflare zone name)")
+    from seohead.data_sources import cloudflare as core
+
+    return core.traffic(zone, since=since, until=until)
 
 
 def crtsh_subdomains(domain: str | None = None) -> dict[str, Any]:
@@ -6278,6 +6290,7 @@ _RAW_HANDLERS = {
     "google_serp": google_serp,
     "wayback_history": wayback_history,
     "crtsh_subdomains": crtsh_subdomains,
+    "cloudflare_traffic": cloudflare_traffic,
     "gsc_query": gsc_query,
     "webmaster_url_queries": webmaster_url_queries,
     "miratext_analyze": miratext_analyze,

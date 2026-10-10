@@ -203,6 +203,26 @@
         "reason": "no amphtml Link Element column in Internal:All"
       },
       {
+        "id": "AMP_NON_200",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_MISSING_RETURN_LINK",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_NON_INDEXABLE_CANONICAL",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
+        "id": "AMP_INDEXABLE",
+        "reason": "no amphtml Link Element column in Internal:All"
+      },
+      {
         "id": "LOREM_IPSUM_PLACEHOLDER",
         "reason": "no Lorem Ipsum evidence (native crawl only)"
       },
@@ -217,6 +237,10 @@
       {
         "id": "IMG_ALT_TOO_LONG",
         "reason": "no per-image evidence (native crawl only)"
+      },
+      {
+        "id": "IMG_BROKEN",
+        "reason": "no resource evidence (native crawl with resource capture only)"
       },
       {
         "id": "AJAX_CRAWLING_SCHEME_URL",

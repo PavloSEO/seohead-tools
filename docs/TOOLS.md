@@ -27,12 +27,12 @@ and inputs remain in the nearby route sections and generated tool reference.
 
 `ai-bots-check` · `asset-weight-check` · `audit-workflow` · `backlinks-check` · `bi-bigquery-plan` ·
 `bi-destination-apply` · `bi-export` · `bi-filter` · `bi-sheets-plan` · `boilerplate-report` · `cdn-check` ·
-`citability-check` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` · `crawl-diagnose-export`
-· `crawl-enrich` · `crawl-import` · `crawl-site` · `crtsh-subdomains` · `crux-report` · `domain-profile` ·
-`duplicate-check` · `evidence-join` · `evidence-normalize` · `facts-export` · `findings-view` ·
-`google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` · `headers-check` ·
-`hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url` ·
-`keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
+`citability-check` · `cloudflare-traffic` · `compare-crawls` · `crawl-describe-settings` · `crawl-diagnose` ·
+`crawl-diagnose-export` · `crawl-enrich` · `crawl-import` · `crawl-site` · `crtsh-subdomains` · `crux-report`
+· `domain-profile` · `duplicate-check` · `evidence-join` · `evidence-normalize` · `facts-export` ·
+`findings-view` · `google-keywords` · `google-serp` · `gsc-archive` · `gsc-progress` · `gsc-query` ·
+`headers-check` · `hreflang-check` · `images-download` · `images-optimize` · `indexnow-submit` · `inspect-url`
+· `keywords-cluster` · `keywords-exact` · `keywords-expand` · `keywords-seasonality` · `links-check` ·
 `llms-txt-check` · `log-analyze` · `log-scan` · `markdown-extract` · `marketing-inventory` ·
 `meta-description-drafts` · `metrika-counters` · `metrika-report` · `metrika-setup` · `metrika-traffic-pdf` ·
 `miratext-analyze` · `mirror-check` · `monitor-collect` · `monitor-configure` · `monitor-local-deliver` ·
@@ -267,7 +267,7 @@ because the rules could not be read, so the command never claims crawling is all
 
 | Command | What it does | Side effects |
 |---|---|---|
-| `log-analyze` | Web server log analysis (Apache Common/Combined, IIS W3C): which bots crawl, where, which codes they get, how much budget is wasted. `--verify-bots` checks authenticity via forward-confirmed reverse DNS | reads a file |
+| `log-analyze` | Web server log analysis (Apache Common/Combined, IIS W3C; `.gz` read directly): which bots crawl, where, which codes they get, how much budget is wasted. `--verify-bots` checks authenticity via forward-confirmed reverse DNS | reads a file |
 | `log-scan` | Reads a finished run's own artifacts (`audit.json`, `pages.jsonl`, an `images-download` directory) and reports claims that cannot all be true at once: a recorded size that disagrees with the file, a check firing more often than there are pages to fire on, a finding about a URL the run never fetched, a summary that disagrees with its own rows. Not a second audit — only contradictions, each naming both values | reads files |
 | `images-download` | Download a list of images into a directory | writes files |
 | `images-optimize` | Recompress, resize, or convert raster images and conservatively minify SVG | requires `--output-dir`; source mutation needs explicit `--in-place` and backs up by default |
@@ -398,7 +398,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-list` | Validates and lists metadata for `*.sqlite` files in one existing directory without reading retained body BLOBs. It stops at 10,000 files and 64 MiB of metadata, and reports unreadable candidates under `errors` rather than treating them as scans. | — |
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
 | `scan-url-detail` | Reads one exact native URL's bounded retained page, redacted request/response headers, redirect chain and forms. Query values and sensitive headers are redacted; HTML body bytes are not returned. Legacy and Screaming Frog sources name this evidence as unavailable. | — |
-| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. `click_depth` is the shortest internal link path from the start page, computed per query from stored links (NULL = not reached by links); a scan that did not retain links fails with `reason_code: click_depth_unavailable`. Failures carry a machine-readable `reason_code`. | — |
+| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. Failures carry a machine-readable `reason_code`. | — |
 | `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, one retained document's per-link placement/heading context, or (`--view links`) the paged outgoing/incoming links of one URL. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. The scan is accepted by a light header/schema check and the response carries `validation: "light"`; `full_validation: true` (or earlier full validation of the same bytes) reports `"full"`. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
@@ -543,6 +543,7 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `google-serp` | Google organic results for a query | same |
 | `wayback-history` | Every Internet Archive snapshot of a URL: when it changed, what status it returned, what MIME type it was | free, no key |
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
+| `cloudflare-traffic` | Bots x URLs x status codes x cache status per day for a Cloudflare zone, from edge GraphQL analytics, shaped like `log-analyze`. Aggregated (`source: cloudflare-aggregated`), not raw logs: no IPs, no rDNS bot verification; Free plan keeps 32 days | free; needs a read-only Cloudflare API token (`CLOUDFLARE_API_TOKEN` or `SEOHEAD_CLOUDFLARE_TOKEN_FILE`) |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
 | `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
@@ -692,29 +693,6 @@ belongs to the caller's project dataset, not to a provider transport client.
 
 ---
 
-## Semantic core (`seohead/semantics/`)
-
-`seohead semantics <stage> --project DIR` grows one accumulating keyword pool per project in its
-own SQLite database (`sya.db`, named by `db:` in `project.yaml`); a SEOHEAD project workspace keeps
-it under `semantics/`. Nothing is deleted: stages change a phrase's status and record why. Louvain
-clustering (`cluster --method louvain`) needs the `semantics` extra
-(`pip install 'seohead-seotools[semantics]'`); every other stage works on the base install. Method,
-order and cost rules: [SEMANTICS.md](SEMANTICS.md) and the packaged `semantic-core` skill.
-
-| Stage | What it does | Money |
-|---|---|---|
-| `init`, `import`, `status`, `export` | Create the project, load a CSV, read counters, write `pool.csv`/`pool.json` | free |
-| `clean`, `graph`, `sitematch`, `relevance` | Filters, homonyms, catalog match and SERP red flags; statuses only | free |
-| `competitors`, `report`, `excel` | Competitor domains and title candidates from cached SERP, Markdown/CSV report, XLSX | free |
-| `mine` | Headings of top competitor pages become candidate phrases | public web fetch |
-| `collect`, `synonyms` | Yandex Wordstat expansion and candidate checks | paid; journaled |
-| `cluster` | One cached Yandex SERP per phrase, then union-find or Louvain clusters | paid for uncached phrases |
-| `exact` | Exact `!W` frequency through Arsenkin, once per lemma group | Arsenkin limits; `--yes` above the gate |
-
-MCP: `seo_semantics_status` (read-only), `seo_semantics_run` (free stages), `seo_semantics_mine`
-(public pages) and `seo_semantics_paid` (needs `confirm_paid=true`). Charges land in the shared
-spend journal, tagged with the semantic project and stage.
-
 ## Screaming Frog crawl audit (`seohead/sf/`)
 
 A subcommand with its own argument parser:
@@ -771,7 +749,7 @@ turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl
 `--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (164 + 5 + 4):
+`seo_semantics_*` tools (165 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio
