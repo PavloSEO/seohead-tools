@@ -1487,6 +1487,8 @@
  "Мобильный": "Mobile",
  "Строка User-Agent": "User-Agent string",
  "Брать ссылки с noindex": "Take noindex links",
+ "X-Robots-Tag и meta robots": "X-Robots-Tag and meta robots",
+ "Читать оба источника; при конфликте строже побеждает": "Read both sources; on conflict the stricter one wins",
  "Экстрактор": "Extractor",
  "Хранить сканы": "Keep scans",
  "Сжатие": "Compression",
