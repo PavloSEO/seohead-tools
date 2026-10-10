@@ -3,7 +3,8 @@
 The page shows, per service of the sheet, the access the core reports (provider-readiness, local, no network).
 Choosing a resource, the sync time, "link" / "unlink" and «Сохранить связи» need the project↔resource storage the core
 does not have yet: they are shown as the neutral «Недоступно в этой версии ядра» state. Nothing is written or faked.
-The ProjSettings container with its other tabs (Основное / Расписание / Экспорт) is not built, so the dialog hosts this one page.
+The ProjSettings container with its other tabs (Основное / Экспорт) is not built, so the dialog hosts the connections page
+and the schedule page (screens/project_schedule_page.py) as its two tabs.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -30,6 +32,7 @@ from ..ui.icons import material_icon
 from ..ui.kit import UNAVAILABLE, PageHeader, StatePanel, waiting_badge
 from ..ui.presentation import ElidedLabel
 from ..ui.settings.listing import badge, terminal
+from .project_schedule_page import SchedulePage
 from .project_sources import GAP, GAP_HINT, access_count, build_rows
 from .work import project_names
 
@@ -265,7 +268,7 @@ class ProjectSourcesPage(QWidget):
 
 
 class ProjectSettingsDialog(QDialog):
-    """«Настройки проекта»: the connections page until the full project settings container exists."""
+    """«Настройки проекта»: connections and schedule tabs until the full project settings container exists."""
 
     def __init__(self, host, parent=None):
         super().__init__(parent)
@@ -283,14 +286,30 @@ class ProjectSettingsDialog(QDialog):
         head.addWidget(title)
         head.addStretch(1)
         root.addLayout(head)
+        self.tabs = QTabBar()
+        self.tabs.setObjectName("settingsTabs")
+        self.tabs.setProperty("tabs", "underline")
+        self.tabs.setDrawBase(False)
+        self.tabs.addTab(tr("Источники данных"))
+        self.tabs.addTab(tr("Расписание"))
+        tab_row = QHBoxLayout()
+        tab_row.setContentsMargins(24, 0, 24, 0)
+        tab_row.addWidget(self.tabs)
+        tab_row.addStretch(1)
+        root.addLayout(tab_row)
         self.page = ProjectSourcesPage(host)
+        self.schedule = SchedulePage(host)
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.page)
+        self.pages.addWidget(self.schedule)
+        self.tabs.currentChanged.connect(self.pages.setCurrentIndex)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         holder = QWidget()
         holder_layout = QVBoxLayout(holder)
         holder_layout.setContentsMargins(24, 4, 24, 16)
-        holder_layout.addWidget(self.page)
+        holder_layout.addWidget(self.pages)
         scroll.setWidget(holder)
         root.addWidget(scroll, 1)
         footer = QFrame()
