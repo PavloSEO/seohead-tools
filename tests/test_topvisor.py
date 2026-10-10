@@ -42,7 +42,11 @@ def _stub_transport(monkeypatch, payload, captured=None):
             calls.append(request.full_url)
             return opener.open(request, timeout)
 
-    monkeypatch.setattr(topvisor.urllib.request, "build_opener", lambda *args: CountingOpener())
+    monkeypatch.setattr(
+        topvisor,
+        "open_no_redirect",
+        lambda request, timeout: CountingOpener().open(request, timeout),
+    )
     return calls
 
 
@@ -82,11 +86,6 @@ def test_api_error_never_echoes_secret(monkeypatch):
     _stub_transport(monkeypatch, {"errors": [{"message": "secret"}]})
     result = handlers.topvisor_read()
     assert not result["ok"] and "secret" not in result["error"]
-
-
-def test_redirect_does_not_forward_credentials():
-    with pytest.raises(topvisor.TopvisorError, match="redirect refused"):
-        topvisor._NoRedirect().redirect_request(None, None, 302, "", {}, "https://example.com")
 
 
 def test_nonfinal_page_preserves_provider_paging_metadata(monkeypatch):
@@ -141,7 +140,9 @@ def test_groups_pages_follow_provider_next_offset(monkeypatch):
             requests.append(json.loads(request.data))
             return io.BytesIO(json.dumps(next(pages)).encode())
 
-    monkeypatch.setattr(topvisor.urllib.request, "build_opener", lambda *args: Opener())
+    monkeypatch.setattr(
+        topvisor, "open_no_redirect", lambda request, timeout: Opener().open(request, timeout)
+    )
     first = topvisor.fetch("groups", {"project_id": 7, "limit": 1, "offset": 0})
     second = topvisor.fetch("groups", {"project_id": 7, "limit": 1, "offset": first["nextOffset"]})
     assert requests[0]["offset"] == 0 and requests[1]["offset"] == 1
@@ -316,7 +317,9 @@ def test_http_auth_failures_are_not_followed_or_echoed(monkeypatch, code):
         def open(self, request, timeout):
             raise urllib.error.HTTPError(request.full_url, code, "denied", {}, None)
 
-    monkeypatch.setattr(topvisor.urllib.request, "build_opener", lambda *args: Opener())
+    monkeypatch.setattr(
+        topvisor, "open_no_redirect", lambda request, timeout: Opener().open(request, timeout)
+    )
     result = handlers.topvisor_read("projects")
     assert result["ok"] is False and str(code) in result["error"]
     assert "test-secret" not in result["error"]

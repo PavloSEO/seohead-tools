@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import urllib.request
 from collections.abc import Callable
 from typing import Any
 
@@ -35,7 +34,7 @@ def test_wordstat_received_malformed_response_is_journaled_once(monkeypatch, tmp
         calls.append(request)
         return _MalformedResponse()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(yandex_cloud, "open_no_redirect", fake_urlopen)
 
     with pytest.raises(ValueError):
         yandex_cloud.Wordstat(api_key="synthetic", folder_id="synthetic").top("synthetic seed")

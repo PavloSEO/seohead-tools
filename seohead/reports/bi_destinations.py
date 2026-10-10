@@ -26,6 +26,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
+from seohead.data_sources.http import open_no_redirect
 from seohead.reports.bi import (
     BI_SCHEMA_VERSION,
     DATASET_SPECS,
@@ -334,7 +335,7 @@ class _GoogleRESTClient:
                     raw = urllib.request.Request(
                         url, data=encoded, method=method, headers=request_headers
                     )
-                    with urllib.request.urlopen(raw, timeout=30) as stream:
+                    with open_no_redirect(raw, timeout=30) as stream:
                         response = json.loads(stream.read().decode())
             except urllib.error.HTTPError as exc:
                 if (

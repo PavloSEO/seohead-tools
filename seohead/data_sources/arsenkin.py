@@ -32,6 +32,7 @@ from typing import Any
 
 from seohead.data_sources import spend
 from seohead.data_sources.credentials import arsenkin_token
+from seohead.data_sources.http import open_no_redirect
 
 BASE = "https://arsenkin.ru/api/tools"
 MAX_RPM = 30  # API ceiling across all endpoints, in requests per minute.
@@ -97,7 +98,7 @@ class ArsenkinClient:
             )
             try:
                 # The request URL is built from the fixed HTTPS provider base.
-                with urllib.request.urlopen(request, timeout=90) as response:  # nosec B310
+                with open_no_redirect(request, timeout=90) as response:
                     raw = response.read().decode("utf-8")
             except urllib.error.HTTPError as exc:
                 raw = exc.read().decode("utf-8", "replace")
