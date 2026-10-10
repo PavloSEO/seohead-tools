@@ -37,11 +37,12 @@ class LinkGraphScreenTests(unittest.TestCase):
         if theming.active_theme() != "light":
             load_theme(self.app, "light")
 
-    def test_the_graph_section_shows_this_screen(self):
+    def test_the_graph_section_is_the_graph_screen_and_this_one_is_kept_hidden(self):
+        # The shell keeps LinkGraphScreen for its own tests; the graph section itself is GraphScreen
         self.assertIsInstance(self.screen, LinkGraphScreen)
-        self.assertIn(self.screen, self.window.placeholder_pages.values())
+        self.assertNotIn(self.screen, self.window.placeholder_pages.values())
         self.assertTrue(self.window.navigation.select_section("graph"))
-        self.assertIs(self.window.pages.currentWidget(), self.screen)
+        self.assertIs(self.window.pages.currentWidget(), self.window.graph_page)
 
     def test_without_a_project_the_canvas_asks_to_open_one(self):
         self.screen.refresh()

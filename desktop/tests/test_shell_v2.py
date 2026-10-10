@@ -12,7 +12,6 @@ from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.crawler import CrawlerScreen
-from seohead_desktop.screens.graph_layouts import GraphLayoutsScreen
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
 from tests._qt import sweep_widgets
@@ -184,13 +183,6 @@ class ShellV2Tests(unittest.TestCase):
             if section == "graph":
                 self.assertEqual(panel.kind, "waiting")
                 self.assertEqual(panel.issue_label.property("waiting_issue"), 975)
-
-        self.assertTrue(self.window.navigation.select_section("graph"))
-        page = self.window.pages.currentWidget()
-        self.assertIsInstance(page, GraphLayoutsScreen)
-        self.assertIn(page, self.window.placeholder_pages.values())
-        self.assertEqual(len(page.cards), 4)
-        self.assertEqual(page.findChildren(StatePanel), [])
 
         self.assertTrue(self.window.navigation.select_section("crawler"))
         page = self.window.pages.currentWidget()

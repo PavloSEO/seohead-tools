@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QLabel, QPushButton, QTabBar
+from PyQt5.QtWidgets import QLabel, QPushButton
 
 from seohead_desktop import i18n
 from seohead_desktop.app import load_theme
@@ -39,11 +39,10 @@ class ScheduleTabTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_dialog_has_connections_and_schedule_tabs(self):
-        tabs = self.dialog.findChild(QTabBar, "settingsTabs")
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ["Источники данных", "Расписание"])
-        self.assertIs(self.dialog.pages.currentWidget(), self.dialog.page)
-        tabs.setCurrentIndex(1)
-        self.assertIs(self.dialog.pages.currentWidget(), self.dialog.schedule)
+        nav = self.dialog.nav
+        self.assertEqual([nav.item(i).text() for i in range(nav.count())], ["Основное", "Источники", "Расписание", "Экспорт"])
+        nav.setCurrentRow(2)
+        self.assertIsInstance(self.dialog.pages.currentWidget(), SchedulePage)
 
     def test_schedule_page_shows_no_sample_schedules_and_an_honest_waiting_state(self):
         page = SchedulePage(self.host)
@@ -63,7 +62,7 @@ class ScheduleTabTests(unittest.TestCase):
         page.close()
 
     def test_no_schedule_action_starts_or_writes_anything(self):
-        buttons = [b.text() for b in self.dialog.schedule.findChildren(QPushButton) if b.isEnabled()]
+        buttons = [b.text() for b in self.dialog.pages.widget(2).findChildren(QPushButton) if b.isEnabled()]
         self.assertEqual(buttons, [])
 
 
