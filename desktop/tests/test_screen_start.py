@@ -16,6 +16,7 @@ from seohead_desktop import i18n
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.qt import app as qt_app
 from seohead_desktop.screens.start import (
+    ProjectDelegate,
     StartScreen,
     initials,
     probe_project,
@@ -297,6 +298,11 @@ class StartScreenTests(unittest.TestCase):
 
     def test_helpers(self):
         self.assertEqual(initials("Мебельный магазин"), "ММ")
+        # a healthy folder has no core status yet: neutral waiting pill; the open project wins; probe failures stay as they are
+        self.assertEqual(ProjectDelegate.badge_key({"status": "ok"}), "waiting")
+        self.assertEqual(ProjectDelegate.badge_key({"status": "ok", "current": True}), "open")
+        self.assertEqual(ProjectDelegate.badge_key({"status": "missing"}), "missing")
+        self.assertEqual(ProjectDelegate.badge_key({"status": "checking"}), "checking")
         self.assertEqual(initials("shop"), "SH")
         self.assertEqual(when_text(""), "")
         self.assertEqual(when_text("2026-10-08T11:20+03:00", now=__import__("datetime").datetime.fromisoformat("2026-10-09T09:00+03:00")), "вчера")
