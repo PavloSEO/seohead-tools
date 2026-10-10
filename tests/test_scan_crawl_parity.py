@@ -258,7 +258,10 @@ def test_sqlite_adapter_uses_guarded_redirect_destination_resolution(tmp_path):
         ).fetchone()
     finally:
         con.close()
-    assert json.loads(chain) == [
-        {"url": "https://example.test/land", "status_code": 200, "error": ""}
+    hops = json.loads(chain)
+    assert [(hop["url"], hop["status_code"], hop["error"]) for hop in hops] == [
+        ("https://example.test/land", 200, "")
     ]
+    assert hops[0]["location"] == ""
+    assert isinstance(hops[0]["response_time"], float | int)
     assert final == "https://example.test/land"
