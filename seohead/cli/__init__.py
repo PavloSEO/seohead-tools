@@ -441,6 +441,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "mode",
             "representation",
             "selector",
+            "kind",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -1584,9 +1585,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--offset", type=int)
     if cmd == "scan-content-search":
-        sub.add_argument(
-            "--query", help="nonempty literal marker; regular expressions are unsupported"
-        )
+        sub.add_argument("--query", help="nonempty marker; a literal string unless --kind regex")
         sub.add_argument("--out-dir", help="new local content-search package directory")
         sub.add_argument(
             "--scope",
@@ -1594,6 +1593,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="retained representation to search",
         )
         sub.add_argument("--mode", choices=("contains", "not_contains"))
+        sub.add_argument(
+            "--kind",
+            choices=("literal", "regex"),
+            help="query is a literal string (default) or a Python regular expression",
+        )
         sub.add_argument("--representation", choices=("static", "rendered"))
         sub.add_argument("--selector", help="CSS selector required only by selector_markup")
         sub.add_argument("--case-sensitive", action="store_true")
