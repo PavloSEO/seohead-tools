@@ -34,7 +34,7 @@ class CoreDiscoveryTests(unittest.TestCase):
                     mock.patch.object(core_discovery, "SOURCE_VENV_CLI", Path(tmp) / "missing"), \
                     mock.patch.object(core_discovery, "COMMON_DIRECTORIES", ()), \
                     mock.patch.object(core_discovery.bundle, "bundled_core_cli", return_value=None), \
-                    mock.patch.object(core_discovery.sys, "executable", str(Path(tmp) / "python")):
+                    mock.patch.object(core_discovery.sys, "executable", str(Path(tmp) / "bin" / "python")):
                 self.assertIsNone(core_discovery.discover_core(prefs))
 
     def test_common_install_directory_is_found_without_path(self):

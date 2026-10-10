@@ -155,7 +155,7 @@ class SwitchingTests(unittest.TestCase):
         sweep_widgets()
         i18n.set_language("ru")
         self._dialog = None
-        patcher = patch("seohead_desktop.app.shutil.which", return_value=None)
+        patcher = patch("seohead_desktop.app.discover_core", return_value=None)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.window = MainWindow(persistent=False)

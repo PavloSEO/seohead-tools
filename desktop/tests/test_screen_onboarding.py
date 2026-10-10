@@ -156,14 +156,15 @@ class OnboardingTests(unittest.TestCase):
 
     def test_missing_core_is_reported_and_check_again_finds_it(self):
         self.window.core_executable = None
-        self.window.show_startup_workspace()
-        wizard = self.wizard
-        wizard.go(1)
-        self.settle(lambda: wizard.core_state is not None)
+        with patch("seohead_desktop.screens.onboarding.discover_core", return_value=None):
+            self.window.show_startup_workspace()
+            wizard = self.wizard
+            wizard.go(1)
+            self.settle(lambda: wizard.core_state is not None)
         self.assertEqual(wizard.core_heading.text(), "Ядро не найдено")
         self.assertEqual(wizard.core_text.text(), "Ядро seohead не найдено ни в одном из известных мест")
         self.assertTrue(wizard.version_line.isHidden())
-        with patch("seohead_desktop.screens.onboarding.shutil.which", return_value=self.core):
+        with patch("seohead_desktop.screens.onboarding.discover_core", return_value=self.core):
             wizard.recheck_button.click()
             self.settle(lambda: wizard.core_state is not None and wizard.core_state["ok"])
         self.assertEqual(self.window.core_executable, self.core)
