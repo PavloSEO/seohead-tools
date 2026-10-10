@@ -53,11 +53,16 @@ class ShellMixin:
         placeholder_layout.setContentsMargins(0, 0, 0, 0)
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
+        from .screens.crawler import CrawlerScreen
+
         for view in ("crawler", "methods", "graph"):
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+            if view == "crawler":
+                page = CrawlerScreen()
+            else:
+                page = QWidget()
+                layout = QVBoxLayout(page)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
 
