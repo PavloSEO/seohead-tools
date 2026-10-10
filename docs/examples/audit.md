@@ -1,6 +1,6 @@
 # SEO audit — example.com
 
-- **Generated:** 2026-10-10T16:40:07Z
+- **Generated:** 2026-10-10T19:12:52Z
 
 ## Health summary
 
