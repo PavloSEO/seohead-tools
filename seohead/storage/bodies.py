@@ -340,6 +340,28 @@ def _read_document(
     return text, decoder
 
 
+def page_html_reader(con: sqlite3.Connection, *, max_decoded_bytes: int):
+    """Return a url -> HTML text reader over each page's selected retained document.
+
+    The reader answers None for a URL with no retained, verified body, so a caller can
+    skip that page honestly instead of reading a missing body as clean.
+    """
+
+    def read(url: str) -> str | None:
+        row = con.execute(
+            "SELECT p.document_id FROM pages p JOIN urls u USING(url_id) WHERE u.url=?",
+            (url,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        try:
+            return read_document(con, int(row[0]), max_decoded_bytes=max_decoded_bytes)
+        except ScanError:
+            return None
+
+    return read
+
+
 def read_document_navigation(con, document_id: int) -> dict[str, object]:
     """Read bounded navigation evidence without fetching or interpreting its cause."""
     from seohead.checks.navigation import expand_navigation, retain_navigation

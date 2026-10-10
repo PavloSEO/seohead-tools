@@ -352,3 +352,27 @@ def test_reanalysis_keeps_http_refresh_evidence_and_its_finding(tmp_path, monkey
         assert_saved_contract(after, output_con)
     assert semantic_audit(after)["issues"] == semantic_audit(before)["issues"]
     assert attempts == {}
+
+
+def test_retained_native_scan_measures_dom_size_from_its_own_body(tmp_path):
+    """#1053: a native scan keeps each body in its store, and DOM size reads it there."""
+    from seohead.storage import read_audit
+
+    deep = (
+        "<!doctype html><html><head><title>Deep</title></head><body>"
+        + "<div>" * 40
+        + "x"
+        + "</div>" * 40
+        + "</body></html>"
+    )
+
+    def fetcher(url: str) -> _Response:
+        if url.endswith("/robots.txt"):
+            return _Response(b"User-agent: SEOHEAD-Tools\nAllow: /\n", "text/plain")
+        return _Response(deep.encode(), "text/html; charset=utf-8")
+
+    path = tmp_path / "deep.sqlite"
+    _source(path, fetcher=fetcher)
+    document = read_audit(path)
+    assert "DOM_TOO_DEEP" in {issue["check"] for issue in document["issues"]}
+    assert "DOM_TOO_DEEP" not in {skip["id"] for skip in document["run"]["checks_skipped"]}

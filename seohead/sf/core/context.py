@@ -13,7 +13,7 @@ import sqlite3
 import sys
 import tempfile
 from collections import OrderedDict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any
 
@@ -689,6 +689,9 @@ class AuditContext:
         # Native scan callers may provide a cursor-backed graph reader.  Export
         # callers leave this unset and retain the established DataFrame path.
         self.graph_access = graph_access
+        # Native retained scans supply url -> HTML text from the scan's body store,
+        # or None when that page's body was not retained. Export audits leave it unset.
+        self.stored_html: Callable[[str], str | None] | None = None
         # Native retained scans can supply complete, document-bound hreflang
         # relations. Export audits retain the established DataFrame path.
         self.native_hreflang: dict[str, Any] | None = None
