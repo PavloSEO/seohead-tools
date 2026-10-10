@@ -2800,6 +2800,43 @@ _NATIVE_EXPORT_CHECKS = {
 }
 
 
+_INBOUND_LINK_CAP = 20
+
+
+def _inbound_internal_links(ctx: AuditContext) -> dict[str, list[dict[str, str]]] | None:
+    """Internal hyperlinks grouped by normalized destination, or None without an inlink inventory."""
+    from .inlinks import _all_inlink_records, _internal_hyperlink_records, _site_host
+    from .normalize import normalize_value
+
+    records = _all_inlink_records(ctx)
+    if records is None:
+        return None
+    host = _site_host(ctx)
+    index: dict[str, list[dict[str, str]]] = {}
+    for rec in _internal_hyperlink_records(records, host):
+        # An internal link is one written on this site: the source must be on the host too.
+        if urllib.parse.urlparse(str(rec["source_url"])).netloc.lower() != host:
+            continue
+        index.setdefault(norm_url(rec["destination_url"]), []).append(
+            {
+                "source_url": str(rec["source_url"]),
+                "anchor": normalize_value(rec.get("anchor")) or "",
+            }
+        )
+    return index
+
+
+def _inbound_detail(inbound: dict[str, list[dict[str, str]]] | None, start: str) -> dict[str, Any]:
+    """The inbound-link evidence for one chain start, or an honest 'not measured' marker."""
+    if inbound is None:
+        return {"inbound_links": None, "inbound_links_reason": "no all_inlinks export"}
+    links = inbound.get(norm_url(start), [])
+    return {
+        "inbound_links": links[:_INBOUND_LINK_CAP],
+        "inbound_links_count": len(links),
+    }
+
+
 def check_redirect_chains(ctx: AuditContext) -> None:
     """Resolve redirect chains and loops.
 
@@ -2824,14 +2861,23 @@ def check_redirect_chains(ctx: AuditContext) -> None:
         from .redirect_chains import DEFAULT_HOP_CAP, redirect_hop_path, resolve_redirect_chains
 
         hop_cap = ctx.thresholds.get("redirect_hop_cap", DEFAULT_HOP_CAP)
+        inbound = _inbound_internal_links(ctx)
         for start, outcome in resolve_redirect_chains(ctx.redirect_map, hop_cap).items():
             # The full walk, so a finding names each hop to replace, not just a count.
             path = redirect_hop_path(ctx.redirect_map, start, hop_cap)
+            # The internal links that still point at the chain's first URL: the edits
+            # that move users off the chain, not just the hop that is broken.
+            links = _inbound_detail(inbound, start)
             if outcome["kind"] == "loop":
                 ctx.add(
                     "REDIRECT_LOOP",
                     target_url=start,
-                    details={"hops": outcome["hops"], "final_url": None, "path": path},
+                    details={
+                        "hops": outcome["hops"],
+                        "final_url": None,
+                        "path": path,
+                        **links,
+                    },
                 )
             elif outcome["kind"] == "chain":
                 ctx.add(
@@ -2841,6 +2887,7 @@ def check_redirect_chains(ctx: AuditContext) -> None:
                         "hops": outcome["hops"],
                         "final_url": outcome["final_url"],
                         "path": path,
+                        **links,
                     },
                 )
             elif outcome["kind"] == "unresolved":
@@ -2856,6 +2903,7 @@ def check_redirect_chains(ctx: AuditContext) -> None:
                         "final_url": outcome["final_url"],
                         "unresolved": True,
                         "path": path,
+                        **links,
                     },
                 )
         return
