@@ -2165,5 +2165,7 @@
  "Лог сервера не загружен": "Server log not loaded",
  "Проверка ботов по логу не загружена": "Bot verification for the log is not loaded",
  "Ядро проверяет подлинность ботов по обратному и прямому DNS, но отдаёт вердикт по семейству ботов, а не по каждому IP. Таблица IP, подсетей и цепочка проверки появятся с этим ответом ядра.": "The core verifies bot authenticity by reverse and forward DNS, but returns one verdict per bot family, not per IP. The IP and subnet table and the verification chain will appear with that core answer.",
- "Журнал сервера не подключён в этой версии ядра": "The server log is not connected in this core version"
+ "Журнал сервера не подключён в этой версии ядра": "The server log is not connected in this core version",
+ "X-Robots-Tag и meta robots": "X-Robots-Tag and meta robots",
+ "Читать оба источника; при конфликте строже побеждает": "Read both sources; on conflict the stricter one wins"
 }
