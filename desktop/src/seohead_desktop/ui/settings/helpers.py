@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QComboBox, QGridLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from ...i18n import trf
 from ..controls import Segmented, SettingRow, Switch
@@ -66,13 +66,23 @@ def text_row(store, key, title, description, width=260):
     return row
 
 
-def two_columns(left, right):
-    """Two stacks of rows side by side (sheets use .col2 at 1440; dialog is wide enough)."""
-    holder = QWidget()
-    layout = QHBoxLayout(holder)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(32)
-    for column in (left, right):
+class _Columns(QWidget):
+    """Two stacks of rows with equal widths; one stack below SINGLE_BELOW px so a narrow sheet never scrolls sideways."""
+
+    SINGLE_BELOW = 560   # measured: at 1440 the rows get about 605px and two columns fit; at 800 they get about 450px
+
+    def __init__(self, left, right):
+        super().__init__()
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setHorizontalSpacing(32)
+        self._grid.setVerticalSpacing(0)
+        self._boxes = [self._stack(column) for column in (left, right)]
+        self._single = False
+        self._relayout()
+
+    @staticmethod
+    def _stack(column):
         box = QWidget()
         box_layout = QVBoxLayout(box)
         box_layout.setContentsMargins(0, 0, 0, 0)
@@ -80,8 +90,33 @@ def two_columns(left, right):
         for widget in column:
             box_layout.addWidget(widget)
         box_layout.addStretch(1)
-        layout.addWidget(box, 1)
-    return holder
+        return box
+
+    def _relayout(self):
+        while self._grid.count():
+            self._grid.takeAt(0)   # detaches only; the widgets are kept
+        if self._single:
+            self._grid.addWidget(self._boxes[0], 0, 0)
+            self._grid.addWidget(self._boxes[1], 1, 0)
+            self._grid.setColumnStretch(0, 1)
+            self._grid.setColumnStretch(1, 0)
+        else:
+            self._grid.addWidget(self._boxes[0], 0, 0)
+            self._grid.addWidget(self._boxes[1], 0, 1)
+            self._grid.setColumnStretch(0, 1)
+            self._grid.setColumnStretch(1, 1)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        single = self.width() < self.SINGLE_BELOW
+        if single != self._single:
+            self._single = single
+            self._relayout()
+
+
+def two_columns(left, right):
+    """Two stacks of rows side by side with equal widths; one stack when the sheet is narrow."""
+    return _Columns(left, right)
 
 
 def page(*widgets):

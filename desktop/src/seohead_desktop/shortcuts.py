@@ -42,6 +42,7 @@ ACTIONS = (
     Action("find_in_table", "Найти в таблице", "Таблицы", "Ctrl+F"),
     Action("expand_table", "Развернуть таблицу", "Таблицы", "Ctrl+Alt+Return"),
     Action("copy_tsv", "Копировать как TSV", "Таблицы", "Ctrl+Alt+C"),
+    Action("columns", "Колонки", "Таблицы", ""),   # unassigned: the design's Ctrl+Shift+C is already copy_url's default
     Action("copy_url", "Копировать URL", "Таблицы", "Ctrl+Shift+C"),
     Action("url_history", "Назад / вперёд по URL", "Таблицы", "Ctrl+[ ]", ("Ctrl+[", "Ctrl+]")),
     Action("help", "Справка", "Справка", "F1"),
