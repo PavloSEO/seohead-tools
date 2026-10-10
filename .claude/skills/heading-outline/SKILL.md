@@ -4,7 +4,7 @@ description: >-
   Builds the complete H1–H6 heading structure of each page in DOM order and checks
   the hierarchy, which Screaming Frog cannot do (SF sees only H1/H2 and catches only
   "missing/multiple H1"). It parses live HTML and checks for exactly one H1, no skipped
-  levels (H2→H4), a non-empty H1 that does not duplicate the title, and meaningful text.
+  levels (H2→H4), and that the H1 comes before other headings.
   Use when asked to "check headings," inspect the "heading structure," verify the
   "H1 H2 H3 hierarchy," build a "page outline," or inspect the "Hx structure." Triggers:
   heading structure, page headings, H1 H2 H3 hierarchy, page outline, heading outline,
@@ -80,12 +80,7 @@ it prints the whole outline and applies the additional editorial heuristics belo
    - **No skipped levels.** The level must not increase by more than 1 in a single step:
      H3 may follow H2, but **H2→H4 is an error** (`HEADING_SKIP`). A heading may drop
      to any level (H4→H2 is valid).
-   - **H1 comes first.** If an H2+ occurs before the first H1 → `H1_NOT_FIRST`.
-   - **H1 is not empty** and does **not match `<title>`** verbatim (`H1_EQUALS_TITLE`).
-   - **Text is meaningful:** not empty, longer than ~2 characters, and not just numbers,
-     icons, "Read more," or "Read"; these are "decorative" headings
-     (`HEADING_DECORATIVE`).
-   - **No duplicate text** among headings on the same page (`HEADING_DUP_TEXT`).
+   - **H1 comes first.** If a heading occurs before the first H1 → `HEADING_BEFORE_H1`.
 4. **Summarize the result.** For each page, provide the indented outline (from step 2)
    plus a list of detected issues, including the level and text of the offending heading.
    For a set of pages, provide a summary such as "N pages with hierarchy issues" and
@@ -102,22 +97,14 @@ it prints the whole outline and applies the additional editorial heuristics belo
   valid. Before flagging `HEADING_SKIP`, confirm the skip isn't an artifact
   of a decorative widget mistagged with the wrong heading level rather than a
   real structural jump.
-- **Short heading text: decorative or legitimately terse?** "Read more",
-  bare icons, or lone numbers are decorative — but short, meaningful
-  headings ("FAQ", "Q&A", a city name) can also be only a few characters.
-  Judge by whether the text stands alone as real content, not by length alone.
-- **H1 equals `<title>` verbatim.** Flag it as a warning per the rule, but
-  don't force a rewrite on a small single-purpose page where the title and
-  H1 legitimately need to say the same thing — note it and let the user decide.
 
 ## Definition of done
 - [ ] Every URL in scope has been parsed and an indented H1–H6 outline
   produced, or a stated reason it could not be (e.g. JS-rendering block).
-- [ ] Every page has been checked against all six heuristics: H1 count,
-  skipped levels, H1-first, H1 non-empty, meaningful text, no duplicate text.
+- [ ] Every page has been checked against the three heuristics: H1 count,
+  skipped levels, H1-first.
 - [ ] Findings carry the correct code (`H1_MISSING`, `H1_MULTIPLE`,
-  `HEADING_SKIP`, `H1_NOT_FIRST`, `H1_EQUALS_TITLE`, `HEADING_DECORATIVE`,
-  `HEADING_DUP_TEXT`).
+  `HEADING_SKIP`, `HEADING_BEFORE_H1`).
 - [ ] For a multi-page run, a summary count of pages with issues and the
   most common issue types is included.
 

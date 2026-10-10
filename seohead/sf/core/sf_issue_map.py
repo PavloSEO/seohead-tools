@@ -310,7 +310,7 @@ CATEGORIES: dict[str, list[Entry]] = {
         _c("Multiple Entries", "HREFLANG_MULTIPLE_ENTRIES"),
         _c("Not Using Canonical", "HREFLANG_NOT_CANONICAL"),
         _c("Outside <head>", "HREFLANG_OUTSIDE_HEAD"),
-        _g("Unlinked Hreflang URLs", "hreflang targets are not tested against the link graph"),
+        _c("Unlinked Hreflang URLs", "HREFLANG_UNLINKED_TARGET"),
         _c("Missing Self Reference", "HREFLANG_MISSING_SELF_REFERENCE"),
         _c("Missing X-Default", "HREFLANG_MISSING_XDEFAULT"),
     ],
