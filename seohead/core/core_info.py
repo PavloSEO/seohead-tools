@@ -7,10 +7,10 @@ report.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, get_args
 
 from seohead import __version__
-from seohead.cli import COMMANDS
 from seohead.core.job_contracts import ScanSource
 
 CORE_INFO_FORMAT = "seohead.core-info.v1"
@@ -26,7 +26,7 @@ def _revision() -> str | None:
         return None
 
 
-def core_info() -> dict[str, Any]:
+def core_info(commands: Sequence[str]) -> dict[str, Any]:
     from seohead.projects.workspace import PROJECT_FORMAT, PROJECT_VERSION
     from seohead.storage.ledger import FORMAT_VERSION, USER_VERSION
 
@@ -37,5 +37,5 @@ def core_info() -> dict[str, Any]:
         "project": {"format": PROJECT_FORMAT, "version": PROJECT_VERSION},
         "ledger": {"format_version": FORMAT_VERSION, "user_version": USER_VERSION},
         "scan_formats": list(get_args(ScanSource.model_fields["format_version"].annotation)),
-        "commands": list(COMMANDS),
+        "commands": list(commands),
     }
