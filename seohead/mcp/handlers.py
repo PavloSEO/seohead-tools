@@ -1670,7 +1670,9 @@ def _audit_crawl_result(
     available_exports = set(exports.frames)
     if ctx.native_hreflang is not None and ctx.native_hreflang["declarations"]:
         available_exports.add("all_hreflang")
-    ctx.skip_unsupported(available_exports)
+    from seohead.sf.core.rules import native_check_ids
+
+    ctx.skip_unsupported(available_exports, native=native_check_ids(ctx))
     run_rules(ctx)
     if stored_list:
         unavailable_origins = stored_scan.con.execute(

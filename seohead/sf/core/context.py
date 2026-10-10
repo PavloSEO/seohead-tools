@@ -870,6 +870,38 @@ class AuditContext:
             self.skipped = [s for s in self.skipped if s.id != check_id]
         return issue
 
+    def add_site_wide(
+        self,
+        check_id: str,
+        urls: list[str],
+        details: dict[str, Any],
+        *,
+        occurrences: int | None = None,
+    ) -> None:
+        """One finding for a defect that the listed pages share, carrying the page count.
+
+        The same chrome heading or the same repeated link on every page is one
+        template to fix. One row per page would repeat that fix and bury every
+        other finding, so the pages become a single group. A defect on one page
+        keeps its own row.
+        """
+        if len(urls) == 1:
+            # A lone page keeps its own row; ``occurrences`` keeps that row's own count.
+            extra = {} if occurrences is None else {"occurrences_count": occurrences}
+            self.add(check_id, target_url=urls[0], details=details, **extra)
+            return
+        ordered = sorted(urls)
+        group = self.add_group(check_id, None, ordered)
+        # ``occurrences`` is per page; the group keeps the total so sums over findings stay true.
+        total = len(ordered) if occurrences is None else occurrences * len(ordered)
+        self.add(
+            check_id,
+            target_url=ordered[0],
+            occurrences_count=total,
+            group_id=group.group_id if group else None,
+            details={**details, "page_count": len(ordered), "sample_urls": ordered[:5]},
+        )
+
     def add_group(self, check_id: str, value: str | None, urls: list[str]) -> Group | None:
         if not self.enabled(check_id):
             return None
@@ -885,15 +917,19 @@ class AuditContext:
         self.groups.append(group)
         return group
 
-    def skip_unsupported(self, available: set[str]) -> None:
+    def skip_unsupported(self, available: set[str], native: frozenset[str] = frozenset()) -> None:
         """Skip every check whose declared export frame is absent.
 
         Declaring the dependency once beats each check discovering its own
-        absence, and it makes the gap countable instead of invisible.
+        absence, and it makes the gap countable instead of invisible. A check in
+        ``native`` is measured from the stored scan itself, so the absence of its
+        export says nothing about the site and is not declared.
         """
         from seohead.sf.core.registry import CHECK_REQUIRES, missing_requirements
 
         for check_id in CHECK_REQUIRES:
+            if check_id in native:
+                continue
             gone = missing_requirements(check_id, available)
             if gone:
                 self.skip(check_id, "missing export: " + ", ".join(gone))

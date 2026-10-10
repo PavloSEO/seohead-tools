@@ -240,6 +240,11 @@ def _complete_linkage_groups(
     return groups
 
 
+_UNMEASURED_REASON = (
+    "no pair of comparable documents was compared; duplicate content is unmeasured, not absent"
+)
+
+
 def find_duplicates(
     items: list[dict[str, Any]],
     threshold: float = _DEFAULT_THRESHOLD,
@@ -277,7 +282,10 @@ def find_duplicates(
     if not items:
         out: dict[str, Any] = {
             "ok": True,
+            "measured": False,
+            "reason": _UNMEASURED_REASON,
             "count": 0,
+            "candidate_pairs_checked": 0,
             "clusters": [],
             "exact_duplicates": [],
             "excluded_non_indexable": excluded_non_indexable,
@@ -427,6 +435,11 @@ def find_duplicates(
         "excluded_no_text": excluded_no_text,
         "excluded_duplicate_id": excluded_duplicate_id,
     }
+    # Zero compared pairs means no duplicate was measured at all. An empty
+    # clusters list then reads as "no duplicates", which this run never showed.
+    result["measured"] = bool(candidate_pairs)
+    if not candidate_pairs:
+        result["reason"] = _UNMEASURED_REASON
     if with_fingerprints:
         result["fingerprints"] = fingerprints
     return result
