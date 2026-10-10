@@ -407,15 +407,12 @@ class NewScanDialog(QDialog):
             label.setProperty("badge", kind)
             self.counter_labels[name] = label
             parts.append(label)
-        approx = QLabel(tr("оценка приложения"))
-        approx.setProperty("text_style", "meta")
-        approx.setToolTip(f"{tr('Предпросмотр списка ядро не умеет')} · {tr('Недоступно в этой версии ядра')}")
         four = QPushButton(tr("Взять 4xx из скана"))
         four.setProperty("role", "text")
         four.setProperty("size", "sm")
         four.setEnabled(False)
         four.setToolTip(tr('Недоступно в этой версии ядра'))
-        listing.addWidget(flow(*parts, approx, four, waiting_badge(ISSUE_URL_QUERY)))
+        listing.addWidget(flow(*parts, four, waiting_badge(ISSUE_URL_QUERY)))
         self.list_note = Note("warn", tr("Запуск списка URL из приложения недоступен в этой версии ядра."))
         self.list_note.setToolTip(tr("Скан списка не попадает в наблюдение проекта: список можно проверить, но не запустить."))
         listing.addWidget(self.list_note)
@@ -430,7 +427,7 @@ class NewScanDialog(QDialog):
         box = QWidget()
         grid = QGridLayout(box)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(24)
+        grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(10)
         grid.setAlignment(Qt.AlignTop)
         # mode
@@ -469,7 +466,7 @@ class NewScanDialog(QDialog):
         self.html_switch.setObjectName("scanSaveHtml")
         self.html_switch.setEnabled(draft.has("storage.body_mode"))
         self.html_switch.toggled.connect(lambda state: draft.set_value("storage.body_mode", "captured_entity_bytes" if state else "off"))
-        self.html_state = QLabel()
+        self.html_state = ElidedLabel()  # elided, not clipped: the column must fit two options side by side
         self.html_state.setProperty("text_style", "meta")
         self.html_state.setToolTip(tr("Нужно для поиска в HTML и сравнений"))
         self.html_row = FormRow(tr("Сохранять HTML"), self.html_state, label_widget=self.html_switch, label_width=152)
@@ -717,6 +714,7 @@ class NewScanDialog(QDialog):
         state = draft.policy_state
         chain = trf("Умолчания: {chain}", chain=" → ".join(names[k] for k in ("core", "app") + (("project",) if draft.project_layer else ())))
         self.profile_line.setText(tr("Профиль проекта") if draft.project_layer else tr("Умолчания"))
+        self.profile_line.setCursorPosition(0)  # narrow column: show the start of the name, not its tail
         hint = {"ready": trf("Профиль проекта: {n} парам.", n=len(draft.project_layer)) if draft.project_layer else tr("Профиль проекта не задан"),
                 "loading": tr("Профиль проекта загружается…"), "unavailable": tr("Профиль проекта не прочитан"),
                 "unknown": tr("Профиль проекта не прочитан")}[state]

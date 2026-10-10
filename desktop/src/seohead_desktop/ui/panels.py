@@ -43,6 +43,7 @@ QMenu { background: $surface_container_lowest; border: none; border-radius: ${ra
 QMenu::item { padding: 8px 16px; border-radius: ${radius_control}px; }
 QMenu::item:selected { background: $primary_container; color: $on_primary_container; }
 QTabBar QToolButton { border: none; border-radius: 0; padding: 0; width: 22px; }
+QFrame[kv_row="true"] { border-bottom: 1px solid $outline_variant; }
 """).substitute({**tokens["colors"], **{key: tokens[key] for key in ("radius_control", "radius_panel", "radius_popup")}})
 
 

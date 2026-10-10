@@ -485,6 +485,16 @@ class DialogTests(DialogCase):
         self.assertIn("в этой версии ядра", waiting[0].toolTip())
         self.assertEqual(self.calls, [])
 
+    def test_list_layout_fits_the_design_width_without_clipping_options(self):
+        dialog = self.open()
+        dialog.resize(960, 680)
+        dialog.findChild(QToolButton, "scanSource_list").click()
+        self.app.processEvents()
+        scroll = dialog.findChild(QScrollArea)
+        visible = scroll.viewport().width() + scroll.verticalScrollBar().sizeHint().width()
+        self.assertLessEqual(scroll.widget().minimumSizeHint().width(), visible)
+        self.assertEqual(dialog.profile_line.cursorPosition(), 0)
+
     def test_a_very_long_list_is_counted_when_typing_pauses(self):
         dialog = self.open()
         dialog.findChild(QToolButton, "scanSource_list").click()
