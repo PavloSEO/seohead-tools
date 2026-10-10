@@ -62,7 +62,9 @@ class ShellV2Tests(unittest.TestCase):
         self.assertTrue(self.window.simple_pill.isVisibleTo(self.window))
         self.assertEqual(self.window.prefs.get("shell.display"), "simple")
         self.assertEqual(self.window.mode_label.text(), "Простой режим · агент и MCP выключены")
+        self.assertEqual(self.window.navigation.profile.mode_line.text(), "Простой режим · MCP выкл.")  # SideNav sheet profile line
         self.window.set_display("agent")
+        self.assertEqual(self.window.navigation.profile.mode_line.text(), "С агентом · MCP вкл.")
         self.assertEqual(section_ids(nav)[:2], ["work", "inbox"])
         self.assertEqual(self.window.pages.currentIndex(), 0)
         with self.assertRaises(ValueError):
