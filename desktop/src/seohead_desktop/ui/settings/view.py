@@ -9,7 +9,7 @@ from ... import theming
 from ...i18n import trf
 from ...settings_store import Setting
 from ..controls import Note, SettingRow
-from .helpers import keyed, page, segmented_row, switch_row, two_columns
+from .helpers import keyed, page, segmented_row, switch_row, column_stack
 
 ID, ICON, TITLE = "view", "palette", "Вид"
 HINT = "Тема, язык, плотность и раскладка"
@@ -41,7 +41,7 @@ def _theme_picker(store):
         button.setProperty("card", "choice")
         button.setCheckable(True)
         button.setText(label)
-        button.setFixedSize(116, 76)
+        button.setFixedSize(132, 76)
         button.setAccessibleName(trf("Тема: {name}", name=label))
         button.setChecked(store.get("view.theme") == value)
         group.addButton(button)
@@ -119,4 +119,4 @@ def build_page(store, context):
         switch_row(store, "view.status_badges", "Цветные статусы в таблице", "Плашки статусов вместо текста"),
     ]
     note = Note("info", "Что это меняет.", "Только внешний вид. Данные сканов, фильтры и экспорт не зависят от темы и плотности.")
-    return page(themes, two_columns(left, right), _preview(store), note)
+    return page(themes, column_stack(left, right), _preview(store), note)

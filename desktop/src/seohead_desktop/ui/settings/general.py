@@ -11,7 +11,7 @@ from .helpers import (
     segmented_row,
     switch_row,
     text_row,
-    two_columns,
+    column_stack,
 )
 
 ID, ICON, TITLE = "general", "settings", "Общие"
@@ -56,4 +56,4 @@ def build_page(store, context):
         switch_row(store, "general.crash_stats", "Анонимная статистика сбоев", "Только трассировка ошибки, без URL и данных проектов"),
         Note("info", "Что это меняет.", "Настройки этого компьютера. В файл проекта не пишутся: коллега с тем же проектом увидит свои значения. Профили скана и представления — в проекте."),
     ]
-    return page(two_columns(left, right))
+    return page(column_stack(left, right))

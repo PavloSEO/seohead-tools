@@ -22,7 +22,7 @@ from ... import shortcuts, theming
 from ...i18n import tr, trf
 from ..controls import SettingRow, polish
 from ..icons import MaterialIconLabel, material_icon
-from .helpers import group_label, two_columns
+from .helpers import group_label, column_stack
 
 ID, ICON, TITLE = "keys", "keyboard", "Горячие клавиши"
 HINT = "Сочетания по группам; конфликты подсвечиваются"
@@ -232,7 +232,7 @@ class KeysPage(QWidget):
                 columns[index].append(group_label(group))
                 columns[index].extend(r for a, r in zip(shortcuts.ACTIONS, self.rows.values()) if a.group == group)
         columns[1].append(self._transfer_buttons())
-        layout.addWidget(two_columns(*columns))
+        layout.addWidget(column_stack(*columns))
         store.changed.connect(self._on_changed)
 
     def _transfer_buttons(self):
