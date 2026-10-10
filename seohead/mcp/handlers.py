@@ -2934,8 +2934,9 @@ def markdown_extract(
     Pass ``html`` to render offline, or ``url`` to fetch it first. The
     content-area rendering is what is worth diffing between crawls, scoring,
     or handing to a model; the full-document rendering (header and footer
-    included) is what ``boilerplate_report`` hashes to check whether
-    boilerplate is actually consistent across a crawl.
+    included) is not what ``boilerplate_report`` takes: that check needs the
+    original HTML (or a precomputed hash) to see whether boilerplate is
+    consistent across a crawl.
     """
     if not url and not html:
         raise ValueError("url or html required")
