@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render native screens offscreen to PNG: capture_screens.py OUT_DIR NAME [NAME ...] [--theme light] [--lang ru|en] [--sizes 1440x900,800x800].
 
-NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
+NAME: settings:<section id> | shell[:<section>] | newscan[:state] | scanset:<page> | quickscan[:state] | projschedule (project settings → Расписание) | menu | gallery (the three scan kinds: capture_scan_dialog.py). In-memory settings; scans only through --project.
 Options for shell: --project DIR opens an existing project through the core CLI (read-only; e.g. the QA project) and
 --display simple switches the display; ``shell:scans`` selects a navigation section after the project has loaded.
 """
@@ -126,6 +126,24 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+def projschedule_dialog(theme, lang):
+    """«Настройки проекта» → «Расписание» over a QA-project window (the schedule tab is a waiting state: no core rows)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from seohead_desktop.app import MainWindow
+    from seohead_desktop.screens.project_sources_page import ProjectSettingsDialog
+    from tests._screens_core import open_qa
+
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    open_qa(window)
+    dialog = ProjectSettingsDialog(window, window)
+    dialog._owner_window = window
+    dialog.nav.setCurrentRow(2)
+    dialog.capture_max = (960, 820)
+    return dialog
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -153,6 +171,8 @@ def build(name, width, height, store, theme="light", lang="ru"):
         return Job(name, OPTIONS, open_project)
     if kind == "projsources":
         return projsources_dialog(arg or "ready", theme, lang)
+    if kind == "projschedule":
+        return projschedule_dialog(theme, lang)
     if kind == "sources":
         from capture_sources import dialog
 
@@ -195,7 +215,7 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith(("settings", "projsources", "sources")):
+            if name.startswith(("settings", "projsources", "projschedule", "sources")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):

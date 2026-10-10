@@ -2142,5 +2142,17 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "запуски по профилю проекта": "runs per project profile",
+ "Новое расписание": "New schedule",
+ "Расписание срабатывает": "The schedule runs",
+ "только пока открыт SEOHEAD Desktop или запущен seohead watch в терминале. Пропущенный запуск выполнится при следующем старте.": "only while SEOHEAD Desktop is open or seohead watch runs in a terminal. A missed run executes at the next start.",
+ "Расписания": "Schedules",
+ "Повтор": "Repeat",
+ "Следующий запуск": "Next run",
+ "Последний": "Last",
+ "Вкл.": "On",
+ "Расписаний пока нет": "No schedules yet",
+ "История запусков": "Run history",
+ "Запуски появятся, когда ядро начнёт их хранить": "Runs appear once the core stores them"
 }
