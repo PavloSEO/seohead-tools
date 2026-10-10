@@ -10137,7 +10137,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "ffcd0ced12ec27029467e4e3e7e0ea8a746960fb182c067afa823114ee77227c",
+        "source_hash": "f18b055f55191a1c71020a03cf3c1b5a795e426fe38c0201ab981a79f1d3e9ea",
         "title": "Scenario 29 \u2014 Sitemap reconciliation: what the sitemap forgot, and what nothing links to"
       },
       "definitions": [
@@ -10157,7 +10157,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "ffcd0ced12ec27029467e4e3e7e0ea8a746960fb182c067afa823114ee77227c",
+            "source_hash": "f18b055f55191a1c71020a03cf3c1b5a795e426fe38c0201ab981a79f1d3e9ea",
             "title": "Scenario 29 \u2014 Sitemap reconciliation: what the sitemap forgot, and what nothing links to"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10181,7 +10181,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "4029dbd107648423a90680c023ff9720169017d91c3c24d7b2916e79593ea987",
+        "source_hash": "ac18b0fb918af5e6fd378ac9536068c140084874082634f8ca9c0751165c9b59",
         "title": "Scenario 8 \u2014 Soft 404s: pages that say \"not found\" with a 200"
       },
       "definitions": [
@@ -10201,7 +10201,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "4029dbd107648423a90680c023ff9720169017d91c3c24d7b2916e79593ea987",
+            "source_hash": "ac18b0fb918af5e6fd378ac9536068c140084874082634f8ca9c0751165c9b59",
             "title": "Scenario 8 \u2014 Soft 404s: pages that say \"not found\" with a 200"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10225,7 +10225,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "53cc85001905122087406ff71f42957281c9e430f9146ae0bad4f3ef89befe0e",
+        "source_hash": "5e7bff0de9c2bfee4027a7c1ce21f80e53eb584cdbfea3bd3ac8be23c24712c7",
         "title": "Scenario 46 \u2014 Delivery and weight: caching, images, document size and DOM complexity"
       },
       "definitions": [
@@ -10245,7 +10245,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "53cc85001905122087406ff71f42957281c9e430f9146ae0bad4f3ef89befe0e",
+            "source_hash": "5e7bff0de9c2bfee4027a7c1ce21f80e53eb584cdbfea3bd3ac8be23c24712c7",
             "title": "Scenario 46 \u2014 Delivery and weight: caching, images, document size and DOM complexity"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10269,7 +10269,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "ec3d6dcbe9f77aeae18dedc9d36a278458684ff7567cc652d813263b6b1c13bd",
+        "source_hash": "243a89980b2da27bb03a23a45f5b8bf2f7a3e9dcbdc8ea8db2c2f55e5fe259a4",
         "title": "Scenario 45 \u2014 The bundle audit: legacy transpilation, duplicates and unminified files"
       },
       "definitions": [
@@ -10289,7 +10289,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "ec3d6dcbe9f77aeae18dedc9d36a278458684ff7567cc652d813263b6b1c13bd",
+            "source_hash": "243a89980b2da27bb03a23a45f5b8bf2f7a3e9dcbdc8ea8db2c2f55e5fe259a4",
             "title": "Scenario 45 \u2014 The bundle audit: legacy transpilation, duplicates and unminified files"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10357,7 +10357,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "90000a45d1696c96b96fa4ba5473f67eb79abc311bb0940792b83e516dab6734",
+        "source_hash": "8ac59ef234cda66c75b3c76c5a2c870eda08f086f4b302329fdd10f52fb62151",
         "title": "Scenario 43 \u2014 Server response time: the wait before anything can start"
       },
       "definitions": [
@@ -10377,7 +10377,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "90000a45d1696c96b96fa4ba5473f67eb79abc311bb0940792b83e516dab6734",
+            "source_hash": "8ac59ef234cda66c75b3c76c5a2c870eda08f086f4b302329fdd10f52fb62151",
             "title": "Scenario 43 \u2014 Server response time: the wait before anything can start"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -10401,7 +10401,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "63a7728822d3e2b29270c5ab391c27b3de85eca8b7b55915a9fda97e319e10b9",
+        "source_hash": "f907bf8b086dd6834d72a54235f83359e59f2688dfd290ea9475c40a452936f6",
         "title": "Scenario 1 \u2014 Structure: what is unreachable, buried, or missing from the sitemap"
       },
       "definitions": [
@@ -10421,7 +10421,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "63a7728822d3e2b29270c5ab391c27b3de85eca8b7b55915a9fda97e319e10b9",
+            "source_hash": "f907bf8b086dd6834d72a54235f83359e59f2688dfd290ea9475c40a452936f6",
             "title": "Scenario 1 \u2014 Structure: what is unreachable, buried, or missing from the sitemap"
           },
           "observed_at": "2026-09-09T00:00:00Z"
