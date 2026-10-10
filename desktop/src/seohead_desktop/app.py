@@ -238,6 +238,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.connect_preferences()
         file_menu = self.menuBar().addMenu("Проект")
         file_menu.addAction("Открыть проект…", self.choose_project, QKeySequence.Open)
+        file_menu.addAction("Импорт фраз в ядро…", lambda: self.show_screen("semimport"))
         agent_menu = self.menuBar().addMenu("Агент")
         agent_menu.addAction("Подключить агента…", self.show_agent_connection)
         help_menu = self.menuBar().addMenu("Справка")

@@ -28,6 +28,7 @@ from seohead_desktop.ui.settings.context import SettingsContext
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 
 OPTIONS = {}
+SEMIMPORT_SAMPLE = Path(__file__).resolve().parents[1] / "tests" / "core_fixtures" / "semimport_sample.csv"
 
 
 def open_project(window, directory, timeout=60):
@@ -164,6 +165,19 @@ def build(name, width, height, store, theme="light", lang="ru"):
         window.prefs.set("view.theme", theme)
         window.prefs.set("view.language", lang)
         return window.build_profile_menu()
+    if kind == "semimport":
+        # Проект → Импорт фраз в ядро: the sample CSV is a test fixture, the project is the one given with --project.
+        from seohead_desktop.app import MainWindow
+
+        window = MainWindow(persistent=False)
+        window.prefs.set("view.theme", theme)
+        window.prefs.set("view.language", lang)
+        window.show_startup_workspace()
+        if OPTIONS.get("project"):
+            open_project(window, OPTIONS["project"])
+        window.show_screen("semimport")
+        window.extra_screens["semimport"].load_file(SEMIMPORT_SAMPLE)
+        return window
     if kind == "gallery":
         from seohead_desktop.ui.theme_gallery import build_board
         return build_board(width, height)
@@ -200,7 +214,7 @@ def main(argv=None):
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
                 widget.render_image(width, height, args.theme, args.lang).save(str(path))
-            elif name.startswith("shell"):
+            elif name.startswith(("shell", "semimport")):
                 # The offscreen screen is 800x600 and clamps top-level windows; render at the requested size instead.
                 widget.setAttribute(Qt.WA_DontShowOnScreen, True)
                 widget.resize(width, height)
