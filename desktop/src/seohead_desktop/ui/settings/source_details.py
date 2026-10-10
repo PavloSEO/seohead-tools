@@ -13,8 +13,8 @@ from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from ...i18n import joined, tr, trf
 from ...source_service import VERIFY_PROVIDERS
 from ..controls import Note
-from ..kit import Kpi, waiting_badge
-from .helpers import group_label
+from ..kit import waiting_badge
+from .helpers import group_label, two_columns
 from .helpers import page as stack
 from .listing import action_button, badge, hint, key_values, list_item, no_data, terminal
 from .source_catalogue import (
@@ -180,29 +180,24 @@ def howto_view(page):
 
 def spend_view(page):
     spend = page.spend
-    parts = [back_header("Расходы платных API", "Все источники", page.show_list,
-                         trf("С {date} · журнал ядра · единицы как записал провайдер", date=(spend or {}).get("since") or "начала журнала"))]
+    since = (spend or {}).get("since")
+    head = back_header("Расходы платных API", "Все источники", page.show_list,
+                       trf("С {date} · журнал ядра · единицы как записал провайдер", date=since or "начала журнала"),
+                       actions=(action_button("Экспорт CSV", icon="download", enabled=False),))
     if spend is None:
-        return stack(*parts, no_data(), terminal("seohead spend-report", ["Нет данных"]))
-    kpis = QWidget()
-    layout = QHBoxLayout(kpis)
-    layout.setContentsMargins(0, 8, 0, 8)
-    for label, value in (("вызовов в журнале", spend.get("calls")), ("с неизвестной стоимостью", spend.get("uncertain_count"))):
-        layout.addWidget(Kpi(label, value))
-    layout.addStretch(1)
-    parts.append(kpis)
+        return stack(head, no_data(), terminal("seohead spend-report", ["Нет данных"]))
     by_source = [(name_of(next((p for p, k in SPEND_KEY.items() if k == source), source)), amount(units)) for source, units in spend.get("by_source", {}).items()]
     by_operation = sorted(spend.get("by_operation", {}).items(), key=lambda kv: -float(next(iter(kv[1].values()))))
     by_day = sorted(spend.get("by_day", {}).items(), reverse=True)
-    parts += [group_label("По провайдерам"), table(("Провайдер", "Расход"), by_source, "Расход по провайдерам") if by_source else no_data(),
-              group_label("Последние дни"), table(("День", "Расход"), [(d, amount(u)) for d, u in by_day], "Расход по дням", 7) if by_day else no_data(),
-              group_label("По операциям"), table(("Операция", "Расход"), [(n, amount(u)) for n, u in by_operation], "Расход по операциям", 10) if by_operation else no_data()]
+    waiting = lambda: row_widget(waiting_badge(SPEND_GAP, "Месячные лимиты и подтверждение трат платных API"))
+    left = [group_label("Журнал"),
+            key_values([("вызовов в журнале", spend.get("calls")), ("с неизвестной стоимостью", spend.get("uncertain_count"))]),
+            group_label("По провайдерам"), key_values(by_source) if by_source else no_data(),
+            group_label("Лимиты и подтверждения"), key_values([("Месячные лимиты", waiting()), ("Ждут подтверждения", waiting())]),
+            Note("info", "Деньги не пересчитываются.", "Журнал ядра хранит запросы, USD и лимиты провайдера. Рубли и месячные лимиты появятся вместе с контрактом ядра.")]
+    right = [group_label("Последние дни"), table(("День", "Расход"), [(d, amount(u)) for d, u in by_day], "Расход по дням", 7) if by_day else no_data(),
+             group_label("По операциям"), table(("Операция", "Расход"), [(n, amount(u)) for n, u in by_operation], "Расход по операциям", 10) if by_operation else no_data()]
     if len(by_operation) > 10:
-        parts.append(hint(trf("Показаны 10 из {n} операций", n=len(by_operation))))
-    parts += [group_label("Лимиты и подтверждения"),
-              key_values([("Месячные лимиты", row_widget(waiting_badge(SPEND_GAP, "Месячные лимиты и подтверждение трат платных API"))),
-                          ("Ждут подтверждения", row_widget(waiting_badge(SPEND_GAP, "Месячные лимиты и подтверждение трат платных API"))),
-                          ("Экспорт CSV", row_widget(action_button("Экспорт CSV", icon="download", enabled=False, tooltip="Недоступно в этой версии ядра")))]),
-              Note("info", "Деньги не пересчитываются.", "Журнал ядра хранит запросы, USD и лимиты провайдера. Рубли и месячные лимиты появятся вместе с контрактом ядра."),
-              terminal("seohead spend-report", [trf("вызовов: {n}", n=spend.get("calls") if spend.get("calls") is not None else "нет данных")])]
-    return stack(*parts)
+        right.append(hint(trf("Показаны 10 из {n} операций", n=len(by_operation))))
+    return stack(head, two_columns(left, right),
+                 terminal("seohead spend-report", [trf("вызовов: {n}", n=spend.get("calls") if spend.get("calls") is not None else "нет данных")]))
