@@ -69,6 +69,9 @@ NEEDS_LIVE_INFRASTRUCTURE = {
     # PDF. Both are environment, not command, so the documented flags are parsed instead.
     "metrika-traffic-pdf",
     "regions-tree",
+    # Needs a Cloudflare API token and a zone on the account; the API is mocked in
+    # tests/test_cloudflare.py.
+    "cloudflare-traffic",
     # Verification is an explicit provider read; documentation examples are
     # syntax-checked here, never run against an account.
     "provider-verify",

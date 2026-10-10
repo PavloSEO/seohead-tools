@@ -1,0 +1,178 @@
+"""Offline tests for the Cloudflare aggregated-traffic source; the API is mocked."""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+
+import pytest
+
+from seohead.data_sources import cloudflare
+
+TOKEN = "test-token-not-real"
+ZONE = {
+    "success": True,
+    "result": [
+        {
+            "id": "z1",
+            "name": "example.com",
+            "plan": {"name": "Free Website"},
+            "status": "active",
+            "account": {"id": "a1"},
+        }
+    ],
+}
+
+
+def _row(count, path, ua, status=200, cache="hit", category="", origin=0, day="2026-10-08"):
+    return {
+        "count": count,
+        "avg": {"sampleInterval": 1},
+        "dimensions": {
+            "date": day,
+            "userAgent": ua,
+            "verifiedBotCategory": category,
+            "clientRequestPath": path,
+            "edgeResponseStatus": status,
+            "originResponseStatus": origin,
+            "cacheStatus": cache,
+        },
+    }
+
+
+GOOGLE = "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X) (compatible; Googlebot/2.1)"
+HUMAN = "Mozilla/5.0 (Macintosh) Chrome/133"
+CLAUDE = "Mozilla/5.0 (compatible; ClaudeBot/1.0)"
+
+
+def _transport(rows_by_call, calls):
+    def send(method, url, body, token):
+        assert token == TOKEN
+        calls.append((method, url))
+        if method == "GET":
+            return ZONE
+        assert url == cloudflare.GRAPHQL
+        rows = rows_by_call(body["variables"])
+        return {"data": {"viewer": {"accounts": [{"httpRequestsAdaptiveGroups": rows}]}}}
+
+    return send
+
+
+def test_traffic_builds_log_analyze_shaped_summary(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEOHEAD_SPEND_LOG", str(tmp_path / "spend.jsonl"))
+    rows = [
+        _row(10, "/a", GOOGLE, 200, "hit", "Search Engine Crawler"),
+        _row(2, "/gone", GOOGLE, 404, "dynamic", "Search Engine Crawler"),
+        _row(5, "/a", CLAUDE, 200, "miss", "AI Crawler"),
+        _row(40, "/", HUMAN, 301, "none"),
+        _row(3, "/x", "SomethingElse/1", 200, "hit", "Accessibility"),
+    ]
+    calls = []
+    result = cloudflare.traffic(
+        "example.com",
+        since="2026-10-08",
+        until="2026-10-08",
+        transport=_transport(lambda v: rows, calls),
+        token=TOKEN,
+    )
+    assert result["ok"] and result["source"] == "cloudflare-aggregated"
+    assert result["plan"] == "Free Website" and result["requests"] == 60
+    assert result["by_family"]["googlebot"] == {"Googlebot": 12}
+    assert result["by_family"]["ai"] == {"ClaudeBot (Anthropic)": 5}
+    assert result["by_family"]["other"] == {"Verified bot: Accessibility": 3}
+    assert result["status_by_family"]["googlebot"] == {200: 10, 404: 2}
+    assert result["top_paths_by_family"]["googlebot"] == {"/a": 10, "/gone": 2}
+    assert result["cache_by_family"]["googlebot"] == {"hit": 10, "dynamic": 2}
+    assert result["daily"] == {"2026-10-08": 60}
+    assert result["bots_daily"]["ClaudeBot (Anthropic)"] == {"2026-10-08": 5}
+    assert {"path": "/gone", "status": 404, "hits": 2} in result["bot_url_status"]["Googlebot"]
+    assert result["verification"]["checked"] is False
+    assert any("not raw server logs" in f for f in result["findings"])
+    assert any("googlebot: 2 of 12" in f for f in result["findings"])
+    assert (tmp_path / "spend.jsonl").read_text().count("cloudflare") == 1
+    assert TOKEN not in repr(result)
+
+
+def test_full_day_is_split_until_rows_fit(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEOHEAD_SPEND_LOG", str(tmp_path / "s.jsonl"))
+    monkeypatch.setattr(cloudflare, "PAGE_SIZE", 2)
+    seen = []
+
+    def rows(v):
+        seen.append((v["from"], v["to"]))
+        span = datetime.fromisoformat(v["to"][:-1]) - datetime.fromisoformat(v["from"][:-1])
+        if span > timedelta(hours=6):
+            return [_row(1, "/a", GOOGLE), _row(1, "/b", GOOGLE)]  # full -> must split
+        return [_row(1, "/a", GOOGLE)]
+
+    result = cloudflare.traffic(
+        "example.com",
+        since="2026-10-08",
+        until="2026-10-08",
+        transport=_transport(rows, []),
+        token=TOKEN,
+    )
+    assert result["queries"] > 1 and result["requests"] > 0
+
+
+def test_one_hour_window_that_stays_full_is_reported(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEOHEAD_SPEND_LOG", str(tmp_path / "s.jsonl"))
+    monkeypatch.setattr(cloudflare, "PAGE_SIZE", 1)
+    result = cloudflare.traffic(
+        "example.com",
+        since="2026-10-08",
+        until="2026-10-08",
+        transport=_transport(lambda v: [_row(1, "/a", GOOGLE)], []),
+        token=TOKEN,
+    )
+    assert result["truncated_days"] == ["2026-10-08"]
+
+
+def test_graphql_error_is_reported_without_the_token():
+    def send(method, url, body, token):
+        if method == "GET":
+            return ZONE
+        return {"data": None, "errors": [{"message": "does not have permission"}]}
+
+    result = cloudflare.traffic("example.com", transport=send, token=TOKEN)
+    assert result["ok"] is False and "permission" in result["error"]
+    assert TOKEN not in result["error"]
+
+
+def test_unknown_zone_fails_cleanly():
+    result = cloudflare.traffic(
+        "nope.example",
+        token=TOKEN,
+        transport=lambda m, u, b, t: {"success": True, "result": []},
+    )
+    assert result["ok"] is False and "not visible" in result["error"]
+
+
+@pytest.mark.parametrize(
+    "since,until",
+    [("2026-10-09", "2026-10-01"), ("2025-01-01", "2026-10-09"), ("bad", None)],
+)
+def test_bad_ranges_are_rejected(since, until):
+    with pytest.raises(ValueError):
+        cloudflare.traffic(
+            "example.com",
+            since=since,
+            until=until,
+            today=date(2026, 10, 10),
+            token=TOKEN,
+            transport=lambda *a: {},
+        )
+
+
+def test_token_is_read_from_env_then_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    f = tmp_path / "t"
+    f.write_text("from-file\n")
+    monkeypatch.setenv("SEOHEAD_CLOUDFLARE_TOKEN_FILE", str(f))
+    assert cloudflare.read_token() == "from-file"
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "from-env")
+    assert cloudflare.read_token() == "from-env"
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN")
+    f.write_text("")
+    with pytest.raises(cloudflare.CloudflareError) as exc:
+        cloudflare.read_token()
+    assert "from-file" not in str(exc.value)

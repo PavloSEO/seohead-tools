@@ -434,6 +434,7 @@ COMMAND_CONTRACTS: tuple[CommandContract, ...] = (
     ),
     _command("google-serp", "google_serp", _form("provider_query", "query")),
     _command("wayback-history", "wayback_history", _form("live_url", "url")),
+    _command("cloudflare-traffic", "cloudflare_traffic", _form("provider_query", "zone")),
     _command("crtsh-subdomains", "crtsh_subdomains", _form("domain", "domain")),
     _command("gsc-query", "gsc_query", _form("provider_query", "site_url")),
     _command(
